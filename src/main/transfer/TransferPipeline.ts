@@ -138,7 +138,19 @@ export class ByteMeter extends Transform {
       }
 
       if (this.pauseController?.isPaused) {
-        await this.pauseController.waitIfPaused();
+        if (this.signal) {
+          const onAbort = () => {
+            this.pauseController?.abort();
+          };
+          this.signal.addEventListener('abort', onAbort, { once: true });
+          try {
+            await this.pauseController.waitIfPaused();
+          } finally {
+            this.signal.removeEventListener('abort', onAbort);
+          }
+        } else {
+          await this.pauseController.waitIfPaused();
+        }
       }
 
       if (this.signal?.aborted) {
@@ -160,6 +172,8 @@ export class ByteMeter extends Transform {
 
       if (this.throttleIntervalMs === 0) {
         this.emitProgress('running');
+        this.lastEmitTime = now;
+        this.lastEmittedBytes = this.transferredBytes;
       } else if (
         this.lastEmitTime === 0 ||
         now - this.lastEmitTime >= this.throttleIntervalMs
@@ -250,23 +264,47 @@ export async function transferFile(options: TransferOptions): Promise<void> {
   const readStream = await options.sourceProvider.createReadStream(
     options.sourcePath
   );
-  const writeStream = await options.targetProvider.createWriteStream(
-    options.targetPath,
-    { size: totalBytes }
-  );
+  let writeStream: NodeJS.WritableStream | undefined;
 
-  const meter = new ByteMeter({
-    jobId: options.jobId,
-    fileName,
-    totalBytes,
-    throttleIntervalMs: options.throttleIntervalMs,
-    signal: options.signal,
-    pauseController: options.pauseController,
-    onProgress: options.onProgress,
-    emitCompletedOnFlush: options.emitCompleted ?? true,
-  });
+  try {
+    if (options.signal?.aborted) {
+      const err = new Error('Transfer aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
 
-  await pipeline(readStream, meter, writeStream, { signal: options.signal });
+    writeStream = await options.targetProvider.createWriteStream(
+      options.targetPath,
+      { size: totalBytes }
+    );
+
+    const meter = new ByteMeter({
+      jobId: options.jobId,
+      fileName,
+      totalBytes,
+      throttleIntervalMs: options.throttleIntervalMs,
+      signal: options.signal,
+      pauseController: options.pauseController,
+      onProgress: options.onProgress,
+      emitCompletedOnFlush: options.emitCompleted ?? true,
+    });
+
+    await pipeline(readStream, meter, writeStream, { signal: options.signal });
+  } catch (err) {
+    if (typeof (readStream as any)?.destroy === 'function') {
+      if (typeof (readStream as any)?.on === 'function') {
+        (readStream as any).on('error', () => {});
+      }
+      (readStream as any).destroy(err as Error);
+    }
+    if (typeof (writeStream as any)?.destroy === 'function') {
+      if (typeof (writeStream as any)?.on === 'function') {
+        (writeStream as any).on('error', () => {});
+      }
+      (writeStream as any).destroy(err as Error);
+    }
+    throw err;
+  }
 }
 
 interface ScannedFile {
@@ -309,10 +347,14 @@ async function scanDirectory(
       throw err;
     }
 
-    const childTargetPath = joinPaths(targetType, currentTargetPath, entry.name);
+    // Prevent infinite recursion on '.' and '..' and reject path traversal
+    const baseName = path.posix.basename(entry.name.replace(/\\/g, '/'));
+    if (!baseName || baseName === '.' || baseName === '..') {
+      continue;
+    }
+    const childTargetPath = joinPaths(targetType, currentTargetPath, baseName);
     const childSourcePath =
-      entry.path ||
-      (currentSourcePath ? `${currentSourcePath}/${entry.name}` : entry.name);
+      entry.path || joinPaths(sourceProvider.type, currentSourcePath, baseName);
 
     if (entry.isDirectory) {
       result.folders.push(childTargetPath);

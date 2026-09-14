@@ -46,7 +46,6 @@ interface InternalJobContext {
   pauseController: PauseController;
   waitPromise: Promise<TransferJob>;
   resolveWait: (job: TransferJob) => void;
-  rejectWait: (err: Error) => void;
 }
 
 /**
@@ -93,6 +92,10 @@ export class TransferQueue extends EventEmitter {
 
   addJob(options: TransferJobOptions): TransferJob {
     const id = options.id ?? crypto.randomUUID();
+    if (this.contexts.has(id)) {
+      throw new Error(`Job with id "${id}" already exists in queue`);
+    }
+
     const fileName =
       path.basename(options.sourcePath) || options.sourcePath || 'job';
 
@@ -121,10 +124,8 @@ export class TransferQueue extends EventEmitter {
     const pauseController = new PauseController();
 
     let resolveWait!: (job: TransferJob) => void;
-    let rejectWait!: (err: Error) => void;
-    const waitPromise = new Promise<TransferJob>((resolve, reject) => {
+    const waitPromise = new Promise<TransferJob>((resolve) => {
       resolveWait = resolve;
-      rejectWait = reject;
     });
 
     this.jobs.push(job);
@@ -134,7 +135,6 @@ export class TransferQueue extends EventEmitter {
       pauseController,
       waitPromise,
       resolveWait,
-      rejectWait,
     });
 
     this.emit('jobAdded', job);
@@ -245,7 +245,9 @@ export class TransferQueue extends EventEmitter {
       const isDone = () => {
         const remaining = this.jobs.filter(
           (j) =>
-            j.progress.status === 'pending' || j.progress.status === 'running'
+            j.progress.status === 'pending' ||
+            j.progress.status === 'running' ||
+            j.progress.status === 'paused'
         );
         return remaining.length === 0;
       };
@@ -377,7 +379,9 @@ export class TransferQueue extends EventEmitter {
   private checkDrain(): void {
     const activeOrPending = this.jobs.filter(
       (j) =>
-        j.progress.status === 'pending' || j.progress.status === 'running'
+        j.progress.status === 'pending' ||
+        j.progress.status === 'running' ||
+        j.progress.status === 'paused'
     );
     if (activeOrPending.length === 0) {
       this.emit('drain');

@@ -9,6 +9,7 @@ import {
   transferFile,
   transferDirectory,
   ByteMeter,
+  PauseController,
 } from '../../src/main/transfer/TransferPipeline';
 import {
   TransferQueue,
@@ -382,6 +383,35 @@ describe('TransferPipeline', () => {
         })
       ).rejects.toThrow();
     });
+
+    it('should unblock and abort ByteMeter when aborted while paused', async () => {
+      const pauseController = new PauseController();
+      pauseController.pause();
+      const abortController = new AbortController();
+
+      const meter = new ByteMeter({
+        pauseController,
+        signal: abortController.signal,
+      });
+
+      const source = new PassThrough();
+      const dest = new PassThrough();
+
+      const pipelinePromise = new Promise<void>((resolve, reject) => {
+        source.pipe(meter).pipe(dest);
+        dest.on('finish', () => resolve());
+        meter.on('error', reject);
+      });
+
+      source.write('chunk-while-paused');
+
+      // Abort after a tick
+      setTimeout(() => {
+        abortController.abort();
+      }, 20);
+
+      await expect(pipelinePromise).rejects.toThrow();
+    });
   });
 
   describe('Recursive directory transfer', () => {
@@ -441,6 +471,28 @@ describe('TransferPipeline', () => {
       const stat = await fs.stat(path.join(targetDir, 'empty-sub'));
       expect(stat.isDirectory()).toBe(true);
     });
+
+    it('should ignore . and .. entries preventing infinite recursion', async () => {
+      const mockSource = new MemoryStorageProvider();
+      mockSource.list = vi.fn().mockResolvedValue([
+        { name: '.', path: '.', size: 0, isDirectory: true },
+        { name: '..', path: '..', size: 0, isDirectory: true },
+        { name: 'valid.txt', path: 'valid.txt', size: 4, isDirectory: false },
+      ]);
+      mockSource.files.set('valid.txt', Buffer.from('test'));
+
+      const mockTarget = new MemoryStorageProvider();
+      await transferDirectory({
+        sourceProvider: mockSource,
+        sourcePath: '',
+        targetProvider: mockTarget,
+        targetPath: '',
+      });
+
+      expect(mockTarget.files.has('valid.txt')).toBe(true);
+      expect(mockTarget.folders.has('.')).toBe(false);
+      expect(mockTarget.folders.has('..')).toBe(false);
+    });
   });
 
   describe('Error handling', () => {
@@ -475,6 +527,28 @@ describe('TransferPipeline', () => {
           targetPath: 'data.txt',
         })
       ).rejects.toThrow('Disk full write error');
+    });
+
+    it('should destroy readStream when target createWriteStream throws', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('data'));
+      const readStream = await memSource.createReadStream('data.txt');
+      const destroySpy = vi.spyOn(readStream as any, 'destroy');
+      memSource.createReadStream = vi.fn().mockResolvedValue(readStream);
+
+      const memTarget = new MemoryStorageProvider();
+      memTarget.createWriteStream = vi.fn().mockRejectedValue(new Error('Target init failure'));
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+        })
+      ).rejects.toThrow('Target init failure');
+
+      expect(destroySpy).toHaveBeenCalled();
     });
   });
 });
@@ -521,6 +595,27 @@ describe('TransferQueue', () => {
 
     expect(job.progress.status).toBe('completed');
     expect(targetProvider.files.get('file1.txt')?.toString()).toBe('content 1');
+  });
+
+  it('should reject duplicate job IDs in addJob', () => {
+    const queue = new TransferQueue();
+    queue.addJob({
+      id: 'dup-1',
+      sourceProvider,
+      sourcePath: 'f.txt',
+      targetProvider,
+      targetPath: 'f.txt',
+    });
+
+    expect(() => {
+      queue.addJob({
+        id: 'dup-1',
+        sourceProvider,
+        sourcePath: 'f.txt',
+        targetProvider,
+        targetPath: 'f.txt',
+      });
+    }).toThrow('already exists');
   });
 
   it('should respect concurrency limit (run at most N concurrent jobs)', async () => {
@@ -608,6 +703,31 @@ describe('TransferQueue', () => {
 
     await queue.waitForJob(job2.id);
     expect(job2.progress.status).toBe('completed');
+  });
+
+  it('should keep waitForAll waiting while jobs are paused', async () => {
+    sourceProvider.files.set('pause-wait.txt', Buffer.from('data'));
+    const queue = new TransferQueue({ concurrency: 1 });
+    const job = queue.addJob({
+      sourceProvider,
+      sourcePath: 'pause-wait.txt',
+      targetProvider,
+      targetPath: 'pause-wait.txt',
+    });
+    queue.pauseJob(job.id);
+
+    let finished = false;
+    const waitPromise = queue.waitForAll().then(() => {
+      finished = true;
+    });
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(finished).toBe(false);
+
+    queue.resumeJob(job.id);
+    await waitPromise;
+    expect(finished).toBe(true);
+    expect(job.progress.status).toBe('completed');
   });
 
   it('should pause and resume a running job', async () => {
