@@ -11,8 +11,8 @@ function createWindow(): void {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'index.mjs'),
-      sandbox: false,
+      preload: path.join(__dirname, 'index.cjs'),
+      sandbox: true,
       contextIsolation: true,
     },
   })
