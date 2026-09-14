@@ -50,6 +50,8 @@ export interface SFTPConfig {
   authType: SFTPAuthType;
   password?: string;
   privateKeyPath?: string;
+  passphrase?: string;
+  agentPath?: string;
   pkcs11LibPath?: string;
   pin?: string;
 }
