@@ -582,6 +582,20 @@ describe('SFTPStorageProvider', () => {
       expect(mockRmdir).not.toHaveBeenCalled();
       expect(mockDelete).not.toHaveBeenCalled();
     });
+
+    it('should protect against deleting parent directory ..', async () => {
+      const provider = new SFTPStorageProvider(baseConfig);
+
+      await expect(provider.delete('..', true)).rejects.toThrow(
+        /cannot delete root/i,
+      );
+      await expect(provider.delete('..', false)).rejects.toThrow(
+        /cannot delete root/i,
+      );
+
+      expect(mockRmdir).not.toHaveBeenCalled();
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
   });
 
   describe('rename(oldPath, newPath)', () => {
@@ -674,6 +688,32 @@ describe('SFTPStorageProvider', () => {
       await provider.list('/second');
       expect(mockConnect).toHaveBeenCalledTimes(2);
     });
+
+    it('should await in-flight connection before closing client during disconnect', async () => {
+      let resolveConnect: () => void;
+      mockConnect.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveConnect = resolve;
+        }),
+      );
+
+      const provider = new SFTPStorageProvider(baseConfig);
+      const connectPromise = provider.ensureConnected();
+
+      const disconnectPromise = provider.disconnect();
+
+      // Resolve in-flight connection
+      resolveConnect!();
+
+      await Promise.all([connectPromise, disconnectPromise]);
+
+      expect(mockEnd).toHaveBeenCalledTimes(1);
+
+      // Subsequent operation should reconnect
+      mockList.mockResolvedValue([]);
+      await provider.list('/after-disconnect');
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('error handling and reconnection', () => {
@@ -733,6 +773,29 @@ describe('SFTPStorageProvider', () => {
 
       await provider.list('/dir2');
       expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
+
+    it('should retry connecting and succeed after synchronous privateKey read failure', async () => {
+      const missingKeyPath = path.join(tempDir, 'non-existent-key');
+      const keyConfig: SFTPConfig = {
+        ...baseConfig,
+        authType: 'privateKey',
+        privateKeyPath: missingKeyPath,
+      };
+      mockList.mockResolvedValue([]);
+
+      const provider = new SFTPStorageProvider(keyConfig);
+
+      // First call: synchronous readFileSync throws ENOENT
+      await expect(provider.list('/test')).rejects.toThrow(/ENOENT/);
+
+      // Fix key path for retry
+      await fs.writeFile(missingKeyPath, 'VALID_KEY', 'utf8');
+
+      // Second call should retry connection without promise lockup
+      const entries = await provider.list('/test');
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(entries).toEqual([]);
     });
   });
 });

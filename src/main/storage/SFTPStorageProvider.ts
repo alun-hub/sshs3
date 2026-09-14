@@ -154,7 +154,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       return this.connectionPromise;
     }
 
-    this.connectionPromise = (async () => {
+    const doConnect = async () => {
       try {
         const options = this.buildConnectOptions();
         await this.client.connect(options as any);
@@ -162,10 +162,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       } catch (err) {
         this.isConnected = false;
         throw err;
-      } finally {
-        this.connectionPromise = null;
       }
-    })();
+    };
+
+    this.connectionPromise = doConnect().finally(() => {
+      this.connectionPromise = null;
+    });
 
     return this.connectionPromise;
   }
@@ -231,6 +233,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     if (
       normalized === '/' ||
       normalized === '.' ||
+      normalized === '..' ||
       remotePath.trim() === '/' ||
       remotePath.trim() === ''
     ) {
@@ -281,6 +284,13 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   async disconnect(): Promise<void> {
+    if (this.connectionPromise) {
+      try {
+        await this.connectionPromise;
+      } catch {
+        // Ignore connection errors during disconnect
+      }
+    }
     try {
       await this.client.end();
     } finally {
