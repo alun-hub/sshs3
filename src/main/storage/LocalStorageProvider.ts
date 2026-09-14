@@ -132,7 +132,12 @@ export class LocalStorageProvider extends BaseStorageProvider {
 
   async delete(remotePath: string, isDirectory: boolean): Promise<void> {
     const fullPath = this.resolvePath(remotePath);
-    const stats = await fsp.stat(fullPath);
+    const parsed = path.parse(fullPath);
+    if (fullPath === parsed.root || (this.basePath && fullPath === this.basePath)) {
+      throw new Error(`Cannot delete root directory: ${remotePath}`);
+    }
+
+    const stats = await fsp.lstat(fullPath);
 
     if (isDirectory) {
       if (!stats.isDirectory()) {

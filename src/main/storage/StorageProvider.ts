@@ -77,7 +77,7 @@ const MIME_MAP: Record<string, string> = {
  */
 export function getMimeType(filePath: string): string | undefined {
   const ext = path.extname(filePath).toLowerCase();
-  return MIME_MAP[ext] ?? 'application/octet-stream';
+  return MIME_MAP[ext];
 }
 
 /**

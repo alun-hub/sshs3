@@ -154,6 +154,14 @@ describe('LocalStorageProvider', () => {
       expect(entry.mimeType).toBeUndefined();
       expect(entry.mtime).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     });
+
+    it('should leave mimeType as undefined for files with unknown extension', async () => {
+      const filePath = path.join(testDir, 'unknown.somecustomext');
+      await fs.writeFile(filePath, 'custom data', 'utf-8');
+
+      const entry = await provider.stat(filePath);
+      expect(entry.mimeType).toBeUndefined();
+    });
   });
 
   describe('list', () => {
@@ -250,6 +258,30 @@ describe('LocalStorageProvider', () => {
       await provider.delete(folderPath, true);
 
       await expect(fs.access(folderPath)).rejects.toThrow();
+    });
+
+    it('should delete a broken symlink with isDirectory=false', async () => {
+      const targetPath = path.join(testDir, 'non-existent-target.txt');
+      const symlinkPath = path.join(testDir, 'broken-symlink.txt');
+      await fs.symlink(targetPath, symlinkPath);
+
+      // Verify symlink was created and target is missing
+      const lstatBefore = await fs.lstat(symlinkPath);
+      expect(lstatBefore.isSymbolicLink()).toBe(true);
+      await expect(fs.stat(symlinkPath)).rejects.toThrow();
+
+      // Deleting should succeed using lstat
+      await provider.delete(symlinkPath, false);
+      await expect(fs.lstat(symlinkPath)).rejects.toThrow();
+    });
+
+    it('should prevent deleting root directory or basePath', async () => {
+      const rootDir = path.parse(testDir).root;
+      await expect(provider.delete(rootDir, true)).rejects.toThrow(/Cannot delete root directory/);
+
+      const scopedProvider = new LocalStorageProvider({ basePath: testDir });
+      await expect(scopedProvider.delete(testDir, true)).rejects.toThrow(/Cannot delete root directory/);
+      await expect(scopedProvider.delete('', true)).rejects.toThrow(/Cannot delete root directory/);
     });
   });
 
