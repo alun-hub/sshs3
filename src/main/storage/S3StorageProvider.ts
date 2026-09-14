@@ -7,11 +7,15 @@ import {
   type S3ClientConfig,
   ListBucketsCommand,
   ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
   HeadBucketCommand,
   HeadObjectCommand,
   CreateBucketCommand,
+  type CreateBucketCommandInput,
+  type BucketLocationConstraint,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   DeleteBucketCommand,
   CopyObjectCommand,
   GetObjectCommand,
@@ -113,46 +117,52 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     }
 
     const prefix = key ? (key.endsWith('/') ? key : `${key}/`) : '';
-    const command = new ListObjectsV2Command({
-      Bucket: bucket,
-      Prefix: prefix,
-      Delimiter: '/',
-    });
-    const output = await this.client.send(command);
-
+    let continuationToken: string | undefined = undefined;
     const results: FileEntry[] = [];
 
-    // Virtual directories (CommonPrefixes)
-    for (const cp of output.CommonPrefixes ?? []) {
-      const cpPrefix = cp.Prefix ?? '';
-      const stripped = cpPrefix.replace(/\/+$/, '');
-      const name = path.posix.basename(stripped);
-      results.push({
-        name,
-        path: `/${bucket}/${stripped}`,
-        size: 0,
-        isDirectory: true,
-        mtime: undefined,
+    do {
+      const command: ListObjectsV2Command = new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        Delimiter: '/',
+        ContinuationToken: continuationToken,
       });
-    }
+      const output = await this.client.send(command);
 
-    // Objects (Contents)
-    for (const item of output.Contents ?? []) {
-      const itemKey = item.Key ?? '';
-      // Skip the folder marker itself
-      if (itemKey === prefix || itemKey === '') {
-        continue;
+      // Virtual directories (CommonPrefixes)
+      for (const cp of output.CommonPrefixes ?? []) {
+        const cpPrefix = cp.Prefix ?? '';
+        const stripped = cpPrefix.replace(/\/+$/, '');
+        const name = path.posix.basename(stripped);
+        results.push({
+          name,
+          path: `/${bucket}/${stripped}`,
+          size: 0,
+          isDirectory: true,
+          mtime: undefined,
+        });
       }
-      const name = path.posix.basename(itemKey);
-      results.push({
-        name,
-        path: `/${bucket}/${itemKey}`,
-        size: item.Size ?? 0,
-        isDirectory: false,
-        mtime: item.LastModified ? formatDate(item.LastModified) : undefined,
-        mimeType: getMimeType(name),
-      });
-    }
+
+      // Objects (Contents)
+      for (const item of output.Contents ?? []) {
+        const itemKey = item.Key ?? '';
+        // Skip the folder marker itself or any key ending with '/'
+        if (itemKey === prefix || itemKey === '' || itemKey.endsWith('/')) {
+          continue;
+        }
+        const name = path.posix.basename(itemKey);
+        results.push({
+          name,
+          path: `/${bucket}/${itemKey}`,
+          size: item.Size ?? 0,
+          isDirectory: false,
+          mtime: item.LastModified ? formatDate(item.LastModified) : undefined,
+          mimeType: getMimeType(name),
+        });
+      }
+
+      continuationToken = output.NextContinuationToken;
+    } while (continuationToken);
 
     // Sort: directories first, then alphabetical
     results.sort((a, b) => {
@@ -261,7 +271,17 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     }
 
     if (!key) {
-      await this.client.send(new CreateBucketCommand({ Bucket: bucket }));
+      const createParams: CreateBucketCommandInput = {
+        Bucket: bucket,
+        ...(this.config.region && this.config.region !== 'us-east-1'
+          ? {
+              CreateBucketConfiguration: {
+                LocationConstraint: this.config.region as BucketLocationConstraint,
+              },
+            }
+          : {}),
+      };
+      await this.client.send(new CreateBucketCommand(createParams));
       return;
     }
 
@@ -302,27 +322,39 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
     // Deleting directory: delete all objects under the prefix, plus the directory marker
     const prefix = key.endsWith('/') ? key : `${key}/`;
-    const listed = await this.client.send(
-      new ListObjectsV2Command({
+    let continuationToken: string | undefined = undefined;
+
+    do {
+      const listCommand = new ListObjectsV2Command({
         Bucket: bucket,
         Prefix: prefix,
-      })
-    );
+        ContinuationToken: continuationToken,
+      });
+      const listed: ListObjectsV2CommandOutput = await this.client.send(listCommand);
 
-    if (listed.Contents && listed.Contents.length > 0) {
-      for (const item of listed.Contents) {
+      const objectsToDelete: { Key: string }[] = [];
+      for (const item of listed.Contents ?? []) {
         if (item.Key) {
-          await this.client.send(
-            new DeleteObjectCommand({
-              Bucket: bucket,
-              Key: item.Key,
-            })
-          );
+          objectsToDelete.push({ Key: item.Key });
         }
       }
-    }
 
-    // Also ensure folder marker is deleted
+      if (objectsToDelete.length > 0) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: {
+              Objects: objectsToDelete,
+              Quiet: true,
+            },
+          })
+        );
+      }
+
+      continuationToken = listed.NextContinuationToken;
+    } while (continuationToken);
+
+    // Also ensure folder marker is deleted in case it wasn't returned
     await this.client.send(
       new DeleteObjectCommand({
         Bucket: bucket,
@@ -343,11 +375,16 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       throw new Error(`Destination must include bucket and key: ${newPath}`);
     }
 
+    const encodedSourceKey = src.key
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+
     await this.client.send(
       new CopyObjectCommand({
         Bucket: dst.bucket,
         Key: dst.key,
-        CopySource: `${src.bucket}/${src.key}`,
+        CopySource: `${src.bucket}/${encodedSourceKey}`,
       })
     );
 
@@ -411,8 +448,21 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       },
     });
 
-    upload.done().catch((err) => {
-      passThrough.destroy(err);
+    const originalFinal = passThrough._final.bind(passThrough);
+    passThrough._final = (callback) => {
+      originalFinal(async (err) => {
+        if (err) return callback(err);
+        try {
+          await upload.done();
+          callback();
+        } catch (uploadErr: any) {
+          callback(uploadErr);
+        }
+      });
+    };
+
+    passThrough.on('error', () => {
+      upload.abort();
     });
 
     return passThrough;

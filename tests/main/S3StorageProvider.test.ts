@@ -14,6 +14,7 @@ const s3ClientConstructorMock = vi.fn();
 
 let uploadParamsMock: any = null;
 let uploadDoneMock = vi.fn();
+let uploadAbortMock = vi.fn();
 
 vi.mock('@aws-sdk/client-s3', () => {
   class S3Client {
@@ -47,6 +48,9 @@ vi.mock('@aws-sdk/client-s3', () => {
   class DeleteObjectCommand {
     constructor(public input: any) {}
   }
+  class DeleteObjectsCommand {
+    constructor(public input: any) {}
+  }
   class DeleteBucketCommand {
     constructor(public input: any) {}
   }
@@ -66,6 +70,7 @@ vi.mock('@aws-sdk/client-s3', () => {
     CreateBucketCommand,
     PutObjectCommand,
     DeleteObjectCommand,
+    DeleteObjectsCommand,
     DeleteBucketCommand,
     CopyObjectCommand,
     GetObjectCommand,
@@ -75,6 +80,7 @@ vi.mock('@aws-sdk/client-s3', () => {
 vi.mock('@aws-sdk/lib-storage', () => {
   class Upload {
     public done = uploadDoneMock;
+    public abort = uploadAbortMock;
     constructor(public options: any) {
       uploadParamsMock = options;
     }
@@ -95,6 +101,7 @@ import {
   CreateBucketCommand,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   DeleteBucketCommand,
   CopyObjectCommand,
   GetObjectCommand,
@@ -114,6 +121,7 @@ describe('S3StorageProvider', () => {
     vi.clearAllMocks();
     uploadParamsMock = null;
     uploadDoneMock = vi.fn().mockResolvedValue({ Location: 'https://s3.amazonaws.com/bucket/key' });
+    uploadAbortMock = vi.fn();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'multissh-s3-test-'));
   });
 
@@ -330,6 +338,7 @@ describe('S3StorageProvider', () => {
             Bucket: 'my-bucket',
             Prefix: '',
             Delimiter: '/',
+            ContinuationToken: undefined,
           });
           return {
             CommonPrefixes: [{ Prefix: 'documents/' }, { Prefix: 'photos/' }],
@@ -380,7 +389,7 @@ describe('S3StorageProvider', () => {
       });
     });
 
-    it('should list subfolder contents and filter out folder marker object', async () => {
+    it('should list subfolder contents and filter out folder marker object and trailing slash keys', async () => {
       const fileDate = new Date('2026-09-14T14:15:00Z');
       clientSendMock.mockImplementationOnce(async (command: any) => {
         if (command instanceof ListObjectsV2Command) {
@@ -388,12 +397,15 @@ describe('S3StorageProvider', () => {
             Bucket: 'my-bucket',
             Prefix: 'subfolder/',
             Delimiter: '/',
+            ContinuationToken: undefined,
           });
           return {
             CommonPrefixes: [{ Prefix: 'subfolder/nested/' }],
             Contents: [
               // Directory marker object itself
               { Key: 'subfolder/', Size: 0, LastModified: fileDate },
+              // Subfolder marker with trailing slash
+              { Key: 'subfolder/another-dir/', Size: 0, LastModified: fileDate },
               // Actual file inside subfolder
               { Key: 'subfolder/notes.md', Size: 512, LastModified: fileDate },
             ],
@@ -414,7 +426,7 @@ describe('S3StorageProvider', () => {
         mtime: undefined,
       });
 
-      // File - marker 'subfolder/' must be skipped
+      // File - markers 'subfolder/' and 'subfolder/another-dir/' must be skipped
       expect(entries[1]).toEqual({
         name: 'notes.md',
         path: '/my-bucket/subfolder/notes.md',
@@ -423,6 +435,38 @@ describe('S3StorageProvider', () => {
         mtime: formatDate(fileDate),
         mimeType: 'text/markdown',
       });
+    });
+
+    it('should paginate using NextContinuationToken and ContinuationToken across multiple pages', async () => {
+      const fileDate = new Date('2026-09-14T15:00:00Z');
+      let callCount = 0;
+
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof ListObjectsV2Command) {
+          callCount++;
+          if (callCount === 1) {
+            expect(command.input.ContinuationToken).toBeUndefined();
+            return {
+              Contents: [{ Key: 'file1.txt', Size: 100, LastModified: fileDate }],
+              NextContinuationToken: 'token-page-2',
+            };
+          }
+          if (callCount === 2) {
+            expect(command.input.ContinuationToken).toBe('token-page-2');
+            return {
+              Contents: [{ Key: 'file2.txt', Size: 200, LastModified: fileDate }],
+              NextContinuationToken: undefined,
+            };
+          }
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      const entries = await provider.list('/my-bucket');
+      expect(callCount).toBe(2);
+      expect(entries).toHaveLength(2);
+      expect(entries[0].name).toBe('file1.txt');
+      expect(entries[1].name).toBe('file2.txt');
     });
   });
 
@@ -577,11 +621,14 @@ describe('S3StorageProvider', () => {
       provider = new S3StorageProvider(defaultS3Config);
     });
 
-    it('should create a new bucket when creating folder at bucket level', async () => {
+    it('should create a new bucket with LocationConstraint when region is not us-east-1', async () => {
       clientSendMock.mockImplementationOnce(async (command: any) => {
         if (command instanceof CreateBucketCommand) {
           expect(command.input).toEqual({
             Bucket: 'brand-new-bucket',
+            CreateBucketConfiguration: {
+              LocationConstraint: 'us-west-2',
+            },
           });
           return {};
         }
@@ -589,6 +636,26 @@ describe('S3StorageProvider', () => {
       });
 
       await provider.createFolder('/brand-new-bucket');
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should create bucket without CreateBucketConfiguration when region is us-east-1', async () => {
+      const eastProvider = new S3StorageProvider({
+        ...defaultS3Config,
+        region: 'us-east-1',
+      });
+
+      clientSendMock.mockImplementationOnce(async (command: any) => {
+        if (command instanceof CreateBucketCommand) {
+          expect(command.input).toEqual({
+            Bucket: 'east-bucket',
+          });
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await eastProvider.createFolder('/east-bucket');
       expect(clientSendMock).toHaveBeenCalledTimes(1);
     });
 
@@ -670,31 +737,44 @@ describe('S3StorageProvider', () => {
       expect(clientSendMock).toHaveBeenCalledTimes(1);
     });
 
-    it('should delete a virtual folder and its objects when isDirectory is true', async () => {
-      const deletedKeys: string[] = [];
+    it('should delete a virtual folder and its objects using DeleteObjectsCommand with pagination', async () => {
+      const deletedObjectBatches: any[] = [];
+      let listCallCount = 0;
+
       clientSendMock.mockImplementation(async (command: any) => {
         if (command instanceof ListObjectsV2Command) {
+          listCallCount++;
           expect(command.input.Prefix).toBe('subfolder/');
+          if (listCallCount === 1) {
+            return {
+              Contents: [{ Key: 'subfolder/file1.txt' }],
+              NextContinuationToken: 'del-token-2',
+            };
+          }
           return {
-            Contents: [
-              { Key: 'subfolder/file1.txt' },
-              { Key: 'subfolder/file2.txt' },
-            ],
+            Contents: [{ Key: 'subfolder/file2.txt' }],
+            NextContinuationToken: undefined,
           };
         }
-        if (command instanceof DeleteObjectCommand) {
-          if (command.input.Key) {
-            deletedKeys.push(command.input.Key);
+        if (command instanceof DeleteObjectsCommand) {
+          if (command.input.Delete?.Objects) {
+            deletedObjectBatches.push(command.input.Delete.Objects);
           }
+          return {};
+        }
+        if (command instanceof DeleteObjectCommand) {
+          // Folder marker cleanup
+          expect(command.input.Key).toBe('subfolder/');
           return {};
         }
         throw new Error(`Unexpected command: ${command.constructor.name}`);
       });
 
       await provider.delete('/my-bucket/subfolder', true);
-      expect(deletedKeys).toContain('subfolder/file1.txt');
-      expect(deletedKeys).toContain('subfolder/file2.txt');
-      expect(deletedKeys).toContain('subfolder/');
+      expect(deletedObjectBatches).toEqual([
+        [{ Key: 'subfolder/file1.txt' }],
+        [{ Key: 'subfolder/file2.txt' }],
+      ]);
     });
 
     it('should throw error when deleting root', async () => {
@@ -741,6 +821,33 @@ describe('S3StorageProvider', () => {
 
       await provider.rename('/my-bucket/old-name.txt', '/my-bucket/new-name.txt');
       expect(executedCommands).toEqual(['copy', 'delete']);
+    });
+
+    it('should properly URL-encode CopySource with spaces and special characters', async () => {
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof CopyObjectCommand) {
+          expect(command.input).toEqual({
+            Bucket: 'my-bucket',
+            Key: 'destination.txt',
+            CopySource: 'my-bucket/nested%20folder/special%20name%20%231%20%2B%202.txt',
+          });
+          return {};
+        }
+        if (command instanceof DeleteObjectCommand) {
+          expect(command.input).toEqual({
+            Bucket: 'my-bucket',
+            Key: 'nested folder/special name #1 + 2.txt',
+          });
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await provider.rename(
+        '/my-bucket/nested folder/special name #1 + 2.txt',
+        '/my-bucket/destination.txt'
+      );
+      expect(clientSendMock).toHaveBeenCalledTimes(2);
     });
 
     it('should support rename / move across different buckets', async () => {
@@ -871,7 +978,13 @@ describe('S3StorageProvider', () => {
       provider = new S3StorageProvider(defaultS3Config);
     });
 
-    it('should upload via @aws-sdk/lib-storage Upload connected to PassThrough stream', async () => {
+    it('should upload via @aws-sdk/lib-storage Upload connected to PassThrough stream and complete on finish', async () => {
+      let uploadFinished = false;
+      uploadDoneMock = vi.fn().mockImplementation(async () => {
+        uploadFinished = true;
+        return { Location: 'https://s3.amazonaws.com/bucket/output.txt' };
+      });
+
       const writeStream = await provider.createWriteStream('/my-bucket/output.txt');
       expect(writeStream).toBeInstanceOf(PassThrough);
 
@@ -885,18 +998,24 @@ describe('S3StorageProvider', () => {
         })
       );
 
-      // Write data to stream
+      // Write data to stream and ensure 'finish' only occurs after upload.done()
+      let finishFired = false;
       await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', () => resolve());
+        writeStream.on('finish', () => {
+          finishFired = true;
+          expect(uploadFinished).toBe(true);
+          resolve();
+        });
         writeStream.on('error', (err) => reject(err));
         writeStream.write('Streamed content to S3');
         writeStream.end();
       });
 
+      expect(finishFired).toBe(true);
       expect(uploadDoneMock).toHaveBeenCalled();
     });
 
-    it('should emit error on writeStream when upload.done() rejects', async () => {
+    it('should emit error on writeStream when upload.done() rejects during final', async () => {
       const uploadError = new Error('S3 upload failed');
       uploadDoneMock = vi.fn().mockRejectedValue(uploadError);
 
@@ -911,6 +1030,17 @@ describe('S3StorageProvider', () => {
 
       const receivedError = await errorPromise;
       expect(receivedError).toBe(uploadError);
+    });
+
+    it('should abort upload when stream emits error', async () => {
+      const writeStream = await provider.createWriteStream('/my-bucket/abort-upload.txt');
+
+      // Trigger stream error
+      (writeStream as PassThrough).destroy(new Error('Consumer abort'));
+
+      // Wait a tick for event handlers
+      await new Promise((r) => setTimeout(r, 10));
+      expect(uploadAbortMock).toHaveBeenCalledTimes(1);
     });
 
     it('should throw error when writing to root or bucket without key', async () => {
