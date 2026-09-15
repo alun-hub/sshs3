@@ -193,4 +193,19 @@ describe('ProfileStore', () => {
       })
     ).rejects.toThrow('Profile ID is required');
   });
+
+  it('serializes concurrent write mutations without race conditions', async () => {
+    const store = new ProfileStore(storePath);
+    // Fire multiple concurrent saves
+    await Promise.all([
+      store.saveSSH({ id: 'ssh-1', name: 'S1', host: 'h1', username: 'u', authType: 'password' }),
+      store.saveSSH({ id: 'ssh-2', name: 'S2', host: 'h2', username: 'u', authType: 'password' }),
+      store.saveS3({ id: 's3-1', name: 'S3-1', region: 'r1', accessKeyId: 'k1', secretAccessKey: 's1' }),
+      store.saveS3({ id: 's3-2', name: 'S3-2', region: 'r2', accessKeyId: 'k2', secretAccessKey: 's2' }),
+    ]);
+
+    const profiles = await store.getProfiles();
+    expect(profiles.ssh).toHaveLength(2);
+    expect(profiles.s3).toHaveLength(2);
+  });
 });

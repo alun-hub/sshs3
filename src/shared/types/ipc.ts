@@ -78,7 +78,7 @@ export interface MultiSSHApi {
   // Smartcard
   smartcardDetect(): Promise<DetectedSmartcardLib[]>;
   smartcardValidate(path: string): Promise<{ valid: boolean; error?: string }>;
-  onAskpassPrompt(callback: (event: { id: string; prompt: string }) => void): () => void;
+  onAskpassPrompt(callback: (event: { id: string; prompt: string; sessionId?: string }) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
 
   // Storage

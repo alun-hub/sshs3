@@ -55,8 +55,8 @@ export const api: MultiSSHApi = {
   smartcardValidate: (path: string): Promise<{ valid: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_VALIDATE, path),
 
-  onAskpassPrompt: (callback: (event: { id: string; prompt: string }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, event: { id: string; prompt: string }) =>
+  onAskpassPrompt: (callback: (event: { id: string; prompt: string; sessionId?: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: { id: string; prompt: string; sessionId?: string }) =>
       callback(event);
     ipcRenderer.on(IPC_CHANNELS.ASKPASS_PROMPT, listener);
     return () => {

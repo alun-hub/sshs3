@@ -12,6 +12,7 @@ export interface ProfilesData {
 
 export class ProfileStore {
   private filePath: string;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -48,30 +49,42 @@ export class ProfileStore {
     }
   }
 
+  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const resultPromise = this.writeQueue.then(mutation, mutation);
+    this.writeQueue = resultPromise.then(
+      () => {},
+      () => {}
+    );
+    return resultPromise;
+  }
+
   public async saveSSH(config: SSHConnectionConfig): Promise<void> {
     if (!config || !config.id || typeof config.id !== 'string' || !config.id.trim()) {
       throw new Error('Profile ID is required');
     }
 
-    const profiles = await this.getProfiles();
-    const index = profiles.ssh.findIndex((p) => p.id === config.id);
-    if (index >= 0) {
-      profiles.ssh[index] = config;
-    } else {
-      profiles.ssh.push(config);
-    }
-
-    await this.persist(profiles);
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfiles();
+      const index = profiles.ssh.findIndex((p) => p.id === config.id);
+      if (index >= 0) {
+        profiles.ssh[index] = config;
+      } else {
+        profiles.ssh.push(config);
+      }
+      await this.persist(profiles);
+    });
   }
 
   public async deleteSSH(id: string): Promise<void> {
     if (!id) return;
-    const profiles = await this.getProfiles();
-    const initialLen = profiles.ssh.length;
-    profiles.ssh = profiles.ssh.filter((p) => p.id !== id);
-    if (profiles.ssh.length !== initialLen) {
-      await this.persist(profiles);
-    }
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfiles();
+      const initialLen = profiles.ssh.length;
+      profiles.ssh = profiles.ssh.filter((p) => p.id !== id);
+      if (profiles.ssh.length !== initialLen) {
+        await this.persist(profiles);
+      }
+    });
   }
 
   public async saveS3(config: S3Config): Promise<void> {
@@ -79,25 +92,28 @@ export class ProfileStore {
       throw new Error('Profile ID is required');
     }
 
-    const profiles = await this.getProfiles();
-    const index = profiles.s3.findIndex((p) => p.id === config.id);
-    if (index >= 0) {
-      profiles.s3[index] = config;
-    } else {
-      profiles.s3.push(config);
-    }
-
-    await this.persist(profiles);
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfiles();
+      const index = profiles.s3.findIndex((p) => p.id === config.id);
+      if (index >= 0) {
+        profiles.s3[index] = config;
+      } else {
+        profiles.s3.push(config);
+      }
+      await this.persist(profiles);
+    });
   }
 
   public async deleteS3(id: string): Promise<void> {
     if (!id) return;
-    const profiles = await this.getProfiles();
-    const initialLen = profiles.s3.length;
-    profiles.s3 = profiles.s3.filter((p) => p.id !== id);
-    if (profiles.s3.length !== initialLen) {
-      await this.persist(profiles);
-    }
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfiles();
+      const initialLen = profiles.s3.length;
+      profiles.s3 = profiles.s3.filter((p) => p.id !== id);
+      if (profiles.s3.length !== initialLen) {
+        await this.persist(profiles);
+      }
+    });
   }
 
   private async persist(data: ProfilesData): Promise<void> {
@@ -106,5 +122,10 @@ export class ProfileStore {
       encoding: 'utf-8',
       mode: 0o600,
     });
+    try {
+      await fs.chmod(this.filePath, 0o600);
+    } catch {
+      // Ignore chmod failures (e.g. on certain filesystems or platforms)
+    }
   }
 }

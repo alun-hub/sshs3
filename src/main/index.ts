@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let ipcBridge: IpcBridge | null = null;
+let isQuitting = false;
 
 function createWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -19,6 +20,8 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
     },
   });
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -45,14 +48,17 @@ function initializeApp(): void {
 
 app.whenReady().then(initializeApp);
 
-app.on('before-quit', async () => {
-  if (ipcBridge) {
+app.on('before-quit', async (event) => {
+  if (!isQuitting && ipcBridge) {
+    event.preventDefault();
+    isQuitting = true;
     try {
       await ipcBridge.dispose();
     } catch {
-      // Ignore disposal errors on quit
+      // ignore
     }
     ipcBridge = null;
+    app.quit();
   }
 });
 

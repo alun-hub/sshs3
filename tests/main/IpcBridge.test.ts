@@ -259,12 +259,37 @@ describe('IpcBridge', () => {
       expect(promptEvent).toBeDefined();
       expect(promptEvent?.args[0]).toHaveProperty('id');
       expect(promptEvent?.args[0].prompt).toBe('Enter PIN for Smartcard:');
+      expect(promptEvent?.args[0].sessionId).toBe('session-123');
 
       const promptId = promptEvent?.args[0].id;
       await mockIpc.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, promptId, '123456');
       expect(pinResolved).toBe('123456');
 
       await expect(mockIpc.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, promptId, '123456')).rejects.toThrow();
+    });
+
+    it('pty exit removes pending askpass prompts for that sessionId', async () => {
+      let pinResolved: string | null = null;
+      mockPtyManager.emit('askpass', {
+        sessionId: 'session-to-exit',
+        prompt: 'Enter PIN:',
+        callback: (pin: string) => {
+          pinResolved = pin;
+        },
+      });
+
+      const promptEvent = mockWebContents.events.find(
+        (e) => e.channel === IPC_CHANNELS.ASKPASS_PROMPT && e.args[0].sessionId === 'session-to-exit'
+      );
+      expect(promptEvent).toBeDefined();
+      const promptId = promptEvent?.args[0].id;
+
+      // Session exits before submit
+      mockPtyManager.emit('exit', { sessionId: 'session-to-exit', exitCode: 1 });
+      expect(pinResolved).toBe('');
+
+      // Trying to submit now should throw not found/expired
+      await expect(mockIpc.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, promptId, '1234')).rejects.toThrow();
     });
   });
 
@@ -334,7 +359,31 @@ describe('IpcBridge', () => {
       expect(mockTransferQueue.addJob).toHaveBeenCalled();
     });
 
-    it('throws error if transfer source or target provider is missing', async () => {
+    it('throws error if transfer options or provider IDs are missing', async () => {
+      await expect(mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, null as any)).rejects.toThrow(
+        'sourceProviderId and targetProviderId are required'
+      );
+
+      await expect(
+        mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+          sourceProviderId: '',
+          sourcePath: '/src',
+          targetProviderId: 'test-storage',
+          targetPath: '/dst',
+        })
+      ).rejects.toThrow('sourceProviderId and targetProviderId are required');
+
+      await expect(
+        mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+          sourceProviderId: 'test-storage',
+          sourcePath: '/src',
+          targetProviderId: '',
+          targetPath: '/dst',
+        })
+      ).rejects.toThrow('sourceProviderId and targetProviderId are required');
+    });
+
+    it('throws error if transfer source or target provider is missing in registry', async () => {
       await expect(
         mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
           sourceProviderId: 'missing-src',

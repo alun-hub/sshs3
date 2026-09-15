@@ -21,6 +21,11 @@ import type {
   S3Config,
 } from '../shared/types/storage';
 
+interface PendingAskpassPrompt {
+  sessionId?: string;
+  callback: (pin: string) => void;
+}
+
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   sshPtyManager?: SSHPtyManager;
@@ -38,7 +43,7 @@ export class IpcBridge {
   public readonly profileStore: ProfileStore;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
-  private pendingAskpass = new Map<string, (pin: string) => void>();
+  private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private handlers = new Set<string>();
 
   // Event listener references for clean teardown
@@ -128,12 +133,12 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.ASKPASS_SUBMIT_PIN,
       async (_event, id: string, pin: string) => {
-        const resolver = this.pendingAskpass.get(id);
-        if (!resolver) {
+        const prompt = this.pendingAskpass.get(id);
+        if (!prompt) {
           throw new Error(`Askpass prompt with id "${id}" not found or expired`);
         }
         this.pendingAskpass.delete(id);
-        resolver(pin);
+        prompt.callback(pin);
       }
     );
   }
@@ -222,6 +227,9 @@ export class IpcBridge {
           targetPath: string;
         }
       ) => {
+        if (!options?.sourceProviderId || !options?.targetProviderId) {
+          throw new Error('sourceProviderId and targetProviderId are required for transfer');
+        }
         const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
         if (!sourceProvider) {
           throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
@@ -317,6 +325,18 @@ export class IpcBridge {
     this.sshPtyManager.on('data', this.onPtyData);
 
     this.onPtyExit = ({ sessionId, exitCode, signal }) => {
+      // Reject and remove any pending askpass prompts matching that sessionId
+      for (const [id, prompt] of this.pendingAskpass.entries()) {
+        if (prompt.sessionId === sessionId) {
+          try {
+            prompt.callback('');
+          } catch {
+            // Ignore callback error
+          }
+          this.pendingAskpass.delete(id);
+        }
+      }
+
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
         const event: SSHPtyExitEvent = { exitCode, signal };
@@ -325,13 +345,13 @@ export class IpcBridge {
     };
     this.sshPtyManager.on('exit', this.onPtyExit);
 
-    this.onPtyAskpass = ({ prompt, callback }) => {
+    this.onPtyAskpass = ({ sessionId, prompt, callback }) => {
       const id = crypto.randomUUID();
-      this.pendingAskpass.set(id, callback);
+      this.pendingAskpass.set(id, { sessionId, callback });
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt });
+        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, sessionId });
       }
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);
@@ -364,7 +384,15 @@ export class IpcBridge {
       this.transferQueue.off('progress', this.onTransferProgress);
     }
 
+    for (const prompt of this.pendingAskpass.values()) {
+      try {
+        prompt.callback('');
+      } catch {
+        // Ignore
+      }
+    }
     this.pendingAskpass.clear();
+
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();
   }
