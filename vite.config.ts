@@ -13,7 +13,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            rollupOptions: {
+            rolldownOptions: {
               external: [
                 'ssh2',
                 'node-pty',
@@ -30,7 +30,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            rollupOptions: {
+            rolldownOptions: {
               output: {
                 format: 'cjs',
                 entryFileNames: '[name].cjs',
