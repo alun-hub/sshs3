@@ -100,7 +100,6 @@ class InternalSSHPtySession implements SSHPtySession {
   public kill(signal?: string): void {
     if (!this.disposed) {
       this.pty.kill(signal);
-      void this.cleanup();
     }
   }
 
@@ -124,7 +123,11 @@ class InternalSSHPtySession implements SSHPtySession {
 
   public async dispose(): Promise<void> {
     if (this.disposed) return;
-    this.kill();
+    try {
+      this.pty.kill();
+    } catch {
+      // Ignore error if process already terminated
+    }
     await this.cleanup();
   }
 
@@ -200,13 +203,21 @@ export class SSHPtyManager extends EventEmitter {
     const sshArgs = SmartcardDetector.buildSSHArguments(config);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
-    const spawn = getSpawn();
-    const ptyProcess = spawn(sshBinary, sshArgs, {
-      cols,
-      rows,
-      cwd,
-      env,
-    });
+    let ptyProcess: IPty;
+    try {
+      const spawn = getSpawn();
+      ptyProcess = spawn(sshBinary, sshArgs, {
+        cols,
+        rows,
+        cwd,
+        env,
+      });
+    } catch (err) {
+      if (askpassServer) {
+        await askpassServer.stop();
+      }
+      throw err;
+    }
 
     const session = new InternalSSHPtySession({
       sessionId,

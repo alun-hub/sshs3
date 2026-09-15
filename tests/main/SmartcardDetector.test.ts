@@ -154,7 +154,9 @@ describe('SmartcardDetector', () => {
       expect(args[idx + 1]).toBe('/usr/lib64/libiidp11.so');
       expect(args).toContain('-p');
       expect(args[args.indexOf('-p') + 1]).toBe('22');
-      expect(args).toContain('secadmin@bastion.corp.net');
+      expect(args).toContain('--');
+      const dashDashIdx = args.indexOf('--');
+      expect(args[dashDashIdx + 1]).toBe('secadmin@bastion.corp.net');
     });
 
     it('should NOT include -I when authType is not smartcard', () => {
@@ -172,6 +174,7 @@ describe('SmartcardDetector', () => {
       expect(args).not.toContain('-I');
       expect(args).toContain('-p');
       expect(args[args.indexOf('-p') + 1]).toBe('22');
+      expect(args).toContain('--');
       expect(args).toContain('developer@dev.example.com');
     });
 
@@ -192,6 +195,7 @@ describe('SmartcardDetector', () => {
       expect(args[args.indexOf('-i') + 1]).toBe('/home/ubuntu/.ssh/id_ed25519');
       expect(args).toContain('-p');
       expect(args[args.indexOf('-p') + 1]).toBe('2222');
+      expect(args).toContain('--');
       expect(args).toContain('ubuntu@prod.example.com');
     });
 
@@ -213,6 +217,42 @@ describe('SmartcardDetector', () => {
       expect(args).toContain('-o');
       expect(args).toContain('ServerAliveInterval=60');
       expect(args).toContain('StrictHostKeyChecking=accept-new');
+      expect(args).toContain('--');
+      expect(args).toContain('root@custom.host');
+    });
+
+    it('should throw error when host starts with "-" to prevent SSH argument injection', () => {
+      const config: SSHConnectionConfig = {
+        id: 'bad-host',
+        name: 'Malicious Host',
+        host: '-oProxyCommand=rm -rf /',
+        username: 'attacker',
+        authType: 'password',
+      };
+
+      expect(() => SmartcardDetector.buildSSHArguments(config)).toThrow(
+        /host cannot start with "-"/
+      );
+    });
+
+    it('should throw error when port is invalid', () => {
+      const baseConfig: SSHConnectionConfig = {
+        id: 'bad-port',
+        name: 'Bad Port',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+      };
+
+      expect(() => SmartcardDetector.buildSSHArguments({ ...baseConfig, port: 0 })).toThrow(
+        /port must be between 1 and 65535/
+      );
+      expect(() => SmartcardDetector.buildSSHArguments({ ...baseConfig, port: 70000 })).toThrow(
+        /port must be between 1 and 65535/
+      );
+      expect(() => SmartcardDetector.buildSSHArguments({ ...baseConfig, port: 22.5 })).toThrow(
+        /port must be between 1 and 65535/
+      );
     });
   });
 });
@@ -226,7 +266,7 @@ describe('AskpassServer', () => {
     }
   });
 
-  it('should start server, create executable askpass script, and return env vars', async () => {
+  it('should start server, create executable askpass script with restrictive permissions, and return env vars', async () => {
     server = new AskpassServer();
     const { port, scriptPath } = await server.start();
 
@@ -234,9 +274,12 @@ describe('AskpassServer', () => {
     expect(scriptPath).toBeTruthy();
     expect(server.isRunning()).toBe(true);
 
-    // Verify script file exists
+    // Verify script file exists and has restrictive permissions (0o700)
     const stat = await fs.stat(scriptPath);
     expect(stat.isFile()).toBe(true);
+    if (process.platform !== 'win32') {
+      expect((stat.mode & 0o777) === 0o700).toBe(true);
+    }
 
     const env = server.getEnv();
     expect(env.SSH_ASKPASS).toBe(scriptPath);
@@ -298,5 +341,41 @@ describe('AskpassServer', () => {
     });
 
     expect(response).toMatch(/unauthorized|closed|error/i);
+  });
+
+  it('should handle socket error without crashing server', async () => {
+    server = new AskpassServer();
+    const { port } = await server.start();
+
+    // Connect socket and immediately destroy it with reset to trigger error
+    const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
+      client.destroy(new Error('Simulated socket error'));
+    });
+
+    await new Promise<void>((resolve) => {
+      client.on('error', () => resolve());
+      client.on('close', () => resolve());
+    });
+
+    // Server should still be running and able to accept subsequent requests
+    expect(server.isRunning()).toBe(true);
+  });
+
+  it('should disconnect clients exceeding buffer limit', async () => {
+    server = new AskpassServer();
+    const { port } = await server.start();
+
+    const client = net.createConnection({ port, host: '127.0.0.1' });
+    const closed = await new Promise<boolean>((resolve) => {
+      client.on('connect', () => {
+        // Send oversized chunk > 64KB without newline
+        const junk = 'A'.repeat(70000);
+        client.write(junk);
+      });
+      client.on('close', () => resolve(true));
+      client.on('error', () => resolve(true));
+    });
+
+    expect(closed).toBe(true);
   });
 });

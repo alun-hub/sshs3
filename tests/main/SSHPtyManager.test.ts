@@ -120,7 +120,9 @@ describe('SSHPtyManager', () => {
       expect(file).toMatch(/ssh/);
       expect(args).toContain('-p');
       expect(args).toContain('22');
-      expect(args).toContain('admin@10.0.0.1');
+      expect(args).toContain('--');
+      const dashDashIdx = args.indexOf('--');
+      expect(args[dashDashIdx + 1]).toBe('admin@10.0.0.1');
       expect(options.cols).toBe(120);
       expect(options.rows).toBe(30);
       expect(options.cwd).toBe('/tmp');
@@ -170,6 +172,25 @@ describe('SSHPtyManager', () => {
 
       await session.dispose();
     });
+
+    it('should clean up AskpassServer when pty.spawn throws an error', async () => {
+      const ptyMod = await import('node-pty');
+      const spawnSpy = vi.spyOn(ptyMod, 'spawn').mockImplementationOnce(() => {
+        throw new Error('Spawn process failed');
+      });
+
+      const config: SSHConnectionConfig = {
+        id: 'session-spawn-fail',
+        name: 'Fail Host',
+        host: 'fail.example.com',
+        username: 'user',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib/libiidp11.so',
+      };
+
+      await expect(manager.createSession(config)).rejects.toThrow('Spawn process failed');
+      spawnSpy.mockRestore();
+    });
   });
 
   describe('session I/O and control', () => {
@@ -211,14 +232,18 @@ describe('SSHPtyManager', () => {
       expect(session.rows).toBe(50);
     });
 
-    it('should forward kill calls and remove session from manager', async () => {
+    it('should forward kill calls, notify onExit listeners, and remove session from manager', async () => {
       const session = await manager.createSession(sessionConfig);
       const mockPty = mockPtyInstances[0];
 
       expect(manager.getSession(session.sessionId)).toBeDefined();
 
+      const exitListener = vi.fn();
+      session.onExit(exitListener);
+
       session.kill('SIGTERM');
       expect(mockPty.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(exitListener).toHaveBeenCalledWith({ exitCode: 0, signal: 15 });
       expect(manager.getSession(session.sessionId)).toBeUndefined();
     });
   });

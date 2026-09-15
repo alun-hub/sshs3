@@ -109,10 +109,18 @@ export class SmartcardDetector {
    * Generates command-line arguments for OpenSSH (ssh) client.
    */
   public static buildSSHArguments(config: SSHConnectionConfig): string[] {
+    if (!config.host || typeof config.host !== 'string' || config.host.startsWith('-')) {
+      throw new Error('Invalid SSH host: host cannot start with "-"');
+    }
+
+    const port = config.port ?? 22;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error('Invalid SSH port: port must be between 1 and 65535');
+    }
+
     const args: string[] = [];
 
     // Port argument
-    const port = config.port ?? 22;
     args.push('-p', String(port));
 
     // Smartcard PKCS#11 library argument (-I <path>)
@@ -132,8 +140,9 @@ export class SmartcardDetector {
       }
     }
 
-    // Destination target (username@host or host)
+    // Destination target (username@host or host), preceded by '--' to prevent flag injection
     const destination = config.username ? `${config.username}@${config.host}` : config.host;
+    args.push('--');
     args.push(destination);
 
     return args;

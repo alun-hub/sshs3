@@ -65,6 +65,7 @@ export class AskpassServer extends EventEmitter {
 
     // 2. Create temporary directory and askpass script
     this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'multissh-askpass-'));
+    await fs.chmod(this.tempDir, 0o700);
     this.scriptPath = await this.generateAskpassScript(this.tempDir, this.port, this.token);
     this.running = true;
 
@@ -145,14 +146,24 @@ export class AskpassServer extends EventEmitter {
   private handleConnection(socket: net.Socket): void {
     this.activeSockets.add(socket);
 
+    socket.on('error', () => {
+      // Prevent process crash on ECONNRESET / EPIPE
+      socket.destroy();
+    });
+
     socket.on('close', () => {
       this.activeSockets.delete(socket);
     });
 
     let buffer = '';
+    const MAX_BUFFER_LENGTH = 65536;
 
     socket.on('data', async (chunk) => {
       buffer += chunk.toString();
+      if (buffer.length > MAX_BUFFER_LENGTH) {
+        socket.destroy();
+        return;
+      }
       if (!buffer.includes('\n')) return;
 
       const lines = buffer.split('\n');
@@ -163,7 +174,17 @@ export class AskpassServer extends EventEmitter {
 
         try {
           const req = JSON.parse(line.trim());
-          if (req.token !== this.token) {
+
+          let authorized = false;
+          if (typeof req.token === 'string') {
+            const tokenBuf = Buffer.from(req.token);
+            const expectedBuf = Buffer.from(this.token);
+            if (tokenBuf.length === expectedBuf.length && crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
+              authorized = true;
+            }
+          }
+
+          if (!authorized) {
             socket.write(JSON.stringify({ error: 'Unauthorized token' }) + '\n');
             socket.end();
             return;
@@ -238,18 +259,19 @@ client.on('error', () => {
 });
 `;
 
-    await fs.writeFile(jsPath, jsContent, 'utf-8');
+    await fs.writeFile(jsPath, jsContent, { encoding: 'utf-8', mode: 0o600 });
+    await fs.chmod(jsPath, 0o600);
 
     if (isWindows) {
       const batPath = path.join(dir, 'askpass.bat');
       const batContent = `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${jsPath}" %*\r\n`;
-      await fs.writeFile(batPath, batContent, 'utf-8');
+      await fs.writeFile(batPath, batContent, { encoding: 'utf-8', mode: 0o700 });
       return batPath;
     } else {
       const shPath = path.join(dir, 'askpass.sh');
       const shContent = `#!/bin/sh\nexport ELECTRON_RUN_AS_NODE=1\nexec "${process.execPath}" "${jsPath}" "$@"\n`;
-      await fs.writeFile(shPath, shContent, { mode: 0o755 });
-      await fs.chmod(shPath, 0o755);
+      await fs.writeFile(shPath, shContent, { encoding: 'utf-8', mode: 0o700 });
+      await fs.chmod(shPath, 0o700);
       return shPath;
     }
   }
