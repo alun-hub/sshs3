@@ -1,0 +1,336 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { IPty, IDisposable } from 'node-pty';
+import { SSHPtyManager } from '../../src/main/ssh/SSHPtyManager';
+import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+
+// Mock node-pty
+const mockPtyInstances: MockPty[] = [];
+
+class MockPty implements Partial<IPty> {
+  pid = 12345;
+  cols = 80;
+  rows = 24;
+  process = 'ssh';
+  handleFlowControl = false;
+
+  private dataListeners: ((data: string) => void)[] = [];
+  private exitListeners: ((event: { exitCode: number; signal?: number }) => void)[] = [];
+
+  write = vi.fn();
+  resize = vi.fn((cols: number, rows: number) => {
+    this.cols = cols;
+    this.rows = rows;
+  });
+  kill = vi.fn((signal?: string) => {
+    this.emitExit(0, signal ? 15 : undefined);
+  });
+  clear = vi.fn();
+  pause = vi.fn();
+  resume = vi.fn();
+
+  onData = vi.fn((listener: (data: string) => void): IDisposable => {
+    this.dataListeners.push(listener);
+    return {
+      dispose: () => {
+        const index = this.dataListeners.indexOf(listener);
+        if (index >= 0) this.dataListeners.splice(index, 1);
+      },
+    };
+  });
+
+  onExit = vi.fn(
+    (listener: (event: { exitCode: number; signal?: number }) => void): IDisposable => {
+      this.exitListeners.push(listener);
+      return {
+        dispose: () => {
+          const index = this.exitListeners.indexOf(listener);
+          if (index >= 0) this.exitListeners.splice(index, 1);
+        },
+      };
+    }
+  );
+
+  emitData(data: string) {
+    for (const listener of [...this.dataListeners]) {
+      listener(data);
+    }
+  }
+
+  emitExit(exitCode: number, signal?: number) {
+    for (const listener of [...this.exitListeners]) {
+      listener({ exitCode, signal });
+    }
+  }
+}
+
+vi.mock('node-pty', () => {
+  const spawn = vi.fn((file: string, args: string[] | string, options: any) => {
+    const mock = new MockPty();
+    (mock as any)._spawnArgs = { file, args, options };
+    mockPtyInstances.push(mock);
+    return mock as unknown as IPty;
+  });
+
+  return {
+    default: { spawn },
+    spawn,
+  };
+});
+
+describe('SSHPtyManager', () => {
+  let manager: SSHPtyManager;
+
+  beforeEach(() => {
+    mockPtyInstances.length = 0;
+    manager = new SSHPtyManager();
+  });
+
+  afterEach(async () => {
+    await manager.killAll();
+  });
+
+  describe('createSession', () => {
+    it('should spawn OpenSSH with correct args, dims and env', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-1',
+        name: 'Server 1',
+        host: '10.0.0.1',
+        port: 22,
+        username: 'admin',
+        authType: 'password',
+      };
+
+      const session = await manager.createSession(config, {
+        cols: 120,
+        rows: 30,
+        cwd: '/tmp',
+        env: { CUSTOM_VAR: 'xyz' },
+      });
+
+      expect(session).toBeDefined();
+      expect(session.sessionId).toBe('session-1');
+      expect(session.cols).toBe(120);
+      expect(session.rows).toBe(30);
+      expect(session.pid).toBe(12345);
+
+      expect(mockPtyInstances).toHaveLength(1);
+      const spawned = mockPtyInstances[0];
+      const { file, args, options } = (spawned as any)._spawnArgs;
+
+      expect(file).toMatch(/ssh/);
+      expect(args).toContain('-p');
+      expect(args).toContain('22');
+      expect(args).toContain('admin@10.0.0.1');
+      expect(options.cols).toBe(120);
+      expect(options.rows).toBe(30);
+      expect(options.cwd).toBe('/tmp');
+      expect(options.env.CUSTOM_VAR).toBe('xyz');
+      expect(options.env.TERM).toBe('xterm-256color');
+    });
+
+    it('should support SSH agent socket configuration', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-agent',
+        name: 'Agent Host',
+        host: '10.0.0.2',
+        username: 'user',
+        authType: 'agent',
+        agentPath: '/tmp/ssh-agent.sock',
+      };
+
+      await manager.createSession(config);
+
+      const spawned = mockPtyInstances[0];
+      const { options } = (spawned as any)._spawnArgs;
+      expect(options.env.SSH_AUTH_SOCK).toBe('/tmp/ssh-agent.sock');
+    });
+
+    it('should configure Askpass when authType is smartcard', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-smartcard',
+        name: 'Smartcard Host',
+        host: 'smartcard.domain.com',
+        username: 'carduser',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib/libiidp11.so',
+      };
+
+      const session = await manager.createSession(config);
+
+      const spawned = mockPtyInstances[0];
+      const { args, options } = (spawned as any)._spawnArgs;
+
+      // Smartcard -I flag
+      expect(args).toContain('-I');
+      expect(args).toContain('/usr/lib/libiidp11.so');
+
+      // Askpass env vars
+      expect(options.env.SSH_ASKPASS).toBeDefined();
+      expect(options.env.SSH_ASKPASS_REQUIRE).toBe('force');
+
+      await session.dispose();
+    });
+  });
+
+  describe('session I/O and control', () => {
+    let sessionConfig: SSHConnectionConfig;
+
+    beforeEach(() => {
+      sessionConfig = {
+        id: 'sess-io',
+        name: 'IO Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+      };
+    });
+
+    it('should forward write calls to underlying pty', async () => {
+      const session = await manager.createSession(sessionConfig);
+      const mockPty = mockPtyInstances[0];
+
+      session.write('uname -a\n');
+      expect(mockPty.write).toHaveBeenCalledWith('uname -a\n');
+
+      manager.write(session.sessionId, 'uptime\n');
+      expect(mockPty.write).toHaveBeenCalledWith('uptime\n');
+    });
+
+    it('should forward resize calls to underlying pty and update state', async () => {
+      const session = await manager.createSession(sessionConfig);
+      const mockPty = mockPtyInstances[0];
+
+      session.resize(100, 40);
+      expect(mockPty.resize).toHaveBeenCalledWith(100, 40);
+      expect(session.cols).toBe(100);
+      expect(session.rows).toBe(40);
+
+      manager.resize(session.sessionId, 140, 50);
+      expect(mockPty.resize).toHaveBeenCalledWith(140, 50);
+      expect(session.cols).toBe(140);
+      expect(session.rows).toBe(50);
+    });
+
+    it('should forward kill calls and remove session from manager', async () => {
+      const session = await manager.createSession(sessionConfig);
+      const mockPty = mockPtyInstances[0];
+
+      expect(manager.getSession(session.sessionId)).toBeDefined();
+
+      session.kill('SIGTERM');
+      expect(mockPty.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(manager.getSession(session.sessionId)).toBeUndefined();
+    });
+  });
+
+  describe('listeners onData and onExit', () => {
+    it('should receive data events on session and manager listeners', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'sess-data',
+        name: 'Data Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+      };
+
+      const session = await manager.createSession(config);
+      const mockPty = mockPtyInstances[0];
+
+      const sessionData: string[] = [];
+      const managerData: { sessionId: string; data: string }[] = [];
+
+      const disposable = session.onData((data) => sessionData.push(data));
+      manager.on('data', (ev) => managerData.push(ev));
+
+      mockPty.emitData('Hello Terminal\r\n');
+
+      expect(sessionData).toEqual(['Hello Terminal\r\n']);
+      expect(managerData).toEqual([{ sessionId: 'sess-data', data: 'Hello Terminal\r\n' }]);
+
+      // Test dispose listener
+      disposable.dispose();
+      mockPty.emitData('More Data\r\n');
+      expect(sessionData).toEqual(['Hello Terminal\r\n']);
+      expect(managerData).toHaveLength(2);
+    });
+
+    it('should handle exit event, clean up active session, and trigger onExit', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'sess-exit',
+        name: 'Exit Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+      };
+
+      const session = await manager.createSession(config);
+      const mockPty = mockPtyInstances[0];
+
+      let exitEvent: { exitCode: number; signal?: number } | undefined;
+      session.onExit((e) => {
+        exitEvent = e;
+      });
+
+      let managerExitEvent: any;
+      manager.on('exit', (e) => {
+        managerExitEvent = e;
+      });
+
+      mockPty.emitExit(0, undefined);
+
+      expect(exitEvent).toEqual({ exitCode: 0, signal: undefined });
+      expect(managerExitEvent).toEqual({ sessionId: 'sess-exit', exitCode: 0, signal: undefined });
+      expect(manager.getSession(session.sessionId)).toBeUndefined();
+    });
+  });
+
+  describe('shell session creation', () => {
+    it('should spawn local shell via createShellSession', async () => {
+      const session = await manager.createShellSession({
+        cols: 90,
+        rows: 30,
+      });
+
+      expect(session).toBeDefined();
+      expect(session.sessionId).toMatch(/^shell-/);
+      expect(mockPtyInstances).toHaveLength(1);
+
+      const { file, options } = (mockPtyInstances[0] as any)._spawnArgs;
+      const expectedShell =
+        process.platform === 'win32'
+          ? (process.env.COMSPEC || 'cmd.exe')
+          : (process.env.SHELL || '/bin/bash');
+
+      expect(file).toBe(expectedShell);
+      expect(options.cols).toBe(90);
+      expect(options.rows).toBe(30);
+    });
+  });
+
+  describe('getAllSessions and killAll', () => {
+    it('should track multiple active sessions and kill all on killAll', async () => {
+      const config1: SSHConnectionConfig = {
+        id: 's-1',
+        name: 'S1',
+        host: 'h1',
+        username: 'u1',
+        authType: 'password',
+      };
+      const config2: SSHConnectionConfig = {
+        id: 's-2',
+        name: 'S2',
+        host: 'h2',
+        username: 'u2',
+        authType: 'password',
+      };
+
+      await manager.createSession(config1);
+      await manager.createSession(config2);
+
+      expect(manager.getAllSessions()).toHaveLength(2);
+
+      await manager.killAll();
+      expect(manager.getAllSessions()).toHaveLength(0);
+    });
+  });
+});
