@@ -97,9 +97,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let lastRows = rows;
 
     // 2. Create Terminal Session via IPC
+    // Always spawn under a fresh session id, never the saved profile's own id:
+    // reusing it would let two mounts of the same profile (two tabs, or React
+    // StrictMode's dev-mode double-invoke) collide on the same map entry in
+    // SSHPtyManager, so killing one session tears down the other instead.
     if (window.multissh?.terminalCreate) {
+      const sessionConfig = { ...config, id: crypto.randomUUID() };
       window.multissh
-        .terminalCreate({ config, ptyOptions: { cols, rows } })
+        .terminalCreate({ config: sessionConfig, ptyOptions: { cols, rows } })
         .then(({ sessionId }) => {
           if (isDisposed) {
             // Already unmounted while waiting for session creation

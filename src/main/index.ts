@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
@@ -38,6 +38,11 @@ function createWindow(): BrowserWindow {
 
 // Initialize IPC bridge before or when app is ready
 function initializeApp(): void {
+  // The app has its own UI for every action (tabs, connections, transfers);
+  // Electron's default File/Edit/View/Window/Help menu bar has no wiring to
+  // any of it, so it just sits there as dead chrome. Remove it.
+  Menu.setApplicationMenu(null);
+
   ipcBridge = new IpcBridge({
     getWebContents: () => mainWindow?.webContents,
   });

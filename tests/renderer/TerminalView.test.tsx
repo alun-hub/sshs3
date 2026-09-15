@@ -90,13 +90,18 @@ describe('TerminalView Component', () => {
 
     expect(mockTerminalCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        config: sampleConfig,
+        // The session id is regenerated per mount (never the saved profile's own
+        // id) so two tabs on the same profile can't collide on one PTY session.
+        config: expect.objectContaining({ ...sampleConfig, id: expect.any(String) }),
         ptyOptions: expect.objectContaining({
           cols: expect.any(Number),
           rows: expect.any(Number),
         }),
       })
     );
+
+    const [[createArgs]] = mockTerminalCreate.mock.calls;
+    expect(createArgs.config.id).not.toBe(sampleConfig.id);
   });
 
   it('receives terminal data from IPC and writes matching session data to terminal', async () => {

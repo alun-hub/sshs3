@@ -77,7 +77,7 @@ export const App: React.FC = () => {
   };
 
   const handleOpenSettings = () => {
-    console.log('Open settings');
+    window.alert('Inställningar är inte implementerat ännu.');
   };
 
   return (

@@ -51,7 +51,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       aria-label="Öppna flikar"
       className="flex h-10 w-full items-center border-b border-slate-700 bg-slate-800 px-2 select-none"
     >
-      <div className="flex flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
@@ -108,48 +108,52 @@ export const TabBar: React.FC<TabBarProps> = ({
             </div>
           );
         })}
+      </div>
 
-        {/* New Tab Button & Dropdown */}
-        <div className="relative flex items-center" ref={menuRef}>
-          <button
-            type="button"
-            data-testid="add-tab-btn"
-            title="Öppna ny flik"
-            onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+      {/* New Tab Button & Dropdown: kept outside the scrollable tab strip above,
+          otherwise overflow-x-auto implicitly clips overflow-y too (per the CSS
+          overflow spec, an explicit overflow-x forces overflow-y to auto as well),
+          so the absolutely-positioned menu would be clipped into a stray scrollbar
+          instead of showing. */}
+      <div className="relative flex shrink-0 items-center" ref={menuRef}>
+        <button
+          type="button"
+          data-testid="add-tab-btn"
+          title="Öppna ny flik"
+          onClick={() => setIsMenuOpen((prev) => !prev)}
+          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
 
-          {isMenuOpen && (
-            <div className="absolute top-8 left-0 z-50 min-w-[160px] rounded-md border border-slate-700 bg-slate-800 p-1 shadow-xl">
-              <button
-                type="button"
-                data-testid="new-terminal-btn"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  onNewTab('terminal');
-                }}
-                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-              >
-                <Terminal className="h-3.5 w-3.5 text-sky-400" />
-                <span>Ny terminal</span>
-              </button>
-              <button
-                type="button"
-                data-testid="new-filemanager-btn"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  onNewTab('filemanager');
-                }}
-                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-              >
-                <Folder className="h-3.5 w-3.5 text-amber-400" />
-                <span>Ny filhanterare</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {isMenuOpen && (
+          <div className="absolute top-8 left-0 z-50 min-w-[160px] rounded-md border border-slate-700 bg-slate-800 p-1 shadow-xl">
+            <button
+              type="button"
+              data-testid="new-terminal-btn"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onNewTab('terminal');
+              }}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+            >
+              <Terminal className="h-3.5 w-3.5 text-sky-400" />
+              <span>Ny terminal</span>
+            </button>
+            <button
+              type="button"
+              data-testid="new-filemanager-btn"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onNewTab('filemanager');
+              }}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+            >
+              <Folder className="h-3.5 w-3.5 text-amber-400" />
+              <span>Ny filhanterare</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quick links: Profiles & Settings */}
