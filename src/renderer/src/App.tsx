@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
-import { Terminal, Folder } from 'lucide-react';
+import { Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { TerminalView } from './components/TerminalView';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
+import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
+import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 
 export interface AppTab extends TabItem {
   config?: SSHConnectionConfig;
 }
-
-const DEFAULT_SSH_CONFIG: SSHConnectionConfig = {
-  id: 'default-session',
-  name: 'Lokal terminal',
-  host: 'localhost',
-  port: 22,
-  username: 'user',
-  authType: 'password',
-};
 
 export const App: React.FC = () => {
   const [tabs, setTabs] = useState<AppTab[]>([
@@ -24,12 +17,13 @@ export const App: React.FC = () => {
       id: 'term-1',
       type: 'terminal',
       title: 'Terminal 1',
-      config: DEFAULT_SSH_CONFIG,
     },
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('term-1');
   const [termCounter, setTermCounter] = useState(2);
   const [fmCounter, setFmCounter] = useState(1);
+  const [profilesModalOpen, setProfilesModalOpen] = useState(false);
+  const [connectTargetTabId, setConnectTargetTabId] = useState<string | null>(null);
 
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
@@ -56,7 +50,6 @@ export const App: React.FC = () => {
         id: newId,
         type: 'terminal',
         title: `Terminal ${termCounter}`,
-        config: { ...DEFAULT_SSH_CONFIG, id: newId, name: `Terminal ${termCounter}` },
       };
       setTermCounter((c) => c + 1);
       setTabs((prev) => [...prev, newTab]);
@@ -74,8 +67,13 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleConnectTerminal = (tabId: string, config: SSHConnectionConfig) => {
+    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, config, title: config.name } : t)));
+    setConnectTargetTabId(null);
+  };
+
   const handleOpenProfiles = () => {
-    console.log('Open profiles manager');
+    setProfilesModalOpen(true);
   };
 
   const handleOpenSettings = () => {
@@ -127,24 +125,24 @@ export const App: React.FC = () => {
                 style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column' }}
               >
                 {tab.type === 'terminal' ? (
-                  <TerminalView
-                    config={tab.config || DEFAULT_SSH_CONFIG}
-                    isActive={isActive}
-                  />
-                ) : (
-                  <div
-                    data-testid={`filemanager-panel-${tab.id}`}
-                    className="flex flex-1 flex-col items-center justify-center bg-slate-900 text-slate-400 p-8 select-none"
-                  >
-                    <div className="rounded-full bg-slate-800 p-4 mb-4 text-amber-400 shadow-inner">
-                      <Folder className="h-10 w-10" />
+                  tab.config ? (
+                    <TerminalView config={tab.config} isActive={isActive} />
+                  ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-900 text-slate-400">
+                      <Terminal className="h-10 w-10 text-slate-600" />
+                      <p className="text-sm">Ingen anslutning vald för den här fliken</p>
+                      <button
+                        type="button"
+                        onClick={() => setConnectTargetTabId(tab.id)}
+                        className="rounded bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                      >
+                        Välj SSH-anslutning
+                      </button>
                     </div>
-                    <h3 className="text-base font-semibold text-slate-200">
-                      Filhanterare (SFTP / S3 / Lokal)
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-400 max-w-sm text-center">
-                      Filsystem- och överföringsvy implementeras i Task 9.
-                    </p>
+                  )
+                ) : (
+                  <div data-testid={`filemanager-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">
+                    <DualPaneExplorer />
                   </div>
                 )}
               </div>
@@ -155,6 +153,19 @@ export const App: React.FC = () => {
 
       {/* Global Smartcard PIN Modal */}
       <SmartcardPinModal />
+
+      {/* Per-tab: pick an SSH profile to power an empty terminal tab */}
+      <ConnectionManagerModal
+        open={connectTargetTabId !== null}
+        initialTab="ssh"
+        onClose={() => setConnectTargetTabId(null)}
+        onConnectSSH={(config) => {
+          if (connectTargetTabId) handleConnectTerminal(connectTargetTabId, config);
+        }}
+      />
+
+      {/* Quick-link: manage saved SSH/S3 profiles without connecting anything */}
+      <ConnectionManagerModal open={profilesModalOpen} onClose={() => setProfilesModalOpen(false)} />
     </div>
   );
 };
