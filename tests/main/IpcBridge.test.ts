@@ -2,20 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 
 const { mockIpcRenderer, mockExposeInMainWorld } = vi.hoisted(() => {
-  const listeners = new Map<string, Set<Function>>();
+  const listeners = new Map<string, Set<(...args: any[]) => void>>();
   return {
     mockExposeInMainWorld: vi.fn(),
     mockIpcRenderer: {
       invoke: vi.fn().mockImplementation(async (channel: string, ...args: any[]) => {
         return { invoked: channel, args };
       }),
-      on: vi.fn().mockImplementation((channel: string, listener: Function) => {
+      on: vi.fn().mockImplementation((channel: string, listener: (...args: any[]) => void) => {
         if (!listeners.has(channel)) {
           listeners.set(channel, new Set());
         }
         listeners.get(channel)!.add(listener);
       }),
-      removeListener: vi.fn().mockImplementation((channel: string, listener: Function) => {
+      removeListener: vi.fn().mockImplementation((channel: string, listener: (...args: any[]) => void) => {
         listeners.get(channel)?.delete(listener);
       }),
     },
@@ -35,6 +35,9 @@ vi.mock('electron', () => {
     app: {
       getVersion: vi.fn().mockReturnValue('0.1.0'),
       getPath: vi.fn().mockReturnValue('/tmp/user-data'),
+    },
+    dialog: {
+      showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: ['/chosen/file.pem'] }),
     },
     BrowserWindow: vi.fn(),
   };
@@ -477,6 +480,19 @@ describe('IpcBridge', () => {
       const version = await mockIpc.invoke(IPC_CHANNELS.APP_GET_VERSION);
       expect(version).toBe('0.1.0');
     });
+
+    it('returns the chosen path from the native open-file dialog', async () => {
+      const path = await mockIpc.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, { title: 'Välj fil' });
+      expect(path).toBe('/chosen/file.pem');
+    });
+
+    it('returns null when the open-file dialog is cancelled', async () => {
+      const { dialog } = await import('electron');
+      (dialog.showOpenDialog as any).mockResolvedValueOnce({ canceled: true, filePaths: [] });
+
+      const path = await mockIpc.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE);
+      expect(path).toBeNull();
+    });
   });
 
   describe('Disposal', () => {
@@ -638,6 +654,12 @@ describe('IpcBridge', () => {
     it('getVersion invokes correct channel', async () => {
       await preloadApi.getVersion();
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.APP_GET_VERSION);
+    });
+
+    it('dialogOpenFile invokes correct channel with options', async () => {
+      const options = { title: 'Välj fil', filters: [{ name: 'Nycklar', extensions: ['pem'] }] };
+      await preloadApi.dialogOpenFile(options);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.DIALOG_OPEN_FILE, options);
     });
   });
 });

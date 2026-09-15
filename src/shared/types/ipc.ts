@@ -53,6 +53,7 @@ export const IPC_CHANNELS = {
 
   // General
   APP_GET_VERSION: 'app:get-version',
+  DIALOG_OPEN_FILE: 'dialog:open-file',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -108,6 +109,7 @@ export interface MultiSSHApi {
 
   // Window / General
   getVersion(): Promise<string>;
+  dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
 }
 
 declare global {

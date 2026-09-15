@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { ipcMain as electronIpcMain, app as electronApp } from 'electron';
+import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
@@ -313,6 +313,21 @@ export class IpcBridge {
         return '0.1.0';
       }
     });
+
+    this.registerHandler(
+      IPC_CHANNELS.DIALOG_OPEN_FILE,
+      async (_event, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        const result = await electronDialog.showOpenDialog({
+          title: options?.title,
+          filters: options?.filters,
+          properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+          return null;
+        }
+        return result.filePaths[0];
+      }
+    );
   }
 
   private setupEventListeners(): void {

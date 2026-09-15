@@ -141,6 +141,9 @@ export const api: MultiSSHApi = {
   // Window / General
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
+
+  dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),
 };
 
 export function exposePreloadApi(): void {
