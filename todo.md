@@ -82,18 +82,10 @@ att bygga.
    terminalflikar samtidigt.** Detta är den mest uppenbara luckan givet
    produktnamnet — funktionen finns i ClusterSSH, MobaXterm och Termius, men
    inte här. Naturlig utökning av befintlig `TabBar`/`TerminalView`.
-- [ ] **17. Delad/grupperad vy** (flera terminaler sida vid sida i en flik, t.ex.
-   2x2-grid) för att övervaka flera servrar samtidigt.
-- [ ] **18. SSH-porttunnling** (lokal/fjärr/dynamisk SOCKS-proxy) — vanlig
-   funktion i Termius/MobaXterm, ingen kod för det idag.
-- [ ] **19. Jump host / ProxyJump-stöd i UI:t.** Fältet `extraOptions` finns redan i
-   `SSHConnectionConfig` och skickas till `ssh` som `-o Key=Value` — så
-   terminalen klarar det tekniskt redan — men `SSHProfileForm` exponerar
-   inget fält för det, och SFTP/S3 saknar helt motsvarande stöd.
-- [ ] **20. SSH-anslutningsalternativ i formuläret**: kompression (`Compression`),
-   keep-alive-intervall (`ServerAliveInterval`), samt cipher/KEX/MAC-val för
-   kompatibilitet med äldre servrar. Samma `extraOptions`-mekanism som ovan
-   kan bära det, men inget UI för det idag.
+- [x] **17. Delad/grupperad vy** (flera terminaler sida vid sida i en flik, t.ex. 2 kolumner, 2 rader och 2x2-grid). Integrerat i `App.tsx` med verktygsfält för layoutbyte, oberoende terminalpaneler med anslutningsväljare och full sessionspersistens.
+- [x] **18. SSH-porttunnling** (lokal `-L`, fjärr `-R` och dynamisk SOCKS-proxy `-D`). Konfigureras per profil i `SSHProfileForm`, skickas säkert till OpenSSH i `SmartcardDetector.buildSSHArguments()` och sparas persistent.
+- [x] **19. Jump host / ProxyJump-stöd i UI:t.** Stöd i `SSHProfileForm` och `SmartcardDetector` (`-J`), samt fullt stöd för SFTP via stream-forwarding (`ssh2.forwardOut`) i `SFTPStorageProvider`.
+- [x] **20. SSH-anslutningsalternativ i formuläret**: kompression (`Compression`), keep-alive (`ServerAliveInterval`), samt valbara ciphers, KEX och MAC-algoritmer för både terminal och SFTP-anslutningar.
 - [ ] **21. Teckenkodning/charset-inställning** för filnamn — relevant mot äldre
    SFTP-servrar som inte pratar UTF-8.
 - [ ] **22. S3-uppladdningsalternativ**: lagringsklass (Standard/IA/Glacier) och
@@ -101,16 +93,15 @@ att bygga.
    `S3StorageProvider` sätter inget av detta idag.
 - [ ] **23. Sessionsloggning** — spara terminalens output till fil, användbart för
    felsökning och revision.
-- [ ] **24. Profilorganisation i mappar/grupper** samt "senast använda"-lista i
-   `ConnectionManagerModal`, som idag bara är en platt lista.
+- [x] **24. Profilorganisation i mappar/grupper** samt "senast använda"-lista i
+   `ConnectionManagerModal` med tidsstämplar (`yyyy-mm-dd HH:mm`), expanderbara/kollapsbara mappgrupper med profilräknare och integrerad direkt-anslutning.
 
 ### P3 — Polering och plattformskänsla
 
 - [x] **25. Riktig inställningsskärm** bakom kugghjulet i `TabBar`. Stöd för tema (mörkt, ljust, system med live respons), typsnitt/storlek för terminalen med interaktiv förhandsgranskning samt standardbeteende för nya flikar vid appstart. Sparas persistent via `SettingsStore`.
 - [x] **26. Ljust tema / systemtema-följning.** Integrerat via inställningsskärmen med dynamisk CSS `.light`-klass och synkroniserat xterm-färgtema.
-- [ ] **27. Anpassningsbara tangentbordsgenvägar.**
-- [ ] **28. Appikon + `desktopName`** för Linux (electron-builder varnar om båda
-   idag).
+- [x] **27. Anpassningsbara tangentbordsgenvägar.** Ny flik i `SettingsModal` för interaktiv inspelning av snabbkommandon (globala tangentbordslyssnare i `App.tsx` för flikhantering, inställningar, profiler och terminalsplit) samt återställningsfunktion.
+- [x] **28. Appikon + `desktopName`** för Linux. Genererade PNG-ikoner i alla standardstorlekar (16x16 till 512x512) i `build/icons/`, `desktopName: sshs3` i `electron-builder.json` samt fönsterikon konfigurerad i `src/main/index.ts`.
 - [ ] **29. Automatiska uppdateringar** (`electron-updater` eller motsvarande) —
    ingen uppdateringsmekanism finns alls just nu; paketen i Task 11 är
    engångsbyggen.

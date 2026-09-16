@@ -332,6 +332,82 @@ describe('SmartcardDetector', () => {
       expect(proxyOpt).toContain('proxyCli.cjs');
       expect(proxyOpt).toContain('"proxyuser" "secret"');
     });
+
+    it('should add proxyJump and advanced options (compression, keepalive, ciphers, kex, macs)', () => {
+      const config: SSHConnectionConfig = {
+        id: 'adv-ssh',
+        name: 'Advanced Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        proxyJump: 'jump.example.com:2222',
+        compression: true,
+        serverAliveInterval: 45,
+        ciphers: 'aes128-ctr,aes256-ctr',
+        kexAlgorithms: 'curve25519-sha256',
+        macs: 'hmac-sha2-256',
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      expect(args).toContain('-J');
+      expect(args).toContain('jump.example.com:2222');
+      expect(args).toContain('Compression=yes');
+      expect(args).toContain('ServerAliveInterval=45');
+      expect(args).toContain('Ciphers=aes128-ctr,aes256-ctr');
+      expect(args).toContain('KexAlgorithms=curve25519-sha256');
+      expect(args).toContain('MACs=hmac-sha2-256');
+    });
+
+    it('should configure port tunnels (-L, -R, -D) for enabled tunnels', () => {
+      const config: SSHConnectionConfig = {
+        id: 'tunnels-ssh',
+        name: 'Tunnels Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        tunnels: [
+          {
+            id: 't1',
+            type: 'local',
+            localPort: 8080,
+            remoteHost: '127.0.0.1',
+            remotePort: 80,
+            enabled: true,
+          },
+          {
+            id: 't2',
+            type: 'remote',
+            localPort: 9000,
+            remoteHost: '192.168.1.50',
+            remotePort: 3000,
+            enabled: true,
+          },
+          {
+            id: 't3',
+            type: 'dynamic',
+            localPort: 1088,
+            enabled: true,
+          },
+          {
+            id: 't4',
+            type: 'local',
+            localPort: 5432,
+            remoteHost: 'localhost',
+            remotePort: 5432,
+            enabled: false, // disabled should be skipped
+          },
+        ],
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      expect(args).toContain('-L');
+      expect(args).toContain('8080:127.0.0.1:80');
+      expect(args).toContain('-R');
+      expect(args).toContain('9000:192.168.1.50:3000');
+      expect(args).toContain('-D');
+      expect(args).toContain('1088');
+      expect(args).not.toContain('5432:localhost:5432');
+    });
   });
 });
 

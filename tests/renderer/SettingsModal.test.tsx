@@ -95,4 +95,46 @@ describe('SettingsModal', () => {
     expect(onClose).toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it('renders Kortkommandon tab and allows recording and resetting shortcuts', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+
+    // Click "Kortkommandon" tab
+    fireEvent.click(screen.getByText('Kortkommandon'));
+    expect(screen.getByText('Ny terminal')).toBeInTheDocument();
+    expect(screen.getByText('Stäng flik')).toBeInTheDocument();
+    expect(screen.getByText('Dela terminal vertikalt')).toBeInTheDocument();
+
+    // Click on shortcut button for "Ny terminal" (default "Ctrl+Shift+T")
+    const newTabBtn = screen.getByText('Ctrl+Shift+T');
+    fireEvent.click(newTabBtn);
+
+    // It should now prompt for recording
+    expect(screen.getByText('Tryck tangent (Esc för att avbryta)...')).toBeInTheDocument();
+
+    // Send keydown Ctrl+Shift+N
+    const recordingBtn = screen.getByText('Tryck tangent (Esc för att avbryta)...');
+    fireEvent.keyDown(recordingBtn, {
+      key: 'n',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    // It should update to Ctrl+Shift+N
+    expect(screen.getByText('Ctrl+Shift+N')).toBeInTheDocument();
+
+    // Click reset to restore defaults
+    fireEvent.click(screen.getByText('Återställ standard'));
+    expect(screen.getByText('Ctrl+Shift+T')).toBeInTheDocument();
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Columns2, Grid2x2, Rows2, Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { TerminalView } from './components/TerminalView';
@@ -97,7 +97,7 @@ export const App: React.FC = () => {
     setActiveTabId(id);
   };
 
-  const handleCloseTab = (id: string) => {
+  const handleCloseTab = useCallback((id: string) => {
     setTabs((prev) => {
       const index = prev.findIndex((t) => t.id === id);
       const remaining = prev.filter((t) => t.id !== id);
@@ -109,9 +109,9 @@ export const App: React.FC = () => {
 
       return remaining;
     });
-  };
+  }, [activeTabId]);
 
-  const handleNewTab = (type?: TabType) => {
+  const handleNewTab = useCallback((type?: TabType) => {
     const tabType = type || settings.defaultNewTabType || 'terminal';
     if (tabType === 'terminal') {
       const newId = `term-${Date.now()}`;
@@ -134,9 +134,9 @@ export const App: React.FC = () => {
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(newId);
     }
-  };
+  }, [settings.defaultNewTabType, termCounter, fmCounter]);
 
-  const handleSetSplitLayout = (tabId: string, layout: SplitLayout) => {
+  const handleSetSplitLayout = useCallback((tabId: string, layout: SplitLayout) => {
     setTabs((prev) =>
       prev.map((t) => {
         if (t.id !== tabId || t.type !== 'terminal') return t;
@@ -159,7 +159,7 @@ export const App: React.FC = () => {
         };
       })
     );
-  };
+  }, []);
 
   const handleConnectTerminal = (
     target: { tabId: string; paneId?: string },
@@ -278,7 +278,7 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [tabs, activeTabId, settings.shortcuts, settings.defaultNewTabType]);
+  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSetSplitLayout]);
 
   return (
     <div

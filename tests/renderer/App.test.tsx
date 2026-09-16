@@ -152,4 +152,65 @@ describe('App Component', () => {
     expect(tabs.length).toBe(2);
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('splits terminal view into vertical, horizontal, and 2x2 grid layouts', async () => {
+    render(<App />);
+
+    // Initially single layout (no multi-panes)
+    expect(screen.queryAllByTestId(/^terminal-pane-/).length).toBe(0);
+
+    // Click vertical split button
+    const vertBtn = screen.getByTestId('layout-vertical-term-1');
+    fireEvent.click(vertBtn);
+
+    // Should now have 2 panes
+    let panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(2);
+
+    // Click 2x2 grid button
+    const gridBtn = screen.getByTestId('layout-grid-term-1');
+    fireEvent.click(gridBtn);
+
+    // Should now have 4 panes
+    panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(4);
+
+    // Switch back to single layout
+    const singleBtn = screen.getByTestId('layout-single-term-1');
+    fireEvent.click(singleBtn);
+    expect(screen.queryAllByTestId(/^terminal-pane-/).length).toBe(0);
+  });
+
+  it('handles keyboard shortcuts for new terminal, split vertical, and close tab', async () => {
+    render(<App />);
+
+    expect(screen.getAllByRole('tab').length).toBe(1);
+
+    // Trigger Ctrl+Shift+T to open new terminal tab
+    fireEvent.keyDown(window, {
+      key: 'T',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    // Should have 2 tabs now
+    expect(screen.getAllByRole('tab').length).toBe(2);
+
+    // Trigger Ctrl+Shift+D to split vertical on active tab
+    fireEvent.keyDown(window, {
+      key: 'D',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(2);
+
+    // Trigger Ctrl+W to close active tab
+    fireEvent.keyDown(window, {
+      key: 'w',
+      ctrlKey: true,
+    });
+
+    expect(screen.getAllByRole('tab').length).toBe(1);
+  });
 });
