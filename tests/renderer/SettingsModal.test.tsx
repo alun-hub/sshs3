@@ -73,6 +73,7 @@ describe('SettingsModal', () => {
       terminalFontSize: 16,
       terminalFontFamily: DEFAULT_SETTINGS.terminalFontFamily,
       defaultNewTabType: 'filemanager',
+      shortcuts: DEFAULT_SETTINGS.shortcuts,
     });
     expect(onClose).toHaveBeenCalled();
   });

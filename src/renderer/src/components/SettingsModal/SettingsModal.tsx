@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, X, Terminal, Monitor, Moon, Sun } from 'lucide-react';
-import type { AppSettings, AppTheme } from '@shared/types/settings';
+import { Settings, X, Terminal, Monitor, Moon, Sun, Keyboard, Sliders, RotateCcw } from 'lucide-react';
+import {
+  SHORTCUT_DEFINITIONS,
+  DEFAULT_SHORTCUTS,
+  type AppSettings,
+  type AppTheme,
+} from '@shared/types/settings';
 
 interface SettingsModalProps {
   open: boolean;
@@ -18,25 +23,35 @@ const FONT_PRESETS = [
   'monospace',
 ];
 
+type SettingsTab = 'general' | 'shortcuts';
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   open,
   currentSettings,
   onSave,
   onClose,
 }) => {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [theme, setTheme] = useState<AppTheme>(currentSettings.theme);
   const [fontSize, setFontSize] = useState<number>(currentSettings.terminalFontSize);
   const [fontFamily, setFontFamily] = useState<string>(currentSettings.terminalFontFamily);
   const [defaultNewTab, setDefaultNewTab] = useState<'terminal' | 'filemanager'>(
     currentSettings.defaultNewTabType
   );
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>(
+    currentSettings.shortcuts ?? DEFAULT_SHORTCUTS
+  );
+  const [recordingAction, setRecordingAction] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
+      setActiveTab('general');
       setTheme(currentSettings.theme);
       setFontSize(currentSettings.terminalFontSize);
       setFontFamily(currentSettings.terminalFontFamily);
       setDefaultNewTab(currentSettings.defaultNewTabType);
+      setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
+      setRecordingAction(null);
     }
   }, [open, currentSettings]);
 
@@ -49,8 +64,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       terminalFontSize: fontSize,
       terminalFontFamily: fontFamily,
       defaultNewTabType: defaultNewTab,
+      shortcuts,
     });
     onClose();
+  };
+
+  const handleResetShortcuts = () => {
+    setShortcuts({ ...DEFAULT_SHORTCUTS });
+  };
+
+  const handleKeyDownRecord = (e: React.KeyboardEvent, actionId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      setRecordingAction(null);
+      return;
+    }
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.metaKey) parts.push('Cmd');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+
+    let key = e.key;
+    if (key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift') {
+      return;
+    }
+    if (key === ' ') key = 'Space';
+    else if (key.length === 1) key = key.toUpperCase();
+    parts.push(key);
+
+    const combo = parts.join('+');
+    setShortcuts((prev) => ({ ...prev, [actionId]: combo }));
+    setRecordingAction(null);
   };
 
   return (
@@ -71,172 +117,260 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-slate-800 bg-slate-900/50 px-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeTab === 'general'
+                ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sliders className="h-3.5 w-3.5" />
+            <span>Allmänt</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('shortcuts')}
+            className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeTab === 'shortcuts'
+                ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Keyboard className="h-3.5 w-3.5" />
+            <span>Kortkommandon</span>
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="p-4 space-y-4 text-xs text-slate-300">
-          {/* Theme */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Tema</label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setTheme('dark')}
-                className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
-                  theme === 'dark'
-                    ? 'border-sky-500 bg-sky-950/60 text-sky-200'
-                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                Mörkt
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme('light')}
-                className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
-                  theme === 'light'
-                    ? 'border-sky-500 bg-sky-950/60 text-sky-200'
-                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                <Sun className="h-3.5 w-3.5" />
-                Ljust
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme('system')}
-                className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
-                  theme === 'system'
-                    ? 'border-sky-500 bg-sky-950/60 text-sky-200'
-                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                <Monitor className="h-3.5 w-3.5" />
-                System
-              </button>
-            </div>
-          </div>
+          {activeTab === 'general' ? (
+            <>
+              {/* Theme */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300">Tema</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTheme('dark')}
+                    className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
+                      theme === 'dark'
+                        ? 'border-sky-500 bg-sky-950/60 text-sky-200'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <Moon className="h-3.5 w-3.5" />
+                    Mörkt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTheme('light')}
+                    className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
+                      theme === 'light'
+                        ? 'border-sky-500 bg-sky-950/60 text-sky-200'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <Sun className="h-3.5 w-3.5" />
+                    Ljust
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTheme('system')}
+                    className={`flex items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-medium transition-colors ${
+                      theme === 'system'
+                        ? 'border-sky-500 bg-sky-950/60 text-sky-200'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    System
+                  </button>
+                </div>
+              </div>
 
-          {/* Terminal Font Size */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-slate-300">Terminal typsnittsstorlek</label>
-              <span className="font-mono text-sky-400 font-semibold">{fontSize} px</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={10}
-                max={24}
-                step={1}
-                value={fontSize}
-                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-                className="flex-1 accent-sky-500"
-              />
-              <input
-                type="number"
-                min={10}
-                max={24}
-                value={fontSize}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!Number.isNaN(val) && val >= 10 && val <= 24) {
-                    setFontSize(val);
-                  }
-                }}
-                className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
-              />
-            </div>
-          </div>
+              {/* Terminal Font Size */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-300">Terminal typsnittsstorlek</label>
+                  <span className="font-mono text-sky-400 font-semibold">{fontSize} px</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={10}
+                    max={24}
+                    step={1}
+                    value={fontSize}
+                    onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+                    className="flex-1 accent-sky-500"
+                  />
+                  <input
+                    type="number"
+                    min={10}
+                    max={24}
+                    value={fontSize}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(val) && val >= 10 && val <= 24) {
+                        setFontSize(val);
+                      }
+                    }}
+                    className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
 
-          {/* Terminal Font Family */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Terminal typsnitt</label>
-            <select
-              value={FONT_PRESETS.includes(fontFamily) ? fontFamily : 'custom'}
-              onChange={(e) => {
-                if (e.target.value !== 'custom') {
-                  setFontFamily(e.target.value);
-                }
-              }}
-              className="w-full rounded border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-sky-500"
-            >
-              {FONT_PRESETS.map((f) => (
-                <option key={f} value={f}>
-                  {f.split(',')[0].replace(/"/g, '')}
-                </option>
-              ))}
-              <option value="custom">Anpassat...</option>
-            </select>
-            <input
-              type="text"
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value)}
-              placeholder="Skriv in typsnittsfamilj..."
-              className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
-            />
-          </div>
-
-          {/* Default Tab Behavior */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Standardflik för nya flikar</label>
-            <div className="grid grid-cols-2 gap-2">
-              <label
-                className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
-                  defaultNewTab === 'terminal'
-                    ? 'border-sky-500 bg-sky-950/60 text-sky-200'
-                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
+              {/* Terminal Font Family */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300">Terminal typsnitt</label>
+                <select
+                  value={FONT_PRESETS.includes(fontFamily) ? fontFamily : 'custom'}
+                  onChange={(e) => {
+                    if (e.target.value !== 'custom') {
+                      setFontFamily(e.target.value);
+                    }
+                  }}
+                  className="w-full rounded border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-sky-500"
+                >
+                  {FONT_PRESETS.map((f) => (
+                    <option key={f} value={f}>
+                      {f.split(',')[0].replace(/"/g, '')}
+                    </option>
+                  ))}
+                  <option value="custom">Anpassat...</option>
+                </select>
                 <input
-                  type="radio"
-                  name="defaultTab"
-                  checked={defaultNewTab === 'terminal'}
-                  onChange={() => setDefaultNewTab('terminal')}
-                  className="hidden"
+                  type="text"
+                  value={fontFamily}
+                  onChange={(e) => setFontFamily(e.target.value)}
+                  placeholder="Skriv in typsnittsfamilj..."
+                  className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
                 />
-                <Terminal className="h-3.5 w-3.5 text-sky-400" />
-                <span>Terminal</span>
-              </label>
+              </div>
 
-              <label
-                className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
-                  defaultNewTab === 'filemanager'
-                    ? 'border-amber-500 bg-amber-950/60 text-amber-200'
-                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="defaultTab"
-                  checked={defaultNewTab === 'filemanager'}
-                  onChange={() => setDefaultNewTab('filemanager')}
-                  className="hidden"
-                />
-                <span className="h-3.5 w-3.5 font-bold text-amber-400">📁</span>
-                <span>Filhanterare</span>
-              </label>
-            </div>
-          </div>
+              {/* Default Tab Behavior */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300">Standardflik för nya flikar</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
+                      defaultNewTab === 'terminal'
+                        ? 'border-sky-500 bg-sky-950/60 text-sky-200'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="defaultTab"
+                      checked={defaultNewTab === 'terminal'}
+                      onChange={() => setDefaultNewTab('terminal')}
+                      className="hidden"
+                    />
+                    <Terminal className="h-3.5 w-3.5 text-sky-400" />
+                    <span>Terminal</span>
+                  </label>
 
-          {/* Live Preview */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Förhandsvisning av terminal</label>
-            <div
-              className={`rounded border p-3 font-mono transition-colors ${
-                theme === 'light'
-                  ? 'border-slate-300 bg-slate-50 text-slate-900'
-                  : 'border-slate-800 bg-slate-950 text-slate-100'
-              }`}
-              style={{
-                fontFamily: fontFamily || 'monospace',
-                fontSize: `${fontSize}px`,
-                lineHeight: '1.4',
-              }}
-            >
-              <div className="text-emerald-400">$ uname -srm</div>
-              <div>Linux 6.1.0-custom x86_64</div>
-              <div className="text-sky-400">MultiSSH ready.</div>
+                  <label
+                    className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
+                      defaultNewTab === 'filemanager'
+                        ? 'border-amber-500 bg-amber-950/60 text-amber-200'
+                        : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="defaultTab"
+                      checked={defaultNewTab === 'filemanager'}
+                      onChange={() => setDefaultNewTab('filemanager')}
+                      className="hidden"
+                    />
+                    <span className="h-3.5 w-3.5 font-bold text-amber-400">📁</span>
+                    <span>Filhanterare</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Live Preview */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Förhandsvisning av terminal</label>
+                <div
+                  className={`rounded border p-3 font-mono transition-colors ${
+                    theme === 'light'
+                      ? 'border-slate-300 bg-slate-50 text-slate-900'
+                      : 'border-slate-800 bg-slate-950 text-slate-100'
+                  }`}
+                  style={{
+                    fontFamily: fontFamily || 'monospace',
+                    fontSize: `${fontSize}px`,
+                    lineHeight: '1.4',
+                  }}
+                >
+                  <div className="text-emerald-400">$ uname -srm</div>
+                  <div>Linux 6.1.0-custom x86_64</div>
+                  <div className="text-sky-400">MultiSSH ready.</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-1">
+                <span className="text-xs text-slate-400">
+                  Klicka på en tangentkombination för att tilldela ny genväg
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResetShortcuts}
+                  className="flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Återställ standard</span>
+                </button>
+              </div>
+
+              <div className="max-h-[350px] space-y-1.5 overflow-y-auto pr-1">
+                {SHORTCUT_DEFINITIONS.map((def) => {
+                  const currentKey = shortcuts[def.id] || def.defaultKeys;
+                  const isRecording = recordingAction === def.id;
+
+                  return (
+                    <div
+                      key={def.id}
+                      className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
+                    >
+                      <div>
+                        <div className="font-medium text-slate-200">{def.name}</div>
+                        <div className="text-[10px] text-slate-500">{def.category}</div>
+                      </div>
+
+                      <div>
+                        {isRecording ? (
+                          <button
+                            type="button"
+                            onKeyDown={(e) => handleKeyDownRecord(e, def.id)}
+                            autoFocus
+                            className="rounded border border-sky-500 bg-sky-950 px-2.5 py-1 font-mono text-xs text-sky-300 outline-none animate-pulse"
+                          >
+                            Tryck tangent (Esc för att avbryta)...
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setRecordingAction(def.id)}
+                            className="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-200 hover:border-sky-500 hover:text-sky-300 transition-colors"
+                          >
+                            {currentKey}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 border-t border-slate-800 pt-3">

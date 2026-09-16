@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import SftpClient from 'ssh2-sftp-client';
+import { Client as SSH2Client } from 'ssh2';
 import { createProxySocket } from '../proxy/proxySocket';
 import {
   BaseStorageProvider,
@@ -88,6 +89,24 @@ function parseModifyTime(stats: any): string | undefined {
 // often than a terminal session to the same host does.
 const DEFAULT_IDENTITY_FILES = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
 
+function parseJumpHost(jumpStr: string, defaultUser: string): { username: string; host: string; port: number } {
+  let username = defaultUser;
+  let hostAndPort = jumpStr.trim();
+  if (hostAndPort.includes('@')) {
+    const parts = hostAndPort.split('@');
+    username = parts[0];
+    hostAndPort = parts[1];
+  }
+  let host = hostAndPort;
+  let port = 22;
+  if (hostAndPort.includes(':')) {
+    const parts = hostAndPort.split(':');
+    host = parts[0];
+    port = parseInt(parts[1], 10) || 22;
+  }
+  return { username, host, port };
+}
+
 export class SFTPStorageProvider extends BaseStorageProvider implements IStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -95,6 +114,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
   private config: SFTPConfig;
   private client: SftpClient;
+  private jumpClient?: SSH2Client;
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
   private hostVerifier?: SshHostVerifierFn;
@@ -111,15 +131,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   private attachLifecycleListeners(client: SftpClient): void {
-    client.on('close', () => {
+    const cleanup = () => {
       this.isConnected = false;
-    });
-    client.on('end', () => {
-      this.isConnected = false;
-    });
-    client.on('error', () => {
-      this.isConnected = false;
-    });
+      if (this.jumpClient) {
+        try { this.jumpClient.end(); } catch { /* ignore */ }
+        this.jumpClient = undefined;
+      }
+    };
+    client.on('close', cleanup);
+    client.on('end', cleanup);
+    client.on('error', cleanup);
   }
 
   /**
@@ -137,6 +158,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     };
     if (this.hostVerifier) {
       base.hostVerifier = this.hostVerifier;
+    }
+    if (this.config.serverAliveInterval) {
+      base.keepaliveInterval = this.config.serverAliveInterval * 1000;
+    }
+    const algorithms: Record<string, string[]> = {};
+    if (this.config.ciphers) algorithms.cipher = this.config.ciphers.split(',').map((s) => s.trim());
+    if (this.config.kexAlgorithms) algorithms.kex = this.config.kexAlgorithms.split(',').map((s) => s.trim());
+    if (this.config.macs) algorithms.hmac = this.config.macs.split(',').map((s) => s.trim());
+    if (Object.keys(algorithms).length > 0) {
+      base.algorithms = algorithms;
     }
 
     if (this.config.authType === 'password' && this.config.password) {
@@ -205,7 +236,44 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           let sock: any = undefined;
           try {
             const connectOpts = { ...options };
-            if (this.config.proxy?.enabled && this.config.proxy.host) {
+            if (this.config.proxyJump && this.config.proxyJump.trim()) {
+              const jumpTarget = parseJumpHost(this.config.proxyJump, this.config.username);
+              const jumpClient = new SSH2Client();
+              await new Promise<void>((resolve, reject) => {
+                jumpClient.on('ready', () => resolve());
+                jumpClient.on('error', (err) => reject(err));
+                const jumpOpts: any = {
+                  host: jumpTarget.host,
+                  port: jumpTarget.port,
+                  username: jumpTarget.username,
+                  readyTimeout: 15000,
+                };
+                const agent =
+                  this.config.agentPath ??
+                  (process.platform === 'win32'
+                    ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
+                    : process.env.SSH_AUTH_SOCK);
+                if (agent) {
+                  jumpOpts.agent = agent;
+                }
+                if (this.config.password) {
+                  jumpOpts.password = this.config.password;
+                }
+                if (this.config.privateKeyPath && fs.existsSync(this.config.privateKeyPath)) {
+                  jumpOpts.privateKey = fs.readFileSync(this.config.privateKeyPath);
+                  if (this.config.passphrase) jumpOpts.passphrase = this.config.passphrase;
+                }
+                jumpClient.connect(jumpOpts);
+              });
+              this.jumpClient = jumpClient;
+              sock = await new Promise<any>((resolve, reject) => {
+                jumpClient.forwardOut('127.0.0.1', 0, this.config.host, this.config.port ?? 22, (err, stream) => {
+                  if (err) return reject(err);
+                  resolve(stream);
+                });
+              });
+              connectOpts.sock = sock;
+            } else if (this.config.proxy?.enabled && this.config.proxy.host) {
               sock = await createProxySocket(this.config.proxy, {
                 host: this.config.host,
                 port: this.config.port ?? 22,
@@ -221,6 +289,10 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
             lastErr = err;
             if (sock) {
               try { sock.destroy(); } catch { /* ignore */ }
+            }
+            if (this.jumpClient) {
+              try { this.jumpClient.end(); } catch { /* ignore */ }
+              this.jumpClient = undefined;
             }
             await client.end().catch(() => {});
           }
@@ -375,6 +447,10 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     try {
       await this.client.end();
     } finally {
+      if (this.jumpClient) {
+        try { this.jumpClient.end(); } catch { /* ignore */ }
+        this.jumpClient = undefined;
+      }
       this.isConnected = false;
     }
   }

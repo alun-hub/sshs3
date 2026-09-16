@@ -79,16 +79,26 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-400">
-          Region
+          Grupp / Mapp (valfritt)
           <input
-            required
-            value={config.region}
-            onChange={(e) => update('region', e.target.value)}
+            value={config.group ?? ''}
+            onChange={(e) => update('group', e.target.value)}
             className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
-            placeholder="us-east-1"
+            placeholder="t.ex. Produktion eller MinIO"
           />
         </label>
       </div>
+
+      <label className="flex flex-col gap-1 text-xs text-slate-400">
+        Region
+        <input
+          required
+          value={config.region}
+          onChange={(e) => update('region', e.target.value)}
+          className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+          placeholder="us-east-1"
+        />
+      </label>
 
       <label className="flex flex-col gap-1 text-xs text-slate-400">
         Endpoint (lämna tomt för AWS S3)

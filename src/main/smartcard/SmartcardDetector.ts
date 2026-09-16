@@ -129,6 +129,11 @@ export class SmartcardDetector {
     // Port argument
     args.push('-p', String(port));
 
+    // Jump host / ProxyJump (-J <proxyJump>)
+    if (config.proxyJump && config.proxyJump.trim()) {
+      args.push('-J', config.proxyJump.trim());
+    }
+
     // Smartcard PKCS#11 library argument (-I <path>)
     if (config.authType === 'smartcard' && config.pkcs11LibPath) {
       args.push('-I', config.pkcs11LibPath);
@@ -137,6 +142,45 @@ export class SmartcardDetector {
     // Identity file / private key argument (-i <path>)
     if (config.privateKeyPath) {
       args.push('-i', config.privateKeyPath);
+    }
+
+    // Compression (-o Compression=yes/no)
+    if (config.compression !== undefined) {
+      args.push('-o', `Compression=${config.compression ? 'yes' : 'no'}`);
+    }
+
+    // ServerAliveInterval (-o ServerAliveInterval=...)
+    if (config.serverAliveInterval && config.serverAliveInterval > 0) {
+      args.push('-o', `ServerAliveInterval=${config.serverAliveInterval}`);
+    }
+
+    // Ciphers (-o Ciphers=...)
+    if (config.ciphers?.trim()) {
+      args.push('-o', `Ciphers=${config.ciphers.trim()}`);
+    }
+
+    // KexAlgorithms (-o KexAlgorithms=...)
+    if (config.kexAlgorithms?.trim()) {
+      args.push('-o', `KexAlgorithms=${config.kexAlgorithms.trim()}`);
+    }
+
+    // MACs (-o MACs=...)
+    if (config.macs?.trim()) {
+      args.push('-o', `MACs=${config.macs.trim()}`);
+    }
+
+    // SSH Tunnels (Port forwarding: -L, -R, -D)
+    if (config.tunnels && config.tunnels.length > 0) {
+      for (const tunnel of config.tunnels) {
+        if (tunnel.enabled === false) continue;
+        if (tunnel.type === 'local') {
+          args.push('-L', `${tunnel.localPort}:${tunnel.remoteHost || 'localhost'}:${tunnel.remotePort || 80}`);
+        } else if (tunnel.type === 'remote') {
+          args.push('-R', `${tunnel.localPort}:${tunnel.remoteHost || 'localhost'}:${tunnel.remotePort || 80}`);
+        } else if (tunnel.type === 'dynamic') {
+          args.push('-D', String(tunnel.localPort));
+        }
+      }
     }
 
     // Extra SSH options (-o Key=Value)
