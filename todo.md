@@ -116,9 +116,9 @@ att bygga.
 - [ ] **43. Beräkna katalogstorlek (Recursive size / `du`)** — visa sammanlagd storlek och antal filer för markerade mappar i SFTP och S3 via kontextmenyn.
 - [ ] **44. Bevara tidsstämplar (mtime) vid filöverföring** — val att behålla filers ursprungliga ändringstidsstämplar vid upp-/nedladdning mellan lokal disk och SFTP.
 - [ ] **45. Filmasker och exkluderingsfilter vid överföring** — uteslut mönster som `node_modules/`, `.git/`, `*.tmp`, `.DS_Store` vid överföring av mappar och synkning.
-- [ ] **46. S3 Versionshantering (Versioning)** — visa tidigare versioner och raderingsmarkörer (Delete Markers), återställ äldre versioner eller ta bort specifika versioner permanent, samt slå på/av versioning per bucket.
+- [x] **46. S3 Versionshantering (Versioning)** — `S3StorageProvider` stöder `listObjectVersions`/`deleteObjectVersion`/`restoreObjectVersion` samt `getBucketVersioning`/`setBucketVersioning`. `VersionsModal` i filhanteraren visar tidigare versioner och raderingsmarkörer med återställning/permanent radering för objekt, och aktivera/pausa-knapp för bucket-nivå.
 - [ ] **47. S3 Metadata & HTTP-headers editor** — granska och redigera `Content-Type`, `Cache-Control`, `Content-Disposition` och anpassade användarmetadata (`x-amz-meta-*`) för valda objekt.
-- [ ] **48. S3 Bucket Policy & CORS-redigerare** — visning och redigering av JSON-policies och CORS-regler direkt i appen utan att behöva gå via AWS Console.
+- [x] **48. S3 Bucket Policy & CORS-redigerare** — `BucketPolicyModal` med flikar för JSON-policy och CORS-regler, backat av `getBucketPolicy`/`setBucketPolicy`/`getBucketCors`/`setBucketCors` i `S3StorageProvider`, nås via bucket-kontextmenyn.
 
 ### P3 — Polering och plattformskänsla
 
@@ -139,7 +139,7 @@ att bygga.
 - [ ] **50. Automatisk synkronisering vid filändring ("Keep remote directory up to date")** — övervaka en lokal katalog med filsystem-watcher och ladda automatiskt upp ändrade filer till SFTP/S3 i bakgrunden (WinSCP-funktion).
 - [ ] **51. Anpassade fjärrkommandon (Custom commands)** — köra fördefinierade skalskript/kommandon (t.ex. `tar -xzf`, `tail -n 100`, `grep`, `md5sum`) direkt på markerade filer via SFTP/SSH.
 - [ ] **52. S3 Livscykelregler (Lifecycle rules)** — konfigurera automatiska övergångar mellan lagringsklasser (t.ex. Standard -> IA -> Glacier) eller automatisk radering av gamla objektversioner efter *N* dagar.
-- [ ] **53. S3 Taggning (Tagging)** — hantera nyckel-värdetaggar på både buckets och individuella objekt.
+- [x] **53. S3 Taggning (Tagging)** — `getTags`/`setTags` i `S3StorageProvider` (bucket- och objekt-taggning) samt `TagsModal` i filhanteraren för att hantera nyckel-värdetaggar via kontextmenyn.
 - [ ] **54. S3 Statisk webbhotellskonfiguration (Static website hosting)** — konfigurera index- och feldokument samt hämta webbendpoint för buckets.
 - [ ] **55. S3 Multipart- och prestandainställningar** — finjustera delstorlek (part size) och antal samtidiga strömmar vid upp-/nedladdning av stora objekt.
 
@@ -182,7 +182,7 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 5, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28** redan är färdigställda,
+Då **1, 2, 5, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 46, 48, 53** redan är färdigställda,
 är de mest värdefulla nästa stegen:
 
 1. **4 & 37. Direktredigering & inbyggd textvisare** — låter användaren snabbt granska och ändra konfigurationer/filer på SFTP och S3 utan krångel.

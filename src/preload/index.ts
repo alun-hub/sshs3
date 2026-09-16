@@ -15,8 +15,12 @@ import type {
 } from '../shared/types/ssh';
 import type {
   FileEntry,
+  ObjectMetadata,
   TransferProgress,
   S3Config,
+  S3Tag,
+  BucketVersioningInfo,
+  ObjectVersionEntry,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
@@ -118,6 +122,42 @@ export const api: MultiSSHApi = {
 
   storageChmod: (providerId: string, remotePath: string, mode: number | string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CHMOD, providerId, remotePath, mode),
+
+  storageSetMetadata: (providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_METADATA, providerId, remotePath, metadata),
+
+  storageGetTags: (providerId: string, remotePath: string): Promise<S3Tag[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_TAGS, providerId, remotePath),
+
+  storageSetTags: (providerId: string, remotePath: string, tags: S3Tag[]): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_TAGS, providerId, remotePath, tags),
+
+  storageGetBucketPolicy: (providerId: string, bucketPath: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_BUCKET_POLICY, providerId, bucketPath),
+
+  storageSetBucketPolicy: (providerId: string, bucketPath: string, policy: string | null): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_BUCKET_POLICY, providerId, bucketPath, policy),
+
+  storageGetBucketCors: (providerId: string, bucketPath: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_BUCKET_CORS, providerId, bucketPath),
+
+  storageSetBucketCors: (providerId: string, bucketPath: string, corsJson: string | null): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_BUCKET_CORS, providerId, bucketPath, corsJson),
+
+  storageGetBucketVersioning: (providerId: string, bucketPath: string): Promise<BucketVersioningInfo> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_BUCKET_VERSIONING, providerId, bucketPath),
+
+  storageSetBucketVersioning: (providerId: string, bucketPath: string, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_BUCKET_VERSIONING, providerId, bucketPath, enabled),
+
+  storageListObjectVersions: (providerId: string, remotePath: string): Promise<ObjectVersionEntry[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LIST_OBJECT_VERSIONS, providerId, remotePath),
+
+  storageDeleteObjectVersion: (providerId: string, remotePath: string, versionId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_DELETE_OBJECT_VERSION, providerId, remotePath, versionId),
+
+  storageRestoreObjectVersion: (providerId: string, remotePath: string, versionId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_RESTORE_OBJECT_VERSION, providerId, remotePath, versionId),
 
   // Transfer
   transferAdd: (options: {

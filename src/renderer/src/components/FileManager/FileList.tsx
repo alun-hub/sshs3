@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { File, FileArchive, FileCode, FileImage, FileText, Folder, Loader2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { classNames, formatBytes } from '../../lib/format';
@@ -23,6 +23,8 @@ interface FileListProps {
   onRenameCommit?: (entry: FileEntry, newName: string) => void;
   onRenameCancel?: () => void;
   filterText?: string;
+  onEntryContextMenu?: (entry: FileEntry, e: React.MouseEvent) => void;
+  onPaneContextMenu?: (e: React.MouseEvent) => void;
 }
 
 function iconForEntry(entry: FileEntry) {
@@ -52,6 +54,8 @@ export const FileList: React.FC<FileListProps> = ({
   onRenameCommit,
   onRenameCancel,
   filterText,
+  onEntryContextMenu,
+  onPaneContextMenu,
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -114,6 +118,48 @@ export const FileList: React.FC<FileListProps> = ({
     [selectedPaths, lastClickedIndex, sorted, onSelectionChange]
   );
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const typeaheadRef = useRef<{ buffer: string; timeout: ReturnType<typeof setTimeout> | null }>({
+    buffer: '',
+    timeout: null,
+  });
+
+  const handleContainerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (renamingPath) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.length !== 1) return;
+      e.preventDefault();
+
+      const state = typeaheadRef.current;
+      if (state.timeout) clearTimeout(state.timeout);
+      state.buffer += e.key.toLowerCase();
+      state.timeout = setTimeout(() => {
+        state.buffer = '';
+      }, 800);
+
+      const buffer = state.buffer;
+      let matchIndex = sorted.findIndex((entry) => entry.name.toLowerCase().startsWith(buffer));
+      // If nothing matches the accumulated buffer, restart with just the latest key
+      // (e.g. typing two different files quickly rather than narrowing one name).
+      if (matchIndex === -1 && buffer.length > 1) {
+        state.buffer = e.key.toLowerCase();
+        matchIndex = sorted.findIndex((entry) => entry.name.toLowerCase().startsWith(state.buffer));
+      }
+      if (matchIndex === -1) return;
+
+      const match = sorted[matchIndex];
+      setLastClickedIndex(matchIndex);
+      const next = new Set<string>();
+      next.add(match.path);
+      onSelectionChange(next);
+      containerRef.current
+        ?.querySelector(`[data-entry-path="${CSS.escape(match.path)}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    },
+    [sorted, onSelectionChange, renamingPath]
+  );
+
   const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string }> = ({
     label,
     sortKeyName,
@@ -145,9 +191,20 @@ export const FileList: React.FC<FileListProps> = ({
         <SortHeader label="Ändrad" sortKeyName="mtime" />
       </div>
       <div
-        className="flex-1 overflow-y-auto"
+        ref={containerRef}
+        tabIndex={0}
+        className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-800/60"
+        onMouseDown={() => containerRef.current?.focus()}
+        onKeyDown={handleContainerKeyDown}
         onClick={(e) => {
           if (e.currentTarget === e.target) onSelectionChange(new Set());
+        }}
+        onContextMenu={(e) => {
+          if (e.currentTarget === e.target) {
+            e.preventDefault();
+            onSelectionChange(new Set());
+            onPaneContextMenu?.(e);
+          }
         }}
       >
         {loading && (
@@ -171,6 +228,7 @@ export const FileList: React.FC<FileListProps> = ({
               <div
                 key={entry.path}
                 role="row"
+                data-entry-path={entry.path}
                 draggable
                 onDragStart={(e) => onDraggableStart?.(entry, e)}
                 onDragEnd={() => onDraggableEnd?.()}
@@ -189,6 +247,16 @@ export const FileList: React.FC<FileListProps> = ({
                 }}
                 onClick={(e) => handleRowClick(entry, index, e)}
                 onDoubleClick={() => onOpen(entry)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (!selectedPaths.has(entry.path)) {
+                    const next = new Set<string>();
+                    next.add(entry.path);
+                    setLastClickedIndex(index);
+                    onSelectionChange(next);
+                  }
+                  onEntryContextMenu?.(entry, e);
+                }}
                 className={classNames(
                   'grid cursor-default grid-cols-[1fr_80px_75px_130px] items-center gap-2 border-b border-slate-800/60 px-3 py-1 text-sm select-none',
                   selected ? 'bg-sky-900/40 text-slate-50' : 'text-slate-200 hover:bg-slate-800/60',

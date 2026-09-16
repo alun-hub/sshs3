@@ -34,8 +34,12 @@ import type {
 } from '../shared/types/ssh';
 import type {
   FileEntry,
+  ObjectMetadata,
   TransferProgress,
   S3Config,
+  S3Tag,
+  BucketVersioningInfo,
+  ObjectVersionEntry,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
@@ -337,6 +341,122 @@ export class IpcBridge {
         await provider.chmod(remotePath, mode);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_SET_METADATA,
+      async (_event, providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void> => {
+        const provider = this.storageRegistry.get(providerId);
+        if (!provider) {
+          throw new Error(`Storage provider not found: ${providerId}`);
+        }
+        if (typeof provider.setMetadata !== 'function') {
+          throw new Error(`Storage provider "${providerId}" does not support metadata updates`);
+        }
+        await provider.setMetadata(remotePath, metadata);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_TAGS,
+      async (_event, providerId: string, remotePath: string): Promise<S3Tag[]> => {
+        const provider = this.requireS3Capability(providerId, 'getTags');
+        return await provider.getTags!(remotePath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_SET_TAGS,
+      async (_event, providerId: string, remotePath: string, tags: S3Tag[]): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'setTags');
+        await provider.setTags!(remotePath, tags);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_BUCKET_POLICY,
+      async (_event, providerId: string, bucketPath: string): Promise<string | null> => {
+        const provider = this.requireS3Capability(providerId, 'getBucketPolicy');
+        return await provider.getBucketPolicy!(bucketPath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_SET_BUCKET_POLICY,
+      async (_event, providerId: string, bucketPath: string, policy: string | null): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'setBucketPolicy');
+        await provider.setBucketPolicy!(bucketPath, policy);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_BUCKET_CORS,
+      async (_event, providerId: string, bucketPath: string): Promise<string | null> => {
+        const provider = this.requireS3Capability(providerId, 'getBucketCors');
+        return await provider.getBucketCors!(bucketPath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_SET_BUCKET_CORS,
+      async (_event, providerId: string, bucketPath: string, corsJson: string | null): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'setBucketCors');
+        await provider.setBucketCors!(bucketPath, corsJson);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_BUCKET_VERSIONING,
+      async (_event, providerId: string, bucketPath: string): Promise<BucketVersioningInfo> => {
+        const provider = this.requireS3Capability(providerId, 'getBucketVersioning');
+        return await provider.getBucketVersioning!(bucketPath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_SET_BUCKET_VERSIONING,
+      async (_event, providerId: string, bucketPath: string, enabled: boolean): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'setBucketVersioning');
+        await provider.setBucketVersioning!(bucketPath, enabled);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_LIST_OBJECT_VERSIONS,
+      async (_event, providerId: string, remotePath: string): Promise<ObjectVersionEntry[]> => {
+        const provider = this.requireS3Capability(providerId, 'listObjectVersions');
+        return await provider.listObjectVersions!(remotePath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_DELETE_OBJECT_VERSION,
+      async (_event, providerId: string, remotePath: string, versionId: string): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'deleteObjectVersion');
+        await provider.deleteObjectVersion!(remotePath, versionId);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_RESTORE_OBJECT_VERSION,
+      async (_event, providerId: string, remotePath: string, versionId: string): Promise<void> => {
+        const provider = this.requireS3Capability(providerId, 'restoreObjectVersion');
+        await provider.restoreObjectVersion!(remotePath, versionId);
+      }
+    );
+  }
+
+  private requireS3Capability<K extends keyof import('../shared/types/storage').IStorageProvider>(
+    providerId: string,
+    capability: K
+  ): import('../shared/types/storage').IStorageProvider {
+    const provider = this.storageRegistry.get(providerId);
+    if (!provider) {
+      throw new Error(`Storage provider not found: ${providerId}`);
+    }
+    if (typeof provider[capability] !== 'function') {
+      throw new Error(`Storage provider "${providerId}" does not support "${String(capability)}"`);
+    }
+    return provider;
   }
 
   private registerTransferHandlers(): void {

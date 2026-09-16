@@ -23,6 +23,21 @@ import {
   CopyObjectCommand,
   GetObjectCommand,
   type GetObjectCommandInput,
+  GetObjectTaggingCommand,
+  PutObjectTaggingCommand,
+  DeleteObjectTaggingCommand,
+  GetBucketTaggingCommand,
+  PutBucketTaggingCommand,
+  DeleteBucketTaggingCommand,
+  GetBucketPolicyCommand,
+  PutBucketPolicyCommand,
+  DeleteBucketPolicyCommand,
+  GetBucketCorsCommand,
+  PutBucketCorsCommand,
+  DeleteBucketCorsCommand,
+  GetBucketVersioningCommand,
+  PutBucketVersioningCommand,
+  ListObjectVersionsCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
@@ -32,9 +47,13 @@ import {
   getMimeType,
 } from './StorageProvider';
 import type {
+  BucketVersioningInfo,
   FileEntry,
   IStorageProvider,
+  ObjectMetadata,
+  ObjectVersionEntry,
   S3Config,
+  S3Tag,
   StorageType,
   WriteStreamOptions,
 } from '../../shared/types/storage';
@@ -442,6 +461,32 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     );
   }
 
+  async setMetadata(remotePath: string, metadata: ObjectMetadata): Promise<void> {
+    const { bucket, key } = parseS3Path(remotePath);
+
+    if (!bucket || !key) {
+      throw new Error(`Cannot set metadata on root or bucket: ${remotePath}`);
+    }
+
+    const encodedKey = key
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+
+    const head = await this.client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        CopySource: `${bucket}/${encodedKey}`,
+        MetadataDirective: 'REPLACE',
+        ContentType: metadata.contentType || head.ContentType || getMimeType(key),
+        Metadata: head.Metadata,
+      })
+    );
+  }
+
   async createReadStream(
     remotePath: string,
     start?: number,
@@ -523,6 +568,206 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     });
 
     return passThrough;
+  }
+
+  async getTags(remotePath: string): Promise<S3Tag[]> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket) {
+      throw new Error(`Kan inte hämta taggar för roten: ${remotePath}`);
+    }
+
+    try {
+      if (!key) {
+        const output = await this.client.send(new GetBucketTaggingCommand({ Bucket: bucket }));
+        return (output.TagSet ?? []).map((t) => ({ key: t.Key ?? '', value: t.Value ?? '' }));
+      }
+      const output = await this.client.send(new GetObjectTaggingCommand({ Bucket: bucket, Key: key }));
+      return (output.TagSet ?? []).map((t) => ({ key: t.Key ?? '', value: t.Value ?? '' }));
+    } catch (err: any) {
+      if (err?.name === 'NoSuchTagSet' || err?.Code === 'NoSuchTagSet') {
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  async setTags(remotePath: string, tags: S3Tag[]): Promise<void> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket) {
+      throw new Error(`Kan inte sätta taggar för roten: ${remotePath}`);
+    }
+
+    const TagSet = tags.map((t) => ({ Key: t.key, Value: t.value }));
+
+    if (!key) {
+      if (tags.length === 0) {
+        await this.client.send(new DeleteBucketTaggingCommand({ Bucket: bucket }));
+        return;
+      }
+      await this.client.send(new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet } }));
+      return;
+    }
+
+    if (tags.length === 0) {
+      await this.client.send(new DeleteObjectTaggingCommand({ Bucket: bucket, Key: key }));
+      return;
+    }
+    await this.client.send(new PutObjectTaggingCommand({ Bucket: bucket, Key: key, Tagging: { TagSet } }));
+  }
+
+  private requireBucketOnly(remotePath: string): string {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket || key) {
+      throw new Error(`Kräver en bucket-sökväg: ${remotePath}`);
+    }
+    return bucket;
+  }
+
+  async getBucketPolicy(remotePath: string): Promise<string | null> {
+    const bucket = this.requireBucketOnly(remotePath);
+    try {
+      const output = await this.client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
+      return output.Policy ?? null;
+    } catch (err: any) {
+      if (err?.name === 'NoSuchBucketPolicy' || err?.Code === 'NoSuchBucketPolicy') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async setBucketPolicy(remotePath: string, policy: string | null): Promise<void> {
+    const bucket = this.requireBucketOnly(remotePath);
+    if (!policy || !policy.trim()) {
+      await this.client.send(new DeleteBucketPolicyCommand({ Bucket: bucket }));
+      return;
+    }
+    await this.client.send(new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }));
+  }
+
+  async getBucketCors(remotePath: string): Promise<string | null> {
+    const bucket = this.requireBucketOnly(remotePath);
+    try {
+      const output = await this.client.send(new GetBucketCorsCommand({ Bucket: bucket }));
+      return JSON.stringify(output.CORSRules ?? [], null, 2);
+    } catch (err: any) {
+      if (err?.name === 'NoSuchCORSConfiguration' || err?.Code === 'NoSuchCORSConfiguration') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async setBucketCors(remotePath: string, corsJson: string | null): Promise<void> {
+    const bucket = this.requireBucketOnly(remotePath);
+    if (!corsJson || !corsJson.trim()) {
+      await this.client.send(new DeleteBucketCorsCommand({ Bucket: bucket }));
+      return;
+    }
+    let rules: unknown;
+    try {
+      rules = JSON.parse(corsJson);
+    } catch {
+      throw new Error('Ogiltig JSON för CORS-regler');
+    }
+    if (!Array.isArray(rules)) {
+      throw new Error('CORS-regler måste vara en JSON-array av regler');
+    }
+    await this.client.send(
+      new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: { CORSRules: rules as any } })
+    );
+  }
+
+  async getBucketVersioning(remotePath: string): Promise<BucketVersioningInfo> {
+    const bucket = this.requireBucketOnly(remotePath);
+    const output = await this.client.send(new GetBucketVersioningCommand({ Bucket: bucket }));
+    return { status: (output.Status as BucketVersioningInfo['status']) ?? 'Disabled' };
+  }
+
+  async setBucketVersioning(remotePath: string, enabled: boolean): Promise<void> {
+    const bucket = this.requireBucketOnly(remotePath);
+    await this.client.send(
+      new PutBucketVersioningCommand({
+        Bucket: bucket,
+        VersioningConfiguration: { Status: enabled ? 'Enabled' : 'Suspended' },
+      })
+    );
+  }
+
+  async listObjectVersions(remotePath: string): Promise<ObjectVersionEntry[]> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket) {
+      throw new Error(`Kan inte lista versioner för roten: ${remotePath}`);
+    }
+
+    const results: ObjectVersionEntry[] = [];
+    let keyMarker: string | undefined;
+    let versionIdMarker: string | undefined;
+
+    do {
+      const output = await this.client.send(
+        new ListObjectVersionsCommand({
+          Bucket: bucket,
+          Prefix: key || undefined,
+          KeyMarker: keyMarker,
+          VersionIdMarker: versionIdMarker,
+        })
+      );
+
+      for (const v of output.Versions ?? []) {
+        if (key && v.Key !== key) continue;
+        results.push({
+          versionId: v.VersionId ?? '',
+          isLatest: Boolean(v.IsLatest),
+          isDeleteMarker: false,
+          size: v.Size ?? 0,
+          lastModified: v.LastModified ? formatDate(v.LastModified) : undefined,
+        });
+      }
+
+      for (const m of output.DeleteMarkers ?? []) {
+        if (key && m.Key !== key) continue;
+        results.push({
+          versionId: m.VersionId ?? '',
+          isLatest: Boolean(m.IsLatest),
+          isDeleteMarker: true,
+          size: 0,
+          lastModified: m.LastModified ? formatDate(m.LastModified) : undefined,
+        });
+      }
+
+      keyMarker = output.IsTruncated ? output.NextKeyMarker : undefined;
+      versionIdMarker = output.IsTruncated ? output.NextVersionIdMarker : undefined;
+    } while (keyMarker);
+
+    results.sort((a, b) => (a.lastModified ?? '') < (b.lastModified ?? '') ? 1 : -1);
+    return results;
+  }
+
+  async deleteObjectVersion(remotePath: string, versionId: string): Promise<void> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket || !key) {
+      throw new Error(`Kräver en objekt-sökväg: ${remotePath}`);
+    }
+    await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key, VersionId: versionId }));
+  }
+
+  async restoreObjectVersion(remotePath: string, versionId: string): Promise<void> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket || !key) {
+      throw new Error(`Kräver en objekt-sökväg: ${remotePath}`);
+    }
+    const encodedKey = key
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        CopySource: `${bucket}/${encodedKey}?versionId=${versionId}`,
+      })
+    );
   }
 
   async disconnect(): Promise<void> {

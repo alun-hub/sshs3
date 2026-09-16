@@ -2,14 +2,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
   ArrowUp,
+  Clipboard,
   Cloud,
+  FileJson,
+  FolderOpen,
   FolderPlus,
   HardDrive,
+  History,
+  Info,
   Pencil,
   RefreshCw,
   Search,
   Server,
   Shield,
+  Tag,
   Terminal,
   Trash2,
   X,
@@ -20,6 +26,11 @@ import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
 import { buildDragPayload, useDragDrop } from './DragDropLayer';
 import { ChmodModal } from './ChmodModal';
+import { PropertiesModal } from './PropertiesModal';
+import { TagsModal } from './TagsModal';
+import { BucketPolicyModal } from './BucketPolicyModal';
+import { VersionsModal } from './VersionsModal';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import type { PaneSide, PaneSource, SourceType } from './types';
 
 interface FilePaneProps {
@@ -56,8 +67,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [chmodOpen, setChmodOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [bucketPolicyOpen, setBucketPolicyOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
   const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
 
@@ -185,6 +201,101 @@ export const FilePane: React.FC<FilePaneProps> = ({
     },
     [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, endDrag]
   );
+
+  const supportsChmod = source.sourceType !== 's3';
+  const selectedEntries = entries.filter((e) => selectedPaths.has(e.path));
+
+  const isAtBucketRoot = source.sourceType === 's3' && (currentPath === '' || currentPath === '/');
+  const isBucketEntry =
+    isAtBucketRoot && selectedEntries.length === 1 && selectedEntries[0].isDirectory;
+  const isS3ObjectEntry =
+    source.sourceType === 's3' &&
+    !isAtBucketRoot &&
+    selectedEntries.length === 1 &&
+    !selectedEntries[0].isDirectory;
+
+  const contextMenuItems: ContextMenuItem[] =
+    contextMenu === null
+      ? []
+      : selectedEntries.length > 0
+        ? [
+            ...(selectedEntries.length === 1 && selectedEntries[0].isDirectory
+              ? [{ key: 'open', label: 'Öppna', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) }]
+              : []),
+            {
+              key: 'rename',
+              label: 'Byt namn',
+              icon: Pencil,
+              disabled: selectedEntries.length !== 1,
+              onSelect: handleRenameStart,
+            },
+            {
+              key: 'chmod',
+              label: 'Ändra rättigheter...',
+              icon: Shield,
+              disabled: !supportsChmod,
+              onSelect: () => setChmodOpen(true),
+            },
+            {
+              key: 'copy-path',
+              label: 'Kopiera sökväg',
+              icon: Clipboard,
+              disabled: selectedEntries.length !== 1,
+              onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
+            },
+            ...(source.sourceType === 's3'
+              ? [
+                  {
+                    key: 'copy-s3-uri',
+                    label: 'Kopiera S3-URI',
+                    icon: Clipboard,
+                    disabled: selectedEntries.length !== 1,
+                    onSelect: () => void navigator.clipboard.writeText(`s3:/${selectedEntries[0].path}`),
+                  },
+                  {
+                    key: 'tags',
+                    label: 'Taggar...',
+                    icon: Tag,
+                    disabled: !(isBucketEntry || isS3ObjectEntry),
+                    separatorBefore: true,
+                    onSelect: () => setTagsOpen(true),
+                  },
+                  {
+                    key: 'bucket-policy',
+                    label: 'Bucket-policy & CORS...',
+                    icon: FileJson,
+                    disabled: !isBucketEntry,
+                    onSelect: () => setBucketPolicyOpen(true),
+                  },
+                  {
+                    key: 'versioning',
+                    label: isBucketEntry ? 'Versionshantering...' : 'Objektversioner...',
+                    icon: History,
+                    disabled: !(isBucketEntry || isS3ObjectEntry),
+                    onSelect: () => setVersionsOpen(true),
+                  },
+                ]
+              : []),
+            {
+              key: 'properties',
+              label: 'Egenskaper',
+              icon: Info,
+              separatorBefore: source.sourceType !== 's3',
+              onSelect: () => setPropertiesOpen(true),
+            },
+            {
+              key: 'delete',
+              label: 'Ta bort',
+              icon: Trash2,
+              danger: true,
+              separatorBefore: true,
+              onSelect: () => void handleDelete(),
+            },
+          ]
+        : [
+            { key: 'newfolder', label: 'Ny mapp', icon: FolderPlus, onSelect: () => void handleNewFolder() },
+            { key: 'refresh', label: 'Uppdatera', icon: RefreshCw, onSelect: () => void load() },
+          ];
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
   const isReceivingForeignDrag = activeDrag !== null && activeDrag.fromPane !== side;
@@ -373,16 +484,68 @@ export const FilePane: React.FC<FilePaneProps> = ({
           renamingPath={renamingPath}
           onRenameCommit={handleRenameCommit}
           onRenameCancel={() => setRenamingPath(null)}
+          onEntryContextMenu={(_entry, e) => setContextMenu({ x: e.clientX, y: e.clientY })}
+          onPaneContextMenu={(e) => setContextMenu({ x: e.clientX, y: e.clientY })}
         />
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       <ChmodModal
         open={chmodOpen}
         providerId={source.providerId}
-        entries={entries.filter((e) => selectedPaths.has(e.path))}
+        entries={selectedEntries}
         onClose={() => setChmodOpen(false)}
         onSaved={() => void load()}
       />
+
+      <PropertiesModal
+        open={propertiesOpen}
+        providerId={source.providerId}
+        sourceType={source.sourceType}
+        entries={selectedEntries}
+        onClose={() => setPropertiesOpen(false)}
+        onSaved={() => void load()}
+      />
+
+      {(isBucketEntry || isS3ObjectEntry) && selectedEntries.length === 1 && (
+        <TagsModal
+          open={tagsOpen}
+          providerId={source.providerId}
+          targetPath={selectedEntries[0].path}
+          targetName={selectedEntries[0].name}
+          onClose={() => setTagsOpen(false)}
+        />
+      )}
+
+      {isBucketEntry && selectedEntries.length === 1 && (
+        <BucketPolicyModal
+          open={bucketPolicyOpen}
+          providerId={source.providerId}
+          bucketPath={selectedEntries[0].path}
+          bucketName={selectedEntries[0].name}
+          onClose={() => setBucketPolicyOpen(false)}
+        />
+      )}
+
+      {(isBucketEntry || isS3ObjectEntry) && selectedEntries.length === 1 && (
+        <VersionsModal
+          open={versionsOpen}
+          providerId={source.providerId}
+          mode={isBucketEntry ? 'bucket' : 'object'}
+          targetPath={selectedEntries[0].path}
+          targetName={selectedEntries[0].name}
+          onClose={() => setVersionsOpen(false)}
+          onSaved={() => void load()}
+        />
+      )}
     </div>
   );
 };

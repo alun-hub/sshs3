@@ -6,9 +6,13 @@ import type {
 } from './ssh';
 import type {
   FileEntry,
+  ObjectMetadata,
   TransferProgress,
   SFTPConfig,
   S3Config,
+  S3Tag,
+  BucketVersioningInfo,
+  ObjectVersionEntry,
 } from './storage';
 import type { SessionData } from './session';
 import type { AppSettings } from './settings';
@@ -41,6 +45,18 @@ export const IPC_CHANNELS = {
   STORAGE_DELETE: 'storage:delete',
   STORAGE_RENAME: 'storage:rename',
   STORAGE_CHMOD: 'storage:chmod',
+  STORAGE_SET_METADATA: 'storage:set-metadata',
+  STORAGE_GET_TAGS: 'storage:get-tags',
+  STORAGE_SET_TAGS: 'storage:set-tags',
+  STORAGE_GET_BUCKET_POLICY: 'storage:get-bucket-policy',
+  STORAGE_SET_BUCKET_POLICY: 'storage:set-bucket-policy',
+  STORAGE_GET_BUCKET_CORS: 'storage:get-bucket-cors',
+  STORAGE_SET_BUCKET_CORS: 'storage:set-bucket-cors',
+  STORAGE_GET_BUCKET_VERSIONING: 'storage:get-bucket-versioning',
+  STORAGE_SET_BUCKET_VERSIONING: 'storage:set-bucket-versioning',
+  STORAGE_LIST_OBJECT_VERSIONS: 'storage:list-object-versions',
+  STORAGE_DELETE_OBJECT_VERSION: 'storage:delete-object-version',
+  STORAGE_RESTORE_OBJECT_VERSION: 'storage:restore-object-version',
 
   // Transfer
   TRANSFER_ADD: 'transfer:add',
@@ -140,6 +156,18 @@ export interface MultiSSHApi {
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;
   storageChmod(providerId: string, remotePath: string, mode: number | string): Promise<void>;
+  storageSetMetadata(providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void>;
+  storageGetTags(providerId: string, remotePath: string): Promise<S3Tag[]>;
+  storageSetTags(providerId: string, remotePath: string, tags: S3Tag[]): Promise<void>;
+  storageGetBucketPolicy(providerId: string, bucketPath: string): Promise<string | null>;
+  storageSetBucketPolicy(providerId: string, bucketPath: string, policy: string | null): Promise<void>;
+  storageGetBucketCors(providerId: string, bucketPath: string): Promise<string | null>;
+  storageSetBucketCors(providerId: string, bucketPath: string, corsJson: string | null): Promise<void>;
+  storageGetBucketVersioning(providerId: string, bucketPath: string): Promise<BucketVersioningInfo>;
+  storageSetBucketVersioning(providerId: string, bucketPath: string, enabled: boolean): Promise<void>;
+  storageListObjectVersions(providerId: string, remotePath: string): Promise<ObjectVersionEntry[]>;
+  storageDeleteObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
+  storageRestoreObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
 
   // Transfer
   transferAdd(options: {

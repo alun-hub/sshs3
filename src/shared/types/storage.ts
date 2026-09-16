@@ -26,6 +26,29 @@ export interface WriteStreamOptions {
   size?: number;
 }
 
+export interface ObjectMetadata {
+  contentType?: string;
+}
+
+export interface S3Tag {
+  key: string;
+  value: string;
+}
+
+export type S3VersioningStatus = 'Enabled' | 'Suspended' | 'Disabled';
+
+export interface BucketVersioningInfo {
+  status: S3VersioningStatus;
+}
+
+export interface ObjectVersionEntry {
+  versionId: string;
+  isLatest: boolean;
+  isDeleteMarker: boolean;
+  size: number;
+  lastModified?: string;
+}
+
 export interface IStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -38,7 +61,20 @@ export interface IStorageProvider {
   createReadStream(remotePath: string, start?: number, end?: number): Promise<NodeJS.ReadableStream>;
   createWriteStream(remotePath: string, options?: WriteStreamOptions): Promise<NodeJS.WritableStream>;
   chmod?(remotePath: string, mode: number | string): Promise<void>;
+  setMetadata?(remotePath: string, metadata: ObjectMetadata): Promise<void>;
   disconnect?(): Promise<void>;
+  // S3-specific administration (buckets & objects)
+  getTags?(remotePath: string): Promise<S3Tag[]>;
+  setTags?(remotePath: string, tags: S3Tag[]): Promise<void>;
+  getBucketPolicy?(bucketPath: string): Promise<string | null>;
+  setBucketPolicy?(bucketPath: string, policy: string | null): Promise<void>;
+  getBucketCors?(bucketPath: string): Promise<string | null>;
+  setBucketCors?(bucketPath: string, corsJson: string | null): Promise<void>;
+  getBucketVersioning?(bucketPath: string): Promise<BucketVersioningInfo>;
+  setBucketVersioning?(bucketPath: string, enabled: boolean): Promise<void>;
+  listObjectVersions?(remotePath: string): Promise<ObjectVersionEntry[]>;
+  deleteObjectVersion?(remotePath: string, versionId: string): Promise<void>;
+  restoreObjectVersion?(remotePath: string, versionId: string): Promise<void>;
 }
 
 export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
