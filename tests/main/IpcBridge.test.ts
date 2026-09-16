@@ -609,10 +609,11 @@ describe('IpcBridge', () => {
         name: 'Conflict Target',
         type: 'local',
         stat: vi.fn().mockImplementation(async (p: string) => {
-          if (p === '/dst/exists.txt') {
+          const normalized = p.replace(/\\/g, '/');
+          if (normalized === '/dst/exists.txt') {
             return { name: 'exists.txt', path: p, size: 10, isDirectory: false };
           }
-          if (p === '/dst/exists (1).txt') {
+          if (normalized === '/dst/exists (1).txt') {
             return { name: 'exists (1).txt', path: p, size: 5, isDirectory: false };
           }
           throw new Error('ENOENT');
@@ -718,7 +719,7 @@ describe('IpcBridge', () => {
       // "exists.txt" and "exists (1).txt" both already exist on this fake
       // provider, so the resolver should have skipped to "exists (2).txt".
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
-        expect.objectContaining({ targetPath: '/dst/exists (2).txt' })
+        expect.objectContaining({ targetPath: path.join('/dst', 'exists (2).txt') })
       );
     });
 
