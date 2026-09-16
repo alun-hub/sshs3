@@ -24,8 +24,6 @@ Status som av 2026-09-15. Bygger på en genomgång av koden i `src/`, inte bara 
 Dessa är inte "features man kan välja bort" — de är luckor som en användare av ett
 konkurrerande verktyg skulle uppfatta som buggar eller dealbreakers.
 
-- **Profiler sparas i klartext** (`~/.config/multissh/profiles.json`, 0600 men
-  okrypterat). Lösenord, lösenfraser och PIN ligger olåst på disk.
 - **Ingen host key-verifiering för SFTP.** `ssh2` accepterar just nu vilken
   värdnyckel som helst utan att fråga eller jämföra mot `known_hosts` — en
   öppning för MITM. Terminalen är opåverkad (den riktiga `ssh`-binären sköter
@@ -46,9 +44,10 @@ att bygga.
 
 ### P0 — Säkerhet (bör lösas innan produkten används mot riktiga miljöer)
 
-- [ ] **1. Kryptera profilstore.** Master-lösenord eller integration mot OS-nyckelring
-   (libsecret på Linux, Credential Manager på Windows, Keychain på macOS) istället
-   för `fs.writeFile(..., JSON.stringify(...))` i klartext.
+- [x] **1. Kryptera profilstore.** Lösenord, lösenfraser, S3 secret key och session
+   token krypteras nu med Electrons `safeStorage` (libsecret/Keychain/DPAPI) innan
+   `profiles.json` skrivs till disk. Faller tillbaka till klartext med varning om
+   ingen OS-nyckelring finns tillgänglig, och läser fortfarande gamla klartextfiler.
 - [ ] **2. Host key-verifiering för SFTP.** Jämför mot `known_hosts` (kan återanvända
    samma fil som OpenSSH använder) och visa en TOFU-dialog ("värdnyckeln har
    ändrats, lita på den ändå?") istället för att tyst acceptera allt.

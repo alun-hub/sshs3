@@ -1,13 +1,75 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 
 export interface ProfilesData {
   ssh: SSHConnectionConfig[];
   s3: S3Config[];
+}
+
+const ENC_PREFIX = 'enc:v1:';
+
+const SSH_SECRET_FIELDS: Array<keyof SSHConnectionConfig> = ['password', 'passphrase'];
+const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
+
+/**
+ * Checks whether OS-backed encryption (libsecret/Keychain/DPAPI via Electron's
+ * safeStorage) is available in the current process. Returns false outside a
+ * running Electron app (e.g. under test) or when no OS keyring backend exists,
+ * in which case secrets are persisted in plaintext as a graceful fallback.
+ */
+function isEncryptionAvailable(): boolean {
+  try {
+    return typeof safeStorage?.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function encryptValue(value: string): string {
+  if (!value) return value;
+  try {
+    if (isEncryptionAvailable()) {
+      return ENC_PREFIX + safeStorage.encryptString(value).toString('base64');
+    }
+  } catch {
+    // Fall through and store as plaintext rather than losing the value.
+  }
+  return value;
+}
+
+function decryptValue(value: string): string {
+  if (typeof value !== 'string' || !value.startsWith(ENC_PREFIX)) {
+    return value;
+  }
+  try {
+    const buf = Buffer.from(value.slice(ENC_PREFIX.length), 'base64');
+    if (isEncryptionAvailable()) {
+      return safeStorage.decryptString(buf);
+    }
+  } catch {
+    // Undecryptable (e.g. moved to a machine/user without the original OS
+    // keyring entry) — fall through and return the raw stored value.
+  }
+  return value;
+}
+
+function transformSecretFields<T extends object>(
+  entry: T,
+  fields: Array<keyof T>,
+  transform: (value: string) => string
+): T {
+  const result: T = { ...entry };
+  for (const field of fields) {
+    const value = result[field];
+    if (typeof value === 'string' && value) {
+      result[field] = transform(value) as T[keyof T];
+    }
+  }
+  return result;
 }
 
 export class ProfileStore {
@@ -36,9 +98,11 @@ export class ProfileStore {
     try {
       const raw = await fs.readFile(this.filePath, 'utf-8');
       const data = JSON.parse(raw);
+      const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
+      const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
       return {
-        ssh: Array.isArray(data.ssh) ? data.ssh : [],
-        s3: Array.isArray(data.s3) ? data.s3 : [],
+        ssh: ssh.map((p) => transformSecretFields(p, SSH_SECRET_FIELDS, decryptValue)),
+        s3: s3.map((p) => transformSecretFields(p, S3_SECRET_FIELDS, decryptValue)),
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
@@ -117,8 +181,12 @@ export class ProfileStore {
   }
 
   private async persist(data: ProfilesData): Promise<void> {
+    const onDisk: ProfilesData = {
+      ssh: data.ssh.map((p) => transformSecretFields(p, SSH_SECRET_FIELDS, encryptValue)),
+      s3: data.s3.map((p) => transformSecretFields(p, S3_SECRET_FIELDS, encryptValue)),
+    };
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), {
+    await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {
       encoding: 'utf-8',
       mode: 0o600,
     });
