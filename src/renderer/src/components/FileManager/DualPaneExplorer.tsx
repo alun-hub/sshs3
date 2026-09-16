@@ -19,7 +19,11 @@ interface PaneState {
   path: string;
 }
 
-export const DualPaneExplorer: React.FC = () => {
+interface DualPaneExplorerProps {
+  onOpenTerminal?: (config: SSHConnectionConfig, path: string) => void;
+}
+
+export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTerminal }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
@@ -274,6 +278,21 @@ export const DualPaneExplorer: React.FC = () => {
     [connectionRequest]
   );
 
+  const handleOpenTerminal = useCallback(
+    async (providerId: string, path: string) => {
+      if (!onOpenTerminal || !providerId.startsWith('sftp-')) return;
+      const sshId = providerId.slice('sftp-'.length);
+      const profiles = await window.multissh.profilesGet?.();
+      const sshProfile = profiles?.ssh?.find((p) => p.id === sshId);
+      if (!sshProfile) {
+        window.alert('Kunde inte hitta SSH-profilen för den här SFTP-anslutningen');
+        return;
+      }
+      onOpenTerminal(sshProfile, path);
+    },
+    [onOpenTerminal]
+  );
+
   const handleTransferRequested = useCallback(
     (targetSide: PaneSide, params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => {
       const targetProviderId = panes[targetSide].source.providerId;
@@ -318,6 +337,7 @@ export const DualPaneExplorer: React.FC = () => {
             onPathChange={(path) => setPanePath('left', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('left', type)}
             onTransferRequested={(params) => handleTransferRequested('left', params)}
+            onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.left.source.providerId, path) : undefined}
             refreshToken={refreshToken}
           />
           <FilePane
@@ -327,6 +347,7 @@ export const DualPaneExplorer: React.FC = () => {
             onPathChange={(path) => setPanePath('right', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('right', type)}
             onTransferRequested={(params) => handleTransferRequested('right', params)}
+            onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.right.source.providerId, path) : undefined}
             refreshToken={refreshToken}
           />
         </div>

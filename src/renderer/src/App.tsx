@@ -16,6 +16,7 @@ export interface AppTab extends TabItem {
   config?: SSHConnectionConfig;
   splitLayout?: SplitLayout;
   panes?: TerminalPaneConfig[];
+  initialCwd?: string;
 }
 
 export const App: React.FC = () => {
@@ -183,6 +184,23 @@ export const App: React.FC = () => {
     );
     setConnectTarget(null);
   };
+
+  const handleOpenTerminalAt = useCallback(
+    (config: SSHConnectionConfig, path: string) => {
+      const newId = `term-${Date.now()}`;
+      const newTab: AppTab = {
+        id: newId,
+        type: 'terminal',
+        title: config.name,
+        config,
+        initialCwd: path,
+      };
+      setTermCounter((c) => c + 1);
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newId);
+    },
+    []
+  );
 
   const handleOpenProfiles = () => {
     setProfilesModalOpen(true);
@@ -441,6 +459,7 @@ export const App: React.FC = () => {
                             fontSize={settings.terminalFontSize}
                             fontFamily={settings.terminalFontFamily}
                             theme={settings.theme}
+                            initialCwd={tab.initialCwd}
                           />
                         ) : (
                           <div
@@ -521,7 +540,7 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   <div data-testid={`filemanager-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">
-                    <DualPaneExplorer />
+                    <DualPaneExplorer onOpenTerminal={handleOpenTerminalAt} />
                   </div>
                 )}
               </div>

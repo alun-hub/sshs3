@@ -12,6 +12,12 @@ export interface TerminalViewProps {
   fontSize?: number;
   fontFamily?: string;
   theme?: 'dark' | 'light' | 'system';
+  /** Remote directory to `cd` into once the shell prompt appears (sent once, after first PTY output). */
+  initialCwd?: string;
+}
+
+function shellQuote(path: string): string {
+  return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
 const XTERM_LIGHT_THEME = {
@@ -70,6 +76,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontSize = 13,
   fontFamily = 'Menlo, Monaco, "Courier New", monospace, Consolas',
   theme = 'dark',
+  initialCwd,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -77,6 +84,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const sessionIdRef = useRef<string | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const initialCwdRef = useRef(initialCwd);
+  initialCwdRef.current = initialCwd;
 
   // Focus and fit when becoming active
   useEffect(() => {
@@ -164,6 +173,24 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           }
           sessionIdRef.current = sessionId;
 
+          // 2b. If requested, cd into a starting directory once the remote
+          // shell has had a moment to print its prompt. There's no "wait for
+          // prompt" signal from the PTY, so we send it shortly after the
+          // first data arrives from the remote side.
+          let cwdSent = false;
+          const sendInitialCwd = () => {
+            if (cwdSent) return;
+            cwdSent = true;
+            const cwd = initialCwdRef.current;
+            if (cwd && sessionIdRef.current && window.multissh?.terminalWrite) {
+              setTimeout(() => {
+                if (!isDisposed && sessionIdRef.current) {
+                  window.multissh.terminalWrite(sessionIdRef.current, `cd ${shellQuote(cwd)}\n`);
+                }
+              }, 400);
+            }
+          };
+
           // 3. User input to PTY
           term.onData((data) => {
             if (sessionIdRef.current && window.multissh?.terminalWrite) {
@@ -176,6 +203,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             unsubData = window.multissh.onTerminalData((sessId, data) => {
               if (sessId === sessionIdRef.current) {
                 term.write(data);
+                sendInitialCwd();
               }
             });
           }

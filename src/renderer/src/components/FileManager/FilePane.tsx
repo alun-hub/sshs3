@@ -10,6 +10,7 @@ import {
   Search,
   Server,
   Shield,
+  Terminal,
   Trash2,
   X,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ interface FilePaneProps {
   onPathChange: (path: string) => void;
   onSourceTypeRequest: (type: SourceType) => void;
   onTransferRequested: (params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => void;
+  onOpenTerminal?: (path: string) => void;
   refreshToken: number;
 }
 
@@ -44,6 +46,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onPathChange,
   onSourceTypeRequest,
   onTransferRequested,
+  onOpenTerminal,
   refreshToken,
 }) => {
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -280,6 +283,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
           <Search className="h-4 w-4" />
         </button>
+        {source.sourceType === 'sftp' && onOpenTerminal && (
+          <button
+            type="button"
+            title="Öppna terminal här"
+            onClick={() => onOpenTerminal(currentPath)}
+            className="rounded p-1 text-slate-300 hover:bg-slate-700"
+          >
+            <Terminal className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {showFilter && (
