@@ -336,6 +336,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Bucket: bucket,
         Key: folderKey,
         Body: '',
+        ContentLength: 0,
       })
     );
   }
@@ -474,7 +475,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
   async createWriteStream(
     remotePath: string,
-    _options?: WriteStreamOptions,
+    options?: WriteStreamOptions,
   ): Promise<NodeJS.WritableStream> {
     const { bucket, key } = parseS3Path(remotePath);
 
@@ -490,7 +491,18 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Key: key,
         Body: passThrough,
         ContentType: getMimeType(key),
+        ...(options?.size !== undefined && options.size >= 0
+          ? { ContentLength: options.size }
+          : {}),
       },
+    });
+
+    // Start consuming stream data immediately to avoid backpressure deadlocks
+    const uploadPromise = upload.done();
+    uploadPromise.catch((err) => {
+      if (!passThrough.destroyed) {
+        passThrough.destroy(err);
+      }
     });
 
     const originalFinal = passThrough._final.bind(passThrough);
@@ -498,7 +510,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       originalFinal(async (err) => {
         if (err) return callback(err);
         try {
-          await upload.done();
+          await uploadPromise;
           callback();
         } catch (uploadErr: any) {
           callback(uploadErr);

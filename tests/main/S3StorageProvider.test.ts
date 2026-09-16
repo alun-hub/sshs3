@@ -666,6 +666,7 @@ describe('S3StorageProvider', () => {
             Bucket: 'my-bucket',
             Key: 'nested/virtual-folder/',
             Body: '',
+            ContentLength: 0,
           });
           return {};
         }
@@ -680,6 +681,7 @@ describe('S3StorageProvider', () => {
       clientSendMock.mockImplementationOnce(async (command: any) => {
         if (command instanceof PutObjectCommand) {
           expect(command.input.Key).toBe('subfolder/');
+          expect(command.input.ContentLength).toBe(0);
           return {};
         }
         throw new Error(`Unexpected command: ${command.constructor.name}`);
@@ -1030,6 +1032,27 @@ describe('S3StorageProvider', () => {
 
       const receivedError = await errorPromise;
       expect(receivedError).toBe(uploadError);
+    });
+
+    it('should pass ContentLength when size option is provided and start upload immediately', async () => {
+      uploadDoneMock = vi.fn().mockResolvedValue({ Location: 'https://s3.amazonaws.com/bucket/sized.bin' });
+
+      const writeStream = await provider.createWriteStream('/my-bucket/sized.bin', { size: 1048576 });
+      expect(writeStream).toBeInstanceOf(PassThrough);
+
+      expect(uploadParamsMock.params).toEqual(
+        expect.objectContaining({
+          Bucket: 'my-bucket',
+          Key: 'sized.bin',
+          ContentLength: 1048576,
+        })
+      );
+
+      // upload.done() is called immediately to consume the stream and prevent deadlock
+      expect(uploadDoneMock).toHaveBeenCalledTimes(1);
+
+      writeStream.end();
+      await new Promise<void>((resolve) => writeStream.on('finish', resolve));
     });
 
     it('should abort upload when stream emits error', async () => {

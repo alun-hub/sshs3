@@ -127,7 +127,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
 
         {isMenuOpen && (
-          <div className="absolute top-8 left-0 z-50 min-w-[160px] rounded-md border border-slate-700 bg-slate-800 p-1 shadow-xl">
+          <div className="absolute top-8 right-0 z-50 min-w-[160px] whitespace-nowrap rounded-md border border-slate-700 bg-slate-800 p-1 shadow-xl">
             <button
               type="button"
               data-testid="new-terminal-btn"
