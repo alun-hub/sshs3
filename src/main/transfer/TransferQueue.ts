@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import path from 'node:path';
 import {
   PauseController,
   TransferPipeline,
+  getBaseName,
+  isDirectoryPath,
+  joinPaths,
   type TransferOptions,
 } from './TransferPipeline';
 import type {
@@ -90,6 +92,31 @@ export class TransferQueue extends EventEmitter {
     return this.jobs.filter((j) => j.progress.status === 'pending');
   }
 
+  getActiveTransferCount(): number {
+    return this.jobs.filter(
+      (j) =>
+        j.progress.status === 'pending' ||
+        j.progress.status === 'running' ||
+        j.progress.status === 'paused'
+    ).length;
+  }
+
+  hasActiveTransfers(): boolean {
+    return this.getActiveTransferCount() > 0;
+  }
+
+  cancelAll(): void {
+    for (const job of this.jobs) {
+      if (
+        job.progress.status === 'pending' ||
+        job.progress.status === 'running' ||
+        job.progress.status === 'paused'
+      ) {
+        this.cancelJob(job.id);
+      }
+    }
+  }
+
   addJob(options: TransferJobOptions): TransferJob {
     const id = options.id ?? crypto.randomUUID();
     if (this.contexts.has(id)) {
@@ -97,7 +124,7 @@ export class TransferQueue extends EventEmitter {
     }
 
     const fileName =
-      path.basename(options.sourcePath) || options.sourcePath || 'job';
+      getBaseName(options.sourcePath) || options.sourcePath || 'job';
 
     const progress: TransferProgress = {
       jobId: id,
@@ -315,12 +342,35 @@ export class TransferQueue extends EventEmitter {
     this.emit('progress', job.progress, job);
 
     try {
+      if (!job.isDirectory) {
+        try {
+          const srcStat = await job.sourceProvider.stat(job.sourcePath);
+          if (srcStat.isDirectory) {
+            job.isDirectory = true;
+          }
+          if (
+            (job.progress.totalBytes === undefined || job.progress.totalBytes === 0) &&
+            srcStat.size > 0
+          ) {
+            job.progress.totalBytes = srcStat.size;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      let resolvedTargetPath = job.targetPath;
+      const baseName = getBaseName(job.sourcePath);
+      if (baseName && (await isDirectoryPath(job.targetProvider, resolvedTargetPath))) {
+        resolvedTargetPath = joinPaths(job.targetProvider.type, resolvedTargetPath, baseName);
+      }
+
       const transferOptions: TransferOptions = {
         jobId: job.id,
         sourceProvider: job.sourceProvider,
         sourcePath: job.sourcePath,
         targetProvider: job.targetProvider,
-        targetPath: job.targetPath,
+        targetPath: resolvedTargetPath,
         totalBytes: job.progress.totalBytes,
         signal: abortController.signal,
         pauseController,

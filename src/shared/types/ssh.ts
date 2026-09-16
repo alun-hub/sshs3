@@ -13,6 +13,7 @@ export interface SSHConnectionConfig {
   pkcs11LibPath?: string; // path to .so or .dll
   agentPath?: string;
   extraOptions?: Record<string, string>;
+  initialPath?: string;
 }
 
 export interface DetectedSmartcardLib {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FolderOpen, Loader2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
 
 interface S3ProfileFormProps {
@@ -23,10 +23,33 @@ function emptyConfig(): S3Config {
 
 export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, onCancel }) => {
   const [config, setConfig] = useState<S3Config>(initial ?? emptyConfig());
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const selfSigned = config.rejectUnauthorized === false;
 
   const update = <K extends keyof S3Config>(key: K, value: S3Config[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
+    if (testResult) setTestResult(null);
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await window.multissh.testS3Connection(config);
+      if (res.success) {
+        setTestResult({ success: true, message: 'Anslutningen till S3 lyckades!' });
+      } else {
+        setTestResult({ success: false, message: res.error || 'Anslutningen misslyckades' });
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Kunde inte testa anslutningen',
+      });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const browseForCa = async () => {
@@ -74,6 +97,16 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
           onChange={(e) => update('endpoint', e.target.value)}
           className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
           placeholder="t.ex. https://minio.internal:9000 eller NetApp StorageGRID-URL"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 text-xs text-slate-400">
+        Startsökväg (valfritt)
+        <input
+          value={config.initialPath ?? ''}
+          onChange={(e) => update('initialPath', e.target.value)}
+          className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+          placeholder="t.ex. bucket-namn eller bucket-namn/mapp (standard: /)"
         />
       </label>
 
@@ -159,21 +192,50 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         )}
       </div>
 
-      <div className="mt-2 flex justify-end gap-2">
+      {testResult && (
+        <div
+          className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-xs ${
+            testResult.success
+              ? 'border border-emerald-800 bg-emerald-950/60 text-emerald-300'
+              : 'border border-red-800 bg-red-950/60 text-red-300'
+          }`}
+        >
+          {testResult.success ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" />
+          )}
+          <span className="truncate">{testResult.message}</span>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center justify-between">
         <button
           type="button"
-          onClick={onCancel}
-          className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+          disabled={!config.region.trim() || !config.accessKeyId.trim() || !config.secretAccessKey.trim() || testing}
+          onClick={() => void handleTestConnection()}
+          className="flex items-center gap-1.5 rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40"
         >
-          Avbryt
+          {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {testing ? 'Testar...' : 'Testa anslutning'}
         </button>
-        <button
-          type="submit"
-          disabled={!isValid}
-          className="rounded bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-40"
-        >
-          Spara profil
-        </button>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+          >
+            Avbryt
+          </button>
+          <button
+            type="submit"
+            disabled={!isValid}
+            className="rounded bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+          >
+            Spara profil
+          </button>
+        </div>
       </div>
     </form>
   );

@@ -256,6 +256,91 @@ describe('SFTPStorageProvider', () => {
       );
     });
 
+    it('falls back to ssh-agent when authType is password but no password was configured', async () => {
+      // e.g. a saved profile where the user relies on their own ssh-agent /
+      // ~/.ssh/config for the real terminal session and just never filled in
+      // a password - matches what the terminal's OpenSSH client already does.
+      const origSock = process.env.SSH_AUTH_SOCK;
+      process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
+
+      try {
+        const provider = new SFTPStorageProvider({
+          ...baseConfig,
+          authType: 'password',
+          password: undefined,
+        });
+
+        await provider.ensureConnected();
+
+        expect(mockConnect).toHaveBeenCalledTimes(1);
+        expect(mockConnect).toHaveBeenCalledWith(
+          expect.objectContaining({ agent: '/run/user/1000/keyring/ssh' }),
+        );
+      } finally {
+        if (origSock !== undefined) {
+          process.env.SSH_AUTH_SOCK = origSock;
+        } else {
+          delete process.env.SSH_AUTH_SOCK;
+        }
+      }
+    });
+
+    it('falls back to a default identity file when no agent socket is available', async () => {
+      const origSock = process.env.SSH_AUTH_SOCK;
+      delete process.env.SSH_AUTH_SOCK;
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
+
+      try {
+        await fs.mkdir(path.join(tempDir, '.ssh'), { recursive: true });
+        await fs.writeFile(path.join(tempDir, '.ssh', 'id_ed25519'), 'DEFAULT_ED25519_KEY', 'utf8');
+
+        const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'agent' });
+        await provider.ensureConnected();
+
+        expect(mockConnect).toHaveBeenCalledTimes(1);
+        const callArg = mockConnect.mock.calls[0][0];
+        expect(callArg.privateKey.toString()).toBe('DEFAULT_ED25519_KEY');
+      } finally {
+        homedirSpy.mockRestore();
+        if (origSock !== undefined) {
+          process.env.SSH_AUTH_SOCK = origSock;
+        } else {
+          delete process.env.SSH_AUTH_SOCK;
+        }
+      }
+    });
+
+    it('tries the next fallback candidate when the first one fails to authenticate', async () => {
+      const origSock = process.env.SSH_AUTH_SOCK;
+      process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
+
+      try {
+        await fs.mkdir(path.join(tempDir, '.ssh'), { recursive: true });
+        await fs.writeFile(path.join(tempDir, '.ssh', 'id_ed25519'), 'DEFAULT_ED25519_KEY', 'utf8');
+
+        mockConnect
+          .mockRejectedValueOnce(new Error('agent auth rejected'))
+          .mockResolvedValueOnce(undefined);
+
+        const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'agent' });
+        await provider.ensureConnected();
+
+        expect(mockConnect).toHaveBeenCalledTimes(2);
+        expect(mockConnect.mock.calls[0][0]).toEqual(
+          expect.objectContaining({ agent: '/run/user/1000/keyring/ssh' }),
+        );
+        expect(mockConnect.mock.calls[1][0].privateKey.toString()).toBe('DEFAULT_ED25519_KEY');
+      } finally {
+        homedirSpy.mockRestore();
+        if (origSock !== undefined) {
+          process.env.SSH_AUTH_SOCK = origSock;
+        } else {
+          delete process.env.SSH_AUTH_SOCK;
+        }
+      }
+    });
+
     it('should default port to 22 if not specified', async () => {
       const configWithoutPort = { ...baseConfig };
       delete (configWithoutPort as any).port;

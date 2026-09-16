@@ -46,6 +46,15 @@ export const DualPaneExplorer: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const unsub = window.multissh.onTransferProgress((progress) => {
+      if (progress.status === 'completed') {
+        setRefreshToken((t) => t + 1);
+      }
+    });
+    return unsub;
+  }, []);
+
   const setPanePath = useCallback((side: PaneSide, path: string) => {
     setPanes((prev) => ({ ...prev, [side]: { ...prev[side], path } }));
   }, []);
@@ -85,12 +94,14 @@ export const DualPaneExplorer: React.FC = () => {
           agentPath: config.agentPath,
           pkcs11LibPath: config.pkcs11LibPath,
           pin,
+          initialPath: config.initialPath,
         };
+        const initialPath = config.initialPath?.trim() || '/';
         const providerId = `sftp-${config.id}`;
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
         setPanes((prev) => ({
           ...prev,
-          [side]: { source: { providerId, sourceType: 'sftp', label: config.name }, path: '/' },
+          [side]: { source: { providerId, sourceType: 'sftp', label: config.name }, path: initialPath },
         }));
         setConnectionRequest(null);
       } catch (err) {
@@ -108,11 +119,12 @@ export const DualPaneExplorer: React.FC = () => {
       const { side } = connectionRequest;
       setConnecting(true);
       try {
+        const initialPath = config.initialPath?.trim() || '/';
         const providerId = `s3-${config.id}`;
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 's3', s3Config: config });
         setPanes((prev) => ({
           ...prev,
-          [side]: { source: { providerId, sourceType: 's3', label: config.name }, path: '/' },
+          [side]: { source: { providerId, sourceType: 's3', label: config.name }, path: initialPath },
         }));
         setConnectionRequest(null);
       } catch (err) {

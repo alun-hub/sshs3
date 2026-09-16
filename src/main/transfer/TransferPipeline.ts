@@ -239,6 +239,45 @@ export function joinPaths(
 }
 
 /**
+ * Extract filename or folder name from a POSIX or Windows path.
+ */
+export function getBaseName(filePath: string): string {
+  if (!filePath) return '';
+  const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash >= 0) {
+    return normalized.slice(lastSlash + 1);
+  }
+  return normalized;
+}
+
+/**
+ * Check if a path is or should be considered a directory on a storage provider.
+ */
+export async function isDirectoryPath(
+  provider: IStorageProvider,
+  targetPath: string
+): Promise<boolean> {
+  const norm = targetPath.trim();
+  if (
+    norm === '' ||
+    norm === '/' ||
+    norm === '.' ||
+    norm === '..' ||
+    norm.endsWith('/') ||
+    norm.endsWith('\\')
+  ) {
+    return true;
+  }
+  try {
+    const entry = await provider.stat(targetPath);
+    return Boolean(entry.isDirectory);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Transfer a single file directly between storage providers via Node.js memory streams.
  */
 export async function transferFile(options: TransferOptions): Promise<void> {
@@ -249,7 +288,20 @@ export async function transferFile(options: TransferOptions): Promise<void> {
   }
 
   const fileName =
-    path.basename(options.sourcePath) || options.sourcePath || 'file';
+    getBaseName(options.sourcePath) || options.sourcePath || 'file';
+
+  let resolvedTargetPath = options.targetPath;
+  const isTargetDir = await isDirectoryPath(
+    options.targetProvider,
+    resolvedTargetPath
+  );
+  if (isTargetDir && fileName) {
+    resolvedTargetPath = joinPaths(
+      options.targetProvider.type,
+      resolvedTargetPath,
+      fileName
+    );
+  }
 
   let totalBytes = options.totalBytes;
   if (totalBytes === undefined || totalBytes < 0) {
@@ -274,7 +326,7 @@ export async function transferFile(options: TransferOptions): Promise<void> {
     }
 
     writeStream = await options.targetProvider.createWriteStream(
-      options.targetPath,
+      resolvedTargetPath,
       { size: totalBytes }
     );
 

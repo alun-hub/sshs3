@@ -54,6 +54,7 @@ export interface SFTPConfig {
   agentPath?: string;
   pkcs11LibPath?: string;
   pin?: string;
+  initialPath?: string;
 }
 
 export interface S3Config {
@@ -68,4 +69,5 @@ export interface S3Config {
   ssl?: boolean;
   rejectUnauthorized?: boolean;
   customCaPath?: string;
+  initialPath?: string;
 }

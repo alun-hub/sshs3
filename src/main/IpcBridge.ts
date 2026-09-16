@@ -1,10 +1,18 @@
 import crypto from 'node:crypto';
 import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
+import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { StorageRegistry } from './storage/StorageRegistry';
+import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
+import { S3StorageProvider } from './storage/S3StorageProvider';
 import { TransferQueue } from './transfer/TransferQueue';
+import {
+  getBaseName,
+  isDirectoryPath,
+  joinPaths,
+} from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
 import {
   IPC_CHANNELS,
@@ -71,6 +79,7 @@ export class IpcBridge {
     this.registerStorageHandlers();
     this.registerTransferHandlers();
     this.registerProfileHandlers();
+    this.registerConnectionTestHandlers();
     this.registerGeneralHandlers();
     this.setupEventListeners();
   }
@@ -239,11 +248,29 @@ export class IpcBridge {
           throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
         }
 
+        let isDirectory = false;
+        let totalBytes: number | undefined;
+        try {
+          const srcStat = await sourceProvider.stat(options.sourcePath);
+          isDirectory = Boolean(srcStat.isDirectory);
+          totalBytes = srcStat.size;
+        } catch {
+          // ignore error if stat not available
+        }
+
+        let resolvedTargetPath = options.targetPath;
+        const sourceBaseName = getBaseName(options.sourcePath);
+        if (sourceBaseName && (await isDirectoryPath(targetProvider, resolvedTargetPath))) {
+          resolvedTargetPath = joinPaths(targetProvider.type, resolvedTargetPath, sourceBaseName);
+        }
+
         const job = this.transferQueue.addJob({
           sourceProvider,
           sourcePath: options.sourcePath,
           targetProvider,
-          targetPath: options.targetPath,
+          targetPath: resolvedTargetPath,
+          isDirectory,
+          totalBytes,
         });
 
         return { jobId: job.id };
@@ -301,6 +328,78 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_DELETE_S3,
       async (_event, id: string) => {
         await this.profileStore.deleteS3(id);
+      }
+    );
+  }
+
+  private registerConnectionTestHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.CONNECTION_TEST_SSH,
+      async (_event, config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> => {
+        if (!config || !config.host?.trim()) {
+          return { success: false, error: 'Värdnamn / IP saknas' };
+        }
+        if (!config.username?.trim()) {
+          return { success: false, error: 'Användarnamn saknas' };
+        }
+
+        if (config.authType === 'smartcard') {
+          if (!config.pkcs11LibPath?.trim()) {
+            return { success: false, error: 'PKCS#11-bibliotekssökväg saknas' };
+          }
+          const valid = await SmartcardDetector.validateLibraryPath(config.pkcs11LibPath);
+          if (!valid) {
+            return { success: false, error: `Smartcard-biblioteket finns inte: ${config.pkcs11LibPath}` };
+          }
+          return { success: true };
+        }
+
+        try {
+          const provider = new SFTPStorageProvider({
+            id: `test-${crypto.randomUUID()}`,
+            name: 'Test SSH',
+            host: config.host,
+            port: config.port ?? 22,
+            username: config.username,
+            authType: config.authType,
+            password: config.password,
+            privateKeyPath: config.privateKeyPath,
+            passphrase: config.passphrase,
+            agentPath: config.agentPath,
+            pkcs11LibPath: config.pkcs11LibPath,
+          });
+          await provider.ensureConnected();
+          await provider.disconnect?.();
+          return { success: true };
+        } catch (err: any) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.CONNECTION_TEST_S3,
+      async (_event, config: S3Config): Promise<{ success: boolean; error?: string }> => {
+        if (!config || !config.region?.trim() || !config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
+          return { success: false, error: 'Region, Access Key ID och Secret Access Key krävs' };
+        }
+        try {
+          const provider = new S3StorageProvider({
+            ...config,
+            id: `test-${crypto.randomUUID()}`,
+            name: 'Test S3',
+          });
+          await provider.client.send(new ListBucketsCommand({}));
+          return { success: true };
+        } catch (err: any) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
       }
     );
   }
@@ -398,6 +497,7 @@ export class IpcBridge {
     if (this.onTransferProgress) {
       this.transferQueue.off('progress', this.onTransferProgress);
     }
+    this.transferQueue?.cancelAll?.();
 
     for (const prompt of this.pendingAskpass.values()) {
       try {

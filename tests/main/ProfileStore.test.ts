@@ -208,4 +208,29 @@ describe('ProfileStore', () => {
     expect(profiles.ssh).toHaveLength(2);
     expect(profiles.s3).toHaveLength(2);
   });
+
+  it('preserves initialPath for both SSH and S3 profiles', async () => {
+    const store = new ProfileStore(storePath);
+    await store.saveSSH({
+      id: 'ssh-custom-path',
+      name: 'Server with custom start dir',
+      host: 'example.com',
+      username: 'user',
+      authType: 'password',
+      initialPath: '/var/www/html',
+    });
+
+    await store.saveS3({
+      id: 's3-custom-path',
+      name: 'Bucket with prefix',
+      region: 'eu-west-1',
+      accessKeyId: 'key',
+      secretAccessKey: 'sec',
+      initialPath: 'my-bucket/backups/2026',
+    });
+
+    const profiles = await store.getProfiles();
+    expect(profiles.ssh.find((p) => p.id === 'ssh-custom-path')?.initialPath).toBe('/var/www/html');
+    expect(profiles.s3.find((p) => p.id === 's3-custom-path')?.initialPath).toBe('my-bucket/backups/2026');
+  });
 });

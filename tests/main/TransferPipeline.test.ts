@@ -10,6 +10,9 @@ import {
   transferDirectory,
   ByteMeter,
   PauseController,
+  getBaseName,
+  isDirectoryPath,
+  joinPaths,
 } from '../../src/main/transfer/TransferPipeline';
 import {
   TransferQueue,
@@ -243,6 +246,40 @@ describe('TransferPipeline', () => {
 
       const written = await fs.readFile(path.join(targetDir, 'local-file.bin'));
       expect(written.equals(content)).toBe(true);
+    });
+
+    it('should resolve destination path when targetPath is an existing directory or ends with slash', async () => {
+      const fileName = 'hello-target-dir.txt';
+      const fileContent = 'resolving to existing directory';
+      await fs.writeFile(path.join(sourceDir, fileName), fileContent, 'utf-8');
+
+      // Create a subfolder in targetDir
+      await fs.mkdir(path.join(targetDir, 'subfolder'), { recursive: true });
+
+      // Transfer with targetPath set to the directory (without filename)
+      await transferFile({
+        sourceProvider: sourceLocal,
+        sourcePath: fileName,
+        targetProvider: targetLocal,
+        targetPath: 'subfolder',
+      });
+
+      const written = await fs.readFile(path.join(targetDir, 'subfolder', fileName), 'utf-8');
+      expect(written).toBe(fileContent);
+    });
+
+    it('should correctly extract baseName and detect directory paths', async () => {
+      expect(getBaseName('/home/alun/secret')).toBe('secret');
+      expect(getBaseName('C:\\Users\\alun\\secret.out')).toBe('secret.out');
+      expect(getBaseName('/home/alun/folder/')).toBe('folder');
+      expect(getBaseName('')).toBe('');
+
+      expect(await isDirectoryPath(targetLocal, '')).toBe(true);
+      expect(await isDirectoryPath(targetLocal, '/')).toBe(true);
+      expect(await isDirectoryPath(targetLocal, 'nonexistent-folder/')).toBe(true);
+
+      expect(joinPaths('sftp', '/home/alun', 'secret')).toBe('/home/alun/secret');
+      expect(joinPaths('sftp', '/', 'secret')).toBe('/secret');
     });
 
     it('should support TransferPipeline class static and instance methods', async () => {
@@ -886,5 +923,38 @@ describe('TransferQueue', () => {
     // Verify subsequent job still ran and succeeded!
     expect(goodJob.progress.status).toBe('completed');
     expect(targetProvider.files.get('valid.txt')?.toString()).toBe('healthy');
+  });
+
+  it('should track active transfers count and allow cancelling all', async () => {
+    // Large payload to keep it running
+    sourceProvider.files.set('large1.bin', Buffer.alloc(1024 * 1024));
+    sourceProvider.files.set('large2.bin', Buffer.alloc(1024 * 1024));
+
+    const queue = new TransferQueue({ concurrency: 1 });
+    expect(queue.hasActiveTransfers()).toBe(false);
+    expect(queue.getActiveTransferCount()).toBe(0);
+
+    const job1 = queue.addJob({
+      sourceProvider,
+      sourcePath: 'large1.bin',
+      targetProvider,
+      targetPath: 'large1.bin',
+    });
+    const job2 = queue.addJob({
+      sourceProvider,
+      sourcePath: 'large2.bin',
+      targetProvider,
+      targetPath: 'large2.bin',
+    });
+
+    expect(queue.hasActiveTransfers()).toBe(true);
+    expect(queue.getActiveTransferCount()).toBe(2);
+
+    queue.cancelAll();
+
+    expect(job1.progress.status === 'cancelled' || job2.progress.status === 'cancelled').toBe(true);
+    await queue.waitForAll().catch(() => {});
+    expect(queue.getActiveTransferCount()).toBe(0);
+    expect(queue.hasActiveTransfers()).toBe(false);
   });
 });

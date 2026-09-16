@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
@@ -8,6 +8,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
 let ipcBridge: IpcBridge | null = null;
 let isQuitting = false;
+
+function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): boolean {
+  const activeCount = ipcBridge?.transferQueue.getActiveTransferCount() ?? 0;
+  if (activeCount > 0) {
+    const options: Electron.MessageBoxSyncOptions = {
+      type: 'warning',
+      buttons: ['Avbryt', 'Avsluta ändå'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Pågående överföringar',
+      message: `Det finns ${activeCount} pågående filöverföring(ar).`,
+      detail: 'Om du avslutar nu kommer överföringarna att avbrytas och filer kan bli ofullständiga.',
+    };
+    const choice = parentWindow
+      ? dialog.showMessageBoxSync(parentWindow, options)
+      : dialog.showMessageBoxSync(options);
+    if (choice === 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 function createWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -22,6 +44,15 @@ function createWindow(): BrowserWindow {
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+    if (!confirmQuitIfActiveTransfers(mainWindow)) {
+      event.preventDefault();
+      return;
+    }
+    isQuitting = true;
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -54,16 +85,22 @@ function initializeApp(): void {
 app.whenReady().then(initializeApp);
 
 app.on('before-quit', async (event) => {
-  if (!isQuitting && ipcBridge) {
-    event.preventDefault();
-    isQuitting = true;
-    try {
-      await ipcBridge.dispose();
-    } catch {
-      // ignore
+  if (!isQuitting) {
+    if (!confirmQuitIfActiveTransfers(mainWindow)) {
+      event.preventDefault();
+      return;
     }
-    ipcBridge = null;
-    app.quit();
+    isQuitting = true;
+    if (ipcBridge) {
+      event.preventDefault();
+      try {
+        await ipcBridge.dispose();
+      } catch {
+        // ignore
+      }
+      ipcBridge = null;
+      app.quit();
+    }
   }
 });
 

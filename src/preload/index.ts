@@ -138,6 +138,13 @@ export const api: MultiSSHApi = {
   profilesDeleteS3: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_DELETE_S3, id),
 
+  // Connection Testing
+  testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, config),
+
+  testS3Connection: (config: S3Config): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
+
   // Window / General
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),

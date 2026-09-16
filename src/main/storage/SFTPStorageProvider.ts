@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import SftpClient from 'ssh2-sftp-client';
 import {
@@ -79,6 +80,12 @@ function parseModifyTime(stats: any): string | undefined {
   return undefined;
 }
 
+// Mirrors the OpenSSH client's own default identity file lookup order, since
+// that is what terminal sessions (spawned via the real `ssh` binary) already
+// rely on - an SFTP profile with no explicit password/key should fail no more
+// often than a terminal session to the same host does.
+const DEFAULT_IDENTITY_FILES = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
+
 export class SFTPStorageProvider extends BaseStorageProvider implements IStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -96,50 +103,73 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     this.id = config.id ?? `${config.username}@${config.host}:${port}`;
     this.name = config.name ?? `${config.username}@${config.host}`;
     this.client = client ?? new SftpClient();
+    this.attachLifecycleListeners(this.client);
+  }
 
-    this.client.on('close', () => {
+  private attachLifecycleListeners(client: SftpClient): void {
+    client.on('close', () => {
       this.isConnected = false;
     });
-    this.client.on('end', () => {
+    client.on('end', () => {
       this.isConnected = false;
     });
-    this.client.on('error', () => {
+    client.on('error', () => {
       this.isConnected = false;
     });
   }
 
   /**
-   * Builds the connect options based on SFTPConfig and platform defaults.
+   * Builds one or more candidate connect option sets, tried in order until one
+   * succeeds. An explicit password or private key is used as-is (single
+   * candidate). Otherwise - no credential configured, or authType 'agent' /
+   * 'smartcard' (ssh2 has no PKCS#11 support) - falls back to ssh-agent and
+   * then the user's default identity files, same as a bare `ssh host` would.
    */
-  private buildConnectOptions(): Record<string, any> {
-    const connectOptions: Record<string, any> = {
+  private buildConnectCandidates(): Record<string, any>[] {
+    const base = {
       host: this.config.host,
       port: this.config.port ?? 22,
       username: this.config.username,
     };
 
-    if (this.config.authType === 'password') {
-      connectOptions.password = this.config.password;
-    } else if (this.config.authType === 'privateKey') {
-      if (this.config.privateKeyPath) {
-        connectOptions.privateKey = fs.readFileSync(this.config.privateKeyPath);
-      }
-      if (this.config.passphrase) {
-        connectOptions.passphrase = this.config.passphrase;
-      }
-    } else if (this.config.authType === 'agent') {
-      const agent =
-        this.config.agentPath ??
-        (process.platform === 'win32'
-          ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
-          : process.env.SSH_AUTH_SOCK);
+    if (this.config.authType === 'password' && this.config.password) {
+      return [{ ...base, password: this.config.password }];
+    }
 
-      if (agent) {
-        connectOptions.agent = agent;
+    if (this.config.authType === 'privateKey' && this.config.privateKeyPath) {
+      const candidate: Record<string, any> = {
+        ...base,
+        privateKey: fs.readFileSync(this.config.privateKeyPath),
+      };
+      if (this.config.passphrase) {
+        candidate.passphrase = this.config.passphrase;
+      }
+      return [candidate];
+    }
+
+    const candidates: Record<string, any>[] = [];
+
+    const agent =
+      this.config.agentPath ??
+      (process.platform === 'win32'
+        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
+        : process.env.SSH_AUTH_SOCK);
+    if (agent) {
+      candidates.push({ ...base, agent });
+    }
+
+    for (const file of DEFAULT_IDENTITY_FILES) {
+      const resolved = path.join(os.homedir(), '.ssh', file);
+      if (fs.existsSync(resolved)) {
+        candidates.push({ ...base, privateKey: fs.readFileSync(resolved) });
       }
     }
 
-    return connectOptions;
+    if (this.config.password) {
+      candidates.push({ ...base, password: this.config.password });
+    }
+
+    return candidates.length > 0 ? candidates : [base];
   }
 
   /**
@@ -156,9 +186,27 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
     const doConnect = async () => {
       try {
-        const options = this.buildConnectOptions();
-        await this.client.connect(options as any);
-        this.isConnected = true;
+        const candidates = this.buildConnectCandidates();
+        let lastErr: unknown;
+        for (const options of candidates) {
+          // A fresh client per candidate: retrying .connect() on the same
+          // ssh2-sftp-client instance after a failed attempt leaves its
+          // underlying ssh2 connection in a broken state and the next
+          // connect() call hangs indefinitely instead of failing or
+          // succeeding cleanly.
+          const client = new SftpClient();
+          try {
+            await client.connect(options as any);
+            this.client = client;
+            this.attachLifecycleListeners(client);
+            this.isConnected = true;
+            return;
+          } catch (err) {
+            lastErr = err;
+            await client.end().catch(() => {});
+          }
+        }
+        throw lastErr;
       } catch (err) {
         this.isConnected = false;
         throw err;
@@ -261,14 +309,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.ReadableStream> {
     await this.ensureConnected();
 
+    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+
     if (typeof start === 'number' || typeof end === 'number') {
       const options: { start?: number; end?: number } = {};
       if (typeof start === 'number') options.start = start;
       if (typeof end === 'number') options.end = end;
-      return this.client.createReadStream(remotePath, options);
+      return this.client.createReadStream(normalized, options);
     }
 
-    return this.client.createReadStream(remotePath);
+    return this.client.createReadStream(normalized);
   }
 
   async createWriteStream(
@@ -277,10 +327,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.WritableStream> {
     await this.ensureConnected();
 
+    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+
     if (options) {
-      return this.client.createWriteStream(remotePath, options as any);
+      return this.client.createWriteStream(normalized, options as any);
     }
-    return this.client.createWriteStream(remotePath);
+    return this.client.createWriteStream(normalized);
   }
 
   async disconnect(): Promise<void> {

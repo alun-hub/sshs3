@@ -7,8 +7,10 @@ import {
   HardDrive,
   Pencil,
   RefreshCw,
+  Search,
   Server,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { joinPath, parentPath } from '../../lib/format';
@@ -48,6 +50,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState('');
+  const [showFilter, setShowFilter] = useState(false);
+  const filterInputRef = React.useRef<HTMLInputElement>(null);
   const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
 
   const load = useCallback(async () => {
@@ -66,8 +71,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => {
     setSelectedPaths(new Set());
+    setFilterText('');
     void load();
-  }, [load, refreshToken]);
+  }, [load, refreshToken, currentPath]);
 
   const handleOpen = useCallback(
     (entry: FileEntry) => {
@@ -245,7 +251,57 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
           <Trash2 className="h-4 w-4" />
         </button>
+        <button
+          type="button"
+          title="Sök / Filtrera filer (Ctrl+F)"
+          onClick={() => {
+            setShowFilter((prev) => {
+              const next = !prev;
+              if (next) setTimeout(() => filterInputRef.current?.focus(), 50);
+              return next;
+            });
+          }}
+          className={
+            'rounded p-1 ' +
+            (showFilter || filterText ? 'bg-sky-600/30 text-sky-300' : 'text-slate-300 hover:bg-slate-700')
+          }
+        >
+          <Search className="h-4 w-4" />
+        </button>
       </div>
+
+      {showFilter && (
+        <div className="flex items-center gap-2 border-b border-slate-700 bg-slate-800/80 px-2.5 py-1">
+          <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <input
+            ref={filterInputRef}
+            type="text"
+            placeholder="Filtrera filer i aktuell mapp... (Esc för att stänga)"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                if (filterText) {
+                  setFilterText('');
+                } else {
+                  setShowFilter(false);
+                }
+              }
+            }}
+            className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none"
+          />
+          {filterText && (
+            <button
+              type="button"
+              title="Rensa filter"
+              onClick={() => setFilterText('')}
+              className="rounded p-0.5 text-slate-400 hover:text-slate-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-1.5 border-b border-red-900 bg-red-950/50 px-2 py-1 text-xs text-red-300">
@@ -265,6 +321,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           selectedPaths={selectedPaths}
           onSelectionChange={setSelectedPaths}
           onOpen={handleOpen}
+          filterText={filterText}
           onDraggableStart={(entry, e) => {
             const items = selectedPaths.has(entry.path)
               ? entries.filter((it) => selectedPaths.has(it.path))

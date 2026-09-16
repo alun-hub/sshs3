@@ -22,6 +22,7 @@ interface FileListProps {
   renamingPath?: string | null;
   onRenameCommit?: (entry: FileEntry, newName: string) => void;
   onRenameCancel?: () => void;
+  filterText?: string;
 }
 
 function iconForEntry(entry: FileEntry) {
@@ -50,13 +51,20 @@ export const FileList: React.FC<FileListProps> = ({
   renamingPath,
   onRenameCommit,
   onRenameCancel,
+  filterText,
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 
+  const filtered = useMemo(() => {
+    const trimmed = (filterText ?? '').trim().toLowerCase();
+    if (!trimmed) return entries;
+    return entries.filter((e) => e.name.toLowerCase().includes(trimmed));
+  }, [entries, filterText]);
+
   const sorted = useMemo(() => {
-    const copy = [...entries];
+    const copy = [...filtered];
     copy.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
       const cmp =
@@ -68,7 +76,7 @@ export const FileList: React.FC<FileListProps> = ({
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
-  }, [entries, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir]);
 
   const toggleSort = useCallback(
     (key: SortKey) => {
@@ -121,8 +129,15 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="grid grid-cols-[1fr_90px_140px] gap-2 border-b border-slate-700 px-3 py-1.5">
-        <SortHeader label="Namn" sortKeyName="name" />
+      <div className="grid grid-cols-[1fr_90px_140px] items-center gap-2 border-b border-slate-700 px-3 py-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <SortHeader label="Namn" sortKeyName="name" />
+          {filterText?.trim() && (
+            <span className="truncate rounded border border-sky-800/60 bg-sky-950/60 px-1.5 py-0.2 text-[10px] font-medium text-sky-400">
+              {sorted.length} av {entries.length}
+            </span>
+          )}
+        </div>
         <SortHeader label="Storlek" sortKeyName="size" />
         <SortHeader label="Ändrad" sortKeyName="mtime" />
       </div>
@@ -139,7 +154,9 @@ export const FileList: React.FC<FileListProps> = ({
           </div>
         )}
         {!loading && sorted.length === 0 && (
-          <div className="py-8 text-center text-sm text-slate-500">Mappen är tom</div>
+          <div className="py-8 text-center text-sm text-slate-500">
+            {filterText?.trim() ? `Inga filer matchar "${filterText.trim()}"` : 'Mappen är tom'}
+          </div>
         )}
         {!loading &&
           sorted.map((entry, index) => {

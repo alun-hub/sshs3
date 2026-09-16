@@ -51,6 +51,10 @@ export const IPC_CHANNELS = {
   PROFILES_SAVE_S3: 'profiles:save-s3',
   PROFILES_DELETE_S3: 'profiles:delete-s3',
 
+  // Connection Testing
+  CONNECTION_TEST_SSH: 'connection:test-ssh',
+  CONNECTION_TEST_S3: 'connection:test-s3',
+
   // General
   APP_GET_VERSION: 'app:get-version',
   DIALOG_OPEN_FILE: 'dialog:open-file',
@@ -106,6 +110,10 @@ export interface MultiSSHApi {
   profilesDeleteSSH(id: string): Promise<void>;
   profilesSaveS3(config: S3Config): Promise<void>;
   profilesDeleteS3(id: string): Promise<void>;
+
+  // Connection Testing
+  testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;
+  testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
   // Window / General
   getVersion(): Promise<string>;

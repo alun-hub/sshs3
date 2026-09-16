@@ -158,6 +158,9 @@ describe('IpcBridge', () => {
         },
       ]),
       clearCompleted: vi.fn(),
+      cancelAll: vi.fn(),
+      getActiveTransferCount: vi.fn().mockReturnValue(0),
+      hasActiveTransfers: vi.fn().mockReturnValue(false),
     });
 
     mockProfileStore = {
@@ -359,7 +362,78 @@ describe('IpcBridge', () => {
       });
 
       expect(res).toEqual({ jobId: 'job-123' });
-      expect(mockTransferQueue.addJob).toHaveBeenCalled();
+      expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePath: '/src/file.txt',
+          targetPath: '/dst/file.txt',
+          isDirectory: false,
+          totalBytes: 100,
+        })
+      );
+    });
+
+    it('resolves targetPath when target is a directory in transferAdd', async () => {
+      const dirProvider = {
+        ...mockStorageRegistry.providers.get('test-storage'),
+        stat: vi.fn().mockImplementation(async (p: string) => {
+          if (p === '/dst/folder') {
+            return { name: 'folder', path: '/dst/folder', size: 0, isDirectory: true };
+          }
+          return { name: 'photo.png', path: '/src/photo.png', size: 2048, isDirectory: false };
+        }),
+      };
+      mockStorageRegistry.providers.set('target-dir-storage', dirProvider as any);
+      mockStorageRegistry.providers.set('src-storage', dirProvider as any);
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'src-storage',
+        sourcePath: '/src/photo.png',
+        targetProviderId: 'target-dir-storage',
+        targetPath: '/dst/folder',
+      });
+
+      expect(res).toEqual({ jobId: 'job-123' });
+      expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePath: '/src/photo.png',
+          targetPath: '/dst/folder/photo.png',
+          isDirectory: false,
+          totalBytes: 2048,
+        })
+      );
+    });
+
+    it('detects isDirectory: true when source is a directory in transferAdd', async () => {
+      const dirProvider = {
+        ...mockStorageRegistry.providers.get('test-storage'),
+        stat: vi.fn().mockImplementation(async (p: string) => {
+          if (p === '/src/my-folder') {
+            return { name: 'my-folder', path: '/src/my-folder', size: 0, isDirectory: true };
+          }
+          if (p === '/dst') {
+            return { name: 'dst', path: '/dst', size: 0, isDirectory: true };
+          }
+          return { name: 'unknown', path: p, size: 0, isDirectory: false };
+        }),
+      };
+      mockStorageRegistry.providers.set('target-dir-storage', dirProvider as any);
+      mockStorageRegistry.providers.set('src-storage', dirProvider as any);
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'src-storage',
+        sourcePath: '/src/my-folder',
+        targetProviderId: 'target-dir-storage',
+        targetPath: '/dst',
+      });
+
+      expect(res).toEqual({ jobId: 'job-123' });
+      expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePath: '/src/my-folder',
+          targetPath: '/dst/my-folder',
+          isDirectory: true,
+        })
+      );
     });
 
     it('throws error if transfer options or provider IDs are missing', async () => {
@@ -651,6 +725,16 @@ describe('IpcBridge', () => {
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.PROFILES_DELETE_S3, 's3');
     });
 
+    it('connection test methods invoke correct channels', async () => {
+      const ssh = { id: 's1', name: 'S1', host: 'h', username: 'u', authType: 'password' as const };
+      await preloadApi.testSSHConnection(ssh);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.CONNECTION_TEST_SSH, ssh);
+
+      const s3 = { id: 's3', name: 'S3', region: 'r', accessKeyId: 'k', secretAccessKey: 's' };
+      await preloadApi.testS3Connection(s3);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.CONNECTION_TEST_S3, s3);
+    });
+
     it('getVersion invokes correct channel', async () => {
       await preloadApi.getVersion();
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.APP_GET_VERSION);
@@ -660,6 +744,24 @@ describe('IpcBridge', () => {
       const options = { title: 'Välj fil', filters: [{ name: 'Nycklar', extensions: ['pem'] }] };
       await preloadApi.dialogOpenFile(options);
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.DIALOG_OPEN_FILE, options);
+    });
+  });
+
+  describe('Connection Test Handlers', () => {
+    it('validates required fields for SSH test', async () => {
+      const res1 = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, { host: '', username: 'u' });
+      expect(res1.success).toBe(false);
+      expect(res1.error).toContain('Värdnamn');
+
+      const res2 = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, { host: 'h', username: '' });
+      expect(res2.success).toBe(false);
+      expect(res2.error).toContain('Användarnamn');
+    });
+
+    it('validates required fields for S3 test', async () => {
+      const res = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, { region: '', accessKeyId: 'k', secretAccessKey: 's' });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Region');
     });
   });
 });
