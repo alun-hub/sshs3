@@ -55,9 +55,11 @@ att bygga.
 
 - [ ] **4. Redigera fil direkt** ("öppna i extern editor, ladda upp automatiskt vid
    spara") — en av de mest använda funktionerna i WinSCP/FileZilla, saknas helt.
-- [ ] **5. Konflikthantering vid överföring** (skriv över/hoppa över/byt namn/fråga
-   varje gång). Idag skriver `TransferPipeline` alltid över befintliga filer
-   tyst — det finns ingen kod alls som kollar om målfilen redan finns.
+- [x] **5. Konflikthantering vid överföring** (skriv över/hoppa över/byt namn/fråga
+   varje gång). `TRANSFER_ADD` kollar nu om målfilen redan finns och visar en
+   dialog (Skriv över / Hoppa över / Byt namn, med "använd för alla återstående")
+   istället för att tyst skriva över; "byt namn" hittar automatiskt en ledig
+   "(n)"-variant. Kan även styras headless via `conflictPolicy` utan att fråga.
 - [x] **6. Filsökning/filter i filhanteraren.** Sök-/filterruta och snabbknapp (Ctrl+F) i `FilePane`/`FileList`, matchningsräknare och specifik tom vy vid nollsök.
 - [ ] **7. Katalogsynkronisering** (spegla lokal ↔ fjärrkatalog, visa diff innan
    överföring). Kärnfunktion i WinSCP; helt frånvarande här.

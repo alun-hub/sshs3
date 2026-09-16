@@ -426,9 +426,10 @@ describe('IpcBridge', () => {
         sourcePath: '/src/file.txt',
         targetProviderId: 'target-storage',
         targetPath: '/dst/file.txt',
+        conflictPolicy: 'overwrite',
       });
 
-      expect(res).toEqual({ jobId: 'job-123' });
+      expect(res).toMatchObject({ jobId: 'job-123' });
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourcePath: '/src/file.txt',
@@ -457,9 +458,10 @@ describe('IpcBridge', () => {
         sourcePath: '/src/photo.png',
         targetProviderId: 'target-dir-storage',
         targetPath: '/dst/folder',
+        conflictPolicy: 'overwrite',
       });
 
-      expect(res).toEqual({ jobId: 'job-123' });
+      expect(res).toMatchObject({ jobId: 'job-123' });
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourcePath: '/src/photo.png',
@@ -491,9 +493,10 @@ describe('IpcBridge', () => {
         sourcePath: '/src/my-folder',
         targetProviderId: 'target-dir-storage',
         targetPath: '/dst',
+        conflictPolicy: 'overwrite',
       });
 
-      expect(res).toEqual({ jobId: 'job-123' });
+      expect(res).toMatchObject({ jobId: 'job-123' });
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourcePath: '/src/my-folder',
@@ -580,6 +583,176 @@ describe('IpcBridge', () => {
         channel: IPC_CHANNELS.TRANSFER_PROGRESS,
         args: [progress],
       });
+    });
+  });
+
+  describe('Transfer conflict resolution', () => {
+    function makeConflictProvider() {
+      return {
+        id: 'conflict-target',
+        name: 'Conflict Target',
+        type: 'local',
+        stat: vi.fn().mockImplementation(async (p: string) => {
+          if (p === '/dst/exists.txt') {
+            return { name: 'exists.txt', path: p, size: 10, isDirectory: false };
+          }
+          if (p === '/dst/exists (1).txt') {
+            return { name: 'exists (1).txt', path: p, size: 5, isDirectory: false };
+          }
+          throw new Error('ENOENT');
+        }),
+        list: vi.fn(),
+        createFolder: vi.fn(),
+        delete: vi.fn(),
+        rename: vi.fn(),
+        createReadStream: vi.fn(),
+        createWriteStream: vi.fn(),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    async function flushMicrotasks() {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    it('does not prompt and adds the job directly when the target does not exist', async () => {
+      mockStorageRegistry.providers.set('conflict-target', makeConflictProvider() as any);
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'test-storage',
+        sourcePath: '/src/file.txt',
+        targetProviderId: 'conflict-target',
+        targetPath: '/dst/new-file.txt',
+      });
+
+      expect(res).toMatchObject({ jobId: 'job-123' });
+      expect(res.resolvedPolicy).toBeUndefined();
+      expect(mockWebContents.events.some((e) => e.channel === IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT)).toBe(false);
+    });
+
+    it('prompts for a conflicting target and applies "overwrite"', async () => {
+      mockStorageRegistry.providers.set('conflict-target', makeConflictProvider() as any);
+
+      const resultPromise = mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'test-storage',
+        sourcePath: '/src/file.txt',
+        targetProviderId: 'conflict-target',
+        targetPath: '/dst/exists.txt',
+      });
+
+      await flushMicrotasks();
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT);
+      expect(promptEvent).toBeDefined();
+      expect(promptEvent?.args[0]).toMatchObject({
+        targetPath: '/dst/exists.txt',
+        fileName: 'file.txt',
+        isDirectory: false,
+      });
+      const promptId = promptEvent?.args[0].id;
+
+      await mockIpc.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, promptId, 'overwrite', false);
+
+      const res = await resultPromise;
+      expect(res).toMatchObject({ jobId: 'job-123', resolvedPolicy: 'overwrite', appliedToAll: false });
+      expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({ targetPath: '/dst/exists.txt' })
+      );
+    });
+
+    it('prompts for a conflicting target and applies "skip" without adding a job', async () => {
+      mockStorageRegistry.providers.set('conflict-target', makeConflictProvider() as any);
+      mockTransferQueue.addJob.mockClear();
+
+      const resultPromise = mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'test-storage',
+        sourcePath: '/src/file.txt',
+        targetProviderId: 'conflict-target',
+        targetPath: '/dst/exists.txt',
+      });
+
+      await flushMicrotasks();
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT);
+      const promptId = promptEvent?.args[0].id;
+
+      await mockIpc.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, promptId, 'skip', true);
+
+      const res = await resultPromise;
+      expect(res).toEqual({ jobId: null, skipped: true, resolvedPolicy: 'skip', appliedToAll: true });
+      expect(mockTransferQueue.addJob).not.toHaveBeenCalled();
+    });
+
+    it('prompts for a conflicting target and applies "rename" to a non-conflicting path', async () => {
+      mockStorageRegistry.providers.set('conflict-target', makeConflictProvider() as any);
+
+      const resultPromise = mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'test-storage',
+        sourcePath: '/src/file.txt',
+        targetProviderId: 'conflict-target',
+        targetPath: '/dst/exists.txt',
+      });
+
+      await flushMicrotasks();
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT);
+      const promptId = promptEvent?.args[0].id;
+
+      await mockIpc.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, promptId, 'rename', false);
+
+      const res = await resultPromise;
+      expect(res).toMatchObject({ jobId: 'job-123', resolvedPolicy: 'rename' });
+      // "exists.txt" and "exists (1).txt" both already exist on this fake
+      // provider, so the resolver should have skipped to "exists (2).txt".
+      expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({ targetPath: '/dst/exists (2).txt' })
+      );
+    });
+
+    it('skips prompting when an explicit conflictPolicy is given', async () => {
+      mockStorageRegistry.providers.set('conflict-target', makeConflictProvider() as any);
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+        sourceProviderId: 'test-storage',
+        sourcePath: '/src/file.txt',
+        targetProviderId: 'conflict-target',
+        targetPath: '/dst/exists.txt',
+        conflictPolicy: 'overwrite',
+      });
+
+      expect(res).toMatchObject({ jobId: 'job-123', resolvedPolicy: 'overwrite' });
+      expect(mockWebContents.events.some((e) => e.channel === IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT)).toBe(false);
+    });
+
+    it('resolves to a safe "skip" without prompting when no webContents is available', async () => {
+      const bridgeNoWindow = new IpcBridge({
+        ipcMain: new MockIpcMain() as any,
+        sshPtyManager: mockPtyManager,
+        storageRegistry: mockStorageRegistry,
+        transferQueue: mockTransferQueue,
+        profileStore: mockProfileStore,
+        getWebContents: () => null,
+      });
+      bridgeNoWindow.register();
+
+      const result = await bridgeNoWindow.promptTransferConflict({
+        sourcePath: '/src/file.txt',
+        targetPath: '/dst/exists.txt',
+        fileName: 'file.txt',
+        isDirectory: false,
+      });
+      expect(result).toEqual({ resolution: 'skip', applyToAll: false });
+
+      await bridgeNoWindow.dispose();
+    });
+
+    it('dispose() resolves any pending transfer conflict prompts to "skip"', async () => {
+      const promptPromise = bridge.promptTransferConflict({
+        sourcePath: '/src/file.txt',
+        targetPath: '/dst/exists.txt',
+        fileName: 'file.txt',
+        isDirectory: false,
+      });
+
+      await bridge.dispose();
+      await expect(promptPromise).resolves.toEqual({ resolution: 'skip', applyToAll: false });
     });
   });
 

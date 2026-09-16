@@ -13,6 +13,9 @@ import {
   getBaseName,
   isDirectoryPath,
   joinPaths,
+  dirName,
+  pathExists,
+  resolveNonConflictingPath,
 } from '../../src/main/transfer/TransferPipeline';
 import {
   TransferQueue,
@@ -280,6 +283,44 @@ describe('TransferPipeline', () => {
 
       expect(joinPaths('sftp', '/home/alun', 'secret')).toBe('/home/alun/secret');
       expect(joinPaths('sftp', '/', 'secret')).toBe('/secret');
+    });
+
+    it('dirName follows provider path conventions', () => {
+      expect(dirName('local', path.join('a', 'b', 'c.txt'))).toBe(path.join('a', 'b'));
+      expect(dirName('sftp', '/home/alun/secret.txt')).toBe('/home/alun');
+      expect(dirName('sftp', '/secret.txt')).toBe('/');
+      expect(dirName('s3', 'bucket/key.txt')).toBe('bucket');
+    });
+
+    it('pathExists reflects whether a provider path resolves via stat()', async () => {
+      const memory = new MemoryStorageProvider();
+      memory.files.set('/dst/exists.txt', Buffer.from('hi'));
+
+      expect(await pathExists(memory, '/dst/exists.txt')).toBe(true);
+      expect(await pathExists(memory, '/dst/missing.txt')).toBe(false);
+    });
+
+    it('resolveNonConflictingPath finds the first free "(n)" suffix, preserving the extension', async () => {
+      const memory = new MemoryStorageProvider();
+      memory.files.set('/dst/report.pdf', Buffer.from('a'));
+      memory.files.set('/dst/report (1).pdf', Buffer.from('b'));
+
+      const resolved = await resolveNonConflictingPath(memory, 'sftp', '/dst/report.pdf');
+      expect(resolved).toBe('/dst/report (2).pdf');
+    });
+
+    it('resolveNonConflictingPath returns the original path unchanged when there is no conflict', async () => {
+      const memory = new MemoryStorageProvider();
+      const resolved = await resolveNonConflictingPath(memory, 'sftp', '/dst/free.txt');
+      expect(resolved).toBe('/dst/free.txt');
+    });
+
+    it('resolveNonConflictingPath handles extensionless files', async () => {
+      const memory = new MemoryStorageProvider();
+      memory.files.set('/dst/README', Buffer.from('a'));
+
+      const resolved = await resolveNonConflictingPath(memory, 'sftp', '/dst/README');
+      expect(resolved).toBe('/dst/README (1)');
     });
 
     it('should support TransferPipeline class static and instance methods', async () => {

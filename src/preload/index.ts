@@ -4,6 +4,8 @@ import {
   type MultiSSHApi,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
+  type TransferConflictPromptEvent,
+  type TransferConflictResolution,
 } from '../shared/types/ipc';
 import type {
   SSHConnectionConfig,
@@ -79,6 +81,17 @@ export const api: MultiSSHApi = {
   respondHostKeyPrompt: (id: string, trust: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.HOSTKEY_RESPOND, id, trust),
 
+  onTransferConflictPrompt: (callback: (event: TransferConflictPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: TransferConflictPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT, listener);
+    };
+  },
+
+  respondTransferConflict: (id: string, resolution: TransferConflictResolution, applyToAll: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, id, resolution, applyToAll),
+
   // Storage
   connectStorage: (config: StorageConnectConfig): Promise<{ id: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CONNECT, config),
@@ -107,7 +120,8 @@ export const api: MultiSSHApi = {
     sourcePath: string;
     targetProviderId: string;
     targetPath: string;
-  }): Promise<{ jobId: string }> =>
+    conflictPolicy?: TransferConflictResolution;
+  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TRANSFER_ADD, options),
 
   transferPause: (jobId: string): Promise<void> =>

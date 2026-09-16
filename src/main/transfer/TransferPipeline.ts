@@ -252,6 +252,60 @@ export function getBaseName(filePath: string): string {
 }
 
 /**
+ * Directory name of a path, following the target storage provider's path
+ * conventions (native separators for local, posix for SFTP/S3).
+ */
+export function dirName(providerType: StorageType, filePath: string): string {
+  if (providerType === 'local') {
+    return path.dirname(filePath);
+  }
+  const normalized = filePath.replace(/\\/g, '/');
+  return path.posix.dirname(normalized) || '/';
+}
+
+/**
+ * Whether a path already exists on a storage provider.
+ */
+export async function pathExists(
+  provider: IStorageProvider,
+  targetPath: string
+): Promise<boolean> {
+  try {
+    await provider.stat(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Finds a sibling path that does not yet exist by appending " (1)", " (2)",
+ * etc. before the file extension (e.g. "report.pdf" -> "report (1).pdf"),
+ * used to resolve transfer conflicts with the "rename" policy.
+ */
+export async function resolveNonConflictingPath(
+  provider: IStorageProvider,
+  providerType: StorageType,
+  targetPath: string
+): Promise<string> {
+  const dir = dirName(providerType, targetPath);
+  const base = getBaseName(targetPath);
+  const dotIndex = base.lastIndexOf('.');
+  const hasExt = dotIndex > 0 && dotIndex < base.length - 1;
+  const stem = hasExt ? base.slice(0, dotIndex) : base;
+  const ext = hasExt ? base.slice(dotIndex) : '';
+
+  let candidate = targetPath;
+  for (let n = 1; n <= 1000; n++) {
+    if (!(await pathExists(provider, candidate))) {
+      return candidate;
+    }
+    candidate = joinPaths(providerType, dir, `${stem} (${n})${ext}`);
+  }
+  return candidate;
+}
+
+/**
  * Check if a path is or should be considered a directory on a storage provider.
  */
 export async function isDirectoryPath(

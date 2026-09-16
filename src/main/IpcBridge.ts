@@ -11,6 +11,8 @@ import { TransferQueue } from './transfer/TransferQueue';
 import {
   getBaseName,
   isDirectoryPath,
+  pathExists,
+  resolveNonConflictingPath,
   joinPaths,
 } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
@@ -20,6 +22,8 @@ import {
   IPC_CHANNELS,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
+  type TransferConflictPromptEvent,
+  type TransferConflictResolution,
 } from '../shared/types/ipc';
 import type {
   SSHConnectionConfig,
@@ -39,6 +43,10 @@ interface PendingAskpassPrompt {
 
 interface PendingHostKeyPrompt {
   callback: (trust: boolean) => void;
+}
+
+interface PendingTransferConflictPrompt {
+  callback: (resolution: TransferConflictResolution, applyToAll: boolean) => void;
 }
 
 export interface IpcBridgeOptions {
@@ -62,6 +70,7 @@ export class IpcBridge {
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
+  private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
   private handlers = new Set<string>();
 
   // Event listener references for clean teardown
@@ -207,6 +216,31 @@ export class IpcBridge {
     });
   }
 
+  /**
+   * Asks the renderer to show a conflict-resolution dialog (overwrite / skip
+   * / rename) for a transfer target that already exists. Resolves to 'skip'
+   * (the non-destructive default) if no window is available to prompt.
+   */
+  public promptTransferConflict(
+    info: Omit<TransferConflictPromptEvent, 'id'>
+  ): Promise<{ resolution: TransferConflictResolution; applyToAll: boolean }> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve({ resolution: 'skip', applyToAll: false });
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      this.pendingTransferConflicts.set(id, {
+        callback: (resolution, applyToAll) => resolve({ resolution, applyToAll }),
+      });
+
+      const event: TransferConflictPromptEvent = { id, ...info };
+      webContents.send(IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT, event);
+    });
+  }
+
   private registerStorageHandlers(): void {
     this.registerHandler(
       IPC_CHANNELS.STORAGE_CONNECT,
@@ -289,8 +323,14 @@ export class IpcBridge {
           sourcePath: string;
           targetProviderId: string;
           targetPath: string;
+          conflictPolicy?: TransferConflictResolution;
         }
-      ) => {
+      ): Promise<{
+        jobId: string | null;
+        skipped?: boolean;
+        resolvedPolicy?: TransferConflictResolution;
+        appliedToAll?: boolean;
+      }> => {
         if (!options?.sourceProviderId || !options?.targetProviderId) {
           throw new Error('sourceProviderId and targetProviderId are required for transfer');
         }
@@ -319,6 +359,37 @@ export class IpcBridge {
           resolvedTargetPath = joinPaths(targetProvider.type, resolvedTargetPath, sourceBaseName);
         }
 
+        let resolvedPolicy: TransferConflictResolution | undefined;
+        let appliedToAll = false;
+
+        if (await pathExists(targetProvider, resolvedTargetPath)) {
+          const requestedPolicy = options.conflictPolicy ?? 'ask';
+          if (requestedPolicy === 'ask') {
+            const response = await this.promptTransferConflict({
+              sourcePath: options.sourcePath,
+              targetPath: resolvedTargetPath,
+              fileName: sourceBaseName || resolvedTargetPath,
+              isDirectory,
+            });
+            resolvedPolicy = response.resolution;
+            appliedToAll = response.applyToAll;
+          } else {
+            resolvedPolicy = requestedPolicy;
+          }
+
+          if (resolvedPolicy === 'skip') {
+            return { jobId: null, skipped: true, resolvedPolicy, appliedToAll };
+          }
+          if (resolvedPolicy === 'rename') {
+            resolvedTargetPath = await resolveNonConflictingPath(
+              targetProvider,
+              targetProvider.type,
+              resolvedTargetPath
+            );
+          }
+          // 'overwrite' proceeds with resolvedTargetPath unchanged.
+        }
+
         const job = this.transferQueue.addJob({
           sourceProvider,
           sourcePath: options.sourcePath,
@@ -328,7 +399,19 @@ export class IpcBridge {
           totalBytes,
         });
 
-        return { jobId: job.id };
+        return { jobId: job.id, resolvedPolicy, appliedToAll };
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND,
+      async (_event, id: string, resolution: TransferConflictResolution, applyToAll: boolean) => {
+        const prompt = this.pendingTransferConflicts.get(id);
+        if (!prompt) {
+          throw new Error(`Transfer conflict prompt with id "${id}" not found or expired`);
+        }
+        this.pendingTransferConflicts.delete(id);
+        prompt.callback(resolution, Boolean(applyToAll));
       }
     );
 
@@ -581,6 +664,15 @@ export class IpcBridge {
       }
     }
     this.pendingHostKeyPrompts.clear();
+
+    for (const prompt of this.pendingTransferConflicts.values()) {
+      try {
+        prompt.callback('skip', false);
+      } catch {
+        // Ignore
+      }
+    }
+    this.pendingTransferConflicts.clear();
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();

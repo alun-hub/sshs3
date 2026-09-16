@@ -47,6 +47,8 @@ export const IPC_CHANNELS = {
   TRANSFER_GET_JOBS: 'transfer:get-jobs',
   TRANSFER_CLEAR_COMPLETED: 'transfer:clear-completed',
   TRANSFER_PROGRESS: 'transfer:progress',
+  TRANSFER_CONFLICT_PROMPT: 'transfer:conflict-prompt',
+  TRANSFER_CONFLICT_RESPOND: 'transfer:conflict-respond',
 
   // Profiles
   PROFILES_GET: 'profiles:get',
@@ -74,6 +76,16 @@ export interface HostKeyPromptEvent {
   fingerprint: string;
   /** 'unknown' = first time connecting to this host. 'mismatch' = the presented key differs from a previously trusted one. */
   status: 'unknown' | 'mismatch';
+}
+
+export type TransferConflictResolution = 'overwrite' | 'skip' | 'rename';
+
+export interface TransferConflictPromptEvent {
+  id: string;
+  sourcePath: string;
+  targetPath: string;
+  fileName: string;
+  isDirectory: boolean;
 }
 
 export interface StorageConnectConfig {
@@ -104,6 +116,10 @@ export interface MultiSSHApi {
   onHostKeyPrompt(callback: (event: HostKeyPromptEvent) => void): () => void;
   respondHostKeyPrompt(id: string, trust: boolean): Promise<void>;
 
+  // Transfer conflict resolution
+  onTransferConflictPrompt(callback: (event: TransferConflictPromptEvent) => void): () => void;
+  respondTransferConflict(id: string, resolution: TransferConflictResolution, applyToAll: boolean): Promise<void>;
+
   // Storage
   connectStorage(config: StorageConnectConfig): Promise<{ id: string }>;
   disconnectStorage(providerId: string): Promise<void>;
@@ -114,7 +130,13 @@ export interface MultiSSHApi {
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;
 
   // Transfer
-  transferAdd(options: { sourceProviderId: string; sourcePath: string; targetProviderId: string; targetPath: string }): Promise<{ jobId: string }>;
+  transferAdd(options: {
+    sourceProviderId: string;
+    sourcePath: string;
+    targetProviderId: string;
+    targetPath: string;
+    conflictPolicy?: TransferConflictResolution;
+  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean }>;
   transferPause(jobId: string): Promise<void>;
   transferResume(jobId: string): Promise<void>;
   transferCancel(jobId: string): Promise<void>;

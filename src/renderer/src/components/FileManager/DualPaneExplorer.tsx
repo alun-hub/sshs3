@@ -6,6 +6,7 @@ import { DragDropProvider } from './DragDropLayer';
 import { FilePane } from './FilePane';
 import { TransferQueueDrawer } from './TransferQueueDrawer';
 import type { PaneSide, PaneSource, SourceType } from './types';
+import type { TransferConflictResolution } from '@shared/types/ipc';
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
   left: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
@@ -139,18 +140,25 @@ export const DualPaneExplorer: React.FC = () => {
   const handleTransferRequested = useCallback(
     (targetSide: PaneSide, params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => {
       const targetProviderId = panes[targetSide].source.providerId;
-      void Promise.all(
-        params.sourcePaths.map((sourcePath) =>
-          window.multissh.transferAdd({
+      void (async () => {
+        // Sequential, not Promise.all: each conflicting file may show a
+        // TOFU-style dialog, and "apply to all" needs to carry the user's
+        // choice into the remaining items of this same drop/batch.
+        let batchPolicy: TransferConflictResolution | undefined;
+        for (const sourcePath of params.sourcePaths) {
+          const result = await window.multissh.transferAdd({
             sourceProviderId: params.sourceProviderId,
             sourcePath,
             targetProviderId,
             targetPath: params.targetPath,
-          })
-        )
-      ).then(() => {
+            conflictPolicy: batchPolicy,
+          });
+          if (result.appliedToAll && result.resolvedPolicy) {
+            batchPolicy = result.resolvedPolicy;
+          }
+        }
         setRefreshToken((t) => t + 1);
-      });
+      })();
     },
     [panes]
   );
