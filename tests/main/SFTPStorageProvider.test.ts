@@ -354,6 +354,25 @@ describe('SFTPStorageProvider', () => {
         }),
       );
     });
+
+    it('passes the provided hostVerifier through to the ssh2 connect options', async () => {
+      const hostVerifier = vi.fn();
+      const provider = new SFTPStorageProvider(baseConfig, undefined, hostVerifier);
+
+      await provider.ensureConnected();
+
+      expect(mockConnect).toHaveBeenCalledWith(
+        expect.objectContaining({ hostVerifier }),
+      );
+    });
+
+    it('omits hostVerifier from connect options when none is provided', async () => {
+      const provider = new SFTPStorageProvider(baseConfig);
+      await provider.ensureConnected();
+
+      const callArg = mockConnect.mock.calls[0][0];
+      expect(callArg.hostVerifier).toBeUndefined();
+    });
   });
 
   describe('automatic connection lifecycle', () => {

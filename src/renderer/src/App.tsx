@@ -3,6 +3,7 @@ import { Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { TerminalView } from './components/TerminalView';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
+import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
@@ -153,6 +154,9 @@ export const App: React.FC = () => {
 
       {/* Global Smartcard PIN Modal */}
       <SmartcardPinModal />
+
+      {/* Global SFTP host key trust-on-first-use dialog */}
+      <HostKeyTrustModal />
 
       {/* Per-tab: pick an SSH profile to power an empty terminal tab */}
       <ConnectionManagerModal

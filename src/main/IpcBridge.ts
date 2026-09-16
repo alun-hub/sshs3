@@ -14,9 +14,12 @@ import {
   joinPaths,
 } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
+import { KnownHostsStore } from './ssh/KnownHostsStore';
+import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
+  type HostKeyPromptEvent,
 } from '../shared/types/ipc';
 import type {
   SSHConnectionConfig,
@@ -34,12 +37,17 @@ interface PendingAskpassPrompt {
   callback: (pin: string) => void;
 }
 
+interface PendingHostKeyPrompt {
+  callback: (trust: boolean) => void;
+}
+
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   sshPtyManager?: SSHPtyManager;
   storageRegistry?: StorageRegistry;
   transferQueue?: TransferQueue;
   profileStore?: ProfileStore;
+  knownHostsStore?: KnownHostsStore;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -49,9 +57,11 @@ export class IpcBridge {
   public readonly storageRegistry: StorageRegistry;
   public readonly transferQueue: TransferQueue;
   public readonly profileStore: ProfileStore;
+  public readonly knownHostsStore: KnownHostsStore;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
+  private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   private handlers = new Set<string>();
 
   // Event listener references for clean teardown
@@ -63,7 +73,18 @@ export class IpcBridge {
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
     this.sshPtyManager = options.sshPtyManager ?? new SSHPtyManager();
-    this.storageRegistry = options.storageRegistry ?? new StorageRegistry();
+    this.knownHostsStore = options.knownHostsStore ?? new KnownHostsStore();
+    this.storageRegistry =
+      options.storageRegistry ??
+      new StorageRegistry({
+        sftpHostVerifierFactory: (host, port) =>
+          createHostVerifier({
+            host,
+            port,
+            knownHosts: this.knownHostsStore,
+            onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
+          }),
+      });
     this.transferQueue = options.transferQueue ?? new TransferQueue();
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.getWebContents = options.getWebContents ?? (() => null);
@@ -150,6 +171,40 @@ export class IpcBridge {
         prompt.callback(pin);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.HOSTKEY_RESPOND,
+      async (_event, id: string, trust: boolean) => {
+        const prompt = this.pendingHostKeyPrompts.get(id);
+        if (!prompt) {
+          throw new Error(`Host key prompt with id "${id}" not found or expired`);
+        }
+        this.pendingHostKeyPrompts.delete(id);
+        prompt.callback(Boolean(trust));
+      }
+    );
+  }
+
+  /**
+   * Asks the renderer to show a TOFU (trust-on-first-use) dialog for an
+   * unknown or changed SFTP host key and resolves to whether the user chose
+   * to trust it. Resolves to false (fail closed) if no window is available
+   * to prompt.
+   */
+  public promptHostKeyTrust(info: HostKeyPromptInfo): Promise<boolean> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve(false);
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      this.pendingHostKeyPrompts.set(id, { callback: resolve });
+
+      const event: HostKeyPromptEvent = { id, ...info };
+      webContents.send(IPC_CHANNELS.HOSTKEY_PROMPT, event);
+    });
   }
 
   private registerStorageHandlers(): void {
@@ -355,19 +410,29 @@ export class IpcBridge {
         }
 
         try {
-          const provider = new SFTPStorageProvider({
-            id: `test-${crypto.randomUUID()}`,
-            name: 'Test SSH',
-            host: config.host,
-            port: config.port ?? 22,
-            username: config.username,
-            authType: config.authType,
-            password: config.password,
-            privateKeyPath: config.privateKeyPath,
-            passphrase: config.passphrase,
-            agentPath: config.agentPath,
-            pkcs11LibPath: config.pkcs11LibPath,
-          });
+          const port = config.port ?? 22;
+          const provider = new SFTPStorageProvider(
+            {
+              id: `test-${crypto.randomUUID()}`,
+              name: 'Test SSH',
+              host: config.host,
+              port,
+              username: config.username,
+              authType: config.authType,
+              password: config.password,
+              privateKeyPath: config.privateKeyPath,
+              passphrase: config.passphrase,
+              agentPath: config.agentPath,
+              pkcs11LibPath: config.pkcs11LibPath,
+            },
+            undefined,
+            createHostVerifier({
+              host: config.host,
+              port,
+              knownHosts: this.knownHostsStore,
+              onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
+            })
+          );
           await provider.ensureConnected();
           await provider.disconnect?.();
           return { success: true };
@@ -507,6 +572,15 @@ export class IpcBridge {
       }
     }
     this.pendingAskpass.clear();
+
+    for (const prompt of this.pendingHostKeyPrompts.values()) {
+      try {
+        prompt.callback(false);
+      } catch {
+        // Ignore
+      }
+    }
+    this.pendingHostKeyPrompts.clear();
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();

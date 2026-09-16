@@ -24,10 +24,6 @@ Status som av 2026-09-15. Bygger på en genomgång av koden i `src/`, inte bara 
 Dessa är inte "features man kan välja bort" — de är luckor som en användare av ett
 konkurrerande verktyg skulle uppfatta som buggar eller dealbreakers.
 
-- **Ingen host key-verifiering för SFTP.** `ssh2` accepterar just nu vilken
-  värdnyckel som helst utan att fråga eller jämföra mot `known_hosts` — en
-  öppning för MITM. Terminalen är opåverkad (den riktiga `ssh`-binären sköter
-  det själv).
 - **Smartcard-inloggning fungerar bara för terminalen, inte SFTP.** `ssh2`
   (JS-biblioteket) saknar PKCS#11-stöd helt, så en profil med
   `authType: smartcard` kan inte användas som SFTP-källa.
@@ -48,9 +44,11 @@ att bygga.
    token krypteras nu med Electrons `safeStorage` (libsecret/Keychain/DPAPI) innan
    `profiles.json` skrivs till disk. Faller tillbaka till klartext med varning om
    ingen OS-nyckelring finns tillgänglig, och läser fortfarande gamla klartextfiler.
-- [ ] **2. Host key-verifiering för SFTP.** Jämför mot `known_hosts` (kan återanvända
-   samma fil som OpenSSH använder) och visa en TOFU-dialog ("värdnyckeln har
-   ändrats, lita på den ändå?") istället för att tyst acceptera allt.
+- [x] **2. Host key-verifiering för SFTP.** `ssh2`s `hostVerifier` jämförs nu mot
+   `~/.ssh/known_hosts` (samma fil som OpenSSH, inkl. hashade poster och wildcards).
+   Okänd eller ändrad värdnyckel visar en TOFU-dialog i UI:t ("värdnyckeln har
+   ändrats, lita på den ändå?") istället för att tyst acceptera allt; accepterade
+   nycklar sparas till known_hosts.
 - [x] **3. Bekräftelse innan appen stängs med pågående överföringar.** Varnar via native dialog vid fönsterstängning och appavslut om aktiva eller väntande filöverföringar finns, med möjlighet att avbryta eller avsluta ändå.
 
 ### P1 — Kärnfunktioner man förväntar sig av vilken SFTP/SSH-klient som helst

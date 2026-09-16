@@ -14,6 +14,7 @@ import type {
   StorageType,
   WriteStreamOptions,
 } from '../../shared/types/storage';
+import type { SshHostVerifierFn } from '../ssh/HostKeyVerifier';
 
 /**
  * Parses permissions into an octal permission string (e.g. "755").
@@ -95,14 +96,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   private client: SftpClient;
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
+  private hostVerifier?: SshHostVerifierFn;
 
-  constructor(config: SFTPConfig, client?: SftpClient) {
+  constructor(config: SFTPConfig, client?: SftpClient, hostVerifier?: SshHostVerifierFn) {
     super();
     this.config = { ...config };
     const port = config.port ?? 22;
     this.id = config.id ?? `${config.username}@${config.host}:${port}`;
     this.name = config.name ?? `${config.username}@${config.host}`;
     this.client = client ?? new SftpClient();
+    this.hostVerifier = hostVerifier;
     this.attachLifecycleListeners(this.client);
   }
 
@@ -126,11 +129,14 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
    * then the user's default identity files, same as a bare `ssh host` would.
    */
   private buildConnectCandidates(): Record<string, any>[] {
-    const base = {
+    const base: Record<string, any> = {
       host: this.config.host,
       port: this.config.port ?? 22,
       username: this.config.username,
     };
+    if (this.hostVerifier) {
+      base.hostVerifier = this.hostVerifier;
+    }
 
     if (this.config.authType === 'password' && this.config.password) {
       return [{ ...base, password: this.config.password }];

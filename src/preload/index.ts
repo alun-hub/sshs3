@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   type MultiSSHApi,
   type StorageConnectConfig,
+  type HostKeyPromptEvent,
 } from '../shared/types/ipc';
 import type {
   SSHConnectionConfig,
@@ -66,6 +67,17 @@ export const api: MultiSSHApi = {
 
   submitAskpassPin: (id: string, pin: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, id, pin),
+
+  onHostKeyPrompt: (callback: (event: HostKeyPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: HostKeyPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.HOSTKEY_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.HOSTKEY_PROMPT, listener);
+    };
+  },
+
+  respondHostKeyPrompt: (id: string, trust: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.HOSTKEY_RESPOND, id, trust),
 
   // Storage
   connectStorage: (config: StorageConnectConfig): Promise<{ id: string }> =>

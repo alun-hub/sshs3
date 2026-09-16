@@ -63,6 +63,48 @@ describe('StorageRegistry', () => {
     expect(provider.id).toBe('sftp-1');
   });
 
+  it('builds a per-host SFTP host-key verifier via sftpHostVerifierFactory', async () => {
+    const fakeVerifier = vi.fn();
+    const factory = vi.fn().mockReturnValue(fakeVerifier);
+    const registryWithFactory = new StorageRegistry({ sftpHostVerifierFactory: factory });
+
+    await registryWithFactory.getOrCreate({
+      id: 'sftp-hv',
+      name: 'SFTP HV',
+      type: 'sftp',
+      sftpConfig: {
+        host: 'hv.example.com',
+        port: 2222,
+        username: 'user',
+        authType: 'password',
+        password: 'pass',
+      },
+    });
+
+    expect(factory).toHaveBeenCalledWith('hv.example.com', 2222);
+    await registryWithFactory.disconnectAll();
+  });
+
+  it('defaults the host-key verifier factory port to 22 when unset', async () => {
+    const factory = vi.fn().mockReturnValue(vi.fn());
+    const registryWithFactory = new StorageRegistry({ sftpHostVerifierFactory: factory });
+
+    await registryWithFactory.getOrCreate({
+      id: 'sftp-hv-default-port',
+      name: 'SFTP HV',
+      type: 'sftp',
+      sftpConfig: {
+        host: 'hv2.example.com',
+        username: 'user',
+        authType: 'password',
+        password: 'pass',
+      } as any,
+    });
+
+    expect(factory).toHaveBeenCalledWith('hv2.example.com', 22);
+    await registryWithFactory.disconnectAll();
+  });
+
   it('throws when creating SFTPStorageProvider without sftpConfig', async () => {
     await expect(
       registry.getOrCreate({

@@ -3,9 +3,20 @@ import { SFTPStorageProvider } from './SFTPStorageProvider';
 import { S3StorageProvider } from './S3StorageProvider';
 import type { IStorageProvider } from '../../shared/types/storage';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
+import type { SshHostVerifierFn } from '../ssh/HostKeyVerifier';
+
+export interface StorageRegistryOptions {
+  /** Builds the SFTP host-key verifier used for a given host/port, e.g. wired to a TOFU prompt. */
+  sftpHostVerifierFactory?: (host: string, port: number) => SshHostVerifierFn;
+}
 
 export class StorageRegistry {
   private providers: Map<string, IStorageProvider> = new Map();
+  private options: StorageRegistryOptions;
+
+  constructor(options: StorageRegistryOptions = {}) {
+    this.options = options;
+  }
 
   /**
    * Returns an existing provider or instantiates and stores a new one.
@@ -35,11 +46,17 @@ export class StorageRegistry {
         if (!config.sftpConfig) {
           throw new Error(`SFTP config is required for provider "${config.id}"`);
         }
-        provider = new SFTPStorageProvider({
-          ...config.sftpConfig,
-          id: config.id,
-          name: config.name || config.sftpConfig.name,
-        });
+        const port = config.sftpConfig.port ?? 22;
+        const hostVerifier = this.options.sftpHostVerifierFactory?.(config.sftpConfig.host, port);
+        provider = new SFTPStorageProvider(
+          {
+            ...config.sftpConfig,
+            id: config.id,
+            name: config.name || config.sftpConfig.name,
+          },
+          undefined,
+          hostVerifier
+        );
         break;
       }
       case 's3': {

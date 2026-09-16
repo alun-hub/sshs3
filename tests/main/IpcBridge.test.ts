@@ -299,6 +299,73 @@ describe('IpcBridge', () => {
     });
   });
 
+  describe('Host key trust-on-first-use prompts', () => {
+    it('sends a HOSTKEY_PROMPT event and resolves once HOSTKEY_RESPOND is invoked', async () => {
+      const promptPromise = bridge.promptHostKeyTrust({
+        host: 'unknown.example.com',
+        port: 22,
+        keyType: 'ssh-ed25519',
+        fingerprint: 'SHA256:abc123',
+        status: 'unknown',
+      });
+
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.HOSTKEY_PROMPT);
+      expect(promptEvent).toBeDefined();
+      expect(promptEvent?.args[0]).toMatchObject({
+        host: 'unknown.example.com',
+        port: 22,
+        keyType: 'ssh-ed25519',
+        fingerprint: 'SHA256:abc123',
+        status: 'unknown',
+      });
+      const promptId = promptEvent?.args[0].id;
+      expect(promptId).toBeDefined();
+
+      await mockIpc.invoke(IPC_CHANNELS.HOSTKEY_RESPOND, promptId, true);
+      await expect(promptPromise).resolves.toBe(true);
+    });
+
+    it('responding to an unknown/expired prompt id throws', async () => {
+      await expect(mockIpc.invoke(IPC_CHANNELS.HOSTKEY_RESPOND, 'no-such-id', true)).rejects.toThrow();
+    });
+
+    it('resolves to false without prompting when no webContents is available', async () => {
+      const bridgeNoWindow = new IpcBridge({
+        ipcMain: new MockIpcMain() as any,
+        sshPtyManager: mockPtyManager,
+        storageRegistry: mockStorageRegistry,
+        transferQueue: mockTransferQueue,
+        profileStore: mockProfileStore,
+        getWebContents: () => null,
+      });
+      bridgeNoWindow.register();
+
+      const result = await bridgeNoWindow.promptHostKeyTrust({
+        host: 'no-window.example.com',
+        port: 22,
+        keyType: 'ssh-rsa',
+        fingerprint: 'SHA256:xyz',
+        status: 'unknown',
+      });
+      expect(result).toBe(false);
+
+      await bridgeNoWindow.dispose();
+    });
+
+    it('dispose() rejects (resolves false) any pending host key prompts', async () => {
+      const promptPromise = bridge.promptHostKeyTrust({
+        host: 'pending.example.com',
+        port: 22,
+        keyType: 'ssh-ed25519',
+        fingerprint: 'SHA256:pending',
+        status: 'unknown',
+      });
+
+      await bridge.dispose();
+      await expect(promptPromise).resolves.toBe(false);
+    });
+  });
+
   describe('Storage Handlers', () => {
     it('handles storage connect and disconnect', async () => {
       const res = await mockIpc.invoke(IPC_CHANNELS.STORAGE_CONNECT, {

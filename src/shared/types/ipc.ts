@@ -26,6 +26,10 @@ export const IPC_CHANNELS = {
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
 
+  // SFTP host key verification (TOFU)
+  HOSTKEY_PROMPT: 'hostkey:prompt',
+  HOSTKEY_RESPOND: 'hostkey:respond',
+
   // Storage
   STORAGE_CONNECT: 'storage:connect',
   STORAGE_DISCONNECT: 'storage:disconnect',
@@ -62,6 +66,16 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
+export interface HostKeyPromptEvent {
+  id: string;
+  host: string;
+  port: number;
+  keyType: string;
+  fingerprint: string;
+  /** 'unknown' = first time connecting to this host. 'mismatch' = the presented key differs from a previously trusted one. */
+  status: 'unknown' | 'mismatch';
+}
+
 export interface StorageConnectConfig {
   id: string;
   name: string;
@@ -85,6 +99,10 @@ export interface MultiSSHApi {
   smartcardValidate(path: string): Promise<{ valid: boolean; error?: string }>;
   onAskpassPrompt(callback: (event: { id: string; prompt: string; sessionId?: string }) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
+
+  // SFTP host key verification (TOFU)
+  onHostKeyPrompt(callback: (event: HostKeyPromptEvent) => void): () => void;
+  respondHostKeyPrompt(id: string, trust: boolean): Promise<void>;
 
   // Storage
   connectStorage(config: StorageConnectConfig): Promise<{ id: string }>;
