@@ -21,7 +21,7 @@
     "synopsis": "Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support"
   },
   "win": {
-    "icon": "build/icon.png",
+    "icon": "build/icon.ico",
     "target": [
       "nsis",
       "portable"
@@ -30,5 +30,10 @@
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "alun-hub",
+    "repo": "sshs3"
   }
 }
