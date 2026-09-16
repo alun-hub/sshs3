@@ -338,6 +338,32 @@ describe('LocalStorageProvider', () => {
     });
   });
 
+  describe('chmod', () => {
+    it('should change mode on existing file', async () => {
+      const filePath = path.join(testDir, 'chmod-test.txt');
+      await fs.writeFile(filePath, 'hello');
+      await provider.chmod(filePath, '600');
+
+      const stat = await fs.stat(filePath);
+      expect((stat.mode & 0o777).toString(8)).toBe('600');
+    });
+
+    it('should change mode on directory', async () => {
+      const dirPath = path.join(testDir, 'chmod-dir');
+      await fs.mkdir(dirPath);
+      await provider.chmod(dirPath, 0o700);
+
+      const stat = await fs.stat(dirPath);
+      expect((stat.mode & 0o777).toString(8)).toBe('700');
+    });
+
+    it('should reject invalid mode string', async () => {
+      const filePath = path.join(testDir, 'test.txt');
+      await fs.writeFile(filePath, 'test');
+      await expect(provider.chmod(filePath, 'invalid')).rejects.toThrow(/Invalid chmod mode/);
+    });
+  });
+
   describe('disconnect', () => {
     it('should gracefully resolve disconnect', async () => {
       await expect(provider.disconnect()).resolves.toBeUndefined();

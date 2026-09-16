@@ -36,10 +36,22 @@ export interface IStorageProvider {
   rename(oldPath: string, newPath: string): Promise<void>;
   createReadStream(remotePath: string, start?: number, end?: number): Promise<NodeJS.ReadableStream>;
   createWriteStream(remotePath: string, options?: WriteStreamOptions): Promise<NodeJS.WritableStream>;
+  chmod?(remotePath: string, mode: number | string): Promise<void>;
   disconnect?(): Promise<void>;
 }
 
 export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
+
+export type ProxyType = 'http' | 'socks5' | 'socks4';
+
+export interface ProxyConfig {
+  enabled?: boolean;
+  type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
 
 export interface SFTPConfig {
   id?: string;
@@ -55,6 +67,7 @@ export interface SFTPConfig {
   pkcs11LibPath?: string;
   pin?: string;
   initialPath?: string;
+  proxy?: ProxyConfig;
 }
 
 export interface S3Config {
@@ -70,4 +83,5 @@ export interface S3Config {
   rejectUnauthorized?: boolean;
   customCaPath?: string;
   initialPath?: string;
+  proxy?: ProxyConfig;
 }

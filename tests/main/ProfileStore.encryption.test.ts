@@ -140,4 +140,33 @@ describe('ProfileStore encryption', () => {
     const profiles = await store.getProfiles();
     expect(profiles.ssh[0].password).toBe('old-plaintext-password');
   });
+
+  it('stores proxy password encrypted on disk and decrypts on read', async () => {
+    const store = new ProfileStore(storePath);
+    const config: SSHConnectionConfig = {
+      id: 'ssh-proxy',
+      name: 'Proxy SSH',
+      host: 'proxy.example.com',
+      username: 'user',
+      authType: 'password',
+      password: 'ssh-password',
+      proxy: {
+        enabled: true,
+        type: 'socks5',
+        host: '10.0.0.1',
+        port: 1080,
+        username: 'proxyuser',
+        password: 'proxy-secret-password',
+      },
+    };
+    await store.saveSSH(config);
+
+    const raw = await fs.readFile(storePath, 'utf-8');
+    expect(raw).not.toContain('proxy-secret-password');
+    expect(mockEncryptString).toHaveBeenCalledWith('proxy-secret-password');
+
+    const profiles = await store.getProfiles();
+    expect(profiles.ssh[0].proxy?.password).toBe('proxy-secret-password');
+    expect(profiles.ssh[0].proxy?.username).toBe('proxyuser');
+  });
 });

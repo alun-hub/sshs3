@@ -266,6 +266,125 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({ initial, onSave,
         </label>
       )}
 
+      {/* Outgoing Proxy */}
+      <div className="rounded border border-slate-700/80 bg-slate-900/50 p-2.5">
+        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-300">
+          <input
+            type="checkbox"
+            checked={Boolean(config.proxy?.enabled)}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              setConfig((prev) => ({
+                ...prev,
+                proxy: {
+                  enabled,
+                  type: prev.proxy?.type ?? 'socks5',
+                  host: prev.proxy?.host ?? '',
+                  port: prev.proxy?.port ?? 1080,
+                  username: prev.proxy?.username ?? '',
+                  password: prev.proxy?.password ?? '',
+                },
+              }));
+            }}
+            className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+          />
+          <span>Utgående proxy (HTTP / SOCKS)</span>
+        </label>
+
+        {config.proxy?.enabled && (
+          <div className="mt-2.5 space-y-2 text-xs">
+            <div className="grid grid-cols-[110px_1fr_90px] gap-2">
+              <label className="flex flex-col gap-1 text-slate-400">
+                Proxytyp
+                <select
+                  value={config.proxy.type}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: {
+                        ...prev.proxy!,
+                        type: e.target.value as any,
+                        port:
+                          prev.proxy?.port === 1080 || prev.proxy?.port === 8080
+                            ? e.target.value === 'http'
+                              ? 8080
+                              : 1080
+                            : prev.proxy?.port ?? 1080,
+                      },
+                    }))
+                  }
+                  className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+                >
+                  <option value="socks5">SOCKS5</option>
+                  <option value="http">HTTP</option>
+                  <option value="socks4">SOCKS4</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-slate-400">
+                Proxy-värd
+                <input
+                  value={config.proxy.host}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: { ...prev.proxy!, host: e.target.value },
+                    }))
+                  }
+                  placeholder="proxy.example.com"
+                  className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-slate-400">
+                Port
+                <input
+                  type="number"
+                  value={config.proxy.port || ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: { ...prev.proxy!, port: parseInt(e.target.value, 10) || 0 },
+                    }))
+                  }
+                  className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1 text-slate-400">
+                Användarnamn (valfritt)
+                <input
+                  value={config.proxy.username ?? ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: { ...prev.proxy!, username: e.target.value },
+                    }))
+                  }
+                  className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-slate-400">
+                Lösenord (valfritt)
+                <input
+                  type="password"
+                  value={config.proxy.password ?? ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: { ...prev.proxy!, password: e.target.value },
+                    }))
+                  }
+                  className="rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
       {testResult && (
         <div
           className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-xs ${

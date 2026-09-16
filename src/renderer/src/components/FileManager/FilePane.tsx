@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  Shield,
   Trash2,
   X,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { joinPath, parentPath } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
 import { buildDragPayload, useDragDrop } from './DragDropLayer';
+import { ChmodModal } from './ChmodModal';
 import type { PaneSide, PaneSource, SourceType } from './types';
 
 interface FilePaneProps {
@@ -50,6 +52,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [chmodOpen, setChmodOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
@@ -253,6 +256,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </button>
         <button
           type="button"
+          title="Ändra rättigheter (chmod)"
+          disabled={selectedPaths.size === 0 || source.sourceType === 's3'}
+          onClick={() => setChmodOpen(true)}
+          className="rounded p-1 text-slate-300 hover:bg-slate-700 disabled:opacity-30"
+        >
+          <Shield className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           title="Sök / Filtrera filer (Ctrl+F)"
           onClick={() => {
             setShowFilter((prev) => {
@@ -304,9 +316,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
       )}
 
       {error && (
-        <div className="flex items-center gap-1.5 border-b border-red-900 bg-red-950/50 px-2 py-1 text-xs text-red-300">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{error}</span>
+        <div className="flex items-center justify-between gap-1.5 border-b border-red-900 bg-red-950/50 px-2 py-1 text-xs text-red-300">
+          <div className="flex min-w-0 items-center gap-1.5 truncate">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{error}</span>
+          </div>
+          {source.sourceType !== 'local' && (
+            <button
+              type="button"
+              onClick={() => onSourceTypeRequest('local')}
+              className="ml-2 shrink-0 rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Växla till lokal disk
+            </button>
+          )}
         </div>
       )}
 
@@ -339,6 +362,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onRenameCancel={() => setRenamingPath(null)}
         />
       </div>
+
+      <ChmodModal
+        open={chmodOpen}
+        providerId={source.providerId}
+        entries={entries.filter((e) => selectedPaths.has(e.path))}
+        onClose={() => setChmodOpen(false)}
+        onSaved={() => void load()}
+      />
     </div>
   );
 };

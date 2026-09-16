@@ -10,6 +10,8 @@ import type {
   SFTPConfig,
   S3Config,
 } from './storage';
+import type { SessionData } from './session';
+import type { AppSettings } from './settings';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -38,6 +40,7 @@ export const IPC_CHANNELS = {
   STORAGE_CREATE_FOLDER: 'storage:create-folder',
   STORAGE_DELETE: 'storage:delete',
   STORAGE_RENAME: 'storage:rename',
+  STORAGE_CHMOD: 'storage:chmod',
 
   // Transfer
   TRANSFER_ADD: 'transfer:add',
@@ -56,6 +59,14 @@ export const IPC_CHANNELS = {
   PROFILES_DELETE_SSH: 'profiles:delete-ssh',
   PROFILES_SAVE_S3: 'profiles:save-s3',
   PROFILES_DELETE_S3: 'profiles:delete-s3',
+
+  // Session & Tabs
+  SESSION_GET: 'session:get',
+  SESSION_SAVE: 'session:save',
+
+  // Settings
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_SAVE: 'settings:save',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -128,6 +139,7 @@ export interface MultiSSHApi {
   storageCreateFolder(providerId: string, remotePath: string): Promise<void>;
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;
+  storageChmod(providerId: string, remotePath: string, mode: number | string): Promise<void>;
 
   // Transfer
   transferAdd(options: {
@@ -150,6 +162,14 @@ export interface MultiSSHApi {
   profilesDeleteSSH(id: string): Promise<void>;
   profilesSaveS3(config: S3Config): Promise<void>;
   profilesDeleteS3(id: string): Promise<void>;
+
+  // Session
+  sessionGet(): Promise<SessionData | null>;
+  sessionSave(data: SessionData): Promise<void>;
+
+  // Settings
+  settingsGet(): Promise<AppSettings>;
+  settingsSave(settings: Partial<AppSettings>): Promise<AppSettings>;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

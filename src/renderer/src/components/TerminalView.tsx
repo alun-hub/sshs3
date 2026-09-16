@@ -9,7 +9,34 @@ export interface TerminalViewProps {
   isActive?: boolean;
   onExit?: (event: SSHPtyExitEvent) => void;
   className?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  theme?: 'dark' | 'light' | 'system';
 }
+
+const XTERM_LIGHT_THEME = {
+  background: '#ffffff',
+  foreground: '#0f172a',
+  cursor: '#0284c7',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#cbd5e1',
+  black: '#000000',
+  red: '#dc2626',
+  green: '#16a34a',
+  yellow: '#ca8a04',
+  blue: '#0284c7',
+  magenta: '#9333ea',
+  cyan: '#0891b2',
+  white: '#f8fafc',
+  brightBlack: '#64748b',
+  brightRed: '#ef4444',
+  brightGreen: '#22c55e',
+  brightYellow: '#eab308',
+  brightBlue: '#38bdf8',
+  brightMagenta: '#c084fc',
+  brightCyan: '#06b6d4',
+  brightWhite: '#ffffff',
+};
 
 const XTERM_DARK_THEME = {
   background: '#0f172a', // slate-900
@@ -40,6 +67,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   isActive = true,
   onExit,
   className = '',
+  fontSize = 13,
+  fontFamily = 'Menlo, Monaco, "Courier New", monospace, Consolas',
+  theme = 'dark',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -60,6 +90,23 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     }
   }, [isActive]);
 
+  // Update terminal options when props change
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.fontSize = fontSize;
+      termRef.current.options.fontFamily = fontFamily;
+      const isLight =
+        theme === 'light' ||
+        (theme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
+      termRef.current.options.theme = isLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME;
+      try {
+        fitAddonRef.current?.fit();
+      } catch {
+        // Safe to ignore initial fit in hidden elements
+      }
+    }
+  }, [fontSize, fontFamily, theme]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -68,13 +115,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let unsubExit: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
 
+    const isLight =
+      theme === 'light' ||
+      (theme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
+
     // 1. Initialize Terminal & FitAddon
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
-      fontSize: 13,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace, Consolas',
-      theme: XTERM_DARK_THEME,
+      fontSize,
+      fontFamily,
+      theme: isLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME,
       allowProposedApi: true,
     });
     termRef.current = term;

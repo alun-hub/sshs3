@@ -62,4 +62,23 @@ describe('FileList Component', () => {
 
     expect(screen.getByText('Inga filer matchar "nonexistent"')).toBeInTheDocument();
   });
+
+  it('renders permissions header and file permissions', () => {
+    const permEntries: FileEntry[] = [
+      { name: 'app.sh', path: '/app.sh', size: 100, isDirectory: false, permissions: '755' },
+    ];
+
+    render(
+      <FileList
+        entries={permEntries}
+        loading={false}
+        selectedPaths={new Set()}
+        onSelectionChange={vi.fn()}
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Rättigheter')).toBeInTheDocument();
+    expect(screen.getByText('755')).toBeInTheDocument();
+  });
 });

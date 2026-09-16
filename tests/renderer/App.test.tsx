@@ -42,6 +42,10 @@ describe('App Component', () => {
       storageList: vi.fn().mockResolvedValue([]),
       transferGetJobs: vi.fn().mockResolvedValue([]),
       onTransferProgress: vi.fn(() => vi.fn()),
+      sessionGet: vi.fn().mockResolvedValue(null),
+      sessionSave: vi.fn().mockResolvedValue(undefined),
+      settingsGet: vi.fn().mockResolvedValue(undefined),
+      settingsSave: vi.fn().mockResolvedValue(undefined),
     } as any;
   });
 
@@ -119,5 +123,33 @@ describe('App Component', () => {
     tabs = screen.getAllByRole('tab');
     expect(tabs.length).toBe(1);
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens settings modal when settings gear button is clicked', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('quick-settings-btn'));
+    expect(await screen.findByText('Inställningar')).toBeInTheDocument();
+  });
+
+  it('restores saved tabs from session on mount', async () => {
+    window.multissh.sessionGet = vi.fn().mockResolvedValue({
+      tabs: [
+        { id: 'saved-term', type: 'terminal', title: 'Saved Terminal' },
+        { id: 'saved-fm', type: 'filemanager', title: 'Saved Explorer' },
+      ],
+      activeTabId: 'saved-fm',
+    });
+
+    render(<App />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Saved Terminal')).toBeInTheDocument();
+      expect(screen.getByText('Saved Explorer')).toBeInTheDocument();
+    });
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.length).toBe(2);
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
   });
 });

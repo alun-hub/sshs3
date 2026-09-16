@@ -63,21 +63,16 @@ att bygga.
 - [x] **6. Filsökning/filter i filhanteraren.** Sök-/filterruta och snabbknapp (Ctrl+F) i `FilePane`/`FileList`, matchningsräknare och specifik tom vy vid nollsök.
 - [ ] **7. Katalogsynkronisering** (spegla lokal ↔ fjärrkatalog, visa diff innan
    överföring). Kärnfunktion i WinSCP; helt frånvarande här.
-- [ ] **8. Permissions-editor (chmod)** för SFTP — `permissions` visas redan i
-   listan men kan inte ändras.
+- [x] **8. Permissions-editor (chmod)** för SFTP och lokal lagring. Rättighetskolumn visas i listan med sortering, och en interaktiv chmod-modal (User/Group/Other kryssrutor, oktal representation och rekursivt val) kan öppnas via knapp i verktygsraden.
 - [x] **9. Standardkatalog/startsökväg per profil.** Stöd för `initialPath` i SSH-, SFTP- och S3-profiler med fält i profilformulären och direkt navigering vid anslutning i filhanteraren.
-- [ ] **10. Utgående proxy (HTTP/SOCKS)** för att nå servrar bakom en
-   företagsbrandvägg. Vanlig inställning i alla tre kategorierna
-   (SSH/SFTP/S3) och helt frånvarande i `SSHConnectionConfig`/`SFTPConfig`/
-   `S3Config` idag.
+- [x] **10. Utgående proxy (HTTP / SOCKS4 / SOCKS5)** för att nå servrar bakom företagsbrandväggar. Stöd för SSH (OpenSSH `ProxyCommand` med `proxyCli.cjs` för autentisering), SFTP (tunneling via `createProxySocket` i `SFTPStorageProvider`) och S3 (`NodeHttpHandler` med proxy-agenter). Profilformulären har expanderbar proxysektion och proxylösenord krypteras säkert via `safeStorage`.
 - [ ] **11. Anslutningstimeout, återförsök och automatisk återanslutning** vid
    nätverkstapp — idag finns bara paus/återuppta för överföringar, inget för
    själva sessionen.
 - [ ] **12. Import/export av anslutningsprofiler** (t.ex. från `~/.ssh/config`,
    PuTTY, eller en enkel JSON-export) så man slipper mata in allt manuellt.
 - [x] **13. Testa anslutning-knapp.** Implementerad i `SSHProfileForm` och `S3ProfileForm` via backend-anrop (`connection:test-ssh` och `connection:test-s3`) med visuell statusindikator och felrapportering innan profilen sparas.
-- [ ] **14. Sessions-/flikpersistens.** Öppna flikar och senaste katalogsökväg per
-   anslutning kommer inte ihåg mellan omstarter.
+- [x] **14. Sessions-/flikpersistens.** Öppna terminal- och filflikar samt senast besökta katalogsökvägar sparas och återställs automatiskt mellan omstarter via `SessionStore` (`session.json`).
 - [ ] **15. Checksumverifiering efter överföring** (t.ex. jämför storlek/hash) för
    att upptäcka trunkerade/korrupta filer.
 
@@ -111,9 +106,8 @@ att bygga.
 
 ### P3 — Polering och plattformskänsla
 
-- [ ] **25. Riktig inställningsskärm** (bakom det redan existerande kugghjulet):
-   tema, typsnitt/storlek för terminalen, standardbeteende för nya flikar.
-- [ ] **26. Ljust tema / systemtema-följning.** Just nu är allt hårdkodat mörkt.
+- [x] **25. Riktig inställningsskärm** bakom kugghjulet i `TabBar`. Stöd för tema (mörkt, ljust, system med live respons), typsnitt/storlek för terminalen med interaktiv förhandsgranskning samt standardbeteende för nya flikar vid appstart. Sparas persistent via `SettingsStore`.
+- [x] **26. Ljust tema / systemtema-följning.** Integrerat via inställningsskärmen med dynamisk CSS `.light`-klass och synkroniserat xterm-färgtema.
 - [ ] **27. Anpassningsbara tangentbordsgenvägar.**
 - [ ] **28. Appikon + `desktopName`** för Linux (electron-builder varnar om båda
    idag).

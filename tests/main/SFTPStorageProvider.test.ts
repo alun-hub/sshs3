@@ -18,6 +18,7 @@ const {
   mockRename,
   mockCreateReadStream,
   mockCreateWriteStream,
+  mockChmod,
   mockEnd,
   getEventHandlers,
   resetEventHandlers,
@@ -33,6 +34,7 @@ const {
     mockRename: vi.fn(),
     mockCreateReadStream: vi.fn(),
     mockCreateWriteStream: vi.fn(),
+    mockChmod: vi.fn().mockResolvedValue(undefined),
     mockEnd: vi.fn(),
     getEventHandlers: () => handlers,
     resetEventHandlers: () => {
@@ -59,6 +61,7 @@ vi.mock('ssh2-sftp-client', () => {
     public rename = mockRename;
     public createReadStream = mockCreateReadStream;
     public createWriteStream = mockCreateWriteStream;
+    public chmod = mockChmod;
     public end = mockEnd;
     public on = vi.fn((event: string, handler: (...args: any[]) => void) => {
       const handlers = getEventHandlers();
@@ -900,6 +903,29 @@ describe('SFTPStorageProvider', () => {
       const entries = await provider.list('/test');
       expect(mockConnect).toHaveBeenCalledTimes(1);
       expect(entries).toEqual([]);
+    });
+  });
+
+  describe('chmod', () => {
+    it('should call sftp.chmod with parsed octal mode', async () => {
+      mockChmod.mockResolvedValue('Successfully change file mode');
+      const provider = new SFTPStorageProvider(baseConfig);
+      await provider.chmod('/test/file.txt', '755');
+
+      expect(mockChmod).toHaveBeenCalledWith('/test/file.txt', 0o755);
+    });
+
+    it('should support numeric mode', async () => {
+      mockChmod.mockResolvedValue('Successfully change file mode');
+      const provider = new SFTPStorageProvider(baseConfig);
+      await provider.chmod('/test/dir', 0o700);
+
+      expect(mockChmod).toHaveBeenCalledWith('/test/dir', 0o700);
+    });
+
+    it('should throw for invalid mode string', async () => {
+      const provider = new SFTPStorageProvider(baseConfig);
+      await expect(provider.chmod('/test/dir', 'invalid')).rejects.toThrow(/Invalid chmod mode/);
     });
   });
 });

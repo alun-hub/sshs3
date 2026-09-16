@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
 import https from 'node:https';
+import tls from 'node:tls';
 import { PassThrough } from 'node:stream';
+import { createProxySocket } from '../proxy/proxySocket';
 import {
   S3Client,
   type S3ClientConfig,
@@ -84,7 +87,10 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       },
     };
 
-    if (config.rejectUnauthorized !== undefined || config.customCaPath) {
+    const hasProxy = Boolean(config.proxy?.enabled && config.proxy.host);
+    const hasCustomTls = config.rejectUnauthorized !== undefined || config.customCaPath;
+
+    if (hasProxy || hasCustomTls) {
       const httpsAgentOptions: https.AgentOptions = {};
       if (config.rejectUnauthorized !== undefined) {
         httpsAgentOptions.rejectUnauthorized = config.rejectUnauthorized;
@@ -92,9 +98,48 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       if (config.customCaPath) {
         httpsAgentOptions.ca = fs.readFileSync(config.customCaPath);
       }
-      s3ClientConfig.requestHandler = new NodeHttpHandler({
-        httpsAgent: new https.Agent(httpsAgentOptions),
-      });
+
+      if (hasProxy && config.proxy) {
+        const proxyCfg = config.proxy;
+        const httpAgent = new http.Agent();
+        (httpAgent as any).createConnection = (opts: any, cb: any) => {
+          createProxySocket(proxyCfg, {
+            host: opts.host || opts.hostname,
+            port: Number(opts.port) || 80,
+          })
+            .then((socket) => cb(null, socket))
+            .catch((err) => cb(err));
+        };
+
+        const httpsAgent = new https.Agent(httpsAgentOptions);
+        (httpsAgent as any).createConnection = (opts: any, cb: any) => {
+          createProxySocket(proxyCfg, {
+            host: opts.host || opts.hostname,
+            port: Number(opts.port) || 443,
+          })
+            .then((socket) => {
+              const tlsSocket = tls.connect({
+                socket,
+                host: opts.host || opts.hostname,
+                servername: opts.servername || opts.host || opts.hostname,
+                rejectUnauthorized: config.rejectUnauthorized ?? true,
+                ca: config.customCaPath ? fs.readFileSync(config.customCaPath) : undefined,
+              });
+              tlsSocket.on('error', (err) => cb(err));
+              cb(null, tlsSocket);
+            })
+            .catch((err) => cb(err));
+        };
+
+        s3ClientConfig.requestHandler = new NodeHttpHandler({
+          httpAgent,
+          httpsAgent,
+        });
+      } else {
+        s3ClientConfig.requestHandler = new NodeHttpHandler({
+          httpsAgent: new https.Agent(httpsAgentOptions),
+        });
+      }
     }
 
     this.client = new S3Client(s3ClientConfig);

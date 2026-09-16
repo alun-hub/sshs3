@@ -16,6 +16,8 @@ import {
   joinPaths,
 } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
+import { SessionStore } from './session/SessionStore';
+import { SettingsStore } from './settings/SettingsStore';
 import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import {
@@ -35,6 +37,8 @@ import type {
   TransferProgress,
   S3Config,
 } from '../shared/types/storage';
+import type { SessionData } from '../shared/types/session';
+import type { AppSettings } from '../shared/types/settings';
 
 interface PendingAskpassPrompt {
   sessionId?: string;
@@ -56,6 +60,8 @@ export interface IpcBridgeOptions {
   transferQueue?: TransferQueue;
   profileStore?: ProfileStore;
   knownHostsStore?: KnownHostsStore;
+  sessionStore?: SessionStore;
+  settingsStore?: SettingsStore;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -66,6 +72,8 @@ export class IpcBridge {
   public readonly transferQueue: TransferQueue;
   public readonly profileStore: ProfileStore;
   public readonly knownHostsStore: KnownHostsStore;
+  public readonly sessionStore: SessionStore;
+  public readonly settingsStore: SettingsStore;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -96,6 +104,8 @@ export class IpcBridge {
       });
     this.transferQueue = options.transferQueue ?? new TransferQueue();
     this.profileStore = options.profileStore ?? new ProfileStore();
+    this.sessionStore = options.sessionStore ?? new SessionStore();
+    this.settingsStore = options.settingsStore ?? new SettingsStore();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -109,6 +119,8 @@ export class IpcBridge {
     this.registerStorageHandlers();
     this.registerTransferHandlers();
     this.registerProfileHandlers();
+    this.registerSessionHandlers();
+    this.registerSettingsHandlers();
     this.registerConnectionTestHandlers();
     this.registerGeneralHandlers();
     this.setupEventListeners();
@@ -311,6 +323,20 @@ export class IpcBridge {
         await provider.rename(oldPath, newPath);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_CHMOD,
+      async (_event, providerId: string, remotePath: string, mode: number | string): Promise<void> => {
+        const provider = this.storageRegistry.get(providerId);
+        if (!provider) {
+          throw new Error(`Storage provider not found: ${providerId}`);
+        }
+        if (typeof provider.chmod !== 'function') {
+          throw new Error(`Storage provider "${providerId}" does not support chmod`);
+        }
+        await provider.chmod(remotePath, mode);
+      }
+    );
   }
 
   private registerTransferHandlers(): void {
@@ -470,6 +496,32 @@ export class IpcBridge {
     );
   }
 
+  private registerSessionHandlers(): void {
+    this.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {
+      return await this.sessionStore.getSession();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.SESSION_SAVE,
+      async (_event, data: SessionData): Promise<void> => {
+        await this.sessionStore.saveSession(data);
+      }
+    );
+  }
+
+  private registerSettingsHandlers(): void {
+    this.registerHandler(IPC_CHANNELS.SETTINGS_GET, async (): Promise<AppSettings> => {
+      return await this.settingsStore.getSettings();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.SETTINGS_SAVE,
+      async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
+        return await this.settingsStore.saveSettings(settings);
+      }
+    );
+  }
+
   private registerConnectionTestHandlers(): void {
     this.registerHandler(
       IPC_CHANNELS.CONNECTION_TEST_SSH,
@@ -507,6 +559,7 @@ export class IpcBridge {
               passphrase: config.passphrase,
               agentPath: config.agentPath,
               pkcs11LibPath: config.pkcs11LibPath,
+              proxy: config.proxy,
             },
             undefined,
             createHostVerifier({

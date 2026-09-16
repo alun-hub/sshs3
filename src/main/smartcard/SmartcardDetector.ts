@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 
 export interface DetectOptions {
@@ -137,6 +138,25 @@ export class SmartcardDetector {
     if (config.extraOptions) {
       for (const [key, value] of Object.entries(config.extraOptions)) {
         args.push('-o', `${key}=${value}`);
+      }
+    }
+
+    // Outgoing proxy option (-o ProxyCommand=...)
+    if (config.proxy?.enabled && config.proxy.host) {
+      const p = config.proxy;
+      const port = p.port || (p.type === 'http' ? 8080 : 1080);
+      if (p.username) {
+        const cliPath = path.resolve(__dirname, '../proxy/proxyCli.cjs');
+        args.push(
+          '-o',
+          `ProxyCommand=node "${cliPath}" ${p.type} ${p.host} ${port} %h %p "${p.username}" "${p.password || ''}"`
+        );
+      } else if (p.type === 'http') {
+        args.push('-o', `ProxyCommand=nc -X connect -x ${p.host}:${port} %h %p`);
+      } else if (p.type === 'socks5') {
+        args.push('-o', `ProxyCommand=nc -X 5 -x ${p.host}:${port} %h %p`);
+      } else if (p.type === 'socks4') {
+        args.push('-o', `ProxyCommand=nc -X 4 -x ${p.host}:${port} %h %p`);
       }
     }
 

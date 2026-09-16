@@ -97,6 +97,8 @@ describe('IpcBridge', () => {
   let mockStorageRegistry: any;
   let mockTransferQueue: any;
   let mockProfileStore: any;
+  let mockSessionStore: any;
+  let mockSettingsStore: any;
   let bridge: IpcBridge;
 
   beforeEach(() => {
@@ -121,6 +123,7 @@ describe('IpcBridge', () => {
       createFolder: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
       rename: vi.fn().mockResolvedValue(undefined),
+      chmod: vi.fn().mockResolvedValue(undefined),
       createReadStream: vi.fn(),
       createWriteStream: vi.fn(),
       disconnect: vi.fn().mockResolvedValue(undefined),
@@ -171,12 +174,24 @@ describe('IpcBridge', () => {
       deleteS3: vi.fn().mockResolvedValue(undefined),
     };
 
+    mockSessionStore = {
+      getSession: vi.fn().mockResolvedValue({ tabs: [], activeTabId: 't1' }),
+      saveSession: vi.fn().mockResolvedValue(undefined),
+    };
+
+    mockSettingsStore = {
+      getSettings: vi.fn().mockResolvedValue({ theme: 'system', terminal: { fontSize: 14, fontFamily: 'monospace' }, defaultTabType: 'terminal' }),
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+    };
+
     bridge = new IpcBridge({
       ipcMain: mockIpc as any,
       sshPtyManager: mockPtyManager,
       storageRegistry: mockStorageRegistry,
       transferQueue: mockTransferQueue,
       profileStore: mockProfileStore,
+      sessionStore: mockSessionStore,
+      settingsStore: mockSettingsStore,
       getWebContents: () => mockWebContents as any,
     });
 
@@ -980,10 +995,80 @@ describe('IpcBridge', () => {
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.APP_GET_VERSION);
     });
 
+    it('storageChmod invokes correct channel', async () => {
+      await preloadApi.storageChmod('test-storage', '/test/file.txt', '755');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
+        IPC_CHANNELS.STORAGE_CHMOD,
+        'test-storage',
+        '/test/file.txt',
+        '755'
+      );
+    });
+
+    it('session get and save invoke correct channels', async () => {
+      await preloadApi.sessionGet();
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SESSION_GET);
+
+      const session = { tabs: [], activeTabId: 't1' };
+      await preloadApi.sessionSave(session);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SESSION_SAVE, session);
+    });
+
+    it('settings get and save invoke correct channels', async () => {
+      await preloadApi.settingsGet();
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SETTINGS_GET);
+
+      const settings = { theme: 'dark' as const, terminal: { fontSize: 16, fontFamily: 'monospace' }, defaultTabType: 'terminal' as const };
+      await preloadApi.settingsSave(settings);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SETTINGS_SAVE, settings);
+    });
+
     it('dialogOpenFile invokes correct channel with options', async () => {
       const options = { title: 'Välj fil', filters: [{ name: 'Nycklar', extensions: ['pem'] }] };
       await preloadApi.dialogOpenFile(options);
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.DIALOG_OPEN_FILE, options);
+    });
+  });
+
+  describe('Storage Chmod Handler', () => {
+    it('successfully calls provider chmod', async () => {
+      const provider = mockStorageRegistry.providers.get('test-storage');
+      await mockIpc.invoke(IPC_CHANNELS.STORAGE_CHMOD, 'test-storage', '/var/log/app.log', '644');
+      expect(provider.chmod).toHaveBeenCalledWith('/var/log/app.log', '644');
+    });
+
+    it('throws error if provider not found or chmod unsupported', async () => {
+      await expect(
+        mockIpc.invoke(IPC_CHANNELS.STORAGE_CHMOD, 'non-existent', '/file', '755')
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('Session Handlers', () => {
+    it('retrieves session data', async () => {
+      const data = await mockIpc.invoke(IPC_CHANNELS.SESSION_GET);
+      expect(data).toEqual({ tabs: [], activeTabId: 't1' });
+      expect(mockSessionStore.getSession).toHaveBeenCalled();
+    });
+
+    it('saves session data', async () => {
+      const session = { tabs: [{ id: 'tab-1', title: 'SSH', type: 'terminal' }], activeTabId: 'tab-1' };
+      await mockIpc.invoke(IPC_CHANNELS.SESSION_SAVE, session);
+      expect(mockSessionStore.saveSession).toHaveBeenCalledWith(session);
+    });
+  });
+
+  describe('Settings Handlers', () => {
+    it('retrieves settings data', async () => {
+      const settings = await mockIpc.invoke(IPC_CHANNELS.SETTINGS_GET);
+      expect(settings).toEqual({ theme: 'system', terminal: { fontSize: 14, fontFamily: 'monospace' }, defaultTabType: 'terminal' });
+      expect(mockSettingsStore.getSettings).toHaveBeenCalled();
+    });
+
+    it('saves settings data', async () => {
+      const settings = { theme: 'light', terminal: { fontSize: 18, fontFamily: 'Fira Code' }, defaultTabType: 'files' };
+      await mockIpc.invoke(IPC_CHANNELS.SETTINGS_SAVE, settings);
+      expect(mockSettingsStore.saveSettings).toHaveBeenCalledWith(settings);
     });
   });
 

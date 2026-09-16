@@ -1,3 +1,5 @@
+import type { ProxyConfig } from './storage';
+
 export type SSHAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
 
 export interface SSHConnectionConfig {
@@ -14,6 +16,7 @@ export interface SSHConnectionConfig {
   agentPath?: string;
   extraOptions?: Record<string, string>;
   initialPath?: string;
+  proxy?: ProxyConfig;
 }
 
 export interface DetectedSmartcardLib {

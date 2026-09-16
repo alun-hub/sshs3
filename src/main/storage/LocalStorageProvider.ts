@@ -187,6 +187,15 @@ export class LocalStorageProvider extends BaseStorageProvider {
     return fs.createWriteStream(fullPath);
   }
 
+  async chmod(remotePath: string, mode: number | string): Promise<void> {
+    const fullPath = this.resolvePath(remotePath);
+    const numericMode = typeof mode === 'string' ? parseInt(mode, 8) : mode;
+    if (Number.isNaN(numericMode)) {
+      throw new Error(`Invalid chmod mode: ${mode}`);
+    }
+    await fsp.chmod(fullPath, numericMode);
+  }
+
   async disconnect(): Promise<void> {
     // No persistent connection to close for local filesystem
   }

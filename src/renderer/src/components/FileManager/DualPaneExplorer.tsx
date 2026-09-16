@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config, SFTPConfig } from '@shared/types/storage';
+import type { SavedPaneState } from '@shared/types/session';
 import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModal';
 import { DragDropProvider } from './DragDropLayer';
 import { FilePane } from './FilePane';
@@ -33,8 +34,96 @@ export const DualPaneExplorer: React.FC = () => {
     let mounted = true;
     void window.multissh
       .connectStorage({ id: 'local', name: 'Lokal disk', type: 'local' })
-      .then(() => {
-        if (mounted) setReady(true);
+      .then(async () => {
+        if (!mounted) return;
+        const [session, profiles] = await Promise.all([
+          window.multissh.sessionGet?.(),
+          window.multissh.profilesGet?.(),
+        ]);
+        if (!mounted) return;
+
+        const restoreSide = async (_side: PaneSide, savedPane?: SavedPaneState): Promise<PaneState> => {
+          if (!savedPane || savedPane.sourceType === 'local') {
+            const localPath = session?.lastPaths?.['local'] || savedPane?.path || '/';
+            return {
+              source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
+              path: localPath,
+            };
+          }
+
+          if (savedPane.sourceType === 's3' && profiles?.s3) {
+            const s3Profile = profiles.s3.find((p) => `s3-${p.id}` === savedPane.providerId);
+            if (s3Profile) {
+              try {
+                await window.multissh.connectStorage({
+                  id: savedPane.providerId,
+                  name: s3Profile.name,
+                  type: 's3',
+                  s3Config: s3Profile,
+                });
+                return {
+                  source: { providerId: savedPane.providerId, sourceType: 's3', label: s3Profile.name },
+                  path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
+                };
+              } catch (err) {
+                console.warn('Could not auto-reconnect S3 pane on startup:', err);
+              }
+            }
+          }
+
+          if (savedPane.sourceType === 'sftp' && profiles?.ssh) {
+            const sshProfile = profiles.ssh.find((p) => `sftp-${p.id}` === savedPane.providerId);
+            // Only auto-connect SFTP if non-interactive credentials exist (saved password, private key, or agent)
+            if (
+              sshProfile &&
+              sshProfile.authType !== 'smartcard' &&
+              (sshProfile.password || sshProfile.privateKeyPath || sshProfile.authType === 'agent')
+            ) {
+              try {
+                const sftpConfig: SFTPConfig = {
+                  id: sshProfile.id,
+                  name: sshProfile.name,
+                  host: sshProfile.host,
+                  port: sshProfile.port ?? 22,
+                  username: sshProfile.username,
+                  authType: sshProfile.authType,
+                  password: sshProfile.password,
+                  privateKeyPath: sshProfile.privateKeyPath,
+                  passphrase: sshProfile.passphrase,
+                  agentPath: sshProfile.agentPath,
+                  initialPath: sshProfile.initialPath,
+                  proxy: sshProfile.proxy,
+                };
+                await window.multissh.connectStorage({
+                  id: savedPane.providerId,
+                  name: sshProfile.name,
+                  type: 'sftp',
+                  sftpConfig,
+                });
+                return {
+                  source: { providerId: savedPane.providerId, sourceType: 'sftp', label: sshProfile.name },
+                  path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
+                };
+              } catch (err) {
+                console.warn('Could not auto-reconnect SFTP pane on startup:', err);
+              }
+            }
+          }
+
+          // Fallback safely to local disk if remote provider cannot be auto-connected
+          return {
+            source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
+            path: session?.lastPaths?.['local'] || '/',
+          };
+        };
+
+        const left = await restoreSide('left', session?.panes?.left);
+        const right = await restoreSide('right', session?.panes?.right);
+
+        if (mounted) {
+          setPanes({ left, right });
+          setReady(true);
+        }
       })
       .catch((err) => {
         if (mounted) {
@@ -56,16 +145,53 @@ export const DualPaneExplorer: React.FC = () => {
     return unsub;
   }, []);
 
+  const persistPaneState = (updatedPanes: Record<PaneSide, PaneState>) => {
+    void window.multissh.sessionGet?.().then((session) => {
+      const lastPaths = {
+        ...(session?.lastPaths || {}),
+        [updatedPanes.left.source.providerId]: updatedPanes.left.path,
+        [updatedPanes.right.source.providerId]: updatedPanes.right.path,
+      };
+      void window.multissh.sessionSave?.({
+        tabs: session?.tabs || [],
+        activeTabId: session?.activeTabId || '',
+        lastPaths,
+        panes: {
+          left: {
+            sourceType: updatedPanes.left.source.sourceType,
+            providerId: updatedPanes.left.source.providerId,
+            label: updatedPanes.left.source.label,
+            path: updatedPanes.left.path,
+          },
+          right: {
+            sourceType: updatedPanes.right.source.sourceType,
+            providerId: updatedPanes.right.source.providerId,
+            label: updatedPanes.right.source.label,
+            path: updatedPanes.right.path,
+          },
+        },
+      });
+    });
+  };
+
   const setPanePath = useCallback((side: PaneSide, path: string) => {
-    setPanes((prev) => ({ ...prev, [side]: { ...prev[side], path } }));
+    setPanes((prev) => {
+      const next = { ...prev, [side]: { ...prev[side], path } };
+      persistPaneState(next);
+      return next;
+    });
   }, []);
 
   const setPaneSourceType = useCallback((side: PaneSide, type: SourceType) => {
     if (type === 'local') {
-      setPanes((prev) => ({
-        ...prev,
-        [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' }, path: prev[side].path },
-      }));
+      setPanes((prev) => {
+        const next = {
+          ...prev,
+          [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' }, path: prev[side].path },
+        };
+        persistPaneState(next);
+        return next;
+      });
       return;
     }
     setConnectionRequest({ side, type });
@@ -96,14 +222,20 @@ export const DualPaneExplorer: React.FC = () => {
           pkcs11LibPath: config.pkcs11LibPath,
           pin,
           initialPath: config.initialPath,
+          proxy: config.proxy,
         };
-        const initialPath = config.initialPath?.trim() || '/';
         const providerId = `sftp-${config.id}`;
+        const session = await window.multissh.sessionGet?.();
+        const initialPath = session?.lastPaths?.[providerId] || config.initialPath?.trim() || '/';
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
-        setPanes((prev) => ({
-          ...prev,
-          [side]: { source: { providerId, sourceType: 'sftp', label: config.name }, path: initialPath },
-        }));
+        setPanes((prev) => {
+          const next = {
+            ...prev,
+            [side]: { source: { providerId, sourceType: 'sftp' as const, label: config.name }, path: initialPath },
+          };
+          persistPaneState(next);
+          return next;
+        });
         setConnectionRequest(null);
       } catch (err) {
         window.alert(err instanceof Error ? err.message : 'Kunde inte ansluta till SFTP-servern');
@@ -120,13 +252,18 @@ export const DualPaneExplorer: React.FC = () => {
       const { side } = connectionRequest;
       setConnecting(true);
       try {
-        const initialPath = config.initialPath?.trim() || '/';
         const providerId = `s3-${config.id}`;
+        const session = await window.multissh.sessionGet?.();
+        const initialPath = session?.lastPaths?.[providerId] || config.initialPath?.trim() || '/';
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 's3', s3Config: config });
-        setPanes((prev) => ({
-          ...prev,
-          [side]: { source: { providerId, sourceType: 's3', label: config.name }, path: initialPath },
-        }));
+        setPanes((prev) => {
+          const next = {
+            ...prev,
+            [side]: { source: { providerId, sourceType: 's3' as const, label: config.name }, path: initialPath },
+          };
+          persistPaneState(next);
+          return next;
+        });
         setConnectionRequest(null);
       } catch (err) {
         window.alert(err instanceof Error ? err.message : 'Kunde inte ansluta till S3');

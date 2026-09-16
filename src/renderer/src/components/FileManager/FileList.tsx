@@ -3,7 +3,7 @@ import { File, FileArchive, FileCode, FileImage, FileText, Folder, Loader2 } fro
 import type { FileEntry } from '@shared/types/storage';
 import { classNames, formatBytes } from '../../lib/format';
 
-type SortKey = 'name' | 'size' | 'mtime';
+type SortKey = 'name' | 'size' | 'mtime' | 'permissions';
 type SortDir = 'asc' | 'desc';
 
 interface FileListProps {
@@ -72,7 +72,9 @@ export const FileList: React.FC<FileListProps> = ({
           ? a.name.localeCompare(b.name)
           : sortKey === 'size'
             ? a.size - b.size
-            : (a.mtime ?? '').localeCompare(b.mtime ?? '');
+            : sortKey === 'permissions'
+              ? (a.permissions ?? '').localeCompare(b.permissions ?? '')
+              : (a.mtime ?? '').localeCompare(b.mtime ?? '');
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
@@ -129,7 +131,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="grid grid-cols-[1fr_90px_140px] items-center gap-2 border-b border-slate-700 px-3 py-1.5">
+      <div className="grid grid-cols-[1fr_80px_75px_130px] items-center gap-2 border-b border-slate-700 px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Namn" sortKeyName="name" />
           {filterText?.trim() && (
@@ -139,6 +141,7 @@ export const FileList: React.FC<FileListProps> = ({
           )}
         </div>
         <SortHeader label="Storlek" sortKeyName="size" />
+        <SortHeader label="Rättigheter" sortKeyName="permissions" />
         <SortHeader label="Ändrad" sortKeyName="mtime" />
       </div>
       <div
@@ -187,7 +190,7 @@ export const FileList: React.FC<FileListProps> = ({
                 onClick={(e) => handleRowClick(entry, index, e)}
                 onDoubleClick={() => onOpen(entry)}
                 className={classNames(
-                  'grid cursor-default grid-cols-[1fr_90px_140px] items-center gap-2 border-b border-slate-800/60 px-3 py-1 text-sm select-none',
+                  'grid cursor-default grid-cols-[1fr_80px_75px_130px] items-center gap-2 border-b border-slate-800/60 px-3 py-1 text-sm select-none',
                   selected ? 'bg-sky-900/40 text-slate-50' : 'text-slate-200 hover:bg-slate-800/60',
                   isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-900/30'
                 )}
@@ -211,6 +214,7 @@ export const FileList: React.FC<FileListProps> = ({
                   )}
                 </div>
                 <span className="truncate text-xs text-slate-400">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
+                <span className="truncate font-mono text-xs text-slate-400">{entry.permissions ?? '-'}</span>
                 <span className="truncate text-xs text-slate-400">{entry.mtime ?? ''}</span>
               </div>
             );

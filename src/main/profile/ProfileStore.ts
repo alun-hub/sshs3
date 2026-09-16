@@ -72,6 +72,21 @@ function transformSecretFields<T extends object>(
   return result;
 }
 
+function transformEntrySecrets<T extends { proxy?: any }>(
+  entry: T,
+  fields: Array<keyof T>,
+  transform: (value: string) => string
+): T {
+  const result = transformSecretFields(entry, fields, transform);
+  if (result.proxy && typeof result.proxy.password === 'string' && result.proxy.password) {
+    result.proxy = {
+      ...result.proxy,
+      password: transform(result.proxy.password),
+    };
+  }
+  return result;
+}
+
 export class ProfileStore {
   private filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -101,8 +116,8 @@ export class ProfileStore {
       const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
       const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
       return {
-        ssh: ssh.map((p) => transformSecretFields(p, SSH_SECRET_FIELDS, decryptValue)),
-        s3: s3.map((p) => transformSecretFields(p, S3_SECRET_FIELDS, decryptValue)),
+        ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptValue)),
+        s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptValue)),
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
@@ -182,8 +197,8 @@ export class ProfileStore {
 
   private async persist(data: ProfilesData): Promise<void> {
     const onDisk: ProfilesData = {
-      ssh: data.ssh.map((p) => transformSecretFields(p, SSH_SECRET_FIELDS, encryptValue)),
-      s3: data.s3.map((p) => transformSecretFields(p, S3_SECRET_FIELDS, encryptValue)),
+      ssh: data.ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, encryptValue)),
+      s3: data.s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, encryptValue)),
     };
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {

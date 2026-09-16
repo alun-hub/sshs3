@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import SftpClient from 'ssh2-sftp-client';
+import { createProxySocket } from '../proxy/proxySocket';
 import {
   BaseStorageProvider,
   formatDate,
@@ -201,14 +202,26 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           // connect() call hangs indefinitely instead of failing or
           // succeeding cleanly.
           const client = new SftpClient();
+          let sock: any = undefined;
           try {
-            await client.connect(options as any);
+            const connectOpts = { ...options };
+            if (this.config.proxy?.enabled && this.config.proxy.host) {
+              sock = await createProxySocket(this.config.proxy, {
+                host: this.config.host,
+                port: this.config.port ?? 22,
+              });
+              connectOpts.sock = sock;
+            }
+            await client.connect(connectOpts as any);
             this.client = client;
             this.attachLifecycleListeners(client);
             this.isConnected = true;
             return;
           } catch (err) {
             lastErr = err;
+            if (sock) {
+              try { sock.destroy(); } catch {}
+            }
             await client.end().catch(() => {});
           }
         }
@@ -339,6 +352,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       return this.client.createWriteStream(normalized, options as any);
     }
     return this.client.createWriteStream(normalized);
+  }
+
+  async chmod(remotePath: string, mode: number | string): Promise<void> {
+    await this.ensureConnected();
+    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+    const numericMode = typeof mode === 'string' ? parseInt(mode, 8) : mode;
+    if (Number.isNaN(numericMode)) {
+      throw new Error(`Invalid chmod mode: ${mode}`);
+    }
+    await this.client.chmod(normalized, numericMode);
   }
 
   async disconnect(): Promise<void> {

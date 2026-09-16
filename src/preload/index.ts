@@ -18,6 +18,8 @@ import type {
   TransferProgress,
   S3Config,
 } from '../shared/types/storage';
+import type { SessionData } from '../shared/types/session';
+import type { AppSettings } from '../shared/types/settings';
 
 export const api: MultiSSHApi = {
   // Terminal
@@ -114,6 +116,9 @@ export const api: MultiSSHApi = {
   storageRename: (providerId: string, oldPath: string, newPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_RENAME, providerId, oldPath, newPath),
 
+  storageChmod: (providerId: string, remotePath: string, mode: number | string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CHMOD, providerId, remotePath, mode),
+
   // Transfer
   transferAdd: (options: {
     sourceProviderId: string;
@@ -163,6 +168,20 @@ export const api: MultiSSHApi = {
 
   profilesDeleteS3: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_DELETE_S3, id),
+
+  // Session
+  sessionGet: (): Promise<SessionData | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET),
+
+  sessionSave: (data: SessionData): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_SAVE, data),
+
+  // Settings
+  settingsGet: (): Promise<AppSettings> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+
+  settingsSave: (settings: Partial<AppSettings>): Promise<AppSettings> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE, settings),
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

@@ -254,6 +254,73 @@ describe('SmartcardDetector', () => {
         /port must be between 1 and 65535/
       );
     });
+
+    it('should generate ProxyCommand for unauthenticated HTTP proxy', () => {
+      const config: SSHConnectionConfig = {
+        id: 'proxy-http',
+        name: 'HTTP Proxy Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        proxy: {
+          enabled: true,
+          type: 'http',
+          host: '127.0.0.1',
+          port: 8080,
+        },
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      expect(args).toContain('-o');
+      const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
+      expect(proxyOpt).toBeDefined();
+      expect(proxyOpt).toContain('127.0.0.1:8080 %h %p');
+    });
+
+    it('should generate ProxyCommand for unauthenticated SOCKS5 proxy', () => {
+      const config: SSHConnectionConfig = {
+        id: 'proxy-socks5',
+        name: 'SOCKS5 Proxy Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        proxy: {
+          enabled: true,
+          type: 'socks5',
+          host: '10.0.0.1',
+          port: 1080,
+        },
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
+      expect(proxyOpt).toBeDefined();
+      expect(proxyOpt).toContain('nc -X 5 -x 10.0.0.1:1080 %h %p');
+    });
+
+    it('should generate proxyCli ProxyCommand when proxy authentication is configured', () => {
+      const config: SSHConnectionConfig = {
+        id: 'proxy-auth',
+        name: 'Auth Proxy Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        proxy: {
+          enabled: true,
+          type: 'socks5',
+          host: '10.0.0.1',
+          port: 1080,
+          username: 'proxyuser',
+          password: 'secret',
+        },
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
+      expect(proxyOpt).toBeDefined();
+      expect(proxyOpt).toContain('proxyCli.cjs');
+      expect(proxyOpt).toContain('"proxyuser" "secret"');
+    });
   });
 });
 
