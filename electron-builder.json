@@ -25,11 +25,13 @@
     "target": [
       "nsis",
       "portable"
-    ]
+    ],
+    "artifactName": "${name}-${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,
-    "allowToChangeInstallationDirectory": true
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "${name}-Setup-${version}.${ext}"
   },
   "publish": {
     "provider": "github",
