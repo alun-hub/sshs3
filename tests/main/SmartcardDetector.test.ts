@@ -25,9 +25,13 @@ describe('SmartcardDetector', () => {
   });
 
   describe('getKnownLibraryPaths', () => {
-    it('should return known Linux paths including Net iD and OpenSC', () => {
+    it('should return known Linux paths including p11-kit, Net iD and OpenSC, with p11-kit prioritized', () => {
       const linuxPaths = SmartcardDetector.getKnownLibraryPaths('linux');
       expect(linuxPaths.length).toBeGreaterThan(0);
+
+      const p11KitPaths = linuxPaths.filter((l) => l.name === 'p11-kit');
+      expect(p11KitPaths.length).toBeGreaterThan(0);
+      expect(p11KitPaths.some((l) => l.path.includes('p11-kit-proxy.so'))).toBe(true);
 
       const netIdPaths = linuxPaths.filter((l) => l.name === 'Net iD');
       expect(netIdPaths.length).toBeGreaterThan(0);
@@ -36,6 +40,13 @@ describe('SmartcardDetector', () => {
       const openScPaths = linuxPaths.filter((l) => l.name === 'OpenSC');
       expect(openScPaths.length).toBeGreaterThan(0);
       expect(openScPaths.some((l) => l.path.includes('opensc-pkcs11.so'))).toBe(true);
+
+      // Verify p11-kit is prioritized before Net iD and OpenSC
+      const firstP11Index = linuxPaths.findIndex((l) => l.name === 'p11-kit');
+      const firstNetIdIndex = linuxPaths.findIndex((l) => l.name === 'Net iD');
+      const firstOpenScIndex = linuxPaths.findIndex((l) => l.name === 'OpenSC');
+      expect(firstP11Index).toBeLessThan(firstNetIdIndex);
+      expect(firstP11Index).toBeLessThan(firstOpenScIndex);
 
       expect(linuxPaths.every((l) => l.platform === 'linux')).toBe(true);
     });

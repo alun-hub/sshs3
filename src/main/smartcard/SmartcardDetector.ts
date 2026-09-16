@@ -9,6 +9,11 @@ export interface DetectOptions {
 
 export class SmartcardDetector {
   private static readonly LINUX_LIBRARIES: Array<{ name: string; path: string; platform: 'linux' }> = [
+    // p11-kit (prioritized: proxies all system-registered PKCS#11 modules)
+    { name: 'p11-kit', path: '/usr/lib64/p11-kit-proxy.so', platform: 'linux' },
+    { name: 'p11-kit', path: '/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so', platform: 'linux' },
+    { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux' },
+    { name: 'p11-kit', path: '/usr/local/lib/p11-kit-proxy.so', platform: 'linux' },
     // Net iD
     { name: 'Net iD', path: '/usr/lib/libiidp11.so', platform: 'linux' },
     { name: 'Net iD', path: '/usr/lib64/libiidp11.so', platform: 'linux' },
