@@ -339,6 +339,9 @@ export class TransferQueue extends EventEmitter {
     this.activeJobIds.add(job.id);
     job.startedAt = new Date();
     job.progress.status = 'running';
+    if (job.isDirectory) {
+      job.progress.statusMessage = 'Förbereder...';
+    }
     this.emit('progress', job.progress, job);
 
     try {
@@ -396,6 +399,7 @@ export class TransferQueue extends EventEmitter {
         job.progress.status = 'completed';
         job.progress.percentage = 100;
         job.completedAt = new Date();
+        job.progress.statusMessage = 'Klar';
         this.emit('progress', job.progress, job);
         this.emit('completed', job);
         context.resolveWait(job);
@@ -408,6 +412,7 @@ export class TransferQueue extends EventEmitter {
         err.name === 'AbortError'
       ) {
         job.progress.status = 'cancelled';
+        job.progress.statusMessage = 'Avbruten';
         this.emit('progress', job.progress, job);
         this.emit('cancelled', job);
         context.resolveWait(job);
@@ -415,6 +420,7 @@ export class TransferQueue extends EventEmitter {
         job.progress.status = 'failed';
         job.error = err?.message || String(err);
         job.progress.error = job.error;
+        job.progress.statusMessage = 'Misslyckades';
         this.emit('progress', job.progress, job);
         this.emit('failed', job, err);
         context.resolveWait(job);

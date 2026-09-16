@@ -19,6 +19,7 @@ export interface TransferProgress {
   bytesPerSecond: number;
   status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   error?: string;
+  statusMessage?: string;
 }
 
 export interface WriteStreamOptions {

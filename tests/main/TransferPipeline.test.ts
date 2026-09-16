@@ -532,6 +532,9 @@ describe('TransferPipeline', () => {
       expect(file2Text).toBe('file2-content');
 
       expect(progressList.length).toBeGreaterThan(0);
+      expect(progressList.some((p) => p.statusMessage?.includes('Genomsöker'))).toBe(true);
+      expect(progressList.some((p) => p.statusMessage?.includes('Skapar underkatalog'))).toBe(true);
+      expect(progressList.some((p) => p.statusMessage?.includes('Fil'))).toBe(true);
       const last = progressList[progressList.length - 1];
       expect(last.status).toBe('completed');
     });

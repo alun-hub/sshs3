@@ -9,6 +9,11 @@
     "email": "alun@alun.se"
   },
   "homepage": "https://unixkonsult.se/sshs3",
+  "desktopName": "sshs3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alun-hub/sshs3.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

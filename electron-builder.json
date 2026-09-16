@@ -17,7 +17,6 @@
       "rpm"
     ],
     "category": "Utility",
-    "desktopName": "sshs3",
     "icon": "build/icons",
     "synopsis": "Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support"
   },

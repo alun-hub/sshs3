@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Pause, Play, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Pause, Play, Trash2, X } from 'lucide-react';
 import type { TransferProgress } from '@shared/types/storage';
 import { classNames, formatBytes, formatSpeed } from '../../lib/format';
 
@@ -88,18 +88,34 @@ export const TransferQueueDrawer: React.FC = () => {
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-slate-200">{job.fileName}</span>
                   <span className="shrink-0 text-slate-400">
-                    {formatBytes(job.transferredBytes)} / {formatBytes(job.totalBytes)}
+                    {job.totalBytes > 0
+                      ? `${formatBytes(job.transferredBytes)} / ${formatBytes(job.totalBytes)}`
+                      : job.status === 'running'
+                      ? 'Beräknar storlek...'
+                      : formatBytes(job.transferredBytes)}
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
                   <div
-                    className={classNames('h-full rounded-full transition-all', STATUS_COLOR[job.status])}
-                    style={{ width: `${Math.min(100, Math.max(0, job.percentage))}%` }}
+                    className={classNames(
+                      'h-full rounded-full transition-all',
+                      STATUS_COLOR[job.status],
+                      job.status === 'running' && !job.totalBytes ? 'w-full animate-pulse opacity-75' : ''
+                    )}
+                    style={job.totalBytes ? { width: `${Math.min(100, Math.max(0, job.percentage))}%` } : undefined}
                   />
                 </div>
                 <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>{STATUS_LABEL[job.status]}{job.error ? `: ${job.error}` : ''}</span>
-                  {job.status === 'running' && <span>{formatSpeed(job.bytesPerSecond)}</span>}
+                  <span className="flex items-center gap-1.5 truncate">
+                    {job.status === 'running' && !job.totalBytes && (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-400" />
+                    )}
+                    <span className="truncate">
+                      {job.statusMessage || STATUS_LABEL[job.status]}
+                      {job.error ? `: ${job.error}` : ''}
+                    </span>
+                  </span>
+                  {job.status === 'running' && job.bytesPerSecond > 0 && <span>{formatSpeed(job.bytesPerSecond)}</span>}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">

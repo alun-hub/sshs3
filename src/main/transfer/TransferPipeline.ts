@@ -430,7 +430,9 @@ async function scanDirectory(
   currentSourcePath: string,
   currentTargetPath: string,
   targetType: StorageType,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onScanProgress?: (filesCount: number, currentItem: string) => void,
+  state: { filesCount: number } = { filesCount: 0 }
 ): Promise<ScanResult> {
   if (signal?.aborted) {
     const err = new Error('Transfer aborted');
@@ -464,23 +466,28 @@ async function scanDirectory(
 
     if (entry.isDirectory) {
       result.folders.push(childTargetPath);
+      onScanProgress?.(state.filesCount, baseName);
       const subResult = await scanDirectory(
         sourceProvider,
         childSourcePath,
         childTargetPath,
         targetType,
-        signal
+        signal,
+        onScanProgress,
+        state
       );
       result.folders.push(...subResult.folders);
       result.files.push(...subResult.files);
       result.totalBytes += subResult.totalBytes;
     } else {
+      state.filesCount++;
       result.files.push({
         sourcePath: childSourcePath,
         targetPath: childTargetPath,
         size: entry.size || 0,
       });
       result.totalBytes += entry.size || 0;
+      onScanProgress?.(state.filesCount, baseName);
     }
   }
 
@@ -499,44 +506,84 @@ export async function transferDirectory(
     throw err;
   }
 
-  if (options.targetPath) {
-    await options.targetProvider.createFolder(options.targetPath);
-  }
+  const rootName = getBaseName(options.sourcePath) || options.sourcePath || 'katalog';
+
+  // Inform UI that scanning has begun
+  options.onProgress?.({
+    jobId: options.jobId ?? 'directory-transfer',
+    fileName: rootName,
+    transferredBytes: 0,
+    totalBytes: 0,
+    percentage: 0,
+    bytesPerSecond: 0,
+    status: 'running',
+    statusMessage: 'Genomsöker mappstruktur...',
+  });
 
   const scan = await scanDirectory(
     options.sourceProvider,
     options.sourcePath,
     options.targetPath,
     options.targetProvider.type,
-    options.signal
+    options.signal,
+    (filesCount) => {
+      options.onProgress?.({
+        jobId: options.jobId ?? 'directory-transfer',
+        fileName: rootName,
+        transferredBytes: 0,
+        totalBytes: 0,
+        percentage: 0,
+        bytesPerSecond: 0,
+        status: 'running',
+        statusMessage: `Genomsöker (${filesCount} ${filesCount === 1 ? 'fil hittad' : 'filer hittade'})...`,
+      });
+    }
   );
 
-  for (const folder of scan.folders) {
+  if (options.targetPath) {
+    await options.targetProvider.createFolder(options.targetPath);
+  }
+
+  for (let i = 0; i < scan.folders.length; i++) {
+    const folder = scan.folders[i];
     if (options.signal?.aborted) {
       const err = new Error('Transfer aborted');
       err.name = 'AbortError';
       throw err;
     }
+    options.onProgress?.({
+      jobId: options.jobId ?? 'directory-transfer',
+      fileName: rootName,
+      transferredBytes: 0,
+      totalBytes: scan.totalBytes,
+      percentage: 0,
+      bytesPerSecond: 0,
+      status: 'running',
+      statusMessage: `Skapar underkatalog (${i + 1}/${scan.folders.length})...`,
+    });
     await options.targetProvider.createFolder(folder);
   }
 
   if (scan.files.length === 0) {
     options.onProgress?.({
       jobId: options.jobId ?? 'directory-transfer',
-      fileName: options.sourcePath || 'directory',
+      fileName: rootName,
       transferredBytes: 0,
       totalBytes: 0,
       percentage: 100,
       bytesPerSecond: 0,
       status: 'completed',
+      statusMessage: 'Klar',
     });
     return;
   }
 
   let overallTransferredBytes = 0;
   const totalDirectoryBytes = scan.totalBytes;
+  let fileIndex = 0;
 
   for (const file of scan.files) {
+    fileIndex++;
     if (options.signal?.aborted) {
       const err = new Error('Transfer aborted');
       err.name = 'AbortError';
@@ -571,6 +618,7 @@ export async function transferDirectory(
           percentage,
           bytesPerSecond: fp.bytesPerSecond,
           status: 'running',
+          statusMessage: `Fil ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
         });
       },
     });
@@ -580,12 +628,13 @@ export async function transferDirectory(
 
   options.onProgress?.({
     jobId: options.jobId ?? 'directory-transfer',
-    fileName: options.sourcePath || 'directory',
+    fileName: rootName,
     transferredBytes: totalDirectoryBytes,
     totalBytes: totalDirectoryBytes,
     percentage: 100,
     bytesPerSecond: 0,
     status: 'completed',
+    statusMessage: 'Klar',
   });
 }
 
