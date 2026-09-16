@@ -170,7 +170,7 @@ export const App: React.FC = () => {
         >
           <Terminal className="h-4 w-4 text-sky-500" />
           <span className={`font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            MultiSSH
+            sshs3
           </span>
         </div>
         <div className="flex-1 min-w-0">

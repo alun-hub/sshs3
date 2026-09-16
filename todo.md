@@ -1,4 +1,4 @@
-# MultiSSH — Roadmap / TODO
+# sshs3 — Roadmap / TODO
 
 Status som av 2026-09-15. Bygger på en genomgång av koden i `src/`, inte bara planen i
 `docs/superpowers/plans/2026-09-14-multissh-implementation.md`.

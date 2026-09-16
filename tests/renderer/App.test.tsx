@@ -56,7 +56,7 @@ describe('App Component', () => {
   it('renders application header, initial terminal tab, and tab bar', async () => {
     render(<App />);
 
-    expect(screen.getByText('MultiSSH')).toBeInTheDocument();
+    expect(screen.getByText('sshs3')).toBeInTheDocument();
     expect(screen.getByTestId('add-tab-btn')).toBeInTheDocument();
 
     // Default terminal tab exists and is active

@@ -200,6 +200,7 @@ export const api: MultiSSHApi = {
 
 export function exposePreloadApi(): void {
   try {
+    contextBridge.exposeInMainWorld('sshs3', api);
     contextBridge.exposeInMainWorld('multissh', api);
   } catch {
     // Safely ignore when run outside electron preload environment

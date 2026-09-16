@@ -1,5 +1,5 @@
 /**
- * MultiSSH ProxyCommand CLI Helper for OpenSSH.
+ * sshs3 ProxyCommand CLI Helper for OpenSSH.
  * Usage: node proxyCli.cjs <type> <proxyHost> <proxyPort> <targetHost> <targetPort> [username] [password]
  */
 const net = require('node:net');

@@ -180,8 +180,11 @@ export interface MultiSSHApi {
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
 }
 
+export type SSHS3Api = MultiSSHApi;
+
 declare global {
   interface Window {
+    sshs3: MultiSSHApi;
     multissh: MultiSSHApi;
   }
 }

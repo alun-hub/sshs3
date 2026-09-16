@@ -16,7 +16,7 @@ export class SessionStore {
       try {
         baseDir = app.getPath('userData');
       } catch {
-        baseDir = path.join(os.homedir(), '.multissh');
+        baseDir = path.join(os.homedir(), '.sshs3');
       }
       this.filePath = path.join(baseDir, 'session.json');
     }
@@ -24,6 +24,18 @@ export class SessionStore {
 
   public getFilePath(): string {
     return this.filePath;
+  }
+
+  private getLegacyFilePath(): string | null {
+    try {
+      const configDir = path.dirname(this.filePath);
+      const parent = path.dirname(configDir);
+      const legacyConfig = path.join(parent, 'multissh', 'session.json');
+      const legacyHome = path.join(os.homedir(), '.multissh', 'session.json');
+      return legacyConfig !== this.filePath ? legacyConfig : legacyHome;
+    } catch {
+      return null;
+    }
   }
 
   public async getSession(): Promise<SessionData | null> {
@@ -35,6 +47,19 @@ export class SessionStore {
       }
       return data as SessionData;
     } catch {
+      const legacyPath = this.getLegacyFilePath();
+      if (legacyPath) {
+        try {
+          const raw = await fs.readFile(legacyPath, 'utf-8');
+          const data = JSON.parse(raw);
+          if (data && Array.isArray(data.tabs)) {
+            void this.saveSession(data as SessionData).catch(() => {});
+            return data as SessionData;
+          }
+        } catch {
+          // Ignore legacy read errors
+        }
+      }
       return null;
     }
   }

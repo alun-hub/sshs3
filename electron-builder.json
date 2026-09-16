@@ -1,6 +1,6 @@
 {
-  "appId": "com.multissh.app",
-  "productName": "MultiSSH",
+  "appId": "com.sshs3.app",
+  "productName": "sshs3",
   "directories": {
     "output": "release"
   },

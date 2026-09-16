@@ -1,5 +1,5 @@
 {
-  "name": "multissh",
+  "name": "sshs3",
   "version": "0.1.0",
   "description": "Modern cross-platform SSH, SFTP, and S3 client with smartcard and drag-and-drop support",
   "main": "dist-electron/index.js",
@@ -8,7 +8,7 @@
     "name": "Andreas Lundqvist",
     "email": "alun@alun.se"
   },
-  "homepage": "https://unixkonsult.se/multissh",
+  "homepage": "https://unixkonsult.se/sshs3",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

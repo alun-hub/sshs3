@@ -99,7 +99,7 @@ export class ProfileStore {
       try {
         baseDir = app.getPath('userData');
       } catch {
-        baseDir = path.join(os.homedir(), '.multissh');
+        baseDir = path.join(os.homedir(), '.sshs3');
       }
       this.filePath = path.join(baseDir, 'profiles.json');
     }
@@ -107,6 +107,18 @@ export class ProfileStore {
 
   public getFilePath(): string {
     return this.filePath;
+  }
+
+  private getLegacyFilePath(): string | null {
+    try {
+      const configDir = path.dirname(this.filePath);
+      const parent = path.dirname(configDir);
+      const legacyConfig = path.join(parent, 'multissh', 'profiles.json');
+      const legacyHome = path.join(os.homedir(), '.multissh', 'profiles.json');
+      return legacyConfig !== this.filePath ? legacyConfig : legacyHome;
+    } catch {
+      return null;
+    }
   }
 
   public async getProfiles(): Promise<ProfilesData> {
@@ -121,6 +133,28 @@ export class ProfileStore {
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
+        const legacyPath = this.getLegacyFilePath();
+        if (legacyPath) {
+          try {
+            const raw = await fs.readFile(legacyPath, 'utf-8');
+            const data = JSON.parse(raw);
+            const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
+            const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
+            const profiles = {
+              ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptValue)),
+              s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptValue)),
+            };
+            if (ssh.length > 0 || s3.length > 0) {
+              void this.queueMutation(async () => {
+                await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+                await fs.copyFile(legacyPath, this.filePath);
+              }).catch(() => {});
+            }
+            return profiles;
+          } catch {
+            // Ignore legacy read errors
+          }
+        }
         return { ssh: [], s3: [] };
       }
       // If file is corrupted or cannot be parsed, default to empty

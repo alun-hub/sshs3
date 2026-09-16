@@ -64,7 +64,7 @@ export class AskpassServer extends EventEmitter {
     });
 
     // 2. Create temporary directory and askpass script
-    this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'multissh-askpass-'));
+    this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-askpass-'));
     await fs.chmod(this.tempDir, 0o700);
     this.scriptPath = await this.generateAskpassScript(this.tempDir, this.port, this.token);
     this.running = true;

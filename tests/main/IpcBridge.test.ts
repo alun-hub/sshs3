@@ -837,6 +837,7 @@ describe('IpcBridge', () => {
     it('exposes api in main world', () => {
       mockExposeInMainWorld.mockClear();
       exposePreloadApi();
+      expect(mockExposeInMainWorld).toHaveBeenCalledWith('sshs3', preloadApi);
       expect(mockExposeInMainWorld).toHaveBeenCalledWith('multissh', preloadApi);
     });
 

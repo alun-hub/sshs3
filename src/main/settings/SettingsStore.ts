@@ -16,7 +16,7 @@ export class SettingsStore {
       try {
         baseDir = app.getPath('userData');
       } catch {
-        baseDir = path.join(os.homedir(), '.multissh');
+        baseDir = path.join(os.homedir(), '.sshs3');
       }
       this.filePath = path.join(baseDir, 'settings.json');
     }
@@ -24,6 +24,18 @@ export class SettingsStore {
 
   public getFilePath(): string {
     return this.filePath;
+  }
+
+  private getLegacyFilePath(): string | null {
+    try {
+      const configDir = path.dirname(this.filePath);
+      const parent = path.dirname(configDir);
+      const legacyConfig = path.join(parent, 'multissh', 'settings.json');
+      const legacyHome = path.join(os.homedir(), '.multissh', 'settings.json');
+      return legacyConfig !== this.filePath ? legacyConfig : legacyHome;
+    } catch {
+      return null;
+    }
   }
 
   public async getSettings(): Promise<AppSettings> {
@@ -35,6 +47,21 @@ export class SettingsStore {
         ...data,
       };
     } catch {
+      const legacyPath = this.getLegacyFilePath();
+      if (legacyPath) {
+        try {
+          const raw = await fs.readFile(legacyPath, 'utf-8');
+          const data = JSON.parse(raw);
+          const loaded = {
+            ...DEFAULT_SETTINGS,
+            ...data,
+          };
+          void this.saveSettings(loaded).catch(() => {});
+          return loaded;
+        } catch {
+          // Ignore legacy read errors
+        }
+      }
       return { ...DEFAULT_SETTINGS };
     }
   }
