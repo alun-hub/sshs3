@@ -220,7 +220,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           } catch (err) {
             lastErr = err;
             if (sock) {
-              try { sock.destroy(); } catch {}
+              try { sock.destroy(); } catch { /* ignore */ }
             }
             await client.end().catch(() => {});
           }

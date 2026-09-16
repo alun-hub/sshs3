@@ -32,9 +32,14 @@ function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): bool
 }
 
 function createWindow(): BrowserWindow {
+  const iconPath = process.env.VITE_DEV_SERVER_URL
+    ? path.join(__dirname, '../../build/icon.png')
+    : path.join(__dirname, '../build/icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'index.cjs'),
       sandbox: true,

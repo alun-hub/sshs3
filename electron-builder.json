@@ -9,6 +9,7 @@
     "dist-electron/**/*",
     "package.json"
   ],
+  "icon": "build/icon.png",
   "linux": {
     "target": [
       "AppImage",
@@ -16,9 +17,12 @@
       "rpm"
     ],
     "category": "Utility",
+    "desktopName": "sshs3",
+    "icon": "build/icons",
     "synopsis": "Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support"
   },
   "win": {
+    "icon": "build/icon.png",
     "target": [
       "nsis",
       "portable"

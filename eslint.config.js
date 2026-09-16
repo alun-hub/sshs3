@@ -29,9 +29,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', 'src/shared/**/*.ts'],
+    files: ['src/main/**/*.{ts,cjs}', 'src/preload/**/*.ts', 'src/shared/**/*.ts'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    files: ['**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
   {

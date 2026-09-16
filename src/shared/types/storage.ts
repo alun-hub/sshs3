@@ -68,6 +68,14 @@ export interface SFTPConfig {
   pin?: string;
   initialPath?: string;
   proxy?: ProxyConfig;
+  proxyJump?: string;
+  group?: string;
+  lastUsedAt?: string;
+  compression?: boolean;
+  serverAliveInterval?: number;
+  ciphers?: string;
+  kexAlgorithms?: string;
+  macs?: string;
 }
 
 export interface S3Config {
@@ -84,4 +92,6 @@ export interface S3Config {
   customCaPath?: string;
   initialPath?: string;
   proxy?: ProxyConfig;
+  group?: string;
+  lastUsedAt?: string;
 }

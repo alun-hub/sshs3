@@ -2,6 +2,18 @@ import type { ProxyConfig } from './storage';
 
 export type SSHAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
 
+export type SSHTunnelType = 'local' | 'remote' | 'dynamic';
+
+export interface SSHTunnelConfig {
+  id: string;
+  type: SSHTunnelType;
+  localPort: number;
+  remoteHost?: string;
+  remotePort?: number;
+  description?: string;
+  enabled?: boolean;
+}
+
 export interface SSHConnectionConfig {
   id: string;
   name: string;
@@ -17,6 +29,15 @@ export interface SSHConnectionConfig {
   extraOptions?: Record<string, string>;
   initialPath?: string;
   proxy?: ProxyConfig;
+  group?: string;
+  lastUsedAt?: string;
+  compression?: boolean;
+  serverAliveInterval?: number;
+  ciphers?: string;
+  kexAlgorithms?: string;
+  macs?: string;
+  proxyJump?: string;
+  tunnels?: SSHTunnelConfig[];
 }
 
 export interface DetectedSmartcardLib {
