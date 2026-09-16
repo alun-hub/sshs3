@@ -45,7 +45,7 @@ describe('FileList Component', () => {
     expect(screen.getByText('documents')).toBeInTheDocument();
     expect(screen.queryByText('config.json')).not.toBeInTheDocument();
     expect(screen.queryByText('image.png')).not.toBeInTheDocument();
-    expect(screen.getByText('1 av 4')).toBeInTheDocument();
+    expect(screen.getByText('1 of 4')).toBeInTheDocument();
   });
 
   it('shows no match message when filter yields zero results', () => {
@@ -60,7 +60,7 @@ describe('FileList Component', () => {
       />
     );
 
-    expect(screen.getByText('Inga filer matchar "nonexistent"')).toBeInTheDocument();
+    expect(screen.getByText('No files match "nonexistent"')).toBeInTheDocument();
   });
 
   it('renders permissions header and file permissions', () => {
@@ -78,7 +78,7 @@ describe('FileList Component', () => {
       />
     );
 
-    expect(screen.getByText('Rättigheter')).toBeInTheDocument();
+    expect(screen.getByText('Permissions')).toBeInTheDocument();
     expect(screen.getByText('755')).toBeInTheDocument();
   });
 });

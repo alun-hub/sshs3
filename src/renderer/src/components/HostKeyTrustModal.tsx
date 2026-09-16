@@ -54,47 +54,46 @@ export const HostKeyTrustModal: React.FC = () => {
       aria-labelledby="hostkey-modal-title"
       data-testid="hostkey-trust-modal"
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-800 p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">
           <div
             className={
-              'flex h-10 w-10 items-center justify-center rounded-full ' +
+              'flex h-10 w-10 items-center justify-center rounded-xl ' +
               (isMismatch ? 'bg-red-500/20 text-red-400' : 'bg-sky-500/20 text-sky-400')
             }
           >
             {isMismatch ? <ShieldAlert className="h-5 w-5" /> : <ShieldQuestion className="h-5 w-5" />}
           </div>
           <div>
-            <h2 id="hostkey-modal-title" className="text-base font-semibold text-white">
-              {isMismatch ? 'Värdnyckeln har ändrats!' : 'Okänd värd'}
+            <h2 id="hostkey-modal-title" className="text-base font-semibold text-txt-primary">
+              {isMismatch ? 'Host Key Changed!' : 'Unknown Host'}
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-txt-muted">
               {currentPrompt.host}
               {currentPrompt.port !== 22 ? `:${currentPrompt.port}` : ''}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 space-y-3 text-sm">
+        <div className="mt-4 space-y-3 text-xs text-txt-secondary">
           {isMismatch ? (
-            <p className="rounded border border-red-900 bg-red-950/50 px-3 py-2 text-red-300">
-              VARNING: värdens SSH-nyckel skiljer sig från den som tidigare sparades för den
-              här servern. Det kan betyda att servern har ombildats, men kan även vara ett
-              tecken på ett man-in-the-middle-angrepp. Fortsätt bara om du är säker på att
-              nyckeln verkligen har ändrats legitimt.
+            <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-red-300 leading-relaxed">
+              WARNING: The host key for this server differs from the key stored previously. This could mean
+              the server was reinstalled or reconfigured, but could also indicate a man-in-the-middle attack.
+              Only continue if you are confident this change is legitimate.
             </p>
           ) : (
-            <p className="text-slate-300">
-              Den här servern går inte att verifiera mot kända värdar. Kontrollera
-              fingeravtrycket nedan mot vad servens administratör angett innan du litar på den.
+            <p className="text-txt-secondary leading-relaxed">
+              This server could not be verified against known hosts. Verify the fingerprint below with the server
+              administrator before trusting it.
             </p>
           )}
 
-          <div className="rounded border border-slate-600 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-200">
-            <div>Nyckeltyp: {currentPrompt.keyType}</div>
-            <div className="break-all">Fingeravtryck: {currentPrompt.fingerprint}</div>
+          <div className="rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-xs text-txt-primary">
+            <div>Key Type: {currentPrompt.keyType}</div>
+            <div className="break-all mt-1">Fingerprint: {currentPrompt.fingerprint}</div>
           </div>
         </div>
 
@@ -103,25 +102,27 @@ export const HostKeyTrustModal: React.FC = () => {
             type="button"
             onClick={() => respond(false)}
             data-testid="hostkey-trust-cancel"
-            className="rounded-md border border-slate-600 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 focus:outline-none transition-colors"
+            className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            Avbryt
+            Cancel
           </button>
           <button
             type="button"
             onClick={() => respond(true)}
             data-testid="hostkey-trust-accept"
             className={
-              'rounded-md px-4 py-2 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 transition-colors ' +
+              'rounded-lg px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors ' +
               (isMismatch
-                ? 'bg-red-600 hover:bg-red-500 focus:ring-red-400'
-                : 'bg-sky-500 hover:bg-sky-400 focus:ring-sky-400')
+                ? 'bg-red-600 hover:bg-red-500'
+                : 'bg-sky-600 hover:bg-sky-500')
             }
           >
-            {isMismatch ? 'Lita på ändå' : 'Lita på värden'}
+            {isMismatch ? 'Trust Anyway' : 'Trust Host'}
           </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default HostKeyTrustModal;

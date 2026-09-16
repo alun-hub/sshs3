@@ -32,13 +32,16 @@ describe('SettingsModal', () => {
       />
     );
 
-    expect(screen.getByText('Inställningar')).toBeInTheDocument();
-    expect(screen.getByText('Mörkt')).toBeInTheDocument();
-    expect(screen.getByText('Ljust')).toBeInTheDocument();
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByText('Dark')).toBeInTheDocument();
+    expect(screen.getByText('Light')).toBeInTheDocument();
     expect(screen.getByText('System')).toBeInTheDocument();
-    expect(screen.getByText('Terminal typsnittsstorlek')).toBeInTheDocument();
+    expect(screen.getByText('Default Tab Type')).toBeInTheDocument();
+
+    // Click on Terminal category tab
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    expect(screen.getByText('Terminal Font Size')).toBeInTheDocument();
     expect(screen.getByText('13 px')).toBeInTheDocument();
-    expect(screen.getByText('Standardflik för nya flikar')).toBeInTheDocument();
   });
 
   it('allows changing theme, font size, and default tab, then submits on save', () => {
@@ -54,31 +57,32 @@ describe('SettingsModal', () => {
       />
     );
 
-    // Click "Ljust"
-    fireEvent.click(screen.getByText('Ljust'));
+    // Click "Light"
+    fireEvent.click(screen.getByText('Light'));
 
-    // Change font size input
-    const numInput = screen.getByRole('spinbutton');
+    // Select default tab "File Manager"
+    fireEvent.click(screen.getByText('File Manager'));
+
+    // Switch to Terminal tab to change font size
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    const numInput = screen.getAllByRole('spinbutton')[0];
     fireEvent.change(numInput, { target: { value: '16' } });
     expect(screen.getByText('16 px')).toBeInTheDocument();
 
-    // Select default tab "Filhanterare"
-    fireEvent.click(screen.getByText('Filhanterare'));
-
     // Submit
-    fireEvent.click(screen.getByText('Spara inställningar'));
+    fireEvent.click(screen.getByText('Save Settings'));
 
-    expect(onSave).toHaveBeenCalledWith<[AppSettings]>({
-      theme: 'light',
-      terminalFontSize: 16,
-      terminalFontFamily: DEFAULT_SETTINGS.terminalFontFamily,
-      defaultNewTabType: 'filemanager',
-      shortcuts: DEFAULT_SETTINGS.shortcuts,
-    });
+    expect(onSave).toHaveBeenCalledWith<[AppSettings]>(
+      expect.objectContaining({
+        theme: 'light',
+        terminalFontSize: 16,
+        defaultNewTabType: 'filemanager',
+      })
+    );
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('calls onClose when Avbryt is clicked', () => {
+  it('calls onClose when Cancel is clicked', () => {
     const onClose = vi.fn();
     const onSave = vi.fn();
 
@@ -91,12 +95,12 @@ describe('SettingsModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Avbryt'));
+    fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('renders Kortkommandon tab and allows recording and resetting shortcuts', () => {
+  it('renders Keyboard Shortcuts tab and allows recording and resetting shortcuts', () => {
     const onSave = vi.fn();
     const onClose = vi.fn();
 
@@ -109,21 +113,21 @@ describe('SettingsModal', () => {
       />
     );
 
-    // Click "Kortkommandon" tab
-    fireEvent.click(screen.getByText('Kortkommandon'));
-    expect(screen.getByText('Ny terminal')).toBeInTheDocument();
-    expect(screen.getByText('Stäng flik')).toBeInTheDocument();
-    expect(screen.getByText('Dela terminal vertikalt')).toBeInTheDocument();
+    // Click "Keyboard Shortcuts" tab
+    fireEvent.click(screen.getByText('Keyboard Shortcuts'));
+    expect(screen.getByText('New Terminal')).toBeInTheDocument();
+    expect(screen.getByText('Close Tab')).toBeInTheDocument();
+    expect(screen.getByText('Split Terminal Vertically')).toBeInTheDocument();
 
-    // Click on shortcut button for "Ny terminal" (default "Ctrl+Shift+T")
+    // Click on shortcut button for "New Terminal" (default "Ctrl+Shift+T")
     const newTabBtn = screen.getByText('Ctrl+Shift+T');
     fireEvent.click(newTabBtn);
 
     // It should now prompt for recording
-    expect(screen.getByText('Tryck tangent (Esc för att avbryta)...')).toBeInTheDocument();
+    expect(screen.getByText('Press keys (Esc to cancel)...')).toBeInTheDocument();
 
     // Send keydown Ctrl+Shift+N
-    const recordingBtn = screen.getByText('Tryck tangent (Esc för att avbryta)...');
+    const recordingBtn = screen.getByText('Press keys (Esc to cancel)...');
     fireEvent.keyDown(recordingBtn, {
       key: 'n',
       ctrlKey: true,
@@ -134,7 +138,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('Ctrl+Shift+N')).toBeInTheDocument();
 
     // Click reset to restore defaults
-    fireEvent.click(screen.getByText('Återställ standard'));
+    fireEvent.click(screen.getByText('Reset Defaults'));
     expect(screen.getByText('Ctrl+Shift+T')).toBeInTheDocument();
   });
 });

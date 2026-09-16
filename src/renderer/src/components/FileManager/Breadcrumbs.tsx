@@ -35,7 +35,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
               setEditing(false);
             }
           }}
-          className="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100 outline-none focus:border-sky-500"
+          className="w-full rounded-md border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
         />
       </form>
     );
@@ -45,17 +45,17 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded border border-transparent px-1 py-1 text-sm hover:border-slate-700"
+      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-md border border-transparent px-1 py-0.5 text-xs hover:border-border-subtle transition-colors cursor-pointer"
       onDoubleClick={() => setEditing(true)}
-      title="Dubbelklicka för att skriva in en sökväg"
+      title="Double-click to enter path"
     >
       {segments.map((segment, idx) => (
         <React.Fragment key={segment.path}>
-          {idx > 0 && <span className="text-slate-600">/</span>}
+          {idx > 0 && <span className="text-txt-muted opacity-50">/</span>}
           <button
             type="button"
             onClick={() => onNavigate(segment.path)}
-            className="shrink-0 rounded px-1.5 py-0.5 text-slate-300 hover:bg-slate-700 hover:text-slate-50"
+            className="shrink-0 rounded px-1.5 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors font-medium"
           >
             {segment.label}
           </button>

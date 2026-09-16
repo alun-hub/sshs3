@@ -77,7 +77,6 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
   if (!open) return null;
 
   const handleOctalChange = (val: string) => {
-    // Clean to numeric characters only, max 4 digits
     const cleaned = val.replace(/[^0-7]/g, '').slice(0, 4);
     setOctal(cleaned);
     if (cleaned.length >= 3) {
@@ -124,59 +123,59 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ändra filrättigheter');
+      setError(err instanceof Error ? err.message : 'Failed to change permissions');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-800/80 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-sky-400" />
-            <h2 className="text-sm font-semibold text-slate-100">Ändra rättigheter (chmod)</h2>
+            <Shield className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">Change Permissions (chmod)</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+            className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-4 space-y-4 text-xs text-slate-300">
+        <div className="p-4 space-y-4 text-xs text-txt-secondary">
           {/* File summary */}
-          <div className="rounded border border-slate-800 bg-slate-950 p-2.5">
-            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Mål</div>
-            <div className="mt-1 font-mono text-xs text-slate-200 truncate">
-              {entries.length === 1 ? entries[0].name : `${entries.length} markerade objekt`}
+          <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
+            <div className="text-[11px] text-txt-muted uppercase tracking-wider font-semibold">Target</div>
+            <div className="mt-1 font-mono text-xs text-txt-primary truncate">
+              {entries.length === 1 ? entries[0].name : `${entries.length} selected items`}
             </div>
           </div>
 
           {/* Permissions Matrix */}
-          <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+          <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] text-slate-400 uppercase tracking-wider">
-                  <th className="pb-2 font-medium">Behörighet</th>
-                  <th className="pb-2 text-center font-medium">Läsa (r)</th>
-                  <th className="pb-2 text-center font-medium">Skriva (w)</th>
-                  <th className="pb-2 text-center font-medium">Köra (x)</th>
+                <tr className="border-b border-border-subtle text-[11px] text-txt-muted uppercase tracking-wider">
+                  <th className="pb-2 font-semibold">Scope</th>
+                  <th className="pb-2 text-center font-semibold">Read (r)</th>
+                  <th className="pb-2 text-center font-semibold">Write (w)</th>
+                  <th className="pb-2 text-center font-semibold">Execute (x)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40 font-medium">
+              <tbody className="divide-y divide-border-subtle/50 font-medium">
                 <tr>
-                  <td className="py-2 text-slate-200">Ägare (User)</td>
+                  <td className="py-2 text-txt-primary">Owner (User)</td>
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
                       checked={perms.uR}
                       onChange={() => handleToggle('uR')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -184,7 +183,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.uW}
                       onChange={() => handleToggle('uW')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -192,18 +191,18 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.uX}
                       onChange={() => handleToggle('uX')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 text-slate-200">Grupp (Group)</td>
+                  <td className="py-2 text-txt-primary">Group</td>
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
                       checked={perms.gR}
                       onChange={() => handleToggle('gR')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -211,7 +210,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.gW}
                       onChange={() => handleToggle('gW')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -219,18 +218,18 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.gX}
                       onChange={() => handleToggle('gX')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 text-slate-200">Övriga (Others)</td>
+                  <td className="py-2 text-txt-primary">Others</td>
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
                       checked={perms.oR}
                       onChange={() => handleToggle('oR')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -238,7 +237,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.oW}
                       onChange={() => handleToggle('oW')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                   <td className="py-2 text-center">
@@ -246,7 +245,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                       type="checkbox"
                       checked={perms.oX}
                       onChange={() => handleToggle('oX')}
-                      className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                     />
                   </td>
                 </tr>
@@ -256,57 +255,58 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
 
           {/* Numeric octal representation */}
           <div className="flex items-center gap-3">
-            <label className="text-xs text-slate-300 font-medium">Oktalt värde:</label>
+            <label className="text-xs text-txt-secondary font-medium">Octal notation:</label>
             <input
               type="text"
               value={octal}
               onChange={(e) => handleOctalChange(e.target.value)}
-              className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-sm text-center text-sky-400 focus:border-sky-500 focus:outline-none"
+              className="w-24 rounded-lg border border-border-subtle bg-app-input px-2 py-1 font-mono text-sm text-center text-sky-400 focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           {/* Recursive checkbox for directories */}
           {hasDirectory && (
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+            <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
               <input
                 type="checkbox"
                 checked={recursive}
                 onChange={(e) => setRecursive(e.target.checked)}
-                className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
               />
-              <span>Tillämpa rekursivt på underliggande filer och mappar</span>
+              <span>Apply recursively to underlying files and folders</span>
             </label>
           )}
 
           {error && (
-            <div className="rounded border border-red-800/80 bg-red-950/60 p-2 text-xs text-red-300">
+            <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">
               {error}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-800/50 px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            Avbryt
+            Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Spara
+            Save
           </button>
         </div>
       </div>
     </div>
   );
 };
+
 export default ChmodModal;

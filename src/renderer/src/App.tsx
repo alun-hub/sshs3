@@ -55,7 +55,7 @@ export const App: React.FC = () => {
         const fmNums = session.tabs
           .filter((t) => t.type === 'filemanager')
           .map((t) => {
-            const m = t.title.match(/Filhanterare\s+(\d+)/);
+            const m = t.title.match(/(?:File Manager|Filhanterare)\s+(\d+)/);
             return m ? parseInt(m[1], 10) : 0;
           });
         if (termNums.length > 0) setTermCounter(Math.max(...termNums) + 1);
@@ -129,7 +129,7 @@ export const App: React.FC = () => {
       const newTab: AppTab = {
         id: newId,
         type: 'filemanager',
-        title: `Filhanterare ${fmCounter}`,
+        title: `File Manager ${fmCounter}`,
       };
       setFmCounter((c) => c + 1);
       setTabs((prev) => [...prev, newTab]);
@@ -228,6 +228,13 @@ export const App: React.FC = () => {
 
       if (isInput) return;
 
+      // Quick Connect shortcut Ctrl+K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setProfilesModalOpen(true);
+        return;
+      }
+
       const parts: string[] = [];
       if (e.ctrlKey) parts.push('Ctrl');
       if (e.metaKey) parts.push('Cmd');
@@ -299,27 +306,17 @@ export const App: React.FC = () => {
   }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSetSplitLayout]);
 
   return (
-    <div
-      className={`flex h-screen w-screen flex-col overflow-hidden select-none ${
-        isLight ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-slate-100'
-      }`}
-    >
-      {/* Top Bar with Brand & TabBar */}
-      <header
-        className={`flex h-10 shrink-0 items-center border-b ${
-          isLight ? 'border-slate-300 bg-slate-200' : 'border-slate-700 bg-slate-800'
-        }`}
-      >
-        <div
-          className={`flex items-center gap-2 border-r px-3.5 font-semibold text-sm ${
-            isLight ? 'border-slate-300' : 'border-slate-700'
-          }`}
-        >
+    <div className="flex h-screen w-screen flex-col overflow-hidden select-none bg-app text-txt-primary">
+      {/* Top Bar with Brand, TabBar, and Quick Connect */}
+      <header className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface">
+        <div className="flex items-center gap-2 border-r border-border-subtle px-3.5 font-semibold text-sm">
           <Terminal className="h-4 w-4 text-sky-500" />
-          <span className={`font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>
+          <span className="font-bold tracking-wide text-txt-primary">
             sshs3
           </span>
         </div>
+
+        {/* TabBar */}
         <div className="flex-1 min-w-0">
           <TabBar
             tabs={tabs}
@@ -334,16 +331,16 @@ export const App: React.FC = () => {
       </header>
 
       {/* Main Content Area: non-active tabs stay mounted with display: none */}
-      <main className="relative flex flex-1 w-full overflow-hidden">
+      <main className="relative flex flex-1 w-full overflow-hidden bg-app">
         {tabs.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-slate-500">
-            <p className="text-sm">Inga öppna flikar</p>
+          <div className="flex flex-1 flex-col items-center justify-center text-txt-muted gap-3">
+            <p className="text-sm">No tabs open</p>
             <button
               type="button"
               onClick={() => handleNewTab('terminal')}
-              className="mt-3 rounded bg-sky-500/20 px-3 py-1.5 text-xs text-sky-400 hover:bg-sky-500/30"
+              className="rounded-lg bg-sky-500/15 border border-sky-500/30 px-3.5 py-1.5 text-xs text-sky-400 hover:bg-sky-500/25 transition-colors"
             >
-              Öppna ny terminal
+              Open New Terminal
             </button>
           </div>
         ) : (
@@ -366,28 +363,22 @@ export const App: React.FC = () => {
                 {tab.type === 'terminal' ? (
                   <div className="flex flex-1 flex-col h-full w-full overflow-hidden">
                     {/* Top Pane Bar with status and split layout buttons */}
-                    <div
-                      className={`flex h-7 shrink-0 items-center justify-between border-b px-2 text-xs ${
-                        isLight
-                          ? 'border-slate-300 bg-slate-200/80 text-slate-700'
-                          : 'border-slate-800 bg-slate-900/80 text-slate-300'
-                      }`}
-                    >
+                    <div className="flex h-7 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
                       <div className="flex items-center gap-2 truncate">
-                        <Terminal className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-                        <span className="truncate font-medium">
+                        <Terminal className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                        <span className="truncate font-medium text-txt-primary">
                           {layout !== 'single'
-                            ? `Delad vy (${
+                            ? `Split View (${
                                 layout === 'split-vertical'
-                                  ? '2 kolumner'
+                                  ? '2 columns'
                                   : layout === 'split-horizontal'
-                                  ? '2 rader'
+                                  ? '2 rows'
                                   : '2x2 grid'
                               })`
-                            : tab.config?.name || 'Ingen anslutning vald'}
+                            : tab.config?.name || 'No connection selected'}
                         </span>
                         {tab.config?.username && layout === 'single' && (
-                          <span className="text-[11px] text-slate-500">
+                          <span className="text-[11px] text-txt-muted">
                             ({tab.config.username}@{tab.config.host}:{tab.config.port ?? 22})
                           </span>
                         )}
@@ -396,52 +387,52 @@ export const App: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          title="Enkel vy"
+                          title="Single view"
                           data-testid={`layout-single-${tab.id}`}
                           onClick={() => handleSetSplitLayout(tab.id, 'single')}
                           className={`rounded p-1 transition-colors ${
                             layout === 'single'
                               ? 'bg-sky-600 text-white'
-                              : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
                           }`}
                         >
                           <Square className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          title="Vertikal delning (2 kolumner)"
+                          title="Vertical split (2 columns)"
                           data-testid={`layout-vertical-${tab.id}`}
                           onClick={() => handleSetSplitLayout(tab.id, 'split-vertical')}
                           className={`rounded p-1 transition-colors ${
                             layout === 'split-vertical'
                               ? 'bg-sky-600 text-white'
-                              : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
                           }`}
                         >
                           <Columns2 className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          title="Horisontell delning (2 rader)"
+                          title="Horizontal split (2 rows)"
                           data-testid={`layout-horizontal-${tab.id}`}
                           onClick={() => handleSetSplitLayout(tab.id, 'split-horizontal')}
                           className={`rounded p-1 transition-colors ${
                             layout === 'split-horizontal'
                               ? 'bg-sky-600 text-white'
-                              : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
                           }`}
                         >
                           <Rows2 className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          title="2x2 Grid (4 terminaler)"
+                          title="2x2 Grid (4 terminals)"
                           data-testid={`layout-grid-${tab.id}`}
                           onClick={() => handleSetSplitLayout(tab.id, 'grid-2x2')}
                           className={`rounded p-1 transition-colors ${
                             layout === 'grid-2x2'
                               ? 'bg-sky-600 text-white'
-                              : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
                           }`}
                         >
                           <Grid2x2 className="h-3.5 w-3.5" />
@@ -462,19 +453,15 @@ export const App: React.FC = () => {
                             initialCwd={tab.initialCwd}
                           />
                         ) : (
-                          <div
-                            className={`flex h-full flex-1 flex-col items-center justify-center gap-3 ${
-                              isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-900 text-slate-400'
-                            }`}
-                          >
-                            <Terminal className="h-10 w-10 text-slate-500" />
-                            <p className="text-sm">Ingen anslutning vald för den här fliken</p>
+                          <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
+                            <Terminal className="h-10 w-10 text-txt-muted" />
+                            <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
                             <button
                               type="button"
                               onClick={() => setConnectTarget({ tabId: tab.id })}
-                              className="rounded bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                              className="rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
                             >
-                              Välj SSH-anslutning
+                              Select SSH Connection
                             </button>
                           </div>
                         )
@@ -482,10 +469,10 @@ export const App: React.FC = () => {
                         <div
                           className={`h-full w-full ${
                             layout === 'split-vertical'
-                              ? 'grid grid-cols-2 divide-x divide-slate-800'
+                              ? 'grid grid-cols-2 divide-x divide-border-subtle'
                               : layout === 'split-horizontal'
-                              ? 'grid grid-rows-2 divide-y divide-slate-800'
-                              : 'grid grid-cols-2 grid-rows-2 divide-x divide-y divide-slate-800'
+                              ? 'grid grid-rows-2 divide-y divide-border-subtle'
+                              : 'grid grid-cols-2 grid-rows-2 divide-x divide-y divide-border-subtle'
                           }`}
                         >
                           {displayPanes.map((pane, pIdx) => (
@@ -494,7 +481,7 @@ export const App: React.FC = () => {
                               data-testid={`terminal-pane-${pane.id}`}
                               className="relative flex flex-col h-full w-full overflow-hidden"
                             >
-                              <div className="flex h-6 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950/80 px-2 text-[11px] text-slate-400">
+                              <div className="flex h-6 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-2 text-[11px] text-txt-muted">
                                 <span className="truncate font-mono">
                                   {pane.config?.name || `Terminal ${pIdx + 1}`}
                                 </span>
@@ -503,9 +490,9 @@ export const App: React.FC = () => {
                                   onClick={() =>
                                     setConnectTarget({ tabId: tab.id, paneId: pane.id })
                                   }
-                                  className="rounded px-1.5 py-0.5 text-[10px] text-sky-400 hover:bg-slate-800"
+                                  className="rounded px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400 hover:bg-app-surface-hover transition-colors"
                                 >
-                                  {pane.config ? 'Byt' : 'Välj anslutning'}
+                                  {pane.config ? 'Change' : 'Select connection'}
                                 </button>
                               </div>
                               <div className="flex-1 min-h-0">
@@ -518,16 +505,16 @@ export const App: React.FC = () => {
                                     theme={settings.theme}
                                   />
                                 ) : (
-                                  <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-slate-500">
-                                    <p className="text-xs">Ingen anslutning vald</p>
+                                  <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
+                                    <p className="text-xs text-txt-secondary">No connection selected</p>
                                     <button
                                       type="button"
                                       onClick={() =>
                                         setConnectTarget({ tabId: tab.id, paneId: pane.id })
                                       }
-                                      className="rounded bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500"
+                                      className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
                                     >
-                                      Välj SSH-anslutning
+                                      Select SSH Connection
                                     </button>
                                   </div>
                                 )}
@@ -568,8 +555,29 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Quick-link: manage saved SSH/S3 profiles without connecting anything */}
-      <ConnectionManagerModal open={profilesModalOpen} onClose={() => setProfilesModalOpen(false)} />
+      {/* Quick-link / Ctrl+K / Top Bar: manage or connect to saved SSH/S3 profiles */}
+      <ConnectionManagerModal
+        open={profilesModalOpen}
+        onClose={() => setProfilesModalOpen(false)}
+        onConnectSSH={(config) => {
+          const activeTab = tabs.find((t) => t.id === activeTabId);
+          if (activeTab && activeTab.type === 'terminal' && !activeTab.config) {
+            handleConnectTerminal({ tabId: activeTab.id }, config);
+          } else {
+            const newId = `term-${Date.now()}`;
+            const newTab: AppTab = {
+              id: newId,
+              type: 'terminal',
+              title: config.name,
+              config,
+            };
+            setTermCounter((c) => c + 1);
+            setTabs((prev) => [...prev, newTab]);
+            setActiveTabId(newId);
+          }
+          setProfilesModalOpen(false);
+        }}
+      />
 
       {/* Settings Modal */}
       <SettingsModal

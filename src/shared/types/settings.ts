@@ -4,19 +4,19 @@ export interface ShortcutDefinition {
   id: string;
   name: string;
   defaultKeys: string;
-  category: 'Flikar' | 'Terminal' | 'Allmänt';
+  category: 'Tabs' | 'Terminal' | 'General';
 }
 
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
-  { id: 'newTerminal', name: 'Ny terminal', defaultKeys: 'Ctrl+Shift+T', category: 'Flikar' },
-  { id: 'newFileManager', name: 'Ny filhanterare', defaultKeys: 'Ctrl+Shift+F', category: 'Flikar' },
-  { id: 'closeTab', name: 'Stäng flik', defaultKeys: 'Ctrl+W', category: 'Flikar' },
-  { id: 'nextTab', name: 'Nästa flik', defaultKeys: 'Ctrl+Tab', category: 'Flikar' },
-  { id: 'prevTab', name: 'Föregående flik', defaultKeys: 'Ctrl+Shift+Tab', category: 'Flikar' },
-  { id: 'openProfiles', name: 'Anslutningshanterare', defaultKeys: 'Ctrl+Shift+O', category: 'Allmänt' },
-  { id: 'openSettings', name: 'Inställningar', defaultKeys: 'Ctrl+,', category: 'Allmänt' },
-  { id: 'splitVertical', name: 'Dela terminal vertikalt', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
-  { id: 'splitHorizontal', name: 'Dela terminal horisontellt', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
+  { id: 'newTerminal', name: 'New Terminal', defaultKeys: 'Ctrl+Shift+T', category: 'Tabs' },
+  { id: 'newFileManager', name: 'New File Manager', defaultKeys: 'Ctrl+Shift+F', category: 'Tabs' },
+  { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+W', category: 'Tabs' },
+  { id: 'nextTab', name: 'Next Tab', defaultKeys: 'Ctrl+Tab', category: 'Tabs' },
+  { id: 'prevTab', name: 'Previous Tab', defaultKeys: 'Ctrl+Shift+Tab', category: 'Tabs' },
+  { id: 'openProfiles', name: 'Connection Manager', defaultKeys: 'Ctrl+Shift+O', category: 'General' },
+  { id: 'openSettings', name: 'Settings', defaultKeys: 'Ctrl+,', category: 'General' },
+  { id: 'splitVertical', name: 'Split Terminal Vertically', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
+  { id: 'splitHorizontal', name: 'Split Terminal Horizontally', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
 ];
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = SHORTCUT_DEFINITIONS.reduce(
@@ -31,7 +31,13 @@ export interface AppSettings {
   theme: AppTheme;
   terminalFontSize: number;
   terminalFontFamily: string;
+  terminalCursorStyle?: 'block' | 'underline' | 'bar';
+  terminalScrollback?: number;
+  copyOnSelect?: boolean;
   defaultNewTabType: 'terminal' | 'filemanager';
+  confirmBeforeDelete?: boolean;
+  showHiddenFiles?: boolean;
+  defaultConflictPolicy?: 'ask' | 'overwrite' | 'skip' | 'rename';
   shortcuts?: Record<string, string>;
 }
 
@@ -39,6 +45,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   terminalFontSize: 13,
   terminalFontFamily: 'Menlo, Monaco, "Courier New", monospace, Consolas',
+  terminalCursorStyle: 'block',
+  terminalScrollback: 5000,
+  copyOnSelect: false,
   defaultNewTabType: 'terminal',
+  confirmBeforeDelete: true,
+  showHiddenFiles: false,
+  defaultConflictPolicy: 'ask',
   shortcuts: { ...DEFAULT_SHORTCUTS },
 };

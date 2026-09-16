@@ -40,7 +40,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
         setVersions(list);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte hämta versionsinformation');
+      setError(err instanceof Error ? err.message : 'Failed to retrieve version information');
     } finally {
       setLoading(false);
     }
@@ -61,14 +61,14 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ändra versionshantering');
+      setError(err instanceof Error ? err.message : 'Failed to change versioning status');
     } finally {
       setBusy(false);
     }
   };
 
   const handleRestore = async (versionId: string) => {
-    if (!window.confirm('Återställ denna version som aktuell version av objektet?')) return;
+    if (!window.confirm('Restore this version as the current version of the object?')) return;
     setBusy(true);
     setError(null);
     try {
@@ -76,14 +76,14 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte återställa versionen');
+      setError(err instanceof Error ? err.message : 'Failed to restore version');
     } finally {
       setBusy(false);
     }
   };
 
   const handleDeleteVersion = async (versionId: string) => {
-    if (!window.confirm('Ta bort denna specifika version permanent? Detta kan inte ångras.')) return;
+    if (!window.confirm('Permanently delete this specific version? This action cannot be undone.')) return;
     setBusy(true);
     setError(null);
     try {
@@ -91,106 +91,106 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ta bort versionen');
+      setError(err instanceof Error ? err.message : 'Failed to delete version');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-800/80 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-sky-400" />
-            <h2 className="text-sm font-semibold text-slate-100">
-              {mode === 'bucket' ? 'Versionshantering' : 'Objektversioner'} — {targetName}
+            <History className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">
+              {mode === 'bucket' ? 'Bucket Versioning' : 'Object Versions'} — {targetName}
             </h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-4 text-xs text-slate-300">
+        <div className="p-4 text-xs text-txt-secondary">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Läser in...
+            <div className="flex items-center justify-center gap-2 py-6 text-txt-muted">
+              <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+              Loading versions...
             </div>
           )}
           {error && (
-            <div className="mb-3 rounded border border-red-800/80 bg-red-950/60 p-2 text-red-300">{error}</div>
+            <div className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
 
           {!loading && mode === 'bucket' && (
             <div className="space-y-3">
-              <div className="rounded border border-slate-800 bg-slate-950 p-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">Aktuell status</div>
-                <div className="mt-1 text-sm font-medium text-slate-100">
-                  {status === 'Enabled' ? 'Aktiverad' : status === 'Suspended' ? 'Pausad' : 'Ej aktiverad'}
+              <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
+                <div className="text-[11px] uppercase tracking-wider text-txt-muted font-semibold">Current Status</div>
+                <div className="mt-1 text-sm font-medium text-txt-primary">
+                  {status === 'Enabled' ? 'Enabled' : status === 'Suspended' ? 'Suspended' : 'Disabled'}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => void handleToggleVersioning()}
                 disabled={busy}
-                className="flex items-center gap-1.5 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
               >
                 {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {status === 'Enabled' ? 'Pausa versionshantering' : 'Aktivera versionshantering'}
+                {status === 'Enabled' ? 'Suspend Versioning' : 'Enable Versioning'}
               </button>
-              <p className="text-slate-500">
-                När versionshantering är aktiverad sparas alla tidigare versioner av objekt i denna bucket och kan
-                återställas eller raderas individuellt via objektets kontextmeny.
+              <p className="text-txt-muted leading-relaxed">
+                When versioning is enabled, all prior versions of objects in this bucket are preserved and can be
+                restored or deleted individually via the object context menu.
               </p>
             </div>
           )}
 
           {!loading && mode === 'object' && (
-            <div className="max-h-96 overflow-y-auto rounded border border-slate-800">
+            <div className="max-h-96 overflow-y-auto rounded-lg border border-border-subtle bg-app-surface">
               {versions.length === 0 && (
-                <div className="p-4 text-center text-slate-500">Inga versioner hittades (versionshantering är kanske inte aktiverad för bucketen)</div>
+                <div className="p-6 text-center text-txt-muted">No versions found (versioning might not be enabled on this bucket)</div>
               )}
               {versions.length > 0 && (
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-slate-800/90 text-[11px] uppercase tracking-wider text-slate-400">
+                  <thead className="sticky top-0 bg-app-surface-subtle text-[11px] uppercase tracking-wider text-txt-muted border-b border-border-subtle">
                     <tr>
-                      <th className="px-3 py-2 font-medium">Version</th>
-                      <th className="px-3 py-2 font-medium">Ändrad</th>
-                      <th className="px-3 py-2 font-medium">Storlek</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                      <th className="px-3 py-2 font-medium text-right">Åtgärder</th>
+                      <th className="px-3 py-2 font-semibold">Version</th>
+                      <th className="px-3 py-2 font-semibold">Modified</th>
+                      <th className="px-3 py-2 font-semibold">Size</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-border-subtle/50">
                     {versions.map((v) => (
-                      <tr key={v.versionId} className={v.isDeleteMarker ? 'text-slate-500' : 'text-slate-200'}>
-                        <td className="max-w-[140px] truncate px-3 py-2 font-mono">{v.versionId || '(null)'}</td>
-                        <td className="px-3 py-2">{v.lastModified ?? '-'}</td>
-                        <td className="px-3 py-2">{v.isDeleteMarker ? '-' : `${v.size} B`}</td>
-                        <td className="px-3 py-2">
-                          {v.isDeleteMarker ? 'Raderingsmarkör' : v.isLatest ? 'Aktuell' : 'Tidigare'}
+                      <tr key={v.versionId} className={v.isDeleteMarker ? 'text-txt-muted' : 'text-txt-primary'}>
+                        <td className="max-w-[140px] truncate px-3 py-2 font-mono text-xs">{v.versionId || '(null)'}</td>
+                        <td className="px-3 py-2 text-xs">{v.lastModified ?? '-'}</td>
+                        <td className="px-3 py-2 text-xs">{v.isDeleteMarker ? '-' : `${v.size} B`}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {v.isDeleteMarker ? 'Delete Marker' : v.isLatest ? 'Current' : 'Historical'}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 text-xs">
                           <div className="flex items-center justify-end gap-1.5">
                             {!v.isDeleteMarker && !v.isLatest && (
                               <button
                                 type="button"
-                                title="Återställ som aktuell version"
+                                title="Restore as current version"
                                 disabled={busy}
                                 onClick={() => void handleRestore(v.versionId)}
-                                className="rounded p-1 text-sky-400 hover:bg-sky-950/50 disabled:opacity-40"
+                                className="rounded p-1 text-sky-400 hover:bg-app-surface-hover disabled:opacity-40"
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
                               </button>
                             )}
                             <button
                               type="button"
-                              title="Ta bort denna version permanent"
+                              title="Permanently delete this version"
                               disabled={busy}
                               onClick={() => void handleDeleteVersion(v.versionId)}
-                              className="rounded p-1 text-red-400 hover:bg-red-950/50 disabled:opacity-40"
+                              className="rounded p-1 text-red-400 hover:bg-app-surface-hover disabled:opacity-40"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -205,13 +205,13 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-800/50 px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            Stäng
+            Close
           </button>
         </div>
       </div>

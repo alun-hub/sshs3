@@ -48,7 +48,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
         setPolicyText(policy ?? '');
         setCorsText(cors ?? '');
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Kunde inte hämta bucket-inställningar'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve bucket configuration'))
       .finally(() => setLoading(false));
   }, [open, providerId, bucketPath]);
 
@@ -70,10 +70,10 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
     } catch (err) {
       setError(
         err instanceof SyntaxError
-          ? 'Ogiltig JSON'
+          ? 'Invalid JSON syntax'
           : err instanceof Error
             ? err.message
-            : 'Kunde inte spara'
+            : 'Failed to save'
       );
     } finally {
       setSaving(false);
@@ -81,8 +81,8 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
   };
 
   const handleDelete = async () => {
-    const label = tab === 'policy' ? 'bucket-policyn' : 'CORS-konfigurationen';
-    if (!window.confirm(`Ta bort ${label}?`)) return;
+    const label = tab === 'policy' ? 'Bucket Policy' : 'CORS Rules';
+    if (!window.confirm(`Delete ${label}?`)) return;
     setSaving(true);
     setError(null);
     try {
@@ -95,52 +95,52 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       }
       onSaved?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ta bort');
+      setError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-800/80 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <FileJson className="h-5 w-5 text-sky-400" />
-            <h2 className="text-sm font-semibold text-slate-100">Bucket-policy &amp; CORS — {bucketName}</h2>
+            <FileJson className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">Bucket Policy &amp; CORS — {bucketName}</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex border-b border-slate-800 bg-slate-900 px-2">
+        <div className="flex border-b border-border-subtle bg-app-surface px-2">
           {(['policy', 'cors'] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
               className={
-                'px-3 py-2 text-xs font-medium ' +
+                'px-3 py-2 text-xs font-medium transition-colors ' +
                 (tab === t
-                  ? 'border-b-2 border-sky-500 text-sky-300'
-                  : 'text-slate-400 hover:text-slate-200')
+                  ? 'border-b-2 border-sky-500 text-sky-400 font-semibold'
+                  : 'text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover')
               }
             >
-              {t === 'policy' ? 'Bucket-policy' : 'CORS-regler'}
+              {t === 'policy' ? 'Bucket Policy' : 'CORS Rules'}
             </button>
           ))}
         </div>
 
-        <div className="p-4 text-xs text-slate-300">
+        <div className="p-4 text-xs text-txt-secondary">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Läser in...
+            <div className="flex items-center justify-center gap-2 py-6 text-txt-muted">
+              <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+              Loading configuration...
             </div>
           )}
           {error && (
-            <div className="mb-3 rounded border border-red-800/80 bg-red-950/60 p-2 text-red-300">{error}</div>
+            <div className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
           {!loading && tab === 'policy' && (
             <textarea
@@ -148,7 +148,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
               onChange={(e) => setPolicyText(e.target.value)}
               placeholder='{"Version": "2012-10-17", "Statement": []}'
               spellCheck={false}
-              className="h-72 w-full resize-none rounded border border-slate-700 bg-slate-950 p-2.5 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+              className="h-72 w-full resize-none rounded-lg border border-border-subtle bg-app-input p-3 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
             />
           )}
           {!loading && tab === 'cors' && (
@@ -157,37 +157,37 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
               onChange={(e) => setCorsText(e.target.value)}
               placeholder={DEFAULT_CORS}
               spellCheck={false}
-              className="h-72 w-full resize-none rounded border border-slate-700 bg-slate-950 p-2.5 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+              className="h-72 w-full resize-none rounded-lg border border-border-subtle bg-app-input p-3 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
             />
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-800 bg-slate-800/50 px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={() => void handleDelete()}
             disabled={saving || loading}
-            className="rounded border border-red-800/60 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/50 disabled:opacity-50"
+            className="rounded-lg border border-red-800/60 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/50 disabled:opacity-50 transition-colors"
           >
-            Ta bort {tab === 'policy' ? 'policy' : 'CORS'}
+            Delete {tab === 'policy' ? 'Policy' : 'CORS'}
           </button>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
             >
-              Stäng
+              Close
             </button>
             <button
               type="button"
               onClick={() => void handleSave()}
               disabled={saving || loading}
-              className="flex items-center gap-1.5 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Spara
+              Save
             </button>
           </div>
         </div>

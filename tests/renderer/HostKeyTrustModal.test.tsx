@@ -49,7 +49,7 @@ describe('HostKeyTrustModal Component', () => {
     });
 
     expect(screen.getByTestId('hostkey-trust-modal')).toBeInTheDocument();
-    expect(screen.getByText('Okänd värd')).toBeInTheDocument();
+    expect(screen.getByText('Unknown Host')).toBeInTheDocument();
     expect(screen.getByText(/ssh-ed25519/)).toBeInTheDocument();
     expect(screen.getByText(/SHA256:abc123/)).toBeInTheDocument();
   });
@@ -68,8 +68,8 @@ describe('HostKeyTrustModal Component', () => {
       });
     });
 
-    expect(screen.getByText('Värdnyckeln har ändrats!')).toBeInTheDocument();
-    expect(screen.getByTestId('hostkey-trust-accept')).toHaveTextContent('Lita på ändå');
+    expect(screen.getByText('Host Key Changed!')).toBeInTheDocument();
+    expect(screen.getByTestId('hostkey-trust-accept')).toHaveTextContent('Trust Anyway');
   });
 
   it('accepting calls respondHostKeyPrompt with trust=true and closes the modal', async () => {

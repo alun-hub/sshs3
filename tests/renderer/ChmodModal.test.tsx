@@ -63,7 +63,7 @@ describe('ChmodModal', () => {
       />
     );
 
-    expect(screen.getByText('Ändra rättigheter (chmod)')).toBeInTheDocument();
+    expect(screen.getByText('Change Permissions (chmod)')).toBeInTheDocument();
     expect(screen.getByText('script.sh')).toBeInTheDocument();
     const octalInput = screen.getByDisplayValue('0755') as HTMLInputElement;
     expect(octalInput).toBeInTheDocument();
@@ -128,10 +128,10 @@ describe('ChmodModal', () => {
       />
     );
 
-    expect(screen.getByText('Tillämpa rekursivt på underliggande filer och mappar')).toBeInTheDocument();
+    expect(screen.getByText('Apply recursively to underlying files and folders')).toBeInTheDocument();
   });
 
-  it('calls storageChmod and onSaved when Spara is clicked', async () => {
+  it('calls storageChmod and onSaved when Save is clicked', async () => {
     const onSaved = vi.fn();
     const onClose = vi.fn();
 
@@ -145,7 +145,7 @@ describe('ChmodModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Spara'));
+    fireEvent.click(screen.getByText('Save'));
 
     await vi.waitFor(() => {
       expect(mockStorageChmod).toHaveBeenCalledWith('sftp-1', '/home/user/script.sh', '0755');
@@ -154,7 +154,7 @@ describe('ChmodModal', () => {
     });
   });
 
-  it('calls onClose when Avbryt is clicked', () => {
+  it('calls onClose when Cancel is clicked', () => {
     const onClose = vi.fn();
     render(
       <ChmodModal
@@ -166,7 +166,7 @@ describe('ChmodModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Avbryt'));
+    fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalled();
   });
 });

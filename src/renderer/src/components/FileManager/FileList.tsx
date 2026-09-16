@@ -98,54 +98,67 @@ export const FileList: React.FC<FileListProps> = ({
 
   const handleRowClick = useCallback(
     (entry: FileEntry, index: number, e: React.MouseEvent) => {
-      const next = new Set(selectedPaths);
       if (e.shiftKey && lastClickedIndex !== null) {
-        const [start, end] = [lastClickedIndex, index].sort((a, b) => a - b);
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+        const range = new Set(selectedPaths);
         for (let i = start; i <= end; i++) {
-          next.add(sorted[i].path);
+          range.add(sorted[i].path);
         }
-      } else if (e.ctrlKey || e.metaKey) {
+        onSelectionChange(range);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) {
+        const next = new Set(selectedPaths);
         if (next.has(entry.path)) next.delete(entry.path);
         else next.add(entry.path);
         setLastClickedIndex(index);
-      } else {
-        next.clear();
-        next.add(entry.path);
-        setLastClickedIndex(index);
+        onSelectionChange(next);
+        return;
       }
-      onSelectionChange(next);
+      setLastClickedIndex(index);
+      onSelectionChange(new Set([entry.path]));
     },
-    [selectedPaths, lastClickedIndex, sorted, onSelectionChange]
+    [lastClickedIndex, selectedPaths, sorted, onSelectionChange]
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const typeaheadRef = useRef<{ buffer: string; timeout: ReturnType<typeof setTimeout> | null }>({
-    buffer: '',
-    timeout: null,
-  });
 
   const handleContainerKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (renamingPath) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key.length !== 1) return;
-      e.preventDefault();
-
-      const state = typeaheadRef.current;
-      if (state.timeout) clearTimeout(state.timeout);
-      state.buffer += e.key.toLowerCase();
-      state.timeout = setTimeout(() => {
-        state.buffer = '';
-      }, 800);
-
-      const buffer = state.buffer;
-      let matchIndex = sorted.findIndex((entry) => entry.name.toLowerCase().startsWith(buffer));
-      // If nothing matches the accumulated buffer, restart with just the latest key
-      // (e.g. typing two different files quickly rather than narrowing one name).
-      if (matchIndex === -1 && buffer.length > 1) {
-        state.buffer = e.key.toLowerCase();
-        matchIndex = sorted.findIndex((entry) => entry.name.toLowerCase().startsWith(state.buffer));
+    (e: React.KeyboardEvent) => {
+      if (renamingPath !== null) return;
+      if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onSelectionChange(new Set(sorted.map((item) => item.path)));
+        return;
       }
+
+      if (sorted.length === 0) return;
+
+      const firstSelectedIndex = sorted.findIndex((item) => selectedPaths.has(item.path));
+      let matchIndex = -1;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        matchIndex = firstSelectedIndex < sorted.length - 1 ? firstSelectedIndex + 1 : 0;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        matchIndex = firstSelectedIndex > 0 ? firstSelectedIndex - 1 : sorted.length - 1;
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        matchIndex = 0;
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        matchIndex = sorted.length - 1;
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedPaths.size === 1) {
+          const selected = sorted.find((it) => selectedPaths.has(it.path));
+          if (selected) onOpen(selected);
+        }
+        return;
+      }
+
       if (matchIndex === -1) return;
 
       const match = sorted[matchIndex];
@@ -157,7 +170,7 @@ export const FileList: React.FC<FileListProps> = ({
         ?.querySelector(`[data-entry-path="${CSS.escape(match.path)}"]`)
         ?.scrollIntoView({ block: 'nearest' });
     },
-    [sorted, onSelectionChange, renamingPath]
+    [sorted, onSelectionChange, renamingPath, selectedPaths, onOpen]
   );
 
   const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string }> = ({
@@ -168,32 +181,35 @@ export const FileList: React.FC<FileListProps> = ({
     <button
       type="button"
       onClick={() => toggleSort(sortKeyName)}
-      className={classNames('flex items-center gap-1 text-left text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-200', className)}
+      className={classNames(
+        'flex items-center gap-1 text-left text-xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
+        className
+      )}
     >
-      {label}
-      {sortKey === sortKeyName && <span>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+      <span className="truncate">{label}</span>
+      {sortKey === sortKeyName && <span className="text-sky-400 font-bold shrink-0">{sortDir === 'asc' ? '▲' : '▼'}</span>}
     </button>
   );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="grid grid-cols-[1fr_80px_75px_130px] items-center gap-2 border-b border-slate-700 px-3 py-1.5">
+    <div className="flex h-full flex-col overflow-hidden bg-app-card">
+      <div className="grid grid-cols-[minmax(120px,1fr)_70px_100px_135px] items-center gap-3 border-b border-border-subtle bg-app-surface px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <SortHeader label="Namn" sortKeyName="name" />
+          <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (
-            <span className="truncate rounded border border-sky-800/60 bg-sky-950/60 px-1.5 py-0.2 text-[10px] font-medium text-sky-400">
-              {sorted.length} av {entries.length}
+            <span className="truncate rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.2 text-[10px] font-medium text-sky-400">
+              {sorted.length} of {entries.length}
             </span>
           )}
         </div>
-        <SortHeader label="Storlek" sortKeyName="size" />
-        <SortHeader label="Rättigheter" sortKeyName="permissions" />
-        <SortHeader label="Ändrad" sortKeyName="mtime" />
+        <SortHeader label="Size" sortKeyName="size" />
+        <SortHeader label="Permissions" sortKeyName="permissions" />
+        <SortHeader label="Modified" sortKeyName="mtime" />
       </div>
       <div
         ref={containerRef}
         tabIndex={0}
-        className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-800/60"
+        className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
         onMouseDown={() => containerRef.current?.focus()}
         onKeyDown={handleContainerKeyDown}
         onClick={(e) => {
@@ -208,14 +224,14 @@ export const FileList: React.FC<FileListProps> = ({
         }}
       >
         {loading && (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Läser in...
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+            Loading files...
           </div>
         )}
         {!loading && sorted.length === 0 && (
-          <div className="py-8 text-center text-sm text-slate-500">
-            {filterText?.trim() ? `Inga filer matchar "${filterText.trim()}"` : 'Mappen är tom'}
+          <div className="py-8 text-center text-sm text-txt-muted">
+            {filterText?.trim() ? `No files match "${filterText.trim()}"` : 'Folder is empty'}
           </div>
         )}
         {!loading &&
@@ -258,13 +274,20 @@ export const FileList: React.FC<FileListProps> = ({
                   onEntryContextMenu?.(entry, e);
                 }}
                 className={classNames(
-                  'grid cursor-default grid-cols-[1fr_80px_75px_130px] items-center gap-2 border-b border-slate-800/60 px-3 py-1 text-sm select-none',
-                  selected ? 'bg-sky-900/40 text-slate-50' : 'text-slate-200 hover:bg-slate-800/60',
-                  isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-900/30'
+                  'grid cursor-default grid-cols-[minmax(120px,1fr)_70px_100px_135px] items-center gap-3 border-b border-white/[0.04] dark:border-white/[0.04] border-slate-200/60 px-3 py-1 text-sm select-none transition-colors',
+                  selected
+                    ? 'bg-sky-500/15 text-txt-primary font-medium'
+                    : 'text-txt-primary hover:bg-app-surface-hover',
+                  isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-500/20'
                 )}
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <Icon className={classNames('h-4 w-4 shrink-0', entry.isDirectory ? 'text-sky-400' : 'text-slate-400')} />
+                  <Icon
+                    className={classNames(
+                      'h-4 w-4 shrink-0',
+                      entry.isDirectory ? 'text-amber-400' : 'text-txt-muted'
+                    )}
+                  />
                   {renaming ? (
                     <input
                       autoFocus
@@ -275,15 +298,15 @@ export const FileList: React.FC<FileListProps> = ({
                         if (e.key === 'Escape') onRenameCancel?.();
                       }}
                       onBlur={(e) => onRenameCommit?.(entry, e.target.value)}
-                      className="w-full rounded border border-sky-500 bg-slate-900 px-1 py-0.5 text-sm text-slate-100 outline-none"
+                      className="w-full rounded-md border border-sky-500 bg-app-input px-1.5 py-0.5 text-sm text-txt-primary outline-none"
                     />
                   ) : (
                     <span className="truncate">{entry.name}</span>
                   )}
                 </div>
-                <span className="truncate text-xs text-slate-400">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
-                <span className="truncate font-mono text-xs text-slate-400">{entry.permissions ?? '-'}</span>
-                <span className="truncate text-xs text-slate-400">{entry.mtime ?? ''}</span>
+                <span className="truncate text-xs text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
+                <span className="truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
+                <span className="truncate text-xs text-txt-muted">{entry.mtime ?? ''}</span>
               </div>
             );
           })}

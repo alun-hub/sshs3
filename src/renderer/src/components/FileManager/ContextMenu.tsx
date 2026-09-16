@@ -53,11 +53,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
       ref={ref}
       role="menu"
       style={{ position: 'fixed', top: pos.y, left: pos.x, visibility: pos.visible ? 'visible' : 'hidden' }}
-      className="z-50 min-w-[190px] rounded-md border border-slate-700 bg-slate-800 py-1 text-sm shadow-2xl"
+      className="z-50 min-w-[190px] rounded-md border border-border-subtle bg-app-card py-1 text-sm shadow-2xl"
     >
       {items.map((item) => (
         <React.Fragment key={item.key}>
-          {item.separatorBefore && <div className="my-1 border-t border-slate-700" />}
+          {item.separatorBefore && <div className="my-1 border-t border-border-subtle" />}
           <button
             type="button"
             role="menuitem"
@@ -68,12 +68,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
               onClose();
             }}
             className={classNames(
-              'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs',
+              'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',
               item.disabled
-                ? 'cursor-not-allowed text-slate-500'
+                ? 'cursor-not-allowed text-txt-muted'
                 : item.danger
-                  ? 'text-red-400 hover:bg-red-950/60'
-                  : 'text-slate-200 hover:bg-sky-900/50'
+                  ? 'text-red-500 hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-950/60'
+                  : 'text-txt-primary hover:bg-app-surface-hover'
             )}
           >
             {item.icon && <item.icon className="h-3.5 w-3.5 shrink-0" />}

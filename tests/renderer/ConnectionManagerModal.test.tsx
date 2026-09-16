@@ -86,9 +86,9 @@ describe('ConnectionManagerModal', () => {
 
     // Verify recent section
     await waitFor(() => {
-      expect(screen.getByText('Senast använda')).toBeInTheDocument();
+      expect(screen.getByText('Recently Used')).toBeInTheDocument();
     });
-    expect(screen.getByText(/Senast ansluten: 2026-09-16 12:30/)).toBeInTheDocument();
+    expect(screen.getByText(/Last connected: 2026-09-16 12:30/)).toBeInTheDocument();
 
     // Verify folders / groups with count badges
     expect(screen.getAllByText('Produktion').length).toBeGreaterThanOrEqual(1);
@@ -113,7 +113,7 @@ describe('ConnectionManagerModal', () => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText('Sök profiler eller mappar...');
+    const searchInput = screen.getByPlaceholderText('Search profiles or folders...');
     fireEvent.change(searchInput, { target: { value: 'sandbox' } });
 
     // Sandbox should remain, Prod should be filtered out
@@ -122,7 +122,7 @@ describe('ConnectionManagerModal', () => {
     expect(screen.queryByText('Prod DB 01')).not.toBeInTheDocument();
 
     // Search query also suppresses the recently used section
-    expect(screen.queryByText('Senast använda')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recently Used')).not.toBeInTheDocument();
   });
 
   it('allows collapsing and expanding a group folder', async () => {
@@ -150,7 +150,7 @@ describe('ConnectionManagerModal', () => {
     expect(screen.getByText('Prod DB 01')).toBeInTheDocument();
   });
 
-  it('calls onConnectSSH with updated timestamp when Anslut is clicked', async () => {
+  it('calls onConnectSSH with updated timestamp when Connect is clicked', async () => {
     const onConnectSSH = vi.fn();
     render(
       <ConnectionManagerModal
@@ -165,7 +165,7 @@ describe('ConnectionManagerModal', () => {
     });
 
     // Find the connect button for Dev Sandbox
-    const connectButtons = screen.getAllByRole('button', { name: 'Anslut' });
+    const connectButtons = screen.getAllByRole('button', { name: 'Connect' });
     expect(connectButtons.length).toBeGreaterThan(0);
 
     fireEvent.click(connectButtons[connectButtons.length - 1]);

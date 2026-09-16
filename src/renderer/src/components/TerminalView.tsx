@@ -21,19 +21,19 @@ function shellQuote(path: string): string {
 }
 
 const XTERM_LIGHT_THEME = {
-  background: '#ffffff',
-  foreground: '#0f172a',
-  cursor: '#0284c7',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#cbd5e1',
-  black: '#000000',
+  background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
+  foreground: '#1e293b', // Crisp slate-800 instead of black
+  cursor: '#0284c7', // Sky-600
+  cursorAccent: '#f8fafc',
+  selectionBackground: '#e2e8f0', // Slate-200
+  black: '#1e293b',
   red: '#dc2626',
   green: '#16a34a',
   yellow: '#ca8a04',
   blue: '#0284c7',
   magenta: '#9333ea',
   cyan: '#0891b2',
-  white: '#f8fafc',
+  white: '#ffffff',
   brightBlack: '#64748b',
   brightRed: '#ef4444',
   brightGreen: '#22c55e',
@@ -276,10 +276,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     };
   }, [config]);
 
+  const isLight =
+    theme === 'light' ||
+    (theme === 'system' &&
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
+
   return (
     <div
       data-testid="terminal-view"
-      className={`relative h-full w-full overflow-hidden bg-slate-900 ${className}`}
+      className={`relative h-full w-full overflow-hidden ${
+        isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
+      } ${className}`}
     >
       <div
         ref={containerRef}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Folder, X, Plus, Bookmark, Settings } from 'lucide-react';
+import { Terminal, Folder, X, Plus, Server, Settings } from 'lucide-react';
 
 export type TabType = 'terminal' | 'filemanager';
 
@@ -48,8 +48,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div
       role="tablist"
-      aria-label="Öppna flikar"
-      className="flex h-10 w-full items-center border-b border-slate-700 bg-slate-800 px-2 select-none"
+      aria-label="Open tabs"
+      className="flex h-10 w-full items-center border-b border-border-subtle bg-app-surface px-2 select-none"
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
@@ -68,24 +68,24 @@ export const TabBar: React.FC<TabBarProps> = ({
                   onSelectTab(tab.id);
                 }
               }}
-              className={`group relative flex h-8 max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t px-3 text-xs transition-colors ${
+              className={`group relative flex h-8 max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
                 isActive
-                  ? 'bg-slate-900 text-white font-medium border-t-2 border-sky-400'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
+                  ? 'bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
+                  : 'bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
               }`}
             >
               <div className="flex items-center gap-2 truncate">
                 {tab.type === 'terminal' ? (
                   <Terminal
                     className={`h-3.5 w-3.5 flex-shrink-0 ${
-                      isActive ? 'text-sky-400' : 'text-slate-400 group-hover:text-slate-300'
+                      isActive ? 'text-sky-400' : 'text-txt-muted group-hover:text-txt-secondary'
                     }`}
                     data-testid={`tab-icon-${tab.id}`}
                   />
                 ) : (
                   <Folder
                     className={`h-3.5 w-3.5 flex-shrink-0 ${
-                      isActive ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-300'
+                      isActive ? 'text-amber-400' : 'text-txt-muted group-hover:text-txt-secondary'
                     }`}
                     data-testid={`tab-icon-${tab.id}`}
                   />
@@ -95,13 +95,13 @@ export const TabBar: React.FC<TabBarProps> = ({
 
               <button
                 type="button"
-                aria-label={`Stäng flik ${tab.title}`}
+                aria-label={`Close tab ${tab.title}`}
                 data-testid={`close-tab-${tab.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCloseTab(tab.id);
                 }}
-                className="ml-2 rounded p-0.5 text-slate-400 opacity-60 hover:bg-slate-700 hover:text-white hover:opacity-100 transition-opacity"
+                className="ml-2 rounded p-0.5 text-txt-muted opacity-60 hover:bg-app-surface-hover hover:text-txt-primary hover:opacity-100 transition-opacity"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -110,24 +110,20 @@ export const TabBar: React.FC<TabBarProps> = ({
         })}
       </div>
 
-      {/* New Tab Button & Dropdown: kept outside the scrollable tab strip above,
-          otherwise overflow-x-auto implicitly clips overflow-y too (per the CSS
-          overflow spec, an explicit overflow-x forces overflow-y to auto as well),
-          so the absolutely-positioned menu would be clipped into a stray scrollbar
-          instead of showing. */}
+      {/* New Tab Button & Dropdown */}
       <div className="relative flex shrink-0 items-center" ref={menuRef}>
         <button
           type="button"
           data-testid="add-tab-btn"
-          title="Öppna ny flik"
+          title="Open new tab"
           onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Plus className="h-4 w-4" />
         </button>
 
         {isMenuOpen && (
-          <div className="absolute top-8 right-0 z-50 min-w-[160px] whitespace-nowrap rounded-md border border-slate-700 bg-slate-800 p-1 shadow-xl">
+          <div className="absolute top-8 right-0 z-50 min-w-[160px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl">
             <button
               type="button"
               data-testid="new-terminal-btn"
@@ -135,10 +131,10 @@ export const TabBar: React.FC<TabBarProps> = ({
                 setIsMenuOpen(false);
                 onNewTab('terminal');
               }}
-              className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
             >
               <Terminal className="h-3.5 w-3.5 text-sky-400" />
-              <span>Ny terminal</span>
+              <span>New Terminal</span>
             </button>
             <button
               type="button"
@@ -147,32 +143,32 @@ export const TabBar: React.FC<TabBarProps> = ({
                 setIsMenuOpen(false);
                 onNewTab('filemanager');
               }}
-              className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
             >
               <Folder className="h-3.5 w-3.5 text-amber-400" />
-              <span>Ny filhanterare</span>
+              <span>New File Manager</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Quick links: Profiles & Settings */}
-      <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
+      {/* Quick links: Connections & Settings */}
+      <div className="flex items-center gap-1 border-l border-border-subtle pl-2">
         <button
           type="button"
           data-testid="quick-profiles-btn"
-          title="Profiler"
+          title="Connections & Profiles (Ctrl+Shift+O)"
           onClick={onOpenProfiles}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
-          <Bookmark className="h-4 w-4" />
+          <Server className="h-4 w-4" />
         </button>
         <button
           type="button"
           data-testid="quick-settings-btn"
-          title="Inställningar"
+          title="Settings (Ctrl+,)"
           onClick={onOpenSettings}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Settings className="h-4 w-4" />
         </button>
@@ -180,3 +176,5 @@ export const TabBar: React.FC<TabBarProps> = ({
     </div>
   );
 };
+
+export default TabBar;

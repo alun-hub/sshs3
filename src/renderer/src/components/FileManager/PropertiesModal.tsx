@@ -44,7 +44,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
           setDetail(entry);
           setContentType(entry.mimeType ?? '');
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Kunde inte hämta filinformation'))
+        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve file details'))
         .finally(() => setLoading(false));
     }
   }, [open, providerId, entries]);
@@ -59,16 +59,16 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
 
   const rows: Row[] = single
     ? [
-        { label: 'Namn', value: single.name },
-        { label: 'Sökväg', value: single.path },
-        { label: 'Typ', value: single.isDirectory ? 'Mapp' : 'Fil' },
-        { label: 'Storlek', value: single.isDirectory ? '-' : `${formatBytes(single.size)} (${single.size} bytes)` },
-        { label: 'Rättigheter', value: single.permissions ?? '-' },
-        { label: 'Senast ändrad', value: single.mtime ?? '-' },
+        { label: 'Name', value: single.name },
+        { label: 'Path', value: single.path },
+        { label: 'Type', value: single.isDirectory ? 'Folder' : 'File' },
+        { label: 'Size', value: single.isDirectory ? '-' : `${formatBytes(single.size)} (${single.size} bytes)` },
+        { label: 'Permissions', value: single.permissions ?? '-' },
+        { label: 'Last Modified', value: single.mtime ?? '-' },
       ]
     : [
-        { label: 'Antal objekt', value: `${entries.length} (${fileCount} filer, ${dirCount} mappar)` },
-        { label: 'Total storlek', value: `${formatBytes(totalSize)} (${totalSize} bytes)` },
+        { label: 'Total Items', value: `${entries.length} (${fileCount} files, ${dirCount} folders)` },
+        { label: 'Total Size', value: `${formatBytes(totalSize)} (${totalSize} bytes)` },
       ];
 
   const handleSaveContentType = async () => {
@@ -80,53 +80,53 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte uppdatera metadata');
+      setError(err instanceof Error ? err.message : 'Failed to update metadata');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-800/80 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <Info className="h-5 w-5 text-sky-400" />
-            <h2 className="text-sm font-semibold text-slate-100">Egenskaper</h2>
+            <Info className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">Properties</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-4 text-xs text-slate-300">
+        <div className="p-4 text-xs text-txt-secondary">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Läser in...
+            <div className="flex items-center justify-center gap-2 py-6 text-txt-muted">
+              <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+              Loading details...
             </div>
           )}
           {error && (
-            <div className="mb-3 rounded border border-red-800/80 bg-red-950/60 p-2 text-red-300">{error}</div>
+            <div className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
           {!loading && (
-            <dl className="divide-y divide-slate-800/60 rounded border border-slate-800 bg-slate-950">
+            <dl className="divide-y divide-border-subtle/50 rounded-lg border border-border-subtle bg-app-surface">
               {rows.map((row) => (
                 <div key={row.label} className="flex items-start gap-3 px-3 py-2">
-                  <dt className="w-28 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">{row.label}</dt>
-                  <dd className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">{row.value}</dd>
+                  <dt className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-txt-muted">{row.label}</dt>
+                  <dd className="min-w-0 flex-1 break-all font-mono text-xs text-txt-primary">{row.value}</dd>
                 </div>
               ))}
               {canEditContentType && (
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <dt className="w-28 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Content-Type</dt>
+                  <dt className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-txt-muted">Content-Type</dt>
                   <dd className="min-w-0 flex-1">
                     <input
                       type="text"
                       value={contentType}
                       onChange={(e) => setContentType(e.target.value)}
                       placeholder="application/octet-stream"
-                      className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                      className="w-full rounded-md border border-border-subtle bg-app-input px-2 py-1 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                     />
                   </dd>
                 </div>
@@ -135,24 +135,24 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-800/50 px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            Stäng
+            Close
           </button>
           {canEditContentType && (
             <button
               type="button"
               onClick={() => void handleSaveContentType()}
               disabled={saving || contentType.trim() === (single?.mimeType ?? '')}
-              className="flex items-center gap-1.5 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Spara
+              Save
             </button>
           )}
         </div>

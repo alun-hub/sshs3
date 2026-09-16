@@ -58,38 +58,38 @@ export const TransferConflictModal: React.FC = () => {
       aria-labelledby="transfer-conflict-modal-title"
       data-testid="transfer-conflict-modal"
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-800 p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20 text-amber-400">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
             <FileWarning className="h-5 w-5" />
           </div>
           <div>
-            <h2 id="transfer-conflict-modal-title" className="text-base font-semibold text-white">
-              Filen finns redan
+            <h2 id="transfer-conflict-modal-title" className="text-base font-semibold text-txt-primary">
+              File Already Exists
             </h2>
-            <p className="break-all text-xs text-slate-400">{currentPrompt.targetPath}</p>
+            <p className="break-all text-xs text-txt-muted">{currentPrompt.targetPath}</p>
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-slate-300">
+        <div className="mt-4 text-sm text-txt-secondary">
           <p>
-            {currentPrompt.isDirectory ? 'Mappen' : 'Filen'}{' '}
-            <span className="font-medium text-slate-100">{currentPrompt.fileName}</span> finns
-            redan på målet. Vad vill du göra?
+            {currentPrompt.isDirectory ? 'The folder' : 'The file'}{' '}
+            <span className="font-medium text-txt-primary">{currentPrompt.fileName}</span> already exists
+            at the destination. What would you like to do?
           </p>
         </div>
 
-        <label className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+        <label className="mt-4 flex items-center gap-2 text-xs text-txt-muted cursor-pointer">
           <input
             type="checkbox"
             checked={applyToAll}
             onChange={(e) => setApplyToAll(e.target.checked)}
             data-testid="transfer-conflict-apply-all"
-            className="rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500"
+            className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
           />
-          Använd för alla återstående filer i den här överföringen
+          <span>Apply to all remaining conflicts in this transfer</span>
         </label>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
@@ -97,30 +97,32 @@ export const TransferConflictModal: React.FC = () => {
             type="button"
             onClick={() => respond('skip')}
             data-testid="transfer-conflict-skip"
-            className="flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 focus:outline-none transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <SkipForward className="h-3.5 w-3.5" />
-            Hoppa över
+            Skip
           </button>
           <button
             type="button"
             onClick={() => respond('rename')}
             data-testid="transfer-conflict-rename"
-            className="flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 focus:outline-none transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <Copy className="h-3.5 w-3.5" />
-            Byt namn
+            Rename
           </button>
           <button
             type="button"
             onClick={() => respond('overwrite')}
             data-testid="transfer-conflict-overwrite"
-            className="rounded-md bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-800 transition-colors"
+            className="rounded-lg bg-sky-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
           >
-            Skriv över
+            Overwrite
           </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default TransferConflictModal;

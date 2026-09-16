@@ -54,7 +54,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setSshProfiles(profiles.ssh);
       setS3Profiles(profiles.s3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte läsa profiler');
+      setError(err instanceof Error ? err.message : 'Failed to load profiles');
     } finally {
       setLoading(false);
     }
@@ -99,7 +99,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte spara profilen');
+      setError(err instanceof Error ? err.message : 'Failed to save profile');
     }
   };
 
@@ -109,27 +109,27 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte spara profilen');
+      setError(err instanceof Error ? err.message : 'Failed to save profile');
     }
   };
 
   const handleDeleteSSH = async (id: string) => {
-    if (!window.confirm('Ta bort profilen?')) return;
+    if (!window.confirm('Are you sure you want to delete this profile?')) return;
     try {
       await window.multissh.profilesDeleteSSH(id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ta bort profilen');
+      setError(err instanceof Error ? err.message : 'Failed to delete profile');
     }
   };
 
   const handleDeleteS3 = async (id: string) => {
-    if (!window.confirm('Ta bort profilen?')) return;
+    if (!window.confirm('Are you sure you want to delete this profile?')) return;
     try {
       await window.multissh.profilesDeleteS3(id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ta bort profilen');
+      setError(err instanceof Error ? err.message : 'Failed to delete profile');
     }
   };
 
@@ -142,38 +142,60 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         p.name.toLowerCase().includes(query) ||
         p.host.toLowerCase().includes(query) ||
         p.username.toLowerCase().includes(query) ||
-        (p.group || '').toLowerCase().includes(query)
+        (p.group && p.group.toLowerCase().includes(query))
     );
   }, [sshProfiles, query]);
-
-  const recentSSH = useMemo(() => {
-    return [...sshProfiles]
-      .filter((p) => Boolean(p.lastUsedAt))
-      .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
-      .slice(0, 3);
-  }, [sshProfiles]);
-
-  const groupedSSH = useMemo(() => {
-    const map = new Map<string, SSHConnectionConfig[]>();
-    for (const p of filteredSSH) {
-      const g = p.group?.trim() || 'Ogrupperade';
-      const list = map.get(g) || [];
-      list.push(p);
-      map.set(g, list);
-    }
-    return Array.from(map.entries());
-  }, [filteredSSH]);
 
   const filteredS3 = useMemo(() => {
     if (!query) return s3Profiles;
     return s3Profiles.filter(
       (p) =>
         p.name.toLowerCase().includes(query) ||
-        (p.endpoint || 'AWS S3').toLowerCase().includes(query) ||
-        p.region.toLowerCase().includes(query) ||
-        (p.group || '').toLowerCase().includes(query)
+        (p.endpoint && p.endpoint.toLowerCase().includes(query)) ||
+        (p.region && p.region.toLowerCase().includes(query)) ||
+        (p.initialPath && p.initialPath.toLowerCase().includes(query)) ||
+        (p.group && p.group.toLowerCase().includes(query))
     );
   }, [s3Profiles, query]);
+
+  // Grouped profiles: group name -> profiles
+  const groupedSSH = useMemo(() => {
+    const groups: Record<string, SSHConnectionConfig[]> = {};
+    const ungroupedKey = 'Ungrouped';
+    for (const p of filteredSSH) {
+      const g = p.group?.trim() || ungroupedKey;
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(p);
+    }
+    return Object.entries(groups).sort(([a], [b]) => {
+      if (a === ungroupedKey) return 1;
+      if (b === ungroupedKey) return -1;
+      return a.localeCompare(b);
+    });
+  }, [filteredSSH]);
+
+  const groupedS3 = useMemo(() => {
+    const groups: Record<string, S3Config[]> = {};
+    const ungroupedKey = 'Ungrouped';
+    for (const p of filteredS3) {
+      const g = p.group?.trim() || ungroupedKey;
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(p);
+    }
+    return Object.entries(groups).sort(([a], [b]) => {
+      if (a === ungroupedKey) return 1;
+      if (b === ungroupedKey) return -1;
+      return a.localeCompare(b);
+    });
+  }, [filteredS3]);
+
+  // Top 3 recently used
+  const recentSSH = useMemo(() => {
+    return [...sshProfiles]
+      .filter((p) => Boolean(p.lastUsedAt))
+      .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
+      .slice(0, 3);
+  }, [sshProfiles]);
 
   const recentS3 = useMemo(() => {
     return [...s3Profiles]
@@ -182,38 +204,32 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       .slice(0, 3);
   }, [s3Profiles]);
 
-  const groupedS3 = useMemo(() => {
-    const map = new Map<string, S3Config[]>();
-    for (const p of filteredS3) {
-      const g = p.group?.trim() || 'Ogrupperade';
-      const list = map.get(g) || [];
-      list.push(p);
-      map.set(g, list);
-    }
-    return Array.from(map.entries());
-  }, [filteredS3]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-lg border border-slate-700 bg-slate-800 shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
-          <h2 className="text-sm font-semibold text-slate-100">Anslutningshanterare</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">Connection Manager</h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-100"
+            className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex border-b border-slate-700 px-2 pt-2">
+        {/* Tab switcher */}
+        <div className="flex border-b border-border-subtle bg-app-surface px-2 pt-2">
           {(
             [
               { key: 'ssh' as Tab, label: 'SSH / SFTP', icon: Server },
-              { key: 's3' as Tab, label: 'S3', icon: Cloud },
+              { key: 's3' as Tab, label: 'S3 Object Storage', icon: Cloud },
             ]
           ).map(({ key, label, icon: Icon }) => (
             <button
@@ -224,8 +240,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 setEditing(null);
               }}
               className={
-                'flex items-center gap-1.5 rounded-t px-3 py-1.5 text-sm font-medium ' +
-                (tab === key ? 'bg-slate-900 text-sky-400 border-t-2 border-sky-400' : 'text-slate-400 hover:text-slate-200')
+                'flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ' +
+                (tab === key
+                  ? 'bg-app-card text-sky-400 border-t-2 border-sky-500 font-semibold'
+                  : 'text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover')
               }
             >
               <Icon className="h-3.5 w-3.5" />
@@ -236,7 +254,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
         <div className="flex-1 overflow-y-auto p-4">
           {error && (
-            <div className="mb-3 rounded border border-red-900 bg-red-950/50 px-2.5 py-1.5 text-xs text-red-300">
+            <div className="mb-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
               {error}
             </div>
           )}
@@ -259,29 +277,29 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             <>
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Sök profiler eller mappar..."
-                    className="w-full rounded border border-slate-700 bg-slate-900/80 py-1.5 pl-8 pr-3 text-xs text-slate-200 outline-none focus:border-sky-500"
+                    placeholder="Search profiles or folders..."
+                    className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditing({ type: tab })}
-                  className="flex items-center gap-1 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0"
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0 shadow-sm transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Ny profil
+                  New Profile
                 </button>
               </div>
 
               {loading && (
-                <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Läser in...
+                  Loading profiles...
                 </div>
               )}
 
@@ -289,28 +307,28 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 <div className="space-y-4">
                   {/* Recently Used SSH Profiles */}
                   {!query && recentSSH.length > 0 && (
-                    <div className="rounded border border-slate-700/60 bg-slate-900/30 p-2.5">
+                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
                       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-sky-400">
                         <Clock className="h-3.5 w-3.5" />
-                        <span>Senast använda</span>
+                        <span>Recently Used</span>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         {recentSSH.map((profile) => (
                           <div
                             key={`recent-${profile.id}`}
-                            className="flex items-center justify-between gap-2 rounded border border-slate-700/80 bg-slate-900/60 px-3 py-1.5"
+                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="truncate text-xs font-medium text-slate-100">{profile.name}</span>
+                                <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
                                 {profile.group && (
-                                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
                                     {profile.group}
                                   </span>
                                 )}
                               </div>
-                              <div className="truncate text-[11px] text-slate-500">
-                                {profile.username}@{profile.host}:{profile.port ?? 22} · Senast ansluten:{' '}
+                              <div className="truncate text-[11px] text-txt-muted">
+                                {profile.username}@{profile.host}:{profile.port ?? 22} · Last connected:{' '}
                                 {profile.lastUsedAt}
                               </div>
                             </div>
@@ -319,9 +337,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => void handleConnectSSH(profile)}
-                                  className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
                                 >
-                                  Anslut
+                                  Connect
                                 </button>
                               )}
                             </div>
@@ -333,8 +351,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                   {/* Grouped SSH Profiles */}
                   {filteredSSH.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-slate-500">
-                      {query ? 'Inga profiler matchade sökningen' : 'Inga SSH-profiler ännu'}
+                    <p className="py-6 text-center text-sm text-txt-muted">
+                      {query ? 'No profiles matched your search' : 'No SSH profiles yet'}
                     </p>
                   ) : (
                     groupedSSH.map(([groupName, profiles]) => {
@@ -344,17 +362,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleGroup(`ssh-${groupName}`)}
-                            className="flex w-full items-center justify-between rounded px-1.5 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700/40"
+                            className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs font-semibold text-txt-secondary hover:bg-app-surface-hover transition-colors"
                           >
                             <div className="flex items-center gap-1.5">
                               {isCollapsed ? (
-                                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                                <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
                               ) : (
-                                <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                                <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
                               )}
                               <Folder className="h-3.5 w-3.5 text-amber-400" />
                               <span>{groupName}</span>
-                              <span className="rounded-full bg-slate-800 px-1.5 py-0.2 text-[10px] text-slate-400">
+                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-[10px] text-txt-muted">
                                 {profiles.length}
                               </span>
                             </div>
@@ -365,25 +383,25 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               {profiles.map((profile) => (
                                 <div
                                   key={profile.id}
-                                  className="flex items-center justify-between gap-2 rounded border border-slate-700 bg-slate-900/50 px-3 py-2"
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-2"
                                 >
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="truncate text-sm text-slate-100 font-medium">
+                                      <span className="truncate text-sm text-txt-primary font-medium">
                                         {profile.name}
                                       </span>
                                       {profile.proxyJump && (
-                                        <span className="rounded bg-sky-950/60 border border-sky-800 px-1.5 py-0.2 text-[10px] text-sky-300">
+                                        <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-[10px] text-sky-400">
                                           Jump
                                         </span>
                                       )}
                                       {profile.tunnels && profile.tunnels.length > 0 && (
-                                        <span className="rounded bg-indigo-950/60 border border-indigo-800 px-1.5 py-0.2 text-[10px] text-indigo-300">
-                                          {profile.tunnels.length} tunnel
+                                        <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.2 text-[10px] text-indigo-400">
+                                          {profile.tunnels.length} tunnel{profile.tunnels.length > 1 ? 's' : ''}
                                         </span>
                                       )}
                                     </div>
-                                    <div className="truncate text-xs text-slate-500">
+                                    <div className="truncate text-xs text-txt-muted">
                                       {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
                                     </div>
                                   </div>
@@ -392,24 +410,24 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => void handleConnectSSH(profile)}
-                                        className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                                        className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
                                       >
-                                        Anslut
+                                        Connect
                                       </button>
                                     )}
                                     <button
                                       type="button"
-                                      title="Redigera"
+                                      title="Edit"
                                       onClick={() => setEditing({ type: 'ssh', config: profile })}
-                                      className="rounded p-1.5 text-slate-300 hover:bg-slate-700"
+                                      className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                                     >
                                       <Pencil className="h-3.5 w-3.5" />
                                     </button>
                                     <button
                                       type="button"
-                                      title="Ta bort"
+                                      title="Delete"
                                       onClick={() => void handleDeleteSSH(profile.id)}
-                                      className="rounded p-1.5 text-red-400 hover:bg-slate-700"
+                                      className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>
@@ -429,28 +447,28 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 <div className="space-y-4">
                   {/* Recently Used S3 Profiles */}
                   {!query && recentS3.length > 0 && (
-                    <div className="rounded border border-slate-700/60 bg-slate-900/30 p-2.5">
+                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
                       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-400">
                         <Clock className="h-3.5 w-3.5" />
-                        <span>Senast använda</span>
+                        <span>Recently Used</span>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         {recentS3.map((profile) => (
                           <div
                             key={`recent-s3-${profile.id}`}
-                            className="flex items-center justify-between gap-2 rounded border border-slate-700/80 bg-slate-900/60 px-3 py-1.5"
+                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="truncate text-xs font-medium text-slate-100">{profile.name}</span>
+                                <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
                                 {profile.group && (
-                                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
                                     {profile.group}
                                   </span>
                                 )}
                               </div>
-                              <div className="truncate text-[11px] text-slate-500">
-                                {profile.endpoint || 'AWS S3'} · {profile.region} · Senast ansluten:{' '}
+                              <div className="truncate text-[11px] text-txt-muted">
+                                {profile.endpoint || 'AWS S3'} · {profile.region} · Last connected:{' '}
                                 {profile.lastUsedAt}
                               </div>
                             </div>
@@ -459,9 +477,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => void handleConnectS3(profile)}
-                                  className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
                                 >
-                                  Anslut
+                                  Connect
                                 </button>
                               )}
                             </div>
@@ -473,8 +491,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                   {/* Grouped S3 Profiles */}
                   {filteredS3.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-slate-500">
-                      {query ? 'Inga profiler matchade sökningen' : 'Inga S3-profiler ännu'}
+                    <p className="py-6 text-center text-sm text-txt-muted">
+                      {query ? 'No profiles matched your search' : 'No S3 profiles yet'}
                     </p>
                   ) : (
                     groupedS3.map(([groupName, profiles]) => {
@@ -484,17 +502,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleGroup(`s3-${groupName}`)}
-                            className="flex w-full items-center justify-between rounded px-1.5 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700/40"
+                            className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs font-semibold text-txt-secondary hover:bg-app-surface-hover transition-colors"
                           >
                             <div className="flex items-center gap-1.5">
                               {isCollapsed ? (
-                                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                                <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
                               ) : (
-                                <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                                <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
                               )}
                               <Folder className="h-3.5 w-3.5 text-amber-400" />
                               <span>{groupName}</span>
-                              <span className="rounded-full bg-slate-800 px-1.5 py-0.2 text-[10px] text-slate-400">
+                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-[10px] text-txt-muted">
                                 {profiles.length}
                               </span>
                             </div>
@@ -505,11 +523,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               {profiles.map((profile) => (
                                 <div
                                   key={profile.id}
-                                  className="flex items-center justify-between gap-2 rounded border border-slate-700 bg-slate-900/50 px-3 py-2"
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-2"
                                 >
                                   <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-slate-100">{profile.name}</div>
-                                    <div className="truncate text-xs text-slate-500">
+                                    <div className="truncate text-sm font-medium text-txt-primary">{profile.name}</div>
+                                    <div className="truncate text-xs text-txt-muted">
                                       {profile.endpoint || 'AWS S3'} · {profile.region}
                                     </div>
                                   </div>
@@ -518,24 +536,24 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => void handleConnectS3(profile)}
-                                        className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                                        className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
                                       >
-                                        Anslut
+                                        Connect
                                       </button>
                                     )}
                                     <button
                                       type="button"
-                                      title="Redigera"
+                                      title="Edit"
                                       onClick={() => setEditing({ type: 's3', config: profile })}
-                                      className="rounded p-1.5 text-slate-300 hover:bg-slate-700"
+                                      className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                                     >
                                       <Pencil className="h-3.5 w-3.5" />
                                     </button>
                                     <button
                                       type="button"
-                                      title="Ta bort"
+                                      title="Delete"
                                       onClick={() => void handleDeleteS3(profile.id)}
-                                      className="rounded p-1.5 text-red-400 hover:bg-slate-700"
+                                      className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>

@@ -95,23 +95,23 @@ export const SmartcardPinModal: React.FC = () => {
       aria-labelledby="smartcard-modal-title"
       data-testid="smartcard-pin-modal"
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-800 p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500/20 text-sky-400">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/20 text-sky-400">
             <KeyRound className="h-5 w-5" />
           </div>
           <div>
-            <h2 id="smartcard-modal-title" className="text-base font-semibold text-white">
-              Säkerhetsautentisering
+            <h2 id="smartcard-modal-title" className="text-base font-semibold text-txt-primary">
+              Security Authentication
             </h2>
-            <p className="text-xs text-slate-400">Smartcard / SSH PIN Begäran</p>
+            <p className="text-xs text-txt-muted">Smartcard / SSH PIN Prompt</p>
           </div>
         </div>
 
         <div className="mt-4">
-          <p className="text-sm font-medium text-slate-200 break-words">
+          <p className="text-sm font-medium text-txt-primary break-words">
             {currentPrompt.prompt}
           </p>
 
@@ -122,10 +122,10 @@ export const SmartcardPinModal: React.FC = () => {
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="Ange PIN / lösenord..."
+                placeholder="Enter PIN / password..."
                 data-testid="smartcard-pin-input"
                 autoComplete="off"
-                className="w-full rounded-md border border-slate-600 bg-slate-900 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-border-subtle bg-app-input px-3.5 py-2 text-sm text-txt-primary placeholder-txt-muted focus:border-sky-500 focus:outline-none"
               />
             </div>
 
@@ -134,16 +134,16 @@ export const SmartcardPinModal: React.FC = () => {
                 type="button"
                 onClick={handleCancel}
                 data-testid="smartcard-pin-cancel"
-                className="rounded-md border border-slate-600 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 focus:outline-none transition-colors"
+                className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
               >
-                Avbryt
+                Cancel
               </button>
               <button
                 type="submit"
                 data-testid="smartcard-pin-submit"
-                className="rounded-md bg-sky-500 px-4 py-2 text-xs font-medium text-white hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-800 transition-colors"
+                className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
               >
-                OK / Skicka
+                Submit
               </button>
             </div>
           </form>
@@ -152,3 +152,5 @@ export const SmartcardPinModal: React.FC = () => {
     </div>
   );
 };
+
+export default SmartcardPinModal;

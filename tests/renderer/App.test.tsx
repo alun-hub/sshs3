@@ -80,7 +80,7 @@ describe('App Component', () => {
 
     // The new tab should be selected
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('Filhanterare 1')).toBeInTheDocument();
+    expect(screen.getByText('File Manager 1')).toBeInTheDocument();
   });
 
   it('maintains non-active tabs mounted in DOM with display none', async () => {
@@ -129,7 +129,7 @@ describe('App Component', () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId('quick-settings-btn'));
-    expect(await screen.findByText('Inställningar')).toBeInTheDocument();
+    expect(await screen.findByText('Settings')).toBeInTheDocument();
   });
 
   it('restores saved tabs from session on mount', async () => {

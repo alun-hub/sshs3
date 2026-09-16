@@ -84,7 +84,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const result = await window.multissh.storageList(source.providerId, currentPath);
       setEntries(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte läsa katalogen');
+      setError(err instanceof Error ? err.message : 'Failed to read directory');
       setEntries([]);
     } finally {
       setLoading(false);
@@ -107,19 +107,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   const handleNewFolder = useCallback(async () => {
-    const name = window.prompt('Namn på ny mapp:');
+    const name = window.prompt('New folder name:');
     if (!name) return;
     try {
       await window.multissh.storageCreateFolder(source.providerId, joinPath(currentPath, name));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte skapa mappen');
+      setError(err instanceof Error ? err.message : 'Failed to create folder');
     }
   }, [source.providerId, currentPath, load]);
 
   const handleDelete = useCallback(async () => {
     if (selectedPaths.size === 0) return;
-    if (!window.confirm(`Ta bort ${selectedPaths.size} objekt?`)) return;
+    if (!window.confirm(`Delete ${selectedPaths.size} item(s)?`)) return;
     const targets = entries.filter((e) => selectedPaths.has(e.path));
     try {
       for (const target of targets) {
@@ -128,7 +128,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setSelectedPaths(new Set());
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte ta bort objekt');
+      setError(err instanceof Error ? err.message : 'Failed to delete item(s)');
     }
   }, [selectedPaths, entries, source.providerId, load]);
 
@@ -147,7 +147,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         await window.multissh.storageRename(source.providerId, entry.path, targetPath);
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Kunde inte byta namn');
+        setError(err instanceof Error ? err.message : 'Failed to rename');
       }
     },
     [source.providerId, load]
@@ -159,21 +159,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   const handleEntryDrop = useCallback(
-    async (entry: FileEntry, e: React.DragEvent) => {
+    (targetEntry: FileEntry, e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
       setDragOverPath(null);
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
-        onTransferRequested({ sourceProviderId: 'local', sourcePaths: osPaths, targetPath: entry.path });
+        onTransferRequested({
+          sourceProviderId: 'local',
+          sourcePaths: osPaths,
+          targetPath: targetEntry.path,
+        });
+        endDrag();
         return;
       }
       const payload = readDropPayload(e.dataTransfer);
-      if (payload && !payload.entries.some((it) => it.path === entry.path)) {
-        onTransferRequested({
-          sourceProviderId: payload.providerId,
-          sourcePaths: payload.entries.map((it) => it.path),
-          targetPath: entry.path,
-        });
-      }
+      if (!payload) return;
+      onTransferRequested({
+        sourceProviderId: payload.providerId,
+        sourcePaths: payload.entries.map((i) => i.path),
+        targetPath: targetEntry.path,
+      });
       endDrag();
     },
     [readOsFilePaths, readDropPayload, onTransferRequested, endDrag]
@@ -182,24 +188,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handlePaneDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      setDragOverPath(null);
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
-        onTransferRequested({ sourceProviderId: 'local', sourcePaths: osPaths, targetPath: currentPath });
+        onTransferRequested({
+          sourceProviderId: 'local',
+          sourcePaths: osPaths,
+          targetPath: currentPath,
+        });
+        endDrag();
         return;
       }
       const payload = readDropPayload(e.dataTransfer);
-      const isSameFolder = payload && payload.providerId === source.providerId && payload.basePath === currentPath;
-      if (payload && !isSameFolder) {
-        onTransferRequested({
-          sourceProviderId: payload.providerId,
-          sourcePaths: payload.entries.map((it) => it.path),
-          targetPath: currentPath,
-        });
+      if (!payload) return;
+      if (payload.fromPane === side && payload.providerId === source.providerId) {
+        endDrag();
+        return;
       }
+      onTransferRequested({
+        sourceProviderId: payload.providerId,
+        sourcePaths: payload.entries.map((i) => i.path),
+        targetPath: currentPath,
+      });
       endDrag();
     },
-    [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, endDrag]
+    [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, side, endDrag]
   );
 
   const supportsChmod = source.sourceType !== 's3';
@@ -220,25 +232,25 @@ export const FilePane: React.FC<FilePaneProps> = ({
       : selectedEntries.length > 0
         ? [
             ...(selectedEntries.length === 1 && selectedEntries[0].isDirectory
-              ? [{ key: 'open', label: 'Öppna', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) }]
+              ? [{ key: 'open', label: 'Open', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) }]
               : []),
             {
               key: 'rename',
-              label: 'Byt namn',
+              label: 'Rename',
               icon: Pencil,
               disabled: selectedEntries.length !== 1,
               onSelect: handleRenameStart,
             },
             {
               key: 'chmod',
-              label: 'Ändra rättigheter...',
+              label: 'Change Permissions (chmod)...',
               icon: Shield,
               disabled: !supportsChmod,
               onSelect: () => setChmodOpen(true),
             },
             {
               key: 'copy-path',
-              label: 'Kopiera sökväg',
+              label: 'Copy Path',
               icon: Clipboard,
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
@@ -247,14 +259,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
               ? [
                   {
                     key: 'copy-s3-uri',
-                    label: 'Kopiera S3-URI',
+                    label: 'Copy S3 URI',
                     icon: Clipboard,
                     disabled: selectedEntries.length !== 1,
                     onSelect: () => void navigator.clipboard.writeText(`s3:/${selectedEntries[0].path}`),
                   },
                   {
                     key: 'tags',
-                    label: 'Taggar...',
+                    label: 'Tags...',
                     icon: Tag,
                     disabled: !(isBucketEntry || isS3ObjectEntry),
                     separatorBefore: true,
@@ -262,14 +274,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   },
                   {
                     key: 'bucket-policy',
-                    label: 'Bucket-policy & CORS...',
+                    label: 'Bucket Policy & CORS...',
                     icon: FileJson,
                     disabled: !isBucketEntry,
                     onSelect: () => setBucketPolicyOpen(true),
                   },
                   {
                     key: 'versioning',
-                    label: isBucketEntry ? 'Versionshantering...' : 'Objektversioner...',
+                    label: isBucketEntry ? 'Bucket Versioning...' : 'Object Versions...',
                     icon: History,
                     disabled: !(isBucketEntry || isS3ObjectEntry),
                     onSelect: () => setVersionsOpen(true),
@@ -278,14 +290,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
               : []),
             {
               key: 'properties',
-              label: 'Egenskaper',
+              label: 'Properties',
               icon: Info,
               separatorBefore: source.sourceType !== 's3',
               onSelect: () => setPropertiesOpen(true),
             },
             {
               key: 'delete',
-              label: 'Ta bort',
+              label: 'Delete',
               icon: Trash2,
               danger: true,
               separatorBefore: true,
@@ -293,8 +305,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             },
           ]
         : [
-            { key: 'newfolder', label: 'Ny mapp', icon: FolderPlus, onSelect: () => void handleNewFolder() },
-            { key: 'refresh', label: 'Uppdatera', icon: RefreshCw, onSelect: () => void load() },
+            { key: 'newfolder', label: 'New Folder', icon: FolderPlus, onSelect: () => void handleNewFolder() },
+            { key: 'refresh', label: 'Refresh', icon: RefreshCw, onSelect: () => void load() },
           ];
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
@@ -302,84 +314,100 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   return (
     <div
-      className="flex h-full min-w-0 flex-1 flex-col border border-slate-700 bg-slate-900"
+      className="flex h-full min-w-0 flex-1 flex-col rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-sm"
       onDragOver={(e) => {
         e.preventDefault();
       }}
       onDrop={handlePaneDrop}
     >
-      <div className="flex items-center gap-1 border-b border-slate-700 bg-slate-800 px-2 py-1.5">
-        <div className="flex shrink-0 items-center gap-1 rounded border border-slate-600 bg-slate-900 px-1.5 py-1 text-xs">
-          {(['local', 'sftp', 's3'] as SourceType[]).map((type) => {
-            const Icon = SOURCE_ICONS[type];
-            return (
-              <button
-                key={type}
-                type="button"
-                title={type.toUpperCase()}
-                onClick={() => onSourceTypeRequest(type)}
-                className={
-                  'rounded p-1 ' +
-                  (source.sourceType === type ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-slate-100')
-                }
-              >
-                <Icon className="h-3.5 w-3.5" />
-              </button>
-            );
-          })}
+      {/* Pane Top Bar with Source Switcher */}
+      <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-2.5 py-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border-subtle bg-app-card p-0.5 text-xs">
+            {(['local', 'sftp', 's3'] as SourceType[]).map((type) => {
+              const Icon = SOURCE_ICONS[type];
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  title={type.toUpperCase()}
+                  onClick={() => onSourceTypeRequest(type)}
+                  className={
+                    'rounded-md p-1 transition-colors ' +
+                    (source.sourceType === type
+                      ? 'bg-sky-600 text-white font-medium shadow-sm'
+                      : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary')
+                  }
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              );
+            })}
+          </div>
+          <span className="flex shrink-0 items-center gap-1.5 truncate text-xs font-medium text-txt-primary">
+            <SourceIcon className="h-3.5 w-3.5 text-sky-400" />
+            {source.label}
+          </span>
         </div>
-        <span className="flex shrink-0 items-center gap-1 truncate text-xs text-slate-400">
-          <SourceIcon className="h-3 w-3" />
-          {source.label}
-        </span>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-slate-700 px-2 py-1.5">
+      {/* Pane Action Toolbar */}
+      <div className="flex items-center gap-1 border-b border-border-subtle bg-app-surface-subtle px-2 py-1">
         <button
           type="button"
-          title="Upp en nivå"
+          title="Up one level"
           onClick={() => onPathChange(parentPath(currentPath))}
-          className="rounded p-1 text-slate-300 hover:bg-slate-700"
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <ArrowUp className="h-4 w-4" />
         </button>
         <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} />
-        <button type="button" title="Uppdatera" onClick={() => void load()} className="rounded p-1 text-slate-300 hover:bg-slate-700">
+        <button
+          type="button"
+          title="Refresh"
+          onClick={() => void load()}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+        >
           <RefreshCw className="h-4 w-4" />
         </button>
-        <button type="button" title="Ny mapp" onClick={() => void handleNewFolder()} className="rounded p-1 text-slate-300 hover:bg-slate-700">
+        <button
+          type="button"
+          title="New Folder"
+          onClick={() => void handleNewFolder()}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+        >
           <FolderPlus className="h-4 w-4" />
         </button>
         <button
           type="button"
-          title="Byt namn"
+          title="Rename"
           disabled={selectedPaths.size !== 1}
           onClick={handleRenameStart}
-          className="rounded p-1 text-slate-300 hover:bg-slate-700 disabled:opacity-30"
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
         >
           <Pencil className="h-4 w-4" />
         </button>
         <button
           type="button"
-          title="Ta bort"
+          title="Delete"
           disabled={selectedPaths.size === 0}
           onClick={() => void handleDelete()}
-          className="rounded p-1 text-red-400 hover:bg-slate-700 disabled:opacity-30"
+          className="rounded-lg p-1 text-red-400 hover:bg-app-surface-hover disabled:opacity-30 transition-colors"
         >
           <Trash2 className="h-4 w-4" />
         </button>
         <button
           type="button"
-          title="Ändra rättigheter (chmod)"
+          title="Change Permissions (chmod)"
           disabled={selectedPaths.size === 0 || source.sourceType === 's3'}
           onClick={() => setChmodOpen(true)}
-          className="rounded p-1 text-slate-300 hover:bg-slate-700 disabled:opacity-30"
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
         >
           <Shield className="h-4 w-4" />
         </button>
         <button
           type="button"
-          title="Sök / Filtrera filer (Ctrl+F)"
+          title="Search / Filter files (Ctrl+F)"
           onClick={() => {
             setShowFilter((prev) => {
               const next = !prev;
@@ -388,8 +416,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             });
           }}
           className={
-            'rounded p-1 ' +
-            (showFilter || filterText ? 'bg-sky-600/30 text-sky-300' : 'text-slate-300 hover:bg-slate-700')
+            'rounded-lg p-1 transition-colors ' +
+            (showFilter || filterText
+              ? 'bg-sky-500/20 text-sky-400'
+              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary')
           }
         >
           <Search className="h-4 w-4" />
@@ -397,22 +427,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
         {source.sourceType === 'sftp' && onOpenTerminal && (
           <button
             type="button"
-            title="Öppna terminal här"
+            title="Open Terminal Here"
             onClick={() => onOpenTerminal(currentPath)}
-            className="rounded p-1 text-slate-300 hover:bg-slate-700"
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <Terminal className="h-4 w-4" />
           </button>
         )}
       </div>
 
+      {/* Filter Bar */}
       {showFilter && (
-        <div className="flex items-center gap-2 border-b border-slate-700 bg-slate-800/80 px-2.5 py-1">
-          <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-app-surface px-2.5 py-1">
+          <Search className="h-3.5 w-3.5 shrink-0 text-txt-muted" />
           <input
             ref={filterInputRef}
             type="text"
-            placeholder="Filtrera filer i aktuell mapp... (Esc för att stänga)"
+            placeholder="Filter files in current folder... (Esc to close)"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             onKeyDown={(e) => {
@@ -424,14 +455,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 }
               }
             }}
-            className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none"
+            className="flex-1 bg-transparent text-xs text-txt-primary placeholder-txt-muted outline-none"
           />
           {filterText && (
             <button
               type="button"
-              title="Rensa filter"
+              title="Clear filter"
               onClick={() => setFilterText('')}
-              className="rounded p-0.5 text-slate-400 hover:text-slate-200"
+              className="rounded p-0.5 text-txt-muted hover:text-txt-primary"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -440,7 +471,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       )}
 
       {error && (
-        <div className="flex items-center justify-between gap-1.5 border-b border-red-900 bg-red-950/50 px-2 py-1 text-xs text-red-300">
+        <div className="flex items-center justify-between gap-1.5 border-b border-red-900/60 bg-red-950/40 px-2.5 py-1 text-xs text-red-300">
           <div className="flex min-w-0 items-center gap-1.5 truncate">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{error}</span>
@@ -449,14 +480,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               onClick={() => onSourceTypeRequest('local')}
-              className="ml-2 shrink-0 rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-200 hover:bg-slate-700"
+              className="ml-2 shrink-0 rounded-md bg-app-surface px-2 py-0.5 text-[11px] font-medium text-txt-primary hover:bg-app-surface-hover"
             >
-              Växla till lokal disk
+              Switch to local disk
             </button>
           )}
         </div>
       )}
 
+      {/* File List Content */}
       <div
         className={
           'min-h-0 flex-1 ' + (isReceivingForeignDrag ? 'ring-2 ring-inset ring-sky-500/60' : '')

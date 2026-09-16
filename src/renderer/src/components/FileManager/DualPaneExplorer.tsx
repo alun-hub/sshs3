@@ -10,8 +10,8 @@ import type { PaneSide, PaneSource, SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
-  left: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
-  right: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
+  left: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
+  right: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
 };
 
 interface PaneState {
@@ -37,7 +37,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   useEffect(() => {
     let mounted = true;
     void window.multissh
-      .connectStorage({ id: 'local', name: 'Lokal disk', type: 'local' })
+      .connectStorage({ id: 'local', name: 'Local Disk', type: 'local' })
       .then(async () => {
         if (!mounted) return;
         const [session, profiles] = await Promise.all([
@@ -50,7 +50,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
           if (!savedPane || savedPane.sourceType === 'local') {
             const localPath = session?.lastPaths?.['local'] || savedPane?.path || '/';
             return {
-              source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
+              source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
               path: localPath,
             };
           }
@@ -116,7 +116,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
 
           // Fallback safely to local disk if remote provider cannot be auto-connected
           return {
-            source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' },
+            source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
             path: session?.lastPaths?.['local'] || '/',
           };
         };
@@ -131,7 +131,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       })
       .catch((err) => {
         if (mounted) {
-          setInitError(err instanceof Error ? err.message : 'Kunde inte ansluta till lokal disk');
+          setInitError(err instanceof Error ? err.message : 'Could not connect to local disk');
           setReady(true);
         }
       });
@@ -191,7 +191,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       setPanes((prev) => {
         const next = {
           ...prev,
-          [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Lokal disk' }, path: prev[side].path },
+          [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' }, path: prev[side].path },
         };
         persistPaneState(next);
         return next;
@@ -207,7 +207,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       const { side } = connectionRequest;
       let pin: string | undefined;
       if (config.authType === 'smartcard') {
-        pin = window.prompt(`Ange PIN-kod för smartcard (${config.name}):`) ?? undefined;
+        pin = window.prompt(`Enter PIN for smartcard (${config.name}):`) ?? undefined;
         if (!pin) return;
       }
       setConnecting(true);
@@ -242,7 +242,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Kunde inte ansluta till SFTP-servern');
+        window.alert(err instanceof Error ? err.message : 'Could not connect to SFTP server');
       } finally {
         setConnecting(false);
       }
@@ -270,7 +270,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Kunde inte ansluta till S3');
+        window.alert(err instanceof Error ? err.message : 'Could not connect to S3');
       } finally {
         setConnecting(false);
       }
@@ -285,7 +285,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       const profiles = await window.multissh.profilesGet?.();
       const sshProfile = profiles?.ssh?.find((p) => p.id === sshId);
       if (!sshProfile) {
-        window.alert('Kunde inte hitta SSH-profilen för den här SFTP-anslutningen');
+        window.alert('Could not find SSH profile for this SFTP connection');
         return;
       }
       onOpenTerminal(sshProfile, path);
@@ -297,9 +297,6 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
     (targetSide: PaneSide, params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => {
       const targetProviderId = panes[targetSide].source.providerId;
       void (async () => {
-        // Sequential, not Promise.all: each conflicting file may show a
-        // TOFU-style dialog, and "apply to all" needs to carry the user's
-        // choice into the remaining items of this same drop/batch.
         let batchPolicy: TransferConflictResolution | undefined;
         for (const sourcePath of params.sourcePaths) {
           const result = await window.multissh.transferAdd({
@@ -320,16 +317,16 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   );
 
   if (!ready) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-slate-400">Initierar filhanterare...</div>;
+    return <div className="flex flex-1 items-center justify-center text-sm text-txt-muted">Initializing file manager...</div>;
   }
 
   return (
     <DragDropProvider>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col bg-app">
         {initError && (
-          <div className="border-b border-red-900 bg-red-950/50 px-3 py-1 text-xs text-red-300">{initError}</div>
+          <div className="border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">{initError}</div>
         )}
-        <div className="flex min-h-0 flex-1 gap-1 bg-slate-950 p-1">
+        <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
           <FilePane
             side="left"
             source={panes.left.source}

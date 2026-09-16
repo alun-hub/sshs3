@@ -31,7 +31,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
     window.multissh
       .storageGetTags(providerId, targetPath)
       .then(setTags)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Kunde inte hämta taggar'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve tags'))
       .finally(() => setLoading(false));
   }, [open, providerId, targetPath]);
 
@@ -53,69 +53,69 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte spara taggar');
+      setError(err instanceof Error ? err.message : 'Failed to save tags');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-800/80 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <TagIcon className="h-5 w-5 text-sky-400" />
-            <h2 className="text-sm font-semibold text-slate-100">Taggar</h2>
+            <TagIcon className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm font-semibold text-txt-primary">Tags</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3 text-xs text-slate-300">
-          <div className="rounded border border-slate-800 bg-slate-950 p-2.5">
-            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Mål</div>
-            <div className="mt-1 font-mono text-xs text-slate-200 truncate">{targetName}</div>
+        <div className="p-4 space-y-3 text-xs text-txt-secondary">
+          <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
+            <div className="text-[11px] text-txt-muted uppercase tracking-wider font-semibold">Target</div>
+            <div className="mt-1 font-mono text-xs text-txt-primary truncate">{targetName}</div>
           </div>
 
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Läser in...
+            <div className="flex items-center justify-center gap-2 py-6 text-txt-muted">
+              <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+              Loading tags...
             </div>
           )}
 
           {error && (
-            <div className="rounded border border-red-800/80 bg-red-950/60 p-2 text-red-300">{error}</div>
+            <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
 
           {!loading && (
             <div className="space-y-2">
               {tags.length === 0 && (
-                <div className="rounded border border-dashed border-slate-700 p-3 text-center text-slate-500">
-                  Inga taggar
+                <div className="rounded-lg border border-dashed border-border-subtle p-3 text-center text-txt-muted">
+                  No tags configured
                 </div>
               )}
               {tags.map((tag, idx) => (
                 <div key={idx} className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="Nyckel"
+                    placeholder="Key"
                     value={tag.key}
                     onChange={(e) => handleChange(idx, 'key', e.target.value)}
-                    className="w-1/2 rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                    className="w-1/2 rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                   />
                   <input
                     type="text"
-                    placeholder="Värde"
+                    placeholder="Value"
                     value={tag.value}
                     onChange={(e) => handleChange(idx, 'value', e.target.value)}
-                    className="w-1/2 rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                    className="w-1/2 rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                   />
                   <button
                     type="button"
                     onClick={() => handleRemove(idx)}
-                    className="shrink-0 rounded p-1.5 text-red-400 hover:bg-red-950/50"
+                    className="shrink-0 rounded p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -124,32 +124,32 @@ export const TagsModal: React.FC<TagsModalProps> = ({
               <button
                 type="button"
                 onClick={handleAdd}
-                className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Lägg till tagg
+                Add Tag
               </button>
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-800/50 px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            Avbryt
+            Cancel
           </button>
           <button
             type="button"
             onClick={() => void handleSave()}
             disabled={saving || loading}
-            className="flex items-center gap-1.5 rounded bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Spara
+            Save
           </button>
         </div>
       </div>
