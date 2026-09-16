@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import path from 'node:path';
 
 const { mockIpcRenderer, mockExposeInMainWorld } = vi.hoisted(() => {
   const listeners = new Map<string, Set<(...args: any[]) => void>>();
@@ -480,7 +481,7 @@ describe('IpcBridge', () => {
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourcePath: '/src/photo.png',
-          targetPath: '/dst/folder/photo.png',
+          targetPath: path.join('/dst/folder', 'photo.png'),
           isDirectory: false,
           totalBytes: 2048,
         })
@@ -515,7 +516,7 @@ describe('IpcBridge', () => {
       expect(mockTransferQueue.addJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourcePath: '/src/my-folder',
-          targetPath: '/dst/my-folder',
+          targetPath: path.join('/dst', 'my-folder'),
           isDirectory: true,
         })
       );
