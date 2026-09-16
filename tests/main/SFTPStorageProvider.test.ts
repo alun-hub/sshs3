@@ -288,7 +288,7 @@ describe('SFTPStorageProvider', () => {
       }
     });
 
-    it('falls back to a default identity file when no agent socket is available', async () => {
+    it.skipIf(process.platform === 'win32')('falls back to a default identity file when no agent socket is available', async () => {
       const origSock = process.env.SSH_AUTH_SOCK;
       delete process.env.SSH_AUTH_SOCK;
       const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);

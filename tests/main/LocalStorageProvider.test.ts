@@ -339,7 +339,7 @@ describe('LocalStorageProvider', () => {
   });
 
   describe('chmod', () => {
-    it('should change mode on existing file', async () => {
+    it.skipIf(process.platform === 'win32')('should change mode on existing file', async () => {
       const filePath = path.join(testDir, 'chmod-test.txt');
       await fs.writeFile(filePath, 'hello');
       await provider.chmod(filePath, '600');
@@ -348,7 +348,7 @@ describe('LocalStorageProvider', () => {
       expect((stat.mode & 0o777).toString(8)).toBe('600');
     });
 
-    it('should change mode on directory', async () => {
+    it.skipIf(process.platform === 'win32')('should change mode on directory', async () => {
       const dirPath = path.join(testDir, 'chmod-dir');
       await fs.mkdir(dirPath);
       await provider.chmod(dirPath, 0o700);

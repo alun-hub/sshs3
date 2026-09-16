@@ -447,7 +447,7 @@ describe('AskpassServer', () => {
     await expect(fs.access(scriptPath)).rejects.toThrow();
   });
 
-  it('should handle PIN request via promptHandler callback', async () => {
+  it.skipIf(process.platform === 'win32')('should handle PIN request via promptHandler callback', async () => {
     const expectedPin = '987654';
     server = new AskpassServer({
       promptHandler: async (prompt) => {
@@ -464,7 +464,7 @@ describe('AskpassServer', () => {
     expect(stdout.trim()).toBe(expectedPin);
   });
 
-  it('should handle PIN request via prompt event', async () => {
+  it.skipIf(process.platform === 'win32')('should handle PIN request via prompt event', async () => {
     const expectedPin = '123456';
     server = new AskpassServer();
 
