@@ -3,3 +3,13 @@ dist/
 dist-electron/
 release/
 .superpowers/
+
+# AI Assistants & LLM tooling
+.gemini/
+.claude/
+CLAUDE.md
+GEMINI.md
+*.gemini*
+*.claude*
+.antigravity/
+
