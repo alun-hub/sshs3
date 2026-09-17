@@ -108,8 +108,10 @@ export const api: MultiSSHApi = {
   disconnectStorage: (providerId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_DISCONNECT, providerId),
 
-  storageList: (providerId: string, remotePath: string): Promise<FileEntry[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LIST, providerId, remotePath),
+  storageList: (providerId: string, remotePath: string, force?: boolean): Promise<FileEntry[]> =>
+    force !== undefined
+      ? ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LIST, providerId, remotePath, force)
+      : ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LIST, providerId, remotePath),
 
   storageStat: (providerId: string, remotePath: string): Promise<FileEntry> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_STAT, providerId, remotePath),
@@ -236,6 +238,9 @@ export const api: MultiSSHApi = {
   // Window / General
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
+
+  getHomeDir: (): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_GET_HOMEDIR),
 
   getPlatform: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PLATFORM),

@@ -48,7 +48,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({ initial, onSave,
     void window.multissh
       .smartcardDetect()
       .then((libs) => {
-        if (mounted) setSmartcardLibs(libs);
+        if (mounted) setSmartcardLibs(libs.filter((l) => l.exists));
       })
       .finally(() => {
         if (mounted) setDetecting(false);

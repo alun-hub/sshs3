@@ -30,6 +30,7 @@ import { PropertiesModal } from './PropertiesModal';
 import { TagsModal } from './TagsModal';
 import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
+import { NewFolderModal } from './NewFolderModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import type { PaneSide, PaneSource, SourceType } from './types';
 
@@ -71,25 +72,36 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [tagsOpen, setTagsOpen] = useState(false);
   const [bucketPolicyOpen, setBucketPolicyOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
   const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await window.multissh.storageList(source.providerId, currentPath);
-      setEntries(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to read directory');
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [source.providerId, currentPath]);
+  const load = useCallback(
+    async (force?: boolean) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await window.multissh.storageList(source.providerId, currentPath, force);
+        setEntries(result);
+      } catch (err) {
+        if (source.sourceType === 'local') {
+          const home = await window.multissh.getHomeDir?.();
+          if (home && currentPath !== home) {
+            onPathChange(home);
+            return;
+          }
+        }
+        setError(err instanceof Error ? err.message : 'Failed to read directory');
+        setEntries([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [source.providerId, source.sourceType, currentPath, onPathChange]
+  );
 
   useEffect(() => {
     setSelectedPaths(new Set());
@@ -106,16 +118,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [onPathChange]
   );
 
-  const handleNewFolder = useCallback(async () => {
-    const name = window.prompt('New folder name:');
-    if (!name) return;
-    try {
+  const handleNewFolder = useCallback(() => {
+    setNewFolderOpen(true);
+  }, []);
+
+  const handleCreateFolderCommit = useCallback(
+    async (name: string) => {
       await window.multissh.storageCreateFolder(source.providerId, joinPath(currentPath, name));
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
-    }
-  }, [source.providerId, currentPath, load]);
+      await load(true);
+    },
+    [source.providerId, currentPath, load]
+  );
 
   const handleDelete = useCallback(async () => {
     if (selectedPaths.size === 0) return;
@@ -306,7 +319,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           ]
         : [
             { key: 'newfolder', label: 'New Folder', icon: FolderPlus, onSelect: () => void handleNewFolder() },
-            { key: 'refresh', label: 'Refresh', icon: RefreshCw, onSelect: () => void load() },
+            { key: 'refresh', label: 'Refresh', icon: RefreshCw, onSelect: () => void load(true) },
           ];
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
@@ -365,7 +378,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <button
           type="button"
           title="Refresh"
-          onClick={() => void load()}
+          onClick={() => void load(true)}
           className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <RefreshCw className="h-4 w-4" />
@@ -578,6 +591,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onSaved={() => void load()}
         />
       )}
+
+      <NewFolderModal
+        open={newFolderOpen}
+        currentPath={currentPath}
+        sourceType={source.sourceType}
+        onClose={() => setNewFolderOpen(false)}
+        onCreate={handleCreateFolderCommit}
+      />
     </div>
   );
 };

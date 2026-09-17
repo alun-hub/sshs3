@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -176,7 +177,7 @@ export class IpcBridge {
 
   private registerSmartcardHandlers(): void {
     this.registerHandler(IPC_CHANNELS.SMARTCARD_DETECT, async () => {
-      return await SmartcardDetector.detectAvailableLibraries();
+      return await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
     });
 
     this.registerHandler(
@@ -280,12 +281,12 @@ export class IpcBridge {
 
     this.registerHandler(
       IPC_CHANNELS.STORAGE_LIST,
-      async (_event, providerId: string, remotePath: string): Promise<FileEntry[]> => {
+      async (_event, providerId: string, remotePath: string, force?: boolean): Promise<FileEntry[]> => {
         const provider = this.storageRegistry.get(providerId);
         if (!provider) {
           throw new Error(`Storage provider not found: ${providerId}`);
         }
-        return await provider.list(remotePath);
+        return await (provider as any).list(remotePath, { force });
       }
     );
 
@@ -737,6 +738,10 @@ export class IpcBridge {
       } catch {
         return '0.1.0';
       }
+    });
+
+    this.registerHandler(IPC_CHANNELS.APP_GET_HOMEDIR, async () => {
+      return os.homedir();
     });
 
     this.registerHandler(IPC_CHANNELS.APP_GET_PLATFORM, async () => {

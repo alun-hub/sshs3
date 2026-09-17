@@ -213,4 +213,25 @@ describe('App Component', () => {
 
     expect(screen.getAllByRole('tab').length).toBe(1);
   });
+
+  it('reuses closed tab numbers instead of incrementing endlessly', async () => {
+    render(<App />);
+
+    expect(screen.getByText('Terminal 1')).toBeInTheDocument();
+
+    // Create a new terminal tab -> should be Terminal 2
+    fireEvent.click(screen.getByTestId('add-tab-btn'));
+    fireEvent.click(screen.getByTestId('new-terminal-btn'));
+    expect(screen.getByText('Terminal 2')).toBeInTheDocument();
+
+    // Close Terminal 2
+    const closeBtns = screen.getAllByTestId(/^close-tab-/);
+    fireEvent.click(closeBtns[closeBtns.length - 1]);
+    expect(screen.queryByText('Terminal 2')).not.toBeInTheDocument();
+
+    // Create another terminal tab -> should reuse number 2
+    fireEvent.click(screen.getByTestId('add-tab-btn'));
+    fireEvent.click(screen.getByTestId('new-terminal-btn'));
+    expect(screen.getByText('Terminal 2')).toBeInTheDocument();
+  });
 });

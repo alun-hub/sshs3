@@ -104,7 +104,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       void window.multissh
         ?.smartcardDetect?.()
         ?.then((libs) => {
-          if (libs) setSmartcardLibs(libs);
+          if (libs) setSmartcardLibs(libs.filter((l) => l.exists));
         })
         ?.finally(() => setDetectingSmartcard(false));
     }
@@ -535,7 +535,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           void window.multissh
                             ?.smartcardDetect?.()
                             ?.then((libs) => {
-                              if (libs) setSmartcardLibs(libs);
+                              if (libs) setSmartcardLibs(libs.filter((l) => l.exists));
                             })
                             ?.finally(() => setDetectingSmartcard(false));
                         }}

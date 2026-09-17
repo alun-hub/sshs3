@@ -1,9 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import SftpClient from 'ssh2-sftp-client';
 import { Client as SSH2Client } from 'ssh2';
 import { createProxySocket } from '../proxy/proxySocket';
+import { AskpassServer } from '../smartcard/AskpassServer';
+
+const execFileAsync = promisify(execFile);
 import {
   BaseStorageProvider,
   formatDate,
@@ -211,6 +216,59 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   /**
+   * Attempts to ensure the PKCS#11 smartcard provider is loaded into the user's ssh-agent.
+   */
+  private async loadSmartcardIntoAgent(): Promise<void> {
+    const libPath = this.config.pkcs11LibPath;
+    if (!libPath) return;
+
+    const agentSock =
+      this.config.agentPath ??
+      (process.platform === 'win32'
+        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
+        : process.env.SSH_AUTH_SOCK);
+
+    if (!agentSock) return;
+
+    try {
+      const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
+      const env: NodeJS.ProcessEnv = { ...process.env, SSH_AUTH_SOCK: agentSock };
+
+      const listRes = await execFileAsync(sshAddBin, ['-l'], { env }).catch(() => ({ stdout: '' }));
+      if (listRes.stdout && listRes.stdout.includes(libPath)) {
+        return;
+      }
+
+      let askpassServer: AskpassServer | undefined;
+      let askpassEnv: Record<string, string> = {};
+      const pin = (this.config as any).pin || this.config.passphrase;
+
+      if (pin) {
+        askpassServer = new AskpassServer({
+          promptHandler: () => pin,
+        });
+        await askpassServer.start();
+        askpassEnv = askpassServer.getEnv();
+      }
+
+      try {
+        await execFileAsync(sshAddBin, ['-s', libPath], {
+          env: {
+            ...env,
+            ...askpassEnv,
+          },
+        });
+      } finally {
+        if (askpassServer) {
+          await askpassServer.stop();
+        }
+      }
+    } catch (err) {
+      console.warn('SFTPStorageProvider: Attempting ssh-add -s smartcard loading:', err);
+    }
+  }
+
+  /**
    * Ensures an active connection to the SFTP server, establishing one if needed.
    * Deduplicates concurrent connection attempts.
    */
@@ -224,6 +282,9 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
     const doConnect = async () => {
       try {
+        if (this.config.authType === 'smartcard' && this.config.pkcs11LibPath) {
+          await this.loadSmartcardIntoAgent();
+        }
         const candidates = this.buildConnectCandidates();
         let lastErr: unknown;
         for (const options of candidates) {

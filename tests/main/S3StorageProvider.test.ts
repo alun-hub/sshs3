@@ -1083,4 +1083,54 @@ describe('S3StorageProvider', () => {
       expect(clientDestroyMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('directory listing cache', () => {
+    it('should return cached entries on repeated list() calls within TTL', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      clientSendMock.mockResolvedValueOnce({
+        Buckets: [{ Name: 'cached-bucket', CreationDate: new Date() }],
+      });
+
+      const first = await provider.list('/');
+      expect(first).toHaveLength(1);
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+
+      // Second call within TTL should return from cache without re-querying S3
+      const second = await provider.list('/');
+      expect(second).toEqual(first);
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should bypass cache when force option is true', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      clientSendMock
+        .mockResolvedValueOnce({ Buckets: [{ Name: 'bucket-1' }] })
+        .mockResolvedValueOnce({ Buckets: [{ Name: 'bucket-1' }, { Name: 'bucket-2' }] });
+
+      const first = await provider.list('/');
+      expect(first).toHaveLength(1);
+
+      const second = await provider.list('/', { force: true });
+      expect(second).toHaveLength(2);
+      expect(clientSendMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('should invalidate cache on createFolder', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      clientSendMock
+        .mockResolvedValueOnce({ Buckets: [{ Name: 'b1' }] })
+        .mockResolvedValueOnce({}) // CreateBucketCommand
+        .mockResolvedValueOnce({ Buckets: [{ Name: 'b1' }, { Name: 'b2' }] });
+
+      await provider.list('/');
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+
+      await provider.createFolder('/b2');
+      expect(clientSendMock).toHaveBeenCalledTimes(2);
+
+      const afterCreate = await provider.list('/');
+      expect(afterCreate).toHaveLength(2);
+      expect(clientSendMock).toHaveBeenCalledTimes(3);
+    });
+  });
 });

@@ -74,8 +74,6 @@ export const App: React.FC = () => {
     },
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('term-1');
-  const [termCounter, setTermCounter] = useState(2);
-  const [fmCounter, setFmCounter] = useState(1);
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -97,20 +95,6 @@ export const App: React.FC = () => {
         } else {
           setActiveTabId(session.tabs[0].id);
         }
-        const termNums = session.tabs
-          .filter((t) => t.type === 'terminal')
-          .map((t) => {
-            const m = t.title.match(/Terminal\s+(\d+)/);
-            return m ? parseInt(m[1], 10) : 0;
-          });
-        const fmNums = session.tabs
-          .filter((t) => t.type === 'filemanager')
-          .map((t) => {
-            const m = t.title.match(/(?:File Manager|Filhanterare)\s+(\d+)/);
-            return m ? parseInt(m[1], 10) : 0;
-          });
-        if (termNums.length > 0) setTermCounter(Math.max(...termNums) + 1);
-        if (fmNums.length > 0) setFmCounter(Math.max(...fmNums) + 1);
       }
       setSessionLoaded(true);
     });
@@ -165,28 +149,49 @@ export const App: React.FC = () => {
 
   const handleNewTab = useCallback((type?: TabType) => {
     const tabType = type || settings.defaultNewTabType || 'terminal';
-    if (tabType === 'terminal') {
-      const newId = `term-${Date.now()}`;
-      const newTab: AppTab = {
-        id: newId,
-        type: 'terminal',
-        title: `Terminal ${termCounter}`,
-      };
-      setTermCounter((c) => c + 1);
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(newId);
-    } else if (tabType === 'filemanager') {
-      const newId = `fm-${Date.now()}`;
-      const newTab: AppTab = {
-        id: newId,
-        type: 'filemanager',
-        title: `File Manager ${fmCounter}`,
-      };
-      setFmCounter((c) => c + 1);
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(newId);
-    }
-  }, [settings.defaultNewTabType, termCounter, fmCounter]);
+    const newId = `${tabType === 'terminal' ? 'term' : 'fm'}-${Date.now()}`;
+
+    setTabs((prev) => {
+      let nextNum = 1;
+      const usedNums = new Set<number>();
+
+      if (tabType === 'terminal') {
+        for (const t of prev) {
+          if (t.type === 'terminal') {
+            const m = t.title.match(/Terminal\s+(\d+)/);
+            if (m) usedNums.add(parseInt(m[1], 10));
+          }
+        }
+        while (usedNums.has(nextNum)) {
+          nextNum++;
+        }
+        const newTab: AppTab = {
+          id: newId,
+          type: 'terminal',
+          title: `Terminal ${nextNum}`,
+        };
+        return [...prev, newTab];
+      } else {
+        for (const t of prev) {
+          if (t.type === 'filemanager') {
+            const m = t.title.match(/(?:File Manager|Filhanterare)\s+(\d+)/);
+            if (m) usedNums.add(parseInt(m[1], 10));
+          }
+        }
+        while (usedNums.has(nextNum)) {
+          nextNum++;
+        }
+        const newTab: AppTab = {
+          id: newId,
+          type: 'filemanager',
+          title: `File Manager ${nextNum}`,
+        };
+        return [...prev, newTab];
+      }
+    });
+
+    setActiveTabId(newId);
+  }, [settings.defaultNewTabType]);
 
   const handleSetSplitLayout = useCallback((tabId: string, layout: SplitLayout) => {
     setTabs((prev) =>
@@ -277,7 +282,6 @@ export const App: React.FC = () => {
         config,
         initialCwd: path,
       };
-      setTermCounter((c) => c + 1);
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(newId);
     },
@@ -681,7 +685,6 @@ export const App: React.FC = () => {
               title: config.name,
               config,
             };
-            setTermCounter((c) => c + 1);
             setTabs((prev) => [...prev, newTab]);
             setActiveTabId(newId);
           }

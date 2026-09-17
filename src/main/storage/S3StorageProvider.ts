@@ -5,6 +5,7 @@ import https from 'node:https';
 import tls from 'node:tls';
 import { PassThrough } from 'node:stream';
 import { createProxySocket } from '../proxy/proxySocket';
+import { SystemTrustStore } from '../crypto/SystemTrustStore';
 import {
   S3Client,
   type S3ClientConfig,
@@ -106,16 +107,23 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       },
     };
 
+    const systemCAs = SystemTrustStore.getCAs();
+    const effectiveCa = config.customCaPath
+      ? fs.readFileSync(config.customCaPath)
+      : systemCAs.length > 0
+      ? SystemTrustStore.getMergedRootCertificates()
+      : undefined;
+
     const hasProxy = Boolean(config.proxy?.enabled && config.proxy.host);
-    const hasCustomTls = config.rejectUnauthorized !== undefined || config.customCaPath;
+    const hasCustomTls = config.rejectUnauthorized !== undefined || effectiveCa !== undefined;
 
     if (hasProxy || hasCustomTls) {
       const httpsAgentOptions: https.AgentOptions = {};
       if (config.rejectUnauthorized !== undefined) {
         httpsAgentOptions.rejectUnauthorized = config.rejectUnauthorized;
       }
-      if (config.customCaPath) {
-        httpsAgentOptions.ca = fs.readFileSync(config.customCaPath);
+      if (effectiveCa !== undefined) {
+        httpsAgentOptions.ca = effectiveCa;
       }
 
       if (hasProxy && config.proxy) {
@@ -142,7 +150,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
                 host: opts.host || opts.hostname,
                 servername: opts.servername || opts.host || opts.hostname,
                 rejectUnauthorized: config.rejectUnauthorized ?? true,
-                ca: config.customCaPath ? fs.readFileSync(config.customCaPath) : undefined,
+                ca: effectiveCa,
               });
               tlsSocket.on('error', (err) => cb(err));
               cb(null, tlsSocket);
@@ -164,7 +172,22 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     this.client = new S3Client(s3ClientConfig);
   }
 
-  async list(remotePath: string): Promise<FileEntry[]> {
+  private listCache: Map<string, { entries: FileEntry[]; timestamp: number }> = new Map();
+  public static readonly CACHE_TTL_MS = 60_000;
+
+  public clearCache(): void {
+    this.listCache.clear();
+  }
+
+  async list(remotePath: string, options?: { force?: boolean }): Promise<FileEntry[]> {
+    const normalizedPath = remotePath.replace(/\\/g, '/');
+    if (!options?.force) {
+      const cached = this.listCache.get(normalizedPath);
+      if (cached && Date.now() - cached.timestamp < S3StorageProvider.CACHE_TTL_MS) {
+        return cached.entries;
+      }
+    }
+
     const { bucket, key } = parseS3Path(remotePath);
 
     if (!bucket) {
@@ -177,7 +200,9 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         isDirectory: true,
         mtime: b.CreationDate ? formatDate(b.CreationDate) : undefined,
       }));
-      return results.sort((a, b) => a.name.localeCompare(b.name));
+      results.sort((a, b) => a.name.localeCompare(b.name));
+      this.listCache.set(normalizedPath, { entries: results, timestamp: Date.now() });
+      return results;
     }
 
     const prefix = key ? (key.endsWith('/') ? key : `${key}/`) : '';
@@ -235,6 +260,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       return a.name.localeCompare(b.name);
     });
 
+    this.listCache.set(normalizedPath, { entries: results, timestamp: Date.now() });
     return results;
   }
 
@@ -346,6 +372,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           : {}),
       };
       await this.client.send(new CreateBucketCommand(createParams));
+      this.clearCache();
       return;
     }
 
@@ -358,6 +385,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         ContentLength: 0,
       })
     );
+    this.clearCache();
   }
 
   async delete(remotePath: string, isDirectory: boolean): Promise<void> {
@@ -372,6 +400,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         throw new Error(`Expected file but found bucket: ${remotePath}`);
       }
       await this.client.send(new DeleteBucketCommand({ Bucket: bucket }));
+      this.clearCache();
       return;
     }
 
@@ -382,6 +411,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           Key: key,
         })
       );
+      this.clearCache();
       return;
     }
 
@@ -426,6 +456,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Key: prefix,
       })
     ).catch(() => {});
+    this.clearCache();
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
@@ -459,6 +490,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Key: src.key,
       })
     );
+    this.clearCache();
   }
 
   async setMetadata(remotePath: string, metadata: ObjectMetadata): Promise<void> {
@@ -485,6 +517,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Metadata: head.Metadata,
       })
     );
+    this.clearCache();
   }
 
   async createReadStream(
@@ -556,6 +589,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         if (err) return callback(err);
         try {
           await uploadPromise;
+          this.clearCache();
           callback();
         } catch (uploadErr: any) {
           callback(uploadErr);
@@ -602,17 +636,21 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     if (!key) {
       if (tags.length === 0) {
         await this.client.send(new DeleteBucketTaggingCommand({ Bucket: bucket }));
+        this.clearCache();
         return;
       }
       await this.client.send(new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet } }));
+      this.clearCache();
       return;
     }
 
     if (tags.length === 0) {
       await this.client.send(new DeleteObjectTaggingCommand({ Bucket: bucket, Key: key }));
+      this.clearCache();
       return;
     }
     await this.client.send(new PutObjectTaggingCommand({ Bucket: bucket, Key: key, Tagging: { TagSet } }));
+    this.clearCache();
   }
 
   private requireBucketOnly(remotePath: string): string {
@@ -750,6 +788,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       throw new Error(`Kräver en objekt-sökväg: ${remotePath}`);
     }
     await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key, VersionId: versionId }));
+    this.clearCache();
   }
 
   async restoreObjectVersion(remotePath: string, versionId: string): Promise<void> {
@@ -768,6 +807,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         CopySource: `${bucket}/${encodedKey}?versionId=${versionId}`,
       })
     );
+    this.clearCache();
   }
 
   async disconnect(): Promise<void> {

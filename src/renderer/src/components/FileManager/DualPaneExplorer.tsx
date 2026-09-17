@@ -33,6 +33,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   const [initError, setInitError] = useState<string | null>(null);
   const [connectionRequest, setConnectionRequest] = useState<{ side: PaneSide; type: SourceType } | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [homeDir, setHomeDir] = useState<string>('/');
 
   useEffect(() => {
     let mounted = true;
@@ -40,15 +41,17 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       .connectStorage({ id: 'local', name: 'Local Disk', type: 'local' })
       .then(async () => {
         if (!mounted) return;
-        const [session, profiles] = await Promise.all([
+        const [session, profiles, userHome] = await Promise.all([
           window.multissh.sessionGet?.(),
           window.multissh.profilesGet?.(),
+          window.multissh.getHomeDir?.(),
         ]);
         if (!mounted) return;
+        if (userHome) setHomeDir(userHome);
 
         const restoreSide = async (_side: PaneSide, savedPane?: SavedPaneState): Promise<PaneState> => {
           if (!savedPane || savedPane.sourceType === 'local') {
-            const localPath = session?.lastPaths?.['local'] || savedPane?.path || '/';
+            const localPath = session?.lastPaths?.['local'] || savedPane?.path || userHome || '/';
             return {
               source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
               path: localPath,
@@ -189,9 +192,10 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   const setPaneSourceType = useCallback((side: PaneSide, type: SourceType) => {
     if (type === 'local') {
       setPanes((prev) => {
+        const defaultPath = prev[side].source.sourceType === 'local' ? prev[side].path : (homeDir || '/');
         const next = {
           ...prev,
-          [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' }, path: prev[side].path },
+          [side]: { source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' }, path: defaultPath },
         };
         persistPaneState(next);
         return next;
@@ -199,17 +203,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       return;
     }
     setConnectionRequest({ side, type });
-  }, []);
+  }, [homeDir]);
 
   const connectPaneToSSH = useCallback(
     async (config: SSHConnectionConfig) => {
       if (!connectionRequest) return;
       const { side } = connectionRequest;
-      let pin: string | undefined;
-      if (config.authType === 'smartcard') {
-        pin = window.prompt(`Enter PIN for smartcard (${config.name}):`) ?? undefined;
-        if (!pin) return;
-      }
       setConnecting(true);
       try {
         const sftpConfig: SFTPConfig = {
@@ -224,7 +223,6 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
           passphrase: config.passphrase,
           agentPath: config.agentPath,
           pkcs11LibPath: config.pkcs11LibPath,
-          pin,
           initialPath: config.initialPath,
           proxy: config.proxy,
         };

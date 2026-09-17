@@ -53,7 +53,7 @@ export interface IStorageProvider {
   readonly id: string;
   readonly name: string;
   readonly type: StorageType;
-  list(remotePath: string): Promise<FileEntry[]>;
+  list(remotePath: string, options?: { force?: boolean }): Promise<FileEntry[]>;
   stat(remotePath: string): Promise<FileEntry>;
   createFolder(remotePath: string): Promise<void>;
   delete(remotePath: string, isDirectory: boolean): Promise<void>;

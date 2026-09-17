@@ -90,6 +90,7 @@ export const IPC_CHANNELS = {
 
   // General
   APP_GET_VERSION: 'app:get-version',
+  APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
   DIALOG_OPEN_FILE: 'dialog:open-file',
 } as const;
@@ -155,7 +156,7 @@ export interface MultiSSHApi {
   // Storage
   connectStorage(config: StorageConnectConfig): Promise<{ id: string }>;
   disconnectStorage(providerId: string): Promise<void>;
-  storageList(providerId: string, remotePath: string): Promise<FileEntry[]>;
+  storageList(providerId: string, remotePath: string, force?: boolean): Promise<FileEntry[]>;
   storageStat(providerId: string, remotePath: string): Promise<FileEntry>;
   storageCreateFolder(providerId: string, remotePath: string): Promise<void>;
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
@@ -210,6 +211,7 @@ export interface MultiSSHApi {
 
   // Window / General
   getVersion(): Promise<string>;
+  getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
 }
