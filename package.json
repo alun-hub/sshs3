@@ -8,6 +8,7 @@
     "name": "Andreas Lundqvist",
     "email": "alun@alun.se"
   },
+  "license": "MIT",
   "homepage": "https://unixkonsult.se/sshs3",
   "desktopName": "sshs3",
   "repository": {

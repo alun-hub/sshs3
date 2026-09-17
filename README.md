@@ -203,6 +203,6 @@ npm run package:win
 
 ---
 
-## License & Author
+## License
 
-Built by **Andreas Lundqvist** ([alun@alun.se](mailto:alun@alun.se)) — [unixkonsult.se/sshs3](https://unixkonsult.se/sshs3).
+This project is licensed under the [MIT License](LICENSE).
