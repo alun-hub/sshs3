@@ -9,11 +9,57 @@ import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
-import type { SSHConnectionConfig } from '@shared/types/ssh';
+import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { SplitLayout, TerminalPaneConfig } from '@shared/types/session';
+
+/** Buttons for launching a local shell (no SSH connection) in a tab or pane. */
+const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: LocalShellType) => void }> = ({
+  platform,
+  onOpen,
+}) => {
+  if (platform !== 'win32') {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen()}
+        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+      >
+        Open Local Terminal
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onOpen('cmd')}
+        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+      >
+        Command Prompt
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpen('powershell')}
+        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+      >
+        PowerShell
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpen('pwsh')}
+        title="PowerShell 7+ (pwsh.exe) — requires it to be installed and on PATH"
+        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+      >
+        PowerShell 7
+      </button>
+    </div>
+  );
+};
 
 export interface AppTab extends TabItem {
   config?: SSHConnectionConfig;
+  local?: boolean;
+  shellType?: LocalShellType;
   splitLayout?: SplitLayout;
   panes?: TerminalPaneConfig[];
   initialCwd?: string;
@@ -35,6 +81,11 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [platform, setPlatform] = useState<string>('');
+
+  useEffect(() => {
+    void window.multissh.getPlatform?.().then((p) => setPlatform(p));
+  }, []);
 
   // Load saved session on mount
   useEffect(() => {
@@ -171,19 +222,50 @@ export const App: React.FC = () => {
         if (t.id !== target.tabId) return t;
         if (target.paneId && t.panes) {
           const updatedPanes = t.panes.map((p) =>
-            p.id === target.paneId ? { ...p, config } : p
+            p.id === target.paneId ? { ...p, config, local: false, shellType: undefined } : p
           );
           return { ...t, panes: updatedPanes, title: t.title || config.name };
         }
         const updatedPanes =
           t.panes && t.panes.length > 0
-            ? t.panes.map((p, i) => (i === 0 ? { ...p, config } : p))
+            ? t.panes.map((p, i) => (i === 0 ? { ...p, config, local: false, shellType: undefined } : p))
             : [{ id: `${t.id}-p1`, config }];
-        return { ...t, config, panes: updatedPanes, title: config.name };
+        return { ...t, config, local: false, shellType: undefined, panes: updatedPanes, title: config.name };
       })
     );
     setConnectTarget(null);
   };
+
+  const handleOpenLocalTerminal = useCallback(
+    (target: { tabId: string; paneId?: string }, shellType?: LocalShellType) => {
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== target.tabId) return t;
+          if (target.paneId && t.panes) {
+            const updatedPanes = t.panes.map((p) =>
+              p.id === target.paneId ? { ...p, config: undefined, local: true, shellType } : p
+            );
+            return { ...t, panes: updatedPanes };
+          }
+          const updatedPanes =
+            t.panes && t.panes.length > 0
+              ? t.panes.map((p, i) =>
+                  i === 0 ? { ...p, config: undefined, local: true, shellType } : p
+                )
+              : [{ id: `${t.id}-p1`, local: true, shellType }];
+          return {
+            ...t,
+            config: undefined,
+            local: true,
+            shellType,
+            panes: updatedPanes,
+            title: t.title || 'Local Shell',
+          };
+        })
+      );
+    },
+    []
+  );
 
   const handleOpenTerminalAt = useCallback(
     (config: SSHConnectionConfig, path: string) => {
@@ -375,7 +457,7 @@ export const App: React.FC = () => {
                                   ? '2 rows'
                                   : '2x2 grid'
                               })`
-                            : tab.config?.name || 'No connection selected'}
+                            : tab.config?.name || (tab.local ? 'Local Shell' : 'No connection selected')}
                         </span>
                         {tab.config?.username && layout === 'single' && (
                           <span className="text-[11px] text-txt-muted">
@@ -452,6 +534,15 @@ export const App: React.FC = () => {
                             theme={settings.theme}
                             initialCwd={tab.initialCwd}
                           />
+                        ) : tab.local ? (
+                          <TerminalView
+                            local
+                            shellType={tab.shellType}
+                            isActive={isActive}
+                            fontSize={settings.terminalFontSize}
+                            fontFamily={settings.terminalFontFamily}
+                            theme={settings.theme}
+                          />
                         ) : (
                           <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
                             <Terminal className="h-10 w-10 text-txt-muted" />
@@ -463,6 +554,10 @@ export const App: React.FC = () => {
                             >
                               Select SSH Connection
                             </button>
+                            <LocalTerminalButtons
+                              platform={platform}
+                              onOpen={(shellType) => handleOpenLocalTerminal({ tabId: tab.id }, shellType)}
+                            />
                           </div>
                         )
                       ) : (
@@ -483,7 +578,7 @@ export const App: React.FC = () => {
                             >
                               <div className="flex h-6 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-2 text-[11px] text-txt-muted">
                                 <span className="truncate font-mono">
-                                  {pane.config?.name || `Terminal ${pIdx + 1}`}
+                                  {pane.config?.name || (pane.local ? 'Local Shell' : `Terminal ${pIdx + 1}`)}
                                 </span>
                                 <button
                                   type="button"
@@ -504,6 +599,15 @@ export const App: React.FC = () => {
                                     fontFamily={settings.terminalFontFamily}
                                     theme={settings.theme}
                                   />
+                                ) : pane.local ? (
+                                  <TerminalView
+                                    local
+                                    shellType={pane.shellType}
+                                    isActive={isActive}
+                                    fontSize={settings.terminalFontSize}
+                                    fontFamily={settings.terminalFontFamily}
+                                    theme={settings.theme}
+                                  />
                                 ) : (
                                   <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
                                     <p className="text-xs text-txt-secondary">No connection selected</p>
@@ -516,6 +620,12 @@ export const App: React.FC = () => {
                                     >
                                       Select SSH Connection
                                     </button>
+                                    <LocalTerminalButtons
+                                      platform={platform}
+                                      onOpen={(shellType) =>
+                                        handleOpenLocalTerminal({ tabId: tab.id, paneId: pane.id }, shellType)
+                                      }
+                                    />
                                   </div>
                                 )}
                               </div>

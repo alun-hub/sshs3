@@ -90,6 +90,7 @@ export const IPC_CHANNELS = {
 
   // General
   APP_GET_VERSION: 'app:get-version',
+  APP_GET_PLATFORM: 'app:get-platform',
   DIALOG_OPEN_FILE: 'dialog:open-file',
 } as const;
 
@@ -126,7 +127,11 @@ export interface StorageConnectConfig {
 
 export interface MultiSSHApi {
   // Terminal
-  terminalCreate(options: { config: SSHConnectionConfig; ptyOptions?: PtyOptions }): Promise<{ sessionId: string }>;
+  terminalCreate(options: {
+    config?: SSHConnectionConfig;
+    local?: boolean;
+    ptyOptions?: PtyOptions;
+  }): Promise<{ sessionId: string }>;
   terminalWrite(sessionId: string, data: string): Promise<void>;
   terminalResize(sessionId: string, cols: number, rows: number): Promise<void>;
   terminalKill(sessionId: string): Promise<void>;
@@ -205,6 +210,7 @@ export interface MultiSSHApi {
 
   // Window / General
   getVersion(): Promise<string>;
+  getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
 }
 

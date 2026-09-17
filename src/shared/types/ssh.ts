@@ -47,11 +47,16 @@ export interface DetectedSmartcardLib {
   exists: boolean;
 }
 
+/** Local shell to spawn on Windows. Ignored on macOS/Linux, which always use the user's $SHELL. */
+export type LocalShellType = 'default' | 'cmd' | 'powershell' | 'pwsh';
+
 export interface PtyOptions {
   cols?: number; // default 80
   rows?: number; // default 24
   cwd?: string;
   env?: Record<string, string>;
+  /** Windows only: which shell to spawn for a local terminal. */
+  shellType?: LocalShellType;
 }
 
 export interface SSHPtyExitEvent {

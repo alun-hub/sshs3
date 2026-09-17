@@ -138,11 +138,16 @@ export class IpcBridge {
   private registerTerminalHandlers(): void {
     this.registerHandler(
       IPC_CHANNELS.TERMINAL_CREATE,
-      async (_event, options: { config: SSHConnectionConfig; ptyOptions?: PtyOptions }) => {
-        if (!options || !options.config) {
+      async (
+        _event,
+        options: { config?: SSHConnectionConfig; local?: boolean; ptyOptions?: PtyOptions }
+      ) => {
+        if (!options || (!options.config && !options.local)) {
           throw new Error('Connection config is required to create terminal');
         }
-        const session = await this.sshPtyManager.createSession(options.config, options.ptyOptions);
+        const session = options.local
+          ? await this.sshPtyManager.createShellSession(options.ptyOptions)
+          : await this.sshPtyManager.createSession(options.config!, options.ptyOptions);
         return { sessionId: session.sessionId };
       }
     );
@@ -732,6 +737,10 @@ export class IpcBridge {
       } catch {
         return '0.1.0';
       }
+    });
+
+    this.registerHandler(IPC_CHANNELS.APP_GET_PLATFORM, async () => {
+      return process.platform;
     });
 
     this.registerHandler(

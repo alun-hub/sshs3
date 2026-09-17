@@ -2,10 +2,15 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
-import type { SSHConnectionConfig, SSHPtyExitEvent } from '@shared/types/ssh';
+import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 
 export interface TerminalViewProps {
-  config: SSHConnectionConfig;
+  /** Omit together with `local` to spawn a local shell instead of an SSH session. */
+  config?: SSHConnectionConfig;
+  /** Spawn a local shell (user's default shell on macOS/Linux, chosen shell on Windows) instead of connecting over SSH. */
+  local?: boolean;
+  /** Windows only: which local shell to spawn when `local` is set. */
+  shellType?: LocalShellType;
   isActive?: boolean;
   onExit?: (event: SSHPtyExitEvent) => void;
   className?: string;
@@ -70,6 +75,8 @@ const XTERM_DARK_THEME = {
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
   config,
+  local = false,
+  shellType,
   isActive = true,
   onExit,
   className = '',
@@ -161,10 +168,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // reusing it would let two mounts of the same profile (two tabs, or React
     // StrictMode's dev-mode double-invoke) collide on the same map entry in
     // SSHPtyManager, so killing one session tears down the other instead.
-    if (window.multissh?.terminalCreate) {
-      const sessionConfig = { ...config, id: crypto.randomUUID() };
+    if (window.multissh?.terminalCreate && (local || config)) {
+      const createOptions = local
+        ? { local: true as const, ptyOptions: { cols, rows, shellType } }
+        : { config: { ...(config as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } };
       window.multissh
-        .terminalCreate({ config: sessionConfig, ptyOptions: { cols, rows } })
+        .terminalCreate(createOptions)
         .then(({ sessionId }) => {
           if (isDisposed) {
             // Already unmounted while waiting for session creation
@@ -274,7 +283,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [config]);
+  }, [config, local, shellType]);
 
   const isLight =
     theme === 'light' ||

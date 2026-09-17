@@ -9,7 +9,30 @@ import type {
   PtyOptions,
   SSHPtyExitEvent,
   SSHPtySession,
+  LocalShellType,
 } from '../../shared/types/ssh';
+
+/**
+ * Resolves the local shell binary to spawn for `createShellSession`.
+ * On Windows this honors the user's `shellType` choice (cmd/powershell/pwsh);
+ * on macOS/Linux we always launch the user's own login shell ($SHELL), since
+ * that's the one place there's no equivalent "which shell" choice to make.
+ */
+function resolveLocalShellBinary(shellType?: LocalShellType): string {
+  if (process.platform !== 'win32') {
+    return process.env.SHELL || '/bin/bash';
+  }
+  switch (shellType) {
+    case 'powershell':
+      return 'powershell.exe';
+    case 'pwsh':
+      return 'pwsh.exe';
+    case 'cmd':
+      return 'cmd.exe';
+    default:
+      return process.env.COMSPEC || 'cmd.exe';
+  }
+}
 
 function getSpawn(): typeof nodePty.spawn {
   if (typeof (nodePty as any).spawn === 'function') {
@@ -240,12 +263,9 @@ export class SSHPtyManager extends EventEmitter {
     const sessionId = `shell-${crypto.randomUUID()}`;
     const cols = options?.cols ?? 80;
     const rows = options?.rows ?? 24;
-    const cwd = options?.cwd ?? (process.env.HOME || process.cwd());
+    const cwd = options?.cwd ?? (process.env.HOME || process.env.USERPROFILE || process.cwd());
 
-    const shellBinary =
-      process.platform === 'win32'
-        ? (process.env.COMSPEC || 'cmd.exe')
-        : (process.env.SHELL || '/bin/bash');
+    const shellBinary = resolveLocalShellBinary(options?.shellType);
 
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
@@ -257,7 +277,7 @@ export class SSHPtyManager extends EventEmitter {
       id: sessionId,
       name: 'Local Shell',
       host: 'localhost',
-      username: process.env.USER || 'local',
+      username: process.env.USER || process.env.USERNAME || 'local',
       authType: 'password',
     };
 

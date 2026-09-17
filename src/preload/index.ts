@@ -27,8 +27,11 @@ import type { AppSettings } from '../shared/types/settings';
 
 export const api: MultiSSHApi = {
   // Terminal
-  terminalCreate: (options: { config: SSHConnectionConfig; ptyOptions?: PtyOptions }): Promise<{ sessionId: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, options),
+  terminalCreate: (options: {
+    config?: SSHConnectionConfig;
+    local?: boolean;
+    ptyOptions?: PtyOptions;
+  }): Promise<{ sessionId: string }> => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, options),
 
   terminalWrite: (sessionId: string, data: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_WRITE, sessionId, data),
@@ -233,6 +236,9 @@ export const api: MultiSSHApi = {
   // Window / General
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
+
+  getPlatform: (): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PLATFORM),
 
   dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),

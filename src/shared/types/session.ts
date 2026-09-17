@@ -1,4 +1,4 @@
-import type { SSHConnectionConfig } from './ssh';
+import type { SSHConnectionConfig, LocalShellType } from './ssh';
 import type { StorageType } from './storage';
 
 export type SplitLayout = 'single' | 'split-vertical' | 'split-horizontal' | 'grid-2x2';
@@ -6,6 +6,10 @@ export type SplitLayout = 'single' | 'split-vertical' | 'split-horizontal' | 'gr
 export interface TerminalPaneConfig {
   id: string;
   config?: SSHConnectionConfig;
+  /** True when this pane runs a local shell instead of an SSH connection. */
+  local?: boolean;
+  /** Windows only: which local shell to spawn when `local` is set. */
+  shellType?: LocalShellType;
 }
 
 export interface SavedTab {
@@ -13,6 +17,10 @@ export interface SavedTab {
   type: 'terminal' | 'filemanager';
   title: string;
   config?: SSHConnectionConfig;
+  /** True when this tab runs a local shell instead of an SSH connection. */
+  local?: boolean;
+  /** Windows only: which local shell to spawn when `local` is set. */
+  shellType?: LocalShellType;
   splitLayout?: SplitLayout;
   panes?: TerminalPaneConfig[];
   activePaneId?: string;
