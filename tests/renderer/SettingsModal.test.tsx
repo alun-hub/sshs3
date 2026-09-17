@@ -141,4 +141,39 @@ describe('SettingsModal', () => {
     fireEvent.click(screen.getByText('Reset Defaults'));
     expect(screen.getByText('Ctrl+Shift+T')).toBeInTheDocument();
   });
+
+  it('renders session exit action options in Terminal tab and saves selected action', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+
+    // Click on Terminal category tab
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+
+    expect(screen.getByText('Vid utloggning / avslutad session')).toBeInTheDocument();
+    expect(screen.getByText('Återanslut (Standard)')).toBeInTheDocument();
+    expect(screen.getByText('Stäng flik direkt')).toBeInTheDocument();
+    expect(screen.getByText('Behåll öppen')).toBeInTheDocument();
+
+    // Select "Stäng flik direkt"
+    fireEvent.click(screen.getByText('Stäng flik direkt'));
+
+    // Save
+    fireEvent.click(screen.getByText('Save Settings'));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionExitAction: 'close',
+      })
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
 });

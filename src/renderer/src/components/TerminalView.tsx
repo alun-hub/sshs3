@@ -1,8 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
+import { RotateCcw, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
+import type { SessionExitAction } from '@shared/types/settings';
 
 export interface TerminalViewProps {
   /** Omit together with `local` to spawn a local shell instead of an SSH session. */
@@ -19,6 +21,10 @@ export interface TerminalViewProps {
   theme?: 'dark' | 'light' | 'system';
   /** Remote directory to `cd` into once the shell prompt appears (sent once, after first PTY output). */
   initialCwd?: string;
+  /** Action on session exit: 'reconnect' (default), 'close' (auto-close tab on clean exit), or 'keep' (passive). */
+  sessionExitAction?: SessionExitAction;
+  /** Callback to close the enclosing tab. */
+  onCloseTab?: () => void;
 }
 
 function shellQuote(path: string): string {
@@ -84,6 +90,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontFamily = 'Menlo, Monaco, "Courier New", monospace, Consolas',
   theme = 'dark',
   initialCwd,
+  sessionExitAction = 'reconnect',
+  onCloseTab,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -99,6 +107,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontFamilyRef.current = fontFamily;
   const themeRef = useRef(theme);
   themeRef.current = theme;
+
+  const sessionExitActionRef = useRef(sessionExitAction);
+  sessionExitActionRef.current = sessionExitAction;
+  const onCloseTabRef = useRef(onCloseTab);
+  onCloseTabRef.current = onCloseTab;
+
+  const [sessionKey, setSessionKey] = useState(0);
+  const [exitEvent, setExitEvent] = useState<SSHPtyExitEvent | null>(null);
+
+  const handleReconnect = useCallback(() => {
+    setExitEvent(null);
+    setSessionKey((prev) => prev + 1);
+  }, []);
 
   // Focus and fit when becoming active
   useEffect(() => {
@@ -134,6 +155,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    setExitEvent(null);
     let isDisposed = false;
     let unsubData: (() => void) | null = null;
     let unsubExit: (() => void) | null = null;
@@ -234,6 +256,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                   `\r\n\x1b[33m[Session terminated (code: ${event.exitCode})]\x1b[0m\r\n`
                 );
                 onExitRef.current?.(event);
+
+                const action = sessionExitActionRef.current;
+                if (action === 'close' && event.exitCode === 0 && onCloseTabRef.current) {
+                  onCloseTabRef.current();
+                } else if (action !== 'keep') {
+                  setExitEvent(event);
+                }
               }
             });
           }
@@ -241,6 +270,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         .catch((err) => {
           if (!isDisposed) {
             term.write(`\r\n\x1b[31mFailed to start terminal session: ${err.message}\x1b[0m\r\n`);
+            if (sessionExitActionRef.current !== 'keep') {
+              setExitEvent({ exitCode: 1 });
+            }
           }
         });
     }
@@ -288,11 +320,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         window.multissh.terminalKill(sid);
       }
       term.dispose();
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
       termRef.current = null;
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [config, local, shellType]);
+  }, [config, local, shellType, sessionKey]);
 
   const isLight =
     theme === 'light' ||
@@ -312,6 +347,50 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         data-testid="terminal-container"
         className="h-full w-full p-2 focus:outline-none"
       />
+
+      {exitEvent && (
+        <div
+          data-testid="session-exit-overlay"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/90 dark:bg-slate-800/95 border border-slate-700/80 shadow-2xl backdrop-blur-md text-xs text-slate-200 z-20 animate-fade-in"
+        >
+          <div className="flex items-center gap-2 pr-2 border-r border-slate-700/70">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                exitEvent.exitCode === 0
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                  : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'
+              }`}
+            />
+            <span className="font-medium text-slate-200">
+              Sessionen avslutades{exitEvent.exitCode !== undefined ? ` (kod ${exitEvent.exitCode})` : ''}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleReconnect}
+              data-testid="reconnect-button"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-medium shadow-sm transition-colors cursor-pointer"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Återanslut
+            </button>
+
+            {onCloseTab && (
+              <button
+                type="button"
+                onClick={onCloseTab}
+                data-testid="close-tab-button"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-700 text-slate-300 hover:text-white font-medium transition-colors cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+                Stäng flik
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

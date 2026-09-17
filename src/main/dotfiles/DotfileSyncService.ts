@@ -9,6 +9,26 @@ function hash(content: string): string {
   return crypto.createHash('sha256').update(content, 'utf-8').digest('hex');
 }
 
+/**
+ * Resolves a remote path (e.g. "~/.bashrc" or ".bashrc") against the remote user's home directory.
+ */
+export function resolveRemotePath(remotePath: string, homeDir: string): string {
+  const p = (remotePath || '').replace(/\\/g, '/').trim();
+  if (p === '~' || p === '' || p === '.') {
+    return homeDir;
+  }
+  if (p.startsWith('~/')) {
+    return path.posix.join(homeDir, p.slice(2));
+  }
+  if (p.startsWith('~')) {
+    return path.posix.join(homeDir, p.slice(1));
+  }
+  if (!p.startsWith('/')) {
+    return path.posix.join(homeDir, p);
+  }
+  return path.posix.normalize(p);
+}
+
 async function readRemoteFile(provider: SFTPStorageProvider, remotePath: string): Promise<Buffer> {
   const stream = await provider.createReadStream(remotePath);
   const chunks: Buffer[] = [];
@@ -33,10 +53,12 @@ export class DotfileSyncService {
     const provider = this.createProvider(config, hostVerifier);
     await provider.ensureConnected();
 
+    const homeDir = await provider.getHomeDir();
     const entries: DotfileDiffEntry[] = [];
     for (const file of pool.files) {
+      const targetPath = resolveRemotePath(file.remotePath, homeDir);
       try {
-        const remoteBuf = await readRemoteFile(provider, file.remotePath);
+        const remoteBuf = await readRemoteFile(provider, targetPath);
         if (hash(remoteBuf.toString('utf-8')) !== hash(file.content)) {
           entries.push({ fileId: file.id, remotePath: file.remotePath, reason: 'different' });
         }
@@ -54,9 +76,11 @@ export class DotfileSyncService {
    * dropped connection never leaves a half-written dotfile behind.
    */
   public async applyFiles(provider: SFTPStorageProvider, files: DotfilePoolFile[]): Promise<void> {
+    const homeDir = await provider.getHomeDir();
     for (const file of files) {
-      const dir = path.posix.dirname(file.remotePath);
-      if (dir && dir !== '.' && dir !== '~') {
+      const targetPath = resolveRemotePath(file.remotePath, homeDir);
+      const dir = path.posix.dirname(targetPath);
+      if (dir && dir !== '.' && dir !== '/') {
         try {
           await provider.createFolder(dir);
         } catch {
@@ -64,21 +88,31 @@ export class DotfileSyncService {
         }
       }
 
-      const tmpPath = `${file.remotePath}.sshs3.tmp`;
-      const writeStream = await provider.createWriteStream(tmpPath);
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('error', reject);
-        writeStream.on('close', resolve);
-        writeStream.end(file.content, 'utf-8');
-      });
-      await provider.rename(tmpPath, file.remotePath);
+      const tmpPath = `${targetPath}.sshs3.tmp`;
+      try {
+        const writeStream = await provider.createWriteStream(tmpPath);
+        await new Promise<void>((resolve, reject) => {
+          writeStream.on('error', reject);
+          writeStream.on('close', resolve);
+          writeStream.end(file.content, 'utf-8');
+        });
+        await provider.rename(tmpPath, targetPath);
 
-      if (file.mode) {
-        try {
-          await provider.chmod(file.remotePath, file.mode);
-        } catch {
-          // Non-fatal: content is correct even if the mode couldn't be set.
+        if (file.mode) {
+          try {
+            await provider.chmod(targetPath, file.mode);
+          } catch {
+            // Non-fatal: content is correct even if the mode couldn't be set.
+          }
         }
+      } catch (err) {
+        // Clean up temporary file if write or rename failed
+        try {
+          await provider.delete(tmpPath, false);
+        } catch {
+          // Ignore cleanup error
+        }
+        throw err;
       }
     }
   }

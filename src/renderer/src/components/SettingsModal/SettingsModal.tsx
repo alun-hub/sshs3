@@ -21,6 +21,7 @@ import {
   DEFAULT_SHORTCUTS,
   type AppSettings,
   type AppTheme,
+  type SessionExitAction,
 } from '@shared/types/settings';
 import type { DetectedSmartcardLib } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
@@ -62,6 +63,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copyOnSelect, setCopyOnSelect] = useState<boolean>(
     currentSettings.copyOnSelect ?? false
   );
+  const [sessionExitAction, setSessionExitAction] = useState<SessionExitAction>(
+    currentSettings.sessionExitAction ?? 'reconnect'
+  );
   const [defaultNewTab, setDefaultNewTab] = useState<'terminal' | 'filemanager'>(
     currentSettings.defaultNewTabType
   );
@@ -97,6 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCursorStyle(currentSettings.terminalCursorStyle ?? 'block');
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
+      setSessionExitAction(currentSettings.sessionExitAction ?? 'reconnect');
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
@@ -128,6 +133,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       terminalCursorStyle: cursorStyle,
       terminalScrollback: scrollback,
       copyOnSelect,
+      sessionExitAction,
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
       showHiddenFiles,
@@ -426,6 +432,84 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                     <span className="text-xs text-txt-primary">Copy text automatically on selection</span>
                   </label>
+
+                  {/* Session Exit Action */}
+                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                    <div>
+                      <label className="text-xs font-medium text-txt-primary">Vid utloggning / avslutad session</label>
+                      <p className="text-[11px] text-txt-muted">Välj vad som ska ske när en SSH-session eller lokal terminal avslutas.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          sessionExitAction === 'reconnect'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="sessionExitAction"
+                            checked={sessionExitAction === 'reconnect'}
+                            onChange={() => setSessionExitAction('reconnect')}
+                            className="hidden"
+                          />
+                          <RotateCcw className="h-3.5 w-3.5 text-sky-400" />
+                          <span>Återanslut (Standard)</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Visar snabbknappar för att återansluta direkt eller stänga fliken.
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          sessionExitAction === 'close'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="sessionExitAction"
+                            checked={sessionExitAction === 'close'}
+                            onChange={() => setSessionExitAction('close')}
+                            className="hidden"
+                          />
+                          <X className="h-3.5 w-3.5 text-amber-400" />
+                          <span>Stäng flik direkt</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Stänger fliken automatiskt vid ren utloggning (kod 0).
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          sessionExitAction === 'keep'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="sessionExitAction"
+                            checked={sessionExitAction === 'keep'}
+                            onChange={() => setSessionExitAction('keep')}
+                            className="hidden"
+                          />
+                          <Terminal className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Behåll öppen</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Lämna terminalen öppen utan snabbknappar (klassiskt läge).
+                        </span>
+                      </label>
+                    </div>
+                  </div>
 
                   {/* Terminal Preview */}
                   <div className="space-y-1.5 pt-2">

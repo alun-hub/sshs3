@@ -538,6 +538,8 @@ export const App: React.FC = () => {
                             fontFamily={settings.terminalFontFamily}
                             theme={settings.theme}
                             initialCwd={tab.initialCwd}
+                            sessionExitAction={settings.sessionExitAction}
+                            onCloseTab={() => handleCloseTab(tab.id)}
                           />
                         ) : tab.local ? (
                           <TerminalView
@@ -547,6 +549,8 @@ export const App: React.FC = () => {
                             fontSize={settings.terminalFontSize}
                             fontFamily={settings.terminalFontFamily}
                             theme={settings.theme}
+                            sessionExitAction={settings.sessionExitAction}
+                            onCloseTab={() => handleCloseTab(tab.id)}
                           />
                         ) : (
                           <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
@@ -603,6 +607,7 @@ export const App: React.FC = () => {
                                     fontSize={settings.terminalFontSize}
                                     fontFamily={settings.terminalFontFamily}
                                     theme={settings.theme}
+                                    sessionExitAction={settings.sessionExitAction}
                                   />
                                 ) : pane.local ? (
                                   <TerminalView
@@ -612,6 +617,7 @@ export const App: React.FC = () => {
                                     fontSize={settings.terminalFontSize}
                                     fontFamily={settings.terminalFontFamily}
                                     theme={settings.theme}
+                                    sessionExitAction={settings.sessionExitAction}
                                   />
                                 ) : (
                                   <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">

@@ -180,4 +180,100 @@ describe('TerminalView Component', () => {
     expect(mockUnsubExit).toHaveBeenCalledTimes(1);
     expect(mockTerminalKill).toHaveBeenCalledWith('session-123');
   });
+
+  it('renders reconnect overlay and buttons when session terminates under reconnect action', async () => {
+    const onCloseTab = vi.fn();
+    render(<TerminalView config={sampleConfig} onCloseTab={onCloseTab} sessionExitAction="reconnect" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('session-exit-overlay')).not.toBeInTheDocument();
+
+    act(() => {
+      exitCallback!('session-123', { exitCode: 0 });
+    });
+
+    expect(screen.getByTestId('session-exit-overlay')).toBeInTheDocument();
+    expect(screen.getByText(/Sessionen avslutades/)).toBeInTheDocument();
+    expect(screen.getByTestId('reconnect-button')).toBeInTheDocument();
+    expect(screen.getByTestId('close-tab-button')).toBeInTheDocument();
+
+    // Click Close Tab
+    act(() => {
+      screen.getByTestId('close-tab-button').click();
+    });
+    expect(onCloseTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-spawns a new session when Reconnect is clicked', async () => {
+    render(<TerminalView config={sampleConfig} sessionExitAction="reconnect" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockTerminalCreate).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      exitCallback!('session-123', { exitCode: 0 });
+    });
+    expect(screen.getByTestId('reconnect-button')).toBeInTheDocument();
+
+    // Click Reconnect
+    mockTerminalCreate.mockResolvedValueOnce({ sessionId: 'session-456' });
+    await act(async () => {
+      screen.getByTestId('reconnect-button').click();
+    });
+
+    expect(mockTerminalCreate).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('session-exit-overlay')).not.toBeInTheDocument();
+  });
+
+  it('automatically closes tab when sessionExitAction is close and exit code is 0', async () => {
+    const onCloseTab = vi.fn();
+    render(<TerminalView config={sampleConfig} onCloseTab={onCloseTab} sessionExitAction="close" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      exitCallback!('session-123', { exitCode: 0 });
+    });
+
+    expect(onCloseTab).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('session-exit-overlay')).not.toBeInTheDocument();
+  });
+
+  it('keeps tab open and shows overlay if session exits with non-zero error code even when sessionExitAction is close', async () => {
+    const onCloseTab = vi.fn();
+    render(<TerminalView config={sampleConfig} onCloseTab={onCloseTab} sessionExitAction="close" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      exitCallback!('session-123', { exitCode: 255 });
+    });
+
+    expect(onCloseTab).not.toHaveBeenCalled();
+    expect(screen.getByTestId('session-exit-overlay')).toBeInTheDocument();
+    expect(screen.getByText(/Sessionen avslutades \(kod 255\)/)).toBeInTheDocument();
+  });
+
+  it('does not display overlay when sessionExitAction is keep', async () => {
+    render(<TerminalView config={sampleConfig} sessionExitAction="keep" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      exitCallback!('session-123', { exitCode: 0 });
+    });
+
+    expect(screen.queryByTestId('session-exit-overlay')).not.toBeInTheDocument();
+  });
 });

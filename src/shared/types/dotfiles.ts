@@ -7,12 +7,29 @@ export interface DotfilePoolFile {
   content: string;
   /** Octal permission string, e.g. "600". Left unset = don't chmod after upload. */
   mode?: string;
+  /** Name of the physical master file on disk */
+  masterFileName?: string;
+  /** Absolute path to the physical master file on local disk */
+  masterFilePath?: string;
+  /** Timestamp formatted as yyyy-mm-dd HH:mm */
+  updatedAt?: string;
 }
 
 export interface DotfilePool {
   id: string;
   name: string;
   files: DotfilePoolFile[];
+  /** Absolute path to the directory where master files for this pool are saved */
+  masterDirectory?: string;
+  /** Timestamp formatted as yyyy-mm-dd HH:mm */
+  updatedAt?: string;
+}
+
+export interface DotfileImportedFile {
+  name: string;
+  path: string;
+  content: string;
+  mode?: string;
 }
 
 export interface DotfileDiffEntry {

@@ -16,6 +16,7 @@ const {
   mockRmdir,
   mockDelete,
   mockRename,
+  mockPosixRename,
   mockCreateReadStream,
   mockCreateWriteStream,
   mockChmod,
@@ -32,6 +33,7 @@ const {
     mockRmdir: vi.fn(),
     mockDelete: vi.fn(),
     mockRename: vi.fn(),
+    mockPosixRename: vi.fn(),
     mockCreateReadStream: vi.fn(),
     mockCreateWriteStream: vi.fn(),
     mockChmod: vi.fn().mockResolvedValue(undefined),
@@ -59,6 +61,7 @@ vi.mock('ssh2-sftp-client', () => {
     public rmdir = mockRmdir;
     public delete = mockDelete;
     public rename = mockRename;
+    public posixRename = mockPosixRename;
     public createReadStream = mockCreateReadStream;
     public createWriteStream = mockCreateWriteStream;
     public chmod = mockChmod;
@@ -706,14 +709,38 @@ describe('SFTPStorageProvider', () => {
   });
 
   describe('rename(oldPath, newPath)', () => {
-    it('should call client.rename(oldPath, newPath)', async () => {
+    it('should use posixRename if available', async () => {
+      mockPosixRename.mockResolvedValue('Successful POSIX rename');
+      const provider = new SFTPStorageProvider(baseConfig);
+
+      await provider.rename('/remote/old.txt', '/remote/new.txt');
+
+      expect(mockPosixRename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+    });
+
+    it('should fallback to client.rename when posixRename fails', async () => {
+      mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
       mockRename.mockResolvedValue('Successfully renamed');
       const provider = new SFTPStorageProvider(baseConfig);
 
       await provider.rename('/remote/old.txt', '/remote/new.txt');
 
-      expect(mockRename).toHaveBeenCalledTimes(1);
+      expect(mockPosixRename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
       expect(mockRename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
+    });
+
+    it('should delete destination and retry rename if rename fails due to existing file', async () => {
+      mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
+      mockRename
+        .mockRejectedValueOnce(new Error('Failure'))
+        .mockResolvedValueOnce('Successfully renamed');
+      mockDelete.mockResolvedValue('Successfully deleted');
+      const provider = new SFTPStorageProvider(baseConfig);
+
+      await provider.rename('/remote/old.txt', '/remote/new.txt');
+
+      expect(mockDelete).toHaveBeenCalledWith('/remote/new.txt');
+      expect(mockRename).toHaveBeenCalledTimes(2);
     });
   });
 

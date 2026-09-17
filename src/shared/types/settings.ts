@@ -1,4 +1,5 @@
 export type AppTheme = 'dark' | 'light' | 'system';
+export type SessionExitAction = 'reconnect' | 'close' | 'keep';
 
 export interface ShortcutDefinition {
   id: string;
@@ -41,6 +42,8 @@ export interface AppSettings {
   shortcuts?: Record<string, string>;
   /** Master switch for the dotfiles pool feature. Off by default — an opt-in feature, not a default-on behavior. */
   dotfilesPoolEnabled?: boolean;
+  /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
+  sessionExitAction?: SessionExitAction;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -56,4 +59,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultConflictPolicy: 'ask',
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
+  sessionExitAction: 'reconnect',
 };

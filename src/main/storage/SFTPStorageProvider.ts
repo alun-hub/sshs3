@@ -124,6 +124,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
   private hostVerifier?: SshHostVerifierFn;
+  private cachedHomeDir?: string;
 
   constructor(config: SFTPConfig, client?: SftpClient, hostVerifier?: SshHostVerifierFn) {
     super();
@@ -388,15 +389,54 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     return this.connectionPromise;
   }
 
+  public async getHomeDir(): Promise<string> {
+    if (this.cachedHomeDir) {
+      return this.cachedHomeDir;
+    }
+    await this.ensureConnected();
+    try {
+      if (typeof (this.client as any).realPath === 'function') {
+        const real = await (this.client as any).realPath('.');
+        if (real && real.startsWith('/')) {
+          this.cachedHomeDir = real;
+          return real;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    const fallback =
+      this.config.username === 'root' ? '/root' : `/home/${this.config.username || 'user'}`;
+    this.cachedHomeDir = fallback;
+    return fallback;
+  }
+
+  public async resolveRemotePath(remotePath: string): Promise<string> {
+    let p = (remotePath || '').replace(/\\/g, '/').trim();
+    if (p === '~' || p === '' || p === '.') {
+      return await this.getHomeDir();
+    }
+    if (p.startsWith('~/')) {
+      const home = await this.getHomeDir();
+      return path.posix.join(home, p.slice(2));
+    }
+    if (p.startsWith('~')) {
+      const home = await this.getHomeDir();
+      return path.posix.join(home, p.slice(1));
+    }
+    return path.posix.normalize(p);
+  }
+
   async list(remotePath: string): Promise<FileEntry[]> {
     await this.ensureConnected();
 
-    const fileList = await this.client.list(remotePath);
+    const resolved = await this.resolveRemotePath(remotePath);
+    const fileList = await this.client.list(resolved);
     const results: FileEntry[] = [];
 
     for (const item of fileList) {
       const isDir = item.type === 'd' || (item as any).isDirectory === true;
-      const entryPath = path.posix.join(remotePath, item.name);
+      const entryPath = path.posix.join(resolved, item.name);
       const mtime = parseModifyTime(item);
 
       results.push({
@@ -423,14 +463,15 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   async stat(remotePath: string): Promise<FileEntry> {
     await this.ensureConnected();
 
-    const stats = await this.client.stat(remotePath);
+    const resolved = await this.resolveRemotePath(remotePath);
+    const stats = await this.client.stat(resolved);
     const isDir = Boolean(stats.isDirectory);
-    const name = path.posix.basename(remotePath) || remotePath;
+    const name = path.posix.basename(resolved) || resolved;
     const mtime = parseModifyTime(stats);
 
     return {
       name,
-      path: remotePath,
+      path: resolved,
       size: stats.size,
       isDirectory: isDir,
       mtime,
@@ -441,15 +482,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
   async createFolder(remotePath: string): Promise<void> {
     await this.ensureConnected();
-    await this.client.mkdir(remotePath, true);
+    const resolved = await this.resolveRemotePath(remotePath);
+    await this.client.mkdir(resolved, true);
   }
 
   async delete(remotePath: string, isDirectory: boolean): Promise<void> {
-    const normalized = path.posix.normalize(remotePath);
+    const resolved = await this.resolveRemotePath(remotePath);
     if (
-      normalized === '/' ||
-      normalized === '.' ||
-      normalized === '..' ||
+      resolved === '/' ||
+      resolved === '.' ||
+      resolved === '..' ||
       remotePath.trim() === '/' ||
       remotePath.trim() === ''
     ) {
@@ -459,15 +501,39 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     await this.ensureConnected();
 
     if (isDirectory) {
-      await this.client.rmdir(remotePath, true);
+      await this.client.rmdir(resolved, true);
     } else {
-      await this.client.delete(remotePath);
+      await this.client.delete(resolved);
     }
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
     await this.ensureConnected();
-    await this.client.rename(oldPath, newPath);
+    const resolvedOld = await this.resolveRemotePath(oldPath);
+    const resolvedNew = await this.resolveRemotePath(newPath);
+
+    // Try posixRename first (OpenSSH extension: atomic rename overwriting destination)
+    if (typeof (this.client as any).posixRename === 'function') {
+      try {
+        await (this.client as any).posixRename(resolvedOld, resolvedNew);
+        return;
+      } catch {
+        // Fall back if server doesn't support the OpenSSH extension
+      }
+    }
+
+    try {
+      await this.client.rename(resolvedOld, resolvedNew);
+    } catch (renameErr) {
+      // Standard SFTP v3 rename fails if destination exists.
+      // Attempt delete of destination and retry rename.
+      try {
+        await this.client.delete(resolvedNew);
+        await this.client.rename(resolvedOld, resolvedNew);
+      } catch {
+        throw renameErr;
+      }
+    }
   }
 
   async createReadStream(
@@ -477,16 +543,16 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.ReadableStream> {
     await this.ensureConnected();
 
-    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+    const resolved = await this.resolveRemotePath(remotePath);
 
     if (typeof start === 'number' || typeof end === 'number') {
       const options: { start?: number; end?: number } = {};
       if (typeof start === 'number') options.start = start;
       if (typeof end === 'number') options.end = end;
-      return this.client.createReadStream(normalized, options);
+      return this.client.createReadStream(resolved, options);
     }
 
-    return this.client.createReadStream(normalized);
+    return this.client.createReadStream(resolved);
   }
 
   async createWriteStream(
@@ -495,22 +561,22 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.WritableStream> {
     await this.ensureConnected();
 
-    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+    const resolved = await this.resolveRemotePath(remotePath);
 
     if (options) {
-      return this.client.createWriteStream(normalized, options as any);
+      return this.client.createWriteStream(resolved, options as any);
     }
-    return this.client.createWriteStream(normalized);
+    return this.client.createWriteStream(resolved);
   }
 
   async chmod(remotePath: string, mode: number | string): Promise<void> {
     await this.ensureConnected();
-    const normalized = path.posix.normalize(remotePath.replace(/\\/g, '/'));
+    const resolved = await this.resolveRemotePath(remotePath);
     const numericMode = typeof mode === 'string' ? parseInt(mode, 8) : mode;
     if (Number.isNaN(numericMode)) {
       throw new Error(`Invalid chmod mode: ${mode}`);
     }
-    await this.client.chmod(normalized, numericMode);
+    await this.client.chmod(resolved, numericMode);
   }
 
   async disconnect(): Promise<void> {

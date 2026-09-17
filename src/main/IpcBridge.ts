@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import os from 'node:os';
 import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
@@ -673,6 +674,66 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_DELETE, async (_event, id: string) => {
       await this.dotfilePoolStore.deletePool(id);
     });
+
+    this.registerHandler(IPC_CHANNELS.DOTFILES_OPEN_FOLDER, async (_event, poolId: string) => {
+      return await this.dotfilePoolStore.openPoolFolder(poolId);
+    });
+
+    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async () => {
+      const result = await electronDialog.showOpenDialog({
+        title: 'Select dotfiles / master files',
+        properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return [];
+      }
+      return await this.dotfilePoolStore.importLocalFiles(result.filePaths);
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.DOTFILES_ADD_FROM_STORAGE,
+      async (
+        _event,
+        options: {
+          poolId: string;
+          providerId: string;
+          filePath: string;
+          targetRemotePath?: string;
+        }
+      ) => {
+        const provider = this.storageRegistry.get(options.providerId);
+        if (!provider) {
+          throw new Error(`Storage provider not found: ${options.providerId}`);
+        }
+        const stream = await provider.createReadStream(options.filePath);
+        const chunks: Buffer[] = [];
+        const content = await new Promise<string>((resolve, reject) => {
+          stream.on('data', (c: Buffer) => chunks.push(c));
+          stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+          stream.on('error', reject);
+        });
+
+        let mode: string | undefined;
+        try {
+          const stat = await provider.stat(options.filePath);
+          if (stat.permissions) {
+            mode = stat.permissions;
+          }
+        } catch {
+          // Ignore stat error
+        }
+
+        const baseName = path.posix.basename(options.filePath);
+        const remotePath =
+          options.targetRemotePath || (baseName.startsWith('.') ? `~/${baseName}` : `~/.${baseName}`);
+
+        return await this.dotfilePoolStore.addFileToPool(options.poolId, {
+          remotePath,
+          content,
+          mode,
+        });
+      }
+    );
 
     this.registerHandler(
       IPC_CHANNELS.DOTFILES_SYNC_RESPOND,

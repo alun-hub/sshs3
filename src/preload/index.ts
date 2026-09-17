@@ -9,6 +9,7 @@ import {
   type SshAgentStatus,
 } from '../shared/types/ipc';
 import type {
+  DotfileImportedFile,
   DotfilePool,
   DotfilesSyncPromptEvent,
   DotfilesSyncResolution,
@@ -272,6 +273,20 @@ export const api: MultiSSHApi = {
 
   dotfilePoolsDelete: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_POOLS_DELETE, id),
+
+  dotfilePoolOpenFolder: (poolId: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_OPEN_FOLDER, poolId),
+
+  dotfilePoolSelectFiles: (): Promise<DotfileImportedFile[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_SELECT_FILES),
+
+  dotfilePoolAddFromStorage: (options: {
+    poolId: string;
+    providerId: string;
+    filePath: string;
+    targetRemotePath?: string;
+  }): Promise<DotfilePool> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_ADD_FROM_STORAGE, options),
 
   onDotfilesSyncPrompt: (callback: (event: DotfilesSyncPromptEvent) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: DotfilesSyncPromptEvent) => callback(event);

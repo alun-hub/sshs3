@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Clipboard,
   Cloud,
+  FileCode,
   FileJson,
   FolderOpen,
   FolderPlus,
@@ -31,6 +32,7 @@ import { TagsModal } from './TagsModal';
 import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
 import { NewFolderModal } from './NewFolderModal';
+import { AddToDotfilePoolModal } from './AddToDotfilePoolModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 
@@ -73,6 +75,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [bucketPolicyOpen, setBucketPolicyOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
+  const [dotfilesFeedback, setDotfilesFeedback] = useState<string | null>(null);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -268,6 +272,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
             },
+            ...(source.sourceType !== 's3' && selectedEntries.length === 1 && !selectedEntries[0].isDirectory
+              ? [
+                  {
+                    key: 'add-to-dotfiles',
+                    label: 'Lägg till i dotfiles pool...',
+                    icon: FileCode,
+                    onSelect: () => setAddToDotfilesOpen(true),
+                  },
+                ]
+              : []),
             ...(source.sourceType === 's3'
               ? [
                   {
@@ -599,6 +613,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onClose={() => setNewFolderOpen(false)}
         onCreate={handleCreateFolderCommit}
       />
+
+      <AddToDotfilePoolModal
+        open={addToDotfilesOpen}
+        sourceProviderId={source.providerId}
+        entry={selectedEntries[0] || null}
+        onClose={() => setAddToDotfilesOpen(false)}
+        onSuccess={(msg) => {
+          setDotfilesFeedback(msg);
+          setTimeout(() => setDotfilesFeedback(null), 4000);
+        }}
+      />
+
+      {dotfilesFeedback && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white shadow-lg flex items-center gap-1.5 animate-in fade-in">
+          <span>✓</span>
+          <span>{dotfilesFeedback}</span>
+        </div>
+      )}
     </div>
   );
 };

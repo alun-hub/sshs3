@@ -17,6 +17,7 @@ import type {
 import type { SessionData } from './session';
 import type { AppSettings } from './settings';
 import type {
+  DotfileImportedFile,
   DotfilePool,
   DotfilesSyncPromptEvent,
   DotfilesSyncResolution,
@@ -103,6 +104,9 @@ export const IPC_CHANNELS = {
   DOTFILES_POOLS_GET: 'dotfiles:pools-get',
   DOTFILES_POOLS_SAVE: 'dotfiles:pools-save',
   DOTFILES_POOLS_DELETE: 'dotfiles:pools-delete',
+  DOTFILES_OPEN_FOLDER: 'dotfiles:open-folder',
+  DOTFILES_SELECT_FILES: 'dotfiles:select-files',
+  DOTFILES_ADD_FROM_STORAGE: 'dotfiles:add-from-storage',
   DOTFILES_SYNC_PROMPT: 'dotfiles:sync-prompt',
   DOTFILES_SYNC_RESPOND: 'dotfiles:sync-respond',
   DOTFILES_SYNC_STATUS: 'dotfiles:sync-status',
@@ -237,6 +241,14 @@ export interface MultiSSHApi {
   dotfilePoolsGet(): Promise<DotfilePool[]>;
   dotfilePoolsSave(pool: DotfilePool): Promise<void>;
   dotfilePoolsDelete(id: string): Promise<void>;
+  dotfilePoolOpenFolder(poolId: string): Promise<string>;
+  dotfilePoolSelectFiles(): Promise<DotfileImportedFile[]>;
+  dotfilePoolAddFromStorage(options: {
+    poolId: string;
+    providerId: string;
+    filePath: string;
+    targetRemotePath?: string;
+  }): Promise<DotfilePool>;
   onDotfilesSyncPrompt(callback: (event: DotfilesSyncPromptEvent) => void): () => void;
   respondDotfilesSyncPrompt(id: string, resolution: DotfilesSyncResolution): Promise<void>;
   onDotfilesSyncStatus(callback: (event: DotfilesSyncStatusEvent) => void): () => void;
