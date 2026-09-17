@@ -1,5 +1,8 @@
 # sshs3
 
+[![CI](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml/badge.svg)](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > **A modern, security-focused, cross-platform SSH, SFTP, and S3 client** for Linux and Windows, with smartcard support (PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager, and object storage.
 
 ![sshs3 icon](build/icons/128x128.png)
@@ -200,6 +203,16 @@ npm run package:linux
 # Windows (requires a Windows build environment)
 npm run package:win
 ```
+
+---
+
+## Community & Contributing
+
+Contributions are welcome! Please see our:
+- [Contributing Guide](CONTRIBUTING.md) for local development setup, code standards, and PR process.
+- [Code of Conduct](CODE_OF_CONDUCT.md) for community standards.
+- [Security Policy](SECURITY.md) to report vulnerabilities responsibly.
+- [Changelog](CHANGELOG.md) for release history and recent updates.
 
 ---
 
