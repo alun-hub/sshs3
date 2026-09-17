@@ -51,7 +51,7 @@
     "@types/ssh2-sftp-client": "^9.0.6",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.0",
-    "electron": "^31.7.7",
+    "electron": "^44.4.1",
     "electron-builder": "^26.15.3",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
