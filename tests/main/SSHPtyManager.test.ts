@@ -358,4 +358,67 @@ describe('SSHPtyManager', () => {
       expect(manager.getAllSessions()).toHaveLength(0);
     });
   });
+
+  describe('scrollback buffer and auto-reconnection', () => {
+    it('should buffer terminal output and provide scrollback replay', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'sess-scrollback',
+        name: 'Scrollback Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+      };
+
+      const session = await manager.createSession(config);
+      const mockPty = mockPtyInstances[0];
+
+      mockPty.emitData('line 1\r\n');
+      mockPty.emitData('line 2\r\n');
+
+      expect(session.getScrollbackBuffer?.()).toBe('line 1\r\nline 2\r\n');
+    });
+
+    it('should attempt auto-reconnection on non-zero exit when autoReconnect is enabled', async () => {
+      vi.useFakeTimers();
+
+      const config: SSHConnectionConfig = {
+        id: 'sess-reconnect',
+        name: 'Reconnect Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+        autoReconnect: true,
+        maxReconnectAttempts: 2,
+        reconnectDelayMs: 50,
+      };
+
+      const session = await manager.createSession(config);
+      const initialPty = mockPtyInstances[0];
+
+      const reconnectingSpy = vi.fn();
+      const reconnectedSpy = vi.fn();
+      manager.on('reconnecting', reconnectingSpy);
+      manager.on('reconnected', reconnectedSpy);
+
+      // Simulate unexpected disconnect (e.g. exit code 255)
+      initialPty.emitExit(255);
+
+      expect(session.isReconnecting?.()).toBe(true);
+      expect(reconnectingSpy).toHaveBeenCalledWith({
+        sessionId: 'sess-reconnect',
+        attempt: 1,
+        maxAttempts: 2,
+      });
+
+      // Fast-forward reconnect timer
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(session.isReconnecting?.()).toBe(false);
+      expect(reconnectedSpy).toHaveBeenCalledWith({ sessionId: 'sess-reconnect' });
+      expect(mockPtyInstances).toHaveLength(2);
+      expect(manager.getSession('sess-reconnect')).toBeDefined();
+
+      vi.useRealTimers();
+    });
+  });
 });

@@ -57,6 +57,23 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/xterm') || id.includes('node_modules/@xterm')) {
+            return 'xterm-bundle';
+          }
+          if (id.includes('node_modules/lucide-react')) {
+            return 'icons-bundle';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'react-vendor';
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, 'src/renderer/src'),

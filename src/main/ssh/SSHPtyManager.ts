@@ -47,6 +47,8 @@ function getSpawn(): typeof nodePty.spawn {
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
+  reconnecting: (event: { sessionId: string; attempt: number; maxAttempts: number }) => void;
+  reconnected: (event: { sessionId: string }) => void;
   askpass: (event: {
     sessionId: string;
     prompt: string;
@@ -54,7 +56,7 @@ export interface SSHPtyManagerEvents {
   }) => void;
 }
 
-class InternalSSHPtySession implements SSHPtySession {
+export class InternalSSHPtySession implements SSHPtySession {
   public sessionId: string;
   public config: SSHConnectionConfig;
   public pid: number;
@@ -67,6 +69,13 @@ class InternalSSHPtySession implements SSHPtySession {
   private dataListeners: Set<(data: string) => void> = new Set();
   private exitListeners: Set<(event: SSHPtyExitEvent) => void> = new Set();
   private disposed: boolean = false;
+  private reconnecting: boolean = false;
+  private reconnectAttempts: number = 0;
+  private reconnectTimer?: NodeJS.Timeout;
+
+  private scrollbackChunks: string[] = [];
+  private scrollbackLength: number = 0;
+  private static readonly MAX_SCROLLBACK_BYTES = 128 * 1024; // 128 KB
 
   constructor(params: {
     sessionId: string;
@@ -86,24 +95,110 @@ class InternalSSHPtySession implements SSHPtySession {
     this.manager = params.manager;
     this.askpassServer = params.askpassServer;
 
-    this.pty.onData((data: string) => {
+    this.bindPty(params.pty);
+  }
+
+  private appendScrollback(data: string): void {
+    this.scrollbackChunks.push(data);
+    this.scrollbackLength += data.length;
+    while (this.scrollbackLength > InternalSSHPtySession.MAX_SCROLLBACK_BYTES && this.scrollbackChunks.length > 1) {
+      const removed = this.scrollbackChunks.shift();
+      if (removed) this.scrollbackLength -= removed.length;
+    }
+  }
+
+  public getScrollbackBuffer(): string {
+    return this.scrollbackChunks.join('');
+  }
+
+  public isReconnecting(): boolean {
+    return this.reconnecting;
+  }
+
+  public bindPty(newPty: IPty): void {
+    this.pty = newPty;
+    this.pid = newPty.pid;
+
+    newPty.onData((data: string) => {
+      this.appendScrollback(data);
       for (const listener of this.dataListeners) {
         listener(data);
       }
       this.manager.emit('data', { sessionId: this.sessionId, data });
     });
 
-    this.pty.onExit((event: { exitCode: number; signal?: number }) => {
-      for (const listener of this.exitListeners) {
-        listener(event);
-      }
-      this.manager.emit('exit', {
-        sessionId: this.sessionId,
-        exitCode: event.exitCode,
-        signal: event.signal,
-      });
-      void this.cleanup();
+    newPty.onExit((event: { exitCode: number; signal?: number }) => {
+      this.handlePtyExit(event);
     });
+  }
+
+  private handlePtyExit(event: { exitCode: number; signal?: number }): void {
+    const shouldReconnect =
+      !this.disposed &&
+      Boolean(this.config.autoReconnect) &&
+      (event.exitCode !== 0 || event.signal !== undefined) &&
+      this.reconnectAttempts < (this.config.maxReconnectAttempts ?? 3);
+
+    if (shouldReconnect) {
+      this.reconnecting = true;
+      this.reconnectAttempts++;
+      const attempt = this.reconnectAttempts;
+      const maxAttempts = this.config.maxReconnectAttempts ?? 3;
+      const delay = this.config.reconnectDelayMs ?? 1000;
+
+      this.manager.emit('reconnecting', { sessionId: this.sessionId, attempt, maxAttempts });
+      const msg = `\r\n\x1b[33m[sshs3: connection dropped, reconnecting (${attempt}/${maxAttempts})...]\x1b[0m\r\n`;
+      this.appendScrollback(msg);
+      for (const listener of this.dataListeners) listener(msg);
+      this.manager.emit('data', { sessionId: this.sessionId, data: msg });
+
+      this.reconnectTimer = setTimeout(async () => {
+        if (this.disposed) return;
+        try {
+          const success = await this.manager.reconnectSession(this);
+          if (success) {
+            this.reconnecting = false;
+            this.reconnectAttempts = 0;
+            const okMsg = `\r\n\x1b[32m[sshs3: reconnected successfully]\x1b[0m\r\n`;
+            this.appendScrollback(okMsg);
+            for (const listener of this.dataListeners) listener(okMsg);
+            this.manager.emit('data', { sessionId: this.sessionId, data: okMsg });
+            this.manager.emit('reconnected', { sessionId: this.sessionId });
+            return;
+          }
+        } catch {
+          // Fall through to retry or exit
+        }
+
+        if (this.reconnectAttempts >= maxAttempts) {
+          this.reconnecting = false;
+          for (const listener of this.exitListeners) {
+            listener(event);
+          }
+          this.manager.emit('exit', {
+            sessionId: this.sessionId,
+            exitCode: event.exitCode,
+            signal: event.signal,
+          });
+          void this.cleanup();
+        }
+      }, delay);
+      return;
+    }
+
+    for (const listener of this.exitListeners) {
+      listener(event);
+    }
+    this.manager.emit('exit', {
+      sessionId: this.sessionId,
+      exitCode: event.exitCode,
+      signal: event.signal,
+    });
+    void this.cleanup();
+  }
+
+  public async reconnect(): Promise<boolean> {
+    return this.manager.reconnectSession(this);
   }
 
   public write(data: string): void {
@@ -121,6 +216,11 @@ class InternalSSHPtySession implements SSHPtySession {
   }
 
   public kill(signal?: string): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnecting = false;
     if (!this.disposed) {
       this.pty.kill(signal);
     }
@@ -146,6 +246,11 @@ class InternalSSHPtySession implements SSHPtySession {
 
   public async dispose(): Promise<void> {
     if (this.disposed) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnecting = false;
     try {
       this.pty.kill();
     } catch {
@@ -157,6 +262,10 @@ class InternalSSHPtySession implements SSHPtySession {
   private async cleanup(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
 
     if (this.askpassServer) {
       try {
@@ -175,6 +284,46 @@ class InternalSSHPtySession implements SSHPtySession {
 
 export class SSHPtyManager extends EventEmitter {
   private sessions: Map<string, SSHPtySession> = new Map();
+  private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
+
+  /**
+   * Reconnects an existing session by spawning a new underlying SSH process.
+   */
+  public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
+    const config = session.config;
+    const options = this.sessionOptions.get(session.sessionId);
+    const cols = session.cols;
+    const rows = session.rows;
+    const cwd = options?.cwd ?? (process.env.HOME || process.cwd());
+
+    const env: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      TERM: 'xterm-256color',
+      ...(options?.env || {}),
+    };
+
+    if (config.agentPath) {
+      env.SSH_AUTH_SOCK = config.agentPath;
+    }
+
+    const sshArgs = SmartcardDetector.buildSSHArguments(config);
+    const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+
+    try {
+      const spawn = getSpawn();
+      const ptyProcess = spawn(sshBinary, sshArgs, {
+        cols,
+        rows,
+        cwd,
+        env,
+      });
+
+      session.bindPty(ptyProcess);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   /**
    * Creates and spawns an OpenSSH PTY session with the given connection configuration.
@@ -184,6 +333,7 @@ export class SSHPtyManager extends EventEmitter {
     options?: PtyOptions
   ): Promise<SSHPtySession> {
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
+    this.sessionOptions.set(sessionId, options);
     const cols = options?.cols ?? 80;
     const rows = options?.rows ?? 24;
     const cwd = options?.cwd ?? (process.env.HOME || process.cwd());
@@ -362,5 +512,6 @@ export class SSHPtyManager extends EventEmitter {
    */
   public removeSessionInternal(sessionId: string): void {
     this.sessions.delete(sessionId);
+    this.sessionOptions.delete(sessionId);
   }
 }

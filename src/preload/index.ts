@@ -49,6 +49,9 @@ export const api: MultiSSHApi = {
   terminalKill: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_KILL, sessionId),
 
+  terminalReconnect: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RECONNECT, sessionId),
+
   onTerminalData: (callback: (sessionId: string, data: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) =>
       callback(sessionId, data);
@@ -64,6 +67,20 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.TERMINAL_EXIT, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_EXIT, listener);
+    };
+  },
+
+  onTerminalReconnecting: (
+    callback: (sessionId: string, event: { attempt: number; maxAttempts: number }) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      sessionId: string,
+      event: { attempt: number; maxAttempts: number }
+    ) => callback(sessionId, event);
+    ipcRenderer.on(IPC_CHANNELS.TERMINAL_RECONNECTING, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_RECONNECTING, listener);
     };
   },
 

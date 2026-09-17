@@ -81,4 +81,27 @@ describe('FileList Component', () => {
     expect(screen.getByText('Permissions')).toBeInTheDocument();
     expect(screen.getByText('755')).toBeInTheDocument();
   });
+
+  it('virtualizes large collections of files efficiently', () => {
+    const largeEntries: FileEntry[] = Array.from({ length: 1000 }, (_, i) => ({
+      name: `file_${i}.txt`,
+      path: `/file_${i}.txt`,
+      size: 1024 * i,
+      isDirectory: false,
+      mtime: '2026-09-17 12:00',
+    }));
+
+    render(
+      <FileList
+        entries={largeEntries}
+        loading={false}
+        selectedPaths={new Set()}
+        onSelectionChange={vi.fn()}
+        onOpen={vi.fn()}
+      />
+    );
+
+    // Initial window items should render
+    expect(screen.getByText('file_0.txt')).toBeInTheDocument();
+  });
 });

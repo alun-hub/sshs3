@@ -201,6 +201,17 @@ export class IpcBridge {
         this.sshPtyManager.kill(sessionId);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.TERMINAL_RECONNECT,
+      async (_event, sessionId: string) => {
+        const session = this.sshPtyManager.getSession(sessionId);
+        if (session && session.reconnect) {
+          return await session.reconnect();
+        }
+        return false;
+      }
+    );
   }
 
   private registerSmartcardHandlers(): void {
@@ -953,6 +964,13 @@ export class IpcBridge {
       }
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);
+
+    this.sshPtyManager.on('reconnecting', ({ sessionId, attempt, maxAttempts }) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
+      }
+    });
 
     this.onTransferProgress = (progress) => {
       const webContents = this.getWebContents();

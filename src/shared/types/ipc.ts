@@ -29,8 +29,10 @@ export const IPC_CHANNELS = {
   TERMINAL_WRITE: 'terminal:write',
   TERMINAL_RESIZE: 'terminal:resize',
   TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_RECONNECT: 'terminal:reconnect',
   TERMINAL_DATA: 'terminal:data',
   TERMINAL_EXIT: 'terminal:exit',
+  TERMINAL_RECONNECTING: 'terminal:reconnecting',
 
   // Smartcard
   SMARTCARD_DETECT: 'smartcard:detect',
@@ -153,8 +155,10 @@ export interface MultiSSHApi {
   terminalWrite(sessionId: string, data: string): Promise<void>;
   terminalResize(sessionId: string, cols: number, rows: number): Promise<void>;
   terminalKill(sessionId: string): Promise<void>;
+  terminalReconnect(sessionId: string): Promise<boolean>;
   onTerminalData(callback: (sessionId: string, data: string) => void): () => void;
   onTerminalExit(callback: (sessionId: string, event: SSHPtyExitEvent) => void): () => void;
+  onTerminalReconnecting?(callback: (sessionId: string, event: { attempt: number; maxAttempts: number }) => void): () => void;
 
   // Smartcard
   smartcardDetect(): Promise<DetectedSmartcardLib[]>;

@@ -42,6 +42,12 @@ export interface SSHConnectionConfig {
   poolId?: string;
   /** Unset = never sync, even if a pool is assigned. 'ask' prompts on diff, 'always' syncs silently. */
   dotfilesSyncPolicy?: 'ask' | 'always';
+  /** Whether to automatically attempt reconnection when the SSH session drops unexpectedly. */
+  autoReconnect?: boolean;
+  /** Maximum number of auto-reconnection attempts (default: 3). */
+  maxReconnectAttempts?: number;
+  /** Initial delay in ms before reconnection attempts (default: 2000ms). */
+  reconnectDelayMs?: number;
 }
 
 export interface DetectedSmartcardLib {
@@ -80,4 +86,10 @@ export interface SSHPtySession {
   onData(listener: (data: string) => void): { dispose: () => void };
   onExit(listener: (event: SSHPtyExitEvent) => void): { dispose: () => void };
   dispose(): Promise<void>;
+  /** Returns the buffered recent scrollback terminal output. */
+  getScrollbackBuffer?(): string;
+  /** Whether the session is currently attempting to reconnect. */
+  isReconnecting?(): boolean;
+  /** Attempts to manually re-establish the underlying SSH connection. */
+  reconnect?(): Promise<boolean>;
 }
