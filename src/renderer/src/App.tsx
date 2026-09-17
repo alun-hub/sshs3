@@ -5,6 +5,7 @@ import { TerminalView } from './components/TerminalView';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
+import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
@@ -659,10 +660,14 @@ export const App: React.FC = () => {
       {/* Global transfer conflict (overwrite/skip/rename) dialog */}
       <TransferConflictModal />
 
+      {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
+      <DotfilesSyncBanner />
+
       {/* Per-tab or per-pane: pick an SSH profile to connect */}
       <ConnectionManagerModal
         open={connectTarget !== null}
         initialTab="ssh"
+        dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         onClose={() => setConnectTarget(null)}
         onConnectSSH={(config) => {
           if (connectTarget) handleConnectTerminal(connectTarget, config);
@@ -672,6 +677,7 @@ export const App: React.FC = () => {
       {/* Quick-link / Ctrl+K / Top Bar: manage or connect to saved SSH/S3 profiles */}
       <ConnectionManagerModal
         open={profilesModalOpen}
+        dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         onClose={() => setProfilesModalOpen(false)}
         onConnectSSH={(config) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);

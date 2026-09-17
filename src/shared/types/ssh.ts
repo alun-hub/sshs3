@@ -38,6 +38,10 @@ export interface SSHConnectionConfig {
   macs?: string;
   proxyJump?: string;
   tunnels?: SSHTunnelConfig[];
+  /** Dotfiles pool to sync on connect. Unset = feature not opted into for this host. */
+  poolId?: string;
+  /** Unset = never sync, even if a pool is assigned. 'ask' prompts on diff, 'always' syncs silently. */
+  dotfilesSyncPolicy?: 'ask' | 'always';
 }
 
 export interface DetectedSmartcardLib {

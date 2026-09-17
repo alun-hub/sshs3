@@ -9,6 +9,12 @@ import {
   type SshAgentStatus,
 } from '../shared/types/ipc';
 import type {
+  DotfilePool,
+  DotfilesSyncPromptEvent,
+  DotfilesSyncResolution,
+  DotfilesSyncStatusEvent,
+} from '../shared/types/dotfiles';
+import type {
   SSHConnectionConfig,
   PtyOptions,
   SSHPtyExitEvent,
@@ -239,6 +245,35 @@ export const api: MultiSSHApi = {
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.SSH_AGENT_STATUS),
+
+  // Dotfiles pools
+  dotfilePoolsGet: (): Promise<DotfilePool[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_POOLS_GET),
+
+  dotfilePoolsSave: (pool: DotfilePool): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_POOLS_SAVE, pool),
+
+  dotfilePoolsDelete: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_POOLS_DELETE, id),
+
+  onDotfilesSyncPrompt: (callback: (event: DotfilesSyncPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: DotfilesSyncPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, listener);
+    };
+  },
+
+  respondDotfilesSyncPrompt: (id: string, resolution: DotfilesSyncResolution): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_SYNC_RESPOND, id, resolution),
+
+  onDotfilesSyncStatus: (callback: (event: DotfilesSyncStatusEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: DotfilesSyncStatusEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.DOTFILES_SYNC_STATUS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.DOTFILES_SYNC_STATUS, listener);
+    };
+  },
 
   // Window / General
   getVersion: (): Promise<string> =>

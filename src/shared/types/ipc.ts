@@ -16,6 +16,12 @@ import type {
 } from './storage';
 import type { SessionData } from './session';
 import type { AppSettings } from './settings';
+import type {
+  DotfilePool,
+  DotfilesSyncPromptEvent,
+  DotfilesSyncResolution,
+  DotfilesSyncStatusEvent,
+} from './dotfiles';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -90,6 +96,14 @@ export const IPC_CHANNELS = {
 
   // SSH Agent
   SSH_AGENT_STATUS: 'ssh:agent-status',
+
+  // Dotfiles pools (opt-in, see AppSettings.dotfilesPoolEnabled)
+  DOTFILES_POOLS_GET: 'dotfiles:pools-get',
+  DOTFILES_POOLS_SAVE: 'dotfiles:pools-save',
+  DOTFILES_POOLS_DELETE: 'dotfiles:pools-delete',
+  DOTFILES_SYNC_PROMPT: 'dotfiles:sync-prompt',
+  DOTFILES_SYNC_RESPOND: 'dotfiles:sync-respond',
+  DOTFILES_SYNC_STATUS: 'dotfiles:sync-status',
 
   // General
   APP_GET_VERSION: 'app:get-version',
@@ -214,6 +228,14 @@ export interface MultiSSHApi {
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;
+
+  // Dotfiles pools
+  dotfilePoolsGet(): Promise<DotfilePool[]>;
+  dotfilePoolsSave(pool: DotfilePool): Promise<void>;
+  dotfilePoolsDelete(id: string): Promise<void>;
+  onDotfilesSyncPrompt(callback: (event: DotfilesSyncPromptEvent) => void): () => void;
+  respondDotfilesSyncPrompt(id: string, resolution: DotfilesSyncResolution): Promise<void>;
+  onDotfilesSyncStatus(callback: (event: DotfilesSyncStatusEvent) => void): () => void;
 
   // Window / General
   getVersion(): Promise<string>;

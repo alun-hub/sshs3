@@ -28,6 +28,8 @@ interface ConnectionManagerModalProps {
   /** When set, shows a "Connect" action per profile and invokes this instead of only managing profiles. */
   onConnectSSH?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
+  /** Master switch from Settings > Files & Storage. Off by default; hides the dotfiles pool field in the SSH form. */
+  dotfilesPoolEnabled?: boolean;
 }
 
 export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
@@ -36,6 +38,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   initialTab = 'ssh',
   onConnectSSH,
   onConnectS3,
+  dotfilesPoolEnabled = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [sshProfiles, setSshProfiles] = useState<SSHConnectionConfig[]>([]);
@@ -265,6 +268,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 initial={editing.config as SSHConnectionConfig | undefined}
                 onSave={handleSaveSSH}
                 onCancel={() => setEditing(null)}
+                dotfilesPoolEnabled={dotfilesPoolEnabled}
               />
             ) : (
               <S3ProfileForm

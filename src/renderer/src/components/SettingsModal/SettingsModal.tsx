@@ -14,6 +14,7 @@ import {
   Search,
   CheckCircle2,
   Lock,
+  FileCode,
 } from 'lucide-react';
 import {
   SHORTCUT_DEFINITIONS,
@@ -22,6 +23,7 @@ import {
   type AppTheme,
 } from '@shared/types/settings';
 import type { DetectedSmartcardLib } from '@shared/types/ssh';
+import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 
 interface SettingsModalProps {
   open: boolean;
@@ -72,6 +74,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmBeforeDelete, setConfirmBeforeDelete] = useState<boolean>(
     currentSettings.confirmBeforeDelete ?? true
   );
+  const [dotfilesPoolEnabled, setDotfilesPoolEnabled] = useState<boolean>(
+    currentSettings.dotfilesPoolEnabled ?? false
+  );
+  const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(
     currentSettings.shortcuts ?? DEFAULT_SHORTCUTS
@@ -95,6 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
+      setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
       setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
       setRecordingAction(null);
       setShortcutSearch('');
@@ -125,6 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       defaultConflictPolicy,
       showHiddenFiles,
       confirmBeforeDelete,
+      dotfilesPoolEnabled,
       shortcuts,
     });
     onClose();
@@ -504,6 +512,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs text-txt-primary">Confirm before deleting files and folders</span>
                     </label>
                   </div>
+
+                  {/* Dotfiles Pool (opt-in) */}
+                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dotfilesPoolEnabled}
+                        onChange={(e) => setDotfilesPoolEnabled(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">
+                        Enable dotfiles pool sync (off by default)
+                      </span>
+                    </label>
+                    <p className="pl-6 text-[11px] text-txt-muted leading-relaxed">
+                      Keeps chosen dotfiles (.bashrc, .vimrc, etc.) present on servers you connect to. Disabled
+                      here, nothing runs. Even when enabled, a host only syncs after you explicitly assign it a
+                      pool and a sync policy in its connection profile.
+                    </p>
+                    {dotfilesPoolEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setPoolManagerOpen(true)}
+                        className="ml-6 flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs text-sky-400 hover:bg-app-surface-hover transition-colors"
+                      >
+                        <FileCode className="h-3.5 w-3.5" />
+                        Manage Dotfile Pools
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -663,6 +701,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </form>
         </div>
       </div>
+
+      <DotfilePoolManagerModal open={poolManagerOpen} onClose={() => setPoolManagerOpen(false)} />
     </div>
   );
 };

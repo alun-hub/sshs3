@@ -7,11 +7,14 @@ import type {
   SSHTunnelConfig,
   SSHTunnelType,
 } from '@shared/types/ssh';
+import type { DotfilePool } from '@shared/types/dotfiles';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
   onSave: (config: SSHConnectionConfig) => void;
   onCancel: () => void;
+  /** Master switch from Settings > Files & Storage. When off, the dotfiles pool field is hidden entirely. */
+  dotfilesPoolEnabled?: boolean;
 }
 
 const AUTH_TYPES: { value: SSHAuthType; label: string }[] = [
@@ -32,7 +35,12 @@ function emptyConfig(): SSHConnectionConfig {
   };
 }
 
-export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({ initial, onSave, onCancel }) => {
+export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
+  initial,
+  onSave,
+  onCancel,
+  dotfilesPoolEnabled = false,
+}) => {
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
   const [detecting, setDetecting] = useState(false);
@@ -40,6 +48,21 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({ initial, onSave,
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tunnelsOpen, setTunnelsOpen] = useState(false);
+  const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
+
+  useEffect(() => {
+    if (!dotfilesPoolEnabled) return;
+    let mounted = true;
+    void window.multissh
+      .dotfilePoolsGet()
+      .then((pools) => {
+        if (mounted) setDotfilePools(pools);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [dotfilesPoolEnabled]);
 
   useEffect(() => {
     if (config.authType !== 'smartcard') return;
@@ -412,6 +435,46 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({ initial, onSave,
           </div>
         )}
       </div>
+
+      {/* Dotfiles Pool (opt-in, hidden unless enabled in Settings) */}
+      {dotfilesPoolEnabled && (
+        <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 space-y-2.5">
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Dotfiles Pool (optional)
+            <select
+              value={config.poolId ?? ''}
+              onChange={(e) => {
+                const poolId = e.target.value || undefined;
+                update('poolId', poolId);
+                if (!poolId) update('dotfilesSyncPolicy', undefined);
+                else if (!config.dotfilesSyncPolicy) update('dotfilesSyncPolicy', 'ask');
+              }}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+            >
+              <option value="">Not assigned — no sync</option>
+              {dotfilePools.map((pool) => (
+                <option key={pool.id} value={pool.id}>
+                  {pool.name} ({pool.files.length} file{pool.files.length === 1 ? '' : 's'})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {config.poolId && (
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              Sync Policy
+              <select
+                value={config.dotfilesSyncPolicy ?? 'ask'}
+                onChange={(e) => update('dotfilesSyncPolicy', e.target.value as 'ask' | 'always')}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+              >
+                <option value="ask">Ask before updating (shows a diff banner on connect)</option>
+                <option value="always">Always update silently on connect</option>
+              </select>
+            </label>
+          )}
+        </div>
+      )}
 
       {/* Advanced SSH Options */}
       <div className="rounded-lg border border-border-subtle bg-app-surface-subtle">

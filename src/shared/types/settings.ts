@@ -39,6 +39,8 @@ export interface AppSettings {
   showHiddenFiles?: boolean;
   defaultConflictPolicy?: 'ask' | 'overwrite' | 'skip' | 'rename';
   shortcuts?: Record<string, string>;
+  /** Master switch for the dotfiles pool feature. Off by default — an opt-in feature, not a default-on behavior. */
+  dotfilesPoolEnabled?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -53,4 +55,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showHiddenFiles: false,
   defaultConflictPolicy: 'ask',
   shortcuts: { ...DEFAULT_SHORTCUTS },
+  dotfilesPoolEnabled: false,
 };

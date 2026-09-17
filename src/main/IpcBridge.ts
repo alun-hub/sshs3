@@ -22,6 +22,8 @@ import { SessionStore } from './session/SessionStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
+import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
+import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
@@ -29,6 +31,7 @@ import {
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
 } from '../shared/types/ipc';
+import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -59,6 +62,10 @@ interface PendingTransferConflictPrompt {
   callback: (resolution: TransferConflictResolution, applyToAll: boolean) => void;
 }
 
+interface PendingDotfilesSyncPrompt {
+  callback: (resolution: DotfilesSyncResolution) => void;
+}
+
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   sshPtyManager?: SSHPtyManager;
@@ -68,6 +75,8 @@ export interface IpcBridgeOptions {
   knownHostsStore?: KnownHostsStore;
   sessionStore?: SessionStore;
   settingsStore?: SettingsStore;
+  dotfilePoolStore?: DotfilePoolStore;
+  dotfileSyncService?: DotfileSyncService;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -80,11 +89,14 @@ export class IpcBridge {
   public readonly knownHostsStore: KnownHostsStore;
   public readonly sessionStore: SessionStore;
   public readonly settingsStore: SettingsStore;
+  public readonly dotfilePoolStore: DotfilePoolStore;
+  public readonly dotfileSyncService: DotfileSyncService;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
+  private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
   private handlers = new Set<string>();
 
   // Event listener references for clean teardown
@@ -112,6 +124,8 @@ export class IpcBridge {
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.sessionStore = options.sessionStore ?? new SessionStore();
     this.settingsStore = options.settingsStore ?? new SettingsStore();
+    this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
+    this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -125,6 +139,7 @@ export class IpcBridge {
     this.registerStorageHandlers();
     this.registerTransferHandlers();
     this.registerProfileHandlers();
+    this.registerDotfileHandlers();
     this.registerSessionHandlers();
     this.registerSettingsHandlers();
     this.registerConnectionTestHandlers();
@@ -150,6 +165,18 @@ export class IpcBridge {
         const session = options.local
           ? await this.sshPtyManager.createShellSession(options.ptyOptions)
           : await this.sshPtyManager.createSession(options.config!, options.ptyOptions);
+
+        if (!options.local && options.config) {
+          // Fire-and-forget: never let the dotfiles check delay or fail the
+          // terminal session itself, and give the PTY a moment to become
+          // interactive before a second connection competes for the network.
+          const config = options.config;
+          const sessionId = session.sessionId;
+          setTimeout(() => {
+            void this.runDotfilesSyncCheck(sessionId, config).catch(() => {});
+          }, 1500);
+        }
+
         return { sessionId: session.sessionId };
       }
     );
@@ -623,6 +650,123 @@ export class IpcBridge {
     );
   }
 
+  private registerDotfileHandlers(): void {
+    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_GET, async (): Promise<DotfilePool[]> => {
+      return await this.dotfilePoolStore.getPools();
+    });
+
+    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_SAVE, async (_event, pool: DotfilePool) => {
+      await this.dotfilePoolStore.savePool(pool);
+    });
+
+    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_DELETE, async (_event, id: string) => {
+      await this.dotfilePoolStore.deletePool(id);
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.DOTFILES_SYNC_RESPOND,
+      async (_event, id: string, resolution: DotfilesSyncResolution) => {
+        const prompt = this.pendingDotfilesSyncPrompts.get(id);
+        if (!prompt) {
+          throw new Error(`Dotfiles sync prompt with id "${id}" not found or expired`);
+        }
+        this.pendingDotfilesSyncPrompts.delete(id);
+        prompt.callback(resolution);
+      }
+    );
+  }
+
+  /**
+   * Checks the host's assigned dotfiles pool (if any) against the live
+   * server and applies it per the profile's sync policy. A no-op unless the
+   * feature is enabled globally and the profile has explicitly opted in with
+   * both a pool and a policy — see AppSettings.dotfilesPoolEnabled and
+   * SSHConnectionConfig.dotfilesSyncPolicy.
+   */
+  private async runDotfilesSyncCheck(sessionId: string, config: SSHConnectionConfig): Promise<void> {
+    if (!config.poolId || !config.dotfilesSyncPolicy) return;
+
+    const settings = await this.settingsStore.getSettings();
+    if (!settings.dotfilesPoolEnabled) return;
+
+    const pool = await this.dotfilePoolStore.getPool(config.poolId);
+    if (!pool || pool.files.length === 0) return;
+
+    const hostVerifier = createHostVerifier({
+      host: config.host,
+      port: config.port ?? 22,
+      knownHosts: this.knownHostsStore,
+      onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
+    });
+
+    let provider: Awaited<ReturnType<DotfileSyncService['computeDiff']>>['provider'] | undefined;
+    try {
+      const diff = await this.dotfileSyncService.computeDiff(config, pool, hostVerifier);
+      provider = diff.provider;
+      if (diff.entries.length === 0) {
+        return;
+      }
+
+      const filesToApply = pool.files.filter((f) => diff.entries.some((e) => e.fileId === f.id));
+
+      if (config.dotfilesSyncPolicy === 'ask') {
+        const resolution = await this.promptDotfilesSync({
+          sessionId,
+          poolName: pool.name,
+          hostLabel: `${config.username}@${config.host}`,
+          entries: diff.entries,
+        });
+
+        if (resolution === 'ignore') {
+          return;
+        }
+        if (resolution === 'always') {
+          await this.profileStore.saveSSH({ ...config, dotfilesSyncPolicy: 'always' });
+        }
+      }
+      // 'always' policy (either pre-set or just chosen above) falls through and applies silently.
+
+      await this.dotfileSyncService.applyFiles(provider, filesToApply);
+      this.sendDotfilesSyncStatus({ sessionId, status: 'updated', updatedCount: filesToApply.length });
+    } catch (err) {
+      this.sendDotfilesSyncStatus({
+        sessionId,
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      await provider?.disconnect?.().catch(() => {});
+    }
+  }
+
+  private promptDotfilesSync(info: Omit<DotfilesSyncPromptEvent, 'id'>): Promise<DotfilesSyncResolution> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve('ignore');
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      this.pendingDotfilesSyncPrompts.set(id, { callback: resolve });
+
+      const event: DotfilesSyncPromptEvent = { id, ...info };
+      webContents.send(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, event);
+    });
+  }
+
+  private sendDotfilesSyncStatus(event: {
+    sessionId: string;
+    status: 'updated' | 'error';
+    updatedCount?: number;
+    error?: string;
+  }): void {
+    const webContents = this.getWebContents();
+    if (webContents && !webContents.isDestroyed?.()) {
+      webContents.send(IPC_CHANNELS.DOTFILES_SYNC_STATUS, event);
+    }
+  }
+
   private registerSessionHandlers(): void {
     this.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {
       return await this.sessionStore.getSession();
@@ -865,6 +1009,15 @@ export class IpcBridge {
       }
     }
     this.pendingTransferConflicts.clear();
+
+    for (const prompt of this.pendingDotfilesSyncPrompts.values()) {
+      try {
+        prompt.callback('ignore');
+      } catch {
+        // Ignore
+      }
+    }
+    this.pendingDotfilesSyncPrompts.clear();
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();
