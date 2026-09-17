@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.9] - 2026-09-17 19:41
+
+### Security
+- Upgraded `electron` from `31.7.7` to `44.4.1`, resolving 23 Chromium/V8 vulnerabilities and replacing vulnerable `extract-zip` and `cacheable-request` subdependencies with secure modern packages (0 audit vulnerabilities).
+
+---
+
 ## [0.2.8] - 2026-09-17 19:33
 
 ### Added
