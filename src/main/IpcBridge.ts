@@ -4,6 +4,7 @@ import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialo
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
+import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
@@ -748,6 +749,10 @@ export class IpcBridge {
       return process.platform;
     });
 
+    this.registerHandler(IPC_CHANNELS.SSH_AGENT_STATUS, async () => {
+      return await AgentLifecycleManager.getStatus();
+    });
+
     this.registerHandler(
       IPC_CHANNELS.DIALOG_OPEN_FILE,
       async (_event, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
@@ -863,5 +868,6 @@ export class IpcBridge {
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();
+    await AgentLifecycleManager.stopManagedAgent();
   }
 }

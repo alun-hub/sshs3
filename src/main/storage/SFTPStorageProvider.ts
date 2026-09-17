@@ -7,6 +7,7 @@ import SftpClient from 'ssh2-sftp-client';
 import { Client as SSH2Client } from 'ssh2';
 import { createProxySocket } from '../proxy/proxySocket';
 import { AskpassServer } from '../smartcard/AskpassServer';
+import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
 
 const execFileAsync = promisify(execFile);
 import {
@@ -222,13 +223,28 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     const libPath = this.config.pkcs11LibPath;
     if (!libPath) return;
 
+    const agentStatus = await AgentLifecycleManager.ensureAgent();
     const agentSock =
       this.config.agentPath ??
+      agentStatus.socketPath ??
       (process.platform === 'win32'
-        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
+        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\openssh-ssh-agent'
         : process.env.SSH_AUTH_SOCK);
 
-    if (!agentSock) return;
+    if (!agentSock || !agentStatus.isRunning) {
+      if (process.platform === 'win32') {
+        throw new Error(
+          'Smartcard authentication for SFTP requires the Windows OpenSSH Authentication Agent service. ' +
+          'Please start it by running in Administrator PowerShell:\r\n' +
+          'Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent'
+        );
+      } else {
+        throw new Error(
+          'Smartcard authentication for SFTP requires ssh-agent, but none is running and automatic startup failed: ' +
+          (agentStatus.error || 'Check openssh-client installation.')
+        );
+      }
+    }
 
     try {
       const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';

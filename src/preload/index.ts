@@ -6,6 +6,7 @@ import {
   type HostKeyPromptEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
+  type SshAgentStatus,
 } from '../shared/types/ipc';
 import type {
   SSHConnectionConfig,
@@ -234,6 +235,10 @@ export const api: MultiSSHApi = {
 
   testS3Connection: (config: S3Config): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
+
+  // SSH Agent
+  getSshAgentStatus: (): Promise<SshAgentStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_AGENT_STATUS),
 
   // Window / General
   getVersion: (): Promise<string> =>

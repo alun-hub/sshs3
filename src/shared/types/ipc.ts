@@ -88,6 +88,9 @@ export const IPC_CHANNELS = {
   CONNECTION_TEST_SSH: 'connection:test-ssh',
   CONNECTION_TEST_S3: 'connection:test-s3',
 
+  // SSH Agent
+  SSH_AGENT_STATUS: 'ssh:agent-status',
+
   // General
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
@@ -209,11 +212,23 @@ export interface MultiSSHApi {
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
+  // SSH Agent
+  getSshAgentStatus(): Promise<SshAgentStatus>;
+
   // Window / General
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+}
+
+export interface SshAgentStatus {
+  isRunning: boolean;
+  socketPath?: string;
+  isManaged: boolean;
+  platform: string;
+  instructions?: string;
+  error?: string;
 }
 
 export type SSHS3Api = MultiSSHApi;
