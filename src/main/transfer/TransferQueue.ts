@@ -364,7 +364,11 @@ export class TransferQueue extends EventEmitter {
 
       let resolvedTargetPath = job.targetPath;
       const baseName = getBaseName(job.sourcePath);
-      if (baseName && (await isDirectoryPath(job.targetProvider, resolvedTargetPath))) {
+      if (
+        baseName &&
+        getBaseName(resolvedTargetPath) !== baseName &&
+        (await isDirectoryPath(job.targetProvider, resolvedTargetPath))
+      ) {
         resolvedTargetPath = joinPaths(job.targetProvider.type, resolvedTargetPath, baseName);
       }
 

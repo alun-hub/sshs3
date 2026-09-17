@@ -18,3 +18,12 @@ export interface DragPayload {
 }
 
 export const DRAG_MIME_TYPE = 'application/x-multissh-file-entries';
+
+export function buildDragPayload(
+  fromPane: PaneSide,
+  providerId: string,
+  basePath: string,
+  entries: FileEntry[]
+): DragPayload {
+  return { fromPane, providerId, basePath, entries };
+}

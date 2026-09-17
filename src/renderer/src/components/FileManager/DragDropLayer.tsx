@@ -1,18 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import type { FileEntry } from '@shared/types/storage';
-import { DRAG_MIME_TYPE, type DragPayload, type PaneSide } from './types';
-
-interface DragDropContextValue {
-  activeDrag: DragPayload | null;
-  hoveredTarget: string | null;
-  beginDrag: (payload: DragPayload, dataTransfer: DataTransfer) => void;
-  endDrag: () => void;
-  setHoveredTarget: (target: string | null) => void;
-  readDropPayload: (dataTransfer: DataTransfer) => DragPayload | null;
-  readOsFilePaths: (dataTransfer: DataTransfer) => string[];
-}
-
-const DragDropContext = createContext<DragDropContextValue | null>(null);
+import React, { useCallback, useMemo, useState } from 'react';
+import { DRAG_MIME_TYPE, type DragPayload } from './types';
+import { DragDropContext, type DragDropContextValue } from './DragDropContext';
 
 export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
@@ -68,15 +56,3 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <DragDropContext.Provider value={value}>{children}</DragDropContext.Provider>;
 };
-
-export function useDragDrop(): DragDropContextValue {
-  const ctx = useContext(DragDropContext);
-  if (!ctx) {
-    throw new Error('useDragDrop must be used within a DragDropProvider');
-  }
-  return ctx;
-}
-
-export function buildDragPayload(fromPane: PaneSide, providerId: string, basePath: string, entries: FileEntry[]): DragPayload {
-  return { fromPane, providerId, basePath, entries };
-}

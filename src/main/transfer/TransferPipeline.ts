@@ -349,7 +349,7 @@ export async function transferFile(options: TransferOptions): Promise<void> {
     options.targetProvider,
     resolvedTargetPath
   );
-  if (isTargetDir && fileName) {
+  if (isTargetDir && fileName && getBaseName(resolvedTargetPath) !== fileName) {
     resolvedTargetPath = joinPaths(
       options.targetProvider.type,
       resolvedTargetPath,

@@ -24,7 +24,7 @@ import type { FileEntry } from '@shared/types/storage';
 import { joinPath, parentPath } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
-import { buildDragPayload, useDragDrop } from './DragDropLayer';
+import { useDragDrop } from './DragDropContext';
 import { ChmodModal } from './ChmodModal';
 import { PropertiesModal } from './PropertiesModal';
 import { TagsModal } from './TagsModal';
@@ -32,7 +32,7 @@ import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
 import { NewFolderModal } from './NewFolderModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
-import type { PaneSide, PaneSource, SourceType } from './types';
+import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 
 interface FilePaneProps {
   side: PaneSide;

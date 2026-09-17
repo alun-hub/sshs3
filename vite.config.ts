@@ -1,12 +1,28 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import path from 'node:path'
+import fs from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
+
+function copyProxyCliPlugin() {
+  return {
+    name: 'copy-proxy-cli',
+    closeBundle() {
+      const src = path.resolve(import.meta.dirname, 'src/main/proxy/proxyCli.cjs')
+      const dest = path.resolve(import.meta.dirname, 'dist-electron/proxyCli.cjs')
+      if (fs.existsSync(src)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(src, dest)
+      }
+    },
+  }
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    copyProxyCliPlugin(),
     electron({
       main: {
         entry: 'src/main/index.ts',

@@ -93,6 +93,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onExitRef.current = onExit;
   const initialCwdRef = useRef(initialCwd);
   initialCwdRef.current = initialCwd;
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
+  const fontFamilyRef = useRef(fontFamily);
+  fontFamilyRef.current = fontFamily;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   // Focus and fit when becoming active
   useEffect(() => {
@@ -106,7 +112,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     }
   }, [isActive]);
 
-  // Update terminal options when props change
+  // Update terminal options when props change without recreating the PTY session
   useEffect(() => {
     if (termRef.current) {
       termRef.current.options.fontSize = fontSize;
@@ -123,6 +129,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     }
   }, [fontSize, fontFamily, theme]);
 
+  // Main lifecycle: spawns and manages the PTY session.
+  // Style properties are intentionally managed by the separate effect above to avoid session resets.
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -131,16 +139,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let unsubExit: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
 
+    const currentTheme = themeRef.current;
     const isLight =
-      theme === 'light' ||
-      (theme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
+      currentTheme === 'light' ||
+      (currentTheme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
 
     // 1. Initialize Terminal & FitAddon
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
-      fontSize,
-      fontFamily,
+      fontSize: fontSizeRef.current,
+      fontFamily: fontFamilyRef.current,
       theme: isLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME,
       allowProposedApi: true,
     });

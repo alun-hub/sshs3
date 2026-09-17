@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 
 export interface DetectOptions {
@@ -195,7 +197,13 @@ export class SmartcardDetector {
       const p = config.proxy;
       const port = p.port || (p.type === 'http' ? 8080 : 1080);
       if (p.username) {
-        const cliPath = path.resolve(__dirname, '../proxy/proxyCli.cjs');
+        const currentDir =
+          typeof __dirname !== 'undefined'
+            ? __dirname
+            : path.dirname(fileURLToPath(import.meta.url));
+        const devPath = path.resolve(currentDir, '../proxy/proxyCli.cjs');
+        const distPath = path.resolve(currentDir, 'proxyCli.cjs');
+        const cliPath = fsSync.existsSync(distPath) ? distPath : devPath;
         args.push(
           '-o',
           `ProxyCommand=node "${cliPath}" ${p.type} ${p.host} ${port} %h %p "${p.username}" "${p.password || ''}"`

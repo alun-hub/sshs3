@@ -1001,4 +1001,26 @@ describe('TransferQueue', () => {
     expect(queue.getActiveTransferCount()).toBe(0);
     expect(queue.hasActiveTransfers()).toBe(false);
   });
+
+  it('should not double-nest path when targetPath already matches baseName and exists', async () => {
+    // Target already has 'folder'
+    await targetProvider.createFolder('folder');
+    sourceProvider.files.set('folder/file.txt', Buffer.from('hello'));
+    await sourceProvider.createFolder('folder');
+
+    const queue = new TransferQueue();
+    const job = queue.addJob({
+      sourceProvider,
+      sourcePath: 'folder',
+      targetProvider,
+      targetPath: 'folder', // Already resolved to 'folder'
+      isDirectory: true,
+    });
+
+    await queue.waitForJob(job.id);
+    expect(job.progress.status).toBe('completed');
+    // Target should have 'folder/file.txt', not 'folder/folder/file.txt'
+    expect(targetProvider.files.has('folder/file.txt')).toBe(true);
+    expect(targetProvider.folders.has('folder/folder')).toBe(false);
+  });
 });
