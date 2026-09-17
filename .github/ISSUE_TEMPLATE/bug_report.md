@@ -27,7 +27,7 @@ What actually happened. If applicable, add screenshots or terminal output to hel
 
 ## Environment Details
 
-- **sshs3 Version**: (e.g. 0.2.7)
+- **sshs3 Version**: (e.g. 0.2.8)
 - **Operating System**: (e.g. Ubuntu 24.04, Windows 11, macOS Sequoia)
 - **Node.js / npm Version**: (if running from source)
 - **Target Host / Storage Type**: (e.g. OpenSSH 9.3, OpenSSH with Smartcard, AWS S3, MinIO)
