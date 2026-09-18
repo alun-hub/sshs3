@@ -89,15 +89,14 @@ class FakeStorageProvider implements IStorageProvider {
   }
   async createWriteStream(remotePath: string, _options?: WriteStreamOptions): Promise<NodeJS.WritableStream> {
     const chunks: Buffer[] = [];
-    const self = this;
     return new Writable({
       write(chunk, _enc, cb) {
         chunks.push(chunk as Buffer);
         cb();
       },
-      final(cb) {
-        self.clock += 1;
-        self.files.set(remotePath, { buffer: Buffer.concat(chunks), mtime: String(self.clock) });
+      final: (cb) => {
+        this.clock += 1;
+        this.files.set(remotePath, { buffer: Buffer.concat(chunks), mtime: String(this.clock) });
         cb();
       },
     });
