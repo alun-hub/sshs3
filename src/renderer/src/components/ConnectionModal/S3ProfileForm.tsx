@@ -339,7 +339,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         </div>
       )}
 
-      <div className="mt-2 flex items-center justify-between pt-2 border-t border-border-subtle">
+      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
         <button
           type="button"
           disabled={!config.region.trim() || !config.accessKeyId.trim() || !config.secretAccessKey.trim() || testing}
