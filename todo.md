@@ -1,6 +1,6 @@
 # sshs3 — Roadmap / TODO
 
-Status som av 2026-09-16 19:05. Bygger på en genomgång av koden i `src/`, inte bara planen i
+Status som av 2026-09-18. Bygger på en genomgång av koden i `src/`, inte bara planen i
 `docs/superpowers/plans/2026-09-14-multissh-implementation.md`.
 
 ## Vad finns idag
@@ -86,6 +86,20 @@ att bygga.
 - [ ] **38. S3 Bucket-administration: Skapa, radera och tömma bucket (Purge)** —
    hantera hela livscykeln för buckets direkt i UI:t, inklusive regionval vid skapande
    och rekursiv tömning av objekt och versioner inför radering.
+- [ ] **57. Dynamisk AWS-autentisering (IAM/SSO)** — statiska `Access Key ID`/`Secret Key`
+   är ofta helt förbjudna i enterprise-/DevOps-miljöer av säkerhetsskäl; utvecklare kör
+   istället `aws sso login`, som skriver tillfälliga tokens till `~/.aws/credentials`/
+   `~/.aws/config`. `S3Config` har redan ett `sessionToken`-fält och `S3ProfileForm` kan
+   ta emot ett manuellt inklistrat värde, men klienten varken läser/parsar den lokala
+   AWS-konfigurationen, känner av `AWS_PROFILE`/namngivna profiler, eller kan driva
+   själva SSO-inloggningsflödet (öppna webbläsaren för enhetskod-auktorisering, ta emot
+   MFA). Naturlig utökning i samma anda som Askpass-servern på SSH-sidan — men för AWS
+   SSO/OIDC istället för SSH-lösenord.
+- [ ] **58. "Tail -f" och lazy loading för gigantiska filer** — dagens `FileEditorModal`
+   (#37) laddar hela filen innan visning, vilket kraschar/fryser appen på t.ex. en 10 GB
+   loggfil. Bygg lazy loading (ladda bara de delar av filen som faktiskt visas) eller en
+   visuell `tail -f`: för SFTP via ett bakgrundskommando i en PTY som strömmar filens
+   slut, för S3 via HTTP Range Requests som bara hämtar de sista megabyten av objektet.
 
 ### P2 — Det som gör en "Multi"-SSH-klient, inte bara "en SSH-klient" (och vanliga finjusteringar)
 
@@ -101,7 +115,11 @@ att bygga.
    SFTP-servrar som inte pratar UTF-8.
 - [ ] **22. S3-uppladdningsalternativ**: lagringsklass (Standard/IA/Glacier) och
    server-side encryption (SSE-S3/SSE-KMS) — `PutObjectCommand` i
-   `S3StorageProvider` sätter inget av detta idag.
+   `S3StorageProvider` sätter inget av detta idag. I enterprise-miljöer krävs ofta
+   specifikt SSE-KMS med en egen nyckel; utan ett sätt att skicka med rätt
+   `KMS Key ID` (t.ex. en dropdown i uppladdningsflödet) nekar AWS uppladdningen
+   (`Access Denied`) — detta är inte valfritt polish utan ett hårt krav för att
+   klienten ska vara användbar mot KMS-skyddade buckets.
 - [ ] **23. Sessionsloggning** — spara terminalens output till fil, användbart för
    felsökning och revision.
 - [x] **24. Profilorganisation i mappar/grupper** samt "senast använda"-lista i
@@ -113,6 +131,15 @@ att bygga.
 - [ ] **43. Beräkna katalogstorlek (Recursive size / `du`)** — visa sammanlagd storlek och antal filer för markerade mappar i SFTP och S3 via kontextmenyn.
 - [ ] **44. Bevara tidsstämplar (mtime) vid filöverföring** — val att behålla filers ursprungliga ändringstidsstämplar vid upp-/nedladdning mellan lokal disk och SFTP.
 - [ ] **45. Filmasker och exkluderingsfilter vid överföring** — uteslut mönster som `node_modules/`, `.git/`, `*.tmp`, `.DS_Store` vid överföring av mappar och synkning.
+- [ ] **59. "Run script on host" — kör skript direkt från filhanteraren.** Terminalen och
+   SFTP-filhanteraren är idag två separata världar trots att de pratar med samma maskin.
+   Bygg vidare på befintlig "Open in Terminal" (#35): högerklick på ett skript (`.sh`,
+   `.py` osv.) i SFTP-panelen ska ge ett val att köra det direkt i den tillhörande
+   SSH-terminalfliken, istället för att bara öppna en tom prompt i samma katalog.
+- [ ] **60. Smarta Git-indikatorer i SFTP-vyn** — om fjärrkatalogen är ett Git-repo,
+   visa små statusikoner i filträdet (grönt = ändrat, rött = konflikt) likt VS Code,
+   via ett `git status --porcelain`-anrop i bakgrunden över samma SSH-anslutning.
+   Förhindrar att man råkar skriva över filer som någon annan redan har ändrat.
 - [x] **46. S3 Versionshantering (Versioning)** — `S3StorageProvider` stöder `listObjectVersions`/`deleteObjectVersion`/`restoreObjectVersion` samt `getBucketVersioning`/`setBucketVersioning`. `VersionsModal` i filhanteraren visar tidigare versioner och raderingsmarkörer med återställning/permanent radering för objekt, och aktivera/pausa-knapp för bucket-nivå.
 - [ ] **47. S3 Metadata & HTTP-headers editor** — granska och redigera `Content-Type`, `Cache-Control`, `Content-Disposition` och anpassade användarmetadata (`x-amz-meta-*`) för valda objekt.
 - [x] **48. S3 Bucket Policy & CORS-redigerare** — `BucketPolicyModal` med flikar för JSON-policy och CORS-regler, backat av `getBucketPolicy`/`setBucketPolicy`/`getBucketCors`/`setBucketCors` i `S3StorageProvider`, nås via bucket-kontextmenyn.
@@ -129,8 +156,25 @@ att bygga.
 - [ ] **30. Bandbreddsbegränsning** för överföringar.
 - [ ] **31. Arkivstöd** (packa upp/zippa filer på fjärrsystemet utan att ladda ner
    dem först).
-- [ ] **32. Presigned URLs för S3-objekt** (dela en fil utan att ladda ner/upp den
-   via klienten).
+- [ ] **61. S3 Bucket Analytics — visuell storleks- och kostnadsanalys.** AWS egen
+   konsol är notoriskt svårnavigerad för att snabbt se var pengarna går. Bygg vidare på
+   #43 (rekursiv katalogstorlek) och #46 (versionshantering, redan klart) med en enkel
+   "Bucket Analytics"-flik: enkla diagram över vilka mappar som tar mest plats, samt hur
+   stor andel av utrymmet (och kostnaden) som äts upp av gamla, dolda objektversioner
+   som ligger kvar i tysthet.
+- [ ] **62. Djup integrering med lokala miljöer (Docker/WSL/Colima)** — hantera en
+   lokal Docker-container eller WSL2-distro på samma sätt som en fjärr-SSH-server, genom
+   att prata med Docker-socketen/WSL istället för SSH. Stort scope (ny lagrings-/
+   anslutningstyp, inte bara en variant av SSH/SFTP/S3) — men gör appen till ett
+   komplett allt-i-ett-verktyg för utvecklare som kör mycket lokalt.
+- [x] **32. Presigned URLs för S3-objekt** (dela en fil utan att ladda ner/upp den
+   via klienten). `getPresignedUrl` i `S3StorageProvider` (via `@aws-sdk/s3-request-presigner`,
+   klampad till SigV4:s 7-dagarsgräns), nås via "Generate Web URL(s)..." i S3-kontextmenyn
+   (`PresignedUrlModal` med expiry-val, per-länk- och "Copy All"-knappar).
+- [x] **56. "Download to..." — nedladdning till valfri lokal mapp utan att öppna en andra panel.**
+   Kontextmenyalternativ i `FilePane` för SFTP/S3 som öppnar en native mapp-väljare
+   (`dialog:open-folder`) och kör markeringen genom befintlig överföringskö/konfliktflöde,
+   istället för att kräva drag-and-drop mellan två redan öppna paneler.
 - [ ] **33. Multifönsterstöd** (öppna en andra appinstans/fönster).
 - [ ] **49. Terminal-bell och aktivitetsindikator** — stöd för ASCII Bell (auditiv signal, visuell blixt eller flikindikering när output genereras i en bakgrundsflik).
 - [ ] **50. Automatisk synkronisering vid filändring ("Keep remote directory up to date")** — övervaka en lokal katalog med filsystem-watcher och ladda automatiskt upp ändrade filer till SFTP/S3 i bakgrunden (WinSCP-funktion).
@@ -154,8 +198,8 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 - *(Seriell anslutning/COM-port: Finns i PuTTY men lägre prioritet för en ren SSH/S3-klient)*
 
 ### WinSCP (SFTP & Filhantering)
-- **Redigera fjärrfiler direkt / intern editor**: Öppna i lokal editor eller inbyggd snabbviewer -> **#4, #37**
-- **Öppna terminal i aktuell katalog**: Starta SSH-flik direkt i samma sökväg som SFTP-panelen -> **#35**
+- **Redigera fjärrfiler direkt / intern editor**: Öppna i lokal editor eller inbyggd snabbviewer -> **#4, #37** ✅
+- **Öppna terminal i aktuell katalog**: Starta SSH-flik direkt i samma sökväg som SFTP-panelen -> **#35** ✅
 - **Bokmärken / Favoritsökvägar**: Spara kataloger för snabbnavigering -> **#36**
 - **Synkroniserad bläddring**: Speglad mappnavigering i dubbelpanelen -> **#42**
 - **Kalkylera katalogstorlek**: Rekursiv storleksberäkning (`du`) -> **#43**
@@ -164,26 +208,35 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 - **Katalogövervakning ("Keep remote directory up to date")**: Auto-upload vid lokala filändringar -> **#50**
 - **Anpassade kommandon**: Kör kommandon (`tar`, `tail`, etc.) på markerade filer via SSH -> **#51**
 - **Katalogsynkronisering (Diff & Sync)**: Jämför kataloger och spegla -> **#7**
+- **Kör skript direkt på fjärrservern från filhanteraren**: Högerklick på `.sh`/`.py` -> kör i tillhörande SSH-flik -> **#59**
+- **Visuell diff/status för Git-repon på fjärrservern**: Ändrings-/konfliktikoner i filträdet -> **#60**
+- **Streama/visa enorma loggfiler utan att ladda hela filen**: Lazy loading eller `tail -f` -> **#58**
 
 ### S3 Browser (Objektlagring & S3-hantering)
 - **Bucket-livscykel: Skapa, radera & tömma**: Skapa nya buckets och tömma icke-tomma buckets rekursivt -> **#38**
-- **Versionshantering**: Visa dolda/raderade versioner, raderingsmarkörer och återställning -> **#46**
+- **Versionshantering**: Visa dolda/raderade versioner, raderingsmarkörer och återställning -> **#46** ✅
 - **Metadata & HTTP-headers**: Redigera `Content-Type`, `Cache-Control`, `x-amz-meta-*` -> **#47**
-- **Bucket Policies & CORS**: Inspektera och redigera JSON-policies och CORS-regler -> **#48**
-- **Lagringsklass & Server-side kryptering vid upload**: Välj SSE-S3/KMS och Standard/IA/Glacier -> **#22**
-- **Presigned URLs**: Generera tidsbegränsade delningslänkar -> **#32**
+- **Bucket Policies & CORS**: Inspektera och redigera JSON-policies och CORS-regler -> **#48** ✅
+- **Lagringsklass & Server-side kryptering (inkl. valbar KMS-nyckel) vid upload**: Välj SSE-S3/SSE-KMS och Standard/IA/Glacier -> **#22**
+- **Presigned URLs**: Generera tidsbegränsade delningslänkar -> **#32** ✅
+- **"Download/Copy/Move all files to.."**: Massöverföring till valfri mapp direkt från kontextmenyn -> **#56** ✅ (download), kopiera/flytta mellan godtyckliga mål återstår
+- **IAM/SSO-inloggning i stället för statiska nycklar**: `aws sso login`-flöde och lokal AWS-profilläsning -> **#57**
 - **Livscykelregler (Lifecycle)**: Automatisera övergång till IA/Glacier eller utgångsdatum -> **#52**
-- **Tagghantering**: Sätta taggar på buckets och objekt -> **#53**
+- **Tagghantering**: Sätta taggar på buckets och objekt -> **#53** ✅
 - **Statisk webbhotellshosting**: Konfigurera S3 website hosting -> **#54**
 - **Multipart tuning**: Justera chunk-storlek och samtidighet -> **#55**
+- **Kostnads-/storleksanalys per bucket**: Visuell översikt över vad som tar plats -> **#61**
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 35, 37, 46, 48, 53** redan är färdigställda,
-är de mest värdefulla nästa stegen:
+Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56** redan är
+färdigställda, är de mest värdefulla nästa stegen:
 
 1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.
 2. **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i `FilePane` för lokal disk, SFTP och S3.
 3. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
 4. **38. S3 Bucket-administration (Skapa, radera & purge)** — hantera hela livscykeln för buckets direkt i UI:t.
 5. **7. Katalogsynkronisering (Diff & Sync)** — den tyngsta efterfrågade funktionen från WinSCP-användare.
+6. **57. Dynamisk AWS-autentisering (IAM/SSO)** — utan detta är sshs3 en icke-startare i
+   många enterprise-miljöer där statiska access-nycklar är avstängda av policy; högre
+   verklig prioritet än numreringen antyder.
