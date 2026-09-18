@@ -4,8 +4,10 @@ import {
   ArrowUp,
   Clipboard,
   Cloud,
+  ExternalLink,
   FileCode,
   FileJson,
+  FileText,
   FolderOpen,
   FolderPlus,
   HardDrive,
@@ -33,6 +35,7 @@ import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
 import { NewFolderModal } from './NewFolderModal';
 import { AddToDotfilePoolModal } from './AddToDotfilePoolModal';
+import { FileEditorModal } from './FileEditorModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 
@@ -76,6 +79,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
+  const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
   const [dotfilesFeedback, setDotfilesFeedback] = useState<string | null>(null);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
@@ -117,9 +121,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
     (entry: FileEntry) => {
       if (entry.isDirectory) {
         onPathChange(entry.path);
+      } else {
+        setEditorEntry(entry);
       }
     },
     [onPathChange]
+  );
+
+  const handleOpenExternal = useCallback(
+    async (entry: FileEntry) => {
+      try {
+        await window.multissh.fileOpenExternal(source.providerId, entry.path);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to open external editor');
+      }
+    },
+    [source.providerId]
   );
 
   const handleNewFolder = useCallback(() => {
@@ -250,6 +267,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ? [
             ...(selectedEntries.length === 1 && selectedEntries[0].isDirectory
               ? [{ key: 'open', label: 'Open', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) }]
+              : []),
+            ...(selectedEntries.length === 1 && !selectedEntries[0].isDirectory
+              ? [
+                  {
+                    key: 'edit',
+                    label: 'View / Edit...',
+                    icon: FileText,
+                    onSelect: () => setEditorEntry(selectedEntries[0]),
+                  },
+                  {
+                    key: 'open-external',
+                    label: 'Open in External Editor',
+                    icon: ExternalLink,
+                    onSelect: () => void handleOpenExternal(selectedEntries[0]),
+                  },
+                ]
               : []),
             {
               key: 'rename',
@@ -404,6 +437,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
           className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <FolderPlus className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="View / Edit File"
+          disabled={selectedPaths.size !== 1 || Boolean(selectedEntries[0]?.isDirectory)}
+          onClick={() => selectedEntries[0] && setEditorEntry(selectedEntries[0])}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+        >
+          <FileText className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -605,6 +647,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onSaved={() => void load()}
         />
       )}
+
+      <FileEditorModal
+        open={editorEntry !== null}
+        providerId={source.providerId}
+        sourceType={source.sourceType}
+        entry={editorEntry}
+        onClose={() => setEditorEntry(null)}
+        onSaved={() => void load()}
+      />
 
       <NewFolderModal
         open={newFolderOpen}

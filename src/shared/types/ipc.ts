@@ -111,6 +111,13 @@ export const IPC_CHANNELS = {
   DOTFILES_SYNC_RESPOND: 'dotfiles:sync-respond',
   DOTFILES_SYNC_STATUS: 'dotfiles:sync-status',
 
+  // File Editor
+  FILE_READ: 'file:read',
+  FILE_SAVE: 'file:save',
+  FILE_OPEN_EXTERNAL: 'file:open-external',
+  FILE_CLOSE_EXTERNAL: 'file:close-external',
+  FILE_EXTERNAL_STATUS: 'file:external-status',
+
   // General
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
@@ -253,11 +260,33 @@ export interface MultiSSHApi {
   respondDotfilesSyncPrompt(id: string, resolution: DotfilesSyncResolution): Promise<void>;
   onDotfilesSyncStatus(callback: (event: DotfilesSyncStatusEvent) => void): () => void;
 
+  // File Editor
+  fileRead(providerId: string, remotePath: string, maxBytes?: number): Promise<FileReadResult>;
+  fileSave(providerId: string, remotePath: string, content: string): Promise<void>;
+  fileOpenExternal(providerId: string, remotePath: string): Promise<{ sessionToken: string; localPath: string }>;
+  fileCloseExternal(sessionToken: string): Promise<void>;
+  onExternalFileStatus(callback: (event: ExternalFileStatusEvent) => void): () => void;
+
   // Window / General
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+}
+
+export interface FileReadResult {
+  content: string;
+  size: number;
+  isBinary: boolean;
+  truncated: boolean;
+}
+
+export interface ExternalFileStatusEvent {
+  sessionToken: string;
+  remotePath: string;
+  status: 'uploaded' | 'error';
+  error?: string;
+  timestamp: string;
 }
 
 export interface SshAgentStatus {

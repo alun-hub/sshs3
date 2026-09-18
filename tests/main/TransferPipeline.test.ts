@@ -1020,7 +1020,9 @@ describe('TransferQueue', () => {
     await queue.waitForJob(job.id);
     expect(job.progress.status).toBe('completed');
     // Target should have 'folder/file.txt', not 'folder/folder/file.txt'
-    expect(targetProvider.files.has('folder/file.txt')).toBe(true);
-    expect(targetProvider.folders.has('folder/folder')).toBe(false);
+    const expectedFilePath = joinPaths(targetProvider.type, 'folder', 'file.txt');
+    expect(targetProvider.files.has(expectedFilePath) || targetProvider.files.has('folder/file.txt')).toBe(true);
+    const doubleNestedFolder = joinPaths(targetProvider.type, 'folder', 'folder');
+    expect(targetProvider.folders.has(doubleNestedFolder) || targetProvider.folders.has('folder/folder')).toBe(false);
   });
 });

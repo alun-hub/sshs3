@@ -412,7 +412,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   public async resolveRemotePath(remotePath: string): Promise<string> {
-    let p = (remotePath || '').replace(/\\/g, '/').trim();
+    const p = (remotePath || '').replace(/\\/g, '/').trim();
     if (p === '~' || p === '' || p === '.') {
       return await this.getHomeDir();
     }

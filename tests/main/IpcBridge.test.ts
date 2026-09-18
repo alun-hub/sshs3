@@ -40,6 +40,9 @@ vi.mock('electron', () => {
     dialog: {
       showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: ['/chosen/file.pem'] }),
     },
+    shell: {
+      openPath: vi.fn().mockResolvedValue(''),
+    },
     BrowserWindow: vi.fn(),
   };
   return {
@@ -1031,6 +1034,29 @@ describe('IpcBridge', () => {
       await preloadApi.dialogOpenFile(options);
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.DIALOG_OPEN_FILE, options);
     });
+
+    it('file editor methods invoke correct channels', async () => {
+      await preloadApi.fileRead('p1', '/path/file.txt', 1000);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.FILE_READ, 'p1', '/path/file.txt', 1000);
+
+      await preloadApi.fileSave('p1', '/path/file.txt', 'hello');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.FILE_SAVE, 'p1', '/path/file.txt', 'hello');
+
+      await preloadApi.fileOpenExternal('p1', '/path/file.txt');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.FILE_OPEN_EXTERNAL, 'p1', '/path/file.txt');
+
+      await preloadApi.fileCloseExternal('token-123');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.FILE_CLOSE_EXTERNAL, 'token-123');
+
+      const cb = vi.fn();
+      const unsub = preloadApi.onExternalFileStatus(cb);
+      expect(mockIpcRenderer.on).toHaveBeenCalledWith(IPC_CHANNELS.FILE_EXTERNAL_STATUS, expect.any(Function));
+      unsub();
+      expect(mockIpcRenderer.removeListener).toHaveBeenCalledWith(
+        IPC_CHANNELS.FILE_EXTERNAL_STATUS,
+        expect.any(Function)
+      );
+    });
   });
 
   describe('Storage Chmod Handler', () => {
@@ -1090,6 +1116,52 @@ describe('IpcBridge', () => {
       const res = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, { region: '', accessKeyId: 'k', secretAccessKey: 's' });
       expect(res.success).toBe(false);
       expect(res.error).toContain('Region');
+    });
+  });
+
+  describe('File Editor Handlers', () => {
+    it('delegates fileRead to fileEditorService', async () => {
+      vi.spyOn(bridge.fileEditorService, 'readFile').mockResolvedValue({
+        content: 'data',
+        size: 4,
+        isBinary: false,
+        truncated: false,
+      });
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.FILE_READ, 'test-storage', '/file.txt', 500);
+      expect(bridge.fileEditorService.readFile).toHaveBeenCalledWith(
+        bridge.storageRegistry,
+        'test-storage',
+        '/file.txt',
+        500
+      );
+      expect(res.content).toBe('data');
+    });
+
+    it('delegates fileSave to fileEditorService', async () => {
+      vi.spyOn(bridge.fileEditorService, 'saveFile').mockResolvedValue();
+
+      await mockIpc.invoke(IPC_CHANNELS.FILE_SAVE, 'test-storage', '/file.txt', 'updated');
+      expect(bridge.fileEditorService.saveFile).toHaveBeenCalledWith(
+        bridge.storageRegistry,
+        'test-storage',
+        '/file.txt',
+        'updated'
+      );
+    });
+
+    it('delegates fileOpenExternal and fileCloseExternal', async () => {
+      vi.spyOn(bridge.fileEditorService, 'openInExternalEditor').mockResolvedValue({
+        sessionToken: 'tok-1',
+        localPath: '/tmp/f.txt',
+      });
+      vi.spyOn(bridge.fileEditorService, 'closeExternalEditor').mockResolvedValue();
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.FILE_OPEN_EXTERNAL, 'test-storage', '/file.txt');
+      expect(res).toEqual({ sessionToken: 'tok-1', localPath: '/tmp/f.txt' });
+
+      await mockIpc.invoke(IPC_CHANNELS.FILE_CLOSE_EXTERNAL, 'tok-1');
+      expect(bridge.fileEditorService.closeExternalEditor).toHaveBeenCalledWith('tok-1');
     });
   });
 });

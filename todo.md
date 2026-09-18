@@ -51,8 +51,7 @@ att bygga.
 
 ### P1 — Kärnfunktioner man förväntar sig av vilken SFTP/SSH-klient som helst
 
-- [ ] **4. Redigera fil direkt** ("öppna i extern editor, ladda upp automatiskt vid
-   spara") — en av de mest använda funktionerna i WinSCP/FileZilla, saknas helt.
+- [x] **4. Redigera fil direkt** ("öppna i extern editor, ladda upp automatiskt vid spara") — `FileEditorService` laddar ner fjärrfiler temporärt, öppnar i OS standardeditor via `shell.openPath`, övervakar med `fs.watch` och laddar automatiskt upp ändringar tillbaka till SFTP/S3 vid sparning med statusnotis och sessionsstädning.
 - [x] **5. Konflikthantering vid överföring** (skriv över/hoppa över/byt namn/fråga
    varje gång). `TRANSFER_ADD` kollar nu om målfilen redan finns och visar en
    dialog (Skriv över / Hoppa över / Byt namn, med "använd för alla återstående")
@@ -83,9 +82,7 @@ att bygga.
 - [ ] **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i
    `FilePane` för att spara och snabbhoppa till ofta använda mappar på lokal disk,
    SFTP och S3.
-- [ ] **37. Inbyggd snabbviewer/editor för textfiler** — snabbgranska loggfiler eller
-   redigera konfigurationer direkt inuti appen (med syntax-highlighting) utan att
-   behöva installera eller koppla extern editor.
+- [x] **37. Inbyggd snabbviewer/editor för textfiler** — modal-editor (`FileEditorModal`) med synkroniserade radnummer, monospace, textinläsning/sparning till Local/SFTP/S3, inbyggd sökning (Ctrl+F), radbrytningsväxlare (Word Wrap), läsläge (Read-Only toggle), binär-/storleksvarning samt dirty-hantering och sparningsstatus (`yyyy-mm-dd HH:mm`). Integrerad via dubbelklick, verktygsradsknapp och kontextmeny ("Visa / Redigera" och "Öppna i extern editor").
 - [ ] **38. S3 Bucket-administration: Skapa, radera och tömma bucket (Purge)** —
    hantera hela livscykeln för buckets direkt i UI:t, inklusive regionval vid skapande
    och rekursiv tömning av objekt och versioner inför radering.
@@ -182,12 +179,11 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 5, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 46, 48, 53** redan är färdigställda,
+Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 35, 37, 46, 48, 53** redan är färdigställda,
 är de mest värdefulla nästa stegen:
 
-1. **4 & 37. Direktredigering & inbyggd textvisare** — låter användaren snabbt granska och ändra konfigurationer/filer på SFTP och S3 utan krångel.
-2. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.
-3. **35. Öppna terminal i aktuell katalog ("Open in Terminal")** — knyter ihop SFTP-utforskaren med terminalen på ett smidigt sätt.
-4. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
-5. **38 & 46. S3 Bucket-hantering & Versionshantering** — lyfter S3-stödet från en enkel filläsare till ett fullvärdigt verktyg i klass med S3 Browser.
-6. **7. Katalogsynkronisering (Diff & Sync)** — den tyngsta efterfrågade funktionen från WinSCP-användare.
+1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.
+2. **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i `FilePane` för lokal disk, SFTP och S3.
+3. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
+4. **38. S3 Bucket-administration (Skapa, radera & purge)** — hantera hela livscykeln för buckets direkt i UI:t.
+5. **7. Katalogsynkronisering (Diff & Sync)** — den tyngsta efterfrågade funktionen från WinSCP-användare.

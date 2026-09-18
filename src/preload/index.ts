@@ -7,6 +7,8 @@ import {
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type SshAgentStatus,
+  type FileReadResult,
+  type ExternalFileStatusEvent,
 } from '../shared/types/ipc';
 import type {
   DotfileImportedFile,
@@ -304,6 +306,31 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.DOTFILES_SYNC_STATUS, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.DOTFILES_SYNC_STATUS, listener);
+    };
+  },
+
+  // File Editor
+  fileRead: (providerId: string, remotePath: string, maxBytes?: number): Promise<FileReadResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, providerId, remotePath, maxBytes),
+
+  fileSave: (providerId: string, remotePath: string, content: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE, providerId, remotePath, content),
+
+  fileOpenExternal: (
+    providerId: string,
+    remotePath: string
+  ): Promise<{ sessionToken: string; localPath: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_EXTERNAL, providerId, remotePath),
+
+  fileCloseExternal: (sessionToken: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_CLOSE_EXTERNAL, sessionToken),
+
+  onExternalFileStatus: (callback: (event: ExternalFileStatusEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: ExternalFileStatusEvent) =>
+      callback(event);
+    ipcRenderer.on(IPC_CHANNELS.FILE_EXTERNAL_STATUS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.FILE_EXTERNAL_STATUS, listener);
     };
   },
 

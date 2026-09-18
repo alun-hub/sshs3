@@ -25,6 +25,7 @@ import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
+import { FileEditorService } from './editor/FileEditorService';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
@@ -78,6 +79,7 @@ export interface IpcBridgeOptions {
   settingsStore?: SettingsStore;
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
+  fileEditorService?: FileEditorService;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -92,6 +94,7 @@ export class IpcBridge {
   public readonly settingsStore: SettingsStore;
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
+  public readonly fileEditorService: FileEditorService;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -127,6 +130,7 @@ export class IpcBridge {
     this.settingsStore = options.settingsStore ?? new SettingsStore();
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
+    this.fileEditorService = options.fileEditorService ?? new FileEditorService();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -144,6 +148,7 @@ export class IpcBridge {
     this.registerSessionHandlers();
     this.registerSettingsHandlers();
     this.registerConnectionTestHandlers();
+    this.registerFileEditorHandlers();
     this.registerGeneralHandlers();
     this.setupEventListeners();
   }
@@ -948,6 +953,56 @@ export class IpcBridge {
     );
   }
 
+  private registerFileEditorHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.FILE_READ,
+      async (_event, providerId: string, remotePath: string, maxBytes?: number) => {
+        return await this.fileEditorService.readFile(
+          this.storageRegistry,
+          providerId,
+          remotePath,
+          maxBytes
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FILE_SAVE,
+      async (_event, providerId: string, remotePath: string, content: string) => {
+        await this.fileEditorService.saveFile(
+          this.storageRegistry,
+          providerId,
+          remotePath,
+          content
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FILE_OPEN_EXTERNAL,
+      async (_event, providerId: string, remotePath: string) => {
+        return await this.fileEditorService.openInExternalEditor(
+          this.storageRegistry,
+          providerId,
+          remotePath,
+          (statusEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.FILE_EXTERNAL_STATUS, statusEvent);
+            }
+          }
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FILE_CLOSE_EXTERNAL,
+      async (_event, sessionToken: string) => {
+        await this.fileEditorService.closeExternalEditor(sessionToken);
+      }
+    );
+  }
+
   private registerGeneralHandlers(): void {
     this.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
       try {
@@ -1100,6 +1155,7 @@ export class IpcBridge {
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();
+    await this.fileEditorService.dispose();
     await AgentLifecycleManager.stopManagedAgent();
   }
 }
