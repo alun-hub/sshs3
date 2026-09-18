@@ -193,28 +193,24 @@ export class SmartcardDetector {
     }
 
     // Outgoing proxy option (-o ProxyCommand=...)
+    // Always routed through proxyCli.cjs (a small Node script that speaks the
+    // HTTP/SOCKS4/SOCKS5 handshake itself) rather than the external `nc`
+    // binary, since `nc` isn't available on Windows and isn't guaranteed
+    // elsewhere either.
     if (config.proxy?.enabled && config.proxy.host) {
       const p = config.proxy;
       const port = p.port || (p.type === 'http' ? 8080 : 1080);
-      if (p.username) {
-        const currentDir =
-          typeof __dirname !== 'undefined'
-            ? __dirname
-            : path.dirname(fileURLToPath(import.meta.url));
-        const devPath = path.resolve(currentDir, '../proxy/proxyCli.cjs');
-        const distPath = path.resolve(currentDir, 'proxyCli.cjs');
-        const cliPath = fsSync.existsSync(distPath) ? distPath : devPath;
-        args.push(
-          '-o',
-          `ProxyCommand=node "${cliPath}" ${p.type} ${p.host} ${port} %h %p "${p.username}" "${p.password || ''}"`
-        );
-      } else if (p.type === 'http') {
-        args.push('-o', `ProxyCommand=nc -X connect -x ${p.host}:${port} %h %p`);
-      } else if (p.type === 'socks5') {
-        args.push('-o', `ProxyCommand=nc -X 5 -x ${p.host}:${port} %h %p`);
-      } else if (p.type === 'socks4') {
-        args.push('-o', `ProxyCommand=nc -X 4 -x ${p.host}:${port} %h %p`);
-      }
+      const currentDir =
+        typeof __dirname !== 'undefined'
+          ? __dirname
+          : path.dirname(fileURLToPath(import.meta.url));
+      const devPath = path.resolve(currentDir, '../proxy/proxyCli.cjs');
+      const distPath = path.resolve(currentDir, 'proxyCli.cjs');
+      const cliPath = fsSync.existsSync(distPath) ? distPath : devPath;
+      args.push(
+        '-o',
+        `ProxyCommand=node "${cliPath}" ${p.type} ${p.host} ${port} %h %p "${p.username || ''}" "${p.password || ''}"`
+      );
     }
 
     // Destination target (username@host or host), preceded by '--' to prevent flag injection

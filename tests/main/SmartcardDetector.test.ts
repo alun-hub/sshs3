@@ -285,7 +285,7 @@ describe('SmartcardDetector', () => {
       expect(args).toContain('-o');
       const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
       expect(proxyOpt).toBeDefined();
-      expect(proxyOpt).toContain('127.0.0.1:8080 %h %p');
+      expect(proxyOpt).toContain('proxyCli.cjs" http 127.0.0.1 8080 %h %p');
     });
 
     it('should generate ProxyCommand for unauthenticated SOCKS5 proxy', () => {
@@ -306,7 +306,7 @@ describe('SmartcardDetector', () => {
       const args = SmartcardDetector.buildSSHArguments(config);
       const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
       expect(proxyOpt).toBeDefined();
-      expect(proxyOpt).toContain('nc -X 5 -x 10.0.0.1:1080 %h %p');
+      expect(proxyOpt).toContain('proxyCli.cjs" socks5 10.0.0.1 1080 %h %p');
     });
 
     it('should generate proxyCli ProxyCommand when proxy authentication is configured', () => {
