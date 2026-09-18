@@ -18,6 +18,19 @@ export interface LocalStorageProviderOptions {
   basePath?: string;
 }
 
+/**
+ * Windows has no real POSIX permission bits — Node synthesizes a mode from
+ * just the read-only file attribute, so showing it as a raw octal number
+ * (e.g. "666") is meaningless there. Show the read-only attribute in plain
+ * words instead, and keep the real octal mode on POSIX platforms.
+ */
+function formatPermissions(mode: number): string {
+  if (process.platform === 'win32') {
+    return (mode & 0o200) === 0 ? 'Read-only' : '';
+  }
+  return (mode & 0o777).toString(8).padStart(3, '0');
+}
+
 export class LocalStorageProvider extends BaseStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -83,7 +96,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
           isDirectory: isDir,
           mtime: formatDate(itemStats.mtime),
           mimeType: isDir ? undefined : getMimeType(entry.name),
-          permissions: (itemStats.mode & 0o777).toString(8).padStart(3, '0'),
+          permissions: formatPermissions(itemStats.mode),
         });
       } catch {
         // Fallback for unreadable items / broken symlinks
@@ -121,7 +134,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
       isDirectory: isDir,
       mtime: formatDate(stats.mtime),
       mimeType: isDir ? undefined : getMimeType(name),
-      permissions: (stats.mode & 0o777).toString(8).padStart(3, '0'),
+      permissions: formatPermissions(stats.mode),
     };
   }
 
