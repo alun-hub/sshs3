@@ -123,6 +123,7 @@ export const IPC_CHANNELS = {
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
+  APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
   DIALOG_OPEN_FILE: 'dialog:open-file',
 } as const;
 
@@ -274,6 +275,8 @@ export interface MultiSSHApi {
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
+  /** Windows only: which optional local shells (currently just PowerShell 7 / pwsh) are actually on PATH. */
+  detectLocalShells(): Promise<{ pwsh: boolean }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
 }
 

@@ -356,6 +356,9 @@ export const api: MultiSSHApi = {
   getPlatform: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PLATFORM),
 
+  detectLocalShells: (): Promise<{ pwsh: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS),
+
   dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),
 };
