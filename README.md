@@ -40,6 +40,7 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 
 ### S3 & object storage
 - **AWS S3**, **MinIO**, **NetApp StorageGRID**, and any other S3-compatible endpoint, with custom endpoints, region selection, path-style addressing, and self-signed CA support.
+- **AWS SSO (IAM Identity Center) login** — sign in through the same OIDC device-authorization flow as `aws sso login`: approve once in your browser, then pick an account and role from the list sshs3 fetches for you. Issues short-lived, browser-approved credentials for an S3 profile instead of a long-lived static access key/secret pair.
 - **Bucket/object tagging**, a **bucket policy editor**, **CORS configuration**, and **object versioning** (list, restore, delete specific versions).
 
 ### Networking, proxies & SSH tunnels
@@ -54,6 +55,14 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 - Define a reusable pool of files (`.bashrc`, `.vimrc`, etc.) and assign it to specific SSH profiles.
 - On connect, a short-lived background SFTP check compares the pool against the live server and, depending on the profile's policy, either shows a non-blocking banner to review and apply the diff, or updates silently.
 - Disabled by default at two levels: a global settings switch, and a per-host pool/policy assignment — nothing runs until both are explicitly turned on.
+
+### Remote profile sync *(opt-in, "own your data")*
+- Back up and sync connection profiles, dotfile pools, and app settings to your own S3 bucket or SFTP server — no sshs3-operated cloud service involved.
+- **Zero-knowledge, client-side encryption**: everything is encrypted with AES-256-GCM (scrypt-derived keys) before it's uploaded, under **two independent master passwords** — one for topology (hostnames, ports; safe to eventually share with a team) and one for credentials (usernames, saved passwords, API keys, dotfile contents). Neither password, nor the keys derived from them, ever leaves the device.
+- **Per-record merge, not overwrite**: pulling changes reconciles each profile/dotfile individually by last-edited timestamp (with tombstones so deletions propagate correctly too), so two machines edited independently don't clobber each other.
+- Can optionally sync a managed block inside `~/.ssh/config` and append new entries to `~/.ssh/known_hosts` — everything else in those files is left untouched, and a host-key mismatch between machines is surfaced as a conflict rather than ever auto-resolved.
+- **"Import existing profile from the cloud"** bootstraps a brand-new machine straight from an already-configured sync target.
+- Configured under Settings → Synchronization.
 
 ### Profiles & security
 - Organize SSH and S3 profiles into folders/groups, with quick filtering and "recently used" ordering.
@@ -85,8 +94,10 @@ main process (src/main) — IpcBridge routes every channel to a dedicated servic
 - **Host key trust** (`KnownHostsStore`, `HostKeyVerifier`) implements TOFU (trust-on-first-use) verification independent of the OS's own `known_hosts`, since the SFTP path goes through the `ssh2` library rather than the system `ssh` client.
 - **Smartcard auth** (`SmartcardDetector`, `AskpassServer`) detects installed PKCS#11 modules on disk and, when a smartcard profile connects, starts a loopback TCP server that OpenSSH's askpass mechanism talks to for the PIN prompt, relayed to an in-app dialog.
 - **`AgentLifecycleManager`** probes for a running `ssh-agent` (or the Windows OpenSSH Authentication Agent service) and can spawn/manage one itself so key-based auth works even if the user hasn't started an agent manually.
+- **`AwsSsoAuthService`** drives the AWS SSO OIDC device-authorization flow (client registration → device code → browser approval → token polling), caching the client registration and issued token the same way the AWS CLI does under `~/.aws/sso/cache`, then uses `@aws-sdk/client-sso` to list accounts/roles and mint short-lived credentials for an S3 profile.
+- **Remote profile sync** (`SyncCryptoService`, `ProfileSyncService`, `SyncConfigStore`, `SshNativeFileMerger`) is a separate, opt-in layer on top of the same `IStorageProvider` used by the file manager: it derives two AES-256-GCM keys via scrypt (one per master password), splits each profile into a non-secret "topology" half and a secret "credentials" half before encrypting them into separate files, and merges pulled data back in per-record by timestamp rather than overwriting local state wholesale. `~/.ssh/config`/`known_hosts` handling lives in its own pure-text-merge module, kept deliberately separate from the JSON-record merge logic since they're real files shared with the system's own SSH client.
 - **`SystemTrustStore`** reads the OS's CA bundle (via `win-ca` on Windows, or the known Linux distro bundle paths) at startup so S3/TLS connections to internally-issued certificates succeed without manual CA configuration.
-- **Persistence** (`ProfileStore`, `SettingsStore`, `SessionStore`, `DotfilePoolStore`, `KnownHostsStore`) is all flat JSON under Electron's per-OS `userData` directory, written through a serialized mutation queue to avoid concurrent-write corruption, with secret fields passed through `safeStorage` before hitting disk.
+- **Persistence** (`ProfileStore`, `SettingsStore`, `SessionStore`, `DotfilePoolStore`, `KnownHostsStore`, `SyncConfigStore`) is all flat JSON under Electron's per-OS `userData` directory, written through a serialized mutation queue to avoid concurrent-write corruption, with secret fields passed through `safeStorage` before hitting disk.
 - **Dotfiles sync** (`DotfileSyncService`) opens its own short-lived SFTP connection — separate from the interactive PTY session — to diff and, on approval, atomically write (`temp file + rename`) pool files to a host.
 
 ---
@@ -103,7 +114,8 @@ sshs3 wouldn't exist without these projects:
 | [node-pty](https://github.com/microsoft/node-pty) | Spawns and drives the real `ssh`/shell process as a pseudo-terminal |
 | [ssh2](https://github.com/mscdex/ssh2) | SSH2 protocol client used for SFTP connections, tunnels, and host-key handling |
 | [ssh2-sftp-client](https://github.com/theophilusx/ssh2-sftp-client) | Promise-based SFTP convenience layer on top of `ssh2` |
-| [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`) | S3-compatible object storage operations (AWS, MinIO, NetApp StorageGRID, etc.) |
+| [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`, `@aws-sdk/s3-request-presigner`) | S3-compatible object storage operations (AWS, MinIO, NetApp StorageGRID, etc.) |
+| [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-sso`, `@aws-sdk/client-sso-oidc`, `@aws-sdk/credential-provider-sso`) | AWS SSO (IAM Identity Center) device-authorization login, account/role listing, and temporary credentials |
 | [win-ca](https://github.com/ukoloff/win-ca) | Reads the Windows certificate store so corporate/self-signed CAs are trusted |
 | [Tailwind CSS](https://tailwindcss.com/) | Utility-first styling for the renderer UI |
 | [lucide-react](https://lucide.dev/) | Icon set used throughout the UI |

@@ -13,6 +13,8 @@ export interface DotfilePoolFile {
   masterFilePath?: string;
   /** Timestamp formatted as yyyy-mm-dd HH:mm */
   updatedAt?: string;
+  /** Timestamp formatted as yyyy-mm-dd HH:mm, set instead of removing the file, so sync can propagate the deletion. */
+  deletedAt?: string;
 }
 
 export interface DotfilePool {
@@ -23,6 +25,8 @@ export interface DotfilePool {
   masterDirectory?: string;
   /** Timestamp formatted as yyyy-mm-dd HH:mm */
   updatedAt?: string;
+  /** Timestamp formatted as yyyy-mm-dd HH:mm, set instead of removing the pool, so sync can propagate the deletion. */
+  deletedAt?: string;
 }
 
 export interface DotfileImportedFile {

@@ -66,12 +66,21 @@ export class SettingsStore {
     }
   }
 
-  public async saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
+  /**
+   * @param options.preserveTimestamp When true, don't stamp `updatedAt` with
+   *   "now". Used exclusively by remote profile sync when writing back the
+   *   winning side's settings object as-is.
+   */
+  public async saveSettings(
+    partial: Partial<AppSettings>,
+    options?: { preserveTimestamp?: boolean }
+  ): Promise<AppSettings> {
     return this.queueMutation(async () => {
       const current = await this.getSettings();
       const updated: AppSettings = {
         ...current,
         ...partial,
+        updatedAt: options?.preserveTimestamp ? (partial.updatedAt ?? current.updatedAt) : new Date().toISOString(),
       };
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
       await fs.writeFile(this.filePath, JSON.stringify(updated, null, 2), {

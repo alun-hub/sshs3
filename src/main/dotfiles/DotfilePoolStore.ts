@@ -69,7 +69,7 @@ export class DotfilePoolStore {
     }
   }
 
-  public async getPools(): Promise<DotfilePool[]> {
+  public async getPools(options?: { includeDeleted?: boolean }): Promise<DotfilePool[]> {
     const pools = await this.readRawPools();
     for (const pool of pools) {
       pool.masterDirectory = this.getPoolDirectory(pool.id);
@@ -85,15 +85,29 @@ export class DotfilePoolStore {
         }
       }
     }
-    return pools;
+    if (options?.includeDeleted) {
+      return pools;
+    }
+    // Hide soft-deleted (tombstoned) pools/files from normal callers. Only
+    // remote profile sync (via includeDeleted: true) needs to see these, so
+    // it can propagate the deletion to other machines.
+    return pools
+      .filter((pool) => !pool.deletedAt)
+      .map((pool) => ({ ...pool, files: pool.files.filter((file) => !file.deletedAt) }));
   }
 
-  public async getPool(id: string): Promise<DotfilePool | undefined> {
-    const pools = await this.getPools();
+  public async getPool(id: string, options?: { includeDeleted?: boolean }): Promise<DotfilePool | undefined> {
+    const pools = await this.getPools(options);
     return pools.find((p) => p.id === id);
   }
 
-  public async savePool(pool: DotfilePool): Promise<void> {
+  /**
+   * @param options.preserveTimestamps When true, skip auto-stamping
+   *   pool/file `updatedAt`. Used exclusively by remote profile sync when
+   *   writing back an already-merged pool, so the timestamps that the merge
+   *   decision was based on aren't overwritten with "now".
+   */
+  public async savePool(pool: DotfilePool, options?: { preserveTimestamps?: boolean }): Promise<void> {
     if (!pool || !pool.id || typeof pool.id !== 'string' || !pool.id.trim()) {
       throw new Error('Pool ID is required');
     }
@@ -102,9 +116,16 @@ export class DotfilePoolStore {
       const poolDir = this.getPoolDirectory(pool.id);
       await fs.mkdir(poolDir, { recursive: true });
 
+      const existingPools = await this.readRawPools();
+      const existingFilesById = new Map(
+        (existingPools.find((p) => p.id === pool.id)?.files ?? []).map((f) => [f.id, f])
+      );
+
       const now = formatTimestamp();
       pool.masterDirectory = poolDir;
-      pool.updatedAt = now;
+      if (!options?.preserveTimestamps) {
+        pool.updatedAt = now;
+      }
 
       // Write master files to disk
       for (const file of pool.files) {
@@ -128,7 +149,22 @@ export class DotfilePoolStore {
 
         file.masterFilePath = masterPath;
         file.masterFileName = path.basename(masterPath);
-        file.updatedAt = file.updatedAt || now;
+        if (!options?.preserveTimestamps) {
+          // Bump the timestamp whenever this file's actual content/mode/path
+          // differs from what's on disk, not just when it was previously
+          // unset — otherwise a caller that maps over an existing files
+          // array to edit one entry (rather than always setting updatedAt
+          // itself) would silently keep a stale timestamp on the edited
+          // file, which is exactly what remote profile sync's merge
+          // decisions rely on being accurate.
+          const existingFile = existingFilesById.get(file.id);
+          const contentChanged =
+            !existingFile ||
+            existingFile.content !== file.content ||
+            existingFile.mode !== file.mode ||
+            existingFile.remotePath !== file.remotePath;
+          file.updatedAt = contentChanged ? now : (file.updatedAt ?? existingFile?.updatedAt ?? now);
+        }
       }
 
       const pools = await this.readRawPools();
@@ -146,9 +182,16 @@ export class DotfilePoolStore {
     if (!id) return;
     return this.queueMutation(async () => {
       const pools = await this.readRawPools();
-      const filtered = pools.filter((p) => p.id !== id);
-      if (filtered.length !== pools.length) {
-        await this.persist(filtered);
+      const pool = pools.find((p) => p.id === id && !p.deletedAt);
+      if (pool) {
+        const now = formatTimestamp();
+        // Soft-delete: keep a lightweight tombstone (no file contents, they're
+        // gone from disk below) so remote profile sync can propagate the
+        // deletion instead of the pool silently reappearing on the next pull.
+        pool.deletedAt = now;
+        pool.updatedAt = now;
+        pool.files = [];
+        await this.persist(pools);
       }
       try {
         await fs.rm(this.getPoolDirectory(id), { recursive: true, force: true });
@@ -156,6 +199,14 @@ export class DotfilePoolStore {
         // Ignore folder deletion failure
       }
     });
+  }
+
+  /**
+   * Same as getPools({ includeDeleted: true }), provided as a clearer entry
+   * point for remote profile sync.
+   */
+  public async getPoolsIncludingTombstones(): Promise<DotfilePool[]> {
+    return this.getPools({ includeDeleted: true });
   }
 
   public async openPoolFolder(poolId: string): Promise<string> {

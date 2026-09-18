@@ -44,12 +44,12 @@ describe('ProfileStore', () => {
     await store.saveSSH(sshConfig);
     const profiles = await store.getProfiles();
     expect(profiles.ssh).toHaveLength(1);
-    expect(profiles.ssh[0]).toEqual(sshConfig);
+    expect(profiles.ssh[0]).toEqual({ ...sshConfig, updatedAt: expect.any(String) });
 
     // Verify persistence across new store instance
     const store2 = new ProfileStore(storePath);
     const profiles2 = await store2.getProfiles();
-    expect(profiles2.ssh[0]).toEqual(sshConfig);
+    expect(profiles2.ssh[0]).toEqual({ ...sshConfig, updatedAt: expect.any(String) });
   });
 
   it('updates an existing SSH profile with the same ID', async () => {
@@ -120,7 +120,7 @@ describe('ProfileStore', () => {
     await store.saveS3(s3Config);
     const profiles = await store.getProfiles();
     expect(profiles.s3).toHaveLength(1);
-    expect(profiles.s3[0]).toEqual(s3Config);
+    expect(profiles.s3[0]).toEqual({ ...s3Config, updatedAt: expect.any(String) });
   });
 
   it('updates an existing S3 profile with the same ID', async () => {

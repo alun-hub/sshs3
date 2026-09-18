@@ -24,6 +24,7 @@ import type {
   DotfilesSyncResolution,
   DotfilesSyncStatusEvent,
 } from './dotfiles';
+import type { ProfileSyncStatus, ProfileSyncPullResult } from './sync';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -95,6 +96,16 @@ export const IPC_CHANNELS = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+
+  // Remote profile sync ("Remote Profile Sync" — distinct from the
+  // dotfiles:sync-* channels above, which deploy a dotfile pool to a remote
+  // SSH server on connect. This syncs the user's own profiles/pools/settings
+  // between their own machines via a Zero-Knowledge-encrypted S3/SFTP target.)
+  PROFILE_SYNC_SETUP: 'profile-sync:setup',
+  PROFILE_SYNC_ENABLE: 'profile-sync:enable',
+  PROFILE_SYNC_PUSH: 'profile-sync:push',
+  PROFILE_SYNC_PULL: 'profile-sync:pull',
+  PROFILE_SYNC_STATUS: 'profile-sync:status',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -255,6 +266,16 @@ export interface MultiSSHApi {
   // Settings
   settingsGet(): Promise<AppSettings>;
   settingsSave(settings: Partial<AppSettings>): Promise<AppSettings>;
+
+  // Remote profile sync
+  profileSyncSetup(payload: { target: StorageConnectConfig; remoteBasePath?: string }): Promise<void>;
+  profileSyncEnable(passwords: { topologyPassword: string; credentialsPassword: string }): Promise<ProfileSyncStatus>;
+  profileSyncPush(): Promise<ProfileSyncStatus>;
+  profileSyncPull(passwords?: {
+    topologyPassword?: string;
+    credentialsPassword?: string;
+  }): Promise<ProfileSyncPullResult & ProfileSyncStatus>;
+  profileSyncStatus(): Promise<ProfileSyncStatus>;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

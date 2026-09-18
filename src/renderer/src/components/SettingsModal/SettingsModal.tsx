@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Lock,
   FileCode,
+  RefreshCw,
 } from 'lucide-react';
 import {
   SHORTCUT_DEFINITIONS,
@@ -25,6 +26,7 @@ import {
 } from '@shared/types/settings';
 import type { DetectedSmartcardLib } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
+import { SyncSettingsPanel } from './SyncSettingsPanel';
 
 interface SettingsModalProps {
   open: boolean;
@@ -42,7 +44,7 @@ const FONT_PRESETS = [
   'monospace',
 ];
 
-type SettingsCategory = 'general' | 'terminal' | 'files' | 'security' | 'shortcuts';
+type SettingsCategory = 'general' | 'terminal' | 'files' | 'security' | 'sync' | 'shortcuts';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   open,
@@ -179,6 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'terminal', label: 'Terminal', icon: Terminal },
     { id: 'files', label: 'Files & Storage', icon: FolderTree },
     { id: 'security', label: 'Security & Smartcard', icon: Shield },
+    { id: 'sync', label: 'Synchronization', icon: RefreshCw },
     { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
   ];
 
@@ -698,6 +701,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Category: Synchronization */}
+              {activeCategory === 'sync' && <SyncSettingsPanel />}
 
               {/* Category: Keyboard Shortcuts */}
               {activeCategory === 'shortcuts' && (

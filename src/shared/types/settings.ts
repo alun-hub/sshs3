@@ -44,6 +44,8 @@ export interface AppSettings {
   dotfilesPoolEnabled?: boolean;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
   sessionExitAction?: SessionExitAction;
+  /** ISO 8601 timestamp of the last edit. Used by remote profile sync to pick the newer whole-object copy. */
+  updatedAt?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

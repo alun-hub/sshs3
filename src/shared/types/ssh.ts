@@ -31,6 +31,10 @@ export interface SSHConnectionConfig {
   proxy?: ProxyConfig;
   group?: string;
   lastUsedAt?: string;
+  /** ISO 8601 timestamp of the last edit. Used by remote profile sync to resolve conflicts. */
+  updatedAt?: string;
+  /** ISO 8601 timestamp set instead of removing the entry outright, so sync can propagate the deletion. */
+  deletedAt?: string;
   compression?: boolean;
   serverAliveInterval?: number;
   ciphers?: string;

@@ -29,6 +29,9 @@ import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { FileEditorService } from './editor/FileEditorService';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
+import { SyncConfigStore } from './services/SyncConfigStore';
+import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
+import { ProfileSyncService } from './services/ProfileSyncService';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
@@ -55,6 +58,7 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
+import type { ProfileSyncStatus, ProfileSyncPullResult } from '../shared/types/sync';
 
 const execFileAsync = promisify(execFile);
 
@@ -92,6 +96,9 @@ export interface IpcBridgeOptions {
   dotfileSyncService?: DotfileSyncService;
   fileEditorService?: FileEditorService;
   awsSsoAuthService?: AwsSsoAuthService;
+  syncConfigStore?: SyncConfigStore;
+  syncCryptoService?: SyncCryptoService;
+  profileSyncService?: ProfileSyncService;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -108,6 +115,9 @@ export class IpcBridge {
   public readonly dotfileSyncService: DotfileSyncService;
   public readonly fileEditorService: FileEditorService;
   public readonly awsSsoAuthService: AwsSsoAuthService;
+  public readonly syncConfigStore: SyncConfigStore;
+  public readonly syncCryptoService: SyncCryptoService;
+  public readonly profileSyncService: ProfileSyncService;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -146,6 +156,11 @@ export class IpcBridge {
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
+    this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
+    this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
+    this.profileSyncService =
+      options.profileSyncService ??
+      new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService);
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -162,6 +177,7 @@ export class IpcBridge {
     this.registerDotfileHandlers();
     this.registerSessionHandlers();
     this.registerSettingsHandlers();
+    this.registerSyncHandlers();
     this.registerConnectionTestHandlers();
     this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
@@ -910,6 +926,142 @@ export class IpcBridge {
         return await this.settingsStore.saveSettings(settings);
       }
     );
+  }
+
+  private async buildSyncStatus(): Promise<ProfileSyncStatus> {
+    const config = await this.syncConfigStore.getConfig();
+    return {
+      configured: !!config.target,
+      target:
+        config.target && (config.target.type === 'sftp' || config.target.type === 's3')
+          ? { id: config.target.id, name: config.target.name, type: config.target.type }
+          : undefined,
+      remoteBasePath: config.remoteBasePath,
+      hasLocalSalts: !!(config.topologySaltBase64 && config.credentialsSaltBase64),
+      topologyUnlocked: this.syncCryptoService.isUnlocked('topology'),
+      credentialsUnlocked: this.syncCryptoService.isUnlocked('credentials'),
+      lastSyncAt: config.lastSyncAt,
+    };
+  }
+
+  private registerSyncHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_SETUP,
+      async (_event, payload: { target: StorageConnectConfig; remoteBasePath?: string }) => {
+        const target = payload?.target;
+        if (!target || !target.id || !target.name) {
+          throw new Error('A sync target with an id and name is required');
+        }
+        if (target.type !== 'sftp' && target.type !== 's3') {
+          throw new Error('Remote profile sync only supports an SFTP or S3 target');
+        }
+        if (target.type === 's3' && !payload.remoteBasePath?.trim()) {
+          throw new Error('An S3 target requires a bucket (optionally "bucket/prefix") to sync to');
+        }
+        await this.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_ENABLE,
+      async (
+        _event,
+        passwords: { topologyPassword: string; credentialsPassword: string }
+      ): Promise<ProfileSyncStatus> => {
+        if (!passwords?.topologyPassword || !passwords?.credentialsPassword) {
+          throw new Error('Both the topology and credentials master passwords are required');
+        }
+
+        const config = await this.syncConfigStore.getConfig();
+        if (!config.target) {
+          throw new Error('Configure a sync target first (profile-sync:setup)');
+        }
+        const provider = await this.storageRegistry.getOrCreate(config.target);
+
+        if (config.topologySaltBase64 && config.credentialsSaltBase64) {
+          this.syncCryptoService.unlock(
+            'topology',
+            passwords.topologyPassword,
+            Buffer.from(config.topologySaltBase64, 'base64')
+          );
+          this.syncCryptoService.unlock(
+            'credentials',
+            passwords.credentialsPassword,
+            Buffer.from(config.credentialsSaltBase64, 'base64')
+          );
+          // Validates both passwords immediately -- a wrong one fails to
+          // decrypt here -- and picks up anything changed on another
+          // machine, rather than only failing lazily on the next push.
+          await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+        } else {
+          if (await this.profileSyncService.hasRemoteData(provider, config.remoteBasePath ?? '')) {
+            throw new Error(
+              'This sync target already has data pushed from another machine. Use profile-sync:pull to bootstrap this machine instead of profile-sync:enable.'
+            );
+          }
+          const topologySalt = generateSalt();
+          const credentialsSalt = generateSalt();
+          this.syncCryptoService.unlock('topology', passwords.topologyPassword, topologySalt);
+          this.syncCryptoService.unlock('credentials', passwords.credentialsPassword, credentialsSalt);
+          await this.syncConfigStore.setSalts({ topologySalt, credentialsSalt });
+          await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
+        }
+
+        await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+        return await this.buildSyncStatus();
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.PROFILE_SYNC_PUSH, async (): Promise<ProfileSyncStatus> => {
+      const config = await this.syncConfigStore.getConfig();
+      if (!config.target) {
+        throw new Error('Configure a sync target first (profile-sync:setup)');
+      }
+      const provider = await this.storageRegistry.getOrCreate(config.target);
+      await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
+      await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+      return await this.buildSyncStatus();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_PULL,
+      async (
+        _event,
+        passwords?: { topologyPassword?: string; credentialsPassword?: string }
+      ): Promise<ProfileSyncPullResult & ProfileSyncStatus> => {
+        const config = await this.syncConfigStore.getConfig();
+        if (!config.target) {
+          throw new Error('Configure a sync target first (profile-sync:setup)');
+        }
+        const provider = await this.storageRegistry.getOrCreate(config.target);
+
+        const result = await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '', {
+          topology: passwords?.topologyPassword,
+          credentials: passwords?.credentialsPassword,
+        });
+
+        // Bootstrap on a fresh machine: persist whichever salt(s) this pull
+        // just learned from the downloaded files, without touching a salt
+        // that was already known (e.g. only one of the two passwords was
+        // supplied this time).
+        const topologySalt = this.syncCryptoService.getSalt('topology');
+        const credentialsSalt = this.syncCryptoService.getSalt('credentials');
+        if ((topologySalt && !config.topologySaltBase64) || (credentialsSalt && !config.credentialsSaltBase64)) {
+          await this.syncConfigStore.setSalts({
+            topologySalt: !config.topologySaltBase64 ? topologySalt : undefined,
+            credentialsSalt: !config.credentialsSaltBase64 ? credentialsSalt : undefined,
+          });
+        }
+
+        await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+        const status = await this.buildSyncStatus();
+        return { ...result, ...status };
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.PROFILE_SYNC_STATUS, async (): Promise<ProfileSyncStatus> => {
+      return await this.buildSyncStatus();
+    });
   }
 
   private registerConnectionTestHandlers(): void {

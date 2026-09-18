@@ -10,6 +10,7 @@ import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
+import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { SplitLayout, TerminalPaneConfig } from '@shared/types/session';
@@ -87,6 +88,7 @@ export const App: React.FC = () => {
   const [activeTabId, setActiveTabId] = useState<string>('term-1');
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -307,6 +309,14 @@ export const App: React.FC = () => {
     setSettingsModalOpen(true);
   };
 
+  const handleSyncBootstrapComplete = () => {
+    // Settings may have just been pulled in; profiles/dotfile pools are
+    // already re-read fresh from disk whenever their own modals open.
+    void window.multissh.settingsGet?.().then((saved) => {
+      if (saved) setSettings(saved);
+    });
+  };
+
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
     void window.multissh.settingsSave?.(newSettings);
@@ -438,6 +448,13 @@ export const App: React.FC = () => {
               className="rounded-lg bg-sky-500/15 border border-sky-500/30 px-3.5 py-1.5 text-xs text-sky-400 hover:bg-sky-500/25 transition-colors"
             >
               Open New Terminal
+            </button>
+            <button
+              type="button"
+              onClick={() => setSyncBootstrapModalOpen(true)}
+              className="text-[11px] text-txt-muted hover:text-sky-400 hover:underline transition-colors"
+            >
+              Import existing profile from the cloud
             </button>
           </div>
         ) : (
@@ -723,6 +740,12 @@ export const App: React.FC = () => {
         currentSettings={settings}
         onSave={handleSaveSettings}
         onClose={() => setSettingsModalOpen(false)}
+      />
+
+      <SyncBootstrapModal
+        open={syncBootstrapModalOpen}
+        onClose={() => setSyncBootstrapModalOpen(false)}
+        onComplete={handleSyncBootstrapComplete}
       />
     </div>
   );

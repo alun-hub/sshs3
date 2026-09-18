@@ -36,6 +36,7 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
+import type { ProfileSyncStatus, ProfileSyncPullResult } from '../shared/types/sync';
 
 export const api: MultiSSHApi = {
   // Terminal
@@ -271,6 +272,25 @@ export const api: MultiSSHApi = {
 
   settingsSave: (settings: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE, settings),
+
+  // Remote profile sync
+  profileSyncSetup: (payload: { target: StorageConnectConfig; remoteBasePath?: string }): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, payload),
+
+  profileSyncEnable: (passwords: {
+    topologyPassword: string;
+    credentialsPassword: string;
+  }): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, passwords),
+
+  profileSyncPush: (): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_PUSH),
+
+  profileSyncPull: (passwords?: {
+    topologyPassword?: string;
+    credentialsPassword?: string;
+  }): Promise<ProfileSyncPullResult & ProfileSyncStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_PULL, passwords),
+
+  profileSyncStatus: (): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS),
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>
