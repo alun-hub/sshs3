@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle2, FolderOpen, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
+import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
 
 interface S3ProfileFormProps {
   initial?: S3Config;
@@ -13,6 +14,7 @@ function emptyConfig(): S3Config {
     id: crypto.randomUUID(),
     name: '',
     region: 'us-east-1',
+    authMode: 'static',
     accessKeyId: '',
     secretAccessKey: '',
     forcePathStyle: false,
@@ -26,10 +28,81 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const selfSigned = config.rejectUnauthorized === false;
+  const authMode = config.authMode ?? 'static';
+
+  // AWS SSO sign-in state. The access token only lives here in memory (to
+  // fetch the account/role pickers) and is never stored on the profile —
+  // S3StorageProvider re-derives credentials from the on-disk SSO token
+  // cache via fromSSO() at connect time.
+  const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
+  const [ssoAccessToken, setSsoAccessToken] = useState<string | null>(null);
+  const [ssoAccounts, setSsoAccounts] = useState<AwsSsoAccount[]>([]);
+  const [ssoRoles, setSsoRoles] = useState<AwsSsoAccountRole[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [ssoManualEntry, setSsoManualEntry] = useState(false);
 
   const update = <K extends keyof S3Config>(key: K, value: S3Config[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
     if (testResult) setTestResult(null);
+  };
+
+  const updateSso = (patch: Partial<NonNullable<S3Config['sso']>>) => {
+    setConfig((prev) => ({
+      ...prev,
+      sso: { startUrl: '', region: prev.region || 'us-east-1', ...prev.sso, ...patch },
+    }));
+    if (testResult) setTestResult(null);
+  };
+
+  const setAuthMode = (mode: 'static' | 'sso') => {
+    setConfig((prev) => ({ ...prev, authMode: mode }));
+    setTestResult(null);
+  };
+
+  const handleAwsSsoLogin = async () => {
+    const startUrl = config.sso?.startUrl?.trim();
+    const region = config.sso?.region?.trim() || config.region || 'us-east-1';
+    if (!startUrl) return;
+
+    setSsoError(null);
+    setSsoAccounts([]);
+    setSsoRoles([]);
+    setSsoAccessToken(null);
+    setSsoManualEntry(false);
+    setSsoLoggingIn(true);
+    try {
+      const { accessToken } = await window.multissh.awsSsoLogin(startUrl, region);
+      setSsoAccessToken(accessToken);
+      try {
+        const accounts = await window.multissh.awsSsoListAccounts(accessToken, region);
+        setSsoAccounts(accounts);
+      } catch {
+        // Some IAM Identity Center permission sets can't list accounts/roles
+        // via the portal API — fall back to manual entry rather than failing.
+        setSsoManualEntry(true);
+      }
+    } catch (err) {
+      setSsoError(err instanceof Error ? err.message : 'AWS SSO login failed');
+    } finally {
+      setSsoLoggingIn(false);
+    }
+  };
+
+  const handleSelectAccount = async (accountId: string) => {
+    updateSso({ accountId, roleName: undefined });
+    setSsoRoles([]);
+    if (!ssoAccessToken || !accountId) return;
+    const region = config.sso?.region?.trim() || config.region || 'us-east-1';
+    setLoadingRoles(true);
+    try {
+      const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId);
+      setSsoRoles(roles);
+    } catch (err) {
+      setSsoError(err instanceof Error ? err.message : 'Failed to list roles for this account');
+    } finally {
+      setLoadingRoles(false);
+    }
   };
 
   const handleTestConnection = async () => {
@@ -57,7 +130,12 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
     if (path) update('customCaPath', path);
   };
 
-  const isValid = config.name.trim() && config.region.trim() && config.accessKeyId.trim() && config.secretAccessKey.trim();
+  const isValid =
+    config.name.trim() &&
+    config.region.trim() &&
+    (authMode === 'sso'
+      ? Boolean(config.sso?.startUrl?.trim() && config.sso?.accountId?.trim() && config.sso?.roleName?.trim())
+      : Boolean(config.accessKeyId.trim() && config.secretAccessKey.trim()));
 
   return (
     <form
@@ -121,36 +199,161 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Access Key ID
-          <input
-            required
-            value={config.accessKeyId}
-            onChange={(e) => update('accessKeyId', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Secret Access Key
-          <input
-            required
-            type="password"
-            value={config.secretAccessKey}
-            onChange={(e) => update('secretAccessKey', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-          />
-        </label>
+      <div className="flex gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle p-1">
+        <button
+          type="button"
+          onClick={() => setAuthMode('static')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            authMode === 'static'
+              ? 'bg-sky-600 text-white shadow-sm'
+              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+          }`}
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Access Keys
+        </button>
+        <button
+          type="button"
+          onClick={() => setAuthMode('sso')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            authMode === 'sso'
+              ? 'bg-sky-600 text-white shadow-sm'
+              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+          }`}
+        >
+          <Cloud className="h-3.5 w-3.5" />
+          AWS SSO
+        </button>
       </div>
 
-      <label className="flex flex-col gap-1 text-txt-secondary">
-        Session Token (optional, for temporary IAM credentials)
-        <input
-          value={config.sessionToken ?? ''}
-          onChange={(e) => update('sessionToken', e.target.value)}
-          className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-        />
-      </label>
+      {authMode === 'static' ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              Access Key ID
+              <input
+                required
+                value={config.accessKeyId}
+                onChange={(e) => update('accessKeyId', e.target.value)}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              Secret Access Key
+              <input
+                required
+                type="password"
+                value={config.secretAccessKey}
+                onChange={(e) => update('secretAccessKey', e.target.value)}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+              />
+            </label>
+          </div>
+
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Session Token (optional, for temporary IAM credentials)
+            <input
+              value={config.sessionToken ?? ''}
+              onChange={(e) => update('sessionToken', e.target.value)}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+            />
+          </label>
+        </>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              SSO Start URL
+              <input
+                value={config.sso?.startUrl ?? ''}
+                onChange={(e) => updateSso({ startUrl: e.target.value })}
+                placeholder="https://my-sso.awsapps.com/start"
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              SSO Region
+              <input
+                value={config.sso?.region ?? config.region}
+                onChange={(e) => updateSso({ region: e.target.value })}
+                placeholder="us-east-1"
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+              />
+            </label>
+          </div>
+
+          <button
+            type="button"
+            disabled={!config.sso?.startUrl?.trim() || ssoLoggingIn}
+            onClick={() => void handleAwsSsoLogin()}
+            className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+          >
+            {ssoLoggingIn && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {ssoLoggingIn ? 'Signing in…' : ssoAccessToken ? 'Sign in again' : 'Sign in with AWS SSO'}
+          </button>
+
+          {ssoError && (
+            <p className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-red-300">{ssoError}</p>
+          )}
+
+          {ssoAccessToken && !ssoManualEntry && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Account
+                <select
+                  value={config.sso?.accountId ?? ''}
+                  onChange={(e) => void handleSelectAccount(e.target.value)}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+                >
+                  <option value="">Select an account…</option>
+                  {ssoAccounts.map((a) => (
+                    <option key={a.accountId} value={a.accountId}>
+                      {a.accountName ? `${a.accountName} (${a.accountId})` : a.accountId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Role
+                <select
+                  value={config.sso?.roleName ?? ''}
+                  onChange={(e) => updateSso({ roleName: e.target.value })}
+                  disabled={!config.sso?.accountId || loadingRoles}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:opacity-40"
+                >
+                  <option value="">{loadingRoles ? 'Loading…' : 'Select a role…'}</option>
+                  {ssoRoles.map((r) => (
+                    <option key={r.roleName} value={r.roleName}>
+                      {r.roleName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {(ssoManualEntry || (!ssoAccessToken && (config.sso?.accountId || config.sso?.roleName))) && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Account ID
+                <input
+                  value={config.sso?.accountId ?? ''}
+                  onChange={(e) => updateSso({ accountId: e.target.value })}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Role Name
+                <input
+                  value={config.sso?.roleName ?? ''}
+                  onChange={(e) => updateSso({ roleName: e.target.value })}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
         <label className="flex items-center gap-2 text-xs text-txt-primary cursor-pointer">
@@ -199,6 +402,32 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
                 <FolderOpen className="h-4 w-4" />
               </button>
             </div>
+          </label>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
+        <label className="flex flex-col gap-1 text-txt-secondary">
+          Server-side encryption
+          <select
+            value={config.serverSideEncryption ?? 'none'}
+            onChange={(e) => update('serverSideEncryption', e.target.value as S3Config['serverSideEncryption'])}
+            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+          >
+            <option value="none">None</option>
+            <option value="AES256">SSE-S3 (AES256)</option>
+            <option value="aws:kms">SSE-KMS</option>
+          </select>
+        </label>
+        {config.serverSideEncryption === 'aws:kms' && (
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            KMS Key ID (optional — blank uses the bucket's default key)
+            <input
+              value={config.kmsKeyId ?? ''}
+              onChange={(e) => update('kmsKeyId', e.target.value)}
+              placeholder="arn:aws:kms:us-east-1:111122223333:key/…"
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+            />
           </label>
         )}
       </div>
@@ -342,7 +571,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
       <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
         <button
           type="button"
-          disabled={!config.region.trim() || !config.accessKeyId.trim() || !config.secretAccessKey.trim() || testing}
+          disabled={!isValid || testing}
           onClick={() => void handleTestConnection()}
           className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
         >

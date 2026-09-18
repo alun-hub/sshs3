@@ -28,13 +28,16 @@ import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifie
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { FileEditorService } from './editor/FileEditorService';
+import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
+  type AwsSsoPromptEvent,
 } from '../shared/types/ipc';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type {
   SSHConnectionConfig,
@@ -72,6 +75,10 @@ interface PendingDotfilesSyncPrompt {
   callback: (resolution: DotfilesSyncResolution) => void;
 }
 
+interface PendingAwsSsoLogin {
+  cancel: () => void;
+}
+
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   sshPtyManager?: SSHPtyManager;
@@ -84,6 +91,7 @@ export interface IpcBridgeOptions {
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
   fileEditorService?: FileEditorService;
+  awsSsoAuthService?: AwsSsoAuthService;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -99,12 +107,14 @@ export class IpcBridge {
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
   public readonly fileEditorService: FileEditorService;
+  public readonly awsSsoAuthService: AwsSsoAuthService;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
   private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
+  private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
 
   // Event listener references for clean teardown
@@ -135,6 +145,7 @@ export class IpcBridge {
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
+    this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -152,6 +163,7 @@ export class IpcBridge {
     this.registerSessionHandlers();
     this.registerSettingsHandlers();
     this.registerConnectionTestHandlers();
+    this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
     this.registerGeneralHandlers();
     this.setupEventListeners();
@@ -962,8 +974,15 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.CONNECTION_TEST_S3,
       async (_event, config: S3Config): Promise<{ success: boolean; error?: string }> => {
-        if (!config || !config.region?.trim() || !config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
-          return { success: false, error: 'Region, Access Key ID, and Secret Access Key are required' };
+        if (!config || !config.region?.trim()) {
+          return { success: false, error: 'Region is required' };
+        }
+        if (config.authMode === 'sso') {
+          if (!config.sso?.startUrl?.trim() || !config.sso?.accountId?.trim() || !config.sso?.roleName?.trim()) {
+            return { success: false, error: 'Start URL, Account, and Role are required for AWS SSO' };
+          }
+        } else if (!config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
+          return { success: false, error: 'Access Key ID and Secret Access Key are required' };
         }
         try {
           const provider = new S3StorageProvider({
@@ -979,6 +998,67 @@ export class IpcBridge {
             error: err instanceof Error ? err.message : String(err),
           };
         }
+      }
+    );
+  }
+
+  /**
+   * Runs the AWS SSO device-authorization flow and resolves once the user
+   * approves it in their browser. Mirrors `promptHostKeyTrust`'s pattern of
+   * leaving a single long-lived `ipcMain.handle` invoke pending, but also
+   * supports cancellation via a separate channel since this wait can be
+   * minutes rather than a single click.
+   */
+  private registerAwsSsoHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.AWS_SSO_LOGIN,
+      async (_event, startUrl: string, region: string): Promise<AwsSsoLoginResult> => {
+        if (!startUrl?.trim() || !region?.trim()) {
+          throw new Error('Start URL and region are required');
+        }
+
+        const id = crypto.randomUUID();
+        const controller = new AbortController();
+        this.pendingAwsSsoLogins.set(id, { cancel: () => controller.abort() });
+
+        try {
+          return await this.awsSsoAuthService.login(startUrl, region, {
+            onPrompt: (prompt) => {
+              const webContents = this.getWebContents();
+              if (webContents && !webContents.isDestroyed?.()) {
+                const event: AwsSsoPromptEvent = { id, ...prompt };
+                webContents.send(IPC_CHANNELS.AWS_SSO_PROMPT, event);
+              }
+            },
+            signal: controller.signal,
+          });
+        } catch (err) {
+          if (err instanceof AwsSsoLoginCancelledError) {
+            throw new Error('AWS SSO login was cancelled', { cause: err });
+          }
+          throw err;
+        } finally {
+          this.pendingAwsSsoLogins.delete(id);
+        }
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, async (_event, id: string) => {
+      const pending = this.pendingAwsSsoLogins.get(id);
+      pending?.cancel();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS,
+      async (_event, accessToken: string, region: string): Promise<AwsSsoAccount[]> => {
+        return await this.awsSsoAuthService.listAccounts(accessToken, region);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.AWS_SSO_LIST_ROLES,
+      async (_event, accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]> => {
+        return await this.awsSsoAuthService.listAccountRoles(accessToken, region, accountId);
       }
     );
   }
@@ -1208,6 +1288,15 @@ export class IpcBridge {
       }
     }
     this.pendingDotfilesSyncPrompts.clear();
+
+    for (const pending of this.pendingAwsSsoLogins.values()) {
+      try {
+        pending.cancel();
+      } catch {
+        // Ignore
+      }
+    }
+    this.pendingAwsSsoLogins.clear();
 
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();

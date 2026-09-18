@@ -14,6 +14,7 @@ import type {
   BucketVersioningInfo,
   ObjectVersionEntry,
 } from './storage';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoDevicePrompt, AwsSsoLoginResult } from './aws';
 import type { SessionData } from './session';
 import type { AppSettings } from './settings';
 import type {
@@ -99,6 +100,13 @@ export const IPC_CHANNELS = {
   CONNECTION_TEST_SSH: 'connection:test-ssh',
   CONNECTION_TEST_S3: 'connection:test-s3',
 
+  // AWS SSO login (device-authorization flow)
+  AWS_SSO_LOGIN: 'aws-sso:login',
+  AWS_SSO_LOGIN_CANCEL: 'aws-sso:login-cancel',
+  AWS_SSO_PROMPT: 'aws-sso:prompt',
+  AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
+  AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
+
   // SSH Agent
   SSH_AGENT_STATUS: 'ssh:agent-status',
 
@@ -139,6 +147,10 @@ export interface HostKeyPromptEvent {
   fingerprint: string;
   /** 'unknown' = first time connecting to this host. 'mismatch' = the presented key differs from a previously trusted one. */
   status: 'unknown' | 'mismatch';
+}
+
+export interface AwsSsoPromptEvent extends AwsSsoDevicePrompt {
+  id: string;
 }
 
 export type TransferConflictResolution = 'overwrite' | 'skip' | 'rename';
@@ -247,6 +259,13 @@ export interface MultiSSHApi {
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
+
+  // AWS SSO login (device-authorization flow)
+  awsSsoLogin(startUrl: string, region: string): Promise<AwsSsoLoginResult>;
+  awsSsoCancelLogin(id: string): Promise<void>;
+  onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
+  awsSsoListAccounts(accessToken: string, region: string): Promise<AwsSsoAccount[]>;
+  awsSsoListRoles(accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]>;
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;

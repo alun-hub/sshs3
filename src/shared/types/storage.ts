@@ -116,14 +116,30 @@ export interface SFTPConfig {
   macs?: string;
 }
 
+export type S3AuthMode = 'static' | 'sso';
+
+export interface S3SsoConfig {
+  startUrl: string;
+  region: string;
+  accountId?: string;
+  roleName?: string;
+}
+
+export type S3ServerSideEncryption = 'none' | 'AES256' | 'aws:kms';
+
 export interface S3Config {
   id: string;
   name: string;
   endpoint?: string;
   region: string;
+  /** Defaults to 'static' (the accessKeyId/secretAccessKey fields below) when unset. */
+  authMode?: S3AuthMode;
   accessKeyId: string;
   secretAccessKey: string;
   sessionToken?: string;
+  sso?: S3SsoConfig;
+  serverSideEncryption?: S3ServerSideEncryption;
+  kmsKeyId?: string;
   forcePathStyle?: boolean;
   ssl?: boolean;
   rejectUnauthorized?: boolean;

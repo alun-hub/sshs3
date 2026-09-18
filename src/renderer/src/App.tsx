@@ -4,6 +4,7 @@ import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { TerminalView } from './components/TerminalView';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
+import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
@@ -671,6 +672,9 @@ export const App: React.FC = () => {
 
       {/* Global SFTP host key trust-on-first-use dialog */}
       <HostKeyTrustModal />
+
+      {/* Global AWS SSO device-authorization login dialog */}
+      <AwsSsoLoginModal />
 
       {/* Global transfer conflict (overwrite/skip/rename) dialog */}
       <TransferConflictModal />

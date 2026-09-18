@@ -103,6 +103,7 @@ describe('IpcBridge', () => {
   let mockProfileStore: any;
   let mockSessionStore: any;
   let mockSettingsStore: any;
+  let mockAwsSsoAuthService: any;
   let bridge: IpcBridge;
 
   beforeEach(() => {
@@ -188,6 +189,12 @@ describe('IpcBridge', () => {
       saveSettings: vi.fn().mockResolvedValue(undefined),
     };
 
+    mockAwsSsoAuthService = {
+      login: vi.fn().mockImplementation(() => new Promise(() => {})),
+      listAccounts: vi.fn().mockResolvedValue([{ accountId: '123', accountName: 'Prod' }]),
+      listAccountRoles: vi.fn().mockResolvedValue([{ roleName: 'Admin' }]),
+    };
+
     bridge = new IpcBridge({
       ipcMain: mockIpc as any,
       sshPtyManager: mockPtyManager,
@@ -196,6 +203,7 @@ describe('IpcBridge', () => {
       profileStore: mockProfileStore,
       sessionStore: mockSessionStore,
       settingsStore: mockSettingsStore,
+      awsSsoAuthService: mockAwsSsoAuthService,
       getWebContents: () => mockWebContents as any,
     });
 
@@ -382,6 +390,91 @@ describe('IpcBridge', () => {
 
       await bridge.dispose();
       await expect(promptPromise).resolves.toBe(false);
+    });
+  });
+
+  describe('AWS SSO login prompts', () => {
+    it('sends an AWS_SSO_PROMPT event and resolves once the device flow completes', async () => {
+      let resolveLogin: (value: any) => void = () => {};
+      mockAwsSsoAuthService.login.mockImplementation(
+        (_startUrl: string, _region: string, options?: { onPrompt?: (p: any) => void }) =>
+          new Promise((resolve) => {
+            options?.onPrompt?.({
+              verificationUri: 'https://verify.example.com',
+              verificationUriComplete: 'https://verify.example.com?user_code=ABCD-EFGH',
+              userCode: 'ABCD-EFGH',
+              expiresIn: 600,
+            });
+            resolveLogin = resolve;
+          })
+      );
+
+      const loginPromise = mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, 'https://start.example.com', 'us-east-1');
+      await Promise.resolve();
+
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.AWS_SSO_PROMPT);
+      expect(promptEvent).toBeDefined();
+      expect(promptEvent?.args[0]).toMatchObject({
+        verificationUri: 'https://verify.example.com',
+        userCode: 'ABCD-EFGH',
+      });
+      expect(promptEvent?.args[0].id).toBeDefined();
+
+      resolveLogin({ accessToken: 'access-token-1', expiresAt: '2099-01-01T00:00:00.000Z' });
+      await expect(loginPromise).resolves.toEqual({
+        accessToken: 'access-token-1',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      });
+    });
+
+    it('AWS_SSO_LOGIN_CANCEL aborts the pending login', async () => {
+      mockAwsSsoAuthService.login.mockImplementation(
+        (_startUrl: string, _region: string, options?: { onPrompt?: (p: any) => void; signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options?.onPrompt?.({
+              verificationUri: 'https://verify.example.com',
+              verificationUriComplete: 'https://verify.example.com?user_code=X',
+              userCode: 'X',
+              expiresIn: 600,
+            });
+            options?.signal?.addEventListener('abort', () => reject(new Error('AWS SSO login was cancelled')));
+          })
+      );
+
+      const loginPromise = mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, 'https://start.example.com', 'us-east-1');
+      await Promise.resolve();
+
+      const promptEvent = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.AWS_SSO_PROMPT);
+      const id = promptEvent?.args[0].id;
+      expect(id).toBeDefined();
+
+      await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id);
+      await expect(loginPromise).rejects.toThrow();
+    });
+
+    it('dispose() cancels any pending AWS SSO logins', async () => {
+      mockAwsSsoAuthService.login.mockImplementation(
+        (_startUrl: string, _region: string, options?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => reject(new Error('AWS SSO login was cancelled')));
+          })
+      );
+
+      const loginPromise = mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, 'https://start.example.com', 'us-east-1');
+      await Promise.resolve();
+
+      await bridge.dispose();
+      await expect(loginPromise).rejects.toThrow();
+    });
+
+    it('lists accounts and roles via the injected AwsSsoAuthService', async () => {
+      const accounts = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, 'token', 'us-east-1');
+      expect(accounts).toEqual([{ accountId: '123', accountName: 'Prod' }]);
+      expect(mockAwsSsoAuthService.listAccounts).toHaveBeenCalledWith('token', 'us-east-1');
+
+      const roles = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, 'token', 'us-east-1', '123');
+      expect(roles).toEqual([{ roleName: 'Admin' }]);
+      expect(mockAwsSsoAuthService.listAccountRoles).toHaveBeenCalledWith('token', 'us-east-1', '123');
     });
   });
 

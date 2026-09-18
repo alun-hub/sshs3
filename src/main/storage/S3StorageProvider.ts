@@ -42,6 +42,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { fromSSO } from '@aws-sdk/credential-provider-sso';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
   BaseStorageProvider,
@@ -101,11 +102,19 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       region: config.region || 'us-east-1',
       endpoint: config.endpoint,
       forcePathStyle: config.forcePathStyle ?? true,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-        ...(config.sessionToken ? { sessionToken: config.sessionToken } : {}),
-      },
+      credentials:
+        config.authMode === 'sso' && config.sso
+          ? fromSSO({
+              ssoStartUrl: config.sso.startUrl,
+              ssoRegion: config.sso.region,
+              ssoAccountId: config.sso.accountId,
+              ssoRoleName: config.sso.roleName,
+            })
+          : {
+              accessKeyId: config.accessKeyId,
+              secretAccessKey: config.secretAccessKey,
+              ...(config.sessionToken ? { sessionToken: config.sessionToken } : {}),
+            },
     };
 
     const systemCAs = SystemTrustStore.getCAs();
@@ -178,6 +187,18 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
   public clearCache(): void {
     this.listCache.clear();
+  }
+
+  /** Server-side encryption params to apply to every PutObject/Upload call, per the profile's config. */
+  private sseParams(): { ServerSideEncryption?: 'AES256' | 'aws:kms'; SSEKMSKeyId?: string } {
+    const sse = this.config.serverSideEncryption;
+    if (!sse || sse === 'none') {
+      return {};
+    }
+    return {
+      ServerSideEncryption: sse,
+      ...(sse === 'aws:kms' && this.config.kmsKeyId ? { SSEKMSKeyId: this.config.kmsKeyId } : {}),
+    };
   }
 
   async list(remotePath: string, options?: { force?: boolean }): Promise<FileEntry[]> {
@@ -384,6 +405,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Key: folderKey,
         Body: '',
         ContentLength: 0,
+        ...this.sseParams(),
       })
     );
     this.clearCache();
@@ -587,6 +609,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         ...(options?.size !== undefined && options.size >= 0
           ? { ContentLength: options.size }
           : {}),
+        ...this.sseParams(),
       },
     });
 

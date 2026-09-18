@@ -9,7 +9,9 @@ import {
   type SshAgentStatus,
   type FileReadResult,
   type ExternalFileStatusEvent,
+  type AwsSsoPromptEvent,
 } from '../shared/types/ipc';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -276,6 +278,27 @@ export const api: MultiSSHApi = {
 
   testS3Connection: (config: S3Config): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
+
+  // AWS SSO login (device-authorization flow)
+  awsSsoLogin: (startUrl: string, region: string): Promise<AwsSsoLoginResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region),
+
+  awsSsoCancelLogin: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id),
+
+  onAwsSsoPrompt: (callback: (event: AwsSsoPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: AwsSsoPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.AWS_SSO_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.AWS_SSO_PROMPT, listener);
+    };
+  },
+
+  awsSsoListAccounts: (accessToken: string, region: string): Promise<AwsSsoAccount[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, accessToken, region),
+
+  awsSsoListRoles: (accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId),
 
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>

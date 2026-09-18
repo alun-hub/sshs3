@@ -86,15 +86,16 @@ att bygga.
 - [ ] **38. S3 Bucket-administration: Skapa, radera och tömma bucket (Purge)** —
    hantera hela livscykeln för buckets direkt i UI:t, inklusive regionval vid skapande
    och rekursiv tömning av objekt och versioner inför radering.
-- [ ] **57. Dynamisk AWS-autentisering (IAM/SSO)** — statiska `Access Key ID`/`Secret Key`
-   är ofta helt förbjudna i enterprise-/DevOps-miljöer av säkerhetsskäl; utvecklare kör
-   istället `aws sso login`, som skriver tillfälliga tokens till `~/.aws/credentials`/
-   `~/.aws/config`. `S3Config` har redan ett `sessionToken`-fält och `S3ProfileForm` kan
-   ta emot ett manuellt inklistrat värde, men klienten varken läser/parsar den lokala
-   AWS-konfigurationen, känner av `AWS_PROFILE`/namngivna profiler, eller kan driva
-   själva SSO-inloggningsflödet (öppna webbläsaren för enhetskod-auktorisering, ta emot
-   MFA). Naturlig utökning i samma anda som Askpass-servern på SSH-sidan — men för AWS
-   SSO/OIDC istället för SSH-lösenord.
+- [x] **57. Dynamisk AWS-autentisering (IAM/SSO).** Ny `AwsSsoAuthService` (i samma anda
+   som Askpass-servern på SSH-sidan) driver OIDC-enhetsflödet (`RegisterClient` →
+   `StartDeviceAuthorization` → polling av `CreateToken`) via `@aws-sdk/client-sso-oidc`/
+   `@aws-sdk/client-sso`, öppnar webbläsaren automatiskt och cachar token i samma
+   `~/.aws/sso/cache/*.json`-format som `aws sso login` (kompatibelt med AWS CLI).
+   `S3ProfileForm` har fått en Access Keys/AWS SSO-växlare med Konto/Roll-väljare
+   (`awsSsoListAccounts`/`awsSsoListRoles`) och en `AwsSsoLoginModal` för kod/väntanläge.
+   `S3StorageProvider` använder `fromSSO()` som credentials-provider (auto-uppdateras av
+   AWS SDK) när `authMode: 'sso'`. Ingen lokal `~/.aws/config`-parsning/`AWS_PROFILE`-stöd
+   ännu — det är fortsatt öppet om det behövs senare.
 - [ ] **58. "Tail -f" och lazy loading för gigantiska filer** — dagens `FileEditorModal`
    (#37) laddar hela filen innan visning, vilket kraschar/fryser appen på t.ex. en 10 GB
    loggfil. Bygg lazy loading (ladda bara de delar av filen som faktiskt visas) eller en
@@ -113,13 +114,11 @@ att bygga.
 - [x] **20. SSH-anslutningsalternativ i formuläret**: kompression (`Compression`), keep-alive (`ServerAliveInterval`), samt valbara ciphers, KEX och MAC-algoritmer för både terminal och SFTP-anslutningar.
 - [ ] **21. Teckenkodning/charset-inställning** för filnamn — relevant mot äldre
    SFTP-servrar som inte pratar UTF-8.
-- [ ] **22. S3-uppladdningsalternativ**: lagringsklass (Standard/IA/Glacier) och
-   server-side encryption (SSE-S3/SSE-KMS) — `PutObjectCommand` i
-   `S3StorageProvider` sätter inget av detta idag. I enterprise-miljöer krävs ofta
-   specifikt SSE-KMS med en egen nyckel; utan ett sätt att skicka med rätt
-   `KMS Key ID` (t.ex. en dropdown i uppladdningsflödet) nekar AWS uppladdningen
-   (`Access Denied`) — detta är inte valfritt polish utan ett hårt krav för att
-   klienten ska vara användbar mot KMS-skyddade buckets.
+- [ ] **22. S3-uppladdningsalternativ**: lagringsklass (Standard/IA/Glacier) ⬜ och
+   server-side encryption (SSE-S3/SSE-KMS) ✅ — `serverSideEncryption`/`kmsKeyId` i
+   `S3Config` skickas nu med på både `Upload` (filuppladdning) och mapp-markörens
+   `PutObjectCommand` i `S3StorageProvider`, med en dropdown + KMS Key ID-fält i
+   `S3ProfileForm`. Lagringsklass (Standard/IA/Glacier) är fortfarande inte implementerat.
 - [ ] **23. Sessionsloggning** — spara terminalens output till fil, användbart för
    felsökning och revision.
 - [x] **24. Profilorganisation i mappar/grupper** samt "senast använda"-lista i
@@ -229,14 +228,11 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56** redan är
-färdigställda, är de mest värdefulla nästa stegen:
+Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57** redan är
+färdigställda (samt encryption-halvan av **22**), är de mest värdefulla nästa stegen:
 
 1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.
 2. **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i `FilePane` för lokal disk, SFTP och S3.
 3. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
 4. **38. S3 Bucket-administration (Skapa, radera & purge)** — hantera hela livscykeln för buckets direkt i UI:t.
 5. **7. Katalogsynkronisering (Diff & Sync)** — den tyngsta efterfrågade funktionen från WinSCP-användare.
-6. **57. Dynamisk AWS-autentisering (IAM/SSO)** — utan detta är sshs3 en icke-startare i
-   många enterprise-miljöer där statiska access-nycklar är avstängda av policy; högre
-   verklig prioritet än numreringen antyder.

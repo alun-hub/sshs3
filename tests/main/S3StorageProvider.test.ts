@@ -96,6 +96,11 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: getSignedUrlMock,
 }));
 
+const { fromSSOMock } = vi.hoisted(() => ({ fromSSOMock: vi.fn() }));
+vi.mock('@aws-sdk/credential-provider-sso', () => ({
+  fromSSO: fromSSOMock,
+}));
+
 // Import the provider and helper under test
 import { S3StorageProvider, parseS3Path } from '../../src/main/storage/S3StorageProvider';
 import {
@@ -267,6 +272,27 @@ describe('S3StorageProvider', () => {
       expect(handlerConfig.httpsAgent.options.rejectUnauthorized).toBe(false);
       expect(handlerConfig.httpsAgent.options.ca).toBeDefined();
       expect(handlerConfig.httpsAgent.options.ca.toString()).toBe(caContent);
+    });
+
+    it('should use fromSSO() as a credentials provider function when authMode is "sso"', () => {
+      const fakeCredentialsProvider = vi.fn();
+      fromSSOMock.mockReturnValueOnce(fakeCredentialsProvider);
+
+      new S3StorageProvider({
+        ...defaultS3Config,
+        authMode: 'sso',
+        sso: { startUrl: 'https://example.awsapps.com/start', region: 'us-east-1', accountId: '111', roleName: 'Admin' },
+      });
+
+      expect(fromSSOMock).toHaveBeenCalledWith({
+        ssoStartUrl: 'https://example.awsapps.com/start',
+        ssoRegion: 'us-east-1',
+        ssoAccountId: '111',
+        ssoRoleName: 'Admin',
+      });
+      expect(s3ClientConstructorMock).toHaveBeenCalledWith(
+        expect.objectContaining({ credentials: fakeCredentialsProvider })
+      );
     });
 
     it('should include sessionToken in credentials if provided', () => {
@@ -704,6 +730,34 @@ describe('S3StorageProvider', () => {
         /Cannot create folder at root/i
       );
     });
+
+    it('should include ServerSideEncryption: AES256 on the folder marker when configured', async () => {
+      const sseProvider = new S3StorageProvider({ ...defaultS3Config, serverSideEncryption: 'AES256' });
+      clientSendMock.mockImplementationOnce(async (command: any) => {
+        expect(command.input).toMatchObject({ ServerSideEncryption: 'AES256' });
+        expect(command.input.SSEKMSKeyId).toBeUndefined();
+        return {};
+      });
+
+      await sseProvider.createFolder('/my-bucket/encrypted-folder');
+    });
+
+    it('should include ServerSideEncryption: aws:kms and SSEKMSKeyId on the folder marker when configured', async () => {
+      const kmsProvider = new S3StorageProvider({
+        ...defaultS3Config,
+        serverSideEncryption: 'aws:kms',
+        kmsKeyId: 'arn:aws:kms:us-west-2:111122223333:key/abc-123',
+      });
+      clientSendMock.mockImplementationOnce(async (command: any) => {
+        expect(command.input).toMatchObject({
+          ServerSideEncryption: 'aws:kms',
+          SSEKMSKeyId: 'arn:aws:kms:us-west-2:111122223333:key/abc-123',
+        });
+        return {};
+      });
+
+      await kmsProvider.createFolder('/my-bucket/kms-folder');
+    });
   });
 
   describe('delete', () => {
@@ -1037,6 +1091,37 @@ describe('S3StorageProvider', () => {
 
       const receivedError = await errorPromise;
       expect(receivedError).toBe(uploadError);
+    });
+
+    it('should include ServerSideEncryption/SSEKMSKeyId in Upload params when configured', async () => {
+      const kmsProvider = new S3StorageProvider({
+        ...defaultS3Config,
+        serverSideEncryption: 'aws:kms',
+        kmsKeyId: 'arn:aws:kms:us-west-2:111122223333:key/abc-123',
+      });
+      uploadDoneMock = vi.fn().mockResolvedValue({ Location: 'https://s3.amazonaws.com/bucket/kms.txt' });
+
+      const writeStream = await kmsProvider.createWriteStream('/my-bucket/kms.txt');
+      expect(uploadParamsMock.params).toEqual(
+        expect.objectContaining({
+          ServerSideEncryption: 'aws:kms',
+          SSEKMSKeyId: 'arn:aws:kms:us-west-2:111122223333:key/abc-123',
+        })
+      );
+
+      writeStream.end();
+      await new Promise<void>((resolve) => writeStream.on('finish', resolve));
+    });
+
+    it('should omit SSE params entirely when serverSideEncryption is unset', async () => {
+      uploadDoneMock = vi.fn().mockResolvedValue({ Location: 'https://s3.amazonaws.com/bucket/plain.txt' });
+      const writeStream = await provider.createWriteStream('/my-bucket/plain.txt');
+
+      expect(uploadParamsMock.params.ServerSideEncryption).toBeUndefined();
+      expect(uploadParamsMock.params.SSEKMSKeyId).toBeUndefined();
+
+      writeStream.end();
+      await new Promise<void>((resolve) => writeStream.on('finish', resolve));
     });
 
     it('should pass ContentLength when size option is provided and start upload immediately', async () => {
