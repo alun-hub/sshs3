@@ -62,9 +62,9 @@ describe('DotfilePoolManagerModal Component', () => {
     fireEvent.click(screen.getByText('Linux Servers'));
 
     expect(screen.getByDisplayValue('Linux Servers')).toBeInTheDocument();
-    expect(screen.getByText(/Masterfil: \.bashrc/)).toBeInTheDocument();
-    expect(screen.getByText(/Senast sparad: 2026-09-17 19:40/)).toBeInTheDocument();
-    expect(screen.getByText('Öppna masterkatalog')).toBeInTheDocument();
+    expect(screen.getByText(/Master file: \.bashrc/)).toBeInTheDocument();
+    expect(screen.getByText(/Last saved: 2026-09-17 19:40/)).toBeInTheDocument();
+    expect(screen.getByText('Open Master Directory')).toBeInTheDocument();
   });
 
   it('triggers file upload and adds imported file to draft pool', async () => {
@@ -76,7 +76,7 @@ describe('DotfilePoolManagerModal Component', () => {
 
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const uploadBtn = screen.getByTitle('Välj och ladda upp befintliga filer från datorn som masterfiler');
+    const uploadBtn = screen.getByTitle('Select and upload existing files from your computer as master files');
     fireEvent.click(uploadBtn);
 
     await waitFor(() => {
@@ -94,7 +94,7 @@ describe('DotfilePoolManagerModal Component', () => {
 
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const openFolderBtn = screen.getByText('Öppna masterkatalog');
+    const openFolderBtn = screen.getByText('Open Master Directory');
     fireEvent.click(openFolderBtn);
 
     expect(window.multissh.dotfilePoolOpenFolder).toHaveBeenCalledWith('p1');
@@ -109,7 +109,7 @@ describe('DotfilePoolManagerModal Component', () => {
 
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const saveBtn = screen.getByText('Spara masterfiler');
+    const saveBtn = screen.getByText('Save Master Files');
     fireEvent.click(saveBtn);
 
     await waitFor(() => {

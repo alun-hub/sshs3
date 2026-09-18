@@ -69,7 +69,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       let poolId = selectedPoolId;
       if (isCreatingNewPool) {
         if (!newPoolName.trim()) {
-          setError('Ange ett namn för den nya poolen');
+          setError('Enter a name for the new pool');
           setSaving(false);
           return;
         }
@@ -92,8 +92,8 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       const poolName =
         isCreatingNewPool
           ? newPoolName.trim()
-          : pools.find((p) => p.id === poolId)?.name || 'poolen';
-      onSuccess?.(`Sparade ${entry.name} som masterfil i "${poolName}"`);
+          : pools.find((p) => p.id === poolId)?.name || 'the pool';
+      onSuccess?.(`Saved ${entry.name} as a master file in "${poolName}"`);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -111,7 +111,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               <FileCode className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-txt-primary">Lägg till i dotfiles pool</h2>
+              <h2 className="text-sm font-semibold text-txt-primary">Add to Dotfiles Pool</h2>
             </div>
           </div>
           <button
@@ -131,28 +131,28 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
           )}
 
           <div className="space-y-1">
-            <span className="text-xs font-medium text-txt-primary">Källfil</span>
+            <span className="text-xs font-medium text-txt-primary">Source File</span>
             <div className="rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary truncate">
               {entry.path}
             </div>
           </div>
 
           <div className="space-y-1">
-            <span className="text-xs font-medium text-txt-primary">Målsökväg på server (remotePath)</span>
+            <span className="text-xs font-medium text-txt-primary">Target Path on Server (remotePath)</span>
             <input
               value={remotePath}
               onChange={(e) => setRemotePath(e.target.value)}
-              placeholder="t.ex. ~/.bashrc"
+              placeholder="e.g. ~/.bashrc"
               className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary outline-none focus:border-sky-500"
             />
             <p className="text-[11px] text-txt-muted">
-              Sökvägen dit filen automatiskt skrivs när poolen synkas till en ansluten server.
+              The path the file is automatically written to when the pool syncs to a connected server.
             </p>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-txt-primary">Välj pool</span>
+              <span className="text-xs font-medium text-txt-primary">Select Pool</span>
               {pools.length > 0 && (
                 <button
                   type="button"
@@ -160,7 +160,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
                   className="text-xs text-sky-400 hover:underline flex items-center gap-1"
                 >
                   <Plus className="h-3 w-3" />
-                  {isCreatingNewPool ? 'Välj befintlig pool' : 'Skapa ny pool'}
+                  {isCreatingNewPool ? 'Select Existing Pool' : 'Create New Pool'}
                 </button>
               )}
             </div>
@@ -173,7 +173,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               <input
                 value={newPoolName}
                 onChange={(e) => setNewPoolName(e.target.value)}
-                placeholder="Namn på ny pool, t.ex. Personliga dotfiles"
+                placeholder="New pool name, e.g. Personal dotfiles"
                 className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-txt-primary outline-none focus:border-sky-500"
               />
             ) : (
@@ -184,7 +184,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               >
                 {pools.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.files.length} filer)
+                    {p.name} ({p.files.length} files)
                   </option>
                 ))}
               </select>
@@ -197,7 +197,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               onClick={onClose}
               className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
             >
-              Avbryt
+              Cancel
             </button>
             <button
               type="submit"
@@ -205,7 +205,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              Spara som masterfil
+              Save as Master File
             </button>
           </div>
         </form>

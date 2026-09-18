@@ -20,12 +20,12 @@ function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): bool
   if (activeCount > 0) {
     const options: Electron.MessageBoxSyncOptions = {
       type: 'warning',
-      buttons: ['Avbryt', 'Avsluta ändå'],
+      buttons: ['Cancel', 'Quit Anyway'],
       defaultId: 0,
       cancelId: 0,
-      title: 'Pågående överföringar',
-      message: `Det finns ${activeCount} pågående filöverföring(ar).`,
-      detail: 'Om du avslutar nu kommer överföringarna att avbrytas och filer kan bli ofullständiga.',
+      title: 'Transfers in progress',
+      message: `There ${activeCount === 1 ? 'is' : 'are'} ${activeCount} file transfer(s) in progress.`,
+      detail: 'If you quit now, the transfers will be cancelled and files may be left incomplete.',
     };
     const choice = parentWindow
       ? dialog.showMessageBoxSync(parentWindow, options)

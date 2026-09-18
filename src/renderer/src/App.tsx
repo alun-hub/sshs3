@@ -18,6 +18,13 @@ const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: Lo
   platform,
   onOpen,
 }) => {
+  const [pwshAvailable, setPwshAvailable] = useState(false);
+
+  useEffect(() => {
+    if (platform !== 'win32') return;
+    void window.multissh.detectLocalShells?.().then((res) => setPwshAvailable(Boolean(res?.pwsh)));
+  }, [platform]);
+
   if (platform !== 'win32') {
     return (
       <button
@@ -45,14 +52,16 @@ const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: Lo
       >
         PowerShell
       </button>
-      <button
-        type="button"
-        onClick={() => onOpen('pwsh')}
-        title="PowerShell 7+ (pwsh.exe) — requires it to be installed and on PATH"
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        PowerShell 7
-      </button>
+      {pwshAvailable && (
+        <button
+          type="button"
+          onClick={() => onOpen('pwsh')}
+          title="PowerShell 7+ (pwsh.exe)"
+          className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+        >
+          PowerShell 7
+        </button>
+      )}
     </div>
   );
 };

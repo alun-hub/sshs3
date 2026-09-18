@@ -517,7 +517,7 @@ export async function transferDirectory(
     percentage: 0,
     bytesPerSecond: 0,
     status: 'running',
-    statusMessage: 'Genomsöker mappstruktur...',
+    statusMessage: 'Scanning folder structure...',
   });
 
   const scan = await scanDirectory(
@@ -535,7 +535,7 @@ export async function transferDirectory(
         percentage: 0,
         bytesPerSecond: 0,
         status: 'running',
-        statusMessage: `Genomsöker (${filesCount} ${filesCount === 1 ? 'fil hittad' : 'filer hittade'})...`,
+        statusMessage: `Scanning (${filesCount} ${filesCount === 1 ? 'file found' : 'files found'})...`,
       });
     }
   );
@@ -559,7 +559,7 @@ export async function transferDirectory(
       percentage: 0,
       bytesPerSecond: 0,
       status: 'running',
-      statusMessage: `Skapar underkatalog (${i + 1}/${scan.folders.length})...`,
+      statusMessage: `Creating subdirectory (${i + 1}/${scan.folders.length})...`,
     });
     await options.targetProvider.createFolder(folder);
   }
@@ -573,7 +573,7 @@ export async function transferDirectory(
       percentage: 100,
       bytesPerSecond: 0,
       status: 'completed',
-      statusMessage: 'Klar',
+      statusMessage: 'Done',
     });
     return;
   }
@@ -618,7 +618,7 @@ export async function transferDirectory(
           percentage,
           bytesPerSecond: fp.bytesPerSecond,
           status: 'running',
-          statusMessage: `Fil ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
+          statusMessage: `File ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
         });
       },
     });
@@ -634,7 +634,7 @@ export async function transferDirectory(
     percentage: 100,
     bytesPerSecond: 0,
     status: 'completed',
-    statusMessage: 'Klar',
+    statusMessage: 'Done',
   });
 }
 

@@ -1105,11 +1105,11 @@ describe('IpcBridge', () => {
     it('validates required fields for SSH test', async () => {
       const res1 = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, { host: '', username: 'u' });
       expect(res1.success).toBe(false);
-      expect(res1.error).toContain('Värdnamn');
+      expect(res1.error).toContain('Hostname');
 
       const res2 = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, { host: 'h', username: '' });
       expect(res2.success).toBe(false);
-      expect(res2.error).toContain('Användarnamn');
+      expect(res2.error).toContain('Username');
     });
 
     it('validates required fields for S3 test', async () => {

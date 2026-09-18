@@ -175,7 +175,7 @@ describe('SFTPStorageProvider', () => {
       });
 
       await expect(provider.ensureConnected()).rejects.toThrow(
-        /Autentisering misslyckades: Servern nekade inloggningen/
+        /Authentication failed: The server rejected the login/
       );
     });
 

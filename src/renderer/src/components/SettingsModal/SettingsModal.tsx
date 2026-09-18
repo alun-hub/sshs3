@@ -436,8 +436,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Session Exit Action */}
                   <div className="space-y-2 pt-2 border-t border-border-subtle">
                     <div>
-                      <label className="text-xs font-medium text-txt-primary">Vid utloggning / avslutad session</label>
-                      <p className="text-[11px] text-txt-muted">Välj vad som ska ske när en SSH-session eller lokal terminal avslutas.</p>
+                      <label className="text-xs font-medium text-txt-primary">On Logout / Session End</label>
+                      <p className="text-[11px] text-txt-muted">Choose what happens when an SSH session or local terminal ends.</p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <label
@@ -456,10 +456,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             className="hidden"
                           />
                           <RotateCcw className="h-3.5 w-3.5 text-sky-400" />
-                          <span>Återanslut (Standard)</span>
+                          <span>Reconnect (Default)</span>
                         </div>
                         <span className="text-[11px] text-txt-muted leading-tight">
-                          Visar snabbknappar för att återansluta direkt eller stänga fliken.
+                          Shows quick buttons to reconnect directly or close the tab.
                         </span>
                       </label>
 
@@ -479,10 +479,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             className="hidden"
                           />
                           <X className="h-3.5 w-3.5 text-amber-400" />
-                          <span>Stäng flik direkt</span>
+                          <span>Close Tab Immediately</span>
                         </div>
                         <span className="text-[11px] text-txt-muted leading-tight">
-                          Stänger fliken automatiskt vid ren utloggning (kod 0).
+                          Closes the tab automatically on a clean logout (code 0).
                         </span>
                       </label>
 
@@ -502,10 +502,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             className="hidden"
                           />
                           <Terminal className="h-3.5 w-3.5 text-slate-400" />
-                          <span>Behåll öppen</span>
+                          <span>Keep Open</span>
                         </div>
                         <span className="text-[11px] text-txt-muted leading-tight">
-                          Lämna terminalen öppen utan snabbknappar (klassiskt läge).
+                          Leave the terminal open with no quick buttons (classic mode).
                         </span>
                       </label>
                     </div>

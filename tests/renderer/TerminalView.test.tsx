@@ -196,7 +196,7 @@ describe('TerminalView Component', () => {
     });
 
     expect(screen.getByTestId('session-exit-overlay')).toBeInTheDocument();
-    expect(screen.getByText(/Sessionen avslutades/)).toBeInTheDocument();
+    expect(screen.getByText(/Session ended/)).toBeInTheDocument();
     expect(screen.getByTestId('reconnect-button')).toBeInTheDocument();
     expect(screen.getByTestId('close-tab-button')).toBeInTheDocument();
 
@@ -260,7 +260,7 @@ describe('TerminalView Component', () => {
 
     expect(onCloseTab).not.toHaveBeenCalled();
     expect(screen.getByTestId('session-exit-overlay')).toBeInTheDocument();
-    expect(screen.getByText(/Sessionen avslutades \(kod 255\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Session ended \(code 255\)/)).toBeInTheDocument();
   });
 
   it('does not display overlay when sessionExitAction is keep', async () => {

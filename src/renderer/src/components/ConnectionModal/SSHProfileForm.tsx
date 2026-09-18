@@ -221,7 +221,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
           />
           <span className="text-[11px] text-txt-muted">
-            Krävs för SFTP i File Manager och ger automatisk inloggning i terminalen. Sparas krypterat i OS Keychain/DPAPI. Om fältet lämnas tomt efterfrågas lösenordet vid anslutning.
+            Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting.
           </span>
         </label>
       )}
@@ -758,7 +758,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </div>
       )}
 
-      <div className="mt-2 flex items-center justify-between pt-2 border-t border-border-subtle">
+      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
         <button
           type="button"
           disabled={!config.host.trim() || !config.username.trim() || testing}

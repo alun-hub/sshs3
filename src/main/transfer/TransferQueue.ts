@@ -340,7 +340,7 @@ export class TransferQueue extends EventEmitter {
     job.startedAt = new Date();
     job.progress.status = 'running';
     if (job.isDirectory) {
-      job.progress.statusMessage = 'Förbereder...';
+      job.progress.statusMessage = 'Preparing...';
     }
     this.emit('progress', job.progress, job);
 
@@ -404,7 +404,7 @@ export class TransferQueue extends EventEmitter {
         job.progress.status = 'completed';
         job.progress.percentage = 100;
         job.completedAt = new Date();
-        job.progress.statusMessage = 'Klar';
+        job.progress.statusMessage = 'Done';
         this.emit('progress', job.progress, job);
         this.emit('completed', job);
         context.resolveWait(job);

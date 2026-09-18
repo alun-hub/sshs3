@@ -362,7 +362,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               }`}
             />
             <span className="font-medium text-slate-200">
-              Sessionen avslutades{exitEvent.exitCode !== undefined ? ` (kod ${exitEvent.exitCode})` : ''}
+              Session ended{exitEvent.exitCode !== undefined ? ` (code ${exitEvent.exitCode})` : ''}
             </span>
           </div>
 
@@ -374,7 +374,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-medium shadow-sm transition-colors cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              Återanslut
+              Reconnect
             </button>
 
             {onCloseTab && (
@@ -385,7 +385,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-700 text-slate-300 hover:text-white font-medium transition-colors cursor-pointer"
               >
                 <X className="h-3.5 w-3.5" />
-                Stäng flik
+                Close Tab
               </button>
             )}
           </div>

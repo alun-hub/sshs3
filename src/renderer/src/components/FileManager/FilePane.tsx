@@ -102,13 +102,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return;
           }
         }
-        let msg = err instanceof Error ? err.message : 'Kunde inte läsa mappinnehållet';
+        let msg = err instanceof Error ? err.message : 'Could not read the folder contents';
         msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
-        if (msg.includes('All configured authentication methods failed') || msg.toLowerCase().includes('autentisering misslyckades')) {
-          msg = 'Autentisering misslyckades: Lösenord eller nyckel godkändes inte av servern.';
+        if (msg.includes('All configured authentication methods failed') || msg.toLowerCase().includes('authentication failed')) {
+          msg = 'Authentication failed: The password or key was rejected by the server.';
         } else if (msg.includes('getConnection')) {
           const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
-          msg = `Kunde inte ansluta till SFTP: ${clean || 'Anslutningen misslyckades'}`;
+          msg = `Could not connect to SFTP: ${clean || 'Connection failed'}`;
         }
         setError(msg);
         setEntries([]);
@@ -322,7 +322,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               ? [
                   {
                     key: 'add-to-dotfiles',
-                    label: 'Lägg till i dotfiles pool...',
+                    label: 'Add to Dotfiles Pool...',
                     icon: FileCode,
                     onSelect: () => setAddToDotfilesOpen(true),
                   },

@@ -214,8 +214,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               <FileCode className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-txt-primary leading-tight">Dotfile Pools &amp; Masterfiler</h2>
-              <p className="text-[11px] text-txt-muted">Ladda upp och hantera masterfiler för automatisk synkning till servrar</p>
+              <h2 className="text-sm font-semibold text-txt-primary leading-tight">Dotfile Pools &amp; Master Files</h2>
+              <p className="text-[11px] text-txt-muted">Upload and manage master files for automatic sync to servers</p>
             </div>
           </div>
           <button
@@ -235,14 +235,14 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               className="mb-1.5 flex items-center justify-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
-              Ny pool
+              New Pool
             </button>
             {loading ? (
               <div className="flex items-center justify-center py-4 text-txt-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : pools.length === 0 ? (
-              <p className="px-1 py-2 text-[11px] text-txt-muted">Inga pooler sparade.</p>
+              <p className="px-1 py-2 text-[11px] text-txt-muted">No pools saved.</p>
             ) : (
               pools.map((pool) => (
                 <button
@@ -255,9 +255,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                       : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
                   }`}
                 >
-                  <span className="truncate">{pool.name || '(namnlös pool)'}</span>
+                  <span className="truncate">{pool.name || '(unnamed pool)'}</span>
                   <span className="ml-2 shrink-0 rounded bg-app-surface px-1.5 py-0.5 text-[10px] text-txt-muted font-mono">
-                    {pool.files.length} {pool.files.length === 1 ? 'fil' : 'filer'}
+                    {pool.files.length} {pool.files.length === 1 ? 'file' : 'files'}
                   </span>
                 </button>
               ))
@@ -267,7 +267,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
           <div className="flex flex-1 flex-col min-w-0 bg-app-card">
             {!draft ? (
               <div className="flex flex-1 items-center justify-center text-xs text-txt-muted">
-                Välj en pool till vänster eller skapa en ny.
+                Select a pool on the left or create a new one.
               </div>
             ) : (
               <>
@@ -284,11 +284,11 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                 >
                   <div className="flex items-end justify-between gap-3">
                     <label className="flex-1 flex flex-col gap-1">
-                      <span className="text-xs font-medium text-txt-primary">Poolnamn</span>
+                      <span className="text-xs font-medium text-txt-primary">Pool Name</span>
                       <input
                         value={draft.name}
                         onChange={(e) => updateDraft('name', e.target.value)}
-                        placeholder="t.ex. Linux Standard (.bashrc, .vimrc)"
+                        placeholder="e.g. Linux Standard (.bashrc, .vimrc)"
                         className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
                       />
                     </label>
@@ -297,16 +297,16 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                       type="button"
                       onClick={() => void handleOpenMasterFolder()}
                       className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                      title="Öppna mappen med sparade masterfiler i systemets filutforskare"
+                      title="Open the folder with saved master files in the system file explorer"
                     >
                       <FolderOpen className="h-3.5 w-3.5 text-sky-400" />
-                      Öppna masterkatalog
+                      Open Master Directory
                     </button>
                   </div>
 
                   {draft.masterDirectory && (
                     <div className="flex items-center gap-1.5 text-[11px] text-txt-muted bg-app-surface/60 rounded-md px-2.5 py-1 font-mono border border-border-subtle/50">
-                      <span className="font-semibold text-txt-secondary">Plats på disken:</span>
+                      <span className="font-semibold text-txt-secondary">Location on disk:</span>
                       <span className="truncate">{draft.masterDirectory}</span>
                     </div>
                   )}
@@ -314,7 +314,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-txt-primary">Masterfiler</span>
+                        <span className="text-xs font-medium text-txt-primary">Master Files</span>
                         <span className="text-[11px] text-txt-muted">({draft.files.length})</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -322,10 +322,10 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                           type="button"
                           onClick={() => void handleUploadFiles()}
                           className="flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-sky-500/20 transition-colors"
-                          title="Välj och ladda upp befintliga filer från datorn som masterfiler"
+                          title="Select and upload existing files from your computer as master files"
                         >
                           <Upload className="h-3.5 w-3.5" />
-                          Ladda upp filer
+                          Upload Files
                         </button>
                         <button
                           type="button"
@@ -333,7 +333,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                           className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                         >
                           <Plus className="h-3 w-3" />
-                          Lägg till tom fil
+                          Add Empty File
                         </button>
                       </div>
                     </div>
@@ -344,9 +344,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                         className="cursor-pointer flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-subtle p-8 text-center hover:border-sky-500/40 hover:bg-app-surface/50 transition-colors"
                       >
                         <Upload className="h-8 w-8 text-sky-400/60 mb-2" />
-                        <p className="text-xs font-medium text-txt-primary">Ladda upp eller dra &amp; släpp dotfiles hit</p>
+                        <p className="text-xs font-medium text-txt-primary">Upload or drag &amp; drop dotfiles here</p>
                         <p className="text-[11px] text-txt-muted mt-1">
-                          Filerna sparas som fysiska masterfiler och synkas ut till anslutna SSH-servrar.
+                          Files are saved as physical master files and synced out to connected SSH servers.
                         </p>
                       </div>
                     ) : (
@@ -359,15 +359,15 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                             <div className="flex items-center justify-between text-[11px] text-txt-muted mb-0.5">
                               <span className="font-medium text-sky-400 flex items-center gap-1">
                                 <FileCode className="h-3 w-3" />
-                                Masterfil: {file.masterFileName || file.remotePath.replace(/^~?[/\\]/, '') || 'Namnlös'}
+                                Master file: {file.masterFileName || file.remotePath.replace(/^~?[/\\]/, '') || 'Unnamed'}
                               </span>
-                              {file.updatedAt && <span>Senast sparad: {file.updatedAt}</span>}
+                              {file.updatedAt && <span>Last saved: {file.updatedAt}</span>}
                             </div>
                             <div className="grid grid-cols-[1fr_80px_auto] gap-2">
                               <input
                                 value={file.remotePath}
                                 onChange={(e) => updateFile(file.id, { remotePath: e.target.value })}
-                                placeholder="Fjärrsökväg, t.ex. ~/.bashrc"
+                                placeholder="Remote path, e.g. ~/.bashrc"
                                 className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                               />
                               <input
@@ -375,13 +375,13 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                                 onChange={(e) => updateFile(file.id, { mode: e.target.value })}
                                 placeholder="Mode (644)"
                                 className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono text-center"
-                                title="Filrättigheter (oktalt, t.ex. 644 eller 600)"
+                                title="File permissions (octal, e.g. 644 or 600)"
                               />
                               <button
                                 type="button"
                                 onClick={() => removeFile(file.id)}
                                 className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
-                                title="Ta bort masterfil från poolen"
+                                title="Remove master file from the pool"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -390,7 +390,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                               value={file.content}
                               onChange={(e) => updateFile(file.id, { content: e.target.value })}
                               rows={5}
-                              placeholder="Filinnehåll / konfiguration..."
+                              placeholder="File content / configuration..."
                               className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono leading-relaxed resize-y"
                             />
                           </div>
@@ -407,7 +407,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-app-surface-hover transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Ta bort pool
+                    Delete Pool
                   </button>
                   <button
                     type="button"
@@ -416,7 +416,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
                   >
                     {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    Spara masterfiler
+                    Save Master Files
                   </button>
                 </div>
               </>

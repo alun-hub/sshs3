@@ -260,7 +260,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
         setConnectionRequest(null);
         setPasswordPrompt(null);
       } catch (err) {
-        let msg = err instanceof Error ? err.message : 'Kunde inte ansluta till SFTP-servern';
+        let msg = err instanceof Error ? err.message : 'Could not connect to the SFTP server';
         msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
         window.alert(msg);
       } finally {
@@ -412,17 +412,17 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
           <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
               <KeyRound className="h-4 w-4" />
-              <span>Lösenord krävs för SFTP</span>
+              <span>Password Required for SFTP</span>
             </div>
             <p className="text-txt-muted text-xs leading-relaxed">
-              Profilen <strong className="text-txt-primary">{passwordPrompt.config.name}</strong> saknar sparat lösenord. File Manager körs i bakgrunden och behöver ett lösenord för att ansluta.
+              Profile <strong className="text-txt-primary">{passwordPrompt.config.name}</strong> has no saved password. File Manager runs in the background and needs a password to connect.
             </p>
             <form onSubmit={handlePasswordPromptSubmit} className="space-y-3">
               <input
                 type="password"
                 required
                 autoFocus
-                placeholder="Ange lösenord"
+                placeholder="Enter password"
                 value={promptPassword}
                 onChange={(e) => setPromptPassword(e.target.value)}
                 className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
@@ -434,7 +434,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
                   onChange={(e) => setSavePasswordToProfile(e.target.checked)}
                   className="rounded border-border-subtle text-sky-500 focus:ring-0"
                 />
-                <span>Spara lösenordet i profilen</span>
+                <span>Save the password in the profile</span>
               </label>
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -442,14 +442,14 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
                   onClick={() => setPasswordPrompt(null)}
                   className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                 >
-                  Avbryt
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={connecting}
                   className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 transition-colors disabled:opacity-50"
                 >
-                  {connecting ? 'Ansluter...' : 'Anslut'}
+                  {connecting ? 'Connecting...' : 'Connect'}
                 </button>
               </div>
             </form>

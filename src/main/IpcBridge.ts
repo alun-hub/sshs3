@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -50,6 +52,8 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
+
+const execFileAsync = promisify(execFile);
 
 interface PendingAskpassPrompt {
   sessionId?: string;
@@ -893,19 +897,19 @@ export class IpcBridge {
       IPC_CHANNELS.CONNECTION_TEST_SSH,
       async (_event, config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> => {
         if (!config || !config.host?.trim()) {
-          return { success: false, error: 'Värdnamn / IP saknas' };
+          return { success: false, error: 'Hostname / IP is required' };
         }
         if (!config.username?.trim()) {
-          return { success: false, error: 'Användarnamn saknas' };
+          return { success: false, error: 'Username is required' };
         }
 
         if (config.authType === 'smartcard') {
           if (!config.pkcs11LibPath?.trim()) {
-            return { success: false, error: 'PKCS#11-bibliotekssökväg saknas' };
+            return { success: false, error: 'PKCS#11 library path is required' };
           }
           const valid = await SmartcardDetector.validateLibraryPath(config.pkcs11LibPath);
           if (!valid) {
-            return { success: false, error: `Smartcard-biblioteket finns inte: ${config.pkcs11LibPath}` };
+            return { success: false, error: `Smartcard library not found: ${config.pkcs11LibPath}` };
           }
           return { success: true };
         }
@@ -951,7 +955,7 @@ export class IpcBridge {
       IPC_CHANNELS.CONNECTION_TEST_S3,
       async (_event, config: S3Config): Promise<{ success: boolean; error?: string }> => {
         if (!config || !config.region?.trim() || !config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
-          return { success: false, error: 'Region, Access Key ID och Secret Access Key krävs' };
+          return { success: false, error: 'Region, Access Key ID, and Secret Access Key are required' };
         }
         try {
           const provider = new S3StorageProvider({
@@ -1036,6 +1040,18 @@ export class IpcBridge {
 
     this.registerHandler(IPC_CHANNELS.APP_GET_PLATFORM, async () => {
       return process.platform;
+    });
+
+    this.registerHandler(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS, async () => {
+      if (process.platform !== 'win32') {
+        return { pwsh: false };
+      }
+      try {
+        await execFileAsync('where', ['pwsh.exe']);
+        return { pwsh: true };
+      } catch {
+        return { pwsh: false };
+      }
     });
 
     this.registerHandler(IPC_CHANNELS.SSH_AGENT_STATUS, async () => {

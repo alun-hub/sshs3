@@ -407,13 +407,13 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
           if (msg.includes('All configured authentication methods failed')) {
             throw new Error(
-              'Autentisering misslyckades: Servern nekade inloggningen. Kontrollera att lösenordet stämmer, eller använd SSH-nyckel.'
+              'Authentication failed: The server rejected the login. Check that the password is correct, or use an SSH key.'
             );
           }
           if (msg.includes('getConnection')) {
             const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
             throw new Error(
-              `Kunde inte ansluta till SFTP: ${clean || 'Anslutningen misslyckades'}`
+              `Could not connect to SFTP: ${clean || 'Connection failed'}`
             );
           }
         }

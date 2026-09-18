@@ -611,7 +611,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   async getTags(remotePath: string): Promise<S3Tag[]> {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket) {
-      throw new Error(`Kan inte hämta taggar för roten: ${remotePath}`);
+      throw new Error(`Cannot get tags for the root: ${remotePath}`);
     }
 
     try {
@@ -632,7 +632,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   async setTags(remotePath: string, tags: S3Tag[]): Promise<void> {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket) {
-      throw new Error(`Kan inte sätta taggar för roten: ${remotePath}`);
+      throw new Error(`Cannot set tags for the root: ${remotePath}`);
     }
 
     const TagSet = tags.map((t) => ({ Key: t.key, Value: t.value }));
@@ -660,7 +660,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   private requireBucketOnly(remotePath: string): string {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket || key) {
-      throw new Error(`Kräver en bucket-sökväg: ${remotePath}`);
+      throw new Error(`Requires a bucket path: ${remotePath}`);
     }
     return bucket;
   }
@@ -710,10 +710,10 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     try {
       rules = JSON.parse(corsJson);
     } catch {
-      throw new Error('Ogiltig JSON för CORS-regler');
+      throw new Error('Invalid JSON for CORS rules');
     }
     if (!Array.isArray(rules)) {
-      throw new Error('CORS-regler måste vara en JSON-array av regler');
+      throw new Error('CORS rules must be a JSON array of rules');
     }
     await this.client.send(
       new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: { CORSRules: rules as any } })
@@ -739,7 +739,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   async listObjectVersions(remotePath: string): Promise<ObjectVersionEntry[]> {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket) {
-      throw new Error(`Kan inte lista versioner för roten: ${remotePath}`);
+      throw new Error(`Cannot list versions for the root: ${remotePath}`);
     }
 
     const results: ObjectVersionEntry[] = [];
@@ -789,7 +789,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   async deleteObjectVersion(remotePath: string, versionId: string): Promise<void> {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket || !key) {
-      throw new Error(`Kräver en objekt-sökväg: ${remotePath}`);
+      throw new Error(`Requires an object path: ${remotePath}`);
     }
     await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key, VersionId: versionId }));
     this.clearCache();
@@ -798,7 +798,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
   async restoreObjectVersion(remotePath: string, versionId: string): Promise<void> {
     const { bucket, key } = parseS3Path(remotePath);
     if (!bucket || !key) {
-      throw new Error(`Kräver en objekt-sökväg: ${remotePath}`);
+      throw new Error(`Requires an object path: ${remotePath}`);
     }
     const encodedKey = key
       .split('/')

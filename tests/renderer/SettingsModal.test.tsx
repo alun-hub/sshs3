@@ -158,13 +158,13 @@ describe('SettingsModal', () => {
     // Click on Terminal category tab
     fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
 
-    expect(screen.getByText('Vid utloggning / avslutad session')).toBeInTheDocument();
-    expect(screen.getByText('Återanslut (Standard)')).toBeInTheDocument();
-    expect(screen.getByText('Stäng flik direkt')).toBeInTheDocument();
-    expect(screen.getByText('Behåll öppen')).toBeInTheDocument();
+    expect(screen.getByText('On Logout / Session End')).toBeInTheDocument();
+    expect(screen.getByText('Reconnect (Default)')).toBeInTheDocument();
+    expect(screen.getByText('Close Tab Immediately')).toBeInTheDocument();
+    expect(screen.getByText('Keep Open')).toBeInTheDocument();
 
-    // Select "Stäng flik direkt"
-    fireEvent.click(screen.getByText('Stäng flik direkt'));
+    // Select "Close Tab Immediately"
+    fireEvent.click(screen.getByText('Close Tab Immediately'));
 
     // Save
     fireEvent.click(screen.getByText('Save Settings'));

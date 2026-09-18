@@ -47,7 +47,7 @@ describe('AddToDotfilePoolModal Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Lägg till i dotfiles pool')).toBeInTheDocument();
+      expect(screen.getByText('Add to Dotfiles Pool')).toBeInTheDocument();
       expect(screen.getByDisplayValue('~/.bashrc')).toBeInTheDocument();
       expect(screen.getByText(/Main Pool/)).toBeInTheDocument();
     });
@@ -68,10 +68,10 @@ describe('AddToDotfilePoolModal Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Spara som masterfil')).toBeInTheDocument();
+      expect(screen.getByText('Save as Master File')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Spara som masterfil'));
+    fireEvent.click(screen.getByText('Save as Master File'));
 
     await waitFor(() => {
       expect(window.multissh.dotfilePoolAddFromStorage).toHaveBeenCalledWith({
@@ -80,7 +80,7 @@ describe('AddToDotfilePoolModal Component', () => {
         filePath: '/home/user/.bashrc',
         targetRemotePath: '~/.bashrc',
       });
-      expect(onSuccess).toHaveBeenCalledWith(expect.stringContaining('Sparade .bashrc som masterfil'));
+      expect(onSuccess).toHaveBeenCalledWith(expect.stringContaining('Saved .bashrc as a master file'));
       expect(onClose).toHaveBeenCalled();
     });
   });

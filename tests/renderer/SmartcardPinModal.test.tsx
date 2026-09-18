@@ -96,7 +96,7 @@ describe('SmartcardPinModal Component', () => {
     expect(screen.queryByTestId('smartcard-pin-modal')).not.toBeInTheDocument();
   });
 
-  it('cancels and submits empty PIN when Avbryt button or Escape key is pressed', () => {
+  it('cancels and submits empty PIN when Cancel button or Escape key is pressed', () => {
     render(<SmartcardPinModal />);
 
     act(() => {
