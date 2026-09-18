@@ -36,10 +36,37 @@ export interface ProfileSyncPullResult {
   sshNativeConflicts: KnownHostsConflict[];
 }
 
+export type SyncState = 'in_sync' | 'ahead' | 'behind' | 'diverged' | 'not_initialized' | 'error';
+
+export interface CategoryComparison {
+  category: SyncDataCategory;
+  state: 'in_sync' | 'ahead' | 'behind' | 'diverged';
+  ahead: number;
+  behind: number;
+  details?: string[];
+}
+
+export interface SyncComparisonResult {
+  state: SyncState;
+  aheadCount: number;
+  behindCount: number;
+  categories: CategoryComparison[];
+  checkedAt: string;
+  error?: string;
+}
+
+import type { SFTPConfig, S3Config } from './storage';
+
 export interface ProfileSyncStatus {
   /** Whether a sync target (S3/SFTP location) has been configured via profile-sync:setup. */
   configured: boolean;
   target?: { id: string; name: string; type: 'sftp' | 's3' };
+  /** Complete target connection configuration for autofilling the target editor form. */
+  targetConfig?: {
+    type: 'sftp' | 's3';
+    sftpConfig?: SFTPConfig;
+    s3Config?: S3Config;
+  };
   /** Directory (SFTP) or `bucket[/prefix]` (S3) under which the `.sshs3` sync folder lives. */
   remoteBasePath?: string;
   /** Whether this machine has already run through setup once (salts exist) — decides whether the next password entry needs double-confirmation (first time) or is just a re-unlock. */
@@ -48,4 +75,5 @@ export interface ProfileSyncStatus {
   topologyUnlocked: boolean;
   credentialsUnlocked: boolean;
   lastSyncAt?: string;
+  comparison?: SyncComparisonResult;
 }

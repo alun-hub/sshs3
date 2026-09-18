@@ -10,7 +10,7 @@ import type { AppSettings } from '../../shared/types/settings';
 import { ProfileStore, type ProfilesData } from '../profile/ProfileStore';
 import { DotfilePoolStore } from '../dotfiles/DotfilePoolStore';
 import { SettingsStore } from '../settings/SettingsStore';
-import { SyncCryptoService, type SyncDataCategory } from './SyncCryptoService';
+import { SyncCryptoService, SyncLockedError, type SyncDataCategory } from './SyncCryptoService';
 import { joinPaths } from '../transfer/TransferPipeline';
 import {
   mergeKnownHosts,
@@ -20,6 +20,15 @@ import {
 } from './SshNativeFileMerger';
 
 const SYNC_DIR_NAME = '.sshs3';
+
+function formatTimestamp(d = new Date()): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
 
 /**
  * Builds the remote file paths for a sync target. `remoteBasePath` is
@@ -70,6 +79,7 @@ export class SyncConflictError extends Error {
 interface Syncable {
   id: string;
   updatedAt?: string;
+  deletedAt?: string;
 }
 
 /**
@@ -90,9 +100,31 @@ export function mergeRecords<T extends Syncable>(local: T[], remote: T[]): { mer
       changed = true;
       continue;
     }
-    if ((remoteItem.updatedAt ?? '') > (localItem.updatedAt ?? '')) {
-      byId.set(remoteItem.id, { ...localItem, ...remoteItem });
+    const remoteTime = remoteItem.updatedAt ?? '';
+    const localTime = localItem.updatedAt ?? '';
+    if (remoteTime > localTime) {
+      const mergedItem: any = { ...localItem, ...remoteItem };
+      if (!remoteItem.deletedAt && (localItem as any).deletedAt) {
+        delete mergedItem.deletedAt;
+      }
+      byId.set(remoteItem.id, mergedItem);
       changed = true;
+    } else if (remoteTime === localTime) {
+      // If timestamps match, but remote has fields that local is missing
+      // (e.g. topology was pulled first, credentials unlocked and pulled second),
+      // merge the non-empty fields in without overwriting existing local values.
+      let updated = false;
+      const mergedItem: any = { ...localItem };
+      for (const [key, val] of Object.entries(remoteItem)) {
+        if (val !== undefined && val !== '' && (mergedItem[key] === undefined || mergedItem[key] === '')) {
+          mergedItem[key] = val;
+          updated = true;
+        }
+      }
+      if (updated) {
+        byId.set(remoteItem.id, mergedItem);
+        changed = true;
+      }
     }
   }
 
@@ -252,13 +284,200 @@ interface SshNativePayload {
   knownHostsContent: string;
 }
 
-import type { ProfileSyncPullResult } from '../../shared/types/sync';
+import type {
+  ProfileSyncPullResult,
+  SyncComparisonResult,
+  CategoryComparison,
+} from '../../shared/types/sync';
 
 export type PullResult = ProfileSyncPullResult;
 
 export interface ProfileSyncServiceOptions {
   sshConfigPath?: string;
   knownHostsPath?: string;
+}
+
+export function getComparisonState(ahead: number, behind: number): 'in_sync' | 'ahead' | 'behind' | 'diverged' {
+  if (ahead > 0 && behind > 0) return 'diverged';
+  if (ahead > 0) return 'ahead';
+  if (behind > 0) return 'behind';
+  return 'in_sync';
+}
+
+export function compareRecords<T extends { id: string; name?: string; updatedAt?: string; deletedAt?: string }>(
+  local: T[],
+  remote: T[],
+  label: string,
+  spec?: FieldSplitSpec<any>
+): { ahead: number; behind: number; details: string[] } {
+  const localById = new Map<string, T>();
+  for (const item of local) localById.set(item.id, item);
+
+  const remoteById = new Map<string, T>();
+  for (const item of remote) remoteById.set(item.id, item);
+
+  const allIds = new Set([...localById.keys(), ...remoteById.keys()]);
+  let ahead = 0;
+  let behind = 0;
+  const details: string[] = [];
+
+  for (const id of allIds) {
+    const localItem = localById.get(id);
+    const remoteItem = remoteById.get(id);
+
+    if (localItem && !remoteItem) {
+      if (!localItem.deletedAt) {
+        ahead++;
+        details.push(`${label} "${localItem.name ?? id}" created locally`);
+      }
+      continue;
+    }
+
+    if (!localItem && remoteItem) {
+      if (!remoteItem.deletedAt) {
+        behind++;
+        details.push(`${label} "${remoteItem.name ?? id}" added on remote`);
+      }
+      continue;
+    }
+
+    if (localItem && remoteItem) {
+      if (localItem.deletedAt && !remoteItem.deletedAt) {
+        const localDel = localItem.deletedAt ?? '';
+        const remoteUpd = remoteItem.updatedAt ?? '';
+        if (localDel >= remoteUpd) {
+          ahead++;
+          details.push(`${label} "${localItem.name ?? id}" deleted locally`);
+        } else {
+          behind++;
+          details.push(`${label} "${remoteItem.name ?? id}" updated on remote`);
+        }
+        continue;
+      }
+
+      if (!localItem.deletedAt && remoteItem.deletedAt) {
+        const remoteDel = remoteItem.deletedAt ?? '';
+        const localUpd = localItem.updatedAt ?? '';
+        if (remoteDel >= localUpd) {
+          behind++;
+          details.push(`${label} "${remoteItem.name ?? id}" deleted on remote`);
+        } else {
+          ahead++;
+          details.push(`${label} "${localItem.name ?? id}" updated locally`);
+        }
+        continue;
+      }
+
+      if (localItem.deletedAt && remoteItem.deletedAt) {
+        continue; // Both deleted, in sync
+      }
+
+      // Both active
+      const localTime = localItem.updatedAt ?? '';
+      const remoteTime = remoteItem.updatedAt ?? '';
+      if (localTime > remoteTime) {
+        ahead++;
+        details.push(`${label} "${localItem.name ?? id}" updated locally`);
+      } else if (remoteTime > localTime) {
+        behind++;
+        details.push(`${label} "${remoteItem.name ?? id}" updated on remote`);
+      } else if (spec) {
+        const localSyncable = splitFields(localItem, spec);
+        const remoteSyncable = splitFields(remoteItem, spec);
+        if (JSON.stringify(localSyncable) !== JSON.stringify(remoteSyncable)) {
+          ahead++;
+          details.push(`${label} "${localItem.name ?? id}" modified locally`);
+        }
+      }
+    }
+  }
+
+  return { ahead, behind, details };
+}
+
+export function compareDotfilePools(
+  local: DotfilePool[],
+  remote: DotfilePool[]
+): { ahead: number; behind: number; details: string[] } {
+  const localById = new Map<string, DotfilePool>();
+  for (const pool of local) localById.set(pool.id, pool);
+
+  const remoteById = new Map<string, DotfilePool>();
+  for (const pool of remote) remoteById.set(pool.id, pool);
+
+  const allIds = new Set([...localById.keys(), ...remoteById.keys()]);
+  let ahead = 0;
+  let behind = 0;
+  const details: string[] = [];
+
+  for (const id of allIds) {
+    const localPool = localById.get(id);
+    const remotePool = remoteById.get(id);
+
+    if (localPool && !remotePool) {
+      if (!localPool.deletedAt) {
+        ahead++;
+        details.push(`Dotfile pool "${localPool.name}" created locally`);
+      }
+      continue;
+    }
+
+    if (!localPool && remotePool) {
+      if (!remotePool.deletedAt) {
+        behind++;
+        details.push(`Dotfile pool "${remotePool.name}" added on remote`);
+      }
+      continue;
+    }
+
+    if (localPool && remotePool) {
+      if (localPool.deletedAt && !remotePool.deletedAt) {
+        if ((localPool.deletedAt ?? '') >= (remotePool.updatedAt ?? '')) {
+          ahead++;
+          details.push(`Dotfile pool "${localPool.name}" deleted locally`);
+        } else {
+          behind++;
+          details.push(`Dotfile pool "${remotePool.name}" updated on remote`);
+        }
+        continue;
+      }
+
+      if (!localPool.deletedAt && remotePool.deletedAt) {
+        if ((remotePool.deletedAt ?? '') >= (localPool.updatedAt ?? '')) {
+          behind++;
+          details.push(`Dotfile pool "${remotePool.name}" deleted on remote`);
+        } else {
+          ahead++;
+          details.push(`Dotfile pool "${localPool.name}" updated locally`);
+        }
+        continue;
+      }
+
+      if (localPool.deletedAt && remotePool.deletedAt) {
+        continue;
+      }
+
+      // Check pool files
+      const fileComp = compareRecords(localPool.files, remotePool.files, `File in "${localPool.name}"`);
+      if (fileComp.ahead > 0 || fileComp.behind > 0) {
+        ahead += fileComp.ahead;
+        behind += fileComp.behind;
+        details.push(...fileComp.details);
+      } else {
+        const localTime = localPool.updatedAt ?? '';
+        const remoteTime = remotePool.updatedAt ?? '';
+        if (localTime > remoteTime) {
+          ahead++;
+          details.push(`Dotfile pool "${localPool.name}" updated locally`);
+        } else if (remoteTime > localTime) {
+          behind++;
+          details.push(`Dotfile pool "${remotePool.name}" updated on remote`);
+        }
+      }
+    }
+  }
+
+  return { ahead, behind, details };
 }
 
 /**
@@ -279,6 +498,11 @@ export class ProfileSyncService {
    * IPC/settings layer that owns this service's lifecycle.
    */
   private readonly lastKnownRemoteState = new Map<SyncDataCategory, FileEntry | null>();
+  private lastComparison: SyncComparisonResult | null = null;
+
+  public getLastComparison(): SyncComparisonResult | null {
+    return this.lastComparison;
+  }
 
   constructor(
     private readonly profileStore: ProfileStore,
@@ -307,11 +531,22 @@ export class ProfileSyncService {
   // ---------------------------------------------------------------------
 
   public async pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+    if (!this.cryptoService.isUnlocked('topology')) {
+      throw new SyncLockedError('topology');
+    }
+    if (!this.cryptoService.isUnlocked('credentials')) {
+      throw new SyncLockedError('credentials');
+    }
+
     const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
     const remoteFiles = buildRemoteFiles(effectiveBasePath);
-    await provider.createFolder(joinPaths('sftp', effectiveBasePath, SYNC_DIR_NAME)).catch(() => {
+    const syncDir = joinPaths('sftp', effectiveBasePath, SYNC_DIR_NAME);
+    await provider.createFolder(syncDir).catch(() => {
       // Already exists, or the provider creates directories implicitly (S3).
     });
+    if (provider.chmod) {
+      await provider.chmod(syncDir, 0o700).catch(() => {});
+    }
 
     const [profiles, pools, settings, sshNativePayload] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
@@ -344,6 +579,20 @@ export class ProfileSyncService {
     await this.encryptAndUpload(provider, 'dotfile-pools', JSON.stringify(dotfilePoolsPayload), remoteFiles);
     await this.encryptAndUpload(provider, 'settings', JSON.stringify(settings), remoteFiles);
     await this.encryptAndUpload(provider, 'ssh-native', JSON.stringify(sshNativePayload), remoteFiles);
+
+    this.lastComparison = {
+      state: 'in_sync',
+      aheadCount: 0,
+      behindCount: 0,
+      categories: [
+        { category: 'topology', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'credentials', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'dotfile-pools', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
+      ],
+      checkedAt: formatTimestamp(),
+    };
   }
 
   // ---------------------------------------------------------------------
@@ -419,7 +668,226 @@ export class ProfileSyncService {
       sshNativeConflicts = applied.conflicts;
     }
 
+    this.lastComparison = {
+      state: 'in_sync',
+      aheadCount: 0,
+      behindCount: 0,
+      categories: [
+        { category: 'topology', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'credentials', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'dotfile-pools', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
+      ],
+      checkedAt: formatTimestamp(),
+    };
+
     return { changedCategories, sshNativeConflicts };
+  }
+
+  // ---------------------------------------------------------------------
+  // Compare / Sync state detection
+  // ---------------------------------------------------------------------
+
+  public async compareWithRemote(
+    provider: IStorageProvider,
+    remoteBasePath = ''
+  ): Promise<SyncComparisonResult> {
+    if (!this.cryptoService.isUnlocked('topology') || !this.cryptoService.isUnlocked('credentials')) {
+      throw new SyncLockedError('topology');
+    }
+
+    const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
+    const remoteFiles = buildRemoteFiles(effectiveBasePath);
+
+    const hasTopology = (await this.statOrNull(provider, remoteFiles.topology)) !== null;
+
+    const [localProfiles, localPools, localSettings, localSshNative] = await Promise.all([
+      this.profileStore.getProfilesIncludingTombstones(),
+      this.dotfilePoolStore.getPoolsIncludingTombstones(),
+      this.settingsStore.getSettings(),
+      this.buildLocalSshNativePayload(),
+    ]);
+
+    if (!hasTopology) {
+      const activeSsh = localProfiles.ssh.filter((p) => !p.deletedAt).length;
+      const activeS3 = localProfiles.s3.filter((p) => !p.deletedAt).length;
+      const activePools = localPools.filter((p) => !p.deletedAt).length;
+      const totalAhead = activeSsh + activeS3 + activePools + (localSettings ? 1 : 0);
+
+      const result: SyncComparisonResult = {
+        state: 'not_initialized',
+        aheadCount: totalAhead,
+        behindCount: 0,
+        categories: [
+          {
+            category: 'topology',
+            state: activeSsh + activeS3 > 0 ? 'ahead' : 'in_sync',
+            ahead: activeSsh + activeS3,
+            behind: 0,
+            details: ['Remote sync target is not initialized'],
+          },
+          {
+            category: 'credentials',
+            state: activeSsh + activeS3 > 0 ? 'ahead' : 'in_sync',
+            ahead: activeSsh + activeS3,
+            behind: 0,
+          },
+          {
+            category: 'dotfile-pools',
+            state: activePools > 0 ? 'ahead' : 'in_sync',
+            ahead: activePools,
+            behind: 0,
+          },
+          {
+            category: 'settings',
+            state: 'ahead',
+            ahead: 1,
+            behind: 0,
+          },
+          {
+            category: 'ssh-native',
+            state: 'in_sync',
+            ahead: 0,
+            behind: 0,
+          },
+        ],
+        checkedAt: formatTimestamp(),
+      };
+      this.lastComparison = result;
+      return result;
+    }
+
+    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw] = await Promise.all([
+      this.downloadAndDecrypt(provider, 'topology', remoteFiles),
+      this.downloadAndDecrypt(provider, 'credentials', remoteFiles),
+      this.downloadAndDecrypt(provider, 'dotfile-pools', remoteFiles),
+      this.downloadAndDecrypt(provider, 'settings', remoteFiles),
+      this.downloadAndDecrypt(provider, 'ssh-native', remoteFiles),
+    ]);
+
+    const categories: CategoryComparison[] = [];
+
+    // 1. Topology & Credentials
+    const topology: TopologyPayload = topologyRaw ? JSON.parse(topologyRaw) : { ssh: [], s3: [] };
+    const credentials: CredentialsPayload = credentialsRaw ? JSON.parse(credentialsRaw) : { ssh: [], s3: [] };
+    const remoteSsh = joinById<SSHConnectionConfig>(topology.ssh, credentials.ssh);
+    const remoteS3 = joinById<S3Config>(topology.s3, credentials.s3);
+
+    const sshComp = compareRecords(localProfiles.ssh, remoteSsh, 'SSH profile', SSH_FIELD_SPLIT);
+    const s3Comp = compareRecords(localProfiles.s3, remoteS3, 'S3 profile', S3_FIELD_SPLIT);
+
+    const profilesAhead = sshComp.ahead + s3Comp.ahead;
+    const profilesBehind = sshComp.behind + s3Comp.behind;
+    const profilesDetails = [...sshComp.details, ...s3Comp.details];
+    const profilesState = getComparisonState(profilesAhead, profilesBehind);
+
+    categories.push({
+      category: 'topology',
+      state: profilesState,
+      ahead: profilesAhead,
+      behind: profilesBehind,
+      details: profilesDetails,
+    });
+    categories.push({
+      category: 'credentials',
+      state: profilesState,
+      ahead: profilesAhead,
+      behind: profilesBehind,
+    });
+
+    // 2. Dotfile Pools
+    const remotePools: DotfilePool[] = dotfilePoolsRaw ? JSON.parse(dotfilePoolsRaw).pools ?? [] : [];
+    const poolsComp = compareDotfilePools(localPools, remotePools);
+    categories.push({
+      category: 'dotfile-pools',
+      state: getComparisonState(poolsComp.ahead, poolsComp.behind),
+      ahead: poolsComp.ahead,
+      behind: poolsComp.behind,
+      details: poolsComp.details,
+    });
+
+    // 3. Settings
+    const remoteSettings: AppSettings | null = settingsRaw ? JSON.parse(settingsRaw) : null;
+    let settingsAhead = 0;
+    let settingsBehind = 0;
+    const settingsDetails: string[] = [];
+    if (remoteSettings) {
+      const localTime = localSettings.updatedAt ?? '';
+      const remoteTime = remoteSettings.updatedAt ?? '';
+      if (localTime > remoteTime) {
+        settingsAhead = 1;
+        settingsDetails.push('Settings modified locally');
+      } else if (remoteTime > localTime) {
+        settingsBehind = 1;
+        settingsDetails.push('Settings modified on remote');
+      }
+    }
+    categories.push({
+      category: 'settings',
+      state: getComparisonState(settingsAhead, settingsBehind),
+      ahead: settingsAhead,
+      behind: settingsBehind,
+      details: settingsDetails,
+    });
+
+    // 4. SSH Native
+    const remoteSshNative: SshNativePayload | null = sshNativeRaw ? JSON.parse(sshNativeRaw) : null;
+    let sshNativeAhead = 0;
+    let sshNativeBehind = 0;
+    const sshNativeDetails: string[] = [];
+
+    if (remoteSshNative?.sshConfigBlock) {
+      const localBlock = localSshNative.sshConfigBlock;
+      if (!localBlock) {
+        sshNativeBehind += 1;
+        sshNativeDetails.push('Managed SSH config block on remote');
+      } else if (localBlock.updatedAt > remoteSshNative.sshConfigBlock.updatedAt) {
+        sshNativeAhead += 1;
+        sshNativeDetails.push('Managed SSH config block updated locally');
+      } else if (remoteSshNative.sshConfigBlock.updatedAt > localBlock.updatedAt) {
+        sshNativeBehind += 1;
+        sshNativeDetails.push('Managed SSH config block updated on remote');
+      }
+    } else if (localSshNative.sshConfigBlock) {
+      sshNativeAhead += 1;
+      sshNativeDetails.push('Managed SSH config block created locally');
+    }
+
+    if (remoteSshNative?.knownHostsContent) {
+      const localMerge = mergeKnownHosts(localSshNative.knownHostsContent, remoteSshNative.knownHostsContent);
+      if (localMerge.addedCount > 0 || localMerge.conflicts.length > 0) {
+        const count = localMerge.addedCount + localMerge.conflicts.length;
+        sshNativeBehind += count;
+        sshNativeDetails.push(`${count} known_hosts key(s) on remote`);
+      }
+      const remoteMerge = mergeKnownHosts(remoteSshNative.knownHostsContent, localSshNative.knownHostsContent);
+      if (remoteMerge.addedCount > 0) {
+        sshNativeAhead += remoteMerge.addedCount;
+        sshNativeDetails.push(`${remoteMerge.addedCount} local known_hosts key(s) to push`);
+      }
+    }
+
+    categories.push({
+      category: 'ssh-native',
+      state: getComparisonState(sshNativeAhead, sshNativeBehind),
+      ahead: sshNativeAhead,
+      behind: sshNativeBehind,
+      details: sshNativeDetails,
+    });
+
+    const totalAhead = profilesAhead + poolsComp.ahead + settingsAhead + sshNativeAhead;
+    const totalBehind = profilesBehind + poolsComp.behind + settingsBehind + sshNativeBehind;
+
+    const result: SyncComparisonResult = {
+      state: getComparisonState(totalAhead, totalBehind),
+      aheadCount: totalAhead,
+      behindCount: totalBehind,
+      categories,
+      checkedAt: formatTimestamp(),
+    };
+    this.lastComparison = result;
+    return result;
   }
 
   // ---------------------------------------------------------------------
@@ -503,11 +971,44 @@ export class ProfileSyncService {
     }
   }
 
+  private isNotFoundError(err: any): boolean {
+    if (!err) return false;
+    const code = err.code || err.$metadata?.httpStatusCode;
+    if (code === 'ENOENT' || code === 2 || code === 404 || code === 'NotFound' || code === 'NoSuchKey') {
+      return true;
+    }
+    const name = err.name || '';
+    if (name === 'NoSuchKey' || name === 'NotFound') {
+      return true;
+    }
+    const msg = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+    if (
+      msg.includes('no such file') ||
+      msg.includes('file does not exist') ||
+      msg.includes('does not exist') ||
+      msg.includes('not found')
+    ) {
+      if (
+        msg.includes('host not found') ||
+        msg.includes('socket not found') ||
+        msg.includes('getaddrinfo') ||
+        msg.includes('connect')
+      ) {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
   private async statOrNull(provider: IStorageProvider, remotePath: string): Promise<FileEntry | null> {
     try {
       return await provider.stat(remotePath);
-    } catch {
-      return null;
+    } catch (err: any) {
+      if (this.isNotFoundError(err)) {
+        return null;
+      }
+      throw err;
     }
   }
 
@@ -519,14 +1020,25 @@ export class ProfileSyncService {
   ): Promise<void> {
     const encrypted = this.cryptoService.encrypt(category, plaintext);
     const targetPath = remoteFiles[category];
-    const tmpPath = `${targetPath}.tmp-${crypto.randomUUID()}`;
 
-    await this.writeProviderFile(provider, tmpPath, encrypted);
-    try {
-      await provider.rename(tmpPath, targetPath);
-    } catch (err) {
-      await provider.delete(tmpPath, false).catch(() => {});
-      throw err;
+    if (provider.type === 's3') {
+      // S3 PutObject is inherently atomic (replaces the key atomically).
+      // Writing directly avoids multipart CopyObject/DeleteObject races, replication latency,
+      // and eliminates the need for separate s3:DeleteObject permissions.
+      await this.writeProviderFile(provider, targetPath, encrypted);
+    } else {
+      const tmpPath = `${targetPath}.tmp-${crypto.randomUUID()}`;
+      await this.writeProviderFile(provider, tmpPath, encrypted);
+      try {
+        await provider.rename(tmpPath, targetPath);
+      } catch (err) {
+        await provider.delete(tmpPath, false).catch(() => {});
+        throw err;
+      }
+    }
+
+    if (provider.chmod) {
+      await provider.chmod(targetPath, 0o600).catch(() => {});
     }
 
     this.lastKnownRemoteState.set(category, await this.statOrNull(provider, targetPath));
@@ -552,6 +1064,10 @@ export class ProfileSyncService {
   }
 
   private async readProviderFile(provider: IStorageProvider, remotePath: string): Promise<Buffer> {
+    if (typeof provider.readFile === 'function') {
+      return provider.readFile(remotePath);
+    }
+
     const stream = await provider.createReadStream(remotePath);
     const chunks: Buffer[] = [];
     await new Promise<void>((resolve, reject) => {
@@ -563,7 +1079,12 @@ export class ProfileSyncService {
   }
 
   private async writeProviderFile(provider: IStorageProvider, remotePath: string, buffer: Buffer): Promise<void> {
-    const stream = await provider.createWriteStream(remotePath);
+    if (typeof provider.writeFile === 'function') {
+      await provider.writeFile(remotePath, buffer, { mode: 0o600, size: buffer.length });
+      return;
+    }
+
+    const stream = await provider.createWriteStream(remotePath, { mode: 0o600, size: buffer.length });
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const finish = () => {
@@ -579,7 +1100,6 @@ export class ProfileSyncService {
         }
       };
       stream.once('finish', finish);
-      stream.once('close', finish);
       stream.once('error', fail);
       stream.end(buffer);
     });

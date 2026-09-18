@@ -133,6 +133,20 @@ describe('SshNativeFileMerger — known_hosts', () => {
     expect(result.mergedContent).toBe(local);
   });
 
+  it('allows different key algorithms for the same host without conflict', () => {
+    const KEY_RSA = Buffer.from('ssh-rsa-fake-key-material').toString('base64');
+    const local = `shared-host.example.com ssh-ed25519 ${KEY_A}\n`;
+    const remote = `shared-host.example.com ssh-rsa ${KEY_RSA}\n`;
+
+    const result = mergeKnownHosts(local, remote);
+
+    expect(result.changed).toBe(true);
+    expect(result.addedCount).toBe(1);
+    expect(result.conflicts).toHaveLength(0);
+    expect(result.mergedContent).toContain(`shared-host.example.com ssh-ed25519 ${KEY_A}`);
+    expect(result.mergedContent).toContain(`shared-host.example.com ssh-rsa ${KEY_RSA}`);
+  });
+
   it('ignores comment, blank, and @-marker lines', () => {
     const local = '# comment\n\n@cert-authority *.example.com ssh-ed25519 abc\n';
     const remote = `host-a.example.com ssh-ed25519 ${KEY_A}\n`;

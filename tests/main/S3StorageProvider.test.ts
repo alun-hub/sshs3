@@ -946,6 +946,54 @@ describe('S3StorageProvider', () => {
         /Destination must include bucket and key/i
       );
     });
+
+    it('should include ServerSideEncryption/SSEKMSKeyId in CopyObjectCommand when configured', async () => {
+      const kmsProvider = new S3StorageProvider({
+        ...defaultS3Config,
+        serverSideEncryption: 'aws:kms',
+        kmsKeyId: 'arn:aws:kms:us-east-1:123456789012:key/test',
+      });
+
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof CopyObjectCommand) {
+          expect(command.input).toMatchObject({
+            ServerSideEncryption: 'aws:kms',
+            SSEKMSKeyId: 'arn:aws:kms:us-east-1:123456789012:key/test',
+          });
+          return {};
+        }
+        if (command instanceof DeleteObjectCommand) {
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await kmsProvider.rename('/my-bucket/file.txt', '/my-bucket/renamed.txt');
+      expect(clientSendMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('should retry CopyObjectCommand when receiving NoSuchKey due to eventual consistency', async () => {
+      let attempts = 0;
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof CopyObjectCommand) {
+          attempts++;
+          if (attempts === 1) {
+            const err: any = new Error('The specified key does not exist.');
+            err.name = 'NoSuchKey';
+            throw err;
+          }
+          return {};
+        }
+        if (command instanceof DeleteObjectCommand) {
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await provider.rename('/my-bucket/old.txt', '/my-bucket/new.txt');
+      expect(attempts).toBe(2);
+      expect(clientSendMock).toHaveBeenCalledTimes(3); // 2 copy attempts + 1 delete
+    });
   });
 
   describe('createReadStream', () => {
@@ -1255,4 +1303,71 @@ describe('S3StorageProvider', () => {
       expect(getSignedUrlMock).not.toHaveBeenCalled();
     });
   });
+
+  describe('writeFile', () => {
+    it('should write buffer directly using PutObjectCommand', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      clientSendMock.mockResolvedValueOnce({});
+
+      const data = Buffer.from('hello direct upload');
+      await provider.writeFile('/my-bucket/test.txt', data);
+
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+      const command = clientSendMock.mock.calls[0][0];
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      expect(command.input).toEqual(
+        expect.objectContaining({
+          Bucket: 'my-bucket',
+          Key: 'test.txt',
+          Body: data,
+          ContentType: 'text/plain',
+          ContentLength: data.byteLength,
+        })
+      );
+    });
+
+    it('should reject writing to root or bucket-only path', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      await expect(provider.writeFile('/', Buffer.from('test'))).rejects.toThrow(/Cannot write to root or bucket/i);
+      await expect(provider.writeFile('/my-bucket', Buffer.from('test'))).rejects.toThrow(/Cannot write to root or bucket/i);
+    });
+  });
+
+  describe('readFile', () => {
+    it('should read file directly using GetObjectCommand', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      const content = Buffer.from('retrieved content');
+      clientSendMock.mockResolvedValueOnce({
+        Body: {
+          transformToByteArray: async () => new Uint8Array(content),
+        },
+      });
+
+      const result = await provider.readFile('/my-bucket/test.txt');
+
+      expect(clientSendMock).toHaveBeenCalledTimes(1);
+      const command = clientSendMock.mock.calls[0][0];
+      expect(command).toBeInstanceOf(GetObjectCommand);
+      expect(command.input).toEqual({
+        Bucket: 'my-bucket',
+        Key: 'test.txt',
+      });
+      expect(result).toEqual(content);
+    });
+
+    it('should return empty buffer if response body is empty', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      clientSendMock.mockResolvedValueOnce({});
+
+      const result = await provider.readFile('/my-bucket/empty.txt');
+      expect(result).toEqual(Buffer.alloc(0));
+    });
+
+    it('should reject reading from root or bucket-only path', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      await expect(provider.readFile('/')).rejects.toThrow(/Cannot read root or bucket as file/i);
+      await expect(provider.readFile('/my-bucket')).rejects.toThrow(/Cannot read root or bucket as file/i);
+    });
+  });
 });
+

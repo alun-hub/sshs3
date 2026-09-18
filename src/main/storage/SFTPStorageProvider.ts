@@ -192,6 +192,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       return [candidate];
     }
 
+
     const candidates: Record<string, any>[] = [];
 
     const agent =
@@ -290,7 +291,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
    * Deduplicates concurrent connection attempts.
    */
   public async ensureConnected(): Promise<void> {
-    if (this.isConnected) {
+    const rawClient = (this.client as any).client;
+    const sock = rawClient?._sock;
+    const socketDead = sock && (sock.destroyed || !sock.writable);
+    const sftpMissing = (this.client as any).sftp === null;
+
+    if (this.isConnected && !socketDead && !sftpMissing) {
       return;
     }
     if (this.connectionPromise) {
@@ -406,8 +412,18 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         if (lastErr) {
           const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
           if (msg.includes('All configured authentication methods failed')) {
+            if (this.config.authType === 'agent') {
+              throw new Error(
+                'SSH agent authentication failed: The server rejected the agent key, or the agent has no identities loaded (run "ssh-add").'
+              );
+            }
             throw new Error(
               'Authentication failed: The server rejected the login. Check that the password is correct, or use an SSH key.'
+            );
+          }
+          if (msg.includes('read ECONNRESET')) {
+            throw new Error(
+              'Connection reset by remote server (read ECONNRESET). The SSH server may have closed the connection or dropped it due to authentication failures.'
             );
           }
           if (msg.includes('getConnection')) {
@@ -429,6 +445,36 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     });
 
     return this.connectionPromise;
+  }
+
+  private isConnectionDropError(err: any): boolean {
+    if (!err) return false;
+    const msg = String(err.message || err);
+    const code = err.code;
+    return (
+      code === 'ECONNRESET' ||
+      code === 'EPIPE' ||
+      code === 'ECONNABORTED' ||
+      code === 'ENOTCONN' ||
+      msg.includes('ECONNRESET') ||
+      msg.includes('EPIPE') ||
+      msg.includes('Not connected') ||
+      msg.includes('No SFTP connection')
+    );
+  }
+
+  private async executeWithReconnect<T>(fn: () => Promise<T>): Promise<T> {
+    await this.ensureConnected();
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (this.isConnectionDropError(err)) {
+        this.isConnected = false;
+        await this.ensureConnected();
+        return await fn();
+      }
+      throw err;
+    }
   }
 
   public async getHomeDir(): Promise<string> {
@@ -470,62 +516,63 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   async list(remotePath: string): Promise<FileEntry[]> {
-    await this.ensureConnected();
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      const fileList = await this.client.list(resolved);
+      const results: FileEntry[] = [];
 
-    const resolved = await this.resolveRemotePath(remotePath);
-    const fileList = await this.client.list(resolved);
-    const results: FileEntry[] = [];
+      for (const item of fileList) {
+        const isDir = item.type === 'd' || (item as any).isDirectory === true;
+        const entryPath = path.posix.join(resolved, item.name);
+        const mtime = parseModifyTime(item);
 
-    for (const item of fileList) {
-      const isDir = item.type === 'd' || (item as any).isDirectory === true;
-      const entryPath = path.posix.join(resolved, item.name);
-      const mtime = parseModifyTime(item);
+        results.push({
+          name: item.name,
+          path: entryPath,
+          size: item.size,
+          isDirectory: isDir,
+          mtime,
+          mimeType: isDir ? undefined : getMimeType(item.name),
+          permissions: extractPermissions(item),
+        });
+      }
 
-      results.push({
-        name: item.name,
-        path: entryPath,
-        size: item.size,
-        isDirectory: isDir,
-        mtime,
-        mimeType: isDir ? undefined : getMimeType(item.name),
-        permissions: extractPermissions(item),
+      // Sort directories first, then alphabetical by name
+      results.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
       });
-    }
 
-    // Sort directories first, then alphabetical by name
-    results.sort((a, b) => {
-      if (a.isDirectory && !b.isDirectory) return -1;
-      if (!a.isDirectory && b.isDirectory) return 1;
-      return a.name.localeCompare(b.name);
+      return results;
     });
-
-    return results;
   }
 
   async stat(remotePath: string): Promise<FileEntry> {
-    await this.ensureConnected();
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      const stats = await this.client.stat(resolved);
+      const isDir = Boolean(stats.isDirectory);
+      const name = path.posix.basename(resolved) || resolved;
+      const mtime = parseModifyTime(stats);
 
-    const resolved = await this.resolveRemotePath(remotePath);
-    const stats = await this.client.stat(resolved);
-    const isDir = Boolean(stats.isDirectory);
-    const name = path.posix.basename(resolved) || resolved;
-    const mtime = parseModifyTime(stats);
-
-    return {
-      name,
-      path: resolved,
-      size: stats.size,
-      isDirectory: isDir,
-      mtime,
-      mimeType: isDir ? undefined : getMimeType(name),
-      permissions: extractPermissions(stats),
-    };
+      return {
+        name,
+        path: resolved,
+        size: stats.size,
+        isDirectory: isDir,
+        mtime,
+        mimeType: isDir ? undefined : getMimeType(name),
+        permissions: extractPermissions(stats),
+      };
+    });
   }
 
   async createFolder(remotePath: string): Promise<void> {
-    await this.ensureConnected();
-    const resolved = await this.resolveRemotePath(remotePath);
-    await this.client.mkdir(resolved, true);
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      await this.client.mkdir(resolved, true);
+    });
   }
 
   async delete(remotePath: string, isDirectory: boolean): Promise<void> {
@@ -540,42 +587,43 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       throw new Error(`Cannot delete root directory: ${remotePath}`);
     }
 
-    await this.ensureConnected();
-
-    if (isDirectory) {
-      await this.client.rmdir(resolved, true);
-    } else {
-      await this.client.delete(resolved);
-    }
+    return this.executeWithReconnect(async () => {
+      if (isDirectory) {
+        await this.client.rmdir(resolved, true);
+      } else {
+        await this.client.delete(resolved);
+      }
+    });
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
-    await this.ensureConnected();
-    const resolvedOld = await this.resolveRemotePath(oldPath);
-    const resolvedNew = await this.resolveRemotePath(newPath);
+    return this.executeWithReconnect(async () => {
+      const resolvedOld = await this.resolveRemotePath(oldPath);
+      const resolvedNew = await this.resolveRemotePath(newPath);
 
-    // Try posixRename first (OpenSSH extension: atomic rename overwriting destination)
-    if (typeof (this.client as any).posixRename === 'function') {
-      try {
-        await (this.client as any).posixRename(resolvedOld, resolvedNew);
-        return;
-      } catch {
-        // Fall back if server doesn't support the OpenSSH extension
+      // Try posixRename first (OpenSSH extension: atomic rename overwriting destination)
+      if (typeof (this.client as any).posixRename === 'function') {
+        try {
+          await (this.client as any).posixRename(resolvedOld, resolvedNew);
+          return;
+        } catch {
+          // Fall back if server doesn't support the OpenSSH extension
+        }
       }
-    }
 
-    try {
-      await this.client.rename(resolvedOld, resolvedNew);
-    } catch (renameErr) {
-      // Standard SFTP v3 rename fails if destination exists.
-      // Attempt delete of destination and retry rename.
       try {
-        await this.client.delete(resolvedNew);
         await this.client.rename(resolvedOld, resolvedNew);
-      } catch {
-        throw renameErr;
+      } catch (renameErr) {
+        // Standard SFTP v3 rename fails if destination exists.
+        // Attempt delete of destination and retry rename.
+        try {
+          await this.client.delete(resolvedNew);
+          await this.client.rename(resolvedOld, resolvedNew);
+        } catch {
+          throw renameErr;
+        }
       }
-    }
+    });
   }
 
   async createReadStream(
@@ -583,42 +631,64 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     start?: number,
     end?: number,
   ): Promise<NodeJS.ReadableStream> {
-    await this.ensureConnected();
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
 
-    const resolved = await this.resolveRemotePath(remotePath);
+      if (typeof start === 'number' || typeof end === 'number') {
+        const options: { start?: number; end?: number } = {};
+        if (typeof start === 'number') options.start = start;
+        if (typeof end === 'number') options.end = end;
+        return this.client.createReadStream(resolved, options);
+      }
 
-    if (typeof start === 'number' || typeof end === 'number') {
-      const options: { start?: number; end?: number } = {};
-      if (typeof start === 'number') options.start = start;
-      if (typeof end === 'number') options.end = end;
-      return this.client.createReadStream(resolved, options);
-    }
-
-    return this.client.createReadStream(resolved);
+      return this.client.createReadStream(resolved);
+    });
   }
 
   async createWriteStream(
     remotePath: string,
     options?: WriteStreamOptions,
   ): Promise<NodeJS.WritableStream> {
-    await this.ensureConnected();
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
 
-    const resolved = await this.resolveRemotePath(remotePath);
+      if (options) {
+        return this.client.createWriteStream(resolved, options as any);
+      }
+      return this.client.createWriteStream(resolved);
+    });
+  }
 
-    if (options) {
-      return this.client.createWriteStream(resolved, options as any);
-    }
-    return this.client.createWriteStream(resolved);
+  async writeFile(
+    remotePath: string,
+    data: Buffer | Uint8Array,
+    options?: WriteStreamOptions,
+  ): Promise<void> {
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      await this.client.put(Buffer.isBuffer(data) ? data : Buffer.from(data), resolved, {
+        mode: options?.mode,
+      } as any);
+    });
+  }
+
+  async readFile(remotePath: string): Promise<Buffer> {
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      const res = await this.client.get(resolved);
+      return Buffer.isBuffer(res) ? res : Buffer.from(res as any);
+    });
   }
 
   async chmod(remotePath: string, mode: number | string): Promise<void> {
-    await this.ensureConnected();
-    const resolved = await this.resolveRemotePath(remotePath);
     const numericMode = typeof mode === 'string' ? parseInt(mode, 8) : mode;
     if (Number.isNaN(numericMode)) {
       throw new Error(`Invalid chmod mode: ${mode}`);
     }
-    await this.client.chmod(resolved, numericMode);
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      await this.client.chmod(resolved, numericMode);
+    });
   }
 
   async disconnect(): Promise<void> {

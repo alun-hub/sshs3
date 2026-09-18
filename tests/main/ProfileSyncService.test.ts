@@ -8,7 +8,15 @@ import { ProfileStore } from '../../src/main/profile/ProfileStore';
 import { DotfilePoolStore } from '../../src/main/dotfiles/DotfilePoolStore';
 import { SettingsStore } from '../../src/main/settings/SettingsStore';
 import { SyncCryptoService, generateSalt, type ScryptParams } from '../../src/main/services/SyncCryptoService';
-import { ProfileSyncService, SyncConflictError, mergeRecords, mergePools } from '../../src/main/services/ProfileSyncService';
+import {
+  ProfileSyncService,
+  SyncConflictError,
+  mergeRecords,
+  mergePools,
+  getComparisonState,
+  compareRecords,
+  compareDotfilePools,
+} from '../../src/main/services/ProfileSyncService';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { DotfilePool } from '../../src/shared/types/dotfiles';
 
@@ -464,5 +472,251 @@ describe('mergePools', () => {
     const { merged, changedIds } = mergePools(local, remote);
     expect(changedIds.has('p1')).toBe(true);
     expect(merged[0].deletedAt).toBeTruthy();
+  });
+});
+
+describe('getComparisonState', () => {
+  it('correctly maps ahead/behind counts to sync states', () => {
+    expect(getComparisonState(0, 0)).toBe('in_sync');
+    expect(getComparisonState(2, 0)).toBe('ahead');
+    expect(getComparisonState(0, 3)).toBe('behind');
+    expect(getComparisonState(1, 1)).toBe('diverged');
+  });
+});
+
+describe('compareRecords', () => {
+  it('detects locally added and modified records as ahead', () => {
+    const local = [
+      { id: '1', name: 'Server 1', updatedAt: '2026-09-18 10:00' },
+      { id: '2', name: 'Server 2', updatedAt: '2026-09-18 12:00' },
+    ];
+    const remote = [
+      { id: '1', name: 'Server 1', updatedAt: '2026-09-18 10:00' },
+    ];
+
+    const result = compareRecords(local, remote, 'Profile');
+    expect(result.ahead).toBe(1);
+    expect(result.behind).toBe(0);
+    expect(result.details[0]).toContain('created locally');
+  });
+
+  it('detects remote added records as behind', () => {
+    const local = [
+      { id: '1', name: 'Server 1', updatedAt: '2026-09-18 10:00' },
+    ];
+    const remote = [
+      { id: '1', name: 'Server 1', updatedAt: '2026-09-18 10:00' },
+      { id: '2', name: 'Server 2', updatedAt: '2026-09-18 12:00' },
+    ];
+
+    const result = compareRecords(local, remote, 'Profile');
+    expect(result.ahead).toBe(0);
+    expect(result.behind).toBe(1);
+    expect(result.details[0]).toContain('added on remote');
+  });
+
+  it('detects diverged edits', () => {
+    const local = [
+      { id: '1', name: 'Server 1 Local', updatedAt: '2026-09-18 14:00' },
+    ];
+    const remote = [
+      { id: '1', name: 'Server 1 Remote', updatedAt: '2026-09-18 12:00' },
+      { id: '2', name: 'Server 2', updatedAt: '2026-09-18 13:00' },
+    ];
+
+    const result = compareRecords(local, remote, 'Profile');
+    expect(result.ahead).toBe(1);
+    expect(result.behind).toBe(1);
+  });
+});
+
+describe('compareDotfilePools', () => {
+  it('detects changes in pool files', () => {
+    const local: DotfilePool[] = [
+      {
+        id: 'p1',
+        name: 'Pool 1',
+        files: [{ id: 'f1', remotePath: '~/.bashrc', content: 'local', updatedAt: '2026-09-18 20:00' }],
+        updatedAt: '2026-09-18 19:00',
+      },
+    ];
+    const remote: DotfilePool[] = [
+      {
+        id: 'p1',
+        name: 'Pool 1',
+        files: [{ id: 'f1', remotePath: '~/.bashrc', content: 'remote', updatedAt: '2026-09-18 19:00' }],
+        updatedAt: '2026-09-18 19:00',
+      },
+    ];
+    const res = compareDotfilePools(local, remote);
+    expect(res.ahead).toBe(1);
+    expect(res.behind).toBe(0);
+  });
+});
+
+describe('compareWithRemote', () => {
+  let tmpDir: string;
+  let provider: FakeStorageProvider;
+  let service: ProfileSyncService;
+  let profileStore: ProfileStore;
+  let dotfilePoolStore: DotfilePoolStore;
+  let settingsStore: SettingsStore;
+  let crypto: SyncCryptoService;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sync-compare-test-'));
+    provider = new FakeStorageProvider();
+    profileStore = new ProfileStore(path.join(tmpDir, 'profiles.json'));
+    dotfilePoolStore = new DotfilePoolStore(path.join(tmpDir, 'dotfiles.json'));
+    settingsStore = new SettingsStore(path.join(tmpDir, 'settings.json'));
+    crypto = new SyncCryptoService(FAST_PARAMS);
+    service = new ProfileSyncService(profileStore, dotfilePoolStore, settingsStore, crypto, {
+      sshConfigPath: path.join(tmpDir, 'ssh_config'),
+      knownHostsPath: path.join(tmpDir, 'known_hosts'),
+    });
+
+    crypto.unlock('topology', 'top-secret', generateSalt());
+    crypto.unlock('credentials', 'cred-secret', generateSalt());
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('reports not_initialized when remote has no sync files', async () => {
+    await profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Server 1',
+      host: '1.2.3.4',
+      port: 22,
+      username: 'root',
+      authType: 'password',
+    });
+
+    const comparison = await service.compareWithRemote(provider);
+    expect(comparison.state).toBe('not_initialized');
+    expect(comparison.aheadCount).toBeGreaterThan(0);
+    expect(comparison.behindCount).toBe(0);
+  });
+
+  it('reports in_sync after pushing to remote', async () => {
+    await profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Server 1',
+      host: '1.2.3.4',
+      port: 22,
+      username: 'root',
+      authType: 'password',
+    });
+
+    await service.pushToRemote(provider);
+
+    const comparison = await service.compareWithRemote(provider);
+    expect(comparison.state).toBe('in_sync');
+    expect(comparison.aheadCount).toBe(0);
+    expect(comparison.behindCount).toBe(0);
+  });
+
+  it('reports ahead when local profile is modified after push', async () => {
+    await profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Server 1',
+      host: '1.2.3.4',
+      port: 22,
+      username: 'root',
+      authType: 'password',
+    });
+
+    await service.pushToRemote(provider);
+
+    // Modify local profile with newer timestamp
+    await profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Server 1 Renamed',
+      host: '1.2.3.4',
+      port: 22,
+      username: 'root',
+      authType: 'password',
+      updatedAt: '2026-09-18 21:00',
+    });
+
+    const comparison = await service.compareWithRemote(provider);
+    expect(comparison.state).toBe('ahead');
+    expect(comparison.aheadCount).toBe(1);
+    expect(comparison.behindCount).toBe(0);
+  });
+
+  it('reports behind when remote has newer changes pushed from another machine', async () => {
+    const saltTop = generateSalt();
+    const saltCred = generateSalt();
+    const machineA = await makeHarness(saltTop, saltCred);
+    const machineB = await makeHarness(saltTop, saltCred);
+
+    try {
+      await machineA.profileStore.saveSSH({
+        id: 'ssh-1',
+        name: 'Server on A',
+        host: '1.2.3.4',
+        username: 'root',
+        authType: 'password',
+      });
+      await machineA.sync.pushToRemote(provider);
+
+      // machineB has not pulled yet
+      const comparisonB = await machineB.sync.compareWithRemote(provider);
+      expect(comparisonB.state).toBe('behind');
+      expect(comparisonB.behindCount).toBe(1);
+      expect(comparisonB.aheadCount).toBe(0);
+    } finally {
+      await fs.rm(machineA.dir, { recursive: true, force: true });
+      await fs.rm(machineB.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports diverged when both local and remote have independent changes', async () => {
+    const saltTop = generateSalt();
+    const saltCred = generateSalt();
+    const machineA = await makeHarness(saltTop, saltCred);
+    const machineB = await makeHarness(saltTop, saltCred);
+
+    try {
+      // Both start synced
+      await machineA.profileStore.saveSSH({
+        id: 'ssh-1',
+        name: 'Initial Server',
+        host: '1.1.1.1',
+        username: 'root',
+        authType: 'password',
+      });
+      await machineA.sync.pushToRemote(provider);
+      await machineB.sync.pullFromRemote(provider);
+
+      // machineA pushes a new profile
+      await machineA.profileStore.saveSSH({
+        id: 'ssh-from-A',
+        name: 'Server from A',
+        host: '2.2.2.2',
+        username: 'root',
+        authType: 'password',
+      });
+      await machineA.sync.pushToRemote(provider);
+
+      // machineB adds a local profile without pulling first
+      await machineB.profileStore.saveSSH({
+        id: 'ssh-from-B',
+        name: 'Server from B',
+        host: '3.3.3.3',
+        username: 'root',
+        authType: 'password',
+      });
+
+      const comparisonB = await machineB.sync.compareWithRemote(provider);
+      expect(comparisonB.state).toBe('diverged');
+      expect(comparisonB.aheadCount).toBeGreaterThan(0);
+      expect(comparisonB.behindCount).toBeGreaterThan(0);
+    } finally {
+      await fs.rm(machineA.dir, { recursive: true, force: true });
+      await fs.rm(machineB.dir, { recursive: true, force: true });
+    }
   });
 });

@@ -200,6 +200,22 @@ export class LocalStorageProvider extends BaseStorageProvider {
     return fs.createWriteStream(fullPath);
   }
 
+  async writeFile(
+    remotePath: string,
+    data: Buffer | Uint8Array,
+    options?: WriteStreamOptions,
+  ): Promise<void> {
+    const fullPath = this.resolvePath(remotePath);
+    const parentDir = path.dirname(fullPath);
+    await fsp.mkdir(parentDir, { recursive: true });
+    await fsp.writeFile(fullPath, data, { mode: options?.mode });
+  }
+
+  async readFile(remotePath: string): Promise<Buffer> {
+    const fullPath = this.resolvePath(remotePath);
+    return fsp.readFile(fullPath);
+  }
+
   async chmod(remotePath: string, mode: number | string): Promise<void> {
     const fullPath = this.resolvePath(remotePath);
     const numericMode = typeof mode === 'string' ? parseInt(mode, 8) : mode;

@@ -25,6 +25,7 @@ export interface SSHConnectionConfig {
   privateKeyPath?: string;
   passphrase?: string;
   pkcs11LibPath?: string; // path to .so or .dll
+  pin?: string;
   agentPath?: string;
   extraOptions?: Record<string, string>;
   initialPath?: string;

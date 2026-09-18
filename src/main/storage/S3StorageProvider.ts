@@ -499,13 +499,30 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       .map(encodeURIComponent)
       .join('/');
 
-    await this.client.send(
-      new CopyObjectCommand({
-        Bucket: dst.bucket,
-        Key: dst.key,
-        CopySource: `${src.bucket}/${encodedSourceKey}`,
-      })
-    );
+    const copyCommand = new CopyObjectCommand({
+      Bucket: dst.bucket,
+      Key: dst.key,
+      CopySource: `${src.bucket}/${encodedSourceKey}`,
+      ...this.sseParams(),
+    });
+
+    let copyErr: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.client.send(copyCommand);
+        copyErr = null;
+        break;
+      } catch (err: any) {
+        copyErr = err;
+        const code = err?.name || err?.Code || err?.code;
+        if (code === 'NoSuchKey' && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 150));
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (copyErr) throw copyErr;
 
     await this.client.send(
       new DeleteObjectCommand({
@@ -538,6 +555,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         MetadataDirective: 'REPLACE',
         ContentType: metadata.contentType || head.ContentType || getMimeType(key),
         Metadata: head.Metadata,
+        ...this.sseParams(),
       })
     );
     this.clearCache();
@@ -598,7 +616,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       throw new Error(`Cannot write to root or bucket: ${remotePath}`);
     }
 
-    const passThrough = new PassThrough();
+    const passThrough = new PassThrough({ autoDestroy: false, emitClose: false });
     const upload = new Upload({
       client: this.client,
       params: {
@@ -633,6 +651,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           await uploadPromise;
           this.clearCache();
           callback();
+          passThrough.emit('close');
         } catch (uploadErr: any) {
           callback(uploadErr);
         }
@@ -644,6 +663,47 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     });
 
     return passThrough;
+  }
+
+  async writeFile(
+    remotePath: string,
+    data: Buffer | Uint8Array,
+    _options?: WriteStreamOptions,
+  ): Promise<void> {
+    const { bucket, key } = parseS3Path(remotePath);
+
+    if (!bucket || !key) {
+      throw new Error(`Cannot write to root or bucket: ${remotePath}`);
+    }
+
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: data,
+        ContentType: getMimeType(key),
+        ContentLength: data.byteLength,
+        ...this.sseParams(),
+      })
+    );
+    this.clearCache();
+  }
+
+  async readFile(remotePath: string): Promise<Buffer> {
+    const { bucket, key } = parseS3Path(remotePath);
+
+    if (!bucket || !key) {
+      throw new Error(`Cannot read root or bucket as file: ${remotePath}`);
+    }
+
+    const res = await this.client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+
+    if (!res.Body) {
+      return Buffer.alloc(0);
+    }
+
+    const byteArray = await (res.Body as any).transformToByteArray();
+    return Buffer.from(byteArray);
   }
 
   async getTags(remotePath: string): Promise<S3Tag[]> {
@@ -847,6 +907,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         Bucket: bucket,
         Key: key,
         CopySource: `${bucket}/${encodedKey}?versionId=${versionId}`,
+        ...this.sseParams(),
       })
     );
     this.clearCache();

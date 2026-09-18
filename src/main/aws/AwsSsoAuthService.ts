@@ -116,15 +116,14 @@ export class AwsSsoAuthService extends EventEmitter {
     if (
       !deviceAuth.deviceCode ||
       !deviceAuth.userCode ||
-      !deviceAuth.verificationUri ||
-      !deviceAuth.verificationUriComplete
+      !deviceAuth.verificationUri
     ) {
       throw new Error('AWS SSO did not return a valid device authorization response');
     }
 
     options?.onPrompt?.({
       verificationUri: deviceAuth.verificationUri,
-      verificationUriComplete: deviceAuth.verificationUriComplete,
+      verificationUriComplete: deviceAuth.verificationUriComplete || undefined,
       userCode: deviceAuth.userCode,
       expiresIn: deviceAuth.expiresIn ?? 600,
     });

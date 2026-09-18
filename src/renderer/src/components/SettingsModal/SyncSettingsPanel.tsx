@@ -1,8 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, Server, Loader2, UploadCloud, DownloadCloud, ShieldAlert, CheckCircle2, Pencil } from 'lucide-react';
-import type { ProfileSyncStatus } from '@shared/types/sync';
-import type { KnownHostsConflict } from '@shared/types/sync';
-import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, validateSyncTargetDraft, type SyncTargetDraft } from './SyncTargetForm';
+import {
+  Cloud,
+  Server,
+  Loader2,
+  UploadCloud,
+  DownloadCloud,
+  ShieldAlert,
+  CheckCircle2,
+  Pencil,
+  RefreshCw,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  GitCompare,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import type { ProfileSyncStatus, SyncComparisonResult, KnownHostsConflict } from '@shared/types/sync';
+import {
+  SyncTargetForm,
+  emptySyncTargetDraft,
+  draftFromTargetConfig,
+  buildSyncTarget,
+  validateSyncTargetDraft,
+  type SyncTargetDraft,
+} from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
 
 function formatRelative(iso?: string): string {
@@ -19,9 +40,33 @@ function formatRelative(iso?: string): string {
   return `${diffDay}d ago`;
 }
 
+function formatDateTime(iso?: string): string {
+  if (!iso) return 'Never';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
+function formatTimestampWithRelative(iso?: string): string {
+  if (!iso) return 'Never';
+  const rel = formatRelative(iso);
+  const dt = formatDateTime(iso);
+  return `${dt} (${rel})`;
+}
+
 export const SyncSettingsPanel: React.FC = () => {
   const [status, setStatus] = useState<ProfileSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [comparison, setComparison] = useState<SyncComparisonResult | null>(null);
+  const [checkingSync, setCheckingSync] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetDraft, setTargetDraft] = useState<SyncTargetDraft>(emptySyncTargetDraft());
@@ -38,14 +83,37 @@ export const SyncSettingsPanel: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<KnownHostsConflict[]>([]);
 
+  const checkSync = async () => {
+    setCheckingSync(true);
+    setCheckError(null);
+    try {
+      const res = await window.multissh?.profileSyncCompare?.();
+      if (res) {
+        setComparison(res);
+      }
+    } catch (err: any) {
+      setCheckError(err?.message || 'Failed to check sync status.');
+    } finally {
+      setCheckingSync(false);
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
       const s = await window.multissh?.profileSyncStatus?.();
       if (s) {
         setStatus(s);
+        if (s.targetConfig) {
+          setTargetDraft(draftFromTargetConfig(s.targetConfig, s.remoteBasePath ?? ''));
+        }
+        if (s.comparison) {
+          setComparison(s.comparison);
+        }
         if (!s.configured) {
           setEditingTarget(true);
+        } else if (s.topologyUnlocked && s.credentialsUnlocked) {
+          void checkSync();
         }
       }
     } finally {
@@ -86,6 +154,11 @@ export const SyncSettingsPanel: React.FC = () => {
     try {
       const s = await window.multissh?.profileSyncEnable?.(passwords);
       setStatus(s);
+      if (s?.comparison) {
+        setComparison(s.comparison);
+      } else {
+        void checkSync();
+      }
       setPasswordDialogOpen(false);
       setActionMessage('Sync unlocked and up to date.');
     } catch (err: any) {
@@ -102,6 +175,11 @@ export const SyncSettingsPanel: React.FC = () => {
     try {
       const s = await window.multissh?.profileSyncPush?.();
       setStatus(s);
+      if (s?.comparison) {
+        setComparison(s.comparison);
+      } else {
+        void checkSync();
+      }
       setActionMessage('Pushed local changes to the remote.');
     } catch (err: any) {
       setActionError(err?.message || 'Push failed.');
@@ -118,6 +196,11 @@ export const SyncSettingsPanel: React.FC = () => {
     try {
       const result = await window.multissh?.profileSyncPull?.();
       setStatus(result);
+      if (result?.comparison) {
+        setComparison(result.comparison);
+      } else {
+        void checkSync();
+      }
       setConflicts(result.sshNativeConflicts ?? []);
       setActionMessage(
         result.changedCategories.length > 0
@@ -156,7 +239,11 @@ export const SyncSettingsPanel: React.FC = () => {
               type="button"
               onClick={() => {
                 setEditingTarget(true);
-                setTargetDraft((prev) => ({ ...prev, remoteBasePath: status.remoteBasePath ?? prev.remoteBasePath }));
+                if (status.targetConfig) {
+                  setTargetDraft(draftFromTargetConfig(status.targetConfig, status.remoteBasePath ?? ''));
+                } else {
+                  setTargetDraft((prev) => ({ ...prev, remoteBasePath: status.remoteBasePath ?? prev.remoteBasePath }));
+                }
               }}
               className="flex items-center gap-1 text-[11px] text-sky-400 hover:underline"
             >
@@ -186,8 +273,114 @@ export const SyncSettingsPanel: React.FC = () => {
           </div>
 
           <div className="text-[11px] text-txt-muted pt-1 border-t border-border-subtle">
-            Last sync: {formatRelative(status.lastSyncAt)}
+            Last sync: {formatTimestampWithRelative(status.lastSyncAt)}
           </div>
+
+          {status.topologyUnlocked && status.credentialsUnlocked && (
+            <div className="rounded-lg border border-border-subtle bg-app-bg/50 p-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {checkingSync ? (
+                    <div className="flex items-center gap-1.5 text-txt-muted text-xs">
+                      <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                      <span>Checking remote sync state...</span>
+                    </div>
+                  ) : comparison ? (
+                    <div className="flex items-center gap-2">
+                      {comparison.state === 'in_sync' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          In sync with remote
+                        </span>
+                      )}
+                      {comparison.state === 'ahead' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-[11px] font-medium text-sky-400">
+                          <ArrowUpCircle className="h-3.5 w-3.5" />
+                          Client ahead ({comparison.aheadCount} unpushed {comparison.aheadCount === 1 ? 'change' : 'changes'})
+                        </span>
+                      )}
+                      {comparison.state === 'behind' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
+                          <ArrowDownCircle className="h-3.5 w-3.5" />
+                          Client behind ({comparison.behindCount} remote {comparison.behindCount === 1 ? 'change' : 'changes'})
+                        </span>
+                      )}
+                      {comparison.state === 'diverged' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 text-[11px] font-medium text-purple-400">
+                          <GitCompare className="h-3.5 w-3.5" />
+                          Diverged ({comparison.aheadCount} ahead, {comparison.behindCount} behind)
+                        </span>
+                      )}
+                      {comparison.state === 'not_initialized' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[11px] font-medium text-indigo-400">
+                          <UploadCloud className="h-3.5 w-3.5" />
+                          Remote not initialized ({comparison.aheadCount} {comparison.aheadCount === 1 ? 'item' : 'items'} to push)
+                        </span>
+                      )}
+                      {comparison.state === 'error' && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-[11px] font-medium text-red-400">
+                          <ShieldAlert className="h-3.5 w-3.5" />
+                          Sync check failed
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-txt-muted">Sync status not checked yet</span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void checkSync()}
+                  disabled={checkingSync || pushing || pulling}
+                  title="Check status against remote"
+                  className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-txt-muted hover:text-txt-primary hover:bg-app-surface transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${checkingSync ? 'animate-spin' : ''}`} />
+                  <span>Check</span>
+                </button>
+              </div>
+
+              {comparison && comparison.checkedAt && (
+                <div className="flex items-center justify-between text-[10px] text-txt-muted">
+                  <span>Checked: {formatDateTime(comparison.checkedAt)}</span>
+                  {(comparison.aheadCount > 0 || comparison.behindCount > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowDetails((prev) => !prev)}
+                      className="flex items-center gap-0.5 text-sky-400 hover:underline"
+                    >
+                      <span>{showDetails ? 'Hide details' : 'Show details'}</span>
+                      {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {showDetails && comparison && (comparison.aheadCount > 0 || comparison.behindCount > 0) && (
+                <div className="space-y-1.5 pt-1.5 border-t border-border-subtle/50 text-[11px]">
+                  {comparison.categories.map((cat) => {
+                    if (cat.state === 'in_sync' && cat.ahead === 0 && cat.behind === 0) return null;
+                    return (
+                      <div key={cat.category} className="flex items-start justify-between gap-2 text-txt-secondary">
+                        <span className="font-medium capitalize">{cat.category.replace('-', ' ')}:</span>
+                        <span className="text-txt-muted text-right">
+                          {cat.state === 'ahead' && `${cat.ahead} to push`}
+                          {cat.state === 'behind' && `${cat.behind} to pull`}
+                          {cat.state === 'diverged' && `${cat.ahead} to push, ${cat.behind} to pull`}
+                          {cat.details && cat.details.length > 0 && (
+                            <span className="block text-[10px] text-txt-muted/80">{cat.details.join(', ')}</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {checkError && <p className="text-[11px] text-red-400">{checkError}</p>}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {(!status.topologyUnlocked || !status.credentialsUnlocked) && (
@@ -204,20 +397,38 @@ export const SyncSettingsPanel: React.FC = () => {
                 <button
                   type="button"
                   onClick={handlePush}
-                  disabled={pushing}
-                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
+                  disabled={pushing || checkingSync}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                    comparison?.aheadCount && comparison.aheadCount > 0
+                      ? 'border-sky-500/50 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
+                      : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                  }`}
                 >
                   {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
-                  Push
+                  <span>Push</span>
+                  {comparison?.aheadCount && comparison.aheadCount > 0 ? (
+                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-sky-300">
+                      {comparison.aheadCount}
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   type="button"
                   onClick={handlePull}
-                  disabled={pulling}
-                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
+                  disabled={pulling || checkingSync}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                    comparison?.behindCount && comparison.behindCount > 0
+                      ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                      : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                  }`}
                 >
                   {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
-                  Pull
+                  <span>Pull</span>
+                  {comparison?.behindCount && comparison.behindCount > 0 ? (
+                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-amber-300">
+                      {comparison.behindCount}
+                    </span>
+                  ) : null}
                 </button>
               </>
             )}
@@ -257,7 +468,12 @@ export const SyncSettingsPanel: React.FC = () => {
             {status?.configured && (
               <button
                 type="button"
-                onClick={() => setEditingTarget(false)}
+                onClick={() => {
+                  setEditingTarget(false);
+                  if (status?.targetConfig) {
+                    setTargetDraft(draftFromTargetConfig(status.targetConfig, status.remoteBasePath ?? ''));
+                  }
+                }}
                 className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
               >
                 Cancel

@@ -101,7 +101,20 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   };
 
   const removeFile = (fileId: string) => {
-    setDraft((prev) => (prev ? { ...prev, files: prev.files.filter((f) => f.id !== fileId) } : prev));
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const target = prev.files.find((f) => f.id === fileId);
+      if (!target?.updatedAt) {
+        return { ...prev, files: prev.files.filter((f) => f.id !== fileId) };
+      }
+      const now = formatTimestamp();
+      return {
+        ...prev,
+        files: prev.files.map((f) =>
+          f.id === fileId ? { ...f, deletedAt: now, updatedAt: now } : f
+        ),
+      };
+    });
   };
 
   const handleUploadFiles = async () => {
@@ -315,7 +328,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-txt-primary">Master Files</span>
-                        <span className="text-[11px] text-txt-muted">({draft.files.length})</span>
+                        <span className="text-[11px] text-txt-muted">
+                          ({draft.files.filter((f) => !f.deletedAt).length})
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -338,7 +353,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                       </div>
                     </div>
 
-                    {draft.files.length === 0 ? (
+                    {draft.files.filter((f) => !f.deletedAt).length === 0 ? (
                       <div
                         onClick={() => void handleUploadFiles()}
                         className="cursor-pointer flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-subtle p-8 text-center hover:border-sky-500/40 hover:bg-app-surface/50 transition-colors"
@@ -351,7 +366,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {draft.files.map((file) => (
+                        {draft.files
+                          .filter((f) => !f.deletedAt)
+                          .map((file) => (
                           <div
                             key={file.id}
                             className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-3 transition-colors hover:border-border"

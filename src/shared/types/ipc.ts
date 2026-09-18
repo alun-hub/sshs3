@@ -24,7 +24,7 @@ import type {
   DotfilesSyncResolution,
   DotfilesSyncStatusEvent,
 } from './dotfiles';
-import type { ProfileSyncStatus, ProfileSyncPullResult } from './sync';
+import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -106,6 +106,7 @@ export const IPC_CHANNELS = {
   PROFILE_SYNC_PUSH: 'profile-sync:push',
   PROFILE_SYNC_PULL: 'profile-sync:pull',
   PROFILE_SYNC_STATUS: 'profile-sync:status',
+  PROFILE_SYNC_COMPARE: 'profile-sync:compare',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -276,6 +277,7 @@ export interface MultiSSHApi {
     credentialsPassword?: string;
   }): Promise<ProfileSyncPullResult & ProfileSyncStatus>;
   profileSyncStatus(): Promise<ProfileSyncStatus>;
+  profileSyncCompare(): Promise<SyncComparisonResult>;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

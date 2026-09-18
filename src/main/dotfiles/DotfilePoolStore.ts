@@ -114,7 +114,15 @@ export class DotfilePoolStore {
 
     return this.queueMutation(async () => {
       const poolDir = this.getPoolDirectory(pool.id);
-      await fs.mkdir(poolDir, { recursive: true });
+      if (pool.deletedAt) {
+        try {
+          await fs.rm(poolDir, { recursive: true, force: true });
+        } catch {
+          // Ignore folder deletion failure
+        }
+      } else {
+        await fs.mkdir(poolDir, { recursive: true });
+      }
 
       const existingPools = await this.readRawPools();
       const existingFilesById = new Map(
@@ -127,43 +135,47 @@ export class DotfilePoolStore {
         pool.updatedAt = now;
       }
 
-      // Write master files to disk
-      for (const file of pool.files) {
-        if (!file.id) {
-          file.id = crypto.randomUUID();
-        }
-        const masterPath = this.getMasterFilePath(pool.id, file.remotePath);
-        await fs.mkdir(path.dirname(masterPath), { recursive: true });
-        await fs.writeFile(masterPath, file.content, 'utf-8');
-
-        if (file.mode) {
-          try {
-            const modeNum = parseInt(file.mode, 8);
-            if (!isNaN(modeNum)) {
-              await fs.chmod(masterPath, modeNum);
-            }
-          } catch {
-            // Ignore chmod failures on non-POSIX filesystems
+      // Write master files to disk (for non-deleted files and pools)
+      if (!pool.deletedAt) {
+        for (const file of pool.files) {
+          if (!file.id) {
+            file.id = crypto.randomUUID();
           }
-        }
+          const masterPath = this.getMasterFilePath(pool.id, file.remotePath);
+          file.masterFilePath = masterPath;
+          file.masterFileName = path.basename(masterPath);
 
-        file.masterFilePath = masterPath;
-        file.masterFileName = path.basename(masterPath);
-        if (!options?.preserveTimestamps) {
-          // Bump the timestamp whenever this file's actual content/mode/path
-          // differs from what's on disk, not just when it was previously
-          // unset — otherwise a caller that maps over an existing files
-          // array to edit one entry (rather than always setting updatedAt
-          // itself) would silently keep a stale timestamp on the edited
-          // file, which is exactly what remote profile sync's merge
-          // decisions rely on being accurate.
-          const existingFile = existingFilesById.get(file.id);
-          const contentChanged =
-            !existingFile ||
-            existingFile.content !== file.content ||
-            existingFile.mode !== file.mode ||
-            existingFile.remotePath !== file.remotePath;
-          file.updatedAt = contentChanged ? now : (file.updatedAt ?? existingFile?.updatedAt ?? now);
+          if (file.deletedAt) {
+            try {
+              await fs.rm(masterPath, { force: true });
+            } catch {
+              // Ignore file deletion failure
+            }
+          } else {
+            await fs.mkdir(path.dirname(masterPath), { recursive: true });
+            await fs.writeFile(masterPath, file.content, 'utf-8');
+
+            if (file.mode) {
+              try {
+                const modeNum = parseInt(file.mode, 8);
+                if (!isNaN(modeNum)) {
+                  await fs.chmod(masterPath, modeNum);
+                }
+              } catch {
+                // Ignore chmod failures on non-POSIX filesystems
+              }
+            }
+          }
+
+          if (!options?.preserveTimestamps) {
+            const existingFile = existingFilesById.get(file.id);
+            const contentChanged =
+              !existingFile ||
+              existingFile.content !== file.content ||
+              existingFile.mode !== file.mode ||
+              existingFile.remotePath !== file.remotePath;
+            file.updatedAt = contentChanged ? now : (file.updatedAt ?? existingFile?.updatedAt ?? now);
+          }
         }
       }
 

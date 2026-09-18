@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog } from 'electron';
+import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog, shell as electronShell } from 'electron';
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
@@ -58,7 +58,7 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
-import type { ProfileSyncStatus, ProfileSyncPullResult } from '../shared/types/sync';
+import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
 
 const execFileAsync = promisify(execFile);
 
@@ -936,11 +936,20 @@ export class IpcBridge {
         config.target && (config.target.type === 'sftp' || config.target.type === 's3')
           ? { id: config.target.id, name: config.target.name, type: config.target.type }
           : undefined,
+      targetConfig:
+        config.target && (config.target.type === 'sftp' || config.target.type === 's3')
+          ? {
+              type: config.target.type,
+              sftpConfig: config.target.sftpConfig,
+              s3Config: config.target.s3Config,
+            }
+          : undefined,
       remoteBasePath: config.remoteBasePath,
       hasLocalSalts: !!(config.topologySaltBase64 && config.credentialsSaltBase64),
       topologyUnlocked: this.syncCryptoService.isUnlocked('topology'),
       credentialsUnlocked: this.syncCryptoService.isUnlocked('credentials'),
       lastSyncAt: config.lastSyncAt,
+      comparison: this.profileSyncService.getLastComparison() ?? undefined,
     };
   }
 
@@ -959,6 +968,8 @@ export class IpcBridge {
           throw new Error('An S3 target requires a bucket (optionally "bucket/prefix") to sync to');
         }
         await this.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
+        await this.storageRegistry.disconnect?.(target.id);
+        await this.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
       }
     );
 
@@ -1062,6 +1073,18 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.PROFILE_SYNC_STATUS, async (): Promise<ProfileSyncStatus> => {
       return await this.buildSyncStatus();
     });
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_COMPARE,
+      async (): Promise<SyncComparisonResult> => {
+        const config = await this.syncConfigStore.getConfig();
+        if (!config.target) {
+          throw new Error('Configure a sync target first (profile-sync:setup)');
+        }
+        const provider = await this.storageRegistry.getOrCreate(config.target);
+        return await this.profileSyncService.compareWithRemote(provider, config.remoteBasePath ?? '');
+      }
+    );
   }
 
   private registerConnectionTestHandlers(): void {
@@ -1176,6 +1199,10 @@ export class IpcBridge {
         try {
           return await this.awsSsoAuthService.login(startUrl, region, {
             onPrompt: (prompt) => {
+              const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;
+              if (urlToOpen && electronShell?.openExternal) {
+                void electronShell.openExternal(urlToOpen).catch(() => {});
+              }
               const webContents = this.getWebContents();
               if (webContents && !webContents.isDestroyed?.()) {
                 const event: AwsSsoPromptEvent = { id, ...prompt };

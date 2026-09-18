@@ -124,6 +124,7 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
 
   const storageRegistry = {
     getOrCreate: vi.fn().mockResolvedValue(sharedProvider),
+    disconnect: vi.fn().mockResolvedValue(undefined),
   };
 
   const ipc = new MockIpcMain();
@@ -264,5 +265,21 @@ describe('IpcBridge — remote profile sync handlers', () => {
     );
     await expect(ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_PULL)).rejects.toThrow(/profile-sync:setup/);
     await expect(ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_PUSH)).rejects.toThrow(/profile-sync:setup/);
+    await expect(ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE)).rejects.toThrow(/profile-sync:setup/);
+  });
+
+  it('performs live sync comparison via PROFILE_SYNC_COMPARE', async () => {
+    const { ipc } = await harness();
+    await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+    await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+      topologyPassword: 'topology-pw',
+      credentialsPassword: 'credentials-pw',
+    });
+
+    const comparison = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE);
+    expect(comparison).toBeDefined();
+    expect(comparison.state).toBe('in_sync');
+    expect(comparison.aheadCount).toBe(0);
+    expect(comparison.behindCount).toBe(0);
   });
 });

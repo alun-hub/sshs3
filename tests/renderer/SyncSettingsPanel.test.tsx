@@ -128,4 +128,182 @@ describe('SyncSettingsPanel', () => {
       expect(window.multissh.profileSyncPush).toHaveBeenCalled();
     });
   });
+
+  it('displays in_sync status badge when client and remote are in sync', async () => {
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 'x', name: 'x', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: true,
+          credentialsUnlocked: true,
+          lastSyncAt: '2026-09-18T20:00:00.000Z',
+          comparison: {
+            state: 'in_sync',
+            aheadCount: 0,
+            behindCount: 0,
+            categories: [],
+            checkedAt: '2026-09-18 20:00',
+          },
+        })
+      ),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('In sync with remote')).toBeInTheDocument();
+    });
+  });
+
+  it('displays ahead badge and highlights push button when client has unpushed changes', async () => {
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 'x', name: 'x', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: true,
+          credentialsUnlocked: true,
+          lastSyncAt: '2026-09-18T20:00:00.000Z',
+          comparison: {
+            state: 'ahead',
+            aheadCount: 3,
+            behindCount: 0,
+            categories: [
+              { category: 'topology', state: 'ahead', ahead: 3, behind: 0, details: ['3 profiles modified'] },
+            ],
+            checkedAt: '2026-09-18 20:05',
+          },
+        })
+      ),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText(/Client ahead/)).toBeInTheDocument();
+      expect(screen.getByText('3 unpushed changes', { exact: false })).toBeInTheDocument();
+    });
+  });
+
+  it('displays behind badge and highlights pull button when remote has changes', async () => {
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 'x', name: 'x', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: true,
+          credentialsUnlocked: true,
+          lastSyncAt: '2026-09-18T20:00:00.000Z',
+          comparison: {
+            state: 'behind',
+            aheadCount: 0,
+            behindCount: 2,
+            categories: [
+              { category: 'settings', state: 'behind', ahead: 0, behind: 2, details: ['2 settings updated'] },
+            ],
+            checkedAt: '2026-09-18 20:10',
+          },
+        })
+      ),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText(/Client behind/)).toBeInTheDocument();
+      expect(screen.getByText('2 remote changes', { exact: false })).toBeInTheDocument();
+    });
+  });
+
+  it('saves an SFTP target with private key authentication and proxy jump', async () => {
+    const profileSyncSetup = vi.fn().mockResolvedValue(undefined);
+    window.multissh = {
+      profileSyncStatus: vi
+        .fn()
+        .mockResolvedValueOnce(statusFixture())
+        .mockResolvedValueOnce(statusFixture({ configured: true, target: { id: 'x', name: 'x', type: 'sftp' } })),
+      profileSyncSetup,
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => expect(screen.getByText('SFTP server')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText('sync.example.com'), { target: { value: 'ssh.corp.com' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'alice' } });
+
+    // Switch to Private Key
+    fireEvent.change(screen.getByLabelText('Authentication'), { target: { value: 'privateKey' } });
+    expect(screen.getByLabelText('Private Key')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Private Key'), {
+      target: { value: '/home/alice/.ssh/id_ed25519' },
+    });
+    fireEvent.change(screen.getByLabelText('Passphrase (optional)'), {
+      target: { value: 'key-passphrase' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('jumpuser@bastion.example.com:22'), {
+      target: { value: 'bastion.corp.com' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+    await waitFor(() => {
+      expect(profileSyncSetup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            type: 'sftp',
+            sftpConfig: expect.objectContaining({
+              host: 'ssh.corp.com',
+              username: 'alice',
+              authType: 'privateKey',
+              privateKeyPath: '/home/alice/.ssh/id_ed25519',
+              passphrase: 'key-passphrase',
+              proxyJump: 'bastion.corp.com',
+            }),
+          }),
+        })
+      );
+    });
+  });
+
+  it('prefills draft from existing targetConfig when editing target', async () => {
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+          targetConfig: {
+            type: 's3',
+            s3Config: {
+              id: 's3-cfg',
+              name: 'S3 Sync',
+              region: 'eu-north-1',
+              endpoint: 'https://s3.custom.io',
+              authMode: 'static',
+              accessKeyId: 'AKIA12345678',
+              secretAccessKey: 'SECRETKEY123',
+              forcePathStyle: true,
+            },
+          },
+          remoteBasePath: 'backups/sshs3',
+          hasLocalSalts: true,
+          topologyUnlocked: false,
+          credentialsUnlocked: false,
+        })
+      ),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => expect(screen.getByText('Change target')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Change target'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Bucket (or bucket/prefix)')).toHaveValue('backups/sshs3');
+      expect(screen.getByLabelText('Region')).toHaveValue('eu-north-1');
+      expect(screen.getByLabelText('Access Key ID')).toHaveValue('AKIA12345678');
+      expect(screen.getByLabelText(/Endpoint/)).toHaveValue('https://s3.custom.io');
+    });
+  });
 });

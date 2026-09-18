@@ -24,6 +24,7 @@ export interface TransferProgress {
 
 export interface WriteStreamOptions {
   size?: number;
+  mode?: number;
 }
 
 export interface ObjectMetadata {
@@ -60,6 +61,8 @@ export interface IStorageProvider {
   rename(oldPath: string, newPath: string): Promise<void>;
   createReadStream(remotePath: string, start?: number, end?: number): Promise<NodeJS.ReadableStream>;
   createWriteStream(remotePath: string, options?: WriteStreamOptions): Promise<NodeJS.WritableStream>;
+  writeFile?(remotePath: string, data: Buffer | Uint8Array, options?: WriteStreamOptions): Promise<void>;
+  readFile?(remotePath: string): Promise<Buffer>;
   chmod?(remotePath: string, mode: number | string): Promise<void>;
   setMetadata?(remotePath: string, metadata: ObjectMetadata): Promise<void>;
   disconnect?(): Promise<void>;

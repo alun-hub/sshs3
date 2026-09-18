@@ -106,9 +106,9 @@ export const AwsSsoLoginModal: React.FC = () => {
             <span className="truncate text-txt-secondary">{currentPrompt.verificationUri}</span>
             <button
               type="button"
-              onClick={() => void copyToClipboard('link', currentPrompt.verificationUriComplete)}
+              onClick={() => void copyToClipboard('link', currentPrompt.verificationUriComplete || currentPrompt.verificationUri)}
               className="flex shrink-0 items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              title="Copy link (with code pre-filled)"
+              title={currentPrompt.verificationUriComplete ? 'Copy link (with code pre-filled)' : 'Copy link'}
             >
               {copied === 'link' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
             </button>

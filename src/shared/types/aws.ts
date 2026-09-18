@@ -1,6 +1,6 @@
 export interface AwsSsoDevicePrompt {
   verificationUri: string;
-  verificationUriComplete: string;
+  verificationUriComplete?: string;
   userCode: string;
   expiresIn: number;
 }

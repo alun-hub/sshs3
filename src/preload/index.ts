@@ -36,7 +36,7 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
-import type { ProfileSyncStatus, ProfileSyncPullResult } from '../shared/types/sync';
+import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
 
 export const api: MultiSSHApi = {
   // Terminal
@@ -291,6 +291,7 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_PULL, passwords),
 
   profileSyncStatus: (): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS),
+  profileSyncCompare: (): Promise<SyncComparisonResult> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE),
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

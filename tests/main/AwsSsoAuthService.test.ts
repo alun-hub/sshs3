@@ -273,4 +273,24 @@ describe('AwsSsoAuthService', () => {
     const roles = await service.listAccountRoles('access-token', region, '111');
     expect(roles.map((r) => r.roleName)).toEqual(['AdministratorAccess', 'ReadOnly']);
   });
+
+  it('succeeds even when verificationUriComplete is omitted by the SSO service', async () => {
+    const farFuture = Math.floor(Date.now() / 1000) + 999_999;
+    sendMock
+      .mockResolvedValueOnce(mockRegisterClient(farFuture))
+      .mockResolvedValueOnce(mockDeviceAuth({ verificationUriComplete: undefined }))
+      .mockResolvedValueOnce({ accessToken: 'access-token-no-complete', expiresIn: 3600 });
+
+    const onPrompt = vi.fn();
+    const result = await service.login(startUrl, region, { onPrompt });
+
+    expect(result.accessToken).toBe('access-token-no-complete');
+    expect(onPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verificationUri: 'https://example.awsapps.com/device',
+        verificationUriComplete: undefined,
+        userCode: 'USER-CODE',
+      })
+    );
+  });
 });
