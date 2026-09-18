@@ -102,7 +102,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return;
           }
         }
-        setError(err instanceof Error ? err.message : 'Failed to read directory');
+        let msg = err instanceof Error ? err.message : 'Kunde inte läsa mappinnehållet';
+        msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
+        if (msg.includes('All configured authentication methods failed') || msg.toLowerCase().includes('autentisering misslyckades')) {
+          msg = 'Autentisering misslyckades: Lösenord eller nyckel godkändes inte av servern.';
+        } else if (msg.includes('getConnection')) {
+          const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
+          msg = `Kunde inte ansluta till SFTP: ${clean || 'Anslutningen misslyckades'}`;
+        }
+        setError(msg);
         setEntries([]);
       } finally {
         setLoading(false);
@@ -114,7 +122,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     setSelectedPaths(new Set());
     setFilterText('');
-    void load();
+    void load(true);
   }, [load, refreshToken, currentPath]);
 
   const handleOpen = useCallback(
@@ -209,6 +217,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }
       const payload = readDropPayload(e.dataTransfer);
       if (!payload) return;
+      if (payload.entries.some((i) => i.path === targetEntry.path)) {
+        endDrag();
+        return;
+      }
       onTransferRequested({
         sourceProviderId: payload.providerId,
         sourcePaths: payload.entries.map((i) => i.path),
@@ -222,6 +234,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handlePaneDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
         onTransferRequested({
@@ -377,8 +390,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
       className="flex h-full min-w-0 flex-1 flex-col rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-sm"
       onDragOver={(e) => {
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
       }}
-      onDrop={handlePaneDrop}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePaneDrop(e);
+      }}
     >
       {/* Pane Top Bar with Source Switcher */}
       <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-2.5 py-1.5">
@@ -581,6 +603,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onEntryDrop={handleEntryDrop}
           onEntryDragOver={(entry) => setDragOverPath(entry.path)}
           onEntryDragLeave={() => setDragOverPath(null)}
+          onPaneDrop={handlePaneDrop}
           dragOverPath={dragOverPath}
           renamingPath={renamingPath}
           onRenameCommit={handleRenameCommit}

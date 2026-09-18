@@ -77,6 +77,7 @@ export const IPC_CHANNELS = {
   TRANSFER_PROGRESS: 'transfer:progress',
   TRANSFER_CONFLICT_PROMPT: 'transfer:conflict-prompt',
   TRANSFER_CONFLICT_RESPOND: 'transfer:conflict-respond',
+  START_DRAG: 'drag:start',
 
   // Profiles
   PROFILES_GET: 'profiles:get',
@@ -221,6 +222,8 @@ export interface MultiSSHApi {
   transferGetJobs(): Promise<TransferProgress[]>;
   transferClearCompleted(): Promise<void>;
   onTransferProgress(callback: (progress: TransferProgress) => void): () => void;
+  getPathForFile?(file: File): string;
+  startDrag?(options: { file: string; icon?: string }): void;
 
   // Profiles
   profilesGet(): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[] }>;

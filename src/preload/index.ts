@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   IPC_CHANNELS,
   type MultiSSHApi,
@@ -223,6 +223,18 @@ export const api: MultiSSHApi = {
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.TRANSFER_PROGRESS, listener);
     };
+  },
+
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils?.getPathForFile ? webUtils.getPathForFile(file) : (file as any)?.path || '';
+    } catch {
+      return (file as any)?.path || '';
+    }
+  },
+
+  startDrag: (options: { file: string; icon?: string }): void => {
+    ipcRenderer.send(IPC_CHANNELS.START_DRAG, options);
   },
 
   // Profiles

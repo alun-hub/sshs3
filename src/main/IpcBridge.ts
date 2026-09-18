@@ -631,6 +631,24 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.TRANSFER_CLEAR_COMPLETED, async (): Promise<void> => {
       this.transferQueue.clearCompleted();
     });
+
+    this.registerHandler(
+      IPC_CHANNELS.START_DRAG,
+      async (event, options: { file: string; icon?: string }) => {
+        try {
+          const webContents = event.sender || this.getWebContents();
+          if (webContents && typeof (webContents as any).startDrag === 'function') {
+            const iconPath = options.icon || path.join(__dirname, '../build/icons/32x32.png');
+            (webContents as any).startDrag({
+              file: options.file,
+              icon: iconPath,
+            });
+          }
+        } catch (err) {
+          console.error('Failed to start native drag:', err);
+        }
+      }
+    );
   }
 
   private registerProfileHandlers(): void {

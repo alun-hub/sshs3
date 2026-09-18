@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DRAG_MIME_TYPE, type DragPayload } from './types';
 import { DragDropContext, type DragDropContextValue } from './DragDropContext';
 
@@ -6,15 +6,35 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handleWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const handleWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('dragover', handleWindowDragOver, true);
+    window.addEventListener('dragenter', handleWindowDragOver, true);
+    window.addEventListener('drop', handleWindowDrop);
+
+    return () => {
+      window.removeEventListener('dragover', handleWindowDragOver, true);
+      window.removeEventListener('dragenter', handleWindowDragOver, true);
+      window.removeEventListener('drop', handleWindowDrop);
+    };
+  }, []);
+
   const beginDrag = useCallback((payload: DragPayload, dataTransfer: DataTransfer) => {
     setActiveDrag(payload);
     try {
       dataTransfer.effectAllowed = 'copy';
       dataTransfer.setData(DRAG_MIME_TYPE, JSON.stringify(payload));
-      dataTransfer.setData('text/plain', payload.entries.map((e) => e.name).join('\n'));
     } catch {
-      // Some browsers restrict custom MIME types during dragstart; payload is still
-      // available in-memory via activeDrag for same-window drags.
+      // ignore
     }
   }, []);
 
@@ -41,9 +61,12 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const readOsFilePaths = useCallback((dataTransfer: DataTransfer): string[] => {
     const paths: string[] = [];
     for (const file of Array.from(dataTransfer.files ?? [])) {
-      const withPath = file as File & { path?: string };
-      if (withPath.path) {
-        paths.push(withPath.path);
+      const p =
+        (typeof window !== 'undefined' && window.multissh?.getPathForFile
+          ? window.multissh.getPathForFile(file)
+          : null) || (file as File & { path?: string }).path;
+      if (p) {
+        paths.push(p);
       }
     }
     return paths;

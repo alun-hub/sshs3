@@ -19,6 +19,7 @@ interface FileListProps {
   onEntryDrop?: (entry: FileEntry, e: React.DragEvent) => void;
   onEntryDragOver?: (entry: FileEntry, e: React.DragEvent) => void;
   onEntryDragLeave?: (entry: FileEntry) => void;
+  onPaneDrop?: (e: React.DragEvent) => void;
   dragOverPath?: string | null;
   renamingPath?: string | null;
   onRenameCommit?: (entry: FileEntry, newName: string) => void;
@@ -49,6 +50,7 @@ export const FileList: React.FC<FileListProps> = ({
   onEntryDrop,
   onEntryDragOver,
   onEntryDragLeave,
+  onPaneDrop,
   onDraggableEnd,
   dragOverPath,
   renamingPath,
@@ -235,6 +237,20 @@ export const FileList: React.FC<FileListProps> = ({
         className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
         onMouseDown={() => containerRef.current?.focus()}
         onKeyDown={handleContainerKeyDown}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onEntryDragLeave?.(entries[0]);
+          onPaneDrop?.(e);
+        }}
         onClick={(e) => {
           if (e.currentTarget === e.target) onSelectionChange(new Set());
         }}
@@ -278,19 +294,34 @@ export const FileList: React.FC<FileListProps> = ({
                   role="row"
                   data-entry-path={entry.path}
                   draggable
-                  onDragStart={(e) => onDraggableStart?.(entry, e)}
+                  onDragStart={(e) => {
+                    onDraggableStart?.(entry, e);
+                  }}
                   onDragEnd={() => onDraggableEnd?.()}
                   onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
                     if (isDropTarget?.(entry)) {
-                      e.preventDefault();
+                      onEntryDragOver?.(entry, e);
+                    } else if (dragOverPath) {
+                      onEntryDragLeave?.(entry);
+                    }
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (isDropTarget?.(entry)) {
                       onEntryDragOver?.(entry, e);
                     }
                   }}
                   onDragLeave={() => onEntryDragLeave?.(entry)}
                   onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (isDropTarget?.(entry)) {
-                      e.preventDefault();
                       onEntryDrop?.(entry, e);
+                    } else {
+                      onPaneDrop?.(e);
                     }
                   }}
                   onClick={(e) => handleRowClick(entry, index, e)}
@@ -321,7 +352,7 @@ export const FileList: React.FC<FileListProps> = ({
                     isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-500/20'
                   )}
                 >
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="pointer-events-none flex min-w-0 items-center gap-2">
                     <Icon
                       className={classNames(
                         'h-4 w-4 shrink-0',
@@ -338,15 +369,15 @@ export const FileList: React.FC<FileListProps> = ({
                           if (e.key === 'Escape') onRenameCancel?.();
                         }}
                         onBlur={(e) => onRenameCommit?.(entry, e.target.value)}
-                        className="w-full rounded-md border border-sky-500 bg-app-input px-1.5 py-0.5 text-sm text-txt-primary outline-none"
+                        className="pointer-events-auto w-full rounded-md border border-sky-500 bg-app-input px-1.5 py-0.5 text-sm text-txt-primary outline-none"
                       />
                     ) : (
                       <span className="truncate">{entry.name}</span>
                     )}
                   </div>
-                  <span className="truncate text-xs text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
-                  <span className="truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
-                  <span className="truncate text-xs text-txt-muted">{entry.mtime ?? ''}</span>
+                  <span className="pointer-events-none truncate text-xs text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
+                  <span className="pointer-events-none truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
+                  <span className="pointer-events-none truncate text-xs text-txt-muted">{entry.mtime ?? ''}</span>
                 </div>
               );
             })}

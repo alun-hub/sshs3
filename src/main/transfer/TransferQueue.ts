@@ -381,6 +381,7 @@ export class TransferQueue extends EventEmitter {
         totalBytes: job.progress.totalBytes,
         signal: abortController.signal,
         pauseController,
+        emitCompleted: false,
         onProgress: (p) => {
           if (
             job.progress.status !== 'cancelled' &&

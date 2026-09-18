@@ -173,6 +173,27 @@ describe('SSHPtyManager', () => {
       await session.dispose();
     });
 
+    it('should configure Askpass when authType is password and password is provided', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-pwd',
+        name: 'Password Host',
+        host: 'pwd.domain.com',
+        username: 'pwduser',
+        authType: 'password',
+        password: 'mysecretpassword',
+      };
+
+      const session = await manager.createSession(config);
+
+      const spawned = mockPtyInstances[0];
+      const { options } = (spawned as any)._spawnArgs;
+
+      expect(options.env.SSH_ASKPASS).toBeDefined();
+      expect(options.env.SSH_ASKPASS_REQUIRE).toBe('force');
+
+      await session.dispose();
+    });
+
     it('should clean up AskpassServer when pty.spawn throws an error', async () => {
       const ptyMod = await import('node-pty');
       const spawnSpy = vi.spyOn(ptyMod, 'spawn').mockImplementationOnce(() => {

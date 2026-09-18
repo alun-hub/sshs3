@@ -336,6 +336,19 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
                 }
                 if (this.config.password) {
                   jumpOpts.password = this.config.password;
+                  jumpOpts.tryKeyboard = true;
+                  (jumpClient as any).on(
+                    'keyboard-interactive',
+                    (
+                      _name: string,
+                      _instructions: string,
+                      _instructionsLang: string,
+                      prompts: Array<{ prompt: string; echo: boolean }>,
+                      finish: (responses: string[]) => void
+                    ) => {
+                      finish(prompts.map(() => this.config.password || ''));
+                    }
+                  );
                 }
                 if (this.config.privateKeyPath && fs.existsSync(this.config.privateKeyPath)) {
                   jumpOpts.privateKey = fs.readFileSync(this.config.privateKeyPath);
@@ -358,6 +371,21 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
               });
               connectOpts.sock = sock;
             }
+            if (connectOpts.password) {
+              connectOpts.tryKeyboard = true;
+              client.on(
+                'keyboard-interactive',
+                (
+                  _name: string,
+                  _instructions: string,
+                  _instructionsLang: string,
+                  prompts: Array<{ prompt: string; echo: boolean }>,
+                  finish: (responses: string[]) => void
+                ) => {
+                  finish(prompts.map(() => connectOpts.password));
+                }
+              );
+            }
             await client.connect(connectOpts as any);
             this.client = client;
             this.attachLifecycleListeners(client);
@@ -373,6 +401,20 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
               this.jumpClient = undefined;
             }
             await client.end().catch(() => {});
+          }
+        }
+        if (lastErr) {
+          const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+          if (msg.includes('All configured authentication methods failed')) {
+            throw new Error(
+              'Autentisering misslyckades: Servern nekade inloggningen. Kontrollera att lösenordet stämmer, eller använd SSH-nyckel.'
+            );
+          }
+          if (msg.includes('getConnection')) {
+            const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
+            throw new Error(
+              `Kunde inte ansluta till SFTP: ${clean || 'Anslutningen misslyckades'}`
+            );
           }
         }
         throw lastErr;

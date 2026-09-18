@@ -577,11 +577,15 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
     // Start consuming stream data immediately to avoid backpressure deadlocks
     const uploadPromise = upload.done();
-    uploadPromise.catch((err) => {
-      if (!passThrough.destroyed) {
-        passThrough.destroy(err);
-      }
-    });
+    uploadPromise
+      .then(() => {
+        this.clearCache();
+      })
+      .catch((err) => {
+        if (!passThrough.destroyed) {
+          passThrough.destroy(err);
+        }
+      });
 
     const originalFinal = passThrough._final.bind(passThrough);
     passThrough._final = (callback) => {

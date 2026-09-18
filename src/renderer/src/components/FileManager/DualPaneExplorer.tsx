@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { KeyRound } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config, SFTPConfig } from '@shared/types/storage';
 import type { SavedPaneState } from '@shared/types/session';
@@ -34,6 +35,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   const [connectionRequest, setConnectionRequest] = useState<{ side: PaneSide; type: SourceType } | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [homeDir, setHomeDir] = useState<string>('/');
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    config: SSHConnectionConfig;
+    side: PaneSide;
+  } | null>(null);
+  const [promptPassword, setPromptPassword] = useState('');
+  const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -206,9 +213,21 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
   }, [homeDir]);
 
   const connectPaneToSSH = useCallback(
-    async (config: SSHConnectionConfig) => {
-      if (!connectionRequest) return;
-      const { side } = connectionRequest;
+    async (config: SSHConnectionConfig, overridePassword?: string) => {
+      const side = connectionRequest ? connectionRequest.side : passwordPrompt?.side;
+      if (!side) return;
+
+      const passwordToUse = overridePassword !== undefined ? overridePassword : config.password;
+
+      // If the profile uses password authentication but has no password configured, prompt for it
+      if (config.authType === 'password' && !passwordToUse) {
+        setPasswordPrompt({ config, side });
+        setPromptPassword('');
+        setSavePasswordToProfile(false);
+        setConnectionRequest(null);
+        return;
+      }
+
       setConnecting(true);
       try {
         const sftpConfig: SFTPConfig = {
@@ -218,7 +237,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
           port: config.port ?? 22,
           username: config.username,
           authType: config.authType,
-          password: config.password,
+          password: passwordToUse,
           privateKeyPath: config.privateKeyPath,
           passphrase: config.passphrase,
           agentPath: config.agentPath,
@@ -239,14 +258,32 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
           return next;
         });
         setConnectionRequest(null);
+        setPasswordPrompt(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Could not connect to SFTP server');
+        let msg = err instanceof Error ? err.message : 'Kunde inte ansluta till SFTP-servern';
+        msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
+        window.alert(msg);
       } finally {
         setConnecting(false);
       }
     },
-    [connectionRequest]
+    [connectionRequest, passwordPrompt]
   );
+
+  const handlePasswordPromptSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordPrompt) return;
+    const { config } = passwordPrompt;
+    const entered = promptPassword;
+    if (savePasswordToProfile && entered) {
+      try {
+        await window.multissh.profilesSaveSSH?.({ ...config, password: entered });
+      } catch (saveErr) {
+        console.warn('Could not save password to profile:', saveErr);
+      }
+    }
+    await connectPaneToSSH(config, entered);
+  };
 
   const connectPaneToS3 = useCallback(
     async (config: S3Config) => {
@@ -308,7 +345,6 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             batchPolicy = result.resolvedPolicy;
           }
         }
-        setRefreshToken((t) => t + 1);
       })();
     },
     [panes]
@@ -320,7 +356,21 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
 
   return (
     <DragDropProvider>
-      <div className="flex min-h-0 flex-1 flex-col bg-app">
+      <div
+        className="flex min-h-0 flex-1 flex-col bg-app"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
         {initError && (
           <div className="border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">{initError}</div>
         )}
@@ -357,6 +407,55 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
         onConnectSSH={connecting ? undefined : (config) => void connectPaneToSSH(config)}
         onConnectS3={connecting ? undefined : (config) => void connectPaneToS3(config)}
       />
+      {passwordPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
+              <KeyRound className="h-4 w-4" />
+              <span>Lösenord krävs för SFTP</span>
+            </div>
+            <p className="text-txt-muted text-xs leading-relaxed">
+              Profilen <strong className="text-txt-primary">{passwordPrompt.config.name}</strong> saknar sparat lösenord. File Manager körs i bakgrunden och behöver ett lösenord för att ansluta.
+            </p>
+            <form onSubmit={handlePasswordPromptSubmit} className="space-y-3">
+              <input
+                type="password"
+                required
+                autoFocus
+                placeholder="Ange lösenord"
+                value={promptPassword}
+                onChange={(e) => setPromptPassword(e.target.value)}
+                className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+              />
+              <label className="flex items-center gap-2 cursor-pointer text-txt-secondary select-none">
+                <input
+                  type="checkbox"
+                  checked={savePasswordToProfile}
+                  onChange={(e) => setSavePasswordToProfile(e.target.checked)}
+                  className="rounded border-border-subtle text-sky-500 focus:ring-0"
+                />
+                <span>Spara lösenordet i profilen</span>
+              </label>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPasswordPrompt(null)}
+                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                >
+                  Avbryt
+                </button>
+                <button
+                  type="submit"
+                  disabled={connecting}
+                  className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 transition-colors disabled:opacity-50"
+                >
+                  {connecting ? 'Ansluter...' : 'Anslut'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DragDropProvider>
   );
 };

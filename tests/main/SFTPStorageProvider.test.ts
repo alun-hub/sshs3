@@ -137,7 +137,7 @@ describe('SFTPStorageProvider', () => {
   });
 
   describe('authentication types', () => {
-    it('should connect with password authentication', async () => {
+    it('should connect with password authentication and enable tryKeyboard', async () => {
       const provider = new SFTPStorageProvider({
         ...baseConfig,
         authType: 'password',
@@ -153,7 +153,29 @@ describe('SFTPStorageProvider', () => {
           port: 2222,
           username: 'testuser',
           password: 'mypassword123',
+          tryKeyboard: true,
         }),
+      );
+
+      // Verify keyboard-interactive listener responds with password
+      const handlers = getEventHandlers()['keyboard-interactive'];
+      expect(handlers).toBeDefined();
+      expect(handlers.length).toBeGreaterThan(0);
+      const finishFn = vi.fn();
+      handlers[0]('name', 'instructions', 'lang', [{ prompt: 'Password:', echo: false }], finishFn);
+      expect(finishFn).toHaveBeenCalledWith(['mypassword123']);
+    });
+
+    it('should throw a friendly error when all authentication methods fail', async () => {
+      mockConnect.mockRejectedValueOnce(new Error('getConnection: All configured authentication methods failed'));
+      const provider = new SFTPStorageProvider({
+        ...baseConfig,
+        authType: 'password',
+        password: 'wrongpassword',
+      });
+
+      await expect(provider.ensureConnected()).rejects.toThrow(
+        /Autentisering misslyckades: Servern nekade inloggningen/
       );
     });
 

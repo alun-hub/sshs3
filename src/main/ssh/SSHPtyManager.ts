@@ -64,7 +64,7 @@ export class InternalSSHPtySession implements SSHPtySession {
   public rows: number;
 
   private pty: IPty;
-  private askpassServer?: AskpassServer;
+  public askpassServer?: AskpassServer;
   private manager: SSHPtyManager;
   private dataListeners: Set<(data: string) => void> = new Set();
   private exitListeners: Set<(event: SSHPtyExitEvent) => void> = new Set();
@@ -296,9 +296,11 @@ export class SSHPtyManager extends EventEmitter {
     const rows = session.rows;
     const cwd = options?.cwd ?? (process.env.HOME || process.cwd());
 
+    const askpassEnv = session.askpassServer ? session.askpassServer.getEnv() : {};
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       TERM: 'xterm-256color',
+      ...askpassEnv,
       ...(options?.env || {}),
     };
 
@@ -341,10 +343,21 @@ export class SSHPtyManager extends EventEmitter {
     let askpassServer: AskpassServer | undefined;
     let askpassEnv: Record<string, string> = {};
 
-    // If Smartcard PKCS#11 authentication is requested, start Askpass server
-    if (config.authType === 'smartcard') {
+    // Start Askpass server if Smartcard is used, or if a saved password or private-key passphrase is provided
+    const needsAskpass =
+      config.authType === 'smartcard' ||
+      (config.authType === 'password' && Boolean(config.password)) ||
+      Boolean(config.passphrase);
+
+    if (needsAskpass) {
       askpassServer = new AskpassServer({
         promptHandler: async (prompt: string) => {
+          if (config.authType === 'password' && config.password) {
+            return config.password;
+          }
+          if (config.passphrase) {
+            return config.passphrase;
+          }
           if (this.listenerCount('askpass') > 0) {
             return new Promise<string>((resolve) => {
               this.emit('askpass', {

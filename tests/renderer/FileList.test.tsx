@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { FileList } from '../../src/renderer/src/components/FileManager/FileList';
 import type { FileEntry } from '../../src/shared/types/storage';
@@ -103,5 +103,75 @@ describe('FileList Component', () => {
 
     // Initial window items should render
     expect(screen.getByText('file_0.txt')).toBeInTheDocument();
+  });
+
+  it('sets dropEffect to copy on dragOver for both files and directories', () => {
+    const onEntryDragOver = vi.fn();
+    render(
+      <FileList
+        entries={mockEntries}
+        loading={false}
+        selectedPaths={new Set()}
+        onSelectionChange={vi.fn()}
+        onOpen={vi.fn()}
+        isDropTarget={(entry) => entry.isDirectory}
+        onEntryDragOver={onEntryDragOver}
+      />
+    );
+
+    const docRow = screen.getByText('documents').closest('[role="row"]')!;
+    const fileRow = screen.getByText('config.json').closest('[role="row"]')!;
+
+    const docDataTransfer = { dropEffect: 'none' };
+    const preventDefaultDoc = vi.fn();
+    fireEvent.dragOver(docRow, {
+      dataTransfer: docDataTransfer,
+      preventDefault: preventDefaultDoc,
+    });
+    expect(docDataTransfer.dropEffect).toBe('copy');
+    expect(onEntryDragOver).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'documents' }),
+      expect.anything()
+    );
+
+    const fileDataTransfer = { dropEffect: 'none' };
+    const preventDefaultFile = vi.fn();
+    fireEvent.dragOver(fileRow, {
+      dataTransfer: fileDataTransfer,
+      preventDefault: preventDefaultFile,
+    });
+    expect(fileDataTransfer.dropEffect).toBe('copy');
+  });
+
+  it('delegates drop on files or container to onPaneDrop, and directory drop to onEntryDrop', () => {
+    const onEntryDrop = vi.fn();
+    const onPaneDrop = vi.fn();
+
+    render(
+      <FileList
+        entries={mockEntries}
+        loading={false}
+        selectedPaths={new Set()}
+        onSelectionChange={vi.fn()}
+        onOpen={vi.fn()}
+        isDropTarget={(entry) => entry.isDirectory}
+        onEntryDrop={onEntryDrop}
+        onPaneDrop={onPaneDrop}
+      />
+    );
+
+    const docRow = screen.getByText('documents').closest('[role="row"]')!;
+    const fileRow = screen.getByText('config.json').closest('[role="row"]')!;
+
+    // Dropping on folder calls onEntryDrop
+    fireEvent.drop(docRow, { dataTransfer: {} });
+    expect(onEntryDrop).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'documents' }),
+      expect.anything()
+    );
+
+    // Dropping on file calls onPaneDrop
+    fireEvent.drop(fileRow, { dataTransfer: {} });
+    expect(onPaneDrop).toHaveBeenCalled();
   });
 });

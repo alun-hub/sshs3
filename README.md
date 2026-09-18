@@ -206,6 +206,12 @@ npm run package:win
 
 ---
 
+## Known Limitations
+
+- **Linux Drag & Drop Cursor Icon**: On some Linux desktop environments (notably GNOME/Wayland or KDE Plasma with certain cursor themes like Breeze), Chromium's native drag-and-drop implementation does not update the mouse cursor bitmap during internal pane-to-pane drags, displaying a "forbidden" or "no-drop" icon (white circle with red slash). This is an upstream Chromium window manager integration quirk; dragging and dropping files between panes and into folders works normally and completely reliably.
+
+---
+
 ## Community & Contributing
 
 Contributions are welcome! Please see our:

@@ -7,6 +7,10 @@ import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+if (process.platform === 'linux') {
+  app.disableHardwareAcceleration();
+}
+
 let mainWindow: BrowserWindow | null = null;
 let ipcBridge: IpcBridge | null = null;
 let isQuitting = false;

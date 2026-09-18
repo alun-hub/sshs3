@@ -3,6 +3,19 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
+// Guarantee dropEffect is set to 'copy' during drag operations across the entire application window
+const handleGlobalDragOver = (e: DragEvent): void => {
+  e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+document.addEventListener('dragover', handleGlobalDragOver, true)
+document.addEventListener('dragenter', handleGlobalDragOver, true)
+window.addEventListener('dragover', handleGlobalDragOver, true)
+window.addEventListener('dragenter', handleGlobalDragOver, true)
+
 const rootElement = document.getElementById('root')
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
@@ -11,3 +24,4 @@ if (rootElement) {
     </React.StrictMode>
   )
 }
+

@@ -12,7 +12,18 @@ export const TransferConflictModal: React.FC = () => {
     if (!window.multissh?.onTransferConflictPrompt) return;
 
     const unsubscribe = window.multissh.onTransferConflictPrompt((event) => {
-      setPrompts((prev) => [...prev, event]);
+      setPrompts((prev) => {
+        if (
+          prev.some(
+            (p) =>
+              p.id === event.id ||
+              (p.sourcePath === event.sourcePath && p.targetPath === event.targetPath)
+          )
+        ) {
+          return prev;
+        }
+        return [...prev, event];
+      });
     });
 
     return () => {
@@ -28,8 +39,13 @@ export const TransferConflictModal: React.FC = () => {
     if (!currentPrompt) return;
     const promptId = currentPrompt.id;
     const applied = applyToAll;
+    const targetPath = currentPrompt.targetPath;
 
-    setPrompts((prev) => prev.slice(1));
+    setPrompts((prev) =>
+      applied
+        ? []
+        : prev.filter((p) => p.id !== promptId && p.targetPath !== targetPath)
+    );
 
     if (window.multissh?.respondTransferConflict) {
       try {

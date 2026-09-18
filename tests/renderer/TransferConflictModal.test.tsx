@@ -151,4 +151,33 @@ describe('TransferConflictModal Component', () => {
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  it('deduplicates duplicate conflict prompts so a single overwrite click dismisses the modal', () => {
+    render(<TransferConflictModal />);
+
+    // Simulate duplicate prompts arriving for the same conflict (e.g. from bubbled drop event)
+    act(() => {
+      promptCallback!({
+        id: 'tc-dup-1',
+        sourcePath: '/src/file.txt',
+        targetPath: '/dst/file.txt',
+        fileName: 'file.txt',
+        isDirectory: false,
+      });
+      promptCallback!({
+        id: 'tc-dup-2',
+        sourcePath: '/src/file.txt',
+        targetPath: '/dst/file.txt',
+        fileName: 'file.txt',
+        isDirectory: false,
+      });
+    });
+
+    expect(screen.getByTestId('transfer-conflict-modal')).toBeInTheDocument();
+
+    // Clicking overwrite should dismiss the modal on first click without leaving a ghost prompt
+    fireEvent.click(screen.getByTestId('transfer-conflict-overwrite'));
+    expect(mockRespond).toHaveBeenCalledWith('tc-dup-1', 'overwrite', false);
+    expect(screen.queryByTestId('transfer-conflict-modal')).not.toBeInTheDocument();
+  });
 });
