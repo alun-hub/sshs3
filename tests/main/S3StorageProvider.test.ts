@@ -91,6 +91,11 @@ vi.mock('@aws-sdk/lib-storage', () => {
   };
 });
 
+const { getSignedUrlMock } = vi.hoisted(() => ({ getSignedUrlMock: vi.fn() }));
+vi.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: getSignedUrlMock,
+}));
+
 // Import the provider and helper under test
 import { S3StorageProvider, parseS3Path } from '../../src/main/storage/S3StorageProvider';
 import {
@@ -1131,6 +1136,38 @@ describe('S3StorageProvider', () => {
       const afterCreate = await provider.list('/');
       expect(afterCreate).toHaveLength(2);
       expect(clientSendMock).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('getPresignedUrl', () => {
+    it('should generate a signed URL for an object using the requested expiry', async () => {
+      getSignedUrlMock.mockResolvedValueOnce('https://bucket.s3.amazonaws.com/key?X-Amz-Signature=abc');
+      const provider = new S3StorageProvider(defaultS3Config);
+
+      const url = await provider.getPresignedUrl('/my-bucket/path/to/file.txt', 3600);
+
+      expect(url).toBe('https://bucket.s3.amazonaws.com/key?X-Amz-Signature=abc');
+      expect(getSignedUrlMock).toHaveBeenCalledTimes(1);
+      const [clientArg, commandArg, optionsArg] = getSignedUrlMock.mock.calls[0];
+      expect(clientArg).toBe(provider.client);
+      expect(commandArg.input).toEqual({ Bucket: 'my-bucket', Key: 'path/to/file.txt' });
+      expect(optionsArg).toEqual({ expiresIn: 3600 });
+    });
+
+    it('should clamp expiry to the SigV4 maximum of 7 days', async () => {
+      getSignedUrlMock.mockResolvedValueOnce('https://example.com/signed');
+      const provider = new S3StorageProvider(defaultS3Config);
+
+      await provider.getPresignedUrl('/my-bucket/file.txt', 999 * 24 * 60 * 60);
+
+      const optionsArg = getSignedUrlMock.mock.calls[0][2];
+      expect(optionsArg.expiresIn).toBe(7 * 24 * 60 * 60);
+    });
+
+    it('should reject a bucket-root path (no object key)', async () => {
+      const provider = new S3StorageProvider(defaultS3Config);
+      await expect(provider.getPresignedUrl('/my-bucket', 3600)).rejects.toThrow('Requires an object path');
+      expect(getSignedUrlMock).not.toHaveBeenCalled();
     });
   });
 });

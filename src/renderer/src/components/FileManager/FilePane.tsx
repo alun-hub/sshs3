@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Clipboard,
   Cloud,
+  Download,
   ExternalLink,
   FileCode,
   FileJson,
@@ -13,6 +14,7 @@ import {
   HardDrive,
   History,
   Info,
+  Link2,
   Pencil,
   RefreshCw,
   Search,
@@ -24,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
+import type { TransferConflictResolution } from '@shared/types/ipc';
 import { joinPath, parentPath } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -33,6 +36,7 @@ import { PropertiesModal } from './PropertiesModal';
 import { TagsModal } from './TagsModal';
 import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
+import { PresignedUrlModal } from './PresignedUrlModal';
 import { NewFolderModal } from './NewFolderModal';
 import { AddToDotfilePoolModal } from './AddToDotfilePoolModal';
 import { FileEditorModal } from './FileEditorModal';
@@ -77,6 +81,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [tagsOpen, setTagsOpen] = useState(false);
   const [bucketPolicyOpen, setBucketPolicyOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [presignedOpen, setPresignedOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
@@ -173,6 +178,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setError(err instanceof Error ? err.message : 'Failed to delete item(s)');
     }
   }, [selectedPaths, entries, source.providerId, load]);
+
+  const handleDownloadTo = useCallback(async () => {
+    if (selectedPaths.size === 0) return;
+    const targetFolder = await window.multissh.dialogOpenFolder({ title: 'Download to...' });
+    if (!targetFolder) return;
+    const targets = entries.filter((e) => selectedPaths.has(e.path));
+    try {
+      let batchPolicy: TransferConflictResolution | undefined;
+      for (const target of targets) {
+        const result = await window.multissh.transferAdd({
+          sourceProviderId: source.providerId,
+          sourcePath: target.path,
+          targetProviderId: 'local',
+          targetPath: targetFolder,
+          conflictPolicy: batchPolicy,
+        });
+        if (result.appliedToAll && result.resolvedPolicy) {
+          batchPolicy = result.resolvedPolicy;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start download');
+    }
+  }, [selectedPaths, entries, source.providerId]);
 
   const handleRenameStart = useCallback(() => {
     if (selectedPaths.size !== 1) return;
@@ -272,6 +301,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     !isAtBucketRoot &&
     selectedEntries.length === 1 &&
     !selectedEntries[0].isDirectory;
+  const selectedAreAllFiles = selectedEntries.length > 0 && selectedEntries.every((e) => !e.isDirectory);
 
   const contextMenuItems: ContextMenuItem[] =
     contextMenu === null
@@ -318,6 +348,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
             },
+            ...(source.sourceType !== 'local'
+              ? [
+                  {
+                    key: 'download-to',
+                    label: 'Download to...',
+                    icon: Download,
+                    onSelect: () => void handleDownloadTo(),
+                  },
+                ]
+              : []),
             ...(source.sourceType !== 's3' && selectedEntries.length === 1 && !selectedEntries[0].isDirectory
               ? [
                   {
@@ -358,6 +398,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     icon: History,
                     disabled: !(isBucketEntry || isS3ObjectEntry),
                     onSelect: () => setVersionsOpen(true),
+                  },
+                  {
+                    key: 'presigned-url',
+                    label: `Generate Web URL${selectedEntries.length > 1 ? 's' : ''}...`,
+                    icon: Link2,
+                    disabled: !selectedAreAllFiles,
+                    onSelect: () => setPresignedOpen(true),
                   },
                 ]
               : []),
@@ -668,6 +715,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
           targetName={selectedEntries[0].name}
           onClose={() => setVersionsOpen(false)}
           onSaved={() => void load()}
+        />
+      )}
+
+      {presignedOpen && selectedAreAllFiles && (
+        <PresignedUrlModal
+          open={presignedOpen}
+          providerId={source.providerId}
+          entries={selectedEntries.map((e) => ({ path: e.path, name: e.name }))}
+          onClose={() => setPresignedOpen(false)}
         />
       )}
 

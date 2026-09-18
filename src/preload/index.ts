@@ -191,6 +191,9 @@ export const api: MultiSSHApi = {
   storageRestoreObjectVersion: (providerId: string, remotePath: string, versionId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_RESTORE_OBJECT_VERSION, providerId, remotePath, versionId),
 
+  storageGetPresignedUrl: (providerId: string, remotePath: string, expiresInSeconds: number): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_PRESIGNED_URL, providerId, remotePath, expiresInSeconds),
+
   // Transfer
   transferAdd: (options: {
     sourceProviderId: string;
@@ -361,6 +364,9 @@ export const api: MultiSSHApi = {
 
   dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),
+
+  dialogOpenFolder: (options?: { title?: string }): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FOLDER, options),
 };
 
 export function exposePreloadApi(): void {

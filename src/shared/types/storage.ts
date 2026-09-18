@@ -75,6 +75,7 @@ export interface IStorageProvider {
   listObjectVersions?(remotePath: string): Promise<ObjectVersionEntry[]>;
   deleteObjectVersion?(remotePath: string, versionId: string): Promise<void>;
   restoreObjectVersion?(remotePath: string, versionId: string): Promise<void>;
+  getPresignedUrl?(remotePath: string, expiresInSeconds: number): Promise<string>;
 }
 
 export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';

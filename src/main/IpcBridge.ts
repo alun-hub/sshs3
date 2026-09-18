@@ -498,6 +498,14 @@ export class IpcBridge {
         await provider.restoreObjectVersion!(remotePath, versionId);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_PRESIGNED_URL,
+      async (_event, providerId: string, remotePath: string, expiresInSeconds: number): Promise<string> => {
+        const provider = this.requireS3Capability(providerId, 'getPresignedUrl');
+        return await provider.getPresignedUrl!(remotePath, expiresInSeconds);
+      }
+    );
   }
 
   private requireS3Capability<K extends keyof import('../shared/types/storage').IStorageProvider>(
@@ -1065,6 +1073,20 @@ export class IpcBridge {
           title: options?.title,
           filters: options?.filters,
           properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+          return null;
+        }
+        return result.filePaths[0];
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.DIALOG_OPEN_FOLDER,
+      async (_event, options?: { title?: string }) => {
+        const result = await electronDialog.showOpenDialog({
+          title: options?.title,
+          properties: ['openDirectory', 'createDirectory'],
         });
         if (result.canceled || result.filePaths.length === 0) {
           return null;

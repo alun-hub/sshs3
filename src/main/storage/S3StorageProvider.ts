@@ -41,6 +41,7 @@ import {
   ListObjectVersionsCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
   BaseStorageProvider,
@@ -549,6 +550,20 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     }
 
     return res.Body as NodeJS.ReadableStream;
+  }
+
+  /**
+   * Generates a temporary, pre-signed HTTPS URL for downloading a single
+   * object without AWS credentials. SigV4 caps the expiry at 7 days.
+   */
+  async getPresignedUrl(remotePath: string, expiresInSeconds: number): Promise<string> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket || !key) {
+      throw new Error(`Requires an object path: ${remotePath}`);
+    }
+    const MAX_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+    const expiresIn = Math.min(Math.max(1, Math.floor(expiresInSeconds)), MAX_EXPIRY_SECONDS);
+    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn });
   }
 
   async createWriteStream(

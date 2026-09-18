@@ -66,6 +66,7 @@ export const IPC_CHANNELS = {
   STORAGE_LIST_OBJECT_VERSIONS: 'storage:list-object-versions',
   STORAGE_DELETE_OBJECT_VERSION: 'storage:delete-object-version',
   STORAGE_RESTORE_OBJECT_VERSION: 'storage:restore-object-version',
+  STORAGE_GET_PRESIGNED_URL: 'storage:get-presigned-url',
 
   // Transfer
   TRANSFER_ADD: 'transfer:add',
@@ -125,6 +126,7 @@ export const IPC_CHANNELS = {
   APP_GET_PLATFORM: 'app:get-platform',
   APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
   DIALOG_OPEN_FILE: 'dialog:open-file',
+  DIALOG_OPEN_FOLDER: 'dialog:open-folder',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -208,6 +210,7 @@ export interface MultiSSHApi {
   storageListObjectVersions(providerId: string, remotePath: string): Promise<ObjectVersionEntry[]>;
   storageDeleteObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
   storageRestoreObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
+  storageGetPresignedUrl(providerId: string, remotePath: string, expiresInSeconds: number): Promise<string>;
 
   // Transfer
   transferAdd(options: {
@@ -278,6 +281,7 @@ export interface MultiSSHApi {
   /** Windows only: which optional local shells (currently just PowerShell 7 / pwsh) are actually on PATH. */
   detectLocalShells(): Promise<{ pwsh: boolean }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+  dialogOpenFolder(options?: { title?: string }): Promise<string | null>;
 }
 
 export interface FileReadResult {
