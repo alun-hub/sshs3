@@ -137,17 +137,31 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     this.attachLifecycleListeners(this.client);
   }
 
+  private onLifecycleCleanup = (): void => {
+    this.isConnected = false;
+    if (this.jumpClient) {
+      try { this.jumpClient.end(); } catch { /* ignore */ }
+      this.jumpClient = undefined;
+    }
+  };
+
   private attachLifecycleListeners(client: SftpClient): void {
-    const cleanup = () => {
-      this.isConnected = false;
-      if (this.jumpClient) {
-        try { this.jumpClient.end(); } catch { /* ignore */ }
-        this.jumpClient = undefined;
-      }
-    };
-    client.on('close', cleanup);
-    client.on('end', cleanup);
-    client.on('error', cleanup);
+    if (typeof (client as any).setMaxListeners === 'function') {
+      (client as any).setMaxListeners(100);
+    }
+    if ((client as any).client && typeof (client as any).client.setMaxListeners === 'function') {
+      (client as any).client.setMaxListeners(100);
+    }
+    try {
+      client.removeListener('close', this.onLifecycleCleanup);
+      client.removeListener('end', this.onLifecycleCleanup);
+      client.removeListener('error', this.onLifecycleCleanup);
+    } catch {
+      // ignore
+    }
+    client.on('close', this.onLifecycleCleanup);
+    client.on('end', this.onLifecycleCleanup);
+    client.on('error', this.onLifecycleCleanup);
   }
 
   /**
@@ -317,6 +331,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           // connect() call hangs indefinitely instead of failing or
           // succeeding cleanly.
           const client = new SftpClient();
+          if (typeof (client as any).setMaxListeners === 'function') {
+            (client as any).setMaxListeners(100);
+          }
+          if ((client as any).client && typeof (client as any).client.setMaxListeners === 'function') {
+            (client as any).client.setMaxListeners(100);
+          }
           let sock: any = undefined;
           try {
             const connectOpts = { ...options };
@@ -393,6 +413,13 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
               );
             }
             await client.connect(connectOpts as any);
+            if (this.client && this.client !== client) {
+              try {
+                this.client.removeListener('close', this.onLifecycleCleanup);
+                this.client.removeListener('end', this.onLifecycleCleanup);
+                this.client.removeListener('error', this.onLifecycleCleanup);
+              } catch { /* ignore */ }
+            }
             this.client = client;
             this.attachLifecycleListeners(client);
             this.isConnected = true;
