@@ -82,7 +82,7 @@ export const TransferQueueDrawer: React.FC = () => {
       {expanded && (
         <div className="max-h-48 overflow-y-auto px-3 pb-2">
           {jobs.length === 0 && <div className="py-3 text-center text-xs text-txt-muted">No active transfers</div>}
-          {jobs.map((job) => (
+          {[...jobs].reverse().map((job) => (
             <div key={job.jobId} className="flex items-center gap-2 border-b border-border-subtle py-1.5 text-xs">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
