@@ -440,46 +440,130 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
     // Deleting directory: delete all objects under the prefix, plus the directory marker
     const prefix = key.endsWith('/') ? key : `${key}/`;
-    let continuationToken: string | undefined = undefined;
 
-    do {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-      });
-      const listed: ListObjectsV2CommandOutput = await this.client.send(listCommand);
+    // Try deleting with version awareness first (permanently deletes all versions and delete markers).
+    // If the endpoint does not support ListObjectVersions or permission is denied, fall back to ListObjectsV2.
+    let usedVersions = false;
+    try {
+      let keyMarker: string | undefined;
+      let versionIdMarker: string | undefined;
 
-      const objectsToDelete: { Key: string }[] = [];
-      for (const item of listed.Contents ?? []) {
-        if (item.Key) {
-          objectsToDelete.push({ Key: item.Key });
-        }
-      }
-
-      if (objectsToDelete.length > 0) {
-        await this.client.send(
-          new DeleteObjectsCommand({
+      do {
+        const output = await this.client.send(
+          new ListObjectVersionsCommand({
             Bucket: bucket,
-            Delete: {
-              Objects: objectsToDelete,
-              Quiet: true,
-            },
+            Prefix: prefix,
+            KeyMarker: keyMarker,
+            VersionIdMarker: versionIdMarker,
           })
         );
+
+        usedVersions = true;
+        const objectsToDelete: { Key: string; VersionId?: string }[] = [];
+        for (const v of output.Versions ?? []) {
+          if (v.Key) {
+            objectsToDelete.push({ Key: v.Key, VersionId: v.VersionId });
+          }
+        }
+        for (const m of output.DeleteMarkers ?? []) {
+          if (m.Key) {
+            objectsToDelete.push({ Key: m.Key, VersionId: m.VersionId });
+          }
+        }
+
+        if (objectsToDelete.length > 0) {
+          await this.deleteObjectsBatch(bucket, objectsToDelete);
+        }
+
+        keyMarker = output.IsTruncated ? output.NextKeyMarker : undefined;
+        versionIdMarker = output.IsTruncated ? output.NextVersionIdMarker : undefined;
+        if (output.IsTruncated && !keyMarker && !versionIdMarker) {
+          const lastV = output.Versions?.[output.Versions.length - 1];
+          const lastM = output.DeleteMarkers?.[output.DeleteMarkers.length - 1];
+          keyMarker = lastV?.Key ?? lastM?.Key;
+        }
+      } while (keyMarker || versionIdMarker);
+    } catch (err: unknown) {
+      if (usedVersions) {
+        // If it failed while already in progress with ListObjectVersionsCommand, rethrow
+        throw err;
       }
+      // Fall back to ListObjectsV2Command
+      let continuationToken: string | undefined = undefined;
+      do {
+        const listCommand = new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        });
+        const listed: ListObjectsV2CommandOutput = await this.client.send(listCommand);
 
-      continuationToken = listed.NextContinuationToken;
-    } while (continuationToken);
+        const objectsToDelete: { Key: string }[] = [];
+        for (const item of listed.Contents ?? []) {
+          if (item.Key) {
+            objectsToDelete.push({ Key: item.Key });
+          }
+        }
 
-    // Also ensure folder marker is deleted in case it wasn't returned
-    await this.client.send(
-      new DeleteObjectCommand({
-        Bucket: bucket,
-        Key: prefix,
-      })
-    ).catch(() => {});
+        if (objectsToDelete.length > 0) {
+          await this.deleteObjectsBatch(bucket, objectsToDelete);
+        }
+
+        continuationToken = listed.NextContinuationToken;
+      } while (continuationToken);
+    }
+
+    // Also ensure folder markers (both prefix with trailing slash and key without trailing slash) are deleted
+    await this.client
+      .send(
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: prefix,
+        })
+      )
+      .catch(() => {});
+
+    if (prefix !== key) {
+      await this.client
+        .send(
+          new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: key,
+          })
+        )
+        .catch(() => {});
+    }
+
     this.clearCache();
+  }
+
+  private async deleteObjectsBatch(
+    bucket: string,
+    objects: { Key: string; VersionId?: string }[]
+  ): Promise<void> {
+    if (objects.length === 0) return;
+
+    // S3 DeleteObjects supports up to 1000 items per call
+    const chunkSize = 1000;
+    for (let i = 0; i < objects.length; i += chunkSize) {
+      const chunk = objects.slice(i, i + chunkSize);
+      const res = await this.client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: chunk,
+            Quiet: true,
+          },
+        })
+      );
+
+      if (res.Errors && res.Errors.length > 0) {
+        const firstErr = res.Errors[0];
+        throw new Error(
+          `Failed to delete ${res.Errors.length} object(s) in S3: ${firstErr.Key} (${firstErr.Code ?? 'Error'}${firstErr.Message ? `: ${firstErr.Message}` : ''})`
+        );
+      }
+    }
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {

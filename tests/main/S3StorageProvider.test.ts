@@ -60,6 +60,9 @@ vi.mock('@aws-sdk/client-s3', () => {
   class GetObjectCommand {
     constructor(public input: any) {}
   }
+  class ListObjectVersionsCommand {
+    constructor(public input: any) {}
+  }
 
   return {
     S3Client,
@@ -74,6 +77,7 @@ vi.mock('@aws-sdk/client-s3', () => {
     DeleteBucketCommand,
     CopyObjectCommand,
     GetObjectCommand,
+    ListObjectVersionsCommand,
   };
 });
 
@@ -115,6 +119,7 @@ import {
   DeleteBucketCommand,
   CopyObjectCommand,
   GetObjectCommand,
+  ListObjectVersionsCommand,
 } from '@aws-sdk/client-s3';
 
 describe('S3StorageProvider', () => {
@@ -836,6 +841,73 @@ describe('S3StorageProvider', () => {
         [{ Key: 'subfolder/file1.txt' }],
         [{ Key: 'subfolder/file2.txt' }],
       ]);
+    });
+
+    it('should delete a versioned folder, all its versions and delete markers', async () => {
+      const deletedObjectBatches: any[] = [];
+
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof ListObjectVersionsCommand) {
+          expect(command.input.Prefix).toBe('versioned-folder/');
+          return {
+            Versions: [
+              { Key: 'versioned-folder/file1.txt', VersionId: 'v1' },
+              { Key: 'versioned-folder/file1.txt', VersionId: 'v2' },
+            ],
+            DeleteMarkers: [{ Key: 'versioned-folder/file2.txt', VersionId: 'm1' }],
+            IsTruncated: false,
+          };
+        }
+        if (command instanceof DeleteObjectsCommand) {
+          if (command.input.Delete?.Objects) {
+            deletedObjectBatches.push(command.input.Delete.Objects);
+          }
+          return { Deleted: command.input.Delete?.Objects };
+        }
+        if (command instanceof DeleteObjectCommand) {
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await provider.delete('/my-bucket/versioned-folder', true);
+      expect(deletedObjectBatches).toEqual([
+        [
+          { Key: 'versioned-folder/file1.txt', VersionId: 'v1' },
+          { Key: 'versioned-folder/file1.txt', VersionId: 'v2' },
+          { Key: 'versioned-folder/file2.txt', VersionId: 'm1' },
+        ],
+      ]);
+    });
+
+    it('should throw error when DeleteObjectsCommand returns errors in response', async () => {
+      clientSendMock.mockImplementation(async (command: any) => {
+        if (command instanceof ListObjectVersionsCommand) {
+          return {
+            Versions: [{ Key: 'subfolder/file1.txt', VersionId: 'v1' }],
+            IsTruncated: false,
+          };
+        }
+        if (command instanceof DeleteObjectsCommand) {
+          return {
+            Errors: [
+              {
+                Key: 'subfolder/file1.txt',
+                Code: 'AccessDenied',
+                Message: 'Access Denied',
+              },
+            ],
+          };
+        }
+        if (command instanceof DeleteObjectCommand) {
+          return {};
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      await expect(provider.delete('/my-bucket/subfolder', true)).rejects.toThrow(
+        /Failed to delete 1 object\(s\) in S3: subfolder\/file1.txt \(AccessDenied: Access Denied\)/
+      );
     });
 
     it('should throw error when deleting root', async () => {

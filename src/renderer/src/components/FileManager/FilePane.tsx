@@ -168,14 +168,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (selectedPaths.size === 0) return;
     if (!window.confirm(`Delete ${selectedPaths.size} item(s)?`)) return;
     const targets = entries.filter((e) => selectedPaths.has(e.path));
+    setLoading(true);
+    setError(null);
     try {
       for (const target of targets) {
         await window.multissh.storageDelete(source.providerId, target.path, target.isDirectory);
       }
       setSelectedPaths(new Set());
-      await load();
+      await load(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete item(s)');
+      let msg = err instanceof Error ? err.message : 'Failed to delete item(s)';
+      msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
   }, [selectedPaths, entries, source.providerId, load]);
 
