@@ -155,6 +155,41 @@ sshs3 wouldn't exist without these projects:
 
 ---
 
+## System Requirements
+
+While sshs3 bundles its core runtime (Chromium, Node.js, AWS SDK, and SFTP engine), certain features interact directly with your operating system's native tools:
+
+### Core Requirements
+- **OpenSSH Client (`ssh`, `ssh-agent`, `ssh-add`)**:
+  - The terminal spawns your system's native `ssh` binary via a pseudo-terminal (PTY) to ensure full compatibility with `~/.ssh/config`, native keys, and proxy chains.
+  - **Linux**:
+    - Fedora / RHEL / Rocky: `sudo dnf install openssh-clients`
+    - Debian / Ubuntu / Mint: `sudo apt install openssh-client`
+    - Arch Linux: `sudo pacman -S openssh`
+  - **Windows**: The built-in **OpenSSH Client** (included in Windows 10/11; enable via *Settings → Apps → Optional features → OpenSSH Client*).
+- **Secure Keyring Storage (`safeStorage`)**:
+  - Used to encrypt saved passwords, passphrases, and remote sync keys at rest on your local disk.
+  - **Linux**: `libsecret` and a desktop keyring service (e.g. `gnome-keyring` or `kwallet`).
+  - **Windows**: Built-in (Windows DPAPI / Credential Manager).
+
+### For Smartcard & Hardware Token Authentication (Optional)
+If connecting with SITHS, YubiKey, PIV/CAC, or Net iD cards:
+- **PC/SC Smart Card Daemon & Reader Drivers**:
+  - **Linux**: Install `pcscd` and the CCID reader driver, then ensure the daemon is running:
+    - *Fedora / RHEL*: `sudo dnf install pcsc-lite pcsc-lite-ccid && sudo systemctl enable --now pcscd`
+    - *Debian / Ubuntu*: `sudo apt install pcscd pcsc-tools libccid && sudo systemctl enable --now pcscd`
+  - **Windows**: The native *Smart Card* service (`SCardSvr`) is installed and enabled by default; standard CCID readers are plug-and-play.
+- **PKCS#11 Library / Driver**:
+  - **Linux**: `p11-kit` (providing `/usr/lib64/p11-kit-proxy.so` or `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so`, recommended as it proxies all registered system tokens), `opensc` (`opensc-pkcs11.so`), or Net iD (`libiidp11.so`).
+  - **Windows**: OpenSC (`opensc-pkcs11.dll`) or Net iD Client (`iidp11.dll`).
+
+### Bundled Features (No Extra Software Required)
+- **S3 & AWS SSO**: Object storage transfers, bucket operations, and AWS IAM Identity Center (SSO) browser-based logins run entirely on the bundled AWS SDK v3. No AWS CLI or Python installation required.
+- **SFTP & File Manager**: Dual-pane file browsing and transfers run via an embedded JavaScript SSH2/SFTP engine.
+- **TLS & CA Certificates**: System root CA certificates are automatically read from the OS trust store (Windows certificate store or Linux distribution CA bundles).
+
+---
+
 ## Installation
 
 Prebuilt binaries are available on [GitHub Releases](https://github.com/alun-hub/sshs3/releases):
