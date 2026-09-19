@@ -57,6 +57,7 @@ import type {
   S3Tag,
   BucketVersioningInfo,
   ObjectVersionEntry,
+  SFTPConfig,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
@@ -366,7 +367,12 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.STORAGE_CONNECT,
       async (_event, config: StorageConnectConfig) => {
-        await this.storageRegistry.getOrCreate(config);
+        let resolvedConfig = config;
+        if (config.type === 'sftp' && config.sftpConfig && !this.storageRegistry.has(config.id)) {
+          const sftpConfig = await this.prepareSftpSmartcardConfig(config.sftpConfig, config.id);
+          resolvedConfig = { ...config, sftpConfig };
+        }
+        await this.storageRegistry.getOrCreate(resolvedConfig);
         return { id: config.id };
       }
     );
@@ -375,6 +381,7 @@ export class IpcBridge {
       IPC_CHANNELS.STORAGE_DISCONNECT,
       async (_event, providerId: string) => {
         await this.storageRegistry.disconnect(providerId);
+        this.cleanupSmartcardSessionAgent(providerId);
       }
     );
 
@@ -861,47 +868,77 @@ export class IpcBridge {
       return config;
     }
 
-    const settings = await this.settingsStore.getSettings();
-    const mode = settings.smartcardAuthMode ?? 'always-prompt';
-
     // Pin the session id now so the askpass prompt below and the eventual
     // PTY session correlate to the same id.
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
     const configWithId = { ...config, id: sessionId };
 
+    const agentPath = await this.resolveSmartcardAgentPath(config.pkcs11LibPath, sessionId);
+    return agentPath ? { ...configWithId, agentPath } : configWithId;
+  }
+
+  /**
+   * Same agent-caching logic as prepareSmartcardConfig, applied to an SFTP connection (used by
+   * the file manager's own STORAGE_CONNECT, which — unlike terminals — never went through
+   * prepareSmartcardConfig, so it always spawned its own ephemeral PKCS#11 agent even when a
+   * terminal already held the card open under 'agent-global'/'agent-per-session' mode. Spawning a
+   * second, independent PKCS#11 session against the same physical reader collides with the one
+   * already open ("agent refused operation"), since most PIV/CAC readers allow only one
+   * transaction at a time.
+   */
+  private async prepareSftpSmartcardConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
+    if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
+      return config;
+    }
+
+    // Keyed by providerId so a matching STORAGE_DISCONNECT can tear down the
+    // same 'agent-per-session' agent this connection loaded.
+    const agentPath = await this.resolveSmartcardAgentPath(config.pkcs11LibPath, providerId);
+    return agentPath ? { ...config, agentPath } : config;
+  }
+
+  /**
+   * Resolves (loading it if necessary) the ssh-agent socket to use for a PKCS#11 library, per the
+   * user's Settings > Security > Smartcard PIN Caching mode. Returns undefined in 'always-prompt'
+   * mode, or if loading the agent fails — callers should then fall back to a direct `-I` login
+   * (SSH) or their own ephemeral agent (SFTP), which still prompts for the PIN on its own.
+   */
+  private async resolveSmartcardAgentPath(pkcs11LibPath: string, sessionId: string): Promise<string | undefined> {
+    const settings = await this.settingsStore.getSettings();
+    const mode = settings.smartcardAuthMode ?? 'always-prompt';
+
     if (mode === 'agent-global') {
       try {
-        const socketPath = await this.getOrLoadGlobalSmartcardAgent(config.pkcs11LibPath, sessionId);
-        return { ...configWithId, agentPath: socketPath };
+        return await this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, sessionId);
       } catch (err) {
         console.warn(
           'IpcBridge: failed to load smartcard into the global agent, falling back to per-connection prompts:',
           err
         );
-        return configWithId;
+        return undefined;
       }
     }
 
     if (mode !== 'agent-per-session') {
-      return configWithId;
+      return undefined;
     }
 
-    console.log(`[smartcard] prepareSmartcardConfig: starting shared-agent preload for session ${sessionId}`);
+    console.log(`[smartcard] resolveSmartcardAgentPath: starting shared-agent preload for session ${sessionId}`);
     try {
-      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(config.pkcs11LibPath, (prompt) =>
+      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(pkcs11LibPath, (prompt) =>
         this.sshPtyManager.promptForPin(sessionId, prompt)
       );
       console.log(
-        `[smartcard] prepareSmartcardConfig: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
+        `[smartcard] resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
       );
       this.smartcardSessionAgents.set(sessionId, pid);
-      return { ...configWithId, agentPath: socketPath };
+      return socketPath;
     } catch (err) {
       console.warn(
         'IpcBridge: failed to load smartcard into a private session agent, falling back to per-connection prompts:',
         err
       );
-      return configWithId;
+      return undefined;
     }
   }
 
@@ -941,6 +978,18 @@ export class IpcBridge {
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
     }
+  }
+
+  /**
+   * Kills the private per-session smartcard agent (if any) that was loaded for `sessionId` under
+   * 'agent-per-session' mode, whether that session was a terminal (PTY exit) or a file manager
+   * SFTP connection (STORAGE_DISCONNECT).
+   */
+  private cleanupSmartcardSessionAgent(sessionId: string): void {
+    const pid = this.smartcardSessionAgents.get(sessionId);
+    if (pid === undefined) return;
+    AgentLifecycleManager.killPrivateAgent(pid);
+    this.smartcardSessionAgents.delete(sessionId);
   }
 
   /**
@@ -1548,12 +1597,7 @@ export class IpcBridge {
       }
 
       // Tear down any private smartcard agent that was pre-loaded for this session.
-      const smartcardAgentPid = this.smartcardSessionAgents.get(sessionId);
-      if (smartcardAgentPid !== undefined) {
-        AgentLifecycleManager.killPrivateAgent(smartcardAgentPid);
-        this.smartcardSessionAgents.delete(sessionId);
-      }
-
+      this.cleanupSmartcardSessionAgent(sessionId);
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
