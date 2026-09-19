@@ -174,4 +174,269 @@ describe('FileList Component', () => {
     fireEvent.drop(fileRow, { dataTransfer: {} });
     expect(onPaneDrop).toHaveBeenCalled();
   });
+
+  describe('Type-ahead search', () => {
+    it('selects entry and displays badge when typing a single character', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'd' });
+
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/documents']));
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('d');
+    });
+
+    it('accumulates characters when typing multiple letters', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'c' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/config.json']));
+
+      fireEvent.keyDown(listContainer, { key: 'o' });
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('co');
+      expect(onSelectionChange).toHaveBeenLastCalledWith(new Set(['/config.json']));
+    });
+
+    it('cycles through entries with the same initial letter when repeating that letter', () => {
+      const entriesWithSameLetter: FileEntry[] = [
+        { name: 'apple.txt', path: '/apple.txt', size: 10, isDirectory: false },
+        { name: 'avocado.txt', path: '/avocado.txt', size: 20, isDirectory: false },
+        { name: 'banana.txt', path: '/banana.txt', size: 30, isDirectory: false },
+      ];
+
+      const onSelectionChange = vi.fn();
+      const { container, rerender } = render(
+        <FileList
+          entries={entriesWithSameLetter}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      // First 'a' -> apple.txt
+      fireEvent.keyDown(listContainer, { key: 'a' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/apple.txt']));
+
+      // Rerender with selected apple.txt
+      rerender(
+        <FileList
+          entries={entriesWithSameLetter}
+          loading={false}
+          selectedPaths={new Set(['/apple.txt'])}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      // Second 'a' -> avocado.txt
+      fireEvent.keyDown(listContainer, { key: 'a' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/avocado.txt']));
+    });
+
+    it('handles Backspace to shorten search and Escape to clear badge', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      fireEvent.keyDown(listContainer, { key: 'i' });
+      fireEvent.keyDown(listContainer, { key: 'm' });
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('im');
+
+      // Backspace removes 'm'
+      fireEvent.keyDown(listContainer, { key: 'Backspace' });
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('i');
+
+      // Escape clears typeahead badge
+      fireEvent.keyDown(listContainer, { key: 'Escape' });
+      expect(screen.queryByTestId('typeahead-badge')).not.toBeInTheDocument();
+    });
+
+    it('falls back to substring matching when no prefix matches', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      // "tar" does not start any file, but backup.tar.gz contains "tar"
+      fireEvent.keyDown(listContainer, { key: 't' });
+      fireEvent.keyDown(listContainer, { key: 'a' });
+      fireEvent.keyDown(listContainer, { key: 'r' });
+
+      expect(onSelectionChange).toHaveBeenLastCalledWith(new Set(['/backup.tar.gz']));
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('tar');
+    });
+
+    it('shows "(ingen träff)" when no file matches typed characters', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      fireEvent.keyDown(listContainer, { key: 'z' });
+      fireEvent.keyDown(listContainer, { key: 'z' });
+
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('zz');
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('ingen träff');
+    });
+
+    it('ignores modifier keys like Ctrl and Meta', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      // Ctrl+C should not trigger typeahead
+      fireEvent.keyDown(listContainer, { key: 'c', ctrlKey: true });
+      expect(screen.queryByTestId('typeahead-badge')).not.toBeInTheDocument();
+    });
+
+    it('works with Swedish characters (å, ä, ö)', () => {
+      const swedishEntries: FileEntry[] = [
+        { name: 'arkiv.zip', path: '/arkiv.zip', size: 10, isDirectory: false },
+        { name: 'översikt.pdf', path: '/översikt.pdf', size: 20, isDirectory: false },
+        { name: 'ärenden', path: '/ärenden', size: 0, isDirectory: true },
+        { name: 'årsredovisning.xlsx', path: '/årsredovisning.xlsx', size: 30, isDirectory: false },
+      ];
+
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={swedishEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      fireEvent.keyDown(listContainer, { key: 'ö' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/översikt.pdf']));
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('ö');
+
+      fireEvent.keyDown(listContainer, { key: 'Escape' });
+
+      fireEvent.keyDown(listContainer, { key: 'ä' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/ärenden']));
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('ä');
+    });
+
+    it('moves row focus (data-focused) to matched item and subsequent arrows continue from there', () => {
+      const onSelectionChange = vi.fn();
+      const { container, rerender } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/backup.tar.gz'])}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+
+      // Type 'i' -> should match image.png
+      fireEvent.keyDown(listContainer, { key: 'i' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(['/image.png']));
+
+      // Rerender with selected image.png
+      rerender(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/image.png'])}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      // image.png row should have data-focused="true" and ring styling
+      const imageRow = container.querySelector('[data-entry-path="/image.png"]')!;
+      expect(imageRow).toHaveAttribute('data-focused', 'true');
+      expect(imageRow).toHaveAttribute('tabindex', '-1');
+      expect(imageRow.className).toContain('ring-sky-400');
+
+      // Now pressing ArrowDown should continue from image.png to next entry
+      // In sorted mockEntries: directories first (documents), then backup.tar.gz, config.json, image.png
+      // sorted order:
+      // 0: documents (dir)
+      // 1: backup.tar.gz
+      // 2: config.json
+      // 3: image.png
+      // Since image.png is at index 3 (last), ArrowDown wraps around to 0 (documents)
+      fireEvent.keyDown(listContainer, { key: 'ArrowDown' });
+      expect(onSelectionChange).toHaveBeenLastCalledWith(new Set(['/documents']));
+
+      // Rerender with documents
+      rerender(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/documents'])}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const docRow = container.querySelector('[data-entry-path="/documents"]')!;
+      expect(docRow).toHaveAttribute('data-focused', 'true');
+    });
+  });
 });
