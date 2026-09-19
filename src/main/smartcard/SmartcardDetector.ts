@@ -150,7 +150,19 @@ export class SmartcardDetector {
         // smartcard key) unless separately referenced with -i — the opposite of what
         // we want. It's safe to let ssh use whatever this agent offers since it's our
         // own private, freshly-spawned agent holding only this one key.
-        args.push('-o', `IdentityAgent=${config.agentPath}`);
+        //
+        // On Windows, `-o IdentityAgent=<named pipe>` is passed to the process env
+        // (SSHPtyManager sets SSH_AUTH_SOCK=config.agentPath) instead of as a ssh
+        // argument here: confirmed by hand that Win32-OpenSSH 9.5p2's IdentityAgent
+        // *config* value can't resolve a raw named-pipe path at all
+        // (`ssh_get_authentication_socket: No such file or directory`, reproduced
+        // even typed directly in a terminal), while the exact same pipe works
+        // perfectly via the SSH_AUTH_SOCK *environment variable*. Passing both would
+        // make the (broken) explicit value win and silently fall through to no
+        // agent at all.
+        if (process.platform !== 'win32') {
+          args.push('-o', `IdentityAgent=${config.agentPath}`);
+        }
       } else {
         args.push('-I', config.pkcs11LibPath);
         // Prevent the desktop's own ssh-agent/wallet (e.g. gnome-keyring, KWallet)

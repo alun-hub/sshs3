@@ -138,8 +138,8 @@ export class IpcBridge {
   private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
   private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
-  /** sessionId -> pid of a private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
-  private smartcardSessionAgents = new Map<string, number>();
+  /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
+  private smartcardSessionAgents = new Map<string, { pid: number; socketPath: string; pkcs11LibPath: string }>();
   /** pkcs11LibPath -> the app-lifetime shared agent for 'agent-global' mode, keyed per smartcard library so multiple different cards can each be cached independently. */
   private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string }>();
   /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
@@ -998,7 +998,7 @@ export class IpcBridge {
       console.log(
         `[smartcard] resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
       );
-      this.smartcardSessionAgents.set(sessionId, pid);
+      this.smartcardSessionAgents.set(sessionId, { pid, socketPath, pkcs11LibPath });
       return socketPath;
     } catch (err) {
       console.warn(
@@ -1053,10 +1053,13 @@ export class IpcBridge {
    * SFTP connection (STORAGE_DISCONNECT).
    */
   private cleanupSmartcardSessionAgent(sessionId: string): void {
-    const pid = this.smartcardSessionAgents.get(sessionId);
-    if (pid === undefined) return;
-    AgentLifecycleManager.killPrivateAgent(pid);
+    const entry = this.smartcardSessionAgents.get(sessionId);
+    if (entry === undefined) return;
     this.smartcardSessionAgents.delete(sessionId);
+    // Evict just this card first — killPrivateAgent() is a no-op on Windows
+    // (the socket is the shared system agent service, not a process we own).
+    void AgentLifecycleManager.unloadCard(entry.socketPath, entry.pkcs11LibPath);
+    AgentLifecycleManager.killPrivateAgent(entry.pid);
   }
 
   /**
@@ -1066,7 +1069,8 @@ export class IpcBridge {
    */
   private lockAllGlobalSmartcardAgents(): number {
     let count = 0;
-    for (const { pid } of this.globalSmartcardAgents.values()) {
+    for (const [pkcs11LibPath, { pid, socketPath }] of this.globalSmartcardAgents.entries()) {
+      void AgentLifecycleManager.unloadCard(socketPath, pkcs11LibPath);
       AgentLifecycleManager.killPrivateAgent(pid);
       count++;
     }
@@ -1452,6 +1456,7 @@ export class IpcBridge {
 
           return await this.unlockSyncInternal({ topologyPassword, credentialsPassword });
         } finally {
+          void AgentLifecycleManager.unloadCard(socketPath, libPath);
           AgentLifecycleManager.killPrivateAgent(pid);
         }
       }
@@ -1504,6 +1509,7 @@ export class IpcBridge {
 
           return await this.buildSyncStatus();
         } finally {
+          void AgentLifecycleManager.unloadCard(socketPath, options.pkcs11LibPath);
           AgentLifecycleManager.killPrivateAgent(pid);
         }
       }

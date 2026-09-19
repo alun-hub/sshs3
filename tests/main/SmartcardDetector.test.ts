@@ -170,6 +170,33 @@ describe('SmartcardDetector', () => {
       expect(args[dashDashIdx + 1]).toBe('secadmin@bastion.corp.net');
     });
 
+    it('should authenticate via the pre-loaded agent (not -I) when agentPath is set', () => {
+      const config: SSHConnectionConfig = {
+        id: 'sc-agent-1',
+        name: 'Smartcard Host (agent)',
+        host: 'bastion.corp.net',
+        port: 22,
+        username: 'secadmin',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib64/libiidp11.so',
+        agentPath: '/tmp/sshs3-agent.sock',
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+
+      expect(args).not.toContain('-I');
+      if (process.platform === 'win32') {
+        // Win32-OpenSSH's `IdentityAgent` config value can't resolve a raw named
+        // pipe (confirmed by hand) — the agent must be picked up purely via the
+        // SSH_AUTH_SOCK env var that SSHPtyManager sets, not this flag.
+        expect(args).not.toContain('IdentityAgent=/tmp/sshs3-agent.sock');
+        expect(args.join(' ')).not.toContain('IdentityAgent=');
+      } else {
+        expect(args).toContain('-o');
+        expect(args).toContain('IdentityAgent=/tmp/sshs3-agent.sock');
+      }
+    });
+
     it('should NOT include -I when authType is not smartcard', () => {
       const config: SSHConnectionConfig = {
         id: 'pw-1',

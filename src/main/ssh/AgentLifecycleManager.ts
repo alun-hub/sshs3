@@ -196,10 +196,26 @@ export class AgentLifecycleManager {
    * into it cannot leak into — or fight with — the user's desktop
    * keyring/wallet agent. Callers are responsible for killing it via
    * killPrivateAgent() once done.
+   *
+   * Windows has no equivalent of `ssh-agent -s`: Win32-OpenSSH's ssh-agent.exe
+   * only runs as the singleton "ssh-agent" Windows service bound to the fixed
+   * pipe `\\.\pipe\openssh-ssh-agent` — it refuses to start a second,
+   * independent instance on a caller-chosen pipe. So on win32 this reuses
+   * that shared service pipe instead of spawning anything, and returns a
+   * sentinel pid of 0 (not a real process we own) so killPrivateAgent()
+   * knows not to kill it — see unloadCard() for how a caller actually evicts
+   * just its own card from that shared agent afterwards.
    */
   public static async spawnPrivateAgent(): Promise<{ pid: number; socketPath: string }> {
     if (process.platform === 'win32') {
-      throw new Error('Private ssh-agent spawning is not supported on Windows.');
+      const pipe = '\\\\.\\pipe\\openssh-ssh-agent';
+      if (await this.probeSocket(pipe)) {
+        return { pid: 0, socketPath: pipe };
+      }
+      throw new Error(
+        'Windows OpenSSH Authentication Agent service is not running. Enable it in an Administrator ' +
+          'PowerShell: Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent'
+      );
     }
 
     const { stdout } = await execFileAsync('ssh-agent', ['-s']);
@@ -215,12 +231,35 @@ export class AgentLifecycleManager {
 
   /**
    * Terminates a private agent previously returned by spawnPrivateAgent().
+   * A pid <= 0 marks a shared agent we don't own (the Windows service pipe
+   * sentinel) — never kill that; use unloadCard() to evict just our card.
    */
   public static killPrivateAgent(pid: number): void {
+    if (pid <= 0) return;
     try {
       process.kill(pid, 'SIGTERM');
     } catch {
       // Already dead or permission denied
+    }
+  }
+
+  /**
+   * Removes a single PKCS#11 module's identities from the agent at
+   * socketPath (`ssh-add -e`), without touching anything else the agent
+   * holds. This is how callers evict just their own card from a shared
+   * agent they don't own outright (e.g. the Windows service pipe returned
+   * by spawnPrivateAgent()) — killPrivateAgent() can't do that there since
+   * there's no owned process to terminate. Errors are swallowed: this is
+   * best-effort cleanup, not something a caller should fail over.
+   */
+  public static async unloadCard(socketPath: string, pkcs11LibPath: string): Promise<void> {
+    const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
+    try {
+      await execFileAsync(sshAddBin, ['-e', pkcs11LibPath], {
+        env: { ...process.env, SSH_AUTH_SOCK: socketPath },
+      });
+    } catch {
+      // Best-effort: nothing loaded, agent unreachable, etc.
     }
   }
 

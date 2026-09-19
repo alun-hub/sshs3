@@ -701,6 +701,11 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         this.jumpClient = undefined;
       }
       if (this.privateAgentPid !== undefined) {
+        // Evict just this card first — killPrivateAgent() is a no-op on Windows
+        // (the socket is the shared system agent service, not a process we own).
+        if (this.config.agentPath && this.config.pkcs11LibPath) {
+          void AgentLifecycleManager.unloadCard(this.config.agentPath, this.config.pkcs11LibPath);
+        }
         AgentLifecycleManager.killPrivateAgent(this.privateAgentPid);
         this.privateAgentPid = undefined;
       }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -87,5 +87,39 @@ describe('AgentLifecycleManager', () => {
     await AgentLifecycleManager.stopManagedAgent();
     expect(AgentLifecycleManager['spawnedPid']).toBeNull();
     expect(AgentLifecycleManager['spawnedSocket']).toBeNull();
+  });
+
+  describe('spawnPrivateAgent on Windows', () => {
+    it('reuses the shared service pipe (sentinel pid) when it is reachable', async () => {
+      if (process.platform !== 'win32') return;
+      const spy = vi.spyOn(AgentLifecycleManager, 'probeSocket').mockResolvedValue(true);
+      try {
+        const result = await AgentLifecycleManager.spawnPrivateAgent();
+        expect(result).toEqual({ pid: 0, socketPath: '\\\\.\\pipe\\openssh-ssh-agent' });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('throws an actionable error when the service pipe is unreachable', async () => {
+      if (process.platform !== 'win32') return;
+      const spy = vi.spyOn(AgentLifecycleManager, 'probeSocket').mockResolvedValue(false);
+      try {
+        await expect(AgentLifecycleManager.spawnPrivateAgent()).rejects.toThrow('Set-Service ssh-agent');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
+
+  it('killPrivateAgent no-ops for sentinel/non-owned pids instead of signaling a process group', () => {
+    expect(() => AgentLifecycleManager.killPrivateAgent(0)).not.toThrow();
+    expect(() => AgentLifecycleManager.killPrivateAgent(-1)).not.toThrow();
+  });
+
+  it('unloadCard resolves even when the socket/module is unreachable (best-effort)', async () => {
+    await expect(
+      AgentLifecycleManager.unloadCard('\\\\.\\pipe\\definitely-not-a-real-pipe', 'C:\\nope.dll')
+    ).resolves.toBeUndefined();
   });
 });
