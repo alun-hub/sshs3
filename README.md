@@ -193,7 +193,7 @@ If connecting with SITHS, YubiKey, PIV/CAC, or Net iD cards:
 - **PKCS#11 Library / Driver**:
   - **Linux**: `p11-kit` (providing `/usr/lib64/p11-kit-proxy.so` or `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so`, recommended as it proxies all registered system tokens), `opensc` (`opensc-pkcs11.so`), or Net iD (`libiidp11.so`).
   - **Windows**: OpenSC (`opensc-pkcs11.dll`) or Net iD Client (`iidp11.dll`).
-- **Windows only, for "Once Per Terminal Connection" / "Global" PIN caching**: the built-in **OpenSSH Authentication Agent** service, disabled by default. Enable it once, as Administrator: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`. Not needed for "Always Prompt" mode, which logs into the card directly per connection.
+- **Windows only, for "Once Per Terminal Connection" / "Global" PIN caching**: the built-in **OpenSSH Authentication Agent** service, disabled by default. The Windows installer enables and starts it automatically; if you're on the portable build or it didn't take (e.g. no admin rights during install), enable it once yourself, as Administrator: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`. Not needed for "Always Prompt" mode, which logs into the card directly per connection.
 
 ### Bundled Features (No Extra Software Required)
 - **S3 & AWS SSO**: Object storage transfers, bucket operations, and AWS IAM Identity Center (SSO) browser-based logins run entirely on the bundled AWS SDK v3. No AWS CLI or Python installation required.
