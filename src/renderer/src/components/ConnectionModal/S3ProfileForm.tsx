@@ -551,35 +551,35 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         )}
       </div>
 
-      {testResult && (
-        <div
-          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${
-            testResult.success
-              ? 'border border-emerald-800/60 bg-emerald-950/40 text-emerald-300'
-              : 'border border-red-800/60 bg-red-950/40 text-red-300'
-          }`}
-        >
-          {testResult.success ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-          ) : (
-            <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" />
-          )}
-          <span className="truncate">{testResult.message}</span>
-        </div>
-      )}
-
       <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
-        <button
-          type="button"
-          disabled={!isValid || testing}
-          onClick={() => void handleTestConnection()}
-          className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-        >
-          {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {testing ? 'Testing...' : 'Test Connection'}
-        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={!isValid || testing}
+            onClick={() => void handleTestConnection()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+          >
+            {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
 
-        <div className="flex gap-2">
+          {testResult && (
+            <div
+              className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs ${
+                testResult.success ? 'text-emerald-300' : 'text-red-300'
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+              )}
+              <span className="truncate">{testResult.message}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={onCancel}
