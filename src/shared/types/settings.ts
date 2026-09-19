@@ -74,7 +74,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   terminalFontSize: 13,
-  terminalFontFamily: 'Menlo, Monaco, "Courier New", monospace, Consolas',
+  terminalFontFamily: 'JetBrains Mono, monospace',
   terminalCursorStyle: 'block',
   terminalScrollback: 5000,
   copyOnSelect: false,

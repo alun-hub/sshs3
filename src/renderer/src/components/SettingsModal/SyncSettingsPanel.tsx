@@ -14,6 +14,7 @@ import {
   GitCompare,
   ChevronDown,
   ChevronUp,
+  KeyRound,
 } from 'lucide-react';
 import type { ProfileSyncStatus, SyncComparisonResult, KnownHostsConflict } from '@shared/types/sync';
 import {
@@ -83,6 +84,12 @@ export const SyncSettingsPanel: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<KnownHostsConflict[]>([]);
 
+  const [togglingAutoSync, setTogglingAutoSync] = useState(false);
+  const [unlockingSmartcard, setUnlockingSmartcard] = useState(false);
+  const [linkingSmartcard, setLinkingSmartcard] = useState(false);
+  const [unlinkingSmartcard, setUnlinkingSmartcard] = useState(false);
+  const [isLinkingDialog, setIsLinkingDialog] = useState(false);
+
   const checkSync = async () => {
     setCheckingSync(true);
     setCheckError(null);
@@ -123,7 +130,31 @@ export const SyncSettingsPanel: React.FC = () => {
 
   useEffect(() => {
     void load();
+    const unsub = window.multissh?.onProfileSyncStatus?.((updatedStatus) => {
+      setStatus(updatedStatus);
+      if (updatedStatus.comparison) {
+        setComparison(updatedStatus.comparison);
+      }
+    });
+    return () => {
+      unsub?.();
+    };
   }, []);
+
+  const handleToggleAutoSync = async (enabled: boolean) => {
+    setTogglingAutoSync(true);
+    try {
+      const updated = await window.multissh?.profileSyncSetAutoSync?.(enabled);
+      if (updated) {
+        setStatus(updated);
+      }
+      setActionMessage(enabled ? 'Automatic synchronization enabled.' : 'Automatic synchronization disabled.');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update auto-sync setting.');
+    } finally {
+      setTogglingAutoSync(false);
+    }
+  };
 
   const handleSaveTarget = async () => {
     const validationError = validateSyncTargetDraft(targetDraft);
@@ -148,10 +179,88 @@ export const SyncSettingsPanel: React.FC = () => {
     }
   };
 
-  const handlePasswordSubmit = async (passwords: { topologyPassword: string; credentialsPassword: string }) => {
+  const handleSmartcardUnlock = async () => {
+    setUnlockingSmartcard(true);
+    setEnableError(null);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const s = await window.multissh?.profileSyncUnlockSmartcard?.();
+      if (s) {
+        setStatus(s);
+        if (s.comparison) {
+          setComparison(s.comparison);
+        } else {
+          void checkSync();
+        }
+      }
+      setPasswordDialogOpen(false);
+      setIsLinkingDialog(false);
+      setActionMessage('Sync unlocked with smartcard.');
+    } catch (err: any) {
+      setEnableError(err?.message || 'Failed to unlock sync with smartcard.');
+      setActionError(err?.message || 'Failed to unlock sync with smartcard.');
+    } finally {
+      setUnlockingSmartcard(false);
+    }
+  };
+
+  const handleLinkSmartcard = async (passwords?: { topologyPassword: string; credentialsPassword: string }) => {
+    setLinkingSmartcard(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      let libPath = status?.smartcardLibPath;
+      if (!libPath) {
+        const detected = await window.multissh?.smartcardDetect?.();
+        libPath = detected?.[0]?.path;
+      }
+      if (!libPath) {
+        throw new Error('No smartcard PKCS#11 library found. Please ensure your card/reader is connected.');
+      }
+      const s = await window.multissh?.profileSyncLinkSmartcard?.({
+        pkcs11LibPath: libPath,
+        passwords,
+      });
+      if (s) setStatus(s);
+      setActionMessage('Smartcard linked to sync.');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to link smartcard.');
+      throw err;
+    } finally {
+      setLinkingSmartcard(false);
+    }
+  };
+
+  const handleUnlinkSmartcard = async () => {
+    setUnlinkingSmartcard(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const s = await window.multissh?.profileSyncUnlinkSmartcard?.();
+      if (s) setStatus(s);
+      setActionMessage('Smartcard unlinked from sync.');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to unlink smartcard.');
+    } finally {
+      setUnlinkingSmartcard(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (
+    passwords: { topologyPassword: string; credentialsPassword: string },
+    options?: { linkSmartcard?: boolean }
+  ) => {
     setEnabling(true);
     setEnableError(null);
     try {
+      if (isLinkingDialog) {
+        await handleLinkSmartcard(passwords);
+        setPasswordDialogOpen(false);
+        setIsLinkingDialog(false);
+        return;
+      }
+
       const s = await window.multissh?.profileSyncEnable?.(passwords);
       setStatus(s);
       if (s?.comparison) {
@@ -159,6 +268,15 @@ export const SyncSettingsPanel: React.FC = () => {
       } else {
         void checkSync();
       }
+
+      if (options?.linkSmartcard) {
+        try {
+          await handleLinkSmartcard(passwords);
+        } catch (linkErr: any) {
+          console.error('Failed to link smartcard after enabling sync:', linkErr);
+        }
+      }
+
       setPasswordDialogOpen(false);
       setActionMessage('Sync unlocked and up to date.');
     } catch (err: any) {
@@ -276,6 +394,69 @@ export const SyncSettingsPanel: React.FC = () => {
             Last sync: {formatTimestampWithRelative(status.lastSyncAt)}
           </div>
 
+          <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+            <div className="space-y-0.5">
+              <div className="text-xs font-medium text-txt-primary flex items-center gap-1.5">
+                <RefreshCw className="h-3.5 w-3.5 text-sky-400" />
+                <span>Auto-sync changes</span>
+              </div>
+              <p className="text-[10px] text-txt-muted">
+                Automatically pushes changes to remote when profiles or dotfiles are modified (when unlocked).
+              </p>
+            </div>
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                aria-label="Auto-sync changes"
+                checked={Boolean(status.autoSync)}
+                onChange={(e) => void handleToggleAutoSync(e.target.checked)}
+                disabled={togglingAutoSync}
+                className="peer sr-only"
+              />
+              <div className="peer h-5 w-9 rounded-full bg-app-input border border-border-subtle after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-txt-muted after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:bg-white peer-focus:outline-none" />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+            <div className="space-y-0.5">
+              <div className="text-xs font-medium text-txt-primary flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5 text-sky-400" />
+                <span>Smartcard / Hardware token</span>
+              </div>
+              <p className="text-[10px] text-txt-muted">
+                {status.smartcardLinked
+                  ? `Linked to smartcard (${status.smartcardLibPath ? status.smartcardLibPath.split('/').pop() : 'PKCS#11'}). You can unlock sync with your card PIN.`
+                  : status.smartcardAvailable
+                    ? 'Card reader detected. Link your smartcard to unlock sync without typing master passwords.'
+                    : 'No smartcard PKCS#11 module detected.'}
+              </p>
+            </div>
+            <div>
+              {status.smartcardLinked ? (
+                <button
+                  type="button"
+                  onClick={handleUnlinkSmartcard}
+                  disabled={unlinkingSmartcard}
+                  className="rounded px-2.5 py-1 text-[11px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                >
+                  {unlinkingSmartcard ? 'Unlinking...' : 'Unlink card'}
+                </button>
+              ) : status.smartcardAvailable ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLinkingDialog(true);
+                    setPasswordDialogOpen(true);
+                  }}
+                  disabled={linkingSmartcard}
+                  className="rounded px-2.5 py-1 text-[11px] font-medium text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
+                >
+                  {linkingSmartcard ? 'Linking...' : 'Link card'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
           {status.topologyUnlocked && status.credentialsUnlocked && (
             <div className="rounded-lg border border-border-subtle bg-app-bg/50 p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
@@ -384,13 +565,33 @@ export const SyncSettingsPanel: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {(!status.topologyUnlocked || !status.credentialsUnlocked) && (
-              <button
-                type="button"
-                onClick={() => setPasswordDialogOpen(true)}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-              >
-                {status.hasLocalSalts ? 'Unlock sync' : 'Set up master passwords'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLinkingDialog(false);
+                    setPasswordDialogOpen(true);
+                  }}
+                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                >
+                  {status.hasLocalSalts ? 'Unlock sync' : 'Set up master passwords'}
+                </button>
+                {(status.smartcardAvailable || status.smartcardLinked) && (
+                  <button
+                    type="button"
+                    onClick={handleSmartcardUnlock}
+                    disabled={unlockingSmartcard || enabling}
+                    className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {unlockingSmartcard ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <KeyRound className="h-3.5 w-3.5 text-sky-400" />
+                    )}
+                    <span>Unlock with Smartcard</span>
+                  </button>
+                )}
+              </>
             )}
             {status.topologyUnlocked && status.credentialsUnlocked && (
               <>
@@ -494,19 +695,34 @@ export const SyncSettingsPanel: React.FC = () => {
 
       <MasterPasswordDialog
         open={passwordDialogOpen}
-        mode={status?.hasLocalSalts ? 'unlock' : 'setup'}
-        title={status?.hasLocalSalts ? 'Unlock sync' : 'Set up master passwords'}
-        description={
-          status?.hasLocalSalts
-            ? 'Enter your existing master passwords to unlock sync for this session.'
-            : 'Choose the two master passwords that will encrypt your synced data. They are never sent anywhere or stored on disk.'
+        mode={isLinkingDialog ? 'unlock' : status?.hasLocalSalts ? 'unlock' : 'setup'}
+        title={
+          isLinkingDialog
+            ? 'Link smartcard to sync'
+            : status?.hasLocalSalts
+              ? 'Unlock sync'
+              : 'Set up master passwords'
         }
-        submitLabel={status?.hasLocalSalts ? 'Unlock' : 'Activate sync'}
-        submitting={enabling}
+        description={
+          isLinkingDialog
+            ? 'Enter your master password to authorize linking your smartcard to remote sync. It will be encrypted with your card certificate and never saved in plaintext.'
+            : status?.hasLocalSalts
+              ? 'Enter your existing master passwords to unlock sync for this session.'
+              : 'Choose the two master passwords that will encrypt your synced data. They are never sent anywhere or stored on disk.'
+        }
+        submitLabel={isLinkingDialog ? 'Link smartcard' : status?.hasLocalSalts ? 'Unlock' : 'Activate sync'}
+        submitting={enabling || linkingSmartcard}
         error={enableError}
+        canLinkSmartcard={!isLinkingDialog && Boolean(status?.smartcardAvailable && !status?.smartcardLinked)}
+        onUnlockWithSmartcard={
+          !isLinkingDialog && (status?.smartcardAvailable || status?.smartcardLinked)
+            ? handleSmartcardUnlock
+            : undefined
+        }
         onCancel={() => {
           setPasswordDialogOpen(false);
           setEnableError(null);
+          setIsLinkingDialog(false);
         }}
         onSubmit={handlePasswordSubmit}
       />

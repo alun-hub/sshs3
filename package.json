@@ -34,6 +34,8 @@
     "@aws-sdk/credential-provider-sso": "^3.973.15",
     "@aws-sdk/lib-storage": "^3.1131.0",
     "@aws-sdk/s3-request-presigner": "^3.1135.0",
+    "@fontsource/fira-code": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@tanstack/react-virtual": "^3.14.13",
     "@xterm/addon-fit": "^0.11.0",
     "lucide-react": "^1.46.0",

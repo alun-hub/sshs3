@@ -34,6 +34,14 @@ import { SyncConfigStore } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import {
+  getAgentIdentities,
+  signChallengeWithAgent,
+  verifyAgentSignature,
+  deriveSecretFromSignature,
+  unwrapMasterPasswords,
+} from './smartcard/SmartcardSyncService';
+import { encryptSecretValue, decryptSecretValue } from './crypto/SecretFieldCrypto';
+import {
   IPC_CHANNELS,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
@@ -135,6 +143,7 @@ export class IpcBridge {
   private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string }>();
   /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
   private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string }>>();
+  private autoSyncTimer: NodeJS.Timeout | null = null;
 
   // Event listener references for clean teardown
   private onPtyData?: (event: { sessionId: string; data: string }) => void;
@@ -335,6 +344,24 @@ export class IpcBridge {
 
       const event: HostKeyPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.HOSTKEY_PROMPT, event);
+    });
+  }
+
+  /**
+   * Directly prompts the user for a smartcard PIN (e.g. during sync unlock/link)
+   * via the standard Askpass modal in the renderer.
+   */
+  public promptForPinDirect(prompt = 'Enter smartcard PIN:'): Promise<string> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve('');
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      this.pendingAskpass.set(id, { callback: resolve });
+      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt });
     });
   }
 
@@ -729,6 +756,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_SAVE_SSH,
       async (_event, config: SSHConnectionConfig) => {
         await this.profileStore.saveSSH(config);
+        this.scheduleAutoSync();
       }
     );
 
@@ -736,6 +764,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_DELETE_SSH,
       async (_event, id: string) => {
         await this.profileStore.deleteSSH(id);
+        this.scheduleAutoSync();
       }
     );
 
@@ -743,6 +772,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_SAVE_S3,
       async (_event, config: S3Config) => {
         await this.profileStore.saveS3(config);
+        this.scheduleAutoSync();
       }
     );
 
@@ -750,6 +780,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_DELETE_S3,
       async (_event, id: string) => {
         await this.profileStore.deleteS3(id);
+        this.scheduleAutoSync();
       }
     );
   }
@@ -761,10 +792,12 @@ export class IpcBridge {
 
     this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_SAVE, async (_event, pool: DotfilePool) => {
       await this.dotfilePoolStore.savePool(pool);
+      this.scheduleAutoSync();
     });
 
     this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_DELETE, async (_event, id: string) => {
       await this.dotfilePoolStore.deletePool(id);
+      this.scheduleAutoSync();
     });
 
     this.registerHandler(IPC_CHANNELS.DOTFILES_OPEN_FOLDER, async (_event, poolId: string) => {
@@ -779,7 +812,9 @@ export class IpcBridge {
       if (result.canceled || result.filePaths.length === 0) {
         return [];
       }
-      return await this.dotfilePoolStore.importLocalFiles(result.filePaths);
+      const imported = await this.dotfilePoolStore.importLocalFiles(result.filePaths);
+      this.scheduleAutoSync();
+      return imported;
     });
 
     this.registerHandler(
@@ -819,11 +854,13 @@ export class IpcBridge {
         const remotePath =
           options.targetRemotePath || (baseName.startsWith('.') ? `~/${baseName}` : `~/.${baseName}`);
 
-        return await this.dotfilePoolStore.addFileToPool(options.poolId, {
+        const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
           remotePath,
           content,
           mode,
         });
+        this.scheduleAutoSync();
+        return added;
       }
     );
 
@@ -1142,9 +1179,39 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.SETTINGS_SAVE,
       async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
-        return await this.settingsStore.saveSettings(settings);
+        const saved = await this.settingsStore.saveSettings(settings);
+        this.scheduleAutoSync();
+        return saved;
       }
     );
+  }
+
+  public scheduleAutoSync(delayMs = 2000): void {
+    if (this.autoSyncTimer) {
+      clearTimeout(this.autoSyncTimer);
+    }
+    this.autoSyncTimer = setTimeout(async () => {
+      this.autoSyncTimer = null;
+      try {
+        const config = await this.syncConfigStore.getConfig();
+        if (!config.autoSync || !config.target) {
+          return;
+        }
+        if (!this.syncCryptoService.isUnlocked('topology') || !this.syncCryptoService.isUnlocked('credentials')) {
+          return;
+        }
+        const provider = await this.storageRegistry.getOrCreate(config.target);
+        await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
+        await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+        const webContents = this.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          const status = await this.buildSyncStatus();
+          webContents.send(IPC_CHANNELS.PROFILE_SYNC_STATUS, status);
+        }
+      } catch (err) {
+        console.warn('[AutoSync] Background push failed:', err);
+      }
+    }, delayMs);
   }
 
   private async buildSyncStatus(): Promise<ProfileSyncStatus> {
@@ -1169,6 +1236,10 @@ export class IpcBridge {
       credentialsUnlocked: this.syncCryptoService.isUnlocked('credentials'),
       lastSyncAt: config.lastSyncAt,
       comparison: this.profileSyncService.getLastComparison() ?? undefined,
+      autoSync: Boolean(config.autoSync),
+      smartcardLinked: Boolean(config.smartcardSync),
+      smartcardLibPath: config.smartcardSync?.pkcs11LibPath,
+      smartcardAvailable: (await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true }).catch(() => [])).length > 0,
     };
   }
 
@@ -1201,44 +1272,7 @@ export class IpcBridge {
         if (!passwords?.topologyPassword || !passwords?.credentialsPassword) {
           throw new Error('Both the topology and credentials master passwords are required');
         }
-
-        const config = await this.syncConfigStore.getConfig();
-        if (!config.target) {
-          throw new Error('Configure a sync target first (profile-sync:setup)');
-        }
-        const provider = await this.storageRegistry.getOrCreate(config.target);
-
-        if (config.topologySaltBase64 && config.credentialsSaltBase64) {
-          this.syncCryptoService.unlock(
-            'topology',
-            passwords.topologyPassword,
-            Buffer.from(config.topologySaltBase64, 'base64')
-          );
-          this.syncCryptoService.unlock(
-            'credentials',
-            passwords.credentialsPassword,
-            Buffer.from(config.credentialsSaltBase64, 'base64')
-          );
-          // Validates both passwords immediately -- a wrong one fails to
-          // decrypt here -- and picks up anything changed on another
-          // machine, rather than only failing lazily on the next push.
-          await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
-        } else {
-          if (await this.profileSyncService.hasRemoteData(provider, config.remoteBasePath ?? '')) {
-            throw new Error(
-              'This sync target already has data pushed from another machine. Use profile-sync:pull to bootstrap this machine instead of profile-sync:enable.'
-            );
-          }
-          const topologySalt = generateSalt();
-          const credentialsSalt = generateSalt();
-          this.syncCryptoService.unlock('topology', passwords.topologyPassword, topologySalt);
-          this.syncCryptoService.unlock('credentials', passwords.credentialsPassword, credentialsSalt);
-          await this.syncConfigStore.setSalts({ topologySalt, credentialsSalt });
-          await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
-        }
-
-        await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
-        return await this.buildSyncStatus();
+        return await this.unlockSyncInternal(passwords);
       }
     );
 
@@ -1304,6 +1338,194 @@ export class IpcBridge {
         return await this.profileSyncService.compareWithRemote(provider, config.remoteBasePath ?? '');
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC,
+      async (_event, enabled: boolean): Promise<ProfileSyncStatus> => {
+        await this.syncConfigStore.setAutoSync(Boolean(enabled));
+        if (enabled) {
+          this.scheduleAutoSync(500);
+        }
+        return await this.buildSyncStatus();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD,
+      async (_event, options?: { pkcs11LibPath?: string; pin?: string }): Promise<ProfileSyncStatus> => {
+        const config = await this.syncConfigStore.getConfig();
+        if (!config.target) {
+          throw new Error('Configure a sync target first (profile-sync:setup)');
+        }
+
+        let libPath = options?.pkcs11LibPath || config.smartcardSync?.pkcs11LibPath;
+        if (!libPath) {
+          const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+          if (detected.length === 0) {
+            throw new Error('No smartcard libraries detected. Please ensure your card reader / PKCS#11 module is installed.');
+          }
+          libPath = detected[0].path;
+        }
+
+        const pinHandler = async (_prompt: string) => {
+          if (options?.pin) return options.pin;
+          return await this.promptForPinDirect(_prompt);
+        };
+
+        const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
+        try {
+          const identities = await getAgentIdentities(socketPath);
+          if (identities.length === 0) {
+            throw new Error('No smartcard identities/certificates found on the card');
+          }
+          const chosen =
+            identities.find(
+              (id) =>
+                (config.smartcardSync?.keyBlobBase64 && id.keyBlob.toString('base64') === config.smartcardSync.keyBlobBase64) ||
+                (config.smartcardSync?.keyFingerprint &&
+                  crypto.createHash('sha256').update(id.keyBlob).digest('hex') === config.smartcardSync.keyFingerprint)
+            ) || identities[0];
+
+          const challenge = crypto.randomBytes(32);
+          const sig = await signChallengeWithAgent(socketPath, chosen.keyBlob, challenge);
+          const verified = verifyAgentSignature(chosen.keyBlob, challenge, sig);
+          if (!verified) {
+            throw new Error('Failed to verify cryptographic signature from smartcard. Please ensure the correct card is inserted.');
+          }
+
+          let topologyPassword = '';
+          let credentialsPassword = '';
+
+          if (config.smartcardSync?.wrappedPasswordsEncrypted) {
+            try {
+              const decrypted = decryptSecretValue(config.smartcardSync.wrappedPasswordsEncrypted);
+              const parsed = JSON.parse(decrypted);
+              topologyPassword = parsed.topologyPassword;
+              credentialsPassword = parsed.credentialsPassword;
+            } catch {
+              throw new Error('Failed to decrypt saved sync passwords with OS keyring.');
+            }
+          } else if (config.smartcardSync?.wrappedPassword) {
+            try {
+              const smartcardSecret = deriveSecretFromSignature(sig);
+              const unwrapped = unwrapMasterPasswords(smartcardSecret, config.smartcardSync.wrappedPassword);
+              topologyPassword = unwrapped.topologyPassword;
+              credentialsPassword = unwrapped.credentialsPassword;
+            } catch {
+              throw new Error('Failed to decrypt sync keys with this smartcard. Please re-link your smartcard in Settings.');
+            }
+          } else {
+            const smartcardSecret = deriveSecretFromSignature(sig);
+            topologyPassword = smartcardSecret;
+            credentialsPassword = smartcardSecret;
+          }
+
+          return await this.unlockSyncInternal({ topologyPassword, credentialsPassword });
+        } finally {
+          AgentLifecycleManager.killPrivateAgent(pid);
+        }
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD,
+      async (
+        _event,
+        options: {
+          pkcs11LibPath: string;
+          pin?: string;
+          passwords?: { topologyPassword: string; credentialsPassword: string };
+        }
+      ): Promise<ProfileSyncStatus> => {
+        const pinHandler = async (_prompt: string) => {
+          if (options.pin) return options.pin;
+          return await this.promptForPinDirect(_prompt);
+        };
+
+        const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(options.pkcs11LibPath, pinHandler);
+        try {
+          const identities = await getAgentIdentities(socketPath);
+          if (identities.length === 0) {
+            throw new Error('No smartcard identities/certificates found on the card');
+          }
+          const chosen = identities[0];
+          const challenge = crypto.randomBytes(32);
+          const sig = await signChallengeWithAgent(socketPath, chosen.keyBlob, challenge);
+          const verified = verifyAgentSignature(chosen.keyBlob, challenge, sig);
+          if (!verified) {
+            throw new Error('Failed to verify cryptographic signature from smartcard');
+          }
+
+          let wrappedPasswordsEncrypted: string | undefined;
+          if (options.passwords?.topologyPassword && options.passwords?.credentialsPassword) {
+            wrappedPasswordsEncrypted = encryptSecretValue(JSON.stringify(options.passwords));
+            if (!this.syncCryptoService.isUnlocked('topology') || !this.syncCryptoService.isUnlocked('credentials')) {
+              await this.unlockSyncInternal(options.passwords);
+            }
+          }
+
+          await this.syncConfigStore.setSmartcardSync({
+            pkcs11LibPath: options.pkcs11LibPath,
+            keyComment: chosen.comment,
+            keyBlobBase64: chosen.keyBlob.toString('base64'),
+            keyFingerprint: crypto.createHash('sha256').update(chosen.keyBlob).digest('hex'),
+            wrappedPasswordsEncrypted,
+          });
+
+          return await this.buildSyncStatus();
+        } finally {
+          AgentLifecycleManager.killPrivateAgent(pid);
+        }
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_UNLINK_SMARTCARD,
+      async (): Promise<ProfileSyncStatus> => {
+        await this.syncConfigStore.setSmartcardSync(undefined);
+        return await this.buildSyncStatus();
+      }
+    );
+  }
+
+  private async unlockSyncInternal(passwords: {
+    topologyPassword: string;
+    credentialsPassword: string;
+  }): Promise<ProfileSyncStatus> {
+    const config = await this.syncConfigStore.getConfig();
+    if (!config.target) {
+      throw new Error('Configure a sync target first (profile-sync:setup)');
+    }
+    const provider = await this.storageRegistry.getOrCreate(config.target);
+
+    if (config.topologySaltBase64 && config.credentialsSaltBase64) {
+      this.syncCryptoService.unlock(
+        'topology',
+        passwords.topologyPassword,
+        Buffer.from(config.topologySaltBase64, 'base64')
+      );
+      this.syncCryptoService.unlock(
+        'credentials',
+        passwords.credentialsPassword,
+        Buffer.from(config.credentialsSaltBase64, 'base64')
+      );
+      await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+    } else {
+      if (await this.profileSyncService.hasRemoteData(provider, config.remoteBasePath ?? '')) {
+        throw new Error(
+          'This sync target already has data pushed from another machine. Use profile-sync:pull to bootstrap this machine instead of profile-sync:enable.'
+        );
+      }
+      const topologySalt = generateSalt();
+      const credentialsSalt = generateSalt();
+      this.syncCryptoService.unlock('topology', passwords.topologyPassword, topologySalt);
+      this.syncCryptoService.unlock('credentials', passwords.credentialsPassword, credentialsSalt);
+      await this.syncConfigStore.setSalts({ topologySalt, credentialsSalt });
+      await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
+    }
+
+    await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+    return await this.buildSyncStatus();
   }
 
   private registerConnectionTestHandlers(): void {
@@ -1700,8 +1922,12 @@ export class IpcBridge {
     this.pendingAwsSsoLogins.clear();
 
     await this.sshPtyManager.killAll();
-    await this.storageRegistry.disconnectAll();
+    await this.storageRegistry.disconnectAll?.();
     await this.fileEditorService.dispose();
+    if (this.autoSyncTimer) {
+      clearTimeout(this.autoSyncTimer);
+      this.autoSyncTimer = null;
+    }
     this.lockAllGlobalSmartcardAgents();
     await AgentLifecycleManager.stopManagedAgent();
   }

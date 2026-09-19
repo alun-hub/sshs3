@@ -85,4 +85,13 @@ describe('SyncConfigStore', () => {
     await store.setLastSyncAt('2026-01-01T00:00:00.000Z');
     expect((await store.getConfig()).lastSyncAt).toBe('2026-01-01T00:00:00.000Z');
   });
+
+  it('persists autoSync setting', async () => {
+    const store = new SyncConfigStore(storePath);
+    expect((await store.getConfig()).autoSync).toBeUndefined();
+    await store.setAutoSync(true);
+    expect((await store.getConfig()).autoSync).toBe(true);
+    await store.setAutoSync(false);
+    expect((await store.getConfig()).autoSync).toBe(false);
+  });
 });

@@ -107,6 +107,7 @@ interface Harness {
   bridge: IpcBridge;
   ipc: MockIpcMain;
   dir: string;
+  syncConfigStore: SyncConfigStore;
 }
 
 async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness> {
@@ -139,7 +140,7 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
   });
   bridge.register();
 
-  return { bridge, ipc, dir };
+  return { bridge, ipc, dir, syncConfigStore };
 }
 
 const TARGET: StorageConnectConfig = {
@@ -280,5 +281,64 @@ describe('IpcBridge — remote profile sync handlers', () => {
     expect(comparison.state).toBe('in_sync');
     expect(comparison.aheadCount).toBe(0);
     expect(comparison.behindCount).toBe(0);
+  });
+
+  it('supports single master password for both topology and credentials', async () => {
+    const { ipc } = await harness();
+    await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+    const status = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+      topologyPassword: 'single-master-password',
+      credentialsPassword: 'single-master-password',
+    });
+
+    expect(status.topologyUnlocked).toBe(true);
+    expect(status.credentialsUnlocked).toBe(true);
+    expect(status.hasLocalSalts).toBe(true);
+  });
+
+  it('toggles autoSync setting and schedules auto-push on profile changes', async () => {
+    const { ipc, bridge } = await harness();
+    await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+    await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+      topologyPassword: 'single-master-password',
+      credentialsPassword: 'single-master-password',
+    });
+
+    const status1 = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+    expect(status1.autoSync).toBe(true);
+
+    // Save a new SSH profile - triggers scheduleAutoSync
+    await ipc.invoke(IPC_CHANNELS.PROFILES_SAVE_SSH, {
+      id: 'auto-sync-profile',
+      name: 'Auto Synced Server',
+      host: 'auto.example.com',
+      port: 22,
+      username: 'root',
+      authType: 'password',
+    });
+
+    // Wait for the auto-sync debounced push (delay is shortened or wait 2.5s)
+    await new Promise((r) => setTimeout(r, 2200));
+
+    const status2 = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
+    expect(status2.lastSyncAt).toBeTruthy();
+
+    await bridge.dispose();
+  });
+
+  it('unlinks smartcard via PROFILE_SYNC_UNLINK_SMARTCARD', async () => {
+    const { ipc, syncConfigStore, bridge } = await harness();
+    await syncConfigStore.setSmartcardSync({
+      pkcs11LibPath: '/usr/lib/libopensc.so',
+      keyComment: 'Smartcard Key 1',
+    });
+
+    const statusBefore = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
+    expect(statusBefore.smartcardLinked).toBe(true);
+
+    const statusAfter = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLINK_SMARTCARD);
+    expect(statusAfter.smartcardLinked).toBe(false);
+
+    await bridge.dispose();
   });
 });

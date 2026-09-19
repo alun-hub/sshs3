@@ -110,6 +110,10 @@ export const IPC_CHANNELS = {
   PROFILE_SYNC_PULL: 'profile-sync:pull',
   PROFILE_SYNC_STATUS: 'profile-sync:status',
   PROFILE_SYNC_COMPARE: 'profile-sync:compare',
+  PROFILE_SYNC_SET_AUTO_SYNC: 'profile-sync:set-auto-sync',
+  PROFILE_SYNC_UNLOCK_SMARTCARD: 'profile-sync:unlock-smartcard',
+  PROFILE_SYNC_LINK_SMARTCARD: 'profile-sync:link-smartcard',
+  PROFILE_SYNC_UNLINK_SMARTCARD: 'profile-sync:unlink-smartcard',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -283,6 +287,15 @@ export interface MultiSSHApi {
   }): Promise<ProfileSyncPullResult & ProfileSyncStatus>;
   profileSyncStatus(): Promise<ProfileSyncStatus>;
   profileSyncCompare(): Promise<SyncComparisonResult>;
+  profileSyncSetAutoSync(enabled: boolean): Promise<ProfileSyncStatus>;
+  profileSyncUnlockSmartcard(options?: { pkcs11LibPath?: string; pin?: string }): Promise<ProfileSyncStatus>;
+  profileSyncLinkSmartcard(options: {
+    pkcs11LibPath: string;
+    pin?: string;
+    passwords?: { topologyPassword: string; credentialsPassword: string };
+  }): Promise<ProfileSyncStatus>;
+  profileSyncUnlinkSmartcard(): Promise<ProfileSyncStatus>;
+  onProfileSyncStatus?(callback: (status: ProfileSyncStatus) => void): () => void;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

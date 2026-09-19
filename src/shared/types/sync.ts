@@ -76,4 +76,12 @@ export interface ProfileSyncStatus {
   credentialsUnlocked: boolean;
   lastSyncAt?: string;
   comparison?: SyncComparisonResult;
+  /** Whether automatic synchronization (auto-push on changes) is enabled. */
+  autoSync?: boolean;
+  /** Whether a smartcard has been linked for PIN-based unlock. */
+  smartcardLinked?: boolean;
+  /** The PKCS#11 library path associated with the linked smartcard. */
+  smartcardLibPath?: string;
+  /** Whether a smartcard library is detected and available on this system. */
+  smartcardAvailable?: boolean;
 }

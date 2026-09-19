@@ -37,13 +37,19 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-const FONT_PRESETS = [
-  'Menlo, Monaco, "Courier New", monospace, Consolas',
-  'Fira Code, monospace',
-  'JetBrains Mono, monospace',
-  'Consolas, "Courier New", monospace',
-  'Ubuntu Mono, monospace',
-  'monospace',
+interface FontPreset {
+  label: string;
+  value: string;
+}
+
+const FONT_PRESETS: FontPreset[] = [
+  { label: 'JetBrains Mono (Bundled)', value: 'JetBrains Mono, monospace' },
+  { label: 'Fira Code (Bundled)', value: 'Fira Code, monospace' },
+  { label: 'Consolas (Windows)', value: 'Consolas, "Courier New", monospace' },
+  { label: 'Menlo (macOS)', value: 'Menlo, Monaco, "Courier New", monospace, Consolas' },
+  { label: 'Liberation Mono (Linux)', value: 'Liberation Mono, monospace' },
+  { label: 'Ubuntu Mono (Linux)', value: 'Ubuntu Mono, monospace' },
+  { label: 'System Default Monospace', value: 'monospace' },
 ];
 
 type SettingsCategory = 'general' | 'terminal' | 'files' | 'security' | 'sync' | 'shortcuts';
@@ -379,7 +385,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-txt-primary">Terminal Font Family</label>
                     <select
-                      value={FONT_PRESETS.includes(fontFamily) ? fontFamily : 'custom'}
+                      value={FONT_PRESETS.some((f) => f.value === fontFamily) ? fontFamily : 'custom'}
                       onChange={(e) => {
                         if (e.target.value !== 'custom') {
                           setFontFamily(e.target.value);
@@ -388,8 +394,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
                     >
                       {FONT_PRESETS.map((f) => (
-                        <option key={f} value={f}>
-                          {f.split(',')[0].replace(/"/g, '')}
+                        <option key={f.value} value={f.value}>
+                          {f.label}
                         </option>
                       ))}
                       <option value="custom">Custom...</option>
@@ -403,8 +409,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
 
+                  {/* Terminal Live Preview */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">
+                      Terminal Live Preview
+                    </label>
+                    <div
+                      className={`rounded-lg border p-3 font-mono transition-colors shadow-inner ${
+                        theme === 'light'
+                          ? 'border-border-subtle bg-white text-slate-900'
+                          : 'border-border-subtle bg-black/40 text-slate-100'
+                      }`}
+                      style={{
+                        fontFamily: fontFamily || 'monospace',
+                        fontSize: `${fontSize}px`,
+                        lineHeight: '1.45',
+                      }}
+                    >
+                      <div className="text-emerald-400">$ uname -srm</div>
+                      <div>Linux 6.1.0-custom x86_64</div>
+                      <div className="text-sky-400">sshs3 session active. Ready.</div>
+                    </div>
+                  </div>
+
                   {/* Cursor Style & Scrollback */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border-subtle">
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-txt-primary">Cursor Style</label>
                       <select
@@ -518,29 +547,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           Leave the terminal open with no quick buttons (classic mode).
                         </span>
                       </label>
-                    </div>
-                  </div>
-
-                  {/* Terminal Preview */}
-                  <div className="space-y-1.5 pt-2">
-                    <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">
-                      Terminal Live Preview
-                    </label>
-                    <div
-                      className={`rounded-lg border p-3 font-mono transition-colors shadow-inner ${
-                        theme === 'light'
-                          ? 'border-border-subtle bg-white text-slate-900'
-                          : 'border-border-subtle bg-black/40 text-slate-100'
-                      }`}
-                      style={{
-                        fontFamily: fontFamily || 'monospace',
-                        fontSize: `${fontSize}px`,
-                        lineHeight: '1.45',
-                      }}
-                    >
-                      <div className="text-emerald-400">$ uname -srm</div>
-                      <div>Linux 6.1.0-custom x86_64</div>
-                      <div className="text-sky-400">sshs3 session active. Ready.</div>
                     </div>
                   </div>
                 </div>

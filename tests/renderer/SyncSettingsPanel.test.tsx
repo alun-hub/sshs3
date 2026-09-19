@@ -78,6 +78,32 @@ describe('SyncSettingsPanel', () => {
     const submitButton = await screen.findByRole('button', { name: 'Activate sync' });
     expect(submitButton).toBeDisabled();
 
+    const masterInput = screen.getByLabelText('Master password') as HTMLInputElement;
+    const masterConfirm = screen.getByLabelText('Confirm master password') as HTMLInputElement;
+
+    fireEvent.change(masterInput, { target: { value: 'master-secret-1' } });
+    fireEvent.change(masterConfirm, { target: { value: 'master-secret-1' } });
+
+    // Still disabled: the "I've saved these passwords" checkbox hasn't been checked yet.
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.click(screen.getByText("I've saved these passwords somewhere safe."));
+    expect(submitButton).not.toBeDisabled();
+  });
+
+  it('allows switching to separate passwords for topology and credentials', async () => {
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({ configured: true, target: { id: 'x', name: 'x', type: 'sftp' }, hasLocalSalts: false })
+      ),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    await waitFor(() => expect(screen.getByText('Set up master passwords')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Set up master passwords'));
+
+    fireEvent.click(screen.getByText('Use separate passwords'));
+
     const topologyInput = screen.getByLabelText('Topology master password') as HTMLInputElement;
     const topologyConfirm = screen.getByLabelText('Confirm topology master password') as HTMLInputElement;
     const credentialsInput = screen.getByLabelText('Credentials master password') as HTMLInputElement;
@@ -88,7 +114,7 @@ describe('SyncSettingsPanel', () => {
     fireEvent.change(credentialsInput, { target: { value: 'credentials-secret-1' } });
     fireEvent.change(credentialsConfirm, { target: { value: 'credentials-secret-1' } });
 
-    // Still disabled: the "I've saved these passwords" checkbox hasn't been checked yet.
+    const submitButton = screen.getByRole('button', { name: 'Activate sync' });
     expect(submitButton).toBeDisabled();
 
     fireEvent.click(screen.getByText("I've saved these passwords somewhere safe."));
@@ -304,6 +330,163 @@ describe('SyncSettingsPanel', () => {
       expect(screen.getByLabelText('Region')).toHaveValue('eu-north-1');
       expect(screen.getByLabelText('Access Key ID')).toHaveValue('AKIA12345678');
       expect(screen.getByLabelText(/Endpoint/)).toHaveValue('https://s3.custom.io');
+    });
+  });
+
+  it('toggles auto-sync changes when switch is clicked', async () => {
+    const profileSyncSetAutoSync = vi.fn().mockResolvedValue(
+      statusFixture({
+        configured: true,
+        target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+        autoSync: true,
+      })
+    );
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+          autoSync: false,
+        })
+      ),
+      profileSyncSetAutoSync,
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    const toggle = await screen.findByLabelText('Auto-sync changes');
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(profileSyncSetAutoSync).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it('shows "Unlock with Smartcard" button when smartcard is available and calls profileSyncUnlockSmartcard', async () => {
+    const profileSyncUnlockSmartcard = vi.fn().mockResolvedValue(
+      statusFixture({
+        configured: true,
+        target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+        hasLocalSalts: true,
+        topologyUnlocked: true,
+        credentialsUnlocked: true,
+        smartcardAvailable: true,
+      })
+    );
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: false,
+          credentialsUnlocked: false,
+          smartcardAvailable: true,
+        })
+      ),
+      profileSyncUnlockSmartcard,
+      profileSyncCompare: vi.fn().mockResolvedValue(undefined),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    const unlockBtn = await screen.findByRole('button', { name: /Unlock with Smartcard/i });
+    expect(unlockBtn).toBeInTheDocument();
+
+    fireEvent.click(unlockBtn);
+    await waitFor(() => {
+      expect(profileSyncUnlockSmartcard).toHaveBeenCalled();
+      expect(screen.getByText('Sync unlocked with smartcard.')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Unlink card" when smartcard is linked and calls profileSyncUnlinkSmartcard', async () => {
+    const profileSyncUnlinkSmartcard = vi.fn().mockResolvedValue(
+      statusFixture({
+        configured: true,
+        target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+        smartcardLinked: false,
+        topologyUnlocked: true,
+        credentialsUnlocked: true,
+      })
+    );
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: true,
+          credentialsUnlocked: true,
+          smartcardLinked: true,
+          smartcardLibPath: '/usr/lib/opensc-pkcs11.so',
+        })
+      ),
+      profileSyncUnlinkSmartcard,
+      profileSyncCompare: vi.fn().mockResolvedValue(undefined),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    const unlinkBtn = await screen.findByRole('button', { name: /Unlink card/i });
+    expect(unlinkBtn).toBeInTheDocument();
+
+    fireEvent.click(unlinkBtn);
+    await waitFor(() => {
+      expect(profileSyncUnlinkSmartcard).toHaveBeenCalled();
+      expect(screen.getByText('Smartcard unlinked from sync.')).toBeInTheDocument();
+    });
+  });
+
+  it('links smartcard when "Link card" is clicked and master password is provided', async () => {
+    const profileSyncLinkSmartcard = vi.fn().mockResolvedValue(
+      statusFixture({
+        configured: true,
+        target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+        smartcardLinked: true,
+        topologyUnlocked: true,
+        credentialsUnlocked: true,
+      })
+    );
+    const smartcardDetect = vi.fn().mockResolvedValue([{ path: '/usr/lib/opensc-pkcs11.so', label: 'OpenSC' }]);
+
+    window.multissh = {
+      profileSyncStatus: vi.fn().mockResolvedValue(
+        statusFixture({
+          configured: true,
+          target: { id: 's3-target', name: 'S3 Sync', type: 's3' },
+          hasLocalSalts: true,
+          topologyUnlocked: true,
+          credentialsUnlocked: true,
+          smartcardAvailable: true,
+          smartcardLinked: false,
+        })
+      ),
+      smartcardDetect,
+      profileSyncLinkSmartcard,
+      profileSyncCompare: vi.fn().mockResolvedValue(undefined),
+    } as unknown as typeof window.multissh;
+
+    render(<SyncSettingsPanel />);
+    const linkBtn = await screen.findByRole('button', { name: /Link card/i });
+    expect(linkBtn).toBeInTheDocument();
+
+    fireEvent.click(linkBtn);
+    expect(await screen.findByText('Link smartcard to sync')).toBeInTheDocument();
+
+    const passwordInput = screen.getByLabelText('Master password');
+    fireEvent.change(passwordInput, { target: { value: 'master-pass-123' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Link smartcard' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(profileSyncLinkSmartcard).toHaveBeenCalledWith({
+        pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
+        passwords: {
+          topologyPassword: 'master-pass-123',
+          credentialsPassword: 'master-pass-123',
+        },
+      });
+      expect(screen.getByText('Smartcard linked to sync.')).toBeInTheDocument();
     });
   });
 });

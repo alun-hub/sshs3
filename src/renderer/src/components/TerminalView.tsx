@@ -147,6 +147,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       } catch {
         // Safe to ignore initial fit in hidden elements
       }
+      if (document.fonts) {
+        document.fonts.ready.then(() => {
+          try {
+            fitAddonRef.current?.fit();
+          } catch {
+            // Safe to ignore
+          }
+        });
+      }
     }
   }, [fontSize, fontFamily, theme]);
 
@@ -187,6 +196,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddon.fit();
     } catch {
       // Ignore initial fit calculation in JSDOM / zero-size
+    }
+
+    if (document.fonts) {
+      document.fonts.ready.then(() => {
+        if (!isDisposed && fitAddonRef.current) {
+          try {
+            fitAddonRef.current.fit();
+          } catch {
+            // Ignore
+          }
+        }
+      });
     }
 
     const cols = term.cols || 80;

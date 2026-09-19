@@ -23,6 +23,21 @@ export interface SyncConfigData {
   topologySaltBase64?: string;
   credentialsSaltBase64?: string;
   lastSyncAt?: string;
+  /** Whether automatic background push is enabled on profile/dotfile/settings changes. */
+  autoSync?: boolean;
+  /** Optional hardware smartcard configuration for unlocking sync via PKCS#11 PIN. */
+  smartcardSync?: {
+    pkcs11LibPath: string;
+    keyComment?: string;
+    keyBlobBase64?: string;
+    keyFingerprint?: string;
+    wrappedPasswordsEncrypted?: string;
+    wrappedPassword?: {
+      ciphertext: string;
+      iv: string;
+      tag: string;
+    };
+  };
 }
 
 function encryptTarget(target: StorageConnectConfig): StorageConnectConfig {
@@ -121,6 +136,22 @@ export class SyncConfigStore {
     return this.queueMutation(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, lastSyncAt: timestamp });
+    });
+  }
+
+  public async setAutoSync(enabled: boolean): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig();
+      await this.persist({ ...current, autoSync: enabled });
+    });
+  }
+
+  public async setSmartcardSync(
+    smartcardSync?: SyncConfigData['smartcardSync']
+  ): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig();
+      await this.persist({ ...current, smartcardSync });
     });
   }
 

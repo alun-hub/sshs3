@@ -298,6 +298,22 @@ export const api: MultiSSHApi = {
 
   profileSyncStatus: (): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS),
   profileSyncCompare: (): Promise<SyncComparisonResult> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE),
+  profileSyncSetAutoSync: (enabled: boolean): Promise<ProfileSyncStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, enabled),
+  profileSyncUnlockSmartcard: (options?: { pkcs11LibPath?: string; pin?: string }): Promise<ProfileSyncStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD, options),
+  profileSyncLinkSmartcard: (options: {
+    pkcs11LibPath: string;
+    pin?: string;
+    passwords?: { topologyPassword: string; credentialsPassword: string };
+  }): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, options),
+  profileSyncUnlinkSmartcard: (): Promise<ProfileSyncStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLINK_SMARTCARD),
+  onProfileSyncStatus: (callback: (status: ProfileSyncStatus) => void): (() => void) => {
+    const subscription = (_event: any, status: ProfileSyncStatus) => callback(status);
+    ipcRenderer.on(IPC_CHANNELS.PROFILE_SYNC_STATUS, subscription);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PROFILE_SYNC_STATUS, subscription);
+  },
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

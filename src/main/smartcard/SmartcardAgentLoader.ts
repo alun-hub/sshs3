@@ -93,7 +93,7 @@ export async function loadSmartcardIntoPrivateAgent(
     let lastErr: unknown;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        await execFileAsync(sshAddBin, ['-s', pkcs11LibPath], { env });
+        await execFileAsync(sshAddBin, ['-s', pkcs11LibPath], { env, timeout: 60000 });
         lastErr = undefined;
       } catch (err) {
         lastErr = err;
@@ -110,9 +110,11 @@ export async function loadSmartcardIntoPrivateAgent(
       if (!lastErr) {
         lastErr = new Error(`ssh-add -s ${pkcs11LibPath} reported success but no identity was loaded`);
       }
-      if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      if (cachedPin === '' || attempt >= retries) {
+        break;
       }
+      cachedPin = undefined;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
     if (lastErr) throw lastErr;
   } catch (err) {

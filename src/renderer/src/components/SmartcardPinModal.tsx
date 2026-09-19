@@ -95,7 +95,7 @@ export const SmartcardPinModal: React.FC = () => {
       aria-labelledby="smartcard-modal-title"
       data-testid="smartcard-pin-modal"
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">
