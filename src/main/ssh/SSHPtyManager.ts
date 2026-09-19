@@ -327,6 +327,13 @@ export class SSHPtyManager extends EventEmitter {
       delete env.SSH_AUTH_SOCK;
     }
 
+    if (config.x11Forwarding) {
+      env.DISPLAY =
+        config.x11Display ||
+        process.env.DISPLAY ||
+        (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
+    }
+
     const sshArgs = SmartcardDetector.buildSSHArguments(config);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
@@ -405,6 +412,13 @@ export class SSHPtyManager extends EventEmitter {
       env.SSH_AUTH_SOCK = config.agentPath;
     } else if (config.authType === 'smartcard') {
       delete env.SSH_AUTH_SOCK;
+    }
+
+    if (config.x11Forwarding) {
+      env.DISPLAY =
+        config.x11Display ||
+        process.env.DISPLAY ||
+        (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
     }
 
     const sshArgs = SmartcardDetector.buildSSHArguments(config);

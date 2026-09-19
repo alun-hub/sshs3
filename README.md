@@ -21,10 +21,20 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 
 ### Terminal, tabs & split view
 - **Real OpenSSH process via `node-pty`** — the terminal spawns your system's actual `ssh` binary, not a JS reimplementation, so `~/.ssh/config`, `ssh-agent`, host aliases, and every OpenSSH option behave exactly as they do on the command line.
-- **Local shell terminals** — open a plain local shell tab (your `$SHELL` on Linux/macOS, or a chosen `cmd`/PowerShell/`pwsh` on Windows) alongside your SSH sessions.
+- **Local shell terminals** — open a plain local shell tab (your `$SHELL` on Linux/macOS, or a chosen `cmd`/PowerShell/`pwsh` and installed WSL distributions on Windows) alongside your SSH sessions.
 - **Recursive split panes (Konsole-style)** — split any pane right or down from its own mini toolbar, any number of times, nesting freely; each pane keeps its own connection picker and isolated session. Splitting never recreates an existing pane's session (it reparents the pane into a new split, exactly like Konsole's `ViewSplitter`), and closing one specific pane leaves every other pane's session untouched — the tree collapses a split down to its remaining child automatically, so no empty slots are left behind. A one-click "Unsplit" action keeps the active pane and closes the rest.
 - **Session persistence** — tabs, pane layouts, and per-pane working directories are saved and restored automatically between restarts.
 - **SSH agent lifecycle management** — detects whether `ssh-agent` is already running and, if not, can spawn and manage one itself (Linux/macOS), or detect the Windows OpenSSH Authentication Agent service.
+
+### X11 & GUI forwarding (Windows & Linux)
+- **Seamless X11 Forwarding (`-Y`)** — Run remote Linux GUI applications (e.g. `xclock`, `gedit`, `firefox`, IDEs) through SSH directly to your local desktop with trusted X11 forwarding (`ForwardX11Trusted=yes`).
+- **Built-in / Bundled X Server for Windows (MobaXterm-style)** — Windows installer packages a fully portable VcXsrv X server. Automatically managed in multiwindow rootless mode (`:0 -multiwindow -clipboard -wgl -ac`) so remote Linux windows appear seamlessly on your Windows taskbar with Alt+Tab and clipboard synchronization.
+- **Zero-configuration Windows Firewall** — The Windows installer automatically configures a Windows Defender Firewall rule for the bundled X server, so you never get interrupted by firewall prompts.
+- **Configurable X Server Modes** — Choose under Settings → Terminal:
+  - *Auto-start (Default)*: Starts the local X server on-demand only when opening an SSH session with X11 forwarding enabled.
+  - *Always Running*: Keeps the X server running in the background while sshs3 is open.
+  - *Manual / External*: Use an external X server (e.g. WSLg, manual VcXsrv, or Xming) or custom binary path/arguments.
+- **Live reachability checks** — Automatic detection of whether an X server is listening on the target display (port 6000+), with real-time status indicators in both connection profiles and settings.
 
 ### Smartcard & PKCS#11 authentication
 - Built-in support for **SITHS cards**, **Net iD**, **OpenSC**, and **p11-kit**, with automatic detection of installed PKCS#11 modules on Linux and Windows.

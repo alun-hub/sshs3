@@ -38,6 +38,10 @@ export interface SSHConnectionConfig {
   deletedAt?: string;
   /** Whether to forward the local ssh-agent to the remote host (-A / ForwardAgent yes). */
   forwardAgent?: boolean;
+  /** Whether to enable X11 forwarding (-Y / ForwardX11Trusted yes). */
+  x11Forwarding?: boolean;
+  /** Custom local X11 display (default: '127.0.0.1:0.0' on Windows, process.env.DISPLAY or ':0' on Linux/macOS). */
+  x11Display?: string;
   compression?: boolean;
   serverAliveInterval?: number;
   ciphers?: string;
@@ -114,4 +118,13 @@ export interface SSHPtySession {
   isReconnecting?(): boolean;
   /** Attempts to manually re-establish the underlying SSH connection. */
   reconnect?(): Promise<boolean>;
+}
+
+export interface XServerStatus {
+  available: boolean;
+  executablePath?: string;
+  running: boolean;
+  managedByApp: boolean;
+  pid?: number;
+  display: string;
 }

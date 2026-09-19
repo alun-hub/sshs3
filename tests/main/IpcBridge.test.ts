@@ -1149,6 +1149,24 @@ describe('IpcBridge', () => {
         IPC_CHANNELS.FILE_EXTERNAL_STATUS,
         expect.any(Function)
       );
+
+      await preloadApi.checkX11Server('127.0.0.1:0.0');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.APP_CHECK_X11_SERVER, '127.0.0.1:0.0');
+
+      await preloadApi.x11GetStatus('C:\\tools\\vcxsrv.exe', ':0');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
+        IPC_CHANNELS.X11_GET_STATUS,
+        'C:\\tools\\vcxsrv.exe',
+        ':0'
+      );
+
+      await preloadApi.x11StartServer({ customPath: 'C:\\tools\\vcxsrv.exe' });
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.X11_START_SERVER, {
+        customPath: 'C:\\tools\\vcxsrv.exe',
+      });
+
+      await preloadApi.x11StopServer();
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.X11_STOP_SERVER);
     });
   });
 
@@ -1255,6 +1273,21 @@ describe('IpcBridge', () => {
 
       await mockIpc.invoke(IPC_CHANNELS.FILE_CLOSE_EXTERNAL, 'tok-1');
       expect(bridge.fileEditorService.closeExternalEditor).toHaveBeenCalledWith('tok-1');
+    });
+
+    it('checks X11 server reachability via APP_CHECK_X11_SERVER', async () => {
+      const res = await mockIpc.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, '127.0.0.1:0.0');
+      expect(res).toHaveProperty('running');
+      expect(res).toHaveProperty('display', '127.0.0.1:0.0');
+    });
+
+    it('handles X11 server lifecycle channels (status, start, stop)', async () => {
+      const statusRes = await mockIpc.invoke(IPC_CHANNELS.X11_GET_STATUS, undefined, '127.0.0.1:0.0');
+      expect(statusRes).toHaveProperty('available');
+      expect(statusRes).toHaveProperty('running');
+
+      const stopRes = await mockIpc.invoke(IPC_CHANNELS.X11_STOP_SERVER);
+      expect(stopRes).toEqual({ success: true });
     });
   });
 });

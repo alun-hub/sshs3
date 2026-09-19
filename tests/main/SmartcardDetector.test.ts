@@ -379,6 +379,25 @@ describe('SmartcardDetector', () => {
       expect(argsUndefined.some((a) => a.startsWith('ForwardAgent='))).toBe(false);
     });
 
+    it('should include -Y when x11Forwarding is enabled', () => {
+      const base: SSHConnectionConfig = {
+        id: 'x11-test',
+        name: 'X11 Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+      };
+
+      const argsTrue = SmartcardDetector.buildSSHArguments({ ...base, x11Forwarding: true });
+      expect(argsTrue).toContain('-Y');
+
+      const argsFalse = SmartcardDetector.buildSSHArguments({ ...base, x11Forwarding: false });
+      expect(argsFalse).not.toContain('-Y');
+
+      const argsUndefined = SmartcardDetector.buildSSHArguments(base);
+      expect(argsUndefined).not.toContain('-Y');
+    });
+
     it('should configure port tunnels (-L, -R, -D) for enabled tunnels', () => {
       const config: SSHConnectionConfig = {
         id: 'tunnels-ssh',

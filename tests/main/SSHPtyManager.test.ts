@@ -165,6 +165,25 @@ describe('SSHPtyManager', () => {
       expect(args).toContain('ForwardAgent=yes');
     });
 
+    it('should set DISPLAY env var and pass -Y when x11Forwarding is enabled', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-x11',
+        name: 'X11 Host',
+        host: '10.0.0.4',
+        username: 'user',
+        authType: 'password',
+        x11Forwarding: true,
+        x11Display: '127.0.0.1:0.0',
+      };
+
+      await manager.createSession(config);
+
+      const spawned = mockPtyInstances[0];
+      const { args, options } = (spawned as any)._spawnArgs;
+      expect(args).toContain('-Y');
+      expect(options.env.DISPLAY).toBe('127.0.0.1:0.0');
+    });
+
     it('should configure Askpass when authType is smartcard', async () => {
       const config: SSHConnectionConfig = {
         id: 'session-smartcard',

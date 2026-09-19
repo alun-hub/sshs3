@@ -54,6 +54,20 @@ jobs:
           npm run lint
           npm run test
 
+      - name: Prepare bundled VcXsrv for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build-resources/vcxsrv
+          Write-Host "Downloading VcXsrv 21.1.16.1 installer..."
+          Invoke-WebRequest -Uri "https://github.com/marchaesen/vcxsrv/releases/download/21.1.16.1/vcxsrv-64.21.1.16.1.installer.exe" -OutFile "vcxsrv-installer.exe"
+          Write-Host "Extracting VcXsrv with 7z..."
+          7z x vcxsrv-installer.exe -o"build-resources/vcxsrv" -y
+          Remove-Item -Recurse -Force "build-resources/vcxsrv/\$PLUGINSDIR" -ErrorAction SilentlyContinue
+          Remove-Item -Force "vcxsrv-installer.exe" -ErrorAction SilentlyContinue
+          Write-Host "VcXsrv bundled successfully. Extracted files:"
+          Get-ChildItem -Path "build-resources/vcxsrv" | Select-Object -First 10 Name
+
       - name: Build application bundles
         run: |
           npm run build

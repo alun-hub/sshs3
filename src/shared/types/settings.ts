@@ -67,6 +67,12 @@ export interface AppSettings {
   smartcardAuthMode?: SmartcardAuthMode;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
   sessionExitAction?: SessionExitAction;
+  /** Windows only: Mode for local X11 server: 'manual' (external), 'auto' (start automatically when X11 session opens), 'always' (start on app launch) */
+  x11ServerMode?: 'manual' | 'auto' | 'always';
+  /** Windows only: Custom path to X server executable (e.g. C:\Program Files\VcXsrv\vcxsrv.exe). Auto-detects if omitted. */
+  x11ServerPath?: string;
+  /** Windows only: Custom arguments for X server (default: ':0 -multiwindow -clipboard -wgl -ac'). */
+  x11ServerArgs?: string;
   /** ISO 8601 timestamp of the last edit. Used by remote profile sync to pick the newer whole-object copy. */
   updatedAt?: string;
 }
@@ -86,4 +92,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dotfilesPoolEnabled: false,
   sessionExitAction: 'reconnect',
   smartcardAuthMode: 'always-prompt',
+  x11ServerMode: 'auto',
 };

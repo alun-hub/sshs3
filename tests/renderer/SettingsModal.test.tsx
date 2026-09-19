@@ -176,4 +176,44 @@ describe('SettingsModal', () => {
     );
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('renders X11 server controls in Terminal tab and saves mode and path', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+
+    // Click on Terminal category tab
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+
+    expect(screen.getByText('Local X11 Server (GUI Forwarding)')).toBeInTheDocument();
+    expect(screen.getByText('Auto-start (Default)')).toBeInTheDocument();
+    expect(screen.getByText('Always Running')).toBeInTheDocument();
+    expect(screen.getByText('Manual / External')).toBeInTheDocument();
+
+    // Select "Always Running"
+    fireEvent.click(screen.getByText('Always Running'));
+
+    // Type custom path into server binary path
+    const pathInput = screen.getByPlaceholderText(/Auto-detect/);
+    fireEvent.change(pathInput, { target: { value: 'C:\\custom\\vcxsrv.exe' } });
+
+    // Save
+    fireEvent.click(screen.getByText('Save Settings'));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        x11ServerMode: 'always',
+        x11ServerPath: 'C:\\custom\\vcxsrv.exe',
+      })
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
 });

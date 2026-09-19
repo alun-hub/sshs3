@@ -171,6 +171,11 @@ export class SmartcardDetector {
       args.push('-o', `ForwardAgent=${config.forwardAgent ? 'yes' : 'no'}`);
     }
 
+    // X11 Forwarding (-Y / ForwardX11Trusted yes)
+    if (config.x11Forwarding) {
+      args.push('-Y');
+    }
+
     // Compression (-o Compression=yes/no)
     if (config.compression !== undefined) {
       args.push('-o', `Compression=${config.compression ? 'yes' : 'no'}`);

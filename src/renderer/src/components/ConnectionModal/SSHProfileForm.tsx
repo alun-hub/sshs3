@@ -49,6 +49,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tunnelsOpen, setTunnelsOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
+  const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string } | null>(null);
 
   useEffect(() => {
     if (!dotfilesPoolEnabled) return;
@@ -63,6 +64,22 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       mounted = false;
     };
   }, [dotfilesPoolEnabled]);
+
+  useEffect(() => {
+    if (!config.x11Forwarding) {
+      setX11ServerStatus(null);
+      return;
+    }
+    let active = true;
+    void window.multissh?.checkX11Server?.(config.x11Display).then((res) => {
+      if (active) {
+        setX11ServerStatus(res);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [config.x11Forwarding, config.x11Display]);
 
   useEffect(() => {
     if (config.authType !== 'smartcard') return;
@@ -516,7 +533,44 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 />
                 <span>Enable Compression</span>
               </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary col-span-2">
+                <input
+                  type="checkbox"
+                  checked={config.x11Forwarding ?? false}
+                  onChange={(e) => update('x11Forwarding', e.target.checked)}
+                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                />
+                <span>Forward X11 GUI (-Y)</span>
+              </label>
             </div>
+
+            {config.x11Forwarding && (
+              <div className="rounded-lg border border-border-subtle bg-app-surface/50 p-2.5 space-y-2">
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  <span>X11 Display Location (default: 127.0.0.1:0.0 or :0)</span>
+                  <input
+                    value={config.x11Display ?? ''}
+                    onChange={(e) => update('x11Display', e.target.value)}
+                    className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="127.0.0.1:0.0"
+                  />
+                </label>
+                {x11ServerStatus && (
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    {x11ServerStatus.running ? (
+                      <span className="text-emerald-400">
+                        ✓ Local X11 server detected on {x11ServerStatus.display}
+                      </span>
+                    ) : (
+                      <span className="text-amber-400">
+                        ⚠ No local X11 server listening on {x11ServerStatus.display}. Start an X server (e.g. VcXsrv, Xming, or WSLg) on Windows.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1 text-txt-secondary">

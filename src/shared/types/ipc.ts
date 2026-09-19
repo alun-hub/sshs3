@@ -4,6 +4,7 @@ import type {
   SSHPtyExitEvent,
   DetectedSmartcardLib,
   CachedSmartcardAgent,
+  XServerStatus,
 } from './ssh';
 import type {
   FileEntry,
@@ -152,6 +153,10 @@ export const IPC_CHANNELS = {
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
   APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
+  APP_CHECK_X11_SERVER: 'app:check-x11-server',
+  X11_GET_STATUS: 'x11:get-status',
+  X11_START_SERVER: 'x11:start-server',
+  X11_STOP_SERVER: 'x11:stop-server',
   DIALOG_OPEN_FILE: 'dialog:open-file',
   DIALOG_OPEN_FOLDER: 'dialog:open-folder',
 } as const;
@@ -340,6 +345,14 @@ export interface MultiSSHApi {
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
   detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
+  /** Windows/Linux: check whether an X11 server is actively listening on the target display. */
+  checkX11Server(display?: string): Promise<{ running: boolean; display: string }>;
+  /** Windows: Get current status of managed/detected X server. */
+  x11GetStatus(customPath?: string, display?: string): Promise<XServerStatus>;
+  /** Windows: Start local X server (VcXsrv/Xming/custom). */
+  x11StartServer(options?: { customPath?: string; customArgs?: string; display?: string }): Promise<{ success: boolean; error?: string }>;
+  /** Windows: Stop managed local X server. */
+  x11StopServer(): Promise<{ success: boolean }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
   dialogOpenFolder(options?: { title?: string }): Promise<string | null>;
 }

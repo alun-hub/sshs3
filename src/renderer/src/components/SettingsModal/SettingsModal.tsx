@@ -17,6 +17,9 @@ import {
   Globe,
   FileCode,
   RefreshCw,
+  Play,
+  Square,
+  FolderOpen,
 } from 'lucide-react';
 import {
   SHORTCUT_DEFINITIONS,
@@ -26,7 +29,7 @@ import {
   type SessionExitAction,
   type SmartcardAuthMode,
 } from '@shared/types/settings';
-import type { DetectedSmartcardLib } from '@shared/types/ssh';
+import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
 
@@ -105,6 +108,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
   const [detectingSmartcard, setDetectingSmartcard] = useState(false);
 
+  const [x11ServerMode, setX11ServerMode] = useState<'auto' | 'manual' | 'always'>(
+    currentSettings.x11ServerMode ?? 'auto'
+  );
+  const [x11ServerPath, setX11ServerPath] = useState<string>(
+    currentSettings.x11ServerPath ?? ''
+  );
+  const [x11ServerArgs, setX11ServerArgs] = useState<string>(
+    currentSettings.x11ServerArgs ?? ''
+  );
+  const [x11Status, setX11Status] = useState<XServerStatus | null>(null);
+  const [x11Operating, setX11Operating] = useState<boolean>(false);
+
   useEffect(() => {
     if (open) {
       setActiveCategory('general');
@@ -121,6 +136,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
       setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
+      setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
+      setX11ServerPath(currentSettings.x11ServerPath ?? '');
+      setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
       setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
       setRecordingAction(null);
       setShortcutSearch('');
@@ -133,10 +151,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           if (libs) setSmartcardLibs(libs.filter((l) => l.exists));
         })
         ?.finally(() => setDetectingSmartcard(false));
+
+      void window.multissh
+        ?.x11GetStatus?.(currentSettings.x11ServerPath)
+        ?.then((status) => {
+          if (status) setX11Status(status);
+        });
     }
   }, [open, currentSettings]);
 
   if (!open) return null;
+
+  const refreshX11Status = async (customPath?: string) => {
+    try {
+      const status = await window.multissh?.x11GetStatus?.(customPath !== undefined ? customPath : x11ServerPath);
+      if (status) setX11Status(status);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleStartX11 = async () => {
+    setX11Operating(true);
+    try {
+      await window.multissh?.x11StartServer?.({
+        customPath: x11ServerPath || undefined,
+        customArgs: x11ServerArgs || undefined,
+      });
+      await refreshX11Status();
+    } finally {
+      setX11Operating(false);
+    }
+  };
+
+  const handleStopX11 = async () => {
+    setX11Operating(true);
+    try {
+      await window.multissh?.x11StopServer?.();
+      await refreshX11Status();
+    } finally {
+      setX11Operating(false);
+    }
+  };
+
+  const handleBrowseX11Path = async () => {
+    try {
+      const file = await window.multissh?.dialogOpenFile?.({
+        title: 'Select X Server Executable (vcxsrv.exe, xming.exe)',
+        filters: [{ name: 'Executable', extensions: ['exe'] }],
+      });
+      if (file) {
+        setX11ServerPath(file);
+        void refreshX11Status(file);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +225,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       confirmBeforeDelete,
       dotfilesPoolEnabled,
       smartcardAuthMode,
+      x11ServerMode,
+      x11ServerPath,
+      x11ServerArgs,
       shortcuts,
     });
     onClose();
@@ -547,6 +621,187 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           Leave the terminal open with no quick buttons (classic mode).
                         </span>
                       </label>
+                    </div>
+                  </div>
+
+                  {/* Local X11 Server (Windows GUI Forwarding) */}
+                  <div className="space-y-3 pt-3 border-t border-border-subtle">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="h-4 w-4 text-sky-400" />
+                        <label className="text-xs font-semibold text-txt-primary">
+                          Local X11 Server (GUI Forwarding)
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {x11Status?.running ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Running ({x11Status.display})
+                            {x11Status.managedByApp && x11Status.pid ? ` [PID ${x11Status.pid}]` : ''}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                            Stopped
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void refreshX11Status()}
+                          className="p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover rounded transition-colors"
+                          title="Refresh X server status"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-txt-muted">
+                      Allows Linux GUI applications (like xclock, gedit, Firefox, or IDEs) to display seamlessly on Windows when X11 forwarding is enabled.
+                    </p>
+
+                    {/* Server Mode */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label
+                        className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          x11ServerMode === 'auto'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="x11ServerMode"
+                            checked={x11ServerMode === 'auto'}
+                            onChange={() => setX11ServerMode('auto')}
+                            className="hidden"
+                          />
+                          <span>Auto-start (Default)</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Starts VcXsrv on demand when an X11 session opens.
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          x11ServerMode === 'always'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="x11ServerMode"
+                            checked={x11ServerMode === 'always'}
+                            onChange={() => setX11ServerMode('always')}
+                            className="hidden"
+                          />
+                          <span>Always Running</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Launches in background when sshs3 starts up.
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          x11ServerMode === 'manual'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="x11ServerMode"
+                            checked={x11ServerMode === 'manual'}
+                            onChange={() => setX11ServerMode('manual')}
+                            className="hidden"
+                          />
+                          <span>Manual / External</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Manage server manually or use WSLg / external X server.
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Path & Controls */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-medium text-txt-primary">X Server Binary Path</label>
+                        {x11Status?.available && !x11ServerPath && (
+                          <span className="text-[10px] text-emerald-400">
+                            Auto-detected: {x11Status.executablePath}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={x11ServerPath}
+                          onChange={(e) => {
+                            setX11ServerPath(e.target.value);
+                            void refreshX11Status(e.target.value);
+                          }}
+                          placeholder={x11Status?.executablePath || 'Auto-detect (e.g. C:\\Program Files\\VcXsrv\\vcxsrv.exe)'}
+                          className="flex-1 rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleBrowseX11Path()}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border-subtle bg-app-surface text-xs text-txt-primary hover:bg-app-surface-hover"
+                          title="Browse executable..."
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          <span>Browse</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Custom Arguments */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-txt-primary">Server Arguments</label>
+                      <input
+                        type="text"
+                        value={x11ServerArgs}
+                        onChange={(e) => setX11ServerArgs(e.target.value)}
+                        placeholder=":0 -multiwindow -clipboard -wgl -ac"
+                        className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
+                      />
+                    </div>
+
+                    {/* Manual start/stop actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      {x11Status?.running ? (
+                        <button
+                          type="button"
+                          disabled={x11Operating || !x11Status.managedByApp}
+                          onClick={() => void handleStopX11()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 disabled:opacity-50 transition-colors"
+                          title={x11Status.managedByApp ? 'Stop server' : 'External server cannot be stopped from here'}
+                        >
+                          <Square className="h-3 w-3" />
+                          <span>Stop Server</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={x11Operating || (!x11Status?.available && !x11ServerPath)}
+                          onClick={() => void handleStartX11()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                        >
+                          <Play className="h-3 w-3" />
+                          <span>Start Server Now</span>
+                        </button>
+                      )}
+                      {!x11Status?.available && !x11ServerPath && (
+                        <span className="text-[11px] text-amber-400">
+                          VcXsrv not detected. Please install VcXsrv or specify path above.
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

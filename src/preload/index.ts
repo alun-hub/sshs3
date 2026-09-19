@@ -25,6 +25,7 @@ import type {
   SSHPtyExitEvent,
   DetectedSmartcardLib,
   CachedSmartcardAgent,
+  XServerStatus,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -427,6 +428,18 @@ export const api: MultiSSHApi = {
 
   detectLocalShells: (): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS),
+
+  checkX11Server: (display?: string): Promise<{ running: boolean; display: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, display),
+
+  x11GetStatus: (customPath?: string, display?: string): Promise<XServerStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.X11_GET_STATUS, customPath, display),
+
+  x11StartServer: (options?: { customPath?: string; customArgs?: string; display?: string }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.X11_START_SERVER, options),
+
+  x11StopServer: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.X11_STOP_SERVER),
 
   dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),

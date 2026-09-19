@@ -41,6 +41,7 @@ import {
   unwrapMasterPasswords,
 } from './smartcard/SmartcardSyncService';
 import { encryptSecretValue, decryptSecretValue } from './crypto/SecretFieldCrypto';
+import { XServerManager } from './x11/XServerManager';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
@@ -201,6 +202,20 @@ export class IpcBridge {
     this.registerFileEditorHandlers();
     this.registerGeneralHandlers();
     this.setupEventListeners();
+
+    if (process.platform === 'win32') {
+      void this.settingsStore
+        .getSettings()
+        .then((settings) => {
+          if (settings.x11ServerMode === 'always') {
+            void XServerManager.ensureRunning({
+              customPath: settings.x11ServerPath,
+              customArgs: settings.x11ServerArgs,
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   private registerHandler(channel: string, handler: (...args: any[]) => any): void {
@@ -222,6 +237,21 @@ export class IpcBridge {
         let config = options.config;
         if (!options.local && config) {
           config = await this.prepareSmartcardConfig(config);
+
+          if (config.x11Forwarding && process.platform === 'win32') {
+            try {
+              const settings = await this.settingsStore.getSettings();
+              if (settings.x11ServerMode !== 'manual') {
+                await XServerManager.ensureRunning({
+                  customPath: settings.x11ServerPath,
+                  customArgs: settings.x11ServerArgs,
+                  display: config.x11Display,
+                });
+              }
+            } catch {
+              // Ignore failure to launch X server; SSH will still connect
+            }
+          }
         }
 
         const session = options.local
@@ -1781,6 +1811,34 @@ export class IpcBridge {
       return { pwsh, wsl, wslDistros };
     });
 
+    this.registerHandler(
+      IPC_CHANNELS.APP_CHECK_X11_SERVER,
+      async (_event, displayStr?: string) => {
+        return await XServerManager.isListening(displayStr);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.X11_GET_STATUS,
+      async (_event, customPath?: string, display?: string) => {
+        return await XServerManager.getStatus(customPath, display);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.X11_START_SERVER,
+      async (
+        _event,
+        options?: { customPath?: string; customArgs?: string; display?: string }
+      ) => {
+        return await XServerManager.startServer(options);
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.X11_STOP_SERVER, async () => {
+      return await XServerManager.stopServer();
+    });
+
     this.registerHandler(IPC_CHANNELS.SSH_AGENT_STATUS, async () => {
       return await AgentLifecycleManager.getStatus();
     });
@@ -1949,5 +2007,6 @@ export class IpcBridge {
     }
     this.lockAllGlobalSmartcardAgents();
     await AgentLifecycleManager.stopManagedAgent();
+    await XServerManager.stopServer();
   }
 }
