@@ -24,6 +24,7 @@ import type {
   PtyOptions,
   SSHPtyExitEvent,
   DetectedSmartcardLib,
+  CachedSmartcardAgent,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -96,6 +97,11 @@ export const api: MultiSSHApi = {
 
   smartcardValidate: (path: string): Promise<{ valid: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_VALIDATE, path),
+
+  smartcardLockAll: (): Promise<{ locked: number }> => ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL),
+
+  smartcardListCached: (): Promise<CachedSmartcardAgent[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED),
 
   onAskpassPrompt: (callback: (event: { id: string; prompt: string; sessionId?: string }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: { id: string; prompt: string; sessionId?: string }) =>

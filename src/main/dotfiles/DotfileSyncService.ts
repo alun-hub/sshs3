@@ -48,9 +48,10 @@ export class DotfileSyncService {
   public async computeDiff(
     config: SSHConnectionConfig,
     pool: DotfilePool,
-    hostVerifier?: SshHostVerifierFn
+    hostVerifier?: SshHostVerifierFn,
+    pinPromptHandler?: (prompt: string) => Promise<string> | string
   ): Promise<{ provider: SFTPStorageProvider; entries: DotfileDiffEntry[] }> {
-    const provider = this.createProvider(config, hostVerifier);
+    const provider = this.createProvider(config, hostVerifier, pinPromptHandler);
     await provider.ensureConnected();
 
     const homeDir = await provider.getHomeDir();
@@ -117,7 +118,11 @@ export class DotfileSyncService {
     }
   }
 
-  private createProvider(config: SSHConnectionConfig, hostVerifier?: SshHostVerifierFn): SFTPStorageProvider {
+  private createProvider(
+    config: SSHConnectionConfig,
+    hostVerifier?: SshHostVerifierFn,
+    pinPromptHandler?: (prompt: string) => Promise<string> | string
+  ): SFTPStorageProvider {
     return new SFTPStorageProvider(
       {
         id: `dotfiles-${crypto.randomUUID()}`,
@@ -138,7 +143,8 @@ export class DotfileSyncService {
         macs: config.macs,
       },
       undefined,
-      hostVerifier
+      hostVerifier,
+      pinPromptHandler
     );
   }
 }

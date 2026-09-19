@@ -9,6 +9,7 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
+import { loadSmartcardIntoPrivateAgent, listAgentIdentities } from './smartcard/SmartcardAgentLoader';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
 import { S3StorageProvider } from './storage/S3StorageProvider';
@@ -46,6 +47,7 @@ import type {
   SSHConnectionConfig,
   PtyOptions,
   SSHPtyExitEvent,
+  CachedSmartcardAgent,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -126,6 +128,12 @@ export class IpcBridge {
   private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
   private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
+  /** sessionId -> pid of a private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
+  private smartcardSessionAgents = new Map<string, number>();
+  /** pkcs11LibPath -> the app-lifetime shared agent for 'agent-global' mode, keyed per smartcard library so multiple different cards can each be cached independently. */
+  private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string }>();
+  /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
+  private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string }>>();
 
   // Event listener references for clean teardown
   private onPtyData?: (event: { sessionId: string; data: string }) => void;
@@ -200,18 +208,24 @@ export class IpcBridge {
         if (!options || (!options.config && !options.local)) {
           throw new Error('Connection config is required to create terminal');
         }
+
+        let config = options.config;
+        if (!options.local && config) {
+          config = await this.prepareSmartcardConfig(config);
+        }
+
         const session = options.local
           ? await this.sshPtyManager.createShellSession(options.ptyOptions)
-          : await this.sshPtyManager.createSession(options.config!, options.ptyOptions);
+          : await this.sshPtyManager.createSession(config!, options.ptyOptions);
 
-        if (!options.local && options.config) {
+        if (!options.local && config) {
           // Fire-and-forget: never let the dotfiles check delay or fail the
           // terminal session itself, and give the PTY a moment to become
           // interactive before a second connection competes for the network.
-          const config = options.config;
+          const resolvedConfig = config;
           const sessionId = session.sessionId;
           setTimeout(() => {
-            void this.runDotfilesSyncCheck(sessionId, config).catch(() => {});
+            void this.runDotfilesSyncCheck(sessionId, resolvedConfig).catch(() => {});
           }, 1500);
         }
 
@@ -279,6 +293,14 @@ export class IpcBridge {
         prompt.callback(pin);
       }
     );
+
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_LOCK_ALL, async () => {
+      return { locked: this.lockAllGlobalSmartcardAgents() };
+    });
+
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_LIST_CACHED, async () => {
+      return this.listGlobalSmartcardAgents();
+    });
 
     this.registerHandler(
       IPC_CHANNELS.HOSTKEY_RESPOND,
@@ -812,6 +834,146 @@ export class IpcBridge {
   }
 
   /**
+   * Resolves the effective smartcard PIN-caching mode (profile override, else
+   * the global default) and stamps it onto the config so downstream code
+   * (SSHPtyManager, the dotfiles-sync scheduling above) can act on it without
+   * each needing their own settings lookup. A no-op for non-smartcard auth.
+   */
+  /**
+   * For smartcard profiles in 'agent-per-session' mode, loads the card into
+   * a private ssh-agent *before* the PTY is spawned (prompting for the PIN
+   * once via the normal askpass UI), and returns a config pointing the PTY
+   * at that agent via IdentityAgent instead of a direct -I login.
+   *
+   * This sequencing matters: PIV/PKCS#11 readers generally only support one
+   * active transaction at a time, so if the PTY's own -I login and a
+   * separately-loaded agent both talk to the card around the same moment,
+   * they can collide and both fail. Loading the agent first and having the
+   * PTY authenticate purely through it means only one process ever opens a
+   * PKCS#11 session for a given connection.
+   *
+   * In 'always-prompt' mode (the default), or if loading the agent fails,
+   * this is a no-op — the PTY falls back to its own direct -I login, and
+   * dotfiles sync (if any) prompts for its own PIN independently.
+   */
+  private async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
+      return config;
+    }
+
+    const settings = await this.settingsStore.getSettings();
+    const mode = settings.smartcardAuthMode ?? 'always-prompt';
+
+    // Pin the session id now so the askpass prompt below and the eventual
+    // PTY session correlate to the same id.
+    const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
+    const configWithId = { ...config, id: sessionId };
+
+    if (mode === 'agent-global') {
+      try {
+        const socketPath = await this.getOrLoadGlobalSmartcardAgent(config.pkcs11LibPath, sessionId);
+        return { ...configWithId, agentPath: socketPath };
+      } catch (err) {
+        console.warn(
+          'IpcBridge: failed to load smartcard into the global agent, falling back to per-connection prompts:',
+          err
+        );
+        return configWithId;
+      }
+    }
+
+    if (mode !== 'agent-per-session') {
+      return configWithId;
+    }
+
+    console.log(`[smartcard] prepareSmartcardConfig: starting shared-agent preload for session ${sessionId}`);
+    try {
+      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(config.pkcs11LibPath, (prompt) =>
+        this.sshPtyManager.promptForPin(sessionId, prompt)
+      );
+      console.log(
+        `[smartcard] prepareSmartcardConfig: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
+      );
+      this.smartcardSessionAgents.set(sessionId, pid);
+      return { ...configWithId, agentPath: socketPath };
+    } catch (err) {
+      console.warn(
+        'IpcBridge: failed to load smartcard into a private session agent, falling back to per-connection prompts:',
+        err
+      );
+      return configWithId;
+    }
+  }
+
+  /**
+   * Returns the socket path for the app-lifetime shared agent holding the
+   * given PKCS#11 library, loading it (prompting for the PIN once) if it
+   * isn't already cached. Concurrent callers for the same library share the
+   * same in-flight load rather than each spawning their own agent.
+   */
+  private async getOrLoadGlobalSmartcardAgent(pkcs11LibPath: string, sessionId: string): Promise<string> {
+    const cached = this.globalSmartcardAgents.get(pkcs11LibPath);
+    if (cached) {
+      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: reusing cached global agent for ${pkcs11LibPath}`);
+      return cached.socketPath;
+    }
+
+    const inFlight = this.globalSmartcardAgentLoads.get(pkcs11LibPath);
+    if (inFlight) {
+      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: awaiting in-flight load for ${pkcs11LibPath}`);
+      const { socketPath } = await inFlight;
+      return socketPath;
+    }
+
+    console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading global agent for ${pkcs11LibPath}`);
+    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, (prompt) =>
+      this.sshPtyManager.promptForPin(sessionId, prompt)
+    );
+    this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
+
+    try {
+      const result = await loadPromise;
+      this.globalSmartcardAgents.set(pkcs11LibPath, result);
+      console.log(
+        `[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, pid=${result.pid}, socket=${result.socketPath}`
+      );
+      return result.socketPath;
+    } finally {
+      this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
+    }
+  }
+
+  /**
+   * Kills every cached global smartcard agent (the 'agent-global' mode's
+   * "lock card" action), forcing the next connection that needs any of
+   * those cards to prompt for the PIN again.
+   */
+  private lockAllGlobalSmartcardAgents(): number {
+    let count = 0;
+    for (const { pid } of this.globalSmartcardAgents.values()) {
+      AgentLifecycleManager.killPrivateAgent(pid);
+      count++;
+    }
+    this.globalSmartcardAgents.clear();
+    return count;
+  }
+
+  /**
+   * Reports what's currently cached under 'agent-global' PIN caching mode:
+   * which PKCS#11 libraries have an unlocked agent, and which certificate(s)
+   * each one is holding (queried live from the agent via `ssh-add -l`).
+   */
+  private async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
+    const entries = Array.from(this.globalSmartcardAgents.entries());
+    return Promise.all(
+      entries.map(async ([pkcs11LibPath, { socketPath }]) => ({
+        pkcs11LibPath,
+        identities: await listAgentIdentities(socketPath),
+      }))
+    );
+  }
+
+  /**
    * Checks the host's assigned dotfiles pool (if any) against the live
    * server and applies it per the profile's sync policy. A no-op unless the
    * feature is enabled globally and the profile has explicitly opted in with
@@ -819,6 +981,9 @@ export class IpcBridge {
    * SSHConnectionConfig.dotfilesSyncPolicy.
    */
   private async runDotfilesSyncCheck(sessionId: string, config: SSHConnectionConfig): Promise<void> {
+    console.log(
+      `[smartcard] runDotfilesSyncCheck: firing for session ${sessionId}, poolId=${config.poolId}, policy=${config.dotfilesSyncPolicy}, agentPath=${config.agentPath ?? '(none — will load its own if smartcard)'}`
+    );
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
     const settings = await this.settingsStore.getSettings();
@@ -834,9 +999,14 @@ export class IpcBridge {
       onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
     });
 
+    const pinPromptHandler =
+      config.authType === 'smartcard' && config.pkcs11LibPath
+        ? (prompt: string) => this.sshPtyManager.promptForPin(sessionId, prompt)
+        : undefined;
+
     let provider: Awaited<ReturnType<DotfileSyncService['computeDiff']>>['provider'] | undefined;
     try {
-      const diff = await this.dotfileSyncService.computeDiff(config, pool, hostVerifier);
+      const diff = await this.dotfileSyncService.computeDiff(config, pool, hostVerifier, pinPromptHandler);
       provider = diff.provider;
       if (diff.entries.length === 0) {
         return;
@@ -1377,6 +1547,14 @@ export class IpcBridge {
         }
       }
 
+      // Tear down any private smartcard agent that was pre-loaded for this session.
+      const smartcardAgentPid = this.smartcardSessionAgents.get(sessionId);
+      if (smartcardAgentPid !== undefined) {
+        AgentLifecycleManager.killPrivateAgent(smartcardAgentPid);
+        this.smartcardSessionAgents.delete(sessionId);
+      }
+
+
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
         const event: SSHPtyExitEvent = { exitCode, signal };
@@ -1480,6 +1658,7 @@ export class IpcBridge {
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll();
     await this.fileEditorService.dispose();
+    this.lockAllGlobalSmartcardAgents();
     await AgentLifecycleManager.stopManagedAgent();
   }
 }

@@ -287,6 +287,21 @@ export class SSHPtyManager extends EventEmitter {
   private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
 
   /**
+   * Asks the UI (via the same 'askpass' channel used for in-session smartcard
+   * prompts) for a PIN/passphrase, e.g. to load a smartcard into a private
+   * ssh-agent ahead of or independently of a PTY login. Resolves to '' if
+   * nothing is listening.
+   */
+  public async promptForPin(sessionId: string, prompt: string): Promise<string> {
+    if (this.listenerCount('askpass') === 0) {
+      return '';
+    }
+    return new Promise<string>((resolve) => {
+      this.emit('askpass', { sessionId, prompt, callback: (pin: string) => resolve(pin) });
+    });
+  }
+
+  /**
    * Reconnects an existing session by spawning a new underlying SSH process.
    */
   public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
@@ -306,6 +321,8 @@ export class SSHPtyManager extends EventEmitter {
 
     if (config.agentPath) {
       env.SSH_AUTH_SOCK = config.agentPath;
+    } else if (config.authType === 'smartcard') {
+      delete env.SSH_AUTH_SOCK;
     }
 
     const sshArgs = SmartcardDetector.buildSSHArguments(config);
@@ -363,7 +380,7 @@ export class SSHPtyManager extends EventEmitter {
               this.emit('askpass', {
                 sessionId,
                 prompt,
-                callback: (pin: string) => resolve(pin),
+                callback: (resolvedPin: string) => resolve(resolvedPin),
               });
             });
           }
@@ -384,6 +401,8 @@ export class SSHPtyManager extends EventEmitter {
 
     if (config.agentPath) {
       env.SSH_AUTH_SOCK = config.agentPath;
+    } else if (config.authType === 'smartcard') {
+      delete env.SSH_AUTH_SOCK;
     }
 
     const sshArgs = SmartcardDetector.buildSSHArguments(config);

@@ -62,6 +62,19 @@ export interface DetectedSmartcardLib {
   exists: boolean;
 }
 
+/** One identity (certificate/key) an app-managed smartcard agent currently holds. */
+export interface CachedSmartcardIdentity {
+  comment: string; // e.g. "PIV AUTH pubkey" — the certificate's label
+  fingerprint: string;
+  keyType: string;
+}
+
+/** One cached global smartcard agent ('agent-global' PIN caching mode), and what it holds. */
+export interface CachedSmartcardAgent {
+  pkcs11LibPath: string;
+  identities: CachedSmartcardIdentity[];
+}
+
 /** Local shell to spawn on Windows. Ignored on macOS/Linux, which always use the user's $SHELL. */
 export type LocalShellType = 'default' | 'cmd' | 'powershell' | 'pwsh';
 

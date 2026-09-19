@@ -3,6 +3,7 @@ import type {
   PtyOptions,
   SSHPtyExitEvent,
   DetectedSmartcardLib,
+  CachedSmartcardAgent,
 } from './ssh';
 import type {
   FileEntry,
@@ -40,6 +41,8 @@ export const IPC_CHANNELS = {
   // Smartcard
   SMARTCARD_DETECT: 'smartcard:detect',
   SMARTCARD_VALIDATE: 'smartcard:validate',
+  SMARTCARD_LOCK_ALL: 'smartcard:lock-all',
+  SMARTCARD_LIST_CACHED: 'smartcard:list-cached',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
 
@@ -202,6 +205,8 @@ export interface MultiSSHApi {
   // Smartcard
   smartcardDetect(): Promise<DetectedSmartcardLib[]>;
   smartcardValidate(path: string): Promise<{ valid: boolean; error?: string }>;
+  smartcardLockAll(): Promise<{ locked: number }>;
+  smartcardListCached(): Promise<CachedSmartcardAgent[]>;
   onAskpassPrompt(callback: (event: { id: string; prompt: string; sessionId?: string }) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
 

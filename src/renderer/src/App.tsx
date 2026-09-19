@@ -433,6 +433,9 @@ export const App: React.FC = () => {
             onNewTab={handleNewTab}
             onOpenProfiles={handleOpenProfiles}
             onOpenSettings={handleOpenSettings}
+            showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
+            onLockSmartcard={() => window.multissh!.smartcardLockAll()}
+            onListCachedSmartcards={() => window.multissh!.smartcardListCached()}
           />
         </div>
       </header>

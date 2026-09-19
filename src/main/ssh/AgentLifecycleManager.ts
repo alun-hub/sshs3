@@ -189,6 +189,42 @@ export class AgentLifecycleManager {
   }
 
   /**
+   * Spawns a fresh, private ssh-agent dedicated to a single caller and never
+   * shared with the desktop's own agent (whatever the inherited
+   * SSH_AUTH_SOCK points at). Unlike ensureAgent(), this never reuses an
+   * existing agent and never mutates process.env, so loading a smartcard
+   * into it cannot leak into — or fight with — the user's desktop
+   * keyring/wallet agent. Callers are responsible for killing it via
+   * killPrivateAgent() once done.
+   */
+  public static async spawnPrivateAgent(): Promise<{ pid: number; socketPath: string }> {
+    if (process.platform === 'win32') {
+      throw new Error('Private ssh-agent spawning is not supported on Windows.');
+    }
+
+    const { stdout } = await execFileAsync('ssh-agent', ['-s']);
+    const sockMatch = stdout.match(/SSH_AUTH_SOCK=([^;]+);/);
+    const pidMatch = stdout.match(/SSH_AGENT_PID=(\d+);/);
+
+    if (!sockMatch?.[1] || !pidMatch?.[1]) {
+      throw new Error('Failed to parse ssh-agent output while spawning a private agent.');
+    }
+
+    return { pid: parseInt(pidMatch[1], 10), socketPath: sockMatch[1].trim() };
+  }
+
+  /**
+   * Terminates a private agent previously returned by spawnPrivateAgent().
+   */
+  public static killPrivateAgent(pid: number): void {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // Already dead or permission denied
+    }
+  }
+
+  /**
    * Stops the managed ssh-agent process if one was spawned by this app.
    */
   public static async stopManagedAgent(): Promise<void> {

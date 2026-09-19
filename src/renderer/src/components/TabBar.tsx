@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Folder, X, Plus, Server, Settings } from 'lucide-react';
+import { Terminal, Folder, X, Plus, Server, Settings, Unlock, Loader2, CreditCard } from 'lucide-react';
+import type { CachedSmartcardAgent } from '@shared/types/ssh';
 
 export type TabType = 'terminal' | 'filemanager';
 
@@ -17,6 +18,10 @@ export interface TabBarProps {
   onNewTab: (type: TabType) => void;
   onOpenProfiles?: () => void;
   onOpenSettings?: () => void;
+  /** Shown only when Settings > Security > Smartcard PIN Caching is set to 'Global (App Lifetime)'. */
+  showLockSmartcardButton?: boolean;
+  onLockSmartcard?: () => Promise<{ locked: number }>;
+  onListCachedSmartcards?: () => Promise<CachedSmartcardAgent[]>;
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -27,25 +32,39 @@ export const TabBar: React.FC<TabBarProps> = ({
   onNewTab,
   onOpenProfiles,
   onOpenSettings,
+  showLockSmartcardButton,
+  onLockSmartcard,
+  onListCachedSmartcards,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [lockingSmartcard, setLockingSmartcard] = useState(false);
+  const [lockFeedback, setLockFeedback] = useState<string | null>(null);
+
+  const [isSmartcardMenuOpen, setIsSmartcardMenuOpen] = useState(false);
+  const smartcardMenuRef = useRef<HTMLDivElement>(null);
+  const [cachedAgents, setCachedAgents] = useState<CachedSmartcardAgent[] | null>(null);
+  const [loadingCachedAgents, setLoadingCachedAgents] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setIsMenuOpen(false);
       }
+      if (smartcardMenuRef.current && !smartcardMenuRef.current.contains(e.target as Node)) {
+        setIsSmartcardMenuOpen(false);
+      }
     };
-    if (isMenuOpen) {
+    if (isMenuOpen || isSmartcardMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isMenuOpen]);
+  }, [isMenuOpen, isSmartcardMenuOpen]);
 
   return (
+    <>
     <div
       role="tablist"
       aria-label="Open tabs"
@@ -152,8 +171,101 @@ export const TabBar: React.FC<TabBarProps> = ({
         )}
       </div>
 
-      {/* Quick links: Connections & Settings */}
+      {/* Quick links: Smartcard lock, Connections & Settings */}
       <div className="flex items-center gap-1 border-l border-border-subtle pl-2">
+        {showLockSmartcardButton && (
+          <div className="relative flex items-center" ref={smartcardMenuRef}>
+            <button
+              type="button"
+              data-testid="quick-lock-smartcard-btn"
+              title="Cached smartcard identities"
+              onClick={() => {
+                const next = !isSmartcardMenuOpen;
+                setIsSmartcardMenuOpen(next);
+                if (next) {
+                  setLoadingCachedAgents(true);
+                  void onListCachedSmartcards?.()
+                    .then((agents) => setCachedAgents(agents))
+                    .catch(() => setCachedAgents([]))
+                    .finally(() => setLoadingCachedAgents(false));
+                }
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 transition-colors"
+            >
+              <CreditCard className="h-4 w-4" />
+            </button>
+
+            {isSmartcardMenuOpen && (
+              <div className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
+                <div className="mb-1.5 text-[11px] font-semibold text-txt-primary">Cached smartcard identities</div>
+
+                {loadingCachedAgents ? (
+                  <div className="flex items-center gap-1.5 py-2 text-[11px] text-txt-muted">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading...
+                  </div>
+                ) : !cachedAgents || cachedAgents.length === 0 ? (
+                  <p className="py-1 text-[11px] text-txt-muted">Nothing cached — no PIN unlocked right now.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {cachedAgents.map((agent) => (
+                      <li key={agent.pkcs11LibPath}>
+                        <div className="truncate font-mono text-[10px] text-txt-muted" title={agent.pkcs11LibPath}>
+                          {agent.pkcs11LibPath}
+                        </div>
+                        {agent.identities.length === 0 ? (
+                          <div className="text-[11px] text-txt-muted">(no identities reported)</div>
+                        ) : (
+                          <ul className="mt-0.5 space-y-0.5">
+                            {agent.identities.map((id) => (
+                              <li key={id.fingerprint} className="flex items-center gap-1.5 text-[11px] text-txt-primary">
+                                <span className="truncate">{id.comment}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-txt-muted">
+                                  ({id.keyType})
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <button
+                  type="button"
+                  disabled={lockingSmartcard || !cachedAgents || cachedAgents.length === 0}
+                  onClick={() => {
+                    setLockingSmartcard(true);
+                    setLockFeedback(null);
+                    void onLockSmartcard?.()
+                      .then(({ locked }) => {
+                        setLockFeedback(
+                          locked > 0
+                            ? `Smartcard cache cleared — ${locked} cached agent${locked === 1 ? '' : 's'} locked`
+                            : 'No cached smartcard agents to clear'
+                        );
+                        setCachedAgents([]);
+                        setIsSmartcardMenuOpen(false);
+                      })
+                      .finally(() => {
+                        setLockingSmartcard(false);
+                        setTimeout(() => setLockFeedback(null), 4000);
+                      });
+                  }}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+                >
+                  {lockingSmartcard ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Unlock className="h-3.5 w-3.5" />
+                  )}
+                  Lock All Now
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           data-testid="quick-profiles-btn"
@@ -174,6 +286,18 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
       </div>
     </div>
+
+    {lockFeedback && (
+      <div
+        data-testid="lock-smartcard-toast"
+        role="status"
+        className="fixed top-12 right-3 z-50 flex w-full max-w-xs items-center gap-1.5 rounded-lg border border-amber-500/30 bg-app-card px-3 py-2 text-[11px] text-amber-300 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+      >
+        <Unlock className="h-3.5 w-3.5 shrink-0" />
+        {lockFeedback}
+      </div>
+    )}
+    </>
   );
 };
 

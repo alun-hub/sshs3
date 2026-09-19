@@ -1,15 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import SftpClient from 'ssh2-sftp-client';
 import { Client as SSH2Client } from 'ssh2';
 import { createProxySocket } from '../proxy/proxySocket';
-import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
-
-const execFileAsync = promisify(execFile);
+import { loadSmartcardIntoPrivateAgent } from '../smartcard/SmartcardAgentLoader';
 import {
   BaseStorageProvider,
   formatDate,
@@ -125,8 +121,15 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   private connectionPromise: Promise<void> | null = null;
   private hostVerifier?: SshHostVerifierFn;
   private cachedHomeDir?: string;
+  private privateAgentPid?: number;
+  private pinPromptHandler?: (prompt: string) => Promise<string> | string;
 
-  constructor(config: SFTPConfig, client?: SftpClient, hostVerifier?: SshHostVerifierFn) {
+  constructor(
+    config: SFTPConfig,
+    client?: SftpClient,
+    hostVerifier?: SshHostVerifierFn,
+    pinPromptHandler?: (prompt: string) => Promise<string> | string
+  ) {
     super();
     this.config = { ...config };
     const port = config.port ?? 22;
@@ -134,6 +137,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     this.name = config.name ?? `${config.username}@${config.host}`;
     this.client = client ?? new SftpClient();
     this.hostVerifier = hostVerifier;
+    this.pinPromptHandler = pinPromptHandler;
     this.attachLifecycleListeners(this.client);
   }
 
@@ -235,69 +239,32 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   /**
    * Attempts to ensure the PKCS#11 smartcard provider is loaded into the user's ssh-agent.
    */
+  /**
+   * Ensures the configured PKCS#11 module's key is available to an
+   * ssh-agent that this.buildConnectCandidates() can authenticate through
+   * (ssh2 has no native PKCS#11 support).
+   *
+   * If config.agentPath is already set, an agent has already been prepared
+   * by the caller (e.g. IpcBridge's 'agent-per-session' smartcard mode) and
+   * is trusted to already hold the key — nothing to do here. Otherwise a
+   * private, ephemeral agent is spawned and loaded just for this one
+   * connection, and torn down again in disconnect(). This never touches the
+   * process's inherited SSH_AUTH_SOCK (the desktop's own agent/wallet),
+   * which would otherwise register the card there and cause the OS to
+   * prompt for its PIN independently of sshs3's own UI.
+   */
   private async loadSmartcardIntoAgent(): Promise<void> {
     const libPath = this.config.pkcs11LibPath;
-    if (!libPath) return;
+    if (!libPath || this.config.agentPath) return;
 
-    const agentStatus = await AgentLifecycleManager.ensureAgent();
-    const agentSock =
-      this.config.agentPath ??
-      agentStatus.socketPath ??
-      (process.platform === 'win32'
-        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\openssh-ssh-agent'
-        : process.env.SSH_AUTH_SOCK);
+    console.log(`[smartcard] SFTPStorageProvider(${this.id}): no agentPath provided, loading its own ephemeral agent`);
+    const staticPin = (this.config as any).pin || this.config.passphrase;
+    const promptHandler = this.pinPromptHandler ?? (() => staticPin ?? '');
 
-    if (!agentSock || !agentStatus.isRunning) {
-      if (process.platform === 'win32') {
-        throw new Error(
-          'Smartcard authentication for SFTP requires the Windows OpenSSH Authentication Agent service. ' +
-          'Please start it by running in Administrator PowerShell:\r\n' +
-          'Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent'
-        );
-      } else {
-        throw new Error(
-          'Smartcard authentication for SFTP requires ssh-agent, but none is running and automatic startup failed: ' +
-          (agentStatus.error || 'Check openssh-client installation.')
-        );
-      }
-    }
-
-    try {
-      const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
-      const env: NodeJS.ProcessEnv = { ...process.env, SSH_AUTH_SOCK: agentSock };
-
-      const listRes = await execFileAsync(sshAddBin, ['-l'], { env }).catch(() => ({ stdout: '' }));
-      if (listRes.stdout && listRes.stdout.includes(libPath)) {
-        return;
-      }
-
-      let askpassServer: AskpassServer | undefined;
-      let askpassEnv: Record<string, string> = {};
-      const pin = (this.config as any).pin || this.config.passphrase;
-
-      if (pin) {
-        askpassServer = new AskpassServer({
-          promptHandler: () => pin,
-        });
-        await askpassServer.start();
-        askpassEnv = askpassServer.getEnv();
-      }
-
-      try {
-        await execFileAsync(sshAddBin, ['-s', libPath], {
-          env: {
-            ...env,
-            ...askpassEnv,
-          },
-        });
-      } finally {
-        if (askpassServer) {
-          await askpassServer.stop();
-        }
-      }
-    } catch (err) {
-      console.warn('SFTPStorageProvider: Attempting ssh-add -s smartcard loading:', err);
-    }
+    const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, promptHandler);
+    console.log(`[smartcard] SFTPStorageProvider(${this.id}): ephemeral agent loaded OK, pid=${pid}, socket=${socketPath}`);
+    this.privateAgentPid = pid;
+    this.config.agentPath = socketPath;
   }
 
   /**
@@ -732,6 +699,10 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       if (this.jumpClient) {
         try { this.jumpClient.end(); } catch { /* ignore */ }
         this.jumpClient = undefined;
+      }
+      if (this.privateAgentPid !== undefined) {
+        AgentLifecycleManager.killPrivateAgent(this.privateAgentPid);
+        this.privateAgentPid = undefined;
       }
       this.isConnected = false;
     }

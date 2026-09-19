@@ -335,6 +335,10 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               No PKCS#11 libraries automatically detected. Please enter path or browse manually.
             </span>
           )}
+
+          <p className="text-[11px] text-txt-muted pt-1">
+            PIN caching behavior is set globally under Settings &gt; Security &amp; Smartcard.
+          </p>
         </div>
       )}
 

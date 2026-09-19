@@ -136,9 +136,29 @@ export class SmartcardDetector {
       args.push('-J', config.proxyJump.trim());
     }
 
-    // Smartcard PKCS#11 library argument (-I <path>)
+    // Smartcard authentication
     if (config.authType === 'smartcard' && config.pkcs11LibPath) {
-      args.push('-I', config.pkcs11LibPath);
+      console.log(
+        `[smartcard] buildSSHArguments: authType=smartcard, agentPath=${config.agentPath ?? '(none — using direct -I)'}`
+      );
+      if (config.agentPath) {
+        // A private agent was pre-loaded with the smartcard's key (agent-per-session
+        // mode) — authenticate through it instead of a second direct PKCS#11 login,
+        // so the PIN is only entered once for the whole session. Deliberately no
+        // IdentitiesOnly here: that option restricts ssh to *explicitly configured*
+        // identity files, hiding whatever the agent offers (including our just-loaded
+        // smartcard key) unless separately referenced with -i — the opposite of what
+        // we want. It's safe to let ssh use whatever this agent offers since it's our
+        // own private, freshly-spawned agent holding only this one key.
+        args.push('-o', `IdentityAgent=${config.agentPath}`);
+      } else {
+        args.push('-I', config.pkcs11LibPath);
+        // Prevent the desktop's own ssh-agent/wallet (e.g. gnome-keyring, KWallet)
+        // from independently prompting for the same smartcard's PIN alongside
+        // our own askpass-driven -I flow.
+        args.push('-o', 'IdentitiesOnly=yes');
+        args.push('-o', 'IdentityAgent=none');
+      }
     }
 
     // Identity file / private key argument (-i <path>)

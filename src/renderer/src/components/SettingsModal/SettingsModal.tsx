@@ -14,6 +14,7 @@ import {
   Search,
   CheckCircle2,
   Lock,
+  Globe,
   FileCode,
   RefreshCw,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import {
   type AppSettings,
   type AppTheme,
   type SessionExitAction,
+  type SmartcardAuthMode,
 } from '@shared/types/settings';
 import type { DetectedSmartcardLib } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
@@ -83,6 +85,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [dotfilesPoolEnabled, setDotfilesPoolEnabled] = useState<boolean>(
     currentSettings.dotfilesPoolEnabled ?? false
   );
+  const [smartcardAuthMode, setSmartcardAuthMode] = useState<SmartcardAuthMode>(
+    currentSettings.smartcardAuthMode ?? 'always-prompt'
+  );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(
@@ -109,6 +114,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
+      setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
       setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
       setRecordingAction(null);
       setShortcutSearch('');
@@ -141,6 +147,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       showHiddenFiles,
       confirmBeforeDelete,
       dotfilesPoolEnabled,
+      smartcardAuthMode,
       shortcuts,
     });
     onClose();
@@ -645,6 +652,100 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       All stored passwords, SSH passphrases, and S3 credentials are encrypted via Electron safeStorage
                       (libsecret on Linux, DPAPI on Windows, Keychain on macOS) before persisting to disk.
                     </p>
+                  </div>
+
+                  {/* Smartcard PIN caching */}
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-medium text-txt-primary">Smartcard PIN Caching</label>
+                      <p className="text-[11px] text-txt-muted">
+                        Applies to every smartcard/PKCS#11 profile.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          smartcardAuthMode === 'always-prompt'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="smartcardAuthMode"
+                            checked={smartcardAuthMode === 'always-prompt'}
+                            onChange={() => setSmartcardAuthMode('always-prompt')}
+                            className="hidden"
+                          />
+                          <Lock className="h-3.5 w-3.5 text-emerald-400" />
+                          <span>Always Prompt (Default)</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          No caching. Every connection that needs the card (terminal, dotfiles sync) prompts for its
+                          own PIN. Use this if your organization requires re-authentication on every login.
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          smartcardAuthMode === 'agent-per-session'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="smartcardAuthMode"
+                            checked={smartcardAuthMode === 'agent-per-session'}
+                            onChange={() => setSmartcardAuthMode('agent-per-session')}
+                            className="hidden"
+                          />
+                          <Shield className="h-3.5 w-3.5 text-sky-400" />
+                          <span>Once Per Terminal Connection</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and
+                          its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even
+                          in the same app run) asks for the PIN again.
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                          smartcardAuthMode === 'agent-global'
+                            ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-medium">
+                          <input
+                            type="radio"
+                            name="smartcardAuthMode"
+                            checked={smartcardAuthMode === 'agent-global'}
+                            onChange={() => setSmartcardAuthMode('agent-global')}
+                            className="hidden"
+                          />
+                          <Globe className="h-3.5 w-3.5 text-amber-400" />
+                          <span>Global (App Lifetime)</span>
+                        </div>
+                        <span className="text-[11px] text-txt-muted leading-tight">
+                          Enter the PIN once per card, shared by every terminal and profile using it, for as long as
+                          the app runs. Most convenient, least strict — anything in the app can use the card until
+                          you quit or lock it manually below.
+                        </span>
+                      </label>
+                    </div>
+
+                    {smartcardAuthMode === 'agent-global' && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+                        <p className="text-[11px] text-amber-300/90 leading-tight">
+                          Cached smartcard agents stay unlocked until the app quits. Use the lock icon in the top bar
+                          to lock them on demand without quitting.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Smartcard & PKCS#11 Detection */}

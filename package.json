@@ -17,6 +17,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:prod": "npm run build && electron --no-sandbox .",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
