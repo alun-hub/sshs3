@@ -36,6 +36,8 @@ export interface SSHConnectionConfig {
   updatedAt?: string;
   /** ISO 8601 timestamp set instead of removing the entry outright, so sync can propagate the deletion. */
   deletedAt?: string;
+  /** Whether to forward the local ssh-agent to the remote host (-A / ForwardAgent yes). */
+  forwardAgent?: boolean;
   compression?: boolean;
   serverAliveInterval?: number;
   ciphers?: string;

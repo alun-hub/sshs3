@@ -358,6 +358,27 @@ describe('SmartcardDetector', () => {
       expect(args).toContain('MACs=hmac-sha2-256');
     });
 
+    it('should add ForwardAgent=yes when forwardAgent is true, ForwardAgent=no when false, and omit when undefined', () => {
+      const base: SSHConnectionConfig = {
+        id: 'agent-fwd-test',
+        name: 'Agent Fwd Test',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+      };
+
+      const argsTrue = SmartcardDetector.buildSSHArguments({ ...base, forwardAgent: true });
+      expect(argsTrue).toContain('-o');
+      expect(argsTrue).toContain('ForwardAgent=yes');
+
+      const argsFalse = SmartcardDetector.buildSSHArguments({ ...base, forwardAgent: false });
+      expect(argsFalse).toContain('-o');
+      expect(argsFalse).toContain('ForwardAgent=no');
+
+      const argsUndefined = SmartcardDetector.buildSSHArguments(base);
+      expect(argsUndefined.some((a) => a.startsWith('ForwardAgent='))).toBe(false);
+    });
+
     it('should configure port tunnels (-L, -R, -D) for enabled tunnels', () => {
       const config: SSHConnectionConfig = {
         id: 'tunnels-ssh',

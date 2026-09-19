@@ -117,6 +117,7 @@ export interface SFTPConfig {
   ciphers?: string;
   kexAlgorithms?: string;
   macs?: string;
+  forwardAgent?: boolean;
 }
 
 export type S3AuthMode = 'static' | 'sso';

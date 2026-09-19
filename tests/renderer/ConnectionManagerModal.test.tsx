@@ -25,6 +25,7 @@ const mockSSHProfiles: SSHConnectionConfig[] = [
     username: 'postgres',
     authType: 'password',
     group: 'Produktion',
+    forwardAgent: true,
   },
   {
     id: 'ssh-3',
@@ -97,6 +98,7 @@ describe('ConnectionManagerModal', () => {
     // Verify profiles rendered
     expect(screen.getAllByText('Prod Web 01').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Prod DB 01')).toBeInTheDocument();
+    expect(screen.getByText('Agent Fwd')).toBeInTheDocument();
     expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
   });
 

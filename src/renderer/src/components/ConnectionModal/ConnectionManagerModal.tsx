@@ -325,6 +325,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
+                                {profile.forwardAgent && (
+                                  <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-[10px] text-amber-400">
+                                    Agent Fwd
+                                  </span>
+                                )}
                                 {profile.group && (
                                   <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
                                     {profile.group}
@@ -397,6 +402,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       {profile.proxyJump && (
                                         <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-[10px] text-sky-400">
                                           Jump
+                                        </span>
+                                      )}
+                                      {profile.forwardAgent && (
+                                        <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-[10px] text-amber-400">
+                                          Agent Fwd
                                         </span>
                                       )}
                                       {profile.tunnels && profile.tunnels.length > 0 && (

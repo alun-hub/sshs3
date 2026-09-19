@@ -147,6 +147,24 @@ describe('SSHPtyManager', () => {
       expect(options.env.SSH_AUTH_SOCK).toBe('/tmp/ssh-agent.sock');
     });
 
+    it('should pass ForwardAgent=yes when forwardAgent is enabled', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-forward-agent',
+        name: 'Forward Agent Host',
+        host: '10.0.0.3',
+        username: 'user',
+        authType: 'password',
+        forwardAgent: true,
+      };
+
+      await manager.createSession(config);
+
+      const spawned = mockPtyInstances[0];
+      const { args } = (spawned as any)._spawnArgs;
+      expect(args).toContain('-o');
+      expect(args).toContain('ForwardAgent=yes');
+    });
+
     it('should configure Askpass when authType is smartcard', async () => {
       const config: SSHConnectionConfig = {
         id: 'session-smartcard',

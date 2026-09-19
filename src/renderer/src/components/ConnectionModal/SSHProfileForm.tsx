@@ -490,7 +490,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           onClick={() => setAdvancedOpen((o) => !o)}
           className="flex w-full items-center justify-between p-2.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
-          <span>Advanced SSH Options (Compression, KeepAlive, Ciphers, KEX, MACs)</span>
+          <span>Advanced SSH Options (Agent Forwarding, Compression, KeepAlive, Ciphers, KEX, MACs)</span>
           {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
@@ -500,13 +500,25 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
                 <input
                   type="checkbox"
+                  checked={config.forwardAgent ?? false}
+                  onChange={(e) => update('forwardAgent', e.target.checked)}
+                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                />
+                <span>Forward SSH Agent (-A)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
+                <input
+                  type="checkbox"
                   checked={config.compression ?? false}
                   onChange={(e) => update('compression', e.target.checked)}
                   className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
                 />
                 <span>Enable Compression</span>
               </label>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1 text-txt-secondary">
                 ServerAliveInterval (sec)
                 <input

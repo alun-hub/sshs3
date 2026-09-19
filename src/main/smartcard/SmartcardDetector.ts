@@ -166,6 +166,11 @@ export class SmartcardDetector {
       args.push('-i', config.privateKeyPath);
     }
 
+    // SSH Agent forwarding (-o ForwardAgent=yes/no)
+    if (config.forwardAgent !== undefined) {
+      args.push('-o', `ForwardAgent=${config.forwardAgent ? 'yes' : 'no'}`);
+    }
+
     // Compression (-o Compression=yes/no)
     if (config.compression !== undefined) {
       args.push('-o', `Compression=${config.compression ? 'yes' : 'no'}`);
