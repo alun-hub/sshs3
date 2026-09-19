@@ -153,32 +153,35 @@ describe('App Component', () => {
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('splits terminal view into vertical, horizontal, and 2x2 grid layouts', async () => {
+  it('splits a pane without recreating the existing session, and lets you close a specific pane', async () => {
     render(<App />);
 
-    // Initially single layout (no multi-panes)
-    expect(screen.queryAllByTestId(/^terminal-pane-/).length).toBe(0);
-
-    // Click vertical split button
-    const vertBtn = screen.getByTestId('layout-vertical-term-1');
-    fireEvent.click(vertBtn);
-
-    // Should now have 2 panes
+    // A fresh tab always has exactly one (root) pane.
     let panes = screen.getAllByTestId(/^terminal-pane-/);
-    expect(panes.length).toBe(2);
+    expect(panes.length).toBe(1);
+    const rootPaneId = panes[0].getAttribute('data-testid')!.replace('terminal-pane-', '');
 
-    // Click 2x2 grid button
-    const gridBtn = screen.getByTestId('layout-grid-term-1');
-    fireEvent.click(gridBtn);
+    // Splitting must never call terminalKill for the existing pane's session (it must survive).
+    (window.multissh.terminalCreate as any).mockClear();
+    (window.multissh.terminalKill as any).mockClear();
 
-    // Should now have 4 panes
+    fireEvent.click(screen.getByTestId(`split-row-${rootPaneId}`));
+
     panes = screen.getAllByTestId(/^terminal-pane-/);
-    expect(panes.length).toBe(4);
+    expect(panes.length).toBe(2);
+    // The original pane keeps its id and DOM node (no unmount/remount of the existing terminal).
+    expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
+    expect(window.multissh.terminalKill).not.toHaveBeenCalled();
 
-    // Switch back to single layout
-    const singleBtn = screen.getByTestId('layout-single-term-1');
-    fireEvent.click(singleBtn);
-    expect(screen.queryAllByTestId(/^terminal-pane-/).length).toBe(0);
+    // Close the *other* pane (not the original) — original must remain, its own session untouched.
+    const otherPaneId = panes
+      .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
+      .find((id) => id !== rootPaneId)!;
+    fireEvent.click(screen.getByTestId(`close-pane-${otherPaneId}`));
+
+    panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(1);
+    expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
   });
 
   it('handles keyboard shortcuts for new terminal, split vertical, and close tab', async () => {
@@ -203,7 +206,8 @@ describe('App Component', () => {
       shiftKey: true,
     });
 
-    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(2);
+    // 1 pane in the first (now hidden) tab + 2 panes in the newly-split active tab
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(3);
 
     // Trigger Ctrl+W to close active tab
     fireEvent.keyDown(window, {

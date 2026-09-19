@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Columns2, Grid2x2, Rows2, Square, Terminal } from 'lucide-react';
+import { Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
-import { TerminalView } from './components/TerminalView';
+import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
@@ -13,68 +13,28 @@ import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
-import type { SplitLayout, TerminalPaneConfig } from '@shared/types/session';
-
-/** Buttons for launching a local shell (no SSH connection) in a tab or pane. */
-const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: LocalShellType) => void }> = ({
-  platform,
-  onOpen,
-}) => {
-  const [pwshAvailable, setPwshAvailable] = useState(false);
-
-  useEffect(() => {
-    if (platform !== 'win32') return;
-    void window.multissh.detectLocalShells?.().then((res) => setPwshAvailable(Boolean(res?.pwsh)));
-  }, [platform]);
-
-  if (platform !== 'win32') {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpen()}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        Open Local Terminal
-      </button>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5">
-      <button
-        type="button"
-        onClick={() => onOpen('cmd')}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        Command Prompt
-      </button>
-      <button
-        type="button"
-        onClick={() => onOpen('powershell')}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        PowerShell
-      </button>
-      {pwshAvailable && (
-        <button
-          type="button"
-          onClick={() => onOpen('pwsh')}
-          title="PowerShell 7+ (pwsh.exe)"
-          className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-        >
-          PowerShell 7
-        </button>
-      )}
-    </div>
-  );
-};
+import type { PaneNode, PaneOrientation } from '@shared/types/session';
+import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf } from './lib/paneTree';
 
 export interface AppTab extends TabItem {
-  config?: SSHConnectionConfig;
-  local?: boolean;
-  shellType?: LocalShellType;
-  splitLayout?: SplitLayout;
-  panes?: TerminalPaneConfig[];
+  /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
+  paneTree?: PaneNode;
+  /** The pane the user last interacted with; keyboard shortcuts (split/close) target this pane. */
+  activePaneId?: string;
   initialCwd?: string;
+}
+
+/** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */
+function isEmptyUnconnectedTab(tab: AppTab): boolean {
+  if (tab.type !== 'terminal' || !tab.paneTree) return true;
+  return tab.paneTree.type === 'leaf' && !tab.paneTree.config && !tab.paneTree.local;
+}
+
+/** Ensures every terminal tab carries a pane tree, synthesizing a single leaf for legacy/corrupted saved state. */
+function normalizeTab(tab: AppTab): AppTab {
+  if (tab.type !== 'terminal') return tab;
+  if (tab.paneTree) return tab;
+  return { ...tab, paneTree: createLeaf(`${tab.id}-root`) };
 }
 
 export const App: React.FC = () => {
@@ -83,6 +43,7 @@ export const App: React.FC = () => {
       id: 'term-1',
       type: 'terminal',
       title: 'Terminal 1',
+      paneTree: createLeaf('term-1-root'),
     },
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('term-1');
@@ -102,7 +63,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     void window.multissh.sessionGet?.().then((session) => {
       if (session?.tabs && session.tabs.length > 0) {
-        setTabs(session.tabs);
+        setTabs(session.tabs.map(normalizeTab));
         if (session.activeTabId && session.tabs.some((t) => t.id === session.activeTabId)) {
           setActiveTabId(session.activeTabId);
         } else {
@@ -182,6 +143,7 @@ export const App: React.FC = () => {
           id: newId,
           type: 'terminal',
           title: `Terminal ${nextNum}`,
+          paneTree: createLeaf(`${newId}-root`),
         };
         return [...prev, newTab];
       } else {
@@ -206,29 +168,49 @@ export const App: React.FC = () => {
     setActiveTabId(newId);
   }, [settings.defaultNewTabType]);
 
-  const handleSetSplitLayout = useCallback((tabId: string, layout: SplitLayout) => {
+  /** Splits `paneId` (defaulting to the tab's active/first pane) without ever recreating existing panes. */
+  const handleSplitPane = useCallback((tabId: string, orientation: PaneOrientation, paneId?: string) => {
     setTabs((prev) =>
       prev.map((t) => {
-        if (t.id !== tabId || t.type !== 'terminal') return t;
-        const currentPanes =
-          t.panes && t.panes.length > 0 ? [...t.panes] : [{ id: `${t.id}-p1`, config: t.config }];
-        const requiredCount = layout === 'single' ? 1 : layout === 'grid-2x2' ? 4 : 2;
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const targetPaneId = paneId ?? t.activePaneId ?? getFirstLeafId(t.paneTree);
+        const { tree, newPaneId } = splitPane(t.paneTree, targetPaneId, orientation, t.id);
+        return { ...t, paneTree: tree, activePaneId: newPaneId };
+      })
+    );
+  }, []);
 
-        while (currentPanes.length < requiredCount) {
-          const pIndex = currentPanes.length + 1;
-          currentPanes.push({
-            id: `${t.id}-p${pIndex}-${Date.now()}`,
-            config: t.config,
-          });
-        }
-
+  /** Closes one specific pane (à la Konsole), leaving every other pane's session untouched. */
+  const handleClosePane = useCallback((tabId: string, paneId: string) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const nextTree = closePane(t.paneTree, paneId);
+        if (!nextTree) return t; // sole pane: caller should close the whole tab instead
         return {
           ...t,
-          splitLayout: layout,
-          panes: currentPanes,
+          paneTree: nextTree,
+          activePaneId: t.activePaneId === paneId ? getFirstLeafId(nextTree) : t.activePaneId,
         };
       })
     );
+  }, []);
+
+  /** Keeps only the active pane, closing every other split in the tab (a quick "unsplit"). */
+  const handleUnsplit = useCallback((tabId: string) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const keepId = t.activePaneId ?? getFirstLeafId(t.paneTree);
+        const keptLeaf = findLeaf(t.paneTree, keepId);
+        if (!keptLeaf) return t;
+        return { ...t, paneTree: keptLeaf, activePaneId: keptLeaf.id };
+      })
+    );
+  }, []);
+
+  const handleSelectPane = useCallback((tabId: string, paneId: string) => {
+    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t)));
   }, []);
 
   const handleConnectTerminal = (
@@ -237,18 +219,15 @@ export const App: React.FC = () => {
   ) => {
     setTabs((prev) =>
       prev.map((t) => {
-        if (t.id !== target.tabId) return t;
-        if (target.paneId && t.panes) {
-          const updatedPanes = t.panes.map((p) =>
-            p.id === target.paneId ? { ...p, config, local: false, shellType: undefined } : p
-          );
-          return { ...t, panes: updatedPanes, title: t.title || config.name };
-        }
-        const updatedPanes =
-          t.panes && t.panes.length > 0
-            ? t.panes.map((p, i) => (i === 0 ? { ...p, config, local: false, shellType: undefined } : p))
-            : [{ id: `${t.id}-p1`, config }];
-        return { ...t, config, local: false, shellType: undefined, panes: updatedPanes, title: config.name };
+        if (t.id !== target.tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const paneId = target.paneId ?? getFirstLeafId(t.paneTree);
+        const paneTree = updateLeaf(t.paneTree, paneId, (leaf) => ({
+          ...leaf,
+          config,
+          local: false,
+          shellType: undefined,
+        }));
+        return { ...t, paneTree, title: t.title || config.name };
       })
     );
     setConnectTarget(null);
@@ -258,27 +237,15 @@ export const App: React.FC = () => {
     (target: { tabId: string; paneId?: string }, shellType?: LocalShellType) => {
       setTabs((prev) =>
         prev.map((t) => {
-          if (t.id !== target.tabId) return t;
-          if (target.paneId && t.panes) {
-            const updatedPanes = t.panes.map((p) =>
-              p.id === target.paneId ? { ...p, config: undefined, local: true, shellType } : p
-            );
-            return { ...t, panes: updatedPanes };
-          }
-          const updatedPanes =
-            t.panes && t.panes.length > 0
-              ? t.panes.map((p, i) =>
-                  i === 0 ? { ...p, config: undefined, local: true, shellType } : p
-                )
-              : [{ id: `${t.id}-p1`, local: true, shellType }];
-          return {
-            ...t,
+          if (t.id !== target.tabId || t.type !== 'terminal' || !t.paneTree) return t;
+          const paneId = target.paneId ?? getFirstLeafId(t.paneTree);
+          const paneTree = updateLeaf(t.paneTree, paneId, (leaf) => ({
+            ...leaf,
             config: undefined,
             local: true,
             shellType,
-            panes: updatedPanes,
-            title: t.title || 'Local Shell',
-          };
+          }));
+          return { ...t, paneTree, title: t.title || 'Local Shell' };
         })
       );
     },
@@ -292,7 +259,7 @@ export const App: React.FC = () => {
         id: newId,
         type: 'terminal',
         title: config.name,
-        config,
+        paneTree: createLeaf(`${newId}-root`, { config }),
         initialCwd: path,
       };
       setTabs((prev) => [...prev, newTab]);
@@ -395,10 +362,10 @@ export const App: React.FC = () => {
               setSettingsModalOpen(true);
               break;
             case 'splitVertical':
-              if (activeTabId) handleSetSplitLayout(activeTabId, 'split-vertical');
+              if (activeTabId) handleSplitPane(activeTabId, 'row');
               break;
             case 'splitHorizontal':
-              if (activeTabId) handleSetSplitLayout(activeTabId, 'split-horizontal');
+              if (activeTabId) handleSplitPane(activeTabId, 'column');
               break;
           }
           break;
@@ -410,7 +377,7 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSetSplitLayout]);
+  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden select-none bg-app text-txt-primary">
@@ -463,12 +430,9 @@ export const App: React.FC = () => {
         ) : (
           tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
-            const layout = tab.splitLayout || 'single';
-            const paneCount = layout === 'grid-2x2' ? 4 : layout === 'single' ? 1 : 2;
-            const displayPanes =
-              tab.panes && tab.panes.length > 0
-                ? tab.panes.slice(0, paneCount)
-                : [{ id: `${tab.id}-p1`, config: tab.config }];
+            const totalPanes = tab.type === 'terminal' && tab.paneTree ? countLeaves(tab.paneTree) : 1;
+            const rootLeaf =
+              tab.type === 'terminal' && tab.paneTree ? findLeaf(tab.paneTree, getFirstLeafId(tab.paneTree)) : null;
 
             return (
               <div
@@ -477,203 +441,57 @@ export const App: React.FC = () => {
                 className={`h-full w-full ${isActive ? 'flex flex-1 flex-col' : 'hidden'}`}
                 style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column' }}
               >
-                {tab.type === 'terminal' ? (
+                {tab.type === 'terminal' && tab.paneTree ? (
                   <div className="flex flex-1 flex-col h-full w-full overflow-hidden">
-                    {/* Top Pane Bar with status and split layout buttons */}
+                    {/* Top Pane Bar with status and quick "unsplit" action */}
                     <div className="flex h-7 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
                       <div className="flex items-center gap-2 truncate">
                         <Terminal className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                         <span className="truncate font-medium text-txt-primary">
-                          {layout !== 'single'
-                            ? `Split View (${
-                                layout === 'split-vertical'
-                                  ? '2 columns'
-                                  : layout === 'split-horizontal'
-                                  ? '2 rows'
-                                  : '2x2 grid'
-                              })`
-                            : tab.config?.name || (tab.local ? 'Local Shell' : 'No connection selected')}
+                          {totalPanes > 1
+                            ? `Split view (${totalPanes} panes)`
+                            : rootLeaf?.config?.name || (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
                         </span>
-                        {tab.config?.username && layout === 'single' && (
+                        {totalPanes === 1 && rootLeaf?.config?.username && (
                           <span className="text-[11px] text-txt-muted">
-                            ({tab.config.username}@{tab.config.host}:{tab.config.port ?? 22})
+                            ({rootLeaf.config.username}@{rootLeaf.config.host}:{rootLeaf.config.port ?? 22})
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      {totalPanes > 1 && (
                         <button
                           type="button"
-                          title="Single view"
-                          data-testid={`layout-single-${tab.id}`}
-                          onClick={() => handleSetSplitLayout(tab.id, 'single')}
-                          className={`rounded p-1 transition-colors ${
-                            layout === 'single'
-                              ? 'bg-sky-600 text-white'
-                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
-                          }`}
+                          title="Unsplit: close every other pane, keep only the active one"
+                          data-testid={`unsplit-${tab.id}`}
+                          onClick={() => handleUnsplit(tab.id)}
+                          className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                         >
                           <Square className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          title="Vertical split (2 columns)"
-                          data-testid={`layout-vertical-${tab.id}`}
-                          onClick={() => handleSetSplitLayout(tab.id, 'split-vertical')}
-                          className={`rounded p-1 transition-colors ${
-                            layout === 'split-vertical'
-                              ? 'bg-sky-600 text-white'
-                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
-                          }`}
-                        >
-                          <Columns2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Horizontal split (2 rows)"
-                          data-testid={`layout-horizontal-${tab.id}`}
-                          onClick={() => handleSetSplitLayout(tab.id, 'split-horizontal')}
-                          className={`rounded p-1 transition-colors ${
-                            layout === 'split-horizontal'
-                              ? 'bg-sky-600 text-white'
-                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
-                          }`}
-                        >
-                          <Rows2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          title="2x2 Grid (4 terminals)"
-                          data-testid={`layout-grid-${tab.id}`}
-                          onClick={() => handleSetSplitLayout(tab.id, 'grid-2x2')}
-                          className={`rounded p-1 transition-colors ${
-                            layout === 'grid-2x2'
-                              ? 'bg-sky-600 text-white'
-                              : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
-                          }`}
-                        >
-                          <Grid2x2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      )}
                     </div>
 
                     {/* Pane content */}
                     <div className="flex-1 min-h-0 relative">
-                      {layout === 'single' ? (
-                        tab.config ? (
-                          <TerminalView
-                            config={tab.config}
-                            isActive={isActive}
-                            fontSize={settings.terminalFontSize}
-                            fontFamily={settings.terminalFontFamily}
-                            theme={settings.theme}
-                            initialCwd={tab.initialCwd}
-                            sessionExitAction={settings.sessionExitAction}
-                            onCloseTab={() => handleCloseTab(tab.id)}
-                          />
-                        ) : tab.local ? (
-                          <TerminalView
-                            local
-                            shellType={tab.shellType}
-                            isActive={isActive}
-                            fontSize={settings.terminalFontSize}
-                            fontFamily={settings.terminalFontFamily}
-                            theme={settings.theme}
-                            sessionExitAction={settings.sessionExitAction}
-                            onCloseTab={() => handleCloseTab(tab.id)}
-                          />
-                        ) : (
-                          <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
-                            <Terminal className="h-10 w-10 text-txt-muted" />
-                            <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
-                            <button
-                              type="button"
-                              onClick={() => setConnectTarget({ tabId: tab.id })}
-                              className="rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-                            >
-                              Select SSH Connection
-                            </button>
-                            <LocalTerminalButtons
-                              platform={platform}
-                              onOpen={(shellType) => handleOpenLocalTerminal({ tabId: tab.id }, shellType)}
-                            />
-                          </div>
-                        )
-                      ) : (
-                        <div
-                          className={`h-full w-full ${
-                            layout === 'split-vertical'
-                              ? 'grid grid-cols-2 divide-x divide-border-subtle'
-                              : layout === 'split-horizontal'
-                              ? 'grid grid-rows-2 divide-y divide-border-subtle'
-                              : 'grid grid-cols-2 grid-rows-2 divide-x divide-y divide-border-subtle'
-                          }`}
-                        >
-                          {displayPanes.map((pane, pIdx) => (
-                            <div
-                              key={pane.id}
-                              data-testid={`terminal-pane-${pane.id}`}
-                              className="relative flex flex-col h-full w-full overflow-hidden"
-                            >
-                              <div className="flex h-6 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-2 text-[11px] text-txt-muted">
-                                <span className="truncate font-mono">
-                                  {pane.config?.name || (pane.local ? 'Local Shell' : `Terminal ${pIdx + 1}`)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setConnectTarget({ tabId: tab.id, paneId: pane.id })
-                                  }
-                                  className="rounded px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400 hover:bg-app-surface-hover transition-colors"
-                                >
-                                  {pane.config ? 'Change' : 'Select connection'}
-                                </button>
-                              </div>
-                              <div className="flex-1 min-h-0">
-                                {pane.config ? (
-                                  <TerminalView
-                                    config={pane.config}
-                                    isActive={isActive}
-                                    fontSize={settings.terminalFontSize}
-                                    fontFamily={settings.terminalFontFamily}
-                                    theme={settings.theme}
-                                    sessionExitAction={settings.sessionExitAction}
-                                  />
-                                ) : pane.local ? (
-                                  <TerminalView
-                                    local
-                                    shellType={pane.shellType}
-                                    isActive={isActive}
-                                    fontSize={settings.terminalFontSize}
-                                    fontFamily={settings.terminalFontFamily}
-                                    theme={settings.theme}
-                                    sessionExitAction={settings.sessionExitAction}
-                                  />
-                                ) : (
-                                  <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
-                                    <p className="text-xs text-txt-secondary">No connection selected</p>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setConnectTarget({ tabId: tab.id, paneId: pane.id })
-                                      }
-                                      className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-                                    >
-                                      Select SSH Connection
-                                    </button>
-                                    <LocalTerminalButtons
-                                      platform={platform}
-                                      onOpen={(shellType) =>
-                                        handleOpenLocalTerminal({ tabId: tab.id, paneId: pane.id }, shellType)
-                                      }
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <PaneTreeView
+                        node={tab.paneTree}
+                        isActive={isActive}
+                        activePaneId={tab.activePaneId}
+                        totalPanes={totalPanes}
+                        settings={settings}
+                        platform={platform}
+                        onSelectPane={(paneId) => handleSelectPane(tab.id, paneId)}
+                        onSplitPane={(paneId, orientation) => handleSplitPane(tab.id, orientation, paneId)}
+                        onClosePane={(paneId) => handleClosePane(tab.id, paneId)}
+                        onChangeConnection={(paneId) => setConnectTarget({ tabId: tab.id, paneId })}
+                        onOpenLocalTerminal={(paneId, shellType) =>
+                          handleOpenLocalTerminal({ tabId: tab.id, paneId }, shellType)
+                        }
+                        onCloseTab={() => handleCloseTab(tab.id)}
+                        initialCwdPaneId={rootLeaf?.id}
+                        initialCwd={tab.initialCwd}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -720,7 +538,7 @@ export const App: React.FC = () => {
         onClose={() => setProfilesModalOpen(false)}
         onConnectSSH={(config) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab && activeTab.type === 'terminal' && !activeTab.config) {
+          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
             handleConnectTerminal({ tabId: activeTab.id }, config);
           } else {
             const newId = `term-${Date.now()}`;
@@ -728,7 +546,7 @@ export const App: React.FC = () => {
               id: newId,
               type: 'terminal',
               title: config.name,
-              config,
+              paneTree: createLeaf(`${newId}-root`, { config }),
             };
             setTabs((prev) => [...prev, newTab]);
             setActiveTabId(newId);

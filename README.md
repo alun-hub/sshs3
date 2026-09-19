@@ -22,8 +22,8 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 ### Terminal, tabs & split view
 - **Real OpenSSH process via `node-pty`** — the terminal spawns your system's actual `ssh` binary, not a JS reimplementation, so `~/.ssh/config`, `ssh-agent`, host aliases, and every OpenSSH option behave exactly as they do on the command line.
 - **Local shell terminals** — open a plain local shell tab (your `$SHELL` on Linux/macOS, or a chosen `cmd`/PowerShell/`pwsh` on Windows) alongside your SSH sessions.
-- **Split layouts** — single view, vertical split, horizontal split, or a 2×2 grid of four independent terminals in one tab, each with its own connection picker and isolated session.
-- **Session persistence** — tabs, split layouts, and per-pane working directories are saved and restored automatically between restarts.
+- **Recursive split panes (Konsole-style)** — split any pane right or down from its own mini toolbar, any number of times, nesting freely; each pane keeps its own connection picker and isolated session. Splitting never recreates an existing pane's session (it reparents the pane into a new split, exactly like Konsole's `ViewSplitter`), and closing one specific pane leaves every other pane's session untouched — the tree collapses a split down to its remaining child automatically, so no empty slots are left behind. A one-click "Unsplit" action keeps the active pane and closes the rest.
+- **Session persistence** — tabs, pane layouts, and per-pane working directories are saved and restored automatically between restarts.
 - **SSH agent lifecycle management** — detects whether `ssh-agent` is already running and, if not, can spawn and manage one itself (Linux/macOS), or detect the Windows OpenSSH Authentication Agent service.
 
 ### Smartcard & PKCS#11 authentication
@@ -145,8 +145,8 @@ sshs3 wouldn't exist without these projects:
 | **Previous Tab** | `Ctrl+Shift+Tab` | Cycles to the previous tab |
 | **Connection Manager** | `Ctrl+Shift+O` | Opens saved profiles and connections |
 | **Settings** | `Ctrl+,` | Opens the settings panel |
-| **Split Vertically** | `Ctrl+Shift+D` | Splits the active terminal into two columns |
-| **Split Horizontally** | `Ctrl+Shift+E` | Splits the active terminal into two rows |
+| **Split Vertically** | `Ctrl+Shift+D` | Splits the active pane into two columns |
+| **Split Horizontally** | `Ctrl+Shift+E` | Splits the active pane into two rows |
 
 *(All shortcuts are rebindable under Settings → Keyboard Shortcuts.)*
 
