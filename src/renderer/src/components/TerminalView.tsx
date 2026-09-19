@@ -13,6 +13,8 @@ export interface TerminalViewProps {
   local?: boolean;
   /** Windows only: which local shell to spawn when `local` is set. */
   shellType?: LocalShellType;
+  /** Windows only: specific WSL distribution to launch. */
+  wslDistro?: string;
   isActive?: boolean;
   onExit?: (event: SSHPtyExitEvent) => void;
   className?: string;
@@ -83,6 +85,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   config,
   local = false,
   shellType,
+  wslDistro,
   isActive = true,
   onExit,
   className = '',
@@ -222,7 +225,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // SSHPtyManager, so killing one session tears down the other instead.
     if (window.multissh?.terminalCreate && (local || config)) {
       const createOptions = local
-        ? { local: true as const, ptyOptions: { cols, rows, shellType } }
+        ? { local: true as const, ptyOptions: { cols, rows, shellType, wslDistro } }
         : { config: { ...(config as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } };
       window.multissh
         .terminalCreate(createOptions)
@@ -348,7 +351,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [config, local, shellType, sessionKey]);
+  }, [config, local, shellType, wslDistro, sessionKey]);
 
   const isLight =
     theme === 'light' ||

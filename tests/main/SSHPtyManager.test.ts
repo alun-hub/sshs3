@@ -460,4 +460,74 @@ describe('SSHPtyManager', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('createShellSession', () => {
+    it('spawns local shell on current platform', async () => {
+      const session = await manager.createShellSession({
+        cols: 100,
+        rows: 40,
+        cwd: '/tmp',
+      });
+
+      expect(session).toBeDefined();
+      expect(mockPtyInstances).toHaveLength(1);
+      const spawned = mockPtyInstances[0];
+      const { options } = (spawned as any)._spawnArgs;
+      expect(options.cols).toBe(100);
+      expect(options.rows).toBe(40);
+      expect(session.config.name).toBe('Local Shell');
+    });
+
+    it('handles Windows shells including WSL', async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+
+      try {
+        // WSL default
+        const wslSession = await manager.createShellSession({
+          shellType: 'wsl',
+        });
+        expect(wslSession.config.name).toBe('WSL');
+        const wslSpawn = mockPtyInstances[mockPtyInstances.length - 1];
+        expect((wslSpawn as any)._spawnArgs.file).toBe('wsl.exe');
+        expect((wslSpawn as any)._spawnArgs.args).toEqual([]);
+
+        // WSL with specific distro
+        const wslDistroSession = await manager.createShellSession({
+          shellType: 'wsl',
+          wslDistro: 'Ubuntu-22.04',
+        });
+        expect(wslDistroSession.config.name).toBe('WSL: Ubuntu-22.04');
+        const wslDistroSpawn = mockPtyInstances[mockPtyInstances.length - 1];
+        expect((wslDistroSpawn as any)._spawnArgs.file).toBe('wsl.exe');
+        expect((wslDistroSpawn as any)._spawnArgs.args).toEqual(['-d', 'Ubuntu-22.04']);
+
+        // PowerShell
+        const psSession = await manager.createShellSession({
+          shellType: 'powershell',
+        });
+        expect(psSession.config.name).toBe('Local Shell');
+        const psSpawn = mockPtyInstances[mockPtyInstances.length - 1];
+        expect((psSpawn as any)._spawnArgs.file).toBe('powershell.exe');
+
+        // PowerShell 7 (pwsh)
+        const pwshSession = await manager.createShellSession({
+          shellType: 'pwsh',
+        });
+        expect(pwshSession.config.name).toBe('Local Shell');
+        const pwshSpawn = mockPtyInstances[mockPtyInstances.length - 1];
+        expect((pwshSpawn as any)._spawnArgs.file).toBe('pwsh.exe');
+
+        // CMD
+        const cmdSession = await manager.createShellSession({
+          shellType: 'cmd',
+        });
+        expect(cmdSession.config.name).toBe('Local Shell');
+        const cmdSpawn = mockPtyInstances[mockPtyInstances.length - 1];
+        expect((cmdSpawn as any)._spawnArgs.file).toBe('cmd.exe');
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
+    });
+  });
 });

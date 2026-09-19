@@ -314,7 +314,7 @@ export const FileList: React.FC<FileListProps> = ({
 
         const prev = typeaheadBufferRef.current;
         const char = e.key;
-        let next = '';
+        let next: string;
 
         if (prev.length === 1 && prev.toLowerCase() === char.toLowerCase()) {
           const doubled = prev + char;

@@ -27,6 +27,8 @@ function resolveLocalShellBinary(shellType?: LocalShellType): string {
       return 'powershell.exe';
     case 'pwsh':
       return 'pwsh.exe';
+    case 'wsl':
+      return 'wsl.exe';
     case 'cmd':
       return 'cmd.exe';
     default:
@@ -448,6 +450,10 @@ export class SSHPtyManager extends EventEmitter {
     const cwd = options?.cwd ?? (process.env.HOME || process.env.USERPROFILE || process.cwd());
 
     const shellBinary = resolveLocalShellBinary(options?.shellType);
+    const args: string[] = [];
+    if (process.platform === 'win32' && options?.shellType === 'wsl' && options?.wslDistro) {
+      args.push('-d', options.wslDistro);
+    }
 
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
@@ -455,16 +461,23 @@ export class SSHPtyManager extends EventEmitter {
       ...(options?.env || {}),
     };
 
+    const sessionName =
+      options?.shellType === 'wsl'
+        ? options?.wslDistro
+          ? `WSL: ${options.wslDistro}`
+          : 'WSL'
+        : 'Local Shell';
+
     const config: SSHConnectionConfig = {
       id: sessionId,
-      name: 'Local Shell',
+      name: sessionName,
       host: 'localhost',
       username: process.env.USER || process.env.USERNAME || 'local',
       authType: 'password',
     };
 
     const spawn = getSpawn();
-    const ptyProcess = spawn(shellBinary, [], {
+    const ptyProcess = spawn(shellBinary, args, {
       cols,
       rows,
       cwd,

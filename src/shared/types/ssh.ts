@@ -78,7 +78,7 @@ export interface CachedSmartcardAgent {
 }
 
 /** Local shell to spawn on Windows. Ignored on macOS/Linux, which always use the user's $SHELL. */
-export type LocalShellType = 'default' | 'cmd' | 'powershell' | 'pwsh';
+export type LocalShellType = 'default' | 'cmd' | 'powershell' | 'pwsh' | 'wsl';
 
 export interface PtyOptions {
   cols?: number; // default 80
@@ -87,6 +87,8 @@ export interface PtyOptions {
   env?: Record<string, string>;
   /** Windows only: which shell to spawn for a local terminal. */
   shellType?: LocalShellType;
+  /** Windows only: specific WSL distribution to launch (wsl.exe -d <distro>). */
+  wslDistro?: string;
 }
 
 export interface SSHPtyExitEvent {

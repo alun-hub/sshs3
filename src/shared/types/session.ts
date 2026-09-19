@@ -12,6 +12,8 @@ export interface PaneLeaf {
   local?: boolean;
   /** Windows only: which local shell to spawn when `local` is set. */
   shellType?: LocalShellType;
+  /** Windows only: specific WSL distribution to launch. */
+  wslDistro?: string;
 }
 
 export interface PaneSplit {

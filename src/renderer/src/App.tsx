@@ -234,7 +234,7 @@ export const App: React.FC = () => {
   };
 
   const handleOpenLocalTerminal = useCallback(
-    (target: { tabId: string; paneId?: string }, shellType?: LocalShellType) => {
+    (target: { tabId: string; paneId?: string }, shellType?: LocalShellType, wslDistro?: string) => {
       setTabs((prev) =>
         prev.map((t) => {
           if (t.id !== target.tabId || t.type !== 'terminal' || !t.paneTree) return t;
@@ -244,8 +244,16 @@ export const App: React.FC = () => {
             config: undefined,
             local: true,
             shellType,
+            wslDistro,
           }));
-          return { ...t, paneTree, title: t.title || 'Local Shell' };
+          const defaultTitle =
+            shellType === 'wsl'
+              ? wslDistro
+                ? `WSL: ${wslDistro}`
+                : 'WSL'
+              : 'Local Shell';
+          const title = !t.title || /^Terminal\s+\d+$/.test(t.title) ? defaultTitle : t.title;
+          return { ...t, paneTree, title };
         })
       );
     },
@@ -485,8 +493,8 @@ export const App: React.FC = () => {
                         onSplitPane={(paneId, orientation) => handleSplitPane(tab.id, orientation, paneId)}
                         onClosePane={(paneId) => handleClosePane(tab.id, paneId)}
                         onChangeConnection={(paneId) => setConnectTarget({ tabId: tab.id, paneId })}
-                        onOpenLocalTerminal={(paneId, shellType) =>
-                          handleOpenLocalTerminal({ tabId: tab.id, paneId }, shellType)
+                        onOpenLocalTerminal={(paneId, shellType, wslDistro) =>
+                          handleOpenLocalTerminal({ tabId: tab.id, paneId }, shellType, wslDistro)
                         }
                         onCloseTab={() => handleCloseTab(tab.id)}
                         initialCwdPaneId={rootLeaf?.id}

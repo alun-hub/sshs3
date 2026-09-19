@@ -338,8 +338,8 @@ export interface MultiSSHApi {
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
-  /** Windows only: which optional local shells (currently just PowerShell 7 / pwsh) are actually on PATH. */
-  detectLocalShells(): Promise<{ pwsh: boolean }>;
+  /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
+  detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
   dialogOpenFolder(options?: { title?: string }): Promise<string | null>;
 }

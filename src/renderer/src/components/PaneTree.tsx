@@ -6,15 +6,24 @@ import type { LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
 
 /** Buttons for launching a local shell (no SSH connection) in a pane. */
-const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: LocalShellType) => void }> = ({
+const LocalTerminalButtons: React.FC<{
+  platform: string;
+  onOpen: (shellType?: LocalShellType, wslDistro?: string) => void;
+}> = ({
   platform,
   onOpen,
 }) => {
   const [pwshAvailable, setPwshAvailable] = React.useState(false);
+  const [wslAvailable, setWslAvailable] = React.useState(false);
+  const [wslDistros, setWslDistros] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     if (platform !== 'win32') return;
-    void window.multissh.detectLocalShells?.().then((res) => setPwshAvailable(Boolean(res?.pwsh)));
+    void window.multissh.detectLocalShells?.().then((res) => {
+      setPwshAvailable(Boolean(res?.pwsh));
+      setWslAvailable(Boolean(res?.wsl));
+      setWslDistros(res?.wslDistros || []);
+    });
   }, [platform]);
 
   if (platform !== 'win32') {
@@ -29,7 +38,7 @@ const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: Lo
     );
   }
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
       <button
         type="button"
         onClick={() => onOpen('cmd')}
@@ -54,6 +63,33 @@ const LocalTerminalButtons: React.FC<{ platform: string; onOpen: (shellType?: Lo
           PowerShell 7
         </button>
       )}
+      {wslAvailable &&
+        (wslDistros.length > 1 ? (
+          wslDistros.map((distro) => (
+            <button
+              key={distro}
+              type="button"
+              onClick={() => onOpen('wsl', distro)}
+              title={`Windows Subsystem for Linux (${distro})`}
+              className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+            >
+              {distro}
+            </button>
+          ))
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen('wsl', wslDistros[0])}
+            title={
+              wslDistros[0]
+                ? `Windows Subsystem for Linux (${wslDistros[0]})`
+                : 'Windows Subsystem for Linux (wsl.exe)'
+            }
+            className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+          >
+            {wslDistros[0] ? `WSL (${wslDistros[0]})` : 'WSL'}
+          </button>
+        ))}
     </div>
   );
 };
@@ -69,7 +105,7 @@ export interface PaneTreeViewProps {
   onSplitPane: (paneId: string, orientation: PaneOrientation) => void;
   onClosePane: (paneId: string) => void;
   onChangeConnection: (paneId: string) => void;
-  onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType) => void;
+  onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onCloseTab: () => void;
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
@@ -118,7 +154,14 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
         }`}
       >
         <span className="truncate font-mono">
-          {node.config?.name || (node.local ? 'Local Shell' : 'No connection')}
+          {node.config?.name ||
+            (node.local
+              ? node.shellType === 'wsl'
+                ? node.wslDistro
+                  ? `WSL: ${node.wslDistro}`
+                  : 'WSL'
+                : 'Local Shell'
+              : 'No connection')}
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -178,6 +221,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
           <TerminalView
             local
             shellType={node.shellType}
+            wslDistro={node.wslDistro}
             isActive={isActive}
             fontSize={settings.terminalFontSize}
             fontFamily={settings.terminalFontFamily}
@@ -198,7 +242,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             </button>
             <LocalTerminalButtons
               platform={platform}
-              onOpen={(shellType) => props.onOpenLocalTerminal(node.id, shellType)}
+              onOpen={(shellType, wslDistro) => props.onOpenLocalTerminal(node.id, shellType, wslDistro)}
             />
           </div>
         ) : (
@@ -213,7 +257,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             </button>
             <LocalTerminalButtons
               platform={platform}
-              onOpen={(shellType) => props.onOpenLocalTerminal(node.id, shellType)}
+              onOpen={(shellType, wslDistro) => props.onOpenLocalTerminal(node.id, shellType, wslDistro)}
             />
           </div>
         )}

@@ -1752,14 +1752,33 @@ export class IpcBridge {
 
     this.registerHandler(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS, async () => {
       if (process.platform !== 'win32') {
-        return { pwsh: false };
+        return { pwsh: false, wsl: false, wslDistros: [] };
       }
+      let pwsh: boolean;
+      let wsl: boolean;
+      let wslDistros: string[];
       try {
         await execFileAsync('where', ['pwsh.exe']);
-        return { pwsh: true };
+        pwsh = true;
       } catch {
-        return { pwsh: false };
+        pwsh = false;
       }
+      try {
+        await execFileAsync('where', ['wsl.exe']);
+        const { stdout } = await execFileAsync('wsl.exe', ['-l', '-q'], { timeout: 2500 });
+        // Strip null bytes (UTF-16LE decoding artifact in Node utf8 buffer) and BOM
+        const cleaned = stdout.replace(/\0/g, '').replace(/^\uFEFF/, '');
+        const distros = cleaned
+          .split(/\r?\n/)
+          .map((d) => d.trim())
+          .filter(Boolean);
+        wsl = distros.length > 0;
+        wslDistros = distros;
+      } catch {
+        wsl = false;
+        wslDistros = [];
+      }
+      return { pwsh, wsl, wslDistros };
     });
 
     this.registerHandler(IPC_CHANNELS.SSH_AGENT_STATUS, async () => {
