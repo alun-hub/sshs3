@@ -14,6 +14,7 @@ import {
   Search,
   CheckCircle2,
   Lock,
+  ShieldAlert,
   Globe,
   FileCode,
   RefreshCw,
@@ -120,6 +121,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [x11Status, setX11Status] = useState<XServerStatus | null>(null);
   const [x11Operating, setX11Operating] = useState<boolean>(false);
 
+  // null while unknown (still loading) - only "false" should ever trigger the warning card.
+  const [credentialEncryptionAvailable, setCredentialEncryptionAvailable] = useState<boolean | null>(null);
+
   useEffect(() => {
     if (open) {
       setActiveCategory('general');
@@ -156,6 +160,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         ?.x11GetStatus?.(currentSettings.x11ServerPath)
         ?.then((status) => {
           if (status) setX11Status(status);
+        });
+
+      setCredentialEncryptionAvailable(null);
+      void window.multissh
+        ?.getSecurityStatus?.()
+        ?.then((status) => {
+          if (status) setCredentialEncryptionAvailable(status.credentialEncryptionAvailable);
+        })
+        ?.catch(() => {
+          // Unknown is safer than falsely claiming "Active" - leave it null.
         });
     }
   }, [open, currentSettings]);
@@ -904,16 +918,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {activeCategory === 'security' && (
                 <div className="space-y-4">
                   {/* OS SafeStorage */}
-                  <div className="rounded-lg border border-border-subtle bg-app-surface p-3.5 space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-400">
-                      <Lock className="h-4 w-4" />
-                      <span className="font-semibold text-xs">OS Keychain Encryption Active</span>
+                  {credentialEncryptionAvailable === false ? (
+                    <div className="rounded-lg border border-amber-500/30 bg-app-surface p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-amber-400">
+                        <ShieldAlert className="h-4 w-4" />
+                        <span className="font-semibold text-xs">Credentials are stored in plaintext</span>
+                      </div>
+                      <p className="text-[11px] text-txt-muted leading-relaxed">
+                        No OS keyring (Secret Service / KWallet / gnome-keyring, etc.) was found, so sshs3 cannot
+                        encrypt saved SSH and S3 credentials at rest. Any password, passphrase, or proxy password you
+                        save is written to disk unencrypted. Install and unlock a keyring service to enable
+                        encryption, or avoid saving credentials.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-txt-muted leading-relaxed">
-                      All stored passwords, SSH passphrases, and S3 credentials are encrypted via Electron safeStorage
-                      (libsecret on Linux, DPAPI on Windows, Keychain on macOS) before persisting to disk.
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="rounded-lg border border-border-subtle bg-app-surface p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-emerald-400">
+                        <Lock className="h-4 w-4" />
+                        <span className="font-semibold text-xs">
+                          {credentialEncryptionAvailable === null
+                            ? 'Checking OS keychain encryption…'
+                            : 'OS Keychain Encryption Active'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-txt-muted leading-relaxed">
+                        All stored passwords, SSH passphrases, and S3 credentials are encrypted via Electron safeStorage
+                        (libsecret on Linux, DPAPI on Windows, Keychain on macOS) before persisting to disk.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Smartcard PIN caching */}
                   <div className="space-y-2">

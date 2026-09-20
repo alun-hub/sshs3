@@ -101,7 +101,13 @@ export const App: React.FC = () => {
     (settings.theme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
 
   useEffect(() => {
+    // index.html ships with a static class="dark" (so the window isn't
+    // unstyled before this runs). Toggling only 'light' would leave 'dark'
+    // stuck on <html> forever, so anything using Tailwind's `dark:` variant
+    // (e.g. ContextMenu's destructive-item color) would keep applying even
+    // in light mode. Both classes must be kept mutually exclusive here.
     document.documentElement.classList.toggle('light', isLight);
+    document.documentElement.classList.toggle('dark', !isLight);
   }, [isLight]);
 
   const handleSelectTab = (id: string) => {

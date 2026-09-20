@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.19] - 2026-09-20 15:27
+
+### Fixed
+- Fixed the light/dark theme toggle leaving both `dark` and `light` classes on `<html>` simultaneously, so Tailwind `dark:` variant colors (e.g. the destructive-action red in the file manager's right-click menu) kept incorrectly applying while in light mode ([App.tsx](src/renderer/src/App.tsx)).
+- Fixed the Security & Smartcard settings panel unconditionally claiming "OS Keychain Encryption Active" regardless of actual status; it now reflects the real `getSecurityStatus()` result, matching the plaintext-credentials warning banner added in 0.2.18 ([SettingsModal.tsx](src/renderer/src/components/SettingsModal/SettingsModal.tsx)).
+
+---
+
 ## [0.2.18] - 2026-09-20 11:32
 
 ### Security
