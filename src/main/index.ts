@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
 import { SystemTrustStore } from './crypto/SystemTrustStore';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
+import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,6 +81,18 @@ function createWindow(): BrowserWindow {
 
 // Initialize IPC bridge before or when app is ready
 function initializeApp(): void {
+  if (!isEncryptionAvailable()) {
+    // No OS keyring backend (safeStorage) available — SecretFieldCrypto falls
+    // back to storing saved SSH/S3 passwords and passphrases in plaintext on
+    // disk rather than silently losing them. Surfaced to the renderer via
+    // APP_GET_SECURITY_STATUS so the UI can warn the user; logged here too
+    // since this is otherwise invisible.
+    console.warn(
+      '[sshs3] No OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
+        'saved credentials will be stored in PLAINTEXT on disk instead of encrypted.'
+    );
+  }
+
   void SystemTrustStore.init();
   void AgentLifecycleManager.ensureAgent();
   // The app has its own UI for every action (tabs, connections, transfers);

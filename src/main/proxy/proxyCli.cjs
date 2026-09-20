@@ -1,10 +1,19 @@
 /**
  * sshs3 ProxyCommand CLI Helper for OpenSSH.
- * Usage: node proxyCli.cjs <type> <proxyHost> <proxyPort> <targetHost> <targetPort> [username] [password]
+ * Usage: node proxyCli.cjs <type> <proxyHost> <proxyPort> <targetHost> <targetPort>
+ *
+ * Proxy username/password (if any) are read from the SSHS3_PROXY_USERNAME /
+ * SSHS3_PROXY_PASSWORD environment variables rather than argv: this script
+ * is invoked as an OpenSSH ProxyCommand, which OpenSSH always runs through a
+ * shell — putting free-text credentials on that command line would let
+ * shell metacharacters in them break out and execute arbitrary commands.
+ * Environment variables carry arbitrary bytes safely with no shell parsing.
  */
 const net = require('node:net');
 
-const [,, type, proxyHost, proxyPortStr, targetHost, targetPortStr, username, password] = process.argv;
+const [,, type, proxyHost, proxyPortStr, targetHost, targetPortStr] = process.argv;
+const username = process.env.SSHS3_PROXY_USERNAME || '';
+const password = process.env.SSHS3_PROXY_PASSWORD || '';
 
 if (!type || !proxyHost || !proxyPortStr || !targetHost || !targetPortStr) {
   process.stderr.write('Usage: proxyCli.cjs <type> <proxyHost> <proxyPort> <targetHost> <targetPort> [username] [password]\n');

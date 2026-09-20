@@ -23,6 +23,63 @@ export interface ManagedSshConfigBlock {
   body: string;
 }
 
+/**
+ * ssh_config directives that can execute an arbitrary command (client-side
+ * or server-side) or pull in additional, unvalidated config, so are never
+ * allowed into a block written by remote profile sync. This block lands in
+ * the user's *real* `~/.ssh/config` — read by the system's own `ssh` binary
+ * for every future connection, not just inside sshs3 — so a sync source
+ * that can plant `ProxyCommand`/`LocalCommand`/etc. here (a compromised
+ * sync target, a compromised paired device, or a leaked master password)
+ * would get silent, persistent code execution on every subsequent `ssh`
+ * invocation matching the Host pattern, from any tool, indefinitely.
+ * SECURITY: do not remove entries from this list without understanding why
+ * they're here — see the finding this addresses.
+ */
+const BLOCKED_DIRECTIVES = new Set([
+  'proxycommand',
+  'localcommand',
+  'permitlocalcommand',
+  'remotecommand',
+  'match',
+  'include',
+]);
+
+export interface SanitizeSshConfigBodyResult {
+  body: string;
+  removedLines: string[];
+}
+
+/**
+ * Strips any line whose directive is in BLOCKED_DIRECTIVES from a managed
+ * block body before it's ever written to disk. Applied only on the
+ * receiving end of a sync pull (see writeManagedSshConfigBlock) — the
+ * user's own locally-authored content is never touched, only content
+ * arriving from the (untrusted-until-proven-otherwise) sync source.
+ */
+export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult {
+  const removedLines: string[] = [];
+  const keptLines: string[] = [];
+
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      keptLines.push(line);
+      continue;
+    }
+    // ssh_config directives are "Key value" or "Key=value", optionally
+    // preceded by whitespace; keys are case-insensitive.
+    const directive = trimmed.split(/[\s=]+/, 1)[0]?.toLowerCase();
+    if (directive && BLOCKED_DIRECTIVES.has(directive)) {
+      removedLines.push(line);
+      continue;
+    }
+    keptLines.push(line);
+  }
+
+  return { body: keptLines.join('\n'), removedLines };
+}
+
 /** Reads the sshs3-managed block out of a `~/.ssh/config` file's content, if present. */
 export function parseManagedSshConfigBlock(fileContent: string): ManagedSshConfigBlock | null {
   const beginIdx = fileContent.indexOf(MANAGED_BEGIN);
@@ -49,7 +106,15 @@ export function parseManagedSshConfigBlock(fileContent: string): ManagedSshConfi
  * managed block exists yet, one is appended at the end of the file.
  */
 export function writeManagedSshConfigBlock(fileContent: string, block: ManagedSshConfigBlock): string {
-  const blockText = `${MANAGED_BEGIN}\n${TIMESTAMP_PREFIX}${block.updatedAt}\n${block.body}\n${MANAGED_END}`;
+  const { body: safeBody, removedLines } = sanitizeSshConfigBody(block.body);
+  if (removedLines.length > 0) {
+    console.warn(
+      `[sshs3] Remote Profile Sync: refused to write ${removedLines.length} disallowed ssh_config directive(s) ` +
+        `synced from remote into ~/.ssh/config (would allow code execution from any future "ssh" invocation): ` +
+        removedLines.map((l) => JSON.stringify(l.trim())).join(', ')
+    );
+  }
+  const blockText = `${MANAGED_BEGIN}\n${TIMESTAMP_PREFIX}${block.updatedAt}\n${safeBody}\n${MANAGED_END}`;
 
   const beginIdx = fileContent.indexOf(MANAGED_BEGIN);
   const endIdx = fileContent.indexOf(MANAGED_END);

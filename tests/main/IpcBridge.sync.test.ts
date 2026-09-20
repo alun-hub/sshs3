@@ -34,7 +34,10 @@ vi.mock('../../src/main/smartcard/SmartcardSyncService', () => ({
   signChallengeWithAgent: vi.fn().mockResolvedValue(Buffer.from('fake-signature')),
   verifyAgentSignature: vi.fn().mockReturnValue(true),
   deriveSecretFromSignature: vi.fn().mockReturnValue('single-master-password'),
-  unwrapMasterPasswords: vi.fn(),
+  // Not a real ECDSA key blob, so the ECDSA-refusal guard in IpcBridge (see
+  // getKeyAlgorithm/KEY_DERIVATION_MESSAGE) never trips for this mocked card.
+  getKeyAlgorithm: vi.fn().mockReturnValue('ssh-ed25519'),
+  KEY_DERIVATION_MESSAGE: Buffer.from('mock-key-derivation-message', 'utf-8'),
 }));
 
 import { IpcBridge } from '../../src/main/IpcBridge';

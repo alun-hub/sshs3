@@ -7,6 +7,7 @@ import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
+import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
@@ -527,6 +528,9 @@ export const App: React.FC = () => {
 
       {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
       <DotfilesSyncBanner />
+
+      {/* Warns if saved credentials can't be OS-keyring-encrypted and are falling back to plaintext */}
+      <CredentialEncryptionWarningBanner />
 
       {/* Per-tab or per-pane: pick an SSH profile to connect */}
       <ConnectionManagerModal

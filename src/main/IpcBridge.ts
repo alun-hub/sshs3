@@ -38,9 +38,10 @@ import {
   signChallengeWithAgent,
   verifyAgentSignature,
   deriveSecretFromSignature,
-  unwrapMasterPasswords,
+  getKeyAlgorithm,
+  KEY_DERIVATION_MESSAGE,
 } from './smartcard/SmartcardSyncService';
-import { encryptSecretValue, decryptSecretValue } from './crypto/SecretFieldCrypto';
+import { encryptSecretValue, decryptSecretValue, isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
 import {
   IPC_CHANNELS,
@@ -1566,6 +1567,22 @@ export class IpcBridge {
             throw new Error('Failed to verify cryptographic signature from smartcard');
           }
 
+          const hasExplicitPasswords = Boolean(
+            options.passwords?.topologyPassword && options.passwords?.credentialsPassword
+          );
+          if (!hasExplicitPasswords && getKeyAlgorithm(chosen.keyBlob).startsWith('ecdsa-sha2-')) {
+            // No saved passwords to fall back on, so unlocking would have to
+            // derive a "stable" secret straight from a fresh card signature
+            // every time — but ECDSA signing is non-deterministic on most
+            // PKCS#11 tokens (a fresh hardware nonce per signature), so that
+            // derived secret would differ on every unlock and could never
+            // decrypt data pushed under an earlier one. Refuse rather than
+            // risk silently locking the user out of their own synced data.
+            throw new Error(
+              'This smartcard uses an ECDSA key, which most PKCS#11 modules sign non-deterministically — sshs3 cannot derive a stable sync key from it alone. Unlock Remote Profile Sync with your master passwords first (Settings > Sync), then link this smartcard to save them.'
+            );
+          }
+
           let wrappedPasswordsEncrypted: string | undefined;
           if (options.passwords?.topologyPassword && options.passwords?.credentialsPassword) {
             wrappedPasswordsEncrypted = encryptSecretValue(JSON.stringify(options.passwords));
@@ -1697,16 +1714,30 @@ export class IpcBridge {
           throw new Error('Failed to decrypt saved sync passwords with OS keyring.');
         }
       } else if (config.smartcardSync?.wrappedPassword) {
-        try {
-          const smartcardSecret = deriveSecretFromSignature(sig);
-          const unwrapped = unwrapMasterPasswords(smartcardSecret, config.smartcardSync.wrappedPassword);
-          topologyPassword = unwrapped.topologyPassword;
-          credentialsPassword = unwrapped.credentialsPassword;
-        } catch {
-          throw new Error('Failed to decrypt sync keys with this smartcard. Please re-link your smartcard in Settings.');
-        }
+        // Legacy format from an older sshs3 version: its wrapping key was
+        // derived from a signature over a single-use random challenge,
+        // which by construction can never be reproduced on a later unlock
+        // (a fresh random challenge — and, for most ECDSA tokens, a fresh
+        // nonce — on every call) — this can only ever fail. Don't bother
+        // attempting it.
+        throw new Error(
+          'This smartcard was linked with an older, incompatible version of sshs3. Please re-link it in Settings.'
+        );
       } else {
-        const smartcardSecret = deriveSecretFromSignature(sig);
+        // No saved passwords are linked to this card at all. There is no
+        // stable secret derivable from a smartcard signature over a random,
+        // single-use challenge (see the doc comment on KEY_DERIVATION_MESSAGE),
+        // so derive it from a second signature over the fixed derivation
+        // message instead — and refuse outright for an ECDSA key, whose
+        // signature (and thus the derived secret) can't be reproduced
+        // across separate unlocks on most PKCS#11 tokens.
+        if (getKeyAlgorithm(chosen.keyBlob).startsWith('ecdsa-sha2-')) {
+          throw new Error(
+            'No saved sync passwords are linked to this smartcard, and its ECDSA key cannot derive a stable one on its own. Unlock Remote Profile Sync with your master passwords, then re-link the smartcard to save them.'
+          );
+        }
+        const derivationSig = await signChallengeWithAgent(socketPath, chosen.keyBlob, KEY_DERIVATION_MESSAGE);
+        const smartcardSecret = deriveSecretFromSignature(derivationSig);
         topologyPassword = smartcardSecret;
         credentialsPassword = smartcardSecret;
       }
@@ -1988,6 +2019,10 @@ export class IpcBridge {
 
     this.registerHandler(IPC_CHANNELS.APP_GET_PLATFORM, async () => {
       return process.platform;
+    });
+
+    this.registerHandler(IPC_CHANNELS.APP_GET_SECURITY_STATUS, async () => {
+      return { credentialEncryptionAvailable: isEncryptionAvailable() };
     });
 
     this.registerHandler(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS, async () => {

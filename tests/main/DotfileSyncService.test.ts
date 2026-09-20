@@ -28,6 +28,17 @@ describe('DotfileSyncService', () => {
       expect(resolveRemotePath('/etc/motd', '/home/alun')).toBe('/etc/motd');
       expect(resolveRemotePath('/var/log/syslog', '/home/alun')).toBe('/var/log/syslog');
     });
+
+    it('clamps a home-relative path that traverses outside the home directory', () => {
+      // A dotfile pool entry can arrive from remote profile sync, so "../"
+      // segments in a nominally home-relative remotePath must never be able
+      // to escape homeDir (e.g. onto /etc via path normalization).
+      expect(resolveRemotePath('../../../etc/cron.d/pwned', '/home/alun')).toBe('/home/alun/pwned');
+      expect(resolveRemotePath('~/../../etc/passwd', '/home/alun')).toBe('/home/alun/passwd');
+      expect(resolveRemotePath('../../../root/.ssh/authorized_keys', '/home/alun')).toBe(
+        '/home/alun/authorized_keys'
+      );
+    });
   });
 
   describe('computeDiff and applyFiles', () => {

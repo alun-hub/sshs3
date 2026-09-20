@@ -180,13 +180,29 @@ export class FileEditorService {
     // Remote storage: download to temporary file and watch
     const sessionToken = crypto.randomUUID();
     const tempDir = path.join(this.baseTempDir, sessionToken);
-    await fsp.mkdir(tempDir, { recursive: true });
+    // mode: 0o700 restricts this to the owning user. On a shared/multi-user
+    // machine, the default (umask-derived, typically 0o755) would let any
+    // other local user list this directory — defeating the random UUID as a
+    // guard, since they could just read the directory name — and then read
+    // the downloaded file itself, which may hold sensitive remote content.
+    await fsp.mkdir(tempDir, { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32') {
+      // `mode` on a recursive mkdir isn't guaranteed to tighten a
+      // pre-existing baseTempDir (e.g. left over from before this fix, or a
+      // shared OS temp dir), so enforce it explicitly on both directories.
+      await fsp.chmod(this.baseTempDir, 0o700).catch(() => {});
+      await fsp.chmod(tempDir, 0o700).catch(() => {});
+    }
 
     const baseName = path.posix.basename(remotePath) || 'file.txt';
     const tempFilePath = path.join(tempDir, baseName);
 
     const readStream = await provider.createReadStream(remotePath);
-    const writeStream = fs.createWriteStream(tempFilePath);
+    // mode: 0o600 keeps the downloaded content itself owner-only, matching
+    // the containing directory (belt-and-suspenders: directory permissions
+    // alone would already block other users, but the file's own mode
+    // shouldn't rely on that).
+    const writeStream = fs.createWriteStream(tempFilePath, { mode: 0o600 });
 
     await new Promise<void>((resolve, reject) => {
       readStream.pipe(writeStream);

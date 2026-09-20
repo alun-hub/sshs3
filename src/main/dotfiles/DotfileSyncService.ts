@@ -11,22 +11,41 @@ function hash(content: string): string {
 
 /**
  * Resolves a remote path (e.g. "~/.bashrc" or ".bashrc") against the remote user's home directory.
+ *
+ * A dotfile pool's entries can arrive from remote profile sync (a
+ * compromised sync target, paired device, or leaked master password), so a
+ * home-relative remotePath containing "../" segments must not be able to
+ * escape homeDir via path.posix.join's normalization (e.g.
+ * "../../../etc/cron.d/x") — that would let a malicious pool entry write to
+ * an arbitrary path on the connected SSH server. An explicitly *absolute*
+ * remotePath (starting with "/") is left as the caller's deliberate choice
+ * and is not subject to this guard.
  */
 export function resolveRemotePath(remotePath: string, homeDir: string): string {
   const p = (remotePath || '').replace(/\\/g, '/').trim();
   if (p === '~' || p === '' || p === '.') {
     return homeDir;
   }
+  if (p.startsWith('/')) {
+    return path.posix.normalize(p);
+  }
+
+  let resolved: string;
   if (p.startsWith('~/')) {
-    return path.posix.join(homeDir, p.slice(2));
+    resolved = path.posix.join(homeDir, p.slice(2));
+  } else if (p.startsWith('~')) {
+    resolved = path.posix.join(homeDir, p.slice(1));
+  } else {
+    resolved = path.posix.join(homeDir, p);
   }
-  if (p.startsWith('~')) {
-    return path.posix.join(homeDir, p.slice(1));
+
+  const homeWithSep = homeDir.endsWith('/') ? homeDir : `${homeDir}/`;
+  if (resolved !== homeDir && !resolved.startsWith(homeWithSep)) {
+    // "../" segments walked the resolved path outside homeDir - clamp to a
+    // flat filename inside it instead of ever touching the escaped path.
+    return path.posix.join(homeDir, path.posix.basename(p) || 'unnamed-file');
   }
-  if (!p.startsWith('/')) {
-    return path.posix.join(homeDir, p);
-  }
-  return path.posix.normalize(p);
+  return resolved;
 }
 
 async function readRemoteFile(provider: SFTPStorageProvider, remotePath: string): Promise<Buffer> {

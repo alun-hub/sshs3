@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.18] - 2026-09-20 11:32
+
+### Security
+- Fixed a shell command injection in the SSH `ProxyCommand` built for HTTP/SOCKS proxy connections: proxy host/destination host are now validated against a safe hostname charset, and proxy username/password are passed via environment variables instead of being interpolated into the shell string ([`SmartcardDetector.ts`](src/main/smartcard/SmartcardDetector.ts), [`proxyCli.cjs`](src/main/proxy/proxyCli.cjs), [`SSHPtyManager.ts`](src/main/ssh/SSHPtyManager.ts)).
+- Fixed the bundled X11 server (VcXsrv) being reachable with no authentication: removed `-ac` (which disabled X11 access control) and narrowed the Windows Firewall rule from all networks to Private/Domain only ([`XServerManager.ts`](src/main/x11/XServerManager.ts), [`installer.nsh`](build/installer.nsh)).
+- Fixed arbitrary ssh_config directive injection (`ProxyCommand`, `LocalCommand`, `PermitLocalCommand`, `RemoteCommand`, `Match`, `Include`) via Remote Profile Sync's `~/.ssh/config` mirroring: these directives are now stripped before any synced block is written to the user's real ssh config ([`SshNativeFileMerger.ts`](src/main/services/SshNativeFileMerger.ts)).
+- Fixed a path traversal in dotfiles pool sync that allowed a `remotePath` with `../` segments to write outside the connected server's home directory ([`DotfileSyncService.ts`](src/main/dotfiles/DotfileSyncService.ts)).
+- Fixed smartcard-only Remote Profile Sync unlock (no saved master password) deriving a different, non-reproducible key on every unlock for ECDSA-backed cards; now refuses that mode for ECDSA keys with a clear error, and uses a fixed derivation message (instead of the random liveness challenge) for the Ed25519/RSA cards where it can work reliably ([`SmartcardSyncService.ts`](src/main/smartcard/SmartcardSyncService.ts), [`IpcBridge.ts`](src/main/IpcBridge.ts)).
+- Added a UI warning when saved SSH/S3 credentials can't be encrypted via the OS keyring and are falling back to plaintext on disk ([`CredentialEncryptionWarningBanner.tsx`](src/renderer/src/components/CredentialEncryptionWarningBanner.tsx)).
+- Hardened the external file editor's temporary directory/file permissions to owner-only (`0700`/`0600`) on multi-user systems ([`FileEditorService.ts`](src/main/editor/FileEditorService.ts)).
+
+---
+
 ## [0.2.9] - 2026-09-17 19:41
 
 ### Security

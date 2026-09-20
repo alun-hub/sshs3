@@ -153,6 +153,7 @@ export const IPC_CHANNELS = {
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
+  APP_GET_SECURITY_STATUS: 'app:get-security-status',
   APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
   APP_CHECK_X11_SERVER: 'app:check-x11-server',
   X11_GET_STATUS: 'x11:get-status',
@@ -346,6 +347,13 @@ export interface MultiSSHApi {
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
+  /**
+   * Whether saved credentials (SSH/S3 passwords, passphrases, proxy
+   * passwords) are actually being encrypted at rest via the OS keyring
+   * (safeStorage). When false — no keyring/libsecret backend available,
+   * common on minimal Linux setups — they're stored in plaintext instead.
+   */
+  getSecurityStatus(): Promise<{ credentialEncryptionAvailable: boolean }>;
   /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
   detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
   /** Windows/Linux: check whether an X11 server is actively listening on the target display. */

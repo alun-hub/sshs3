@@ -153,7 +153,9 @@ describe('XServerManager', () => {
       expect(res.success).toBe(true);
       expect(mockSpawn).toHaveBeenCalledWith(
         'C:\\VcXsrv\\vcxsrv.exe',
-        [':0', '-multiwindow', '-clipboard', '-wgl', '-ac'],
+        // No '-ac': that flag disables X11 access control, letting any host
+        // that can reach the port connect with zero authentication.
+        [':0', '-multiwindow', '-clipboard', '-wgl'],
         expect.objectContaining({ detached: true })
       );
       expect(mockProc.unref).toHaveBeenCalled();

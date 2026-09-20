@@ -141,6 +141,47 @@ export function deriveSecretFromSignature(sigBlob: Buffer): string {
 }
 
 /**
+ * Fixed, versioned message signed (over an already possession-verified
+ * agent connection) to derive a *stable* secret from a smartcard key, for
+ * the "link without ever saving a master password" mode. Must never change
+ * — doing so would silently strand every such link, unable to reproduce
+ * the key it originally pushed sync data under.
+ *
+ * This message is deliberately signed *separately* from the random,
+ * single-use liveness challenge used by verifyAgentSignature (which must
+ * stay random to prevent replay): reusing that random challenge's
+ * signature for key derivation as well would make the "stable" secret
+ * different on every single call, since a fresh challenge is generated
+ * each time.
+ *
+ * Even with a fixed message, this is only actually reproducible for
+ * signature schemes that are themselves deterministic given the same key
+ * and message — Ed25519 always is; RSA/PKCS#1v1.5 always is. ECDSA (the
+ * most common scheme on PIV/CAC smartcards) is *not* deterministic on most
+ * PKCS#11 tokens: each signature uses a fresh, hardware-generated nonce, so
+ * an ECDSA card can never reproduce the same derived secret twice. Callers
+ * MUST gate this mode on getKeyAlgorithm() and refuse ECDSA keys rather
+ * than silently risk locking the user out of their own synced data — see
+ * IpcBridge's PROFILE_SYNC_LINK_SMARTCARD and unlockWithSmartcardInternal.
+ */
+export const KEY_DERIVATION_MESSAGE = Buffer.from('sshs3-sync-stable-key-derivation-v1', 'utf-8');
+
+/**
+ * Reads the algorithm name (e.g. "ssh-ed25519", "ssh-rsa",
+ * "ecdsa-sha2-nistp256") out of an agent key blob's wire-format header.
+ * Returns 'unknown' if the blob doesn't parse as a well-formed SSH key.
+ */
+export function getKeyAlgorithm(keyBlob: Buffer): string {
+  try {
+    const algoLen = keyBlob.readUInt32BE(0);
+    const algo = keyBlob.subarray(4, 4 + algoLen).toString('utf-8');
+    return algo || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * Encrypts master passwords with a key derived from the smartcard secret.
  */
 export function wrapMasterPasswords(

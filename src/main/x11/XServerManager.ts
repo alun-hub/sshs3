@@ -177,7 +177,15 @@ export class XServerManager {
       };
     }
 
-    const defaultArgs = [':0', '-multiwindow', '-clipboard', '-wgl', '-ac'];
+    // SECURITY: deliberately no `-ac` here. That flag disables VcXsrv's X11
+    // access control entirely, so *any* host that can reach this TCP port —
+    // including, via the installer's firewall rule, other devices on the
+    // same network — could connect with no authentication at all: keylog
+    // every forwarded window, screenshot them, or inject synthetic input.
+    // SSH X11 forwarding doesn't need that: it relies on the normal
+    // MIT-MAGIC-COOKIE xauth exchange ssh already performs for -X/-Y, which
+    // this server enforces as long as `-ac` is absent. Do not reintroduce it.
+    const defaultArgs = [':0', '-multiwindow', '-clipboard', '-wgl'];
     const args = options?.customArgs?.trim()
       ? options.customArgs.trim().split(/\s+/)
       : defaultArgs;

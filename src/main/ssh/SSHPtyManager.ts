@@ -318,6 +318,7 @@ export class SSHPtyManager extends EventEmitter {
       ...(process.env as Record<string, string>),
       TERM: 'xterm-256color',
       ...askpassEnv,
+      ...SmartcardDetector.buildProxyEnv(config),
       ...(options?.env || {}),
     };
 
@@ -407,6 +408,7 @@ export class SSHPtyManager extends EventEmitter {
       ...(process.env as Record<string, string>),
       TERM: 'xterm-256color',
       ...askpassEnv,
+      ...SmartcardDetector.buildProxyEnv(config),
       ...(options?.env || {}),
     };
 

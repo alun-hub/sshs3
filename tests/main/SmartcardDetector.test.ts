@@ -336,7 +336,7 @@ describe('SmartcardDetector', () => {
       expect(proxyOpt).toContain('proxyCli.cjs" socks5 10.0.0.1 1080 %h %p');
     });
 
-    it('should generate proxyCli ProxyCommand when proxy authentication is configured', () => {
+    it('should generate proxyCli ProxyCommand when proxy authentication is configured, without embedding the credentials in it', () => {
       const config: SSHConnectionConfig = {
         id: 'proxy-auth',
         name: 'Auth Proxy Host',
@@ -356,8 +356,50 @@ describe('SmartcardDetector', () => {
       const args = SmartcardDetector.buildSSHArguments(config);
       const proxyOpt = args.find((a) => a.startsWith('ProxyCommand='));
       expect(proxyOpt).toBeDefined();
-      expect(proxyOpt).toContain('proxyCli.cjs');
-      expect(proxyOpt).toContain('"proxyuser" "secret"');
+      expect(proxyOpt).toContain('proxyCli.cjs" socks5 10.0.0.1 1080 %h %p');
+      // Credentials must never be embedded in the ProxyCommand string: OpenSSH
+      // runs it through a shell, so free-text creds there would be a command
+      // injection vector. They travel via env instead (buildProxyEnv).
+      expect(proxyOpt).not.toContain('proxyuser');
+      expect(proxyOpt).not.toContain('secret');
+
+      const env = SmartcardDetector.buildProxyEnv(config);
+      expect(env.SSHS3_PROXY_USERNAME).toBe('proxyuser');
+      expect(env.SSHS3_PROXY_PASSWORD).toBe('secret');
+    });
+
+    it('should reject shell metacharacters in the destination host (ProxyCommand %h injection)', () => {
+      const config: SSHConnectionConfig = {
+        id: 'inject-host',
+        name: 'Injection Host',
+        host: 'example.com"; touch /tmp/pwned; echo "',
+        username: 'user',
+        authType: 'password',
+      };
+
+      expect(() => SmartcardDetector.buildSSHArguments(config)).toThrow(
+        /Invalid SSH host/
+      );
+    });
+
+    it('should reject shell metacharacters in the proxy host', () => {
+      const config: SSHConnectionConfig = {
+        id: 'inject-proxy-host',
+        name: 'Injection Proxy Host',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+        proxy: {
+          enabled: true,
+          type: 'socks5',
+          host: '10.0.0.1"; touch /tmp/pwned; echo "',
+          port: 1080,
+        },
+      };
+
+      expect(() => SmartcardDetector.buildSSHArguments(config)).toThrow(
+        /Invalid proxy host/
+      );
     });
 
     it('should add proxyJump and advanced options (compression, keepalive, ciphers, kex, macs)', () => {
