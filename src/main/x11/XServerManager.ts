@@ -83,7 +83,7 @@ export class XServerManager {
   /**
    * Checks if an X11 server is listening on the given display (default 127.0.0.1:0.0).
    */
-  public static async isListening(displayStr?: string): Promise<{ running: boolean; display: string }> {
+  public static async isListening(displayStr?: string): Promise<{ running: boolean; display: string; platform?: string }> {
     const def = process.platform === 'win32' ? '127.0.0.1:0.0' : (process.env.DISPLAY || ':0');
     const d = (displayStr && displayStr.trim()) || def;
     let host = '127.0.0.1';
@@ -106,7 +106,7 @@ export class XServerManager {
     if (process.platform !== 'win32' && socketPath) {
       try {
         if (fs.existsSync(socketPath)) {
-          return { running: true, display: d };
+          return { running: true, display: d, platform: process.platform };
         }
       } catch {
         // ignore
@@ -117,15 +117,15 @@ export class XServerManager {
       const socket = net.createConnection({ host, port, timeout: 500 });
       socket.once('connect', () => {
         socket.destroy();
-        resolve({ running: true, display: d });
+        resolve({ running: true, display: d, platform: process.platform });
       });
       socket.once('timeout', () => {
         socket.destroy();
-        resolve({ running: false, display: d });
+        resolve({ running: false, display: d, platform: process.platform });
       });
       socket.once('error', () => {
         socket.destroy();
-        resolve({ running: false, display: d });
+        resolve({ running: false, display: d, platform: process.platform });
       });
     });
   }
@@ -153,6 +153,7 @@ export class XServerManager {
       managedByApp: Boolean(this.xProcess && this.managedPid),
       pid: this.managedPid || undefined,
       display: targetDisplay,
+      platform: process.platform,
     };
   }
 

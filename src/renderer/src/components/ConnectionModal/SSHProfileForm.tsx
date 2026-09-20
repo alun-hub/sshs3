@@ -49,7 +49,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tunnelsOpen, setTunnelsOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
-  const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string } | null>(null);
+  const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string; platform?: string } | null>(null);
 
   useEffect(() => {
     if (!dotfilesPoolEnabled) return;
@@ -564,7 +564,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                       </span>
                     ) : (
                       <span className="text-amber-400">
-                        ⚠ No local X11 server listening on {x11ServerStatus.display}. Start an X server (e.g. VcXsrv, Xming, or WSLg) on Windows.
+                        {x11ServerStatus.platform === 'linux'
+                          ? `⚠ No local X11 server listening on ${x11ServerStatus.display}. Ensure an X11 or Xwayland session is active.`
+                          : `⚠ No local X11 server listening on ${x11ServerStatus.display}. Start an X server (e.g. VcXsrv, Xming, or WSLg) on Windows.`}
                       </span>
                     )}
                   </div>

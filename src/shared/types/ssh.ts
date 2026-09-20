@@ -127,4 +127,5 @@ export interface XServerStatus {
   managedByApp: boolean;
   pid?: number;
   display: string;
+  platform?: string;
 }

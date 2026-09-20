@@ -216,4 +216,33 @@ describe('SettingsModal', () => {
     );
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('detects Linux platform and displays native display notice without VcXsrv warning', async () => {
+    (window as any).multissh = {
+      getPlatform: vi.fn().mockResolvedValue('linux'),
+      x11GetStatus: vi.fn().mockResolvedValue({
+        running: true,
+        display: ':0',
+        available: false,
+        managedByApp: false,
+        platform: 'linux',
+      }),
+    };
+
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+
+    expect(await screen.findByText(/Linux system detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/Native display support active/i)).toBeInTheDocument();
+    expect(screen.getByText(/Local X11 display is active and ready/i)).toBeInTheDocument();
+    expect(screen.queryByText(/VcXsrv not detected/i)).not.toBeInTheDocument();
+  });
 });

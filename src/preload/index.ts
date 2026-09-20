@@ -437,7 +437,7 @@ export const api: MultiSSHApi = {
   detectLocalShells: (): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS),
 
-  checkX11Server: (display?: string): Promise<{ running: boolean; display: string }> =>
+  checkX11Server: (display?: string): Promise<{ running: boolean; display: string; platform?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, display),
 
   x11GetStatus: (customPath?: string, display?: string): Promise<XServerStatus> =>

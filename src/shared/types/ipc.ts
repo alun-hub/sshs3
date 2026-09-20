@@ -359,7 +359,7 @@ export interface MultiSSHApi {
   /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
   detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
   /** Windows/Linux: check whether an X11 server is actively listening on the target display. */
-  checkX11Server(display?: string): Promise<{ running: boolean; display: string }>;
+  checkX11Server(display?: string): Promise<{ running: boolean; display: string; platform?: string }>;
   /** Windows: Get current status of managed/detected X server. */
   x11GetStatus(customPath?: string, display?: string): Promise<XServerStatus>;
   /** Windows: Start local X server (VcXsrv/Xming/custom). */
