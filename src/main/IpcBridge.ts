@@ -267,9 +267,24 @@ export class IpcBridge {
           }
         }
 
+        let ptyOptions = options.ptyOptions;
+        if (options.local) {
+          // Point a local shell at whichever smartcard is currently cached under
+          // 'agent-global' PIN caching, so a plain `ssh`/`ssh-add` typed by hand
+          // there can use the card without asking for the PIN again — matching
+          // the "shared by every terminal and profile using it" promise of that
+          // mode. Falls through to SSHPtyManager's own AgentLifecycleManager
+          // fallback when no card is cached; an explicit caller-supplied
+          // env.SSH_AUTH_SOCK (none today) would still win over both.
+          const globalAgentSocket = this.globalSmartcardAgents.values().next().value?.socketPath;
+          if (globalAgentSocket) {
+            ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
+          }
+        }
+
         const session = options.local
-          ? await this.sshPtyManager.createShellSession(options.ptyOptions)
-          : await this.sshPtyManager.createSession(config!, options.ptyOptions);
+          ? await this.sshPtyManager.createShellSession(ptyOptions)
+          : await this.sshPtyManager.createSession(config!, ptyOptions);
 
         if (!options.local && config) {
           // Fire-and-forget: never let the dotfiles check delay or fail the

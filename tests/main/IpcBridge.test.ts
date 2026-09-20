@@ -113,6 +113,7 @@ describe('IpcBridge', () => {
     const ptyEmitter = new EventEmitter();
     mockPtyManager = Object.assign(ptyEmitter, {
       createSession: vi.fn().mockResolvedValue({ sessionId: 'session-123' }),
+      createShellSession: vi.fn().mockResolvedValue({ sessionId: 'local-session-123' }),
       write: vi.fn(),
       resize: vi.fn(),
       kill: vi.fn(),
@@ -230,6 +231,26 @@ describe('IpcBridge', () => {
 
     it('throws when creating terminal without config', async () => {
       await expect(mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, null as any)).rejects.toThrow();
+    });
+
+    it('local shell terminals get no SSH_AUTH_SOCK override when no smartcard is cached globally', async () => {
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
+      expect(mockPtyManager.createShellSession).toHaveBeenCalledWith({ cols: 80, rows: 24 });
+    });
+
+    it('local shell terminals point SSH_AUTH_SOCK at a cached agent-global smartcard agent', async () => {
+      (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', {
+        pid: 4242,
+        socketPath: '/tmp/global-smartcard-agent.sock',
+      });
+
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
+
+      expect(mockPtyManager.createShellSession).toHaveBeenCalledWith({
+        cols: 80,
+        rows: 24,
+        env: { SSH_AUTH_SOCK: '/tmp/global-smartcard-agent.sock' },
+      });
     });
 
     it('handles terminalWrite, resize, and kill', async () => {
