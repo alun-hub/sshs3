@@ -963,7 +963,11 @@ export class IpcBridge {
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
     const configWithId = { ...config, id: sessionId };
 
-    const agentPath = await this.resolveSmartcardAgentPath(config.pkcs11LibPath, sessionId);
+    const agentPath = await this.resolveSmartcardAgentPath(
+      config.pkcs11LibPath,
+      sessionId,
+      `connect via SSH to ${config.name || config.host}`
+    );
     return agentPath ? { ...configWithId, agentPath } : configWithId;
   }
 
@@ -983,7 +987,11 @@ export class IpcBridge {
 
     // Keyed by providerId so a matching STORAGE_DISCONNECT can tear down the
     // same 'agent-per-session' agent this connection loaded.
-    const agentPath = await this.resolveSmartcardAgentPath(config.pkcs11LibPath, providerId);
+    const agentPath = await this.resolveSmartcardAgentPath(
+      config.pkcs11LibPath,
+      providerId,
+      `connect via SFTP to ${config.name || config.host}`
+    );
     return agentPath ? { ...config, agentPath } : config;
   }
 
@@ -994,13 +1002,17 @@ export class IpcBridge {
    * above), or if loading the agent fails — callers should then fall back to a direct `-I` login
    * (SSH) or their own ephemeral agent (SFTP), which still prompts for the PIN on its own.
    */
-  private async resolveSmartcardAgentPath(pkcs11LibPath: string, sessionId: string): Promise<string | undefined> {
+  private async resolveSmartcardAgentPath(
+    pkcs11LibPath: string,
+    sessionId: string,
+    promptLabel: string
+  ): Promise<string | undefined> {
     const settings = await this.settingsStore.getSettings();
     const mode = settings.smartcardAuthMode ?? 'always-prompt';
 
     if (mode === 'agent-global') {
       try {
-        return await this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, sessionId);
+        return await this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, sessionId, promptLabel);
       } catch (err) {
         console.warn(
           'IpcBridge: failed to load smartcard into the global agent, falling back to per-connection prompts:',
@@ -1024,8 +1036,8 @@ export class IpcBridge {
 
     console.log(`[smartcard] resolveSmartcardAgentPath: starting shared-agent preload for session ${sessionId}`);
     try {
-      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(pkcs11LibPath, (prompt) =>
-        this.sshPtyManager.promptForPin(sessionId, prompt)
+      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(pkcs11LibPath, () =>
+        this.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`)
       );
       console.log(
         `[smartcard] resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
@@ -1047,7 +1059,11 @@ export class IpcBridge {
    * isn't already cached. Concurrent callers for the same library share the
    * same in-flight load rather than each spawning their own agent.
    */
-  private async getOrLoadGlobalSmartcardAgent(pkcs11LibPath: string, sessionId: string): Promise<string> {
+  private async getOrLoadGlobalSmartcardAgent(
+    pkcs11LibPath: string,
+    sessionId: string,
+    promptLabel: string
+  ): Promise<string> {
     const cached = this.globalSmartcardAgents.get(pkcs11LibPath);
     if (cached) {
       console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: reusing cached global agent for ${pkcs11LibPath}`);
@@ -1062,8 +1078,8 @@ export class IpcBridge {
     }
 
     console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading global agent for ${pkcs11LibPath}`);
-    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, (prompt) =>
-      this.sshPtyManager.promptForPin(sessionId, prompt)
+    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, () =>
+      this.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`)
     );
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
 
@@ -1154,7 +1170,11 @@ export class IpcBridge {
 
     const pinPromptHandler =
       config.authType === 'smartcard' && config.pkcs11LibPath
-        ? (prompt: string) => this.sshPtyManager.promptForPin(sessionId, prompt)
+        ? () =>
+            this.sshPtyManager.promptForPin(
+              sessionId,
+              `Enter your smartcard PIN to sync dotfiles with ${config.name || config.host}:`
+            )
         : undefined;
 
     let provider: Awaited<ReturnType<DotfileSyncService['computeDiff']>>['provider'] | undefined;
@@ -1527,9 +1547,9 @@ export class IpcBridge {
           passwords?: { topologyPassword: string; credentialsPassword: string };
         }
       ): Promise<ProfileSyncStatus> => {
-        const pinHandler = async (_prompt: string) => {
+        const pinHandler = async () => {
           if (options.pin) return options.pin;
-          return await this.promptForPinDirect(_prompt);
+          return await this.promptForPinDirect('Enter your smartcard PIN to link this card to Remote Profile Sync:');
         };
 
         const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(options.pkcs11LibPath, pinHandler);
@@ -1638,9 +1658,9 @@ export class IpcBridge {
       libPath = detected[0].path;
     }
 
-    const pinHandler = async (_prompt: string) => {
+    const pinHandler = async () => {
       if (options?.pin) return options.pin;
-      return await this.promptForPinDirect(_prompt);
+      return await this.promptForPinDirect('Enter your smartcard PIN to unlock Remote Profile Sync:');
     };
 
     const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);

@@ -377,18 +377,20 @@ export class SSHPtyManager extends EventEmitter {
 
     if (needsAskpass) {
       askpassServer = new AskpassServer({
-        promptHandler: async (prompt: string) => {
+        promptHandler: async () => {
           if (config.authType === 'password' && config.password) {
             return config.password;
           }
           if (config.passphrase) {
             return config.passphrase;
           }
+          // The two branches above cover 'password'/passphrase — by elimination
+          // this is always the smartcard PIN prompt (see needsAskpass above).
           if (this.listenerCount('askpass') > 0) {
             return new Promise<string>((resolve) => {
               this.emit('askpass', {
                 sessionId,
-                prompt,
+                prompt: `Enter your smartcard PIN to connect via SSH to ${config.name || config.host}:`,
                 callback: (resolvedPin: string) => resolve(resolvedPin),
               });
             });
