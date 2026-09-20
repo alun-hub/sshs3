@@ -20,6 +20,23 @@ vi.mock('electron', () => {
   return { ...mockObj, default: mockObj };
 });
 
+// Stands in for real PKCS#11 hardware so the smartcard-auto-unlock tests below
+// don't need an actual card/reader: a fixed identity that always verifies, and
+// a derived "secret" set to the same string the tests unlock sync with, so
+// the mocked smartcard can unlock sync exactly as a real one would.
+vi.mock('../../src/main/smartcard/SmartcardAgentLoader', () => ({
+  loadSmartcardIntoPrivateAgent: vi.fn().mockResolvedValue({ pid: 0, socketPath: 'fake-agent-pipe' }),
+  listAgentIdentities: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../src/main/smartcard/SmartcardSyncService', () => ({
+  getAgentIdentities: vi.fn().mockResolvedValue([{ keyBlob: Buffer.from('fake-key-blob'), comment: 'Test Card' }]),
+  signChallengeWithAgent: vi.fn().mockResolvedValue(Buffer.from('fake-signature')),
+  verifyAgentSignature: vi.fn().mockReturnValue(true),
+  deriveSecretFromSignature: vi.fn().mockReturnValue('single-master-password'),
+  unwrapMasterPasswords: vi.fn(),
+}));
+
 import { IpcBridge } from '../../src/main/IpcBridge';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { ProfileStore } from '../../src/main/profile/ProfileStore';
@@ -108,6 +125,7 @@ interface Harness {
   ipc: MockIpcMain;
   dir: string;
   syncConfigStore: SyncConfigStore;
+  syncCryptoService: SyncCryptoService;
 }
 
 async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness> {
@@ -140,7 +158,7 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
   });
   bridge.register();
 
-  return { bridge, ipc, dir, syncConfigStore };
+  return { bridge, ipc, dir, syncConfigStore, syncCryptoService };
 }
 
 const TARGET: StorageConnectConfig = {
@@ -393,5 +411,112 @@ describe('IpcBridge — remote profile sync handlers', () => {
       deleteSpy.mockRestore();
       await bridge.dispose();
     });
+  });
+
+  describe('auto-sync: catch-up push and smartcard auto-unlock', () => {
+    it('flushes pending local changes with a catch-up push right after a manual re-unlock (was previously pull-only)', async () => {
+      const { ipc, bridge, syncCryptoService } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+
+      // Simulate the app being locked (e.g. a fresh run) while a local edit happens.
+      syncCryptoService.lock();
+      await ipc.invoke(IPC_CHANNELS.PROFILES_SAVE_SSH, {
+        id: 'p1',
+        name: 'P1',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+      });
+
+      // Manual re-unlock, as the "Unlock sync" button in Settings does.
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+
+      // The catch-up push is scheduled 500ms after unlock.
+      await new Promise((r) => setTimeout(r, 800));
+
+      const compare = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE);
+      expect(compare.state).toBe('in_sync');
+
+      await bridge.dispose();
+    });
+
+    it('automatically unlocks via a linked smartcard for a background auto-sync push when locked', async () => {
+      const { ipc, bridge, syncCryptoService } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
+
+      syncCryptoService.lock();
+      expect(syncCryptoService.isUnlocked('topology')).toBe(false);
+
+      await ipc.invoke(IPC_CHANNELS.PROFILES_SAVE_SSH, {
+        id: 'p2',
+        name: 'P2',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+      });
+
+      // scheduleAutoSync's default 2s debounce should auto-unlock via the mocked smartcard and push.
+      await new Promise((r) => setTimeout(r, 2500));
+
+      expect(syncCryptoService.isUnlocked('topology')).toBe(true);
+      const compare = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE);
+      expect(compare.state).toBe('in_sync');
+
+      await bridge.dispose();
+    }, 10000);
+
+    it('does not retry a failed smartcard auto-unlock on every debounce tick (cooldown)', async () => {
+      const { ipc, bridge, syncCryptoService } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
+
+      const { loadSmartcardIntoPrivateAgent } = await import('../../src/main/smartcard/SmartcardAgentLoader');
+      (loadSmartcardIntoPrivateAgent as any).mockRejectedValueOnce(new Error('card not present'));
+
+      syncCryptoService.lock();
+      await ipc.invoke(IPC_CHANNELS.PROFILES_SAVE_SSH, {
+        id: 'p3',
+        name: 'P3',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+      });
+      await new Promise((r) => setTimeout(r, 2500)); // First auto-unlock attempt fails.
+      expect(syncCryptoService.isUnlocked('topology')).toBe(false);
+
+      // A second local change right after should NOT immediately retry — the
+      // cooldown should still be in effect even though the card would now
+      // "succeed" (mockRejectedValueOnce only failed the first call).
+      await ipc.invoke(IPC_CHANNELS.PROFILES_SAVE_SSH, {
+        id: 'p4',
+        name: 'P4',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+      });
+      await new Promise((r) => setTimeout(r, 2500));
+      expect(syncCryptoService.isUnlocked('topology')).toBe(false);
+
+      await bridge.dispose();
+    }, 10000);
   });
 });

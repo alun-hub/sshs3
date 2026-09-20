@@ -30,7 +30,7 @@ import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { FileEditorService } from './editor/FileEditorService';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
-import { SyncConfigStore } from './services/SyncConfigStore';
+import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import {
@@ -145,6 +145,10 @@ export class IpcBridge {
   /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
   private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string }>>();
   private autoSyncTimer: NodeJS.Timeout | null = null;
+  private autoPullTimer: NodeJS.Timeout | null = null;
+  private lastSmartcardAutoUnlockAttempt = 0;
+  private static readonly AUTO_PULL_INTERVAL_MS = 10 * 60 * 1000;
+  private static readonly SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS = 5 * 60 * 1000;
 
   // Event listener references for clean teardown
   private onPtyData?: (event: { sessionId: string; data: string }) => void;
@@ -197,6 +201,14 @@ export class IpcBridge {
     this.registerSessionHandlers();
     this.registerSettingsHandlers();
     this.registerSyncHandlers();
+    void this.syncConfigStore
+      .getConfig()
+      .then((config) => {
+        if (config.autoSync && config.target) {
+          this.startAutoPullTimer();
+        }
+      })
+      .catch(() => {});
     this.registerConnectionTestHandlers();
     this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
@@ -1252,21 +1264,108 @@ export class IpcBridge {
         if (!config.autoSync || !config.target) {
           return;
         }
-        if (!this.syncCryptoService.isUnlocked('topology') || !this.syncCryptoService.isUnlocked('credentials')) {
+        if (!(await this.ensureSyncUnlockedForAutoSync(config))) {
           return;
         }
         const provider = await this.storageRegistry.getOrCreate(config.target);
         await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
         await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
-        const webContents = this.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          const status = await this.buildSyncStatus();
-          webContents.send(IPC_CHANNELS.PROFILE_SYNC_STATUS, status);
-        }
+        await this.pushSyncStatusToRenderer();
       } catch (err) {
         console.warn('[AutoSync] Background push failed:', err);
       }
     }, delayMs);
+  }
+
+  /**
+   * Starts (or restarts) the periodic background pull, so machines pick up
+   * changes pushed from elsewhere without the user having to open Settings
+   * and click "Pull" themselves. Runs only while auto-sync is enabled — see
+   * stopAutoPullTimer() for where it's torn down.
+   */
+  private startAutoPullTimer(): void {
+    this.stopAutoPullTimer();
+    this.autoPullTimer = setInterval(() => {
+      void this.runAutoPull();
+    }, IpcBridge.AUTO_PULL_INTERVAL_MS);
+    // node's timer would otherwise keep the process alive just for this.
+    this.autoPullTimer.unref?.();
+  }
+
+  private stopAutoPullTimer(): void {
+    if (this.autoPullTimer) {
+      clearInterval(this.autoPullTimer);
+      this.autoPullTimer = null;
+    }
+  }
+
+  private async runAutoPull(): Promise<void> {
+    try {
+      const config = await this.syncConfigStore.getConfig();
+      if (!config.autoSync || !config.target) {
+        this.stopAutoPullTimer();
+        return;
+      }
+      if (!(await this.ensureSyncUnlockedForAutoSync(config))) {
+        return;
+      }
+      const provider = await this.storageRegistry.getOrCreate(config.target);
+      const result = await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+      await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
+      if (result.sshNativeConflicts.length > 0) {
+        // No interactive flow for a conflict discovered by a background pull
+        // (the user may not even have Settings open) — surfaced in the log
+        // instead; the conflict itself is never auto-resolved either way.
+        console.warn(
+          `[AutoSync] Background pull found ${result.sshNativeConflicts.length} known_hosts conflict(s), left unapplied.`
+        );
+      }
+      await this.pushSyncStatusToRenderer();
+    } catch (err) {
+      console.warn('[AutoSync] Background pull failed:', err);
+    }
+  }
+
+  private async pushSyncStatusToRenderer(): Promise<void> {
+    const webContents = this.getWebContents();
+    if (webContents && !webContents.isDestroyed?.()) {
+      const status = await this.buildSyncStatus();
+      webContents.send(IPC_CHANNELS.PROFILE_SYNC_STATUS, status);
+    }
+  }
+
+  /**
+   * Whether sync is unlocked for a background auto-sync/auto-pull cycle to
+   * proceed — unlocking it via the linked smartcard first if it isn't.
+   * Deliberately never attempts a text master-password prompt on its own
+   * (unlike the smartcard PIN dialog, that's not something a user expects to
+   * pop up unprompted); if no smartcard is linked, a locked sync just skips
+   * this cycle exactly as before. A failed/declined auto-unlock attempt is
+   * throttled (SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS) so a persistently missing
+   * card or a user who dismisses the prompt isn't re-nagged on every debounce
+   * tick or pull interval.
+   */
+  private async ensureSyncUnlockedForAutoSync(config: SyncConfigData): Promise<boolean> {
+    if (this.syncCryptoService.isUnlocked('topology') && this.syncCryptoService.isUnlocked('credentials')) {
+      return true;
+    }
+    if (!config.smartcardSync) {
+      return false;
+    }
+    if (Date.now() - this.lastSmartcardAutoUnlockAttempt < IpcBridge.SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS) {
+      return false;
+    }
+    this.lastSmartcardAutoUnlockAttempt = Date.now();
+    try {
+      await this.unlockWithSmartcardInternal(
+        { pkcs11LibPath: config.smartcardSync.pkcs11LibPath },
+        { skipAutoSyncSchedule: true }
+      );
+      return this.syncCryptoService.isUnlocked('topology') && this.syncCryptoService.isUnlocked('credentials');
+    } catch (err) {
+      console.warn('[AutoSync] Automatic smartcard unlock failed:', err);
+      return false;
+    }
   }
 
   private async buildSyncStatus(): Promise<ProfileSyncStatus> {
@@ -1403,6 +1502,9 @@ export class IpcBridge {
         await this.syncConfigStore.setAutoSync(Boolean(enabled));
         if (enabled) {
           this.scheduleAutoSync(500);
+          this.startAutoPullTimer();
+        } else {
+          this.stopAutoPullTimer();
         }
         return await this.buildSyncStatus();
       }
@@ -1411,78 +1513,7 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD,
       async (_event, options?: { pkcs11LibPath?: string; pin?: string }): Promise<ProfileSyncStatus> => {
-        const config = await this.syncConfigStore.getConfig();
-        if (!config.target) {
-          throw new Error('Configure a sync target first (profile-sync:setup)');
-        }
-
-        let libPath = options?.pkcs11LibPath || config.smartcardSync?.pkcs11LibPath;
-        if (!libPath) {
-          const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
-          if (detected.length === 0) {
-            throw new Error('No smartcard libraries detected. Please ensure your card reader / PKCS#11 module is installed.');
-          }
-          libPath = detected[0].path;
-        }
-
-        const pinHandler = async (_prompt: string) => {
-          if (options?.pin) return options.pin;
-          return await this.promptForPinDirect(_prompt);
-        };
-
-        const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
-        try {
-          const identities = await getAgentIdentities(socketPath);
-          if (identities.length === 0) {
-            throw new Error('No smartcard identities/certificates found on the card');
-          }
-          const chosen =
-            identities.find(
-              (id) =>
-                (config.smartcardSync?.keyBlobBase64 && id.keyBlob.toString('base64') === config.smartcardSync.keyBlobBase64) ||
-                (config.smartcardSync?.keyFingerprint &&
-                  crypto.createHash('sha256').update(id.keyBlob).digest('hex') === config.smartcardSync.keyFingerprint)
-            ) || identities[0];
-
-          const challenge = crypto.randomBytes(32);
-          const sig = await signChallengeWithAgent(socketPath, chosen.keyBlob, challenge);
-          const verified = verifyAgentSignature(chosen.keyBlob, challenge, sig);
-          if (!verified) {
-            throw new Error('Failed to verify cryptographic signature from smartcard. Please ensure the correct card is inserted.');
-          }
-
-          let topologyPassword = '';
-          let credentialsPassword = '';
-
-          if (config.smartcardSync?.wrappedPasswordsEncrypted) {
-            try {
-              const decrypted = decryptSecretValue(config.smartcardSync.wrappedPasswordsEncrypted);
-              const parsed = JSON.parse(decrypted);
-              topologyPassword = parsed.topologyPassword;
-              credentialsPassword = parsed.credentialsPassword;
-            } catch {
-              throw new Error('Failed to decrypt saved sync passwords with OS keyring.');
-            }
-          } else if (config.smartcardSync?.wrappedPassword) {
-            try {
-              const smartcardSecret = deriveSecretFromSignature(sig);
-              const unwrapped = unwrapMasterPasswords(smartcardSecret, config.smartcardSync.wrappedPassword);
-              topologyPassword = unwrapped.topologyPassword;
-              credentialsPassword = unwrapped.credentialsPassword;
-            } catch {
-              throw new Error('Failed to decrypt sync keys with this smartcard. Please re-link your smartcard in Settings.');
-            }
-          } else {
-            const smartcardSecret = deriveSecretFromSignature(sig);
-            topologyPassword = smartcardSecret;
-            credentialsPassword = smartcardSecret;
-          }
-
-          return await this.unlockSyncInternal({ topologyPassword, credentialsPassword });
-        } finally {
-          void AgentLifecycleManager.unloadCard(socketPath, libPath);
-          AgentLifecycleManager.killPrivateAgent(pid);
-        }
+        return await this.unlockWithSmartcardInternal(options);
       }
     );
 
@@ -1572,6 +1603,7 @@ export class IpcBridge {
         this.syncCryptoService.lock();
         await this.syncConfigStore.clear();
         this.profileSyncService.resetRemoteState();
+        this.stopAutoPullTimer();
 
         const status = await this.buildSyncStatus();
         return { ...status, remoteWipeErrors };
@@ -1579,10 +1611,97 @@ export class IpcBridge {
     );
   }
 
-  private async unlockSyncInternal(passwords: {
-    topologyPassword: string;
-    credentialsPassword: string;
-  }): Promise<ProfileSyncStatus> {
+  /**
+   * Unlocks sync via a linked hardware smartcard: loads the card into a
+   * private agent, has it sign a challenge to prove possession, then derives
+   * or unwraps the master passwords from that signature and unlocks through
+   * the normal password path. Shared by the interactive profile-sync:unlock-
+   * smartcard handler and ensureSyncUnlockedForAutoSync's background
+   * auto-unlock — either way the PIN is requested through the same in-app
+   * dialog (promptForPinDirect), never silently.
+   */
+  private async unlockWithSmartcardInternal(
+    options?: { pkcs11LibPath?: string; pin?: string },
+    unlockOptions?: { skipAutoSyncSchedule?: boolean }
+  ): Promise<ProfileSyncStatus> {
+    const config = await this.syncConfigStore.getConfig();
+    if (!config.target) {
+      throw new Error('Configure a sync target first (profile-sync:setup)');
+    }
+
+    let libPath = options?.pkcs11LibPath || config.smartcardSync?.pkcs11LibPath;
+    if (!libPath) {
+      const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+      if (detected.length === 0) {
+        throw new Error('No smartcard libraries detected. Please ensure your card reader / PKCS#11 module is installed.');
+      }
+      libPath = detected[0].path;
+    }
+
+    const pinHandler = async (_prompt: string) => {
+      if (options?.pin) return options.pin;
+      return await this.promptForPinDirect(_prompt);
+    };
+
+    const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
+    try {
+      const identities = await getAgentIdentities(socketPath);
+      if (identities.length === 0) {
+        throw new Error('No smartcard identities/certificates found on the card');
+      }
+      const chosen =
+        identities.find(
+          (id) =>
+            (config.smartcardSync?.keyBlobBase64 && id.keyBlob.toString('base64') === config.smartcardSync.keyBlobBase64) ||
+            (config.smartcardSync?.keyFingerprint &&
+              crypto.createHash('sha256').update(id.keyBlob).digest('hex') === config.smartcardSync.keyFingerprint)
+        ) || identities[0];
+
+      const challenge = crypto.randomBytes(32);
+      const sig = await signChallengeWithAgent(socketPath, chosen.keyBlob, challenge);
+      const verified = verifyAgentSignature(chosen.keyBlob, challenge, sig);
+      if (!verified) {
+        throw new Error('Failed to verify cryptographic signature from smartcard. Please ensure the correct card is inserted.');
+      }
+
+      let topologyPassword = '';
+      let credentialsPassword = '';
+
+      if (config.smartcardSync?.wrappedPasswordsEncrypted) {
+        try {
+          const decrypted = decryptSecretValue(config.smartcardSync.wrappedPasswordsEncrypted);
+          const parsed = JSON.parse(decrypted);
+          topologyPassword = parsed.topologyPassword;
+          credentialsPassword = parsed.credentialsPassword;
+        } catch {
+          throw new Error('Failed to decrypt saved sync passwords with OS keyring.');
+        }
+      } else if (config.smartcardSync?.wrappedPassword) {
+        try {
+          const smartcardSecret = deriveSecretFromSignature(sig);
+          const unwrapped = unwrapMasterPasswords(smartcardSecret, config.smartcardSync.wrappedPassword);
+          topologyPassword = unwrapped.topologyPassword;
+          credentialsPassword = unwrapped.credentialsPassword;
+        } catch {
+          throw new Error('Failed to decrypt sync keys with this smartcard. Please re-link your smartcard in Settings.');
+        }
+      } else {
+        const smartcardSecret = deriveSecretFromSignature(sig);
+        topologyPassword = smartcardSecret;
+        credentialsPassword = smartcardSecret;
+      }
+
+      return await this.unlockSyncInternal({ topologyPassword, credentialsPassword }, unlockOptions);
+    } finally {
+      void AgentLifecycleManager.unloadCard(socketPath, libPath);
+      AgentLifecycleManager.killPrivateAgent(pid);
+    }
+  }
+
+  private async unlockSyncInternal(
+    passwords: { topologyPassword: string; credentialsPassword: string },
+    options?: { skipAutoSyncSchedule?: boolean }
+  ): Promise<ProfileSyncStatus> {
     const config = await this.syncConfigStore.getConfig();
     if (!config.target) {
       throw new Error('Configure a sync target first (profile-sync:setup)');
@@ -1601,6 +1720,16 @@ export class IpcBridge {
         Buffer.from(config.credentialsSaltBase64, 'base64')
       );
       await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+      // Re-unlocking only pulls, never pushes — any local edits made while
+      // locked would otherwise sit unpushed until the user notices and clicks
+      // Push manually. Flush them now if auto-sync is on (scheduleAutoSync is
+      // itself a no-op when it isn't, or when there's nothing new to push).
+      // Skipped when called from ensureSyncUnlockedForAutoSync, which already
+      // pushes/pulls itself right after unlocking — scheduling another one
+      // here too would just double up that same request 500ms later.
+      if (!options?.skipAutoSyncSchedule) {
+        this.scheduleAutoSync(500);
+      }
     } else {
       if (await this.profileSyncService.hasRemoteData(provider, config.remoteBasePath ?? '')) {
         throw new Error(
@@ -2066,6 +2195,7 @@ export class IpcBridge {
       clearTimeout(this.autoSyncTimer);
       this.autoSyncTimer = null;
     }
+    this.stopAutoPullTimer();
     this.lockAllGlobalSmartcardAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();
