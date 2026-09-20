@@ -4,6 +4,7 @@ import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
+import { AgentLifecycleManager } from './AgentLifecycleManager';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -476,8 +477,26 @@ export class SSHPtyManager extends EventEmitter {
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       TERM: 'xterm-256color',
-      ...(options?.env || {}),
     };
+
+    // Explicitly point the local shell at the app's own ensured/managed
+    // ssh-agent instead of just relying on it having landed in
+    // process.env.SSH_AUTH_SOCK already — e.g. if this app process was
+    // itself launched without SSH_AUTH_SOCK set (common for GUI/.desktop
+    // launches vs. a terminal), ensureAgent() spawns a private agent for it,
+    // but a local shell opened before that mutation was observed would
+    // otherwise silently fall back to no agent (or a stale one) instead of
+    // the one the app just spawned for exactly this purpose. Skipped on
+    // Windows/WSL, where there's no app-managed agent concept to hand a Unix
+    // socket path into anyway.
+    if (process.platform !== 'win32' && options?.shellType !== 'wsl') {
+      const agentStatus = await AgentLifecycleManager.ensureAgent();
+      if (agentStatus.isRunning && agentStatus.socketPath) {
+        env.SSH_AUTH_SOCK = agentStatus.socketPath;
+      }
+    }
+
+    Object.assign(env, options?.env || {});
 
     const sessionName =
       options?.shellType === 'wsl'

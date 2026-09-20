@@ -1,7 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { IPty, IDisposable } from 'node-pty';
 import { SSHPtyManager } from '../../src/main/ssh/SSHPtyManager';
+import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+
+// createShellSession() calls AgentLifecycleManager.ensureAgent() to inject
+// SSH_AUTH_SOCK; mocked so unit tests never spawn a real ssh-agent process
+// (non-hermetic, and would leak a process in CI where none is running).
+vi.mock('../../src/main/ssh/AgentLifecycleManager', () => ({
+  AgentLifecycleManager: {
+    ensureAgent: vi.fn().mockResolvedValue({ isRunning: false, isManaged: false, platform: process.platform }),
+  },
+}));
 
 // Mock node-pty
 const mockPtyInstances: MockPty[] = [];
@@ -83,6 +93,11 @@ describe('SSHPtyManager', () => {
   beforeEach(() => {
     mockPtyInstances.length = 0;
     manager = new SSHPtyManager();
+    vi.mocked(AgentLifecycleManager.ensureAgent).mockResolvedValue({
+      isRunning: false,
+      isManaged: false,
+      platform: process.platform,
+    });
   });
 
   afterEach(async () => {
@@ -495,6 +510,50 @@ describe('SSHPtyManager', () => {
       expect(options.cols).toBe(100);
       expect(options.rows).toBe(40);
       expect(session.config.name).toBe('Local Shell');
+    });
+
+    it('injects SSH_AUTH_SOCK from the app-managed agent instead of relying on inherited process.env', async () => {
+      vi.mocked(AgentLifecycleManager.ensureAgent).mockResolvedValue({
+        isRunning: true,
+        isManaged: true,
+        socketPath: '/tmp/app-managed-agent.sock',
+        platform: 'linux',
+      });
+
+      await manager.createShellSession({ cols: 80, rows: 24 });
+
+      const { options } = (mockPtyInstances[0] as any)._spawnArgs;
+      expect(options.env.SSH_AUTH_SOCK).toBe('/tmp/app-managed-agent.sock');
+    });
+
+    it('lets an explicit env.SSH_AUTH_SOCK override the app-managed agent', async () => {
+      vi.mocked(AgentLifecycleManager.ensureAgent).mockResolvedValue({
+        isRunning: true,
+        isManaged: true,
+        socketPath: '/tmp/app-managed-agent.sock',
+        platform: 'linux',
+      });
+
+      await manager.createShellSession({
+        cols: 80,
+        rows: 24,
+        env: { SSH_AUTH_SOCK: '/tmp/caller-chosen-agent.sock' },
+      });
+
+      const { options } = (mockPtyInstances[0] as any)._spawnArgs;
+      expect(options.env.SSH_AUTH_SOCK).toBe('/tmp/caller-chosen-agent.sock');
+    });
+
+    it('does not query the agent or touch SSH_AUTH_SOCK for a WSL shell', async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+
+      try {
+        await manager.createShellSession({ shellType: 'wsl' });
+        expect(AgentLifecycleManager.ensureAgent).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
     });
 
     it('handles Windows shells including WSL', async () => {
