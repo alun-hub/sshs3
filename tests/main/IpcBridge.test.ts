@@ -314,17 +314,48 @@ describe('IpcBridge', () => {
         expect(res).toEqual({ started: false });
       });
 
-      it('does nothing when zero or several PKCS#11 libraries are detected', async () => {
+      it('does nothing when zero PKCS#11 libraries are detected', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([]);
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: false });
+
+        detectSpy.mockRestore();
+      });
+
+      it('does nothing when several non-p11-kit libraries are detected with no way to pick one', async () => {
         mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
         const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
-          { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux', exists: true },
+          { name: 'Net iD', path: '/usr/lib/libiidp11.so', platform: 'linux', exists: true },
         ]);
 
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
         expect(res).toEqual({ started: false });
 
         detectSpy.mockRestore();
+      });
+
+      it('prefers p11-kit even when a more specific library (e.g. OpenSC) is also detected', async () => {
+        // p11-kit-proxy.so and opensc-pkcs11.so commonly coexist on the same
+        // system (p11-kit proxies opensc among others) — this is one physical
+        // card reachable two ways, not two different cards to disambiguate.
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+          { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux', exists: true },
+        ]);
+        const loadSpy = vi
+          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
+          .mockImplementation(() => new Promise(() => {}));
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: true });
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/p11-kit-proxy.so', expect.any(Function));
+
+        detectSpy.mockRestore();
+        loadSpy.mockRestore();
       });
 
       it('starts loading the single detected card into the global agent', async () => {

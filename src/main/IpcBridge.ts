@@ -1123,11 +1123,18 @@ export class IpcBridge {
    * for the smartcard PIN and loads it into the app-lifetime agent immediately,
    * instead of waiting for the first connection that needs it — so by the time
    * the user opens their first terminal (SSH or local shell) the card is
-   * already usable. Only acts when exactly one PKCS#11 library is detected;
-   * with zero or several candidates there's no single card to guess at
-   * unlocking, so it's left to the normal per-connection flow. Fire-and-forget
-   * from the caller's perspective — the PIN prompt itself resolves later via
-   * the renderer's askpass modal, same as every other smartcard load.
+   * already usable. Only acts when there's exactly one *unambiguous* card to
+   * unlock: if p11-kit (which itself proxies every other registered PKCS#11
+   * module — see the README's recommendation to prefer it) is among the
+   * detected libraries, it's used regardless of what else was also found,
+   * since e.g. p11-kit-proxy.so and opensc-pkcs11.so coexisting on the same
+   * system is normal and both ultimately reach the same physical token, not
+   * two different cards. Otherwise falls back to "exactly one candidate";
+   * with zero or several non-p11-kit candidates there's no single card to
+   * guess at, so it's left to the normal per-connection flow.
+   * Fire-and-forget from the caller's perspective — the PIN prompt itself
+   * resolves later via the renderer's askpass modal, same as every other
+   * smartcard load.
    */
   private async maybeUnlockSmartcardAtStartup(): Promise<{ started: boolean }> {
     const settings = await this.settingsStore.getSettings();
@@ -1136,10 +1143,11 @@ export class IpcBridge {
     }
 
     const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
-    if (libs.length !== 1) {
+    const chosen = libs.find((lib) => lib.name === 'p11-kit') ?? (libs.length === 1 ? libs[0] : undefined);
+    if (!chosen) {
       return { started: false };
     }
-    const pkcs11LibPath = libs[0].path;
+    const pkcs11LibPath = chosen.path;
     if (this.globalSmartcardAgents.has(pkcs11LibPath) || this.globalSmartcardAgentLoads.has(pkcs11LibPath)) {
       return { started: false };
     }
