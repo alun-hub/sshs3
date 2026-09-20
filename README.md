@@ -81,6 +81,8 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 - **Per-record merge, not overwrite**: pulling changes reconciles each profile/dotfile individually by last-edited timestamp (with tombstones so deletions propagate correctly too), so two machines edited independently don't clobber each other.
 - Can optionally sync a managed block inside `~/.ssh/config` and append new entries to `~/.ssh/known_hosts` — everything else in those files is left untouched, and a host-key mismatch between machines is surfaced as a conflict rather than ever auto-resolved.
 - **"Import existing profile from the cloud"** bootstraps a brand-new machine straight from an already-configured sync target.
+- **Clear, specific error messages** instead of raw IPC/exception text — a wrong master password, a push/pull conflict, a failed smartcard signature check, and common connection failures (refused, DNS, timeout, auth) each surface their own plain-language explanation.
+- **Delete all sync data** (Danger zone, in the Synchronization panel): permanently deletes the encrypted sync files from the remote target and clears the sync target/salts/smartcard link from this device — with an explicit, itemized warning of what is and isn't affected before you confirm. Never touches local SSH/S3 profiles, dotfile pools, or settings.
 - Configured under Settings → Synchronization.
 
 ### Profiles & security

@@ -155,6 +155,18 @@ export class SyncConfigStore {
     });
   }
 
+  /**
+   * Resets sync configuration entirely: target, salts, last-sync timestamp,
+   * auto-sync flag, and smartcard link. Used by the "delete all sync data"
+   * action — this only clears local configuration, never the remote files
+   * themselves (see ProfileSyncService.wipeRemote for that).
+   */
+  public async clear(): Promise<void> {
+    return this.queueMutation(async () => {
+      await this.persist({});
+    });
+  }
+
   private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
     const resultPromise = this.writeQueue.then(mutation, mutation);
     this.writeQueue = resultPromise.then(

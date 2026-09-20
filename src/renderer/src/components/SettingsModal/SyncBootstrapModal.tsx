@@ -3,6 +3,7 @@ import { CloudDownload, X, Loader2, CheckCircle2, ShieldAlert } from 'lucide-rea
 import type { KnownHostsConflict } from '@shared/types/sync';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, validateSyncTargetDraft, type SyncTargetDraft } from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
+import { formatSyncError } from '../../lib/syncErrors';
 
 interface SyncBootstrapModalProps {
   open: boolean;
@@ -45,7 +46,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
       await window.multissh?.profileSyncSetup?.({ target: buildSyncTarget(draft), remoteBasePath: draft.remoteBasePath });
       setPasswordDialogOpen(true);
     } catch (err: any) {
-      setTargetError(err?.message || 'Failed to save the sync target.');
+      setTargetError(formatSyncError(err, 'Failed to save the sync target.').message);
     } finally {
       setSettingUpTarget(false);
     }
@@ -63,7 +64,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
       setPasswordDialogOpen(false);
       onComplete?.();
     } catch (err: any) {
-      setPullError(err?.message || 'Failed to import from the cloud. Check your passwords and try again.');
+      setPullError(formatSyncError(err, 'Failed to import from the cloud. Check your passwords and try again.').message);
     } finally {
       setPulling(false);
     }

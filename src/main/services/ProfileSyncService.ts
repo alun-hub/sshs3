@@ -540,6 +540,45 @@ export class ProfileSyncService {
     return (await this.statOrNull(provider, remoteFiles.topology)) !== null;
   }
 
+  /**
+   * Permanently deletes this target's encrypted sync files (and the
+   * now-empty `.sshs3` directory, best-effort) from the remote. Local
+   * profiles, dotfile pools, and settings on this device are never touched —
+   * this only removes the remote backup. Callers are responsible for
+   * separately clearing local sync configuration (target, salts, smartcard
+   * link) and locking the crypto service.
+   */
+  public async wipeRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<{ deletedCount: number; errors: string[] }> {
+    const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
+    const remoteFiles = buildRemoteFiles(effectiveBasePath);
+    const syncDir = joinPaths('sftp', effectiveBasePath, SYNC_DIR_NAME);
+
+    let deletedCount = 0;
+    const errors: string[] = [];
+
+    for (const category of Object.keys(remoteFiles) as SyncDataCategory[]) {
+      const filePath = remoteFiles[category];
+      try {
+        if ((await this.statOrNull(provider, filePath)) === null) continue;
+        await provider.delete(filePath, false);
+        deletedCount++;
+      } catch (err: any) {
+        if (!this.isNotFoundError(err)) {
+          errors.push(`${category}: ${err?.message || String(err)}`);
+        }
+      }
+    }
+
+    await provider.delete(syncDir, true).catch(() => {
+      // Best-effort: already gone, non-empty (e.g. a stray .tmp-* file from
+      // an interrupted push), or the provider doesn't support directory
+      // deletion this way — none of that should block the wipe.
+    });
+
+    this.resetRemoteState();
+    return { deletedCount, errors };
+  }
+
   // ---------------------------------------------------------------------
   // Push
   // ---------------------------------------------------------------------

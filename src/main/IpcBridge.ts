@@ -1546,6 +1546,37 @@ export class IpcBridge {
         return await this.buildSyncStatus();
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILE_SYNC_WIPE,
+      async (): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }> => {
+        const config = await this.syncConfigStore.getConfig();
+        const remoteWipeErrors: string[] = [];
+
+        if (config.target) {
+          try {
+            const provider = await this.storageRegistry.getOrCreate(config.target);
+            const result = await this.profileSyncService.wipeRemote(provider, config.remoteBasePath ?? '');
+            remoteWipeErrors.push(...result.errors);
+          } catch (err: any) {
+            // The remote may simply be unreachable (e.g. the user wants to reset
+            // sync from a machine that can no longer connect) — local config is
+            // still cleared below regardless, and the error is surfaced instead
+            // of blocking the reset entirely.
+            remoteWipeErrors.push(err?.message || String(err));
+          }
+          await this.storageRegistry.disconnect?.(config.target.id);
+        }
+        await this.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
+
+        this.syncCryptoService.lock();
+        await this.syncConfigStore.clear();
+        this.profileSyncService.resetRemoteState();
+
+        const status = await this.buildSyncStatus();
+        return { ...status, remoteWipeErrors };
+      }
+    );
   }
 
   private async unlockSyncInternal(passwords: {

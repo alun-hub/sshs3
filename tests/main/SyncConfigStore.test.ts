@@ -94,4 +94,22 @@ describe('SyncConfigStore', () => {
     await store.setAutoSync(false);
     expect((await store.getConfig()).autoSync).toBe(false);
   });
+
+  it('clear() resets the target, salts, and every other field for the "delete all sync data" action', async () => {
+    const store = new SyncConfigStore(storePath);
+    await store.setTarget({
+      id: 'sync-target',
+      name: 'My Sync Bucket',
+      type: 's3',
+      s3Config: { id: 'sync-target', name: 'My Sync Bucket', region: 'us-east-1', accessKeyId: 'AKIA', secretAccessKey: 'top-secret' },
+    });
+    await store.setSalts({ topologySalt: Buffer.from('a'), credentialsSalt: Buffer.from('b') });
+    await store.setLastSyncAt('2026-01-01T00:00:00.000Z');
+    await store.setAutoSync(true);
+    await store.setSmartcardSync({ pkcs11LibPath: '/usr/lib/opensc-pkcs11.so' });
+
+    await store.clear();
+
+    expect(await store.getConfig()).toEqual({});
+  });
 });

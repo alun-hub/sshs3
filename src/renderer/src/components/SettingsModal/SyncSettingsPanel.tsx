@@ -15,6 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
   KeyRound,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { ProfileSyncStatus, SyncComparisonResult, KnownHostsConflict } from '@shared/types/sync';
 import {
@@ -26,6 +28,7 @@ import {
   type SyncTargetDraft,
 } from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
+import { formatSyncError } from '../../lib/syncErrors';
 
 function formatRelative(iso?: string): string {
   if (!iso) return 'Never';
@@ -90,6 +93,11 @@ export const SyncSettingsPanel: React.FC = () => {
   const [unlinkingSmartcard, setUnlinkingSmartcard] = useState(false);
   const [isLinkingDialog, setIsLinkingDialog] = useState(false);
 
+  const [confirmingWipe, setConfirmingWipe] = useState(false);
+  const [wiping, setWiping] = useState(false);
+  const [wipeError, setWipeError] = useState<string | null>(null);
+  const [wipeWarnings, setWipeWarnings] = useState<string[]>([]);
+
   const checkSync = async () => {
     setCheckingSync(true);
     setCheckError(null);
@@ -99,7 +107,7 @@ export const SyncSettingsPanel: React.FC = () => {
         setComparison(res);
       }
     } catch (err: any) {
-      setCheckError(err?.message || 'Failed to check sync status.');
+      setCheckError(formatSyncError(err, 'Failed to check sync status.').message);
     } finally {
       setCheckingSync(false);
     }
@@ -150,7 +158,7 @@ export const SyncSettingsPanel: React.FC = () => {
       }
       setActionMessage(enabled ? 'Automatic synchronization enabled.' : 'Automatic synchronization disabled.');
     } catch (err: any) {
-      setActionError(err?.message || 'Failed to update auto-sync setting.');
+      setActionError(formatSyncError(err, 'Failed to update auto-sync setting.').message);
     } finally {
       setTogglingAutoSync(false);
     }
@@ -173,7 +181,7 @@ export const SyncSettingsPanel: React.FC = () => {
       setActionMessage('Sync target saved.');
       await load();
     } catch (err: any) {
-      setTargetError(err?.message || 'Failed to save the sync target.');
+      setTargetError(formatSyncError(err, 'Failed to save the sync target.').message);
     } finally {
       setSavingTarget(false);
     }
@@ -198,8 +206,9 @@ export const SyncSettingsPanel: React.FC = () => {
       setIsLinkingDialog(false);
       setActionMessage('Sync unlocked with smartcard.');
     } catch (err: any) {
-      setEnableError(err?.message || 'Failed to unlock sync with smartcard.');
-      setActionError(err?.message || 'Failed to unlock sync with smartcard.');
+      const formatted = formatSyncError(err, 'Failed to unlock sync with smartcard.').message;
+      setEnableError(formatted);
+      setActionError(formatted);
     } finally {
       setUnlockingSmartcard(false);
     }
@@ -225,7 +234,7 @@ export const SyncSettingsPanel: React.FC = () => {
       if (s) setStatus(s);
       setActionMessage('Smartcard linked to sync.');
     } catch (err: any) {
-      setActionError(err?.message || 'Failed to link smartcard.');
+      setActionError(formatSyncError(err, 'Failed to link smartcard.').message);
       throw err;
     } finally {
       setLinkingSmartcard(false);
@@ -241,7 +250,7 @@ export const SyncSettingsPanel: React.FC = () => {
       if (s) setStatus(s);
       setActionMessage('Smartcard unlinked from sync.');
     } catch (err: any) {
-      setActionError(err?.message || 'Failed to unlink smartcard.');
+      setActionError(formatSyncError(err, 'Failed to unlink smartcard.').message);
     } finally {
       setUnlinkingSmartcard(false);
     }
@@ -280,7 +289,7 @@ export const SyncSettingsPanel: React.FC = () => {
       setPasswordDialogOpen(false);
       setActionMessage('Sync unlocked and up to date.');
     } catch (err: any) {
-      setEnableError(err?.message || 'Failed to unlock sync.');
+      setEnableError(formatSyncError(err, 'Failed to unlock sync.').message);
     } finally {
       setEnabling(false);
     }
@@ -300,7 +309,7 @@ export const SyncSettingsPanel: React.FC = () => {
       }
       setActionMessage('Pushed local changes to the remote.');
     } catch (err: any) {
-      setActionError(err?.message || 'Push failed.');
+      setActionError(formatSyncError(err, 'Push failed.').message);
     } finally {
       setPushing(false);
     }
@@ -326,9 +335,35 @@ export const SyncSettingsPanel: React.FC = () => {
           : 'Already up to date.'
       );
     } catch (err: any) {
-      setActionError(err?.message || 'Pull failed.');
+      setActionError(formatSyncError(err, 'Pull failed.').message);
     } finally {
       setPulling(false);
+    }
+  };
+
+  const handleWipe = async () => {
+    setWiping(true);
+    setWipeError(null);
+    setWipeWarnings([]);
+    try {
+      const result = await window.multissh?.profileSyncWipe?.();
+      if (result) {
+        setStatus(result);
+        if (result.remoteWipeErrors?.length) {
+          setWipeWarnings(result.remoteWipeErrors);
+        }
+      }
+      setComparison(null);
+      setConflicts([]);
+      setActionMessage(null);
+      setActionError(null);
+      setConfirmingWipe(false);
+      setEditingTarget(true);
+      setTargetDraft(emptySyncTargetDraft());
+    } catch (err: any) {
+      setWipeError(formatSyncError(err, 'Failed to delete sync data.').message);
+    } finally {
+      setWiping(false);
     }
   };
 
@@ -658,6 +693,85 @@ export const SyncSettingsPanel: React.FC = () => {
               </p>
             </div>
           )}
+
+          <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 text-red-400 font-medium text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Danger zone</span>
+            </div>
+
+            {!confirmingWipe ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] text-txt-muted leading-relaxed">
+                  Permanently delete this sync setup and its remote backup.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmingWipe(true);
+                    setWipeError(null);
+                    setWipeWarnings([]);
+                  }}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete sync data...
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="text-[11px] text-red-200/90 leading-relaxed space-y-1.5">
+                  <p className="font-medium text-red-300">This will:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>
+                      Permanently delete the encrypted sync files (topology, credentials, dotfile pools, settings,
+                      SSH config/known_hosts data) from{' '}
+                      <span className="font-mono">{status.target?.name ?? 'the configured target'}</span>.
+                    </li>
+                    <li>Remove the sync target, master password salts, and any linked smartcard from this device.</li>
+                    <li>Lock sync on this device — you'll need to set it up again to use it here.</li>
+                  </ul>
+                  <p className="font-medium text-emerald-300/90 pt-1">This will NOT:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>Delete or change your local SSH/S3 profiles, dotfile pools, or settings on this device.</li>
+                    <li>Affect any other machine already synced — until it next tries to push or pull.</li>
+                  </ul>
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingWipe(false)}
+                    disabled={wiping}
+                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleWipe()}
+                    disabled={wiping}
+                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-red-500 shadow-sm transition-colors disabled:opacity-50"
+                  >
+                    {wiping && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Yes, delete everything
+                  </button>
+                </div>
+                {wipeError && <p className="text-[11px] text-red-400">{wipeError}</p>}
+              </div>
+            )}
+
+            {wipeWarnings.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[10px] text-amber-200 leading-relaxed">
+                Sync configuration was cleared on this device, but some remote files could not be deleted — you may
+                want to remove them manually:
+                <ul className="list-disc pl-4 pt-1 space-y-0.5">
+                  {wipeWarnings.map((w, i) => (
+                    <li key={i} className="font-mono">{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

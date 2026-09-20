@@ -310,6 +310,8 @@ export const api: MultiSSHApi = {
   }): Promise<ProfileSyncStatus> => ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, options),
   profileSyncUnlinkSmartcard: (): Promise<ProfileSyncStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLINK_SMARTCARD),
+  profileSyncWipe: (): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_WIPE),
   onProfileSyncStatus: (callback: (status: ProfileSyncStatus) => void): (() => void) => {
     const subscription = (_event: any, status: ProfileSyncStatus) => callback(status);
     ipcRenderer.on(IPC_CHANNELS.PROFILE_SYNC_STATUS, subscription);

@@ -341,4 +341,57 @@ describe('IpcBridge — remote profile sync handlers', () => {
 
     await bridge.dispose();
   });
+
+  describe('PROFILE_SYNC_WIPE ("delete all sync data")', () => {
+    it('deletes the remote files and resets local config to fully unconfigured', async () => {
+      const { ipc, bridge } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'topology-pw',
+        credentialsPassword: 'credentials-pw',
+      });
+      const result = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_WIPE);
+
+      expect(result.remoteWipeErrors).toEqual([]);
+      expect(result.configured).toBe(false);
+      expect(result.hasLocalSalts).toBe(false);
+      expect(result.topologyUnlocked).toBe(false);
+      expect(result.credentialsUnlocked).toBe(false);
+      expect(result.smartcardLinked).toBe(false);
+
+      const statusAfter = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
+      expect(statusAfter.configured).toBe(false);
+
+      await bridge.dispose();
+    });
+
+    it('is a no-op success when no target was ever configured', async () => {
+      const { ipc, bridge } = await harness();
+      const result = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_WIPE);
+      expect(result.configured).toBe(false);
+      expect(result.remoteWipeErrors).toEqual([]);
+      await bridge.dispose();
+    });
+
+    it('still clears local config and surfaces the error when a remote file fails to delete', async () => {
+      const { ipc, bridge } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'topology-pw',
+        credentialsPassword: 'credentials-pw',
+      });
+
+      const deleteSpy = vi.spyOn(provider, 'delete').mockRejectedValueOnce(new Error('permission denied'));
+
+      const result = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_WIPE);
+
+      expect(result.remoteWipeErrors.length).toBeGreaterThan(0);
+      expect(result.remoteWipeErrors[0]).toContain('permission denied');
+      // Local config is still cleared regardless of the remote failure.
+      expect(result.configured).toBe(false);
+
+      deleteSpy.mockRestore();
+      await bridge.dispose();
+    });
+  });
 });

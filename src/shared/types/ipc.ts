@@ -115,6 +115,7 @@ export const IPC_CHANNELS = {
   PROFILE_SYNC_UNLOCK_SMARTCARD: 'profile-sync:unlock-smartcard',
   PROFILE_SYNC_LINK_SMARTCARD: 'profile-sync:link-smartcard',
   PROFILE_SYNC_UNLINK_SMARTCARD: 'profile-sync:unlink-smartcard',
+  PROFILE_SYNC_WIPE: 'profile-sync:wipe',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -300,6 +301,8 @@ export interface MultiSSHApi {
     passwords?: { topologyPassword: string; credentialsPassword: string };
   }): Promise<ProfileSyncStatus>;
   profileSyncUnlinkSmartcard(): Promise<ProfileSyncStatus>;
+  /** Deletes the remote sync files for the current target and clears all local sync configuration (target, salts, smartcard link). Never touches local profiles/dotfiles/settings. */
+  profileSyncWipe(): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }>;
   onProfileSyncStatus?(callback: (status: ProfileSyncStatus) => void): () => void;
 
   // Connection Testing

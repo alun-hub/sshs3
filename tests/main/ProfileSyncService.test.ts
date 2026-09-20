@@ -412,6 +412,38 @@ describe('ProfileSyncService', () => {
     await expect(machineA.sync.pushToRemote(otherTarget)).resolves.toBeUndefined();
   });
 
+  it('wipeRemote deletes every category file for the "delete all sync data" action', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider);
+
+    expect(provider.hasFile('~/.sshs3/topology.enc')).toBe(true);
+
+    const result = await machineA.sync.wipeRemote(provider);
+
+    expect(result.errors).toEqual([]);
+    expect(result.deletedCount).toBe(5);
+    for (const file of ['topology.enc', 'credentials.enc', 'dotfile-pools.enc', 'settings.enc', 'ssh-native.enc']) {
+      expect(provider.hasFile(`~/.sshs3/${file}`)).toBe(false);
+    }
+  });
+
+  it('wipeRemote is a safe no-op when nothing was ever pushed to this target', async () => {
+    const machineA = await harness();
+    const result = await machineA.sync.wipeRemote(provider);
+    expect(result).toEqual({ deletedCount: 0, errors: [] });
+  });
+
+  it('wipeRemote clears the concurrency cache, so a fresh push to the same target afterwards does not conflict', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider);
+
+    await machineA.sync.wipeRemote(provider);
+
+    await expect(machineA.sync.pushToRemote(provider)).resolves.toBeUndefined();
+  });
+
   it('keeps the whole settings object with the newer updatedAt (last-write-wins)', async () => {
     const machineA = await harness();
     await machineA.settingsStore.saveSettings({ theme: 'light' });
