@@ -1275,11 +1275,16 @@ describe('IpcBridge', () => {
       expect(bridge.fileEditorService.closeExternalEditor).toHaveBeenCalledWith('tok-1');
     });
 
+    // These two do real filesystem probing (`where pwsh.exe`/`where vcxsrv.exe`
+    // style execFile lookups) and a real TCP connect attempt to 127.0.0.1,
+    // rather than anything mocked — slow/loaded CI runners (observed on
+    // Windows) can occasionally exceed vitest's default 5000ms test timeout,
+    // so give them more headroom than a pure-mock test needs.
     it('checks X11 server reachability via APP_CHECK_X11_SERVER', async () => {
       const res = await mockIpc.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, '127.0.0.1:0.0');
       expect(res).toHaveProperty('running');
       expect(res).toHaveProperty('display', '127.0.0.1:0.0');
-    });
+    }, 15000);
 
     it('handles X11 server lifecycle channels (status, start, stop)', async () => {
       const statusRes = await mockIpc.invoke(IPC_CHANNELS.X11_GET_STATUS, undefined, '127.0.0.1:0.0');
@@ -1288,6 +1293,6 @@ describe('IpcBridge', () => {
 
       const stopRes = await mockIpc.invoke(IPC_CHANNELS.X11_STOP_SERVER);
       expect(stopRes).toEqual({ success: true });
-    });
+    }, 15000);
   });
 });
