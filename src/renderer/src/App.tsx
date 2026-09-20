@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/t
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf } from './lib/paneTree';
+import { extractHostnameFromTitle, isSameHost } from './lib/terminalTitle';
 
 export interface AppTab extends TabItem {
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
@@ -55,9 +56,11 @@ export const App: React.FC = () => {
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [platform, setPlatform] = useState<string>('');
+  const [localHostname, setLocalHostname] = useState<string>('');
 
   useEffect(() => {
     void window.multissh.getPlatform?.().then((p) => setPlatform(p));
+    void window.multissh.getHostname?.().then((h) => setLocalHostname(h));
   }, []);
 
   // Load saved session on mount
@@ -217,7 +220,23 @@ export const App: React.FC = () => {
   }, []);
 
   const handleSelectPane = useCallback((tabId: string, paneId: string) => {
-    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t)));
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const leaf = findLeaf(t.paneTree, paneId);
+        const baseTitle =
+          leaf?.config?.name ||
+          (leaf?.local
+            ? leaf.shellType === 'wsl'
+              ? leaf.wslDistro
+                ? `WSL: ${leaf.wslDistro}`
+                : 'WSL'
+              : 'Local Shell'
+            : t.title);
+        const title = leaf?.dynamicHost || baseTitle || t.title;
+        return { ...t, activePaneId: paneId, title };
+      })
+    );
   }, []);
 
   const handleConnectTerminal = (
@@ -233,8 +252,13 @@ export const App: React.FC = () => {
           config,
           local: false,
           shellType: undefined,
+          baseHost: config.host,
+          dynamicHost: undefined,
         }));
-        return { ...t, paneTree, title: t.title || config.name };
+        const leavesCount = countLeaves(paneTree);
+        const isDefaultTitle = !t.title || /^Terminal\s+\d+$/.test(t.title);
+        const title = isDefaultTitle || leavesCount <= 1 ? config.name : t.title;
+        return { ...t, paneTree, title };
       })
     );
     setConnectTarget(null);
@@ -246,12 +270,15 @@ export const App: React.FC = () => {
         prev.map((t) => {
           if (t.id !== target.tabId || t.type !== 'terminal' || !t.paneTree) return t;
           const paneId = target.paneId ?? getFirstLeafId(t.paneTree);
+          const baseHost = localHostname || undefined;
           const paneTree = updateLeaf(t.paneTree, paneId, (leaf) => ({
             ...leaf,
             config: undefined,
             local: true,
             shellType,
             wslDistro,
+            baseHost,
+            dynamicHost: undefined,
           }));
           const defaultTitle =
             shellType === 'wsl'
@@ -259,12 +286,89 @@ export const App: React.FC = () => {
                 ? `WSL: ${wslDistro}`
                 : 'WSL'
               : 'Local Shell';
-          const title = !t.title || /^Terminal\s+\d+$/.test(t.title) ? defaultTitle : t.title;
+          const leavesCount = countLeaves(paneTree);
+          const isDefaultTitle = !t.title || /^Terminal\s+\d+$/.test(t.title);
+          const title = isDefaultTitle || leavesCount <= 1 ? defaultTitle : t.title;
           return { ...t, paneTree, title };
         })
       );
     },
-    []
+    [localHostname]
+  );
+
+  const handlePaneTitleChange = useCallback(
+    async (tabId: string, paneId: string, rawTitle: string) => {
+      const host = extractHostnameFromTitle(rawTitle);
+      if (!host && rawTitle !== '__EXIT__') return;
+
+      let activeLocalHostname = localHostname;
+      if (!activeLocalHostname && window.multissh?.getHostname) {
+        try {
+          activeLocalHostname = (await window.multissh.getHostname()) || '';
+        } catch {
+          activeLocalHostname = '';
+        }
+      }
+
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+          const leaf = findLeaf(t.paneTree, paneId);
+          if (!leaf) return t;
+
+          const baseTitle =
+            leaf.config?.name ||
+            (leaf.local
+              ? leaf.shellType === 'wsl'
+                ? leaf.wslDistro
+                  ? `WSL: ${leaf.wslDistro}`
+                  : 'WSL'
+                : 'Local Shell'
+              : 'Terminal');
+
+          // User typed exit, logout, or pressed Ctrl+D
+          if (rawTitle === '__EXIT__') {
+            if (!leaf.dynamicHost) return t;
+            const updatedTree = updateLeaf(t.paneTree, paneId, (l) => ({
+              ...l,
+              dynamicHost: undefined,
+            }));
+            const isSoleOrActive = countLeaves(t.paneTree) === 1 || t.activePaneId === paneId;
+            const nextTitle = isSoleOrActive ? baseTitle : t.title;
+            return { ...t, paneTree: updatedTree, title: nextTitle };
+          }
+
+          if (!host) return t;
+
+          const effectiveBaseHost =
+            leaf.baseHost || (leaf.local ? (activeLocalHostname || 'localhost') : leaf.config?.host);
+
+          // Check if current host is the base host
+          const isBase =
+            (Boolean(effectiveBaseHost) && isSameHost(host, effectiveBaseHost)) ||
+            (Boolean(leaf.config?.host) && isSameHost(host, leaf.config!.host)) ||
+            (Boolean(activeLocalHostname) && isSameHost(host, activeLocalHostname)) ||
+            isSameHost(host, baseTitle) ||
+            isSameHost(host, 'localhost') ||
+            isSameHost(host, '127.0.0.1');
+
+          const nextDynamicHost = isBase ? undefined : host;
+          if (leaf.dynamicHost === nextDynamicHost) return t;
+
+          const updatedTree = updateLeaf(t.paneTree, paneId, (l) => ({
+            ...l,
+            baseHost: effectiveBaseHost,
+            dynamicHost: nextDynamicHost,
+          }));
+
+          const isSoleOrActive = countLeaves(t.paneTree) === 1 || t.activePaneId === paneId;
+          const nextTitle = isSoleOrActive ? (nextDynamicHost || baseTitle) : t.title;
+
+          return { ...t, paneTree: updatedTree, title: nextTitle };
+        })
+      );
+    },
+    [localHostname]
   );
 
   const handleOpenTerminalAt = useCallback(
@@ -465,7 +569,9 @@ export const App: React.FC = () => {
                         <span className="truncate font-medium text-txt-primary">
                           {totalPanes > 1
                             ? `Split view (${totalPanes} panes)`
-                            : rootLeaf?.config?.name || (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
+                            : rootLeaf?.dynamicHost
+                              ? `${rootLeaf.config?.name || (rootLeaf?.local ? 'Local Shell' : 'Terminal')} → ${rootLeaf.dynamicHost}`
+                              : rootLeaf?.config?.name || (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
                         </span>
                         {totalPanes === 1 && rootLeaf?.config?.username && (
                           <span className="text-[11px] text-txt-muted">
@@ -504,6 +610,7 @@ export const App: React.FC = () => {
                           handleOpenLocalTerminal({ tabId: tab.id, paneId }, shellType, wslDistro)
                         }
                         onCloseTab={() => handleCloseTab(tab.id)}
+                        onTitleChange={(paneId, title) => handlePaneTitleChange(tab.id, paneId, title)}
                         initialCwdPaneId={rootLeaf?.id}
                         initialCwd={tab.initialCwd}
                       />

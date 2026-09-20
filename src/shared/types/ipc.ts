@@ -153,6 +153,7 @@ export const IPC_CHANNELS = {
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
+  APP_GET_HOSTNAME: 'app:get-hostname',
   APP_GET_SECURITY_STATUS: 'app:get-security-status',
   APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
   APP_CHECK_X11_SERVER: 'app:check-x11-server',
@@ -347,6 +348,7 @@ export interface MultiSSHApi {
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
+  getHostname(): Promise<string>;
   /**
    * Whether saved credentials (SSH/S3 passwords, passphrases, proxy
    * passwords) are actually being encrypted at rest via the OS keyring

@@ -14,6 +14,10 @@ export interface PaneLeaf {
   shellType?: LocalShellType;
   /** Windows only: specific WSL distribution to launch. */
   wslDistro?: string;
+  /** Base hostname detected when the session started. */
+  baseHost?: string;
+  /** Dynamically updated hostname if user SSH'd further to another host. */
+  dynamicHost?: string;
 }
 
 export interface PaneSplit {

@@ -428,6 +428,9 @@ export const api: MultiSSHApi = {
   getPlatform: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_PLATFORM),
 
+  getHostname: (): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_GET_HOSTNAME),
+
   getSecurityStatus: (): Promise<{ credentialEncryptionAvailable: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_SECURITY_STATUS),
 

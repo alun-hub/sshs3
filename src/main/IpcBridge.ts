@@ -2021,6 +2021,10 @@ export class IpcBridge {
       return process.platform;
     });
 
+    this.registerHandler(IPC_CHANNELS.APP_GET_HOSTNAME, async () => {
+      return os.hostname();
+    });
+
     this.registerHandler(IPC_CHANNELS.APP_GET_SECURITY_STATUS, async () => {
       return { credentialEncryptionAvailable: isEncryptionAvailable() };
     });

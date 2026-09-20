@@ -107,6 +107,7 @@ export interface PaneTreeViewProps {
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onCloseTab: () => void;
+  onTitleChange?: (paneId: string, title: string) => void;
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
   initialCwd?: string;
@@ -154,14 +155,18 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
         }`}
       >
         <span className="truncate font-mono">
-          {node.config?.name ||
-            (node.local
-              ? node.shellType === 'wsl'
-                ? node.wslDistro
-                  ? `WSL: ${node.wslDistro}`
-                  : 'WSL'
-                : 'Local Shell'
-              : 'No connection')}
+          {(() => {
+            const baseName =
+              node.config?.name ||
+              (node.local
+                ? node.shellType === 'wsl'
+                  ? node.wslDistro
+                    ? `WSL: ${node.wslDistro}`
+                    : 'WSL'
+                  : 'Local Shell'
+                : 'No connection');
+            return node.dynamicHost ? `${baseName} → ${node.dynamicHost}` : baseName;
+          })()}
         </span>
         <div className="flex items-center gap-0.5">
           <button
@@ -216,6 +221,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             initialCwd={props.initialCwdPaneId === node.id ? props.initialCwd : undefined}
             sessionExitAction={settings.sessionExitAction}
             onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
+            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
           />
         ) : node.local ? (
           <TerminalView
@@ -228,6 +234,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             theme={settings.theme}
             sessionExitAction={settings.sessionExitAction}
             onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
+            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
           />
         ) : isSole ? (
           <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">

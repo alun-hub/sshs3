@@ -5,6 +5,7 @@ import 'xterm/css/xterm.css';
 import { RotateCcw, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction } from '@shared/types/settings';
+import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
 
 export interface TerminalViewProps {
   /** Omit together with `local` to spawn a local shell instead of an SSH session. */
@@ -27,6 +28,8 @@ export interface TerminalViewProps {
   sessionExitAction?: SessionExitAction;
   /** Callback to close the enclosing tab. */
   onCloseTab?: () => void;
+  /** Emitted when an OSC 0 or OSC 2 title sequence is received from the shell. */
+  onTitleChange?: (title: string) => void;
 }
 
 function shellQuote(path: string): string {
@@ -95,6 +98,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   initialCwd,
   sessionExitAction = 'reconnect',
   onCloseTab,
+  onTitleChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -102,6 +106,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const sessionIdRef = useRef<string | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
   const initialCwdRef = useRef(initialCwd);
   initialCwdRef.current = initialCwd;
   const fontSizeRef = useRef(fontSize);
@@ -195,6 +201,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     term.open(containerRef.current);
 
+    const titleSub = term.onTitleChange((title) => {
+      onTitleChangeRef.current?.(title);
+    });
+
     try {
       fitAddon.fit();
     } catch {
@@ -256,9 +266,31 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           };
 
           // 3. User input to PTY
+          let inputLineBuffer = '';
           term.onData((data) => {
             if (sessionIdRef.current && window.multissh?.terminalWrite) {
               window.multissh.terminalWrite(sessionIdRef.current, data);
+            }
+            if (data.includes('\r') || data.includes('\n')) {
+              const parts = data.split(/[\r\n]+/);
+              const cmd = (inputLineBuffer + (parts[0] || '')).trim();
+              inputLineBuffer = parts.length > 1 ? parts[parts.length - 1] : '';
+              const target = extractHostnameFromCommand(cmd);
+              if (target) {
+                onTitleChangeRef.current?.(`ssh ${target}`);
+              } else if (/^(exit|logout)$/i.test(cmd)) {
+                onTitleChangeRef.current?.('__EXIT__');
+              }
+            } else if (data === '\x04') {
+              // Ctrl+D (EOF/exit)
+              onTitleChangeRef.current?.('__EXIT__');
+            } else if (data === '\x7f' || data === '\b') {
+              inputLineBuffer = inputLineBuffer.slice(0, -1);
+            } else {
+              // Strip control escape characters, retain printable text (including pasted commands)
+              // eslint-disable-next-line no-control-regex
+              const printable = data.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+              inputLineBuffer += printable;
             }
           });
 
@@ -268,6 +300,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               if (sessId === sessionIdRef.current) {
                 term.write(data);
                 sendInitialCwd();
+                const detectedHost = scanOutputForHost(data);
+                if (detectedHost) {
+                  onTitleChangeRef.current?.(detectedHost);
+                }
               }
             });
           }
@@ -339,6 +375,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       if (unsubExit) {
         unsubExit();
       }
+      titleSub.dispose();
       const sid = sessionIdRef.current;
       if (sid && window.multissh?.terminalKill) {
         window.multissh.terminalKill(sid);

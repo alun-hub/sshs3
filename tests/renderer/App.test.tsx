@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { App } from '../../src/renderer/src/App';
 
@@ -27,14 +27,20 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 describe('App Component', () => {
+  let dataCallback: ((sessionId: string, data: string) => void) | null = null;
+
   beforeEach(() => {
+    dataCallback = null;
     window.multissh = {
       ...(window.multissh || {}),
       terminalCreate: vi.fn().mockResolvedValue({ sessionId: 'app-term-1' }),
       terminalWrite: vi.fn().mockResolvedValue(undefined),
       terminalResize: vi.fn().mockResolvedValue(undefined),
       terminalKill: vi.fn().mockResolvedValue(undefined),
-      onTerminalData: vi.fn(() => vi.fn()),
+      onTerminalData: vi.fn((cb) => {
+        dataCallback = cb;
+        return vi.fn();
+      }),
       onTerminalExit: vi.fn(() => vi.fn()),
       onAskpassPrompt: vi.fn(() => vi.fn()),
       submitAskpassPin: vi.fn().mockResolvedValue(undefined),
@@ -46,6 +52,9 @@ describe('App Component', () => {
       sessionSave: vi.fn().mockResolvedValue(undefined),
       settingsGet: vi.fn().mockResolvedValue(undefined),
       settingsSave: vi.fn().mockResolvedValue(undefined),
+      profilesGet: vi.fn().mockResolvedValue({ ssh: [], s3: [] }),
+      profilesSaveSSH: vi.fn().mockResolvedValue(undefined),
+      getHostname: vi.fn().mockResolvedValue('my-laptop'),
     } as any;
   });
 
@@ -238,4 +247,111 @@ describe('App Component', () => {
     fireEvent.click(screen.getByTestId('new-terminal-btn'));
     expect(screen.getByText('Terminal 2')).toBeInTheDocument();
   });
+
+  it('updates tab title from Terminal 1 to profile name when connecting an SSH profile in an empty tab', async () => {
+    (window.multissh.profilesGet as any).mockResolvedValue({
+      ssh: [
+        {
+          id: 'ssh-test-1',
+          name: 'Production Server',
+          host: 'prod.example.com',
+          port: 22,
+          username: 'admin',
+          authType: 'password',
+        },
+      ],
+      s3: [],
+    });
+
+    render(<App />);
+
+    expect(within(screen.getByTestId('tab-term-1')).getByText('Terminal 1')).toBeInTheDocument();
+
+    // Click "Select SSH Connection" in the empty pane
+    fireEvent.click(screen.getByText('Select SSH Connection'));
+
+    // Wait for the modal to finish loading profiles
+    expect(await screen.findByText('Production Server')).toBeInTheDocument();
+
+    // Click "Connect" on the profile row
+    const connectBtn = screen.getByRole('button', { name: /^connect$/i });
+    fireEvent.click(connectBtn);
+
+    // The tab should now be renamed from Terminal 1 to the profile name!
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('Production Server')).toBeInTheDocument();
+    });
+  });
+
+  it('dynamically updates tab title when SSHing further to a new host and restores on exit', async () => {
+    render(<App />);
+
+    expect(within(screen.getByTestId('tab-term-1')).getByText('Terminal 1')).toBeInTheDocument();
+
+    // Open local terminal in the tab
+    fireEvent.click(screen.getByText('Open Local Terminal'));
+
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
+    });
+
+    // Shell starts on local host, sends prompt OSC sequence
+    act(() => {
+      dataCallback?.('app-term-1', '\x1b]0;alun@my-laptop: ~\x07');
+    });
+
+    // Still Local Shell because my-laptop is the base host
+    expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
+
+    // User runs `ssh remote-prod-1` which outputs OSC title for remote host
+    act(() => {
+      dataCallback?.('app-term-1', '\x1b]0;root@remote-prod-1: /var/log\x07');
+    });
+
+    // Tab title dynamically updates to remote-prod-1!
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('remote-prod-1')).toBeInTheDocument();
+    });
+
+    // User exits back to local host
+    act(() => {
+      dataCallback?.('app-term-1', '\x1b]0;alun@my-laptop: ~\x07');
+    });
+
+    // Tab title restores to Local Shell!
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
+    });
+  });
+
+  it('detects nested hostname from plain prompt output and restores on exit', async () => {
+    render(<App />);
+
+    // Open local terminal
+    fireEvent.click(screen.getByText('Open Local Terminal'));
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
+    });
+
+    // Remote machine gnarg outputs standard bash prompt without OSC title
+    act(() => {
+      dataCallback?.('app-term-1', '[alun@gnarg ~]$ ');
+    });
+
+    // Tab title dynamically updates to gnarg!
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('gnarg')).toBeInTheDocument();
+    });
+
+    // When exiting, local prompt outputs
+    act(() => {
+      dataCallback?.('app-term-1', '[alun@my-laptop ~]$ ');
+    });
+
+    // Tab title restores to Local Shell!
+    await vi.waitFor(() => {
+      expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
+    });
+  });
 });
+
