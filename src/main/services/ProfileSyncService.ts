@@ -504,6 +504,20 @@ export class ProfileSyncService {
     return this.lastComparison;
   }
 
+  /**
+   * Clears the cached "last known remote state" used by checkNotChangedRemotely().
+   * Must be called whenever the configured sync target or remoteBasePath changes:
+   * this service instance lives for the app's whole lifetime (see IpcBridge), so
+   * without this, a stat recorded against a *previous* target would otherwise be
+   * compared against the newly configured one on the next push — producing a
+   * spurious SyncConflictError (or, worse, silently masking a real one) since the
+   * two targets' remote files have nothing to do with each other.
+   */
+  public resetRemoteState(): void {
+    this.lastKnownRemoteState.clear();
+    this.lastComparison = null;
+  }
+
   constructor(
     private readonly profileStore: ProfileStore,
     private readonly dotfilePoolStore: DotfilePoolStore,

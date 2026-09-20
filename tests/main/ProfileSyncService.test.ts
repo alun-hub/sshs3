@@ -396,6 +396,22 @@ describe('ProfileSyncService', () => {
     await expect(machineA.sync.pushToRemote(provider)).rejects.toThrow(SyncConflictError);
   });
 
+  it('resetRemoteState() clears stale concurrency state left over from a previously configured target', async () => {
+    // The real ProfileSyncService instance lives for the app's whole lifetime (see
+    // IpcBridge), reused across however many times the user reconfigures Settings >
+    // Synchronization's target. Without resetRemoteState(), a stat recorded against
+    // target A leaks into the concurrency check for an unrelated target B.
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider); // Populates lastKnownRemoteState from `provider`.
+
+    const otherTarget = new FakeStorageProvider(); // A brand-new, unrelated remote target.
+    await expect(machineA.sync.pushToRemote(otherTarget)).rejects.toThrow(SyncConflictError);
+
+    machineA.sync.resetRemoteState();
+    await expect(machineA.sync.pushToRemote(otherTarget)).resolves.toBeUndefined();
+  });
+
   it('keeps the whole settings object with the newer updatedAt (last-write-wins)', async () => {
     const machineA = await harness();
     await machineA.settingsStore.saveSettings({ theme: 'light' });

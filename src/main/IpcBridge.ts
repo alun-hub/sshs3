@@ -1315,6 +1315,9 @@ export class IpcBridge {
         await this.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
         await this.storageRegistry.disconnect?.(target.id);
         await this.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
+        // The (app-lifetime) ProfileSyncService instance otherwise keeps comparing
+        // against whatever remote state it last observed on the *previous* target.
+        this.profileSyncService.resetRemoteState();
       }
     );
 
