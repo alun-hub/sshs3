@@ -17,6 +17,7 @@ import {
   KeyRound,
   Trash2,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import type { ProfileSyncStatus, SyncComparisonResult, KnownHostsConflict } from '@shared/types/sync';
 import {
@@ -376,8 +377,7 @@ export const SyncSettingsPanel: React.FC = () => {
       <div className="space-y-1">
         <p className="text-[11px] text-txt-muted leading-relaxed">
           Back up and sync your connection profiles, dotfile pools, and settings to your own S3 bucket or SFTP
-          server. Everything is encrypted on this device before it ever leaves — with two independent master
-          passwords, so a topology password can be shared with a team later without exposing saved credentials.
+          server. Everything is client-side encrypted before leaving your device using your master password.
         </p>
       </div>
 
@@ -406,23 +406,43 @@ export const SyncSettingsPanel: React.FC = () => {
           </div>
           {status.remoteBasePath && <div className="font-mono text-[11px] text-txt-muted">{status.remoteBasePath}</div>}
 
-          <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
-            <div className="flex items-center gap-1.5">
-              {status.topologyUnlocked ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              ) : (
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-              )}
-              <span className="text-txt-secondary">Topology {status.topologyUnlocked ? 'unlocked' : 'locked'}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {status.credentialsUnlocked ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              ) : (
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-              )}
-              <span className="text-txt-secondary">Credentials {status.credentialsUnlocked ? 'unlocked' : 'locked'}</span>
-            </div>
+          <div className="pt-1 text-[11px]">
+            {status.topologyUnlocked && status.credentialsUnlocked ? (
+              <div className="flex items-center gap-1.5 text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span className="font-medium">Sync unlocked</span>
+                <span className="text-[10px] text-txt-muted">(Profiles & credentials ready)</span>
+              </div>
+            ) : !status.topologyUnlocked && !status.credentialsUnlocked ? (
+              <div className="flex items-center gap-1.5 text-amber-400">
+                <Lock className="h-3.5 w-3.5" />
+                <span className="font-medium">Sync locked</span>
+                <span className="text-[10px] text-txt-muted">(Profiles & credentials encrypted — unlock below)</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-1.5">
+                  {status.topologyUnlocked ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+                  )}
+                  <span className="text-txt-secondary">
+                    Profiles {status.topologyUnlocked ? 'unlocked' : 'locked'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {status.credentialsUnlocked ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+                  )}
+                  <span className="text-txt-secondary">
+                    Credentials {status.credentialsUnlocked ? 'unlocked' : 'locked'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="text-[11px] text-txt-muted pt-1 border-t border-border-subtle">

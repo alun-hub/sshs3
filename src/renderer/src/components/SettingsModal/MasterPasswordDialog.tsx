@@ -219,7 +219,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                 <div className="space-y-2">
                   <PasswordField label="Topology master password" value={topologyPassword} onChange={setTopologyPassword} autoFocus />
                   <p className="text-[10px] text-txt-muted">
-                    Protects server names, hostnames, and ports — this is the password you'd share with a team.
+                    Protects server names, hostnames, ports, and configuration structure.
                   </p>
                   {isSetup && topologyPassword && (
                     <div className="flex items-center gap-2">
@@ -242,7 +242,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                 <div className="space-y-2 pt-2 border-t border-border-subtle">
                   <PasswordField label="Credentials master password" value={credentialsPassword} onChange={setCredentialsPassword} />
                   <p className="text-[10px] text-txt-muted">
-                    Protects usernames, saved passwords, and API keys — keep this one private, even from your team.
+                    Protects usernames, saved passwords, private keys, and API tokens.
                   </p>
                   {isSetup && credentialsPassword && (
                     <div className="flex items-center gap-2">
