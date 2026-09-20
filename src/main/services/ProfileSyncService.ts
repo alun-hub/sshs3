@@ -16,7 +16,9 @@ import {
   mergeKnownHosts,
   parseManagedSshConfigBlock,
   writeManagedSshConfigBlock,
+  buildManagedSshConfigBlockFromProfiles,
   type KnownHostsConflict,
+  type ManagedSshConfigBlock,
 } from './SshNativeFileMerger';
 
 const SYNC_DIR_NAME = '.sshs3';
@@ -608,6 +610,10 @@ export class ProfileSyncService {
       this.buildLocalSshNativePayload(),
     ]);
 
+    if (sshNativePayload.sshConfigBlock) {
+      await this.writeLocalSshNativePayload(sshNativePayload.sshConfigBlock);
+    }
+
     const sshSplit = profiles.ssh.map((item) => splitFields(item, SSH_FIELD_SPLIT));
     const s3Split = profiles.s3.map((item) => splitFields(item, S3_FIELD_SPLIT));
 
@@ -902,7 +908,10 @@ export class ProfileSyncService {
         sshNativeBehind += 1;
         sshNativeDetails.push('Managed SSH config block updated on remote');
       }
-    } else if (localSshNative.sshConfigBlock) {
+    } else if (localSshNative.sshConfigBlock?.body.trim()) {
+      // Generated fresh from local SSH profiles on every comparison (see
+      // buildLocalSshNativePayload) — an empty body just means no SSH
+      // profiles exist yet, not "new content to push".
       sshNativeAhead += 1;
       sshNativeDetails.push('Managed SSH config block created locally');
     }
@@ -947,13 +956,48 @@ export class ProfileSyncService {
   // ssh-native (~/.ssh/config managed block + ~/.ssh/known_hosts)
   // ---------------------------------------------------------------------
 
+  /**
+   * Read-only: builds what the managed `~/.ssh/config` block *should* be
+   * from the current local SSH profiles, without touching disk. Used by
+   * both pushToRemote() (which also writes the result locally) and
+   * compareWithRemote() (a pure status check, which must not have the side
+   * effect of writing to the user's real ~/.ssh/config just to show a badge).
+   */
   private async buildLocalSshNativePayload(): Promise<SshNativePayload> {
     const sshConfigContent = await this.readLocalFile(this.sshConfigPath);
+    const existingBlock = parseManagedSshConfigBlock(sshConfigContent ?? '');
     const knownHostsContent = await this.readLocalFile(this.knownHostsPath);
+    const activeProfiles = (await this.profileStore.getProfiles()).ssh;
+    const generated = buildManagedSshConfigBlockFromProfiles(activeProfiles, existingBlock);
+    // No SSH profiles and no pre-existing managed block: nothing to sync, and
+    // returning it anyway would mint a fresh `now` timestamp on every single
+    // call (buildManagedSshConfigBlockFromProfiles only reuses a previous
+    // timestamp when it *has* a previous block to compare against), which
+    // would make compareWithRemote() spuriously flip-flop between ahead/behind.
+    const hasContent = generated.body.trim().length > 0;
     return {
-      sshConfigBlock: parseManagedSshConfigBlock(sshConfigContent ?? ''),
+      sshConfigBlock: hasContent || existingBlock ? generated : null,
       knownHostsContent: knownHostsContent ?? '',
     };
+  }
+
+  /**
+   * Writes the freshly generated managed block to the real local
+   * ~/.ssh/config if it actually changed, so a plain `ssh <alias>` in any
+   * terminal picks up current profiles right after a push — not only after
+   * some other device's pull. Skipped when there's nothing to write (no
+   * profiles yet and no pre-existing managed block), so installs that never
+   * use this feature don't get an empty stub block.
+   */
+  private async writeLocalSshNativePayload(sshConfigBlock: ManagedSshConfigBlock): Promise<void> {
+    const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+    const currentBlock = parseManagedSshConfigBlock(currentContent);
+    const hasContent = sshConfigBlock.body.trim().length > 0;
+    if (!hasContent && currentBlock === null) return;
+    if (currentBlock && currentBlock.body === sshConfigBlock.body) return;
+
+    const updated = writeManagedSshConfigBlock(currentContent, sshConfigBlock);
+    await this.writeLocalFile(this.sshConfigPath, updated);
   }
 
   private async applySshNativePayload(

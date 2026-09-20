@@ -384,6 +384,55 @@ describe('ProfileSyncService', () => {
     expect(merged).toContain('other-host.example.com');
   });
 
+  it('generates a managed ~/.ssh/config block from SSH profiles on push, so native ssh sees the same host', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'prod',
+      host: 'prod.example.com',
+      username: 'deploy',
+      authType: 'privateKey',
+      privateKeyPath: '/home/user/.ssh/id_prod',
+    });
+
+    await machineA.sync.pushToRemote(provider);
+
+    const localConfig = await fs.readFile(machineA.sshConfigPath, 'utf-8');
+    expect(localConfig).toContain('Host prod');
+    expect(localConfig).toContain('HostName prod.example.com');
+    expect(localConfig).toContain('IdentityFile /home/user/.ssh/id_prod');
+
+    // A second machine that pulls should get the same managed block without
+    // ever having the SSH profile's ~/.ssh/config generated locally itself.
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    const pulledConfig = await fs.readFile(machineB.sshConfigPath, 'utf-8');
+    expect(pulledConfig).toContain('Host prod');
+    expect(pulledConfig).toContain('HostName prod.example.com');
+  });
+
+  it('does not create a ~/.ssh/config managed block when there are no SSH profiles', async () => {
+    const machineA = await harness();
+
+    await machineA.sync.pushToRemote(provider);
+
+    await expect(fs.readFile(machineA.sshConfigPath, 'utf-8')).rejects.toThrow(/ENOENT/);
+  });
+
+  it('clears the ~/.ssh/config managed block once the last SSH profile is deleted', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'prod', host: 'prod.example.com', username: 'deploy', authType: 'password' });
+    await machineA.sync.pushToRemote(provider);
+    expect(await fs.readFile(machineA.sshConfigPath, 'utf-8')).toContain('Host prod');
+
+    await machineA.profileStore.deleteSSH('ssh-1');
+    await machineA.sync.pushToRemote(provider);
+
+    const finalConfig = await fs.readFile(machineA.sshConfigPath, 'utf-8');
+    expect(finalConfig).not.toContain('Host prod');
+    expect(finalConfig).toContain('BEGIN sshs3-managed');
+  });
+
   it('rejects a push when the remote file changed since it was last observed (optimistic concurrency)', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
@@ -689,7 +738,10 @@ describe('compareWithRemote', () => {
 
     const comparison = await service.compareWithRemote(provider);
     expect(comparison.state).toBe('ahead');
-    expect(comparison.aheadCount).toBe(1);
+    // 2, not 1: the rename also changes the generated ~/.ssh/config Host
+    // alias for this profile, so both the 'topology' and 'ssh-native'
+    // categories are legitimately ahead.
+    expect(comparison.aheadCount).toBe(2);
     expect(comparison.behindCount).toBe(0);
   });
 
@@ -712,7 +764,10 @@ describe('compareWithRemote', () => {
       // machineB has not pulled yet
       const comparisonB = await machineB.sync.compareWithRemote(provider);
       expect(comparisonB.state).toBe('behind');
-      expect(comparisonB.behindCount).toBe(1);
+      // 2, not 1: the new SSH profile is behind in both 'topology' and
+      // 'ssh-native' (machineA's push also generated and uploaded a
+      // ~/.ssh/config managed block for it, which B doesn't have yet).
+      expect(comparisonB.behindCount).toBe(2);
       expect(comparisonB.aheadCount).toBe(0);
     } finally {
       await fs.rm(machineA.dir, { recursive: true, force: true });

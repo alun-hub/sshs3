@@ -929,6 +929,38 @@ describe('IpcBridge', () => {
       expect(mockPtyManager.killAll).toHaveBeenCalled();
       expect(mockStorageRegistry.disconnectAll).toHaveBeenCalled();
     });
+
+    it('kills every leftover private smartcard agent (per-session and global) on dispose', async () => {
+      const { AgentLifecycleManager } = await import('../../src/main/ssh/AgentLifecycleManager');
+      const killSpy = vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});
+      const unloadSpy = vi.spyOn(AgentLifecycleManager, 'unloadCard').mockResolvedValue();
+
+      // Simulate two smartcard agents left tracked when the app quits: one
+      // 'agent-per-session' agent (never reaped because the PTY-exit listener
+      // that normally drives cleanupSmartcardSessionAgent() is detached before
+      // killAll() runs) and one 'agent-global' cached agent.
+      (bridge as any).smartcardSessionAgents.set('session-1', {
+        pid: 4242,
+        socketPath: '/tmp/session-agent.sock',
+        pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
+      });
+      (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', {
+        pid: 4343,
+        socketPath: '/tmp/global-agent.sock',
+      });
+
+      await bridge.dispose();
+
+      expect(killSpy).toHaveBeenCalledWith(4242);
+      expect(killSpy).toHaveBeenCalledWith(4343);
+      expect(unloadSpy).toHaveBeenCalledWith('/tmp/session-agent.sock', '/usr/lib/opensc-pkcs11.so');
+      expect(unloadSpy).toHaveBeenCalledWith('/tmp/global-agent.sock', '/usr/lib/opensc-pkcs11.so');
+      expect((bridge as any).smartcardSessionAgents.size).toBe(0);
+      expect((bridge as any).globalSmartcardAgents.size).toBe(0);
+
+      killSpy.mockRestore();
+      unloadSpy.mockRestore();
+    });
   });
 
   describe('Preload Bridge API (MultiSSHApi)', () => {

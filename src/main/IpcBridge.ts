@@ -2251,6 +2251,14 @@ export class IpcBridge {
       this.autoSyncTimer = null;
     }
     this.stopAutoPullTimer();
+    // The PTY-exit listener that normally drives cleanupSmartcardSessionAgent()
+    // was already detached above, so killAll() won't trigger it — kill every
+    // remaining per-session ('agent-per-session' mode) private agent explicitly,
+    // in addition to the global ones, or their ssh-agent processes and sockets
+    // under ~/.ssh/agent leak past app quit.
+    for (const sessionId of Array.from(this.smartcardSessionAgents.keys())) {
+      this.cleanupSmartcardSessionAgent(sessionId);
+    }
     this.lockAllGlobalSmartcardAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();
