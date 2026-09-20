@@ -65,6 +65,14 @@ export interface AppSettings {
   dotfilesPoolEnabled?: boolean;
   /** Smartcard PIN caching behavior, applied uniformly to every smartcard/PKCS#11 profile. */
   smartcardAuthMode?: SmartcardAuthMode;
+  /**
+   * 'agent-global' mode only: prompt for the smartcard PIN and unlock it into
+   * the app-lifetime agent as soon as the app starts, instead of waiting for
+   * the first connection that actually needs it. Only takes effect when
+   * exactly one PKCS#11 library is detected on the system — with zero or
+   * several candidates there's no single card to guess at unlocking.
+   */
+  smartcardUnlockAtStartup?: boolean;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
   sessionExitAction?: SessionExitAction;
   /** Windows only: Mode for local X11 server: 'manual' (external), 'auto' (start automatically when X11 session opens), 'always' (start on app launch) */
@@ -92,5 +100,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dotfilesPoolEnabled: false,
   sessionExitAction: 'reconnect',
   smartcardAuthMode: 'always-prompt',
+  smartcardUnlockAtStartup: false,
   x11ServerMode: 'auto',
 };

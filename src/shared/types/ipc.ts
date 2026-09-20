@@ -44,6 +44,7 @@ export const IPC_CHANNELS = {
   SMARTCARD_VALIDATE: 'smartcard:validate',
   SMARTCARD_LOCK_ALL: 'smartcard:lock-all',
   SMARTCARD_LIST_CACHED: 'smartcard:list-cached',
+  SMARTCARD_UNLOCK_AT_STARTUP: 'smartcard:unlock-at-startup',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
 
@@ -219,6 +220,8 @@ export interface MultiSSHApi {
   smartcardValidate(path: string): Promise<{ valid: boolean; error?: string }>;
   smartcardLockAll(): Promise<{ locked: number }>;
   smartcardListCached(): Promise<CachedSmartcardAgent[]>;
+  /** Called once on renderer startup; a no-op unless 'agent-global' PIN caching + the startup-unlock setting are both on and exactly one PKCS#11 library is detected. */
+  smartcardUnlockAtStartup(): Promise<{ started: boolean }>;
   onAskpassPrompt(callback: (event: { id: string; prompt: string; sessionId?: string }) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
 

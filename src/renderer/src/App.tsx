@@ -61,6 +61,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     void window.multissh.getPlatform?.().then((p) => setPlatform(p));
     void window.multissh.getHostname?.().then((h) => setLocalHostname(h));
+    // No-op unless 'agent-global' PIN caching + "unlock at startup" are both
+    // on; SmartcardPinModal (rendered unconditionally below) is already
+    // mounted and listening by the time this resolves, so the PIN prompt
+    // it may trigger is never missed.
+    void window.multissh.smartcardUnlockAtStartup?.();
   }, []);
 
   // Load saved session on mount

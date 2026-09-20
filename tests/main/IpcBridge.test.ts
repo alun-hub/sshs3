@@ -54,6 +54,8 @@ vi.mock('electron', () => {
 import { IpcBridge } from '../../src/main/IpcBridge';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
+import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
+import * as SmartcardAgentLoader from '../../src/main/smartcard/SmartcardAgentLoader';
 import type { IStorageProvider, FileEntry } from '../../src/shared/types/storage';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -297,6 +299,67 @@ describe('IpcBridge', () => {
       const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_VALIDATE, '/non/existent/path.so');
       expect(res.valid).toBe(false);
       expect(res.error).toBeDefined();
+    });
+
+    describe('smartcardUnlockAtStartup', () => {
+      it('does nothing when the setting is off', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: false, smartcardAuthMode: 'agent-global' });
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: false });
+      });
+
+      it('does nothing when PIN caching mode is not agent-global', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'always-prompt' });
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: false });
+      });
+
+      it('does nothing when zero or several PKCS#11 libraries are detected', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+          { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux', exists: true },
+        ]);
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: false });
+
+        detectSpy.mockRestore();
+      });
+
+      it('starts loading the single detected card into the global agent', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        const loadSpy = vi
+          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
+          .mockImplementation(() => new Promise(() => {})); // never resolves; only started:true matters here
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: true });
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function));
+
+        detectSpy.mockRestore();
+        loadSpy.mockRestore();
+      });
+
+      it('does not start a second load when a card is already cached or loading', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', { pid: 1, socketPath: '/tmp/cached.sock' });
+
+        const loadSpy = vi.spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent');
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+
+        expect(res).toEqual({ started: false });
+        expect(loadSpy).not.toHaveBeenCalled();
+
+        detectSpy.mockRestore();
+        loadSpy.mockRestore();
+      });
     });
 
     it('handles askpass prompt and pin submission', async () => {

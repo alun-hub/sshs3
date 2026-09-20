@@ -104,6 +104,9 @@ export const api: MultiSSHApi = {
   smartcardListCached: (): Promise<CachedSmartcardAgent[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED),
 
+  smartcardUnlockAtStartup: (): Promise<{ started: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP),
+
   onAskpassPrompt: (callback: (event: { id: string; prompt: string; sessionId?: string }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: { id: string; prompt: string; sessionId?: string }) =>
       callback(event);

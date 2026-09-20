@@ -98,6 +98,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [smartcardAuthMode, setSmartcardAuthMode] = useState<SmartcardAuthMode>(
     currentSettings.smartcardAuthMode ?? 'always-prompt'
   );
+  const [smartcardUnlockAtStartup, setSmartcardUnlockAtStartup] = useState<boolean>(
+    currentSettings.smartcardUnlockAtStartup ?? false
+  );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(
@@ -143,6 +146,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
       setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
+      setSmartcardUnlockAtStartup(currentSettings.smartcardUnlockAtStartup ?? false);
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
@@ -248,6 +252,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       confirmBeforeDelete,
       dotfilesPoolEnabled,
       smartcardAuthMode,
+      smartcardUnlockAtStartup,
       x11ServerMode,
       x11ServerPath,
       x11ServerArgs,
@@ -1199,10 +1204,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {smartcardAuthMode === 'agent-global' && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">
                         <p className="text-[11px] text-amber-300/90 leading-tight">
                           Cached smartcard agents stay unlocked until the app quits. Use the lock icon in the top bar
                           to lock them on demand without quitting.
+                        </p>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary border-t border-amber-500/20 pt-2.5">
+                          <input
+                            type="checkbox"
+                            checked={smartcardUnlockAtStartup}
+                            onChange={(e) => setSmartcardUnlockAtStartup(e.target.checked)}
+                            className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                          />
+                          <span>Unlock smartcard at app startup</span>
+                        </label>
+                        <p className="text-[11px] text-txt-muted leading-tight pl-6">
+                          Prompts for the PIN as soon as the app opens instead of waiting for the first connection
+                          that needs it, so it's already unlocked once you get to a terminal. Only takes effect when
+                          exactly one PKCS#11 library is detected below.
                         </p>
                       </div>
                     )}

@@ -370,6 +370,10 @@ export class IpcBridge {
       return this.listGlobalSmartcardAgents();
     });
 
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP, async () => {
+      return this.maybeUnlockSmartcardAtStartup();
+    });
+
     this.registerHandler(
       IPC_CHANNELS.HOSTKEY_RESPOND,
       async (_event, id: string, trust: boolean) => {
@@ -1112,6 +1116,40 @@ export class IpcBridge {
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
     }
+  }
+
+  /**
+   * 'agent-global' PIN caching + the opt-in "unlock at startup" setting: prompts
+   * for the smartcard PIN and loads it into the app-lifetime agent immediately,
+   * instead of waiting for the first connection that needs it — so by the time
+   * the user opens their first terminal (SSH or local shell) the card is
+   * already usable. Only acts when exactly one PKCS#11 library is detected;
+   * with zero or several candidates there's no single card to guess at
+   * unlocking, so it's left to the normal per-connection flow. Fire-and-forget
+   * from the caller's perspective — the PIN prompt itself resolves later via
+   * the renderer's askpass modal, same as every other smartcard load.
+   */
+  private async maybeUnlockSmartcardAtStartup(): Promise<{ started: boolean }> {
+    const settings = await this.settingsStore.getSettings();
+    if (!settings.smartcardUnlockAtStartup || (settings.smartcardAuthMode ?? 'always-prompt') !== 'agent-global') {
+      return { started: false };
+    }
+
+    const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+    if (libs.length !== 1) {
+      return { started: false };
+    }
+    const pkcs11LibPath = libs[0].path;
+    if (this.globalSmartcardAgents.has(pkcs11LibPath) || this.globalSmartcardAgentLoads.has(pkcs11LibPath)) {
+      return { started: false };
+    }
+
+    void this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () =>
+      this.promptForPinDirect('Enter your smartcard PIN to unlock it for this app session:')
+    ).catch((err) => {
+      console.warn('[smartcard] Startup unlock failed:', err);
+    });
+    return { started: true };
   }
 
   /**
