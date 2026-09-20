@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.20] - 2026-09-20
+
+### Added
+- Remote Profile Sync now generates the managed `~/.ssh/config` block directly from your saved SSH profiles (host/port/user/identity file/proxy jump/etc.) on every push, instead of only mirroring a hand-written block — so a plain `ssh <alias>` in any terminal picks up the same settings as the matching profile ([SshNativeFileMerger.ts](src/main/services/SshNativeFileMerger.ts), [ProfileSyncService.ts](src/main/services/ProfileSyncService.ts)).
+- Terminal tabs and split panes now dynamically retitle themselves to track the current remote host as you `ssh` onward from one machine to another, instead of staying fixed to the original connection ([terminalTitle.ts](src/renderer/src/lib/terminalTitle.ts), [App.tsx](src/renderer/src/App.tsx), [TerminalView.tsx](src/renderer/src/components/TerminalView.tsx)).
+- Settings → Terminal and the connection profile form now detect native Linux X11/Wayland and show a Linux-specific status instead of the Windows-only VcXsrv server controls ([XServerManager.ts](src/main/x11/XServerManager.ts), [SettingsModal.tsx](src/renderer/src/components/SettingsModal/SettingsModal.tsx)).
+
+### Fixed
+- Fixed private smartcard `ssh-agent` processes/sockets under `~/.ssh/agent` leaking past app quit: `dispose()` detached the PTY-exit listener that normally reaps them before calling `killAll()`, so per-session agents were never killed on exit ([IpcBridge.ts](src/main/IpcBridge.ts)).
+- Fixed `PROFILE_SYNC_LINK_SMARTCARD`/`PROFILE_SYNC_UNLOCK_SMARTCARD` always spawning a fresh private agent (and re-prompting for the PIN) even when 'agent-global' PIN caching mode already had one cached for that card ([IpcBridge.ts](src/main/IpcBridge.ts)).
+- Fixed local shell terminal tabs not reliably inheriting the app's own managed `ssh-agent`: `SSH_AUTH_SOCK` is now set explicitly from `AgentLifecycleManager` instead of relying on `process.env` inheritance alone ([SSHPtyManager.ts](src/main/ssh/SSHPtyManager.ts)).
+
+### Docs
+- Corrected several stale README claims found by auditing recent commits: bundled VcXsrv args no longer document the removed `-ac` (access-control-disabling) flag, ECDSA smartcard sync-unlock limitations are now described accurately, and the `~/.ssh/config` sync bullet reflects profile-based generation.
+
+---
+
 ## [0.2.19] - 2026-09-20 15:27
 
 ### Fixed
