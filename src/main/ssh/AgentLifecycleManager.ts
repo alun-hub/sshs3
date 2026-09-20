@@ -17,7 +17,7 @@ export interface AgentStatus {
 export class AgentLifecycleManager {
   private static spawnedPid: number | null = null;
   private static spawnedSocket: string | null = null;
-  private static isEnsuring = false;
+  private static ensuringPromise: Promise<AgentStatus> | null = null;
 
   /**
    * Probes a Windows named pipe or Unix socket to check if it accepts connections.
@@ -130,62 +130,72 @@ export class AgentLifecycleManager {
 
   /**
    * Ensures an SSH agent is available. If none is found, attempts to spawn one on Linux/macOS.
+   *
+   * Concurrent callers (e.g. the app's own startup call racing a local shell
+   * tab being restored/opened immediately after) all await the *same*
+   * in-flight attempt rather than each getting an independent, possibly
+   * stale getStatus() snapshot taken before the spawn finished — otherwise a
+   * caller that raced the first invocation could see isRunning:false and
+   * silently skip setting SSH_AUTH_SOCK, even though the agent this method
+   * was already in the middle of spawning came up moments later.
    */
   public static async ensureAgent(): Promise<AgentStatus> {
-    if (this.isEnsuring) {
-      return this.getStatus();
+    if (this.ensuringPromise) {
+      return this.ensuringPromise;
     }
-    this.isEnsuring = true;
 
+    this.ensuringPromise = this.doEnsureAgent().finally(() => {
+      this.ensuringPromise = null;
+    });
+    return this.ensuringPromise;
+  }
+
+  private static async doEnsureAgent(): Promise<AgentStatus> {
+    const current = await this.getStatus();
+    if (current.isRunning) {
+      return current;
+    }
+
+    if (process.platform === 'win32') {
+      return current; // On Windows, user must start the service
+    }
+
+    // On Linux/macOS: spawn ssh-agent -s
     try {
-      const current = await this.getStatus();
-      if (current.isRunning) {
-        return current;
-      }
+      const { stdout } = await execFileAsync('ssh-agent', ['-s']);
+      const sockMatch = stdout.match(/SSH_AUTH_SOCK=([^;]+);/);
+      const pidMatch = stdout.match(/SSH_AGENT_PID=(\d+);/);
 
-      if (process.platform === 'win32') {
-        return current; // On Windows, user must start the service
-      }
+      if (sockMatch && sockMatch[1]) {
+        const socketPath = sockMatch[1].trim();
+        const pid = pidMatch ? parseInt(pidMatch[1].trim(), 10) : null;
 
-      // On Linux/macOS: spawn ssh-agent -s
-      try {
-        const { stdout } = await execFileAsync('ssh-agent', ['-s']);
-        const sockMatch = stdout.match(/SSH_AUTH_SOCK=([^;]+);/);
-        const pidMatch = stdout.match(/SSH_AGENT_PID=(\d+);/);
-
-        if (sockMatch && sockMatch[1]) {
-          const socketPath = sockMatch[1].trim();
-          const pid = pidMatch ? parseInt(pidMatch[1].trim(), 10) : null;
-
-          process.env.SSH_AUTH_SOCK = socketPath;
-          if (pid) {
-            process.env.SSH_AGENT_PID = String(pid);
-            this.spawnedPid = pid;
-          }
-          this.spawnedSocket = socketPath;
-
-          return {
-            isRunning: true,
-            socketPath,
-            isManaged: true,
-            platform: process.platform,
-          };
+        process.env.SSH_AUTH_SOCK = socketPath;
+        if (pid) {
+          process.env.SSH_AGENT_PID = String(pid);
+          this.spawnedPid = pid;
         }
-      } catch (spawnErr) {
-        const errorMsg = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+        this.spawnedSocket = socketPath;
+
         return {
-          isRunning: false,
-          isManaged: false,
+          isRunning: true,
+          socketPath,
+          isManaged: true,
           platform: process.platform,
-          error: `Failed to spawn ssh-agent: ${errorMsg}`,
-          instructions: 'Ensure openssh-client (ssh-agent) is installed in PATH.',
         };
       }
-
-      return await this.getStatus();
-    } finally {
-      this.isEnsuring = false;
+    } catch (spawnErr) {
+      const errorMsg = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+      return {
+        isRunning: false,
+        isManaged: false,
+        platform: process.platform,
+        error: `Failed to spawn ssh-agent: ${errorMsg}`,
+        instructions: 'Ensure openssh-client (ssh-agent) is installed in PATH.',
+      };
     }
+
+    return await this.getStatus();
   }
 
   /**
@@ -291,6 +301,6 @@ export class AgentLifecycleManager {
   public static _reset(): void {
     this.spawnedPid = null;
     this.spawnedSocket = null;
-    this.isEnsuring = false;
+    this.ensuringPromise = null;
   }
 }

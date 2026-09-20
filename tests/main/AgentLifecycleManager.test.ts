@@ -3,7 +3,20 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile as mockedExecFile } from 'node:child_process';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
+
+vi.mock('node:child_process', () => ({ execFile: vi.fn() }));
+
+function mockSpawnedAgent(socketPath: string, pid: number, delayMs = 0): void {
+  vi.mocked(mockedExecFile).mockImplementation(((...args: any[]) => {
+    const callback = args[args.length - 1];
+    setTimeout(
+      () => callback(null, { stdout: `SSH_AUTH_SOCK=${socketPath}; export SSH_AUTH_SOCK;\nSSH_AGENT_PID=${pid}; export SSH_AGENT_PID;\n`, stderr: '' }),
+      delayMs
+    );
+  }) as any);
+}
 
 describe('AgentLifecycleManager', () => {
   const origEnv = { ...process.env };
@@ -11,6 +24,7 @@ describe('AgentLifecycleManager', () => {
   beforeEach(() => {
     AgentLifecycleManager._reset();
     process.env = { ...origEnv };
+    mockSpawnedAgent('/tmp/default-mock-agent.sock', 99999);
   });
 
   afterEach(async () => {
@@ -81,6 +95,21 @@ describe('AgentLifecycleManager', () => {
     if (status.isRunning) {
       expect(status.socketPath).toBeDefined();
     }
+  });
+
+  it('lets concurrent ensureAgent() callers share the same in-flight spawn instead of a stale snapshot', async () => {
+    delete process.env.SSH_AUTH_SOCK;
+    mockSpawnedAgent('/tmp/managed-agent-race.sock', 4242, 50);
+
+    // Simulates the app's own startup ensureAgent() call racing a local
+    // shell tab (restored from session, or opened immediately) that also
+    // calls ensureAgent() before the first spawn has resolved.
+    const [first, second] = await Promise.all([AgentLifecycleManager.ensureAgent(), AgentLifecycleManager.ensureAgent()]);
+
+    expect(first.isRunning).toBe(true);
+    expect(first.socketPath).toBe('/tmp/managed-agent-race.sock');
+    expect(second).toEqual(first);
+    expect(mockedExecFile).toHaveBeenCalledTimes(1);
   });
 
   it('cleans up managed agent state on stopManagedAgent', async () => {
