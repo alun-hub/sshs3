@@ -127,6 +127,7 @@ interface Harness {
   bridge: IpcBridge;
   ipc: MockIpcMain;
   dir: string;
+  settingsStore: SettingsStore;
   syncConfigStore: SyncConfigStore;
   syncCryptoService: SyncCryptoService;
 }
@@ -161,7 +162,7 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
   });
   bridge.register();
 
-  return { bridge, ipc, dir, syncConfigStore, syncCryptoService };
+  return { bridge, ipc, dir, settingsStore, syncConfigStore, syncCryptoService };
 }
 
 const TARGET: StorageConnectConfig = {
@@ -521,5 +522,33 @@ describe('IpcBridge — remote profile sync handlers', () => {
 
       await bridge.dispose();
     }, 10000);
+
+    it('reuses cached global smartcard agent in agent-global mode without re-prompting for PIN', async () => {
+      const { ipc, bridge, syncCryptoService, settingsStore } = await harness();
+      await settingsStore.saveSettings({ smartcardAuthMode: 'agent-global' });
+
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
+
+      // Lock sync
+      syncCryptoService.lock();
+      expect(syncCryptoService.isUnlocked('topology')).toBe(false);
+
+      const { loadSmartcardIntoPrivateAgent } = await import('../../src/main/smartcard/SmartcardAgentLoader');
+      // LINK_SMARTCARD called loadSmartcardIntoPrivateAgent once under agent-global, caching it in globalSmartcardAgents!
+      expect(loadSmartcardIntoPrivateAgent).toHaveBeenCalledTimes(1);
+
+      // Now unlock via smartcard again — it should reuse the cached global agent and NOT call loadSmartcardIntoPrivateAgent again!
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
+
+      expect(syncCryptoService.isUnlocked('topology')).toBe(true);
+      expect(loadSmartcardIntoPrivateAgent).toHaveBeenCalledTimes(1); // No second PIN prompt / agent spawn!
+
+      await bridge.dispose();
+    });
   });
 });

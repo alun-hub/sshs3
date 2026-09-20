@@ -1062,8 +1062,8 @@ export class IpcBridge {
    */
   private async getOrLoadGlobalSmartcardAgent(
     pkcs11LibPath: string,
-    sessionId: string,
-    promptLabel: string
+    sessionIdOrPinPrompt: string | (() => Promise<string>),
+    promptLabel?: string
   ): Promise<string> {
     const cached = this.globalSmartcardAgents.get(pkcs11LibPath);
     if (cached) {
@@ -1079,9 +1079,12 @@ export class IpcBridge {
     }
 
     console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading global agent for ${pkcs11LibPath}`);
-    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, () =>
-      this.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`)
-    );
+    const pinHandler =
+      typeof sessionIdOrPinPrompt === 'function'
+        ? sessionIdOrPinPrompt
+        : () => this.sshPtyManager.promptForPin(sessionIdOrPinPrompt, `Enter your smartcard PIN to ${promptLabel}:`);
+
+    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, pinHandler);
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
 
     try {
@@ -1553,7 +1556,22 @@ export class IpcBridge {
           return await this.promptForPinDirect('Enter your smartcard PIN to link this card to Remote Profile Sync:');
         };
 
-        const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(options.pkcs11LibPath, pinHandler);
+        const settings = await this.settingsStore.getSettings();
+        const mode = settings.smartcardAuthMode ?? 'always-prompt';
+
+        let socketPath: string;
+        let privateAgentPid: number | undefined;
+
+        if (this.globalSmartcardAgents.has(options.pkcs11LibPath)) {
+          socketPath = this.globalSmartcardAgents.get(options.pkcs11LibPath)!.socketPath;
+        } else if (mode === 'agent-global') {
+          socketPath = await this.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
+        } else {
+          const agent = await loadSmartcardIntoPrivateAgent(options.pkcs11LibPath, pinHandler);
+          socketPath = agent.socketPath;
+          privateAgentPid = agent.pid;
+        }
+
         try {
           const identities = await getAgentIdentities(socketPath);
           if (identities.length === 0) {
@@ -1600,9 +1618,21 @@ export class IpcBridge {
           });
 
           return await this.buildSyncStatus();
+        } catch (err) {
+          if (this.globalSmartcardAgents.has(options.pkcs11LibPath) && privateAgentPid === undefined) {
+            const cached = this.globalSmartcardAgents.get(options.pkcs11LibPath);
+            if (cached) {
+              void AgentLifecycleManager.unloadCard(cached.socketPath, options.pkcs11LibPath);
+              AgentLifecycleManager.killPrivateAgent(cached.pid);
+              this.globalSmartcardAgents.delete(options.pkcs11LibPath);
+            }
+          }
+          throw err;
         } finally {
-          void AgentLifecycleManager.unloadCard(socketPath, options.pkcs11LibPath);
-          AgentLifecycleManager.killPrivateAgent(pid);
+          if (privateAgentPid !== undefined) {
+            void AgentLifecycleManager.unloadCard(socketPath, options.pkcs11LibPath);
+            AgentLifecycleManager.killPrivateAgent(privateAgentPid);
+          }
         }
       }
     );
@@ -1680,7 +1710,22 @@ export class IpcBridge {
       return await this.promptForPinDirect('Enter your smartcard PIN to unlock Remote Profile Sync:');
     };
 
-    const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
+    const settings = await this.settingsStore.getSettings();
+    const mode = settings.smartcardAuthMode ?? 'always-prompt';
+
+    let socketPath: string;
+    let privateAgentPid: number | undefined;
+
+    if (this.globalSmartcardAgents.has(libPath)) {
+      socketPath = this.globalSmartcardAgents.get(libPath)!.socketPath;
+    } else if (mode === 'agent-global') {
+      socketPath = await this.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
+    } else {
+      const agent = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
+      socketPath = agent.socketPath;
+      privateAgentPid = agent.pid;
+    }
+
     try {
       const identities = await getAgentIdentities(socketPath);
       if (identities.length === 0) {
@@ -1743,9 +1788,21 @@ export class IpcBridge {
       }
 
       return await this.unlockSyncInternal({ topologyPassword, credentialsPassword }, unlockOptions);
+    } catch (err) {
+      if (this.globalSmartcardAgents.has(libPath) && privateAgentPid === undefined) {
+        const cached = this.globalSmartcardAgents.get(libPath);
+        if (cached) {
+          void AgentLifecycleManager.unloadCard(cached.socketPath, libPath);
+          AgentLifecycleManager.killPrivateAgent(cached.pid);
+          this.globalSmartcardAgents.delete(libPath);
+        }
+      }
+      throw err;
     } finally {
-      void AgentLifecycleManager.unloadCard(socketPath, libPath);
-      AgentLifecycleManager.killPrivateAgent(pid);
+      if (privateAgentPid !== undefined) {
+        void AgentLifecycleManager.unloadCard(socketPath, libPath);
+        AgentLifecycleManager.killPrivateAgent(privateAgentPid);
+      }
     }
   }
 
