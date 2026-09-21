@@ -11,6 +11,10 @@ describe('FileEditorModal', () => {
   const mockFileOpenExternal = vi.fn();
   const mockFileCloseExternal = vi.fn();
   const mockOnExternalFileStatus = vi.fn().mockReturnValue(() => {});
+  const mockFileTailStart = vi.fn();
+  const mockFileTailStop = vi.fn();
+  const mockOnFileTailData = vi.fn().mockReturnValue(() => {});
+  const mockOnFileTailError = vi.fn().mockReturnValue(() => {});
 
   const sampleEntry: FileEntry = {
     name: 'config.json',
@@ -30,6 +34,8 @@ describe('FileEditorModal', () => {
     mockFileSave.mockResolvedValue(undefined);
     mockFileOpenExternal.mockResolvedValue({ sessionToken: 'ext-tok-1', localPath: '/tmp/config.json' });
     mockFileCloseExternal.mockResolvedValue(undefined);
+    mockFileTailStart.mockResolvedValue({ tailId: 'tail-123', initialContent: 'Log line 1\nLog line 2\n', size: 1024 });
+    mockFileTailStop.mockResolvedValue(undefined);
 
     window.multissh = {
       ...(window.multissh || {}),
@@ -38,6 +44,10 @@ describe('FileEditorModal', () => {
       fileOpenExternal: mockFileOpenExternal,
       fileCloseExternal: mockFileCloseExternal,
       onExternalFileStatus: mockOnExternalFileStatus,
+      fileTailStart: mockFileTailStart,
+      fileTailStop: mockFileTailStop,
+      onFileTailData: mockOnFileTailData,
+      onFileTailError: mockOnFileTailError,
     } as any;
   });
 
@@ -235,6 +245,57 @@ describe('FileEditorModal', () => {
     await waitFor(() => {
       expect(mockFileOpenExternal).toHaveBeenCalledWith('sftp-1', '/etc/app/config.json');
       expect(screen.getByText(/External editor active/i)).toBeInTheDocument();
+    });
+  });
+
+  it('starts Tail -f mode when isTailMode is true', async () => {
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={sampleEntry}
+        isTailMode={true}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockFileTailStart).toHaveBeenCalledWith('sftp-1', '/etc/app/config.json');
+      expect(screen.getByText(/TAIL -F STREAM ACTIVE/i)).toBeInTheDocument();
+      expect(screen.getByRole('textbox')).toHaveValue('Log line 1\nLog line 2\n');
+    });
+  });
+
+  it('displays large file warning for files > 20 MB and offers switch to Tail -f', async () => {
+    const largeEntry: FileEntry = {
+      ...sampleEntry,
+      name: 'huge.log',
+      size: 25 * 1024 * 1024, // 25 MB
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={largeEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Large file/i)).toBeInTheDocument();
+    });
+
+    const switchBtn = screen.getByRole('button', { name: /Switch to Tail -f/i });
+    expect(switchBtn).toBeInTheDocument();
+
+    fireEvent.click(switchBtn);
+
+    await waitFor(() => {
+      expect(mockFileTailStart).toHaveBeenCalledWith('sftp-1', '/etc/app/config.json');
+      expect(screen.getByText(/TAIL -F STREAM ACTIVE/i)).toBeInTheDocument();
     });
   });
 

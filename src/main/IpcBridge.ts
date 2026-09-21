@@ -29,6 +29,7 @@ import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifie
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { FileEditorService } from './editor/FileEditorService';
+import { FileTailService } from './editor/FileTailService';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
@@ -108,6 +109,7 @@ export interface IpcBridgeOptions {
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
   fileEditorService?: FileEditorService;
+  fileTailService?: FileTailService;
   awsSsoAuthService?: AwsSsoAuthService;
   syncConfigStore?: SyncConfigStore;
   syncCryptoService?: SyncCryptoService;
@@ -127,6 +129,7 @@ export class IpcBridge {
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
   public readonly fileEditorService: FileEditorService;
+  public readonly fileTailService: FileTailService;
   public readonly awsSsoAuthService: AwsSsoAuthService;
   public readonly syncConfigStore: SyncConfigStore;
   public readonly syncCryptoService: SyncCryptoService;
@@ -179,6 +182,7 @@ export class IpcBridge {
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
+    this.fileTailService = options.fileTailService ?? new FileTailService();
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
@@ -2120,6 +2124,36 @@ export class IpcBridge {
         await this.fileEditorService.closeExternalEditor(sessionToken);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.FILE_TAIL_START,
+      async (_event, providerId: string, remotePath: string) => {
+        return await this.fileTailService.startTail(
+          this.storageRegistry,
+          providerId,
+          remotePath,
+          (dataEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.FILE_TAIL_DATA, dataEvent);
+            }
+          },
+          (errorEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.FILE_TAIL_ERROR, errorEvent);
+            }
+          }
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FILE_TAIL_STOP,
+      async (_event, tailId: string) => {
+        this.fileTailService.stopTail(tailId);
+      }
+    );
   }
 
   private registerGeneralHandlers(): void {
@@ -2368,6 +2402,7 @@ export class IpcBridge {
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll?.();
     await this.fileEditorService.dispose();
+    this.fileTailService.dispose();
     if (this.autoSyncTimer) {
       clearTimeout(this.autoSyncTimer);
       this.autoSyncTimer = null;

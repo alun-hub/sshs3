@@ -421,6 +421,37 @@ export const api: MultiSSHApi = {
     };
   },
 
+  fileTailStart: (
+    providerId: string,
+    remotePath: string
+  ): Promise<{ tailId: string; initialContent: string; size: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_TAIL_START, providerId, remotePath),
+
+  fileTailStop: (tailId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_TAIL_STOP, tailId),
+
+  onFileTailData: (
+    callback: (event: { tailId: string; chunk: string }) => void
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: { tailId: string; chunk: string }) =>
+      callback(event);
+    ipcRenderer.on(IPC_CHANNELS.FILE_TAIL_DATA, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.FILE_TAIL_DATA, listener);
+    };
+  },
+
+  onFileTailError: (
+    callback: (event: { tailId: string; error: string }) => void
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: { tailId: string; error: string }) =>
+      callback(event);
+    ipcRenderer.on(IPC_CHANNELS.FILE_TAIL_ERROR, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.FILE_TAIL_ERROR, listener);
+    };
+  },
+
   // Window / General
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
