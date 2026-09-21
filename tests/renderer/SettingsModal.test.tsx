@@ -126,16 +126,16 @@ describe('SettingsModal', () => {
     // It should now prompt for recording
     expect(screen.getByText('Press keys (Esc to cancel)...')).toBeInTheDocument();
 
-    // Send keydown Ctrl+Shift+N
+    // Send keydown Ctrl+Shift+Y
     const recordingBtn = screen.getByText('Press keys (Esc to cancel)...');
     fireEvent.keyDown(recordingBtn, {
-      key: 'n',
+      key: 'y',
       ctrlKey: true,
       shiftKey: true,
     });
 
-    // It should update to Ctrl+Shift+N
-    expect(screen.getByText('Ctrl+Shift+N')).toBeInTheDocument();
+    // It should update to Ctrl+Shift+Y
+    expect(screen.getByText('Ctrl+Shift+Y')).toBeInTheDocument();
 
     // Click reset to restore defaults
     fireEvent.click(screen.getByText('Reset Defaults'));

@@ -193,6 +193,42 @@ describe('App Component', () => {
     expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
   });
 
+  it('cycles focus between split panes via keyboard (Ctrl+Shift+N / Ctrl+Shift+P)', async () => {
+    render(<App />);
+
+    const rootPaneId = screen
+      .getAllByTestId(/^terminal-pane-/)[0]
+      .getAttribute('data-testid')!
+      .replace('terminal-pane-', '');
+
+    fireEvent.click(screen.getByTestId(`split-row-${rootPaneId}`));
+
+    const panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(2);
+    const otherPaneId = panes
+      .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
+      .find((id) => id !== rootPaneId)!;
+
+    const isPaneFocused = (paneId: string) =>
+      screen.getByTestId(`terminal-pane-${paneId}`).firstElementChild!.className.includes('bg-sky-500/5');
+
+    // The freshly-split pane becomes active.
+    expect(isPaneFocused(otherPaneId)).toBe(true);
+    expect(isPaneFocused(rootPaneId)).toBe(false);
+
+    // Ctrl+Shift+P is the "previous pane" shortcut.
+    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+
+    expect(isPaneFocused(rootPaneId)).toBe(true);
+    expect(isPaneFocused(otherPaneId)).toBe(false);
+
+    // Ctrl+Shift+N ("next pane") should cycle back.
+    fireEvent.keyDown(window, { key: 'N', ctrlKey: true, shiftKey: true });
+
+    expect(isPaneFocused(otherPaneId)).toBe(true);
+    expect(isPaneFocused(rootPaneId)).toBe(false);
+  });
+
   it('handles keyboard shortcuts for new terminal, split vertical, and close tab', async () => {
     render(<App />);
 

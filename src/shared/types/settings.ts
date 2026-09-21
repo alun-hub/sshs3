@@ -18,6 +18,12 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'openSettings', name: 'Settings', defaultKeys: 'Ctrl+,', category: 'General' },
   { id: 'splitVertical', name: 'Split Terminal Vertically', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
   { id: 'splitHorizontal', name: 'Split Terminal Horizontally', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
+  // Letters, not punctuation: Shift+<punctuation key> produces a different character on
+  // different keyboard layouts (e.g. Shift+, is '<' on a US layout, ';' on Swedish/Nordic
+  // ISO layouts), and matching that reliably across every layout/browser combo isn't
+  // guaranteed. Letters don't have that problem — Shift+N is always reported as 'N'.
+  { id: 'nextPane', name: 'Next Split Pane', defaultKeys: 'Ctrl+Shift+N', category: 'Terminal' },
+  { id: 'prevPane', name: 'Previous Split Pane', defaultKeys: 'Ctrl+Shift+P', category: 'Terminal' },
 ];
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = SHORTCUT_DEFINITIONS.reduce(

@@ -28,6 +28,12 @@ export function getFirstLeafId(node: PaneNode): string {
   return node.type === 'leaf' ? node.id : getFirstLeafId(node.children[0]);
 }
 
+/** Returns every leaf's id, in the tree's depth-first (left-to-right) order — the order panes are laid out on screen. */
+export function collectLeafIds(node: PaneNode): string[] {
+  if (node.type === 'leaf') return [node.id];
+  return node.children.flatMap((c) => collectLeafIds(c));
+}
+
 /** Returns a new tree with the leaf matching `id` replaced via `updater`; other leaves keep their identity. */
 export function updateLeaf(node: PaneNode, id: string, updater: (leaf: PaneLeaf) => PaneLeaf): PaneNode {
   if (node.type === 'leaf') {

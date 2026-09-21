@@ -354,6 +354,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
             },
+            {
+              key: 'copy-filename',
+              label: 'Copy Filename',
+              icon: Clipboard,
+              disabled: selectedEntries.length !== 1,
+              onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].name),
+            },
+            {
+              key: 'copy-location',
+              label: 'Copy File Location',
+              icon: Clipboard,
+              disabled: selectedEntries.length !== 1,
+              onSelect: () => void navigator.clipboard.writeText(parentPath(selectedEntries[0].path)),
+            },
             ...(source.sourceType !== 'local'
               ? [
                   {

@@ -33,6 +33,7 @@ import {
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
+import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 
 interface SettingsModalProps {
   open: boolean;
@@ -272,21 +273,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setRecordingAction(null);
       return;
     }
-    const parts: string[] = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.metaKey) parts.push('Cmd');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-
-    let key = e.key;
-    if (key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift') {
-      return;
-    }
-    if (key === ' ') key = 'Space';
-    else if (key.length === 1) key = key.toUpperCase();
-    parts.push(key);
-
-    const combo = parts.join('+');
+    // Shares its combo-building logic with the runtime shortcut matcher in App.tsx: a shortcut
+    // recorded here for a given physical key must resolve to the exact same string that pressing
+    // that key produces at runtime, or the saved binding silently never fires.
+    const combo = comboFromKeyboardEvent(e);
+    if (combo === null) return;
     setShortcuts((prev) => ({ ...prev, [actionId]: combo }));
     setRecordingAction(null);
   };

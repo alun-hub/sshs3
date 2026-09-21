@@ -15,8 +15,18 @@ import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModa
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
-import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf } from './lib/paneTree';
+import {
+  closePane,
+  collectLeafIds,
+  countLeaves,
+  createLeaf,
+  findLeaf,
+  getFirstLeafId,
+  splitPane,
+  updateLeaf,
+} from './lib/paneTree';
 import { extractHostnameFromTitle, isSameHost } from './lib/terminalTitle';
+import { comboFromKeyboardEvent } from './lib/shortcuts';
 
 export interface AppTab extends TabItem {
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
@@ -438,21 +448,9 @@ export const App: React.FC = () => {
         return;
       }
 
-      const parts: string[] = [];
-      if (e.ctrlKey) parts.push('Ctrl');
-      if (e.metaKey) parts.push('Cmd');
-      if (e.altKey) parts.push('Alt');
-      if (e.shiftKey) parts.push('Shift');
-
-      let key = e.key;
-      if (key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift') {
-        return;
-      }
-      if (key === ' ') key = 'Space';
-      else if (key.length === 1) key = key.toUpperCase();
-      parts.push(key);
-
-      const combo = parts.join('+').toLowerCase();
+      const rawCombo = comboFromKeyboardEvent(e);
+      if (rawCombo === null) return;
+      const combo = rawCombo.toLowerCase();
       const activeShortcuts = settings.shortcuts || DEFAULT_SHORTCUTS;
 
       for (const [actionId, keyBinding] of Object.entries(activeShortcuts)) {
@@ -496,6 +494,24 @@ export const App: React.FC = () => {
             case 'splitHorizontal':
               if (activeTabId) handleSplitPane(activeTabId, 'column');
               break;
+            case 'nextPane':
+            case 'prevPane': {
+              const activeTab = tabs.find((t) => t.id === activeTabId);
+              if (!activeTab || activeTab.type !== 'terminal' || !activeTab.paneTree) break;
+              const leafIds = collectLeafIds(activeTab.paneTree);
+              if (leafIds.length < 2) break;
+              const currentIdx = activeTab.activePaneId ? leafIds.indexOf(activeTab.activePaneId) : -1;
+              const step = actionId === 'nextPane' ? 1 : -1;
+              const nextIdx = currentIdx === -1 ? 0 : (currentIdx + step + leafIds.length) % leafIds.length;
+              const nextPaneId = leafIds[nextIdx];
+              handleSelectPane(activeTab.id, nextPaneId);
+              document
+                .querySelector<HTMLTextAreaElement>(
+                  `[data-testid="terminal-pane-${nextPaneId}"] .xterm-helper-textarea`
+                )
+                ?.focus();
+              break;
+            }
           }
           break;
         }
@@ -506,7 +522,7 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane]);
+  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane, handleSelectPane]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden select-none bg-app text-txt-primary">
