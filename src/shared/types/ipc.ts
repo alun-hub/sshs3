@@ -149,6 +149,10 @@ export const IPC_CHANNELS = {
   FILE_OPEN_EXTERNAL: 'file:open-external',
   FILE_CLOSE_EXTERNAL: 'file:close-external',
   FILE_EXTERNAL_STATUS: 'file:external-status',
+  FILE_TAIL_START: 'file:tail:start',
+  FILE_TAIL_STOP: 'file:tail:stop',
+  FILE_TAIL_DATA: 'file:tail:data',
+  FILE_TAIL_ERROR: 'file:tail:error',
 
   // General
   APP_GET_VERSION: 'app:get-version',
@@ -346,6 +350,10 @@ export interface MultiSSHApi {
   fileOpenExternal(providerId: string, remotePath: string): Promise<{ sessionToken: string; localPath: string }>;
   fileCloseExternal(sessionToken: string): Promise<void>;
   onExternalFileStatus(callback: (event: ExternalFileStatusEvent) => void): () => void;
+  fileTailStart(providerId: string, remotePath: string): Promise<{ tailId: string; initialContent: string; size: number }>;
+  fileTailStop(tailId: string): Promise<void>;
+  onFileTailData(callback: (event: { tailId: string; chunk: string }) => void): () => void;
+  onFileTailError(callback: (event: { tailId: string; error: string }) => void): () => void;
 
   // Window / General
   getVersion(): Promise<string>;

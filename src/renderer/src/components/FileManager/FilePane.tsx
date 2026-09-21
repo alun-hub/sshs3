@@ -85,6 +85,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
+  const [editorTailMode, setEditorTailMode] = useState(false);
   const [dotfilesFeedback, setDotfilesFeedback] = useState<string | null>(null);
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
@@ -323,7 +324,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     key: 'edit',
                     label: 'View / Edit...',
                     icon: FileText,
-                    onSelect: () => setEditorEntry(selectedEntries[0]),
+                    onSelect: () => {
+                      setEditorTailMode(false);
+                      setEditorEntry(selectedEntries[0]);
+                    },
+                  },
+                  {
+                    key: 'tail',
+                    label: 'Tail -f (Strömma logg)',
+                    icon: Terminal,
+                    onSelect: () => {
+                      setEditorTailMode(true);
+                      setEditorEntry(selectedEntries[0]);
+                    },
                   },
                   {
                     key: 'open-external',
@@ -753,6 +766,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         providerId={source.providerId}
         sourceType={source.sourceType}
         entry={editorEntry}
+        isTailMode={editorTailMode}
         onClose={() => setEditorEntry(null)}
         onSaved={() => void load()}
       />

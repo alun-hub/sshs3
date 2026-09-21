@@ -11,6 +11,7 @@ import {
   RotateCw,
   Save,
   Search,
+  Terminal,
   Unlock,
   WrapText,
   X,
@@ -25,6 +26,7 @@ interface FileEditorModalProps {
   providerId: string;
   sourceType: SourceType;
   entry: FileEntry | null;
+  isTailMode?: boolean;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -34,6 +36,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   providerId,
   sourceType,
   entry,
+  isTailMode = false,
   onClose,
   onSaved,
 }) => {
@@ -47,6 +50,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [readOnly, setReadOnly] = useState(false);
   const [wordWrap, setWordWrap] = useState(true);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  // Tail state
+  const [tailModeActive, setTailModeActive] = useState(false);
+  const [tailId, setTailId] = useState<string | null>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   // Search state
   const [showSearch, setShowSearch] = useState(false);
@@ -65,11 +73,24 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const isDirty = useMemo(() => content !== originalContent, [content, originalContent]);
+  const isDirty = useMemo(
+    () => !tailModeActive && content !== originalContent,
+    [tailModeActive, content, originalContent]
+  );
 
-  // Load file content
+  // Stop tail session helper
+  const stopTailSession = useCallback(async () => {
+    if (tailId) {
+      await window.multissh?.fileTailStop?.(tailId);
+      setTailId(null);
+    }
+    setTailModeActive(false);
+  }, [tailId]);
+
+  // Load file content normally
   const loadFile = useCallback(async () => {
     if (!entry || entry.isDirectory) return;
+    await stopTailSession();
     setLoading(true);
     setError(null);
     setSaveStatus(null);
@@ -85,8 +106,44 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [providerId, entry]);
+  }, [providerId, entry, stopTailSession]);
 
+  // Start tail session
+  const startTailSession = useCallback(async () => {
+    if (!entry || entry.isDirectory) return;
+    setLoading(true);
+    setError(null);
+    setSaveStatus(null);
+    setTailModeActive(true);
+    setReadOnly(true);
+
+    if (tailId) {
+      await window.multissh?.fileTailStop?.(tailId);
+      setTailId(null);
+    }
+
+    try {
+      const res = await window.multissh.fileTailStart(providerId, entry.path);
+      setTailId(res.tailId);
+      setContent(res.initialContent);
+      setOriginalContent(res.initialContent);
+      setIsBinary(false);
+      setTruncated(false);
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+        }
+      }, 50);
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : 'Failed to start live log stream');
+      setTailModeActive(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [providerId, entry, tailId]);
+
+  // Open modal effect
   useEffect(() => {
     if (!open || !entry) {
       setContent('');
@@ -94,17 +151,56 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setError(null);
       setSaveStatus(null);
       setExternalStatus(null);
+      setTailModeActive(false);
+      if (tailId) {
+        void window.multissh?.fileTailStop?.(tailId);
+        setTailId(null);
+      }
       if (externalSessionToken) {
-        void window.multissh.fileCloseExternal(externalSessionToken);
+        void window.multissh?.fileCloseExternal?.(externalSessionToken);
         setExternalSessionToken(null);
       }
       return;
     }
 
-    void loadFile();
-  }, [open, entry, loadFile, externalSessionToken]);
+    if (isTailMode) {
+      void startTailSession();
+    } else {
+      void loadFile();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entry, isTailMode, providerId]);
 
-  // Listen for external file save / upload notifications
+  // Tail data stream listener
+  useEffect(() => {
+    if (!open || !tailModeActive || !tailId || !window.multissh?.onFileTailData) return;
+
+    const dataCleanup = window.multissh.onFileTailData((event) => {
+      if (event.tailId === tailId) {
+        setContent((prev) => prev + event.chunk);
+        if (autoScroll) {
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+            }
+          }, 10);
+        }
+      }
+    });
+
+    const errorCleanup = window.multissh.onFileTailError?.((event) => {
+      if (event.tailId === tailId) {
+        setError(`Tail error: ${event.error}`);
+      }
+    });
+
+    return () => {
+      dataCleanup();
+      errorCleanup?.();
+    };
+  }, [open, tailModeActive, tailId, autoScroll]);
+
+  // External editor status listener
   useEffect(() => {
     if (!open || !window.multissh?.onExternalFileStatus) return;
 
@@ -113,7 +209,6 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         if (event.status === 'uploaded') {
           setSaveStatus(`Uploaded from external editor at ${event.timestamp}`);
           setExternalStatus(`Auto-uploaded from external editor at ${event.timestamp}`);
-          // Reload in-editor view to reflect new content
           void loadFile();
           onSaved?.();
         } else if (event.status === 'error') {
@@ -125,12 +220,19 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     return () => cleanup();
   }, [open, externalSessionToken, entry?.path, loadFile, onSaved]);
 
-  // Sync scroll between textarea and line numbers
+  // Sync scroll & auto-scroll tracking
   const handleScroll = useCallback(() => {
-    if (textareaRef.current && lineNumbersRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+    if (textareaRef.current) {
+      if (lineNumbersRef.current) {
+        lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+      }
+      if (tailModeActive) {
+        const el = textareaRef.current;
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        setAutoScroll(isNearBottom);
+      }
     }
-  }, []);
+  }, [tailModeActive]);
 
   // Track cursor line & col
   const updateCursorPosition = useCallback(() => {
@@ -146,7 +248,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Save file content
   const handleSave = useCallback(async () => {
-    if (!entry || readOnly || saving) return;
+    if (!entry || readOnly || saving || tailModeActive) return;
     setSaving(true);
     setError(null);
     try {
@@ -160,7 +262,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [providerId, entry, content, readOnly, saving, onSaved]);
+  }, [providerId, entry, content, readOnly, saving, tailModeActive, onSaved]);
 
   // Launch external editor
   const handleOpenExternal = useCallback(async () => {
@@ -180,19 +282,23 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Close confirmation if dirty
   const handleRequestClose = useCallback(() => {
-    if (isDirty) {
+    if (isDirty && !tailModeActive) {
       if (!window.confirm('You have unsaved changes. Discard them?')) {
         return;
       }
     }
+    if (tailId) {
+      void window.multissh?.fileTailStop?.(tailId);
+      setTailId(null);
+    }
     if (externalSessionToken) {
-      void window.multissh.fileCloseExternal(externalSessionToken);
+      void window.multissh?.fileCloseExternal?.(externalSessionToken);
       setExternalSessionToken(null);
     }
     onClose();
-  }, [isDirty, externalSessionToken, onClose]);
+  }, [isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
 
-  // Textarea key handling: Tab indent, Ctrl+S save, Ctrl+F find
+  // Textarea key handling
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -214,7 +320,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         if (!el) return;
         const start = el.selectionStart;
         const end = el.selectionEnd;
-        const insertText = '  '; // 2 spaces
+        const insertText = '  ';
         const newText = el.value.slice(0, start) + insertText + el.value.slice(end);
         setContent(newText);
         setTimeout(() => {
@@ -266,7 +372,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     }
   }, [searchMatches, currentMatchIdx, searchQuery, updateCursorPosition]);
 
-  // Line count for gutter
+  // Line count
   const lineCount = useMemo(() => {
     return Math.max(1, content.split('\n').length);
   }, [content]);
@@ -310,6 +416,29 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1">
+            {/* Tail -f Toggle */}
+            <button
+              type="button"
+              title={tailModeActive ? 'Stop Tail -f' : 'Start Tail -f (Live log stream)'}
+              onClick={() => {
+                if (tailModeActive) {
+                  void stopTailSession();
+                  void loadFile();
+                } else {
+                  void startTailSession();
+                }
+              }}
+              className={classNames(
+                'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors',
+                tailModeActive
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse'
+                  : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+              )}
+            >
+              <Terminal className="h-3.5 w-3.5" />
+              <span>{tailModeActive ? 'TAILING...' : 'Tail -f'}</span>
+            </button>
+
             {/* Search Toggle */}
             <button
               type="button"
@@ -349,10 +478,17 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             {/* Read-only toggle */}
             <button
               type="button"
-              title={readOnly ? 'Switch to Edit Mode' : 'Switch to Read-Only Mode'}
+              disabled={tailModeActive}
+              title={
+                tailModeActive
+                  ? 'Read-only during Tail -f mode'
+                  : readOnly
+                  ? 'Switch to Edit Mode'
+                  : 'Switch to Read-Only Mode'
+              }
               onClick={() => setReadOnly((r) => !r)}
               className={classNames(
-                'rounded-lg p-1.5 transition-colors',
+                'rounded-lg p-1.5 transition-colors disabled:opacity-40',
                 readOnly
                   ? 'text-amber-400 hover:bg-app-surface-hover'
                   : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -368,7 +504,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               disabled={loading || saving}
               onClick={() => {
                 if (isDirty && !window.confirm('Discard unsaved changes and reload?')) return;
-                void loadFile();
+                if (tailModeActive) {
+                  void startTailSession();
+                } else {
+                  void loadFile();
+                }
               }}
               className="rounded-lg p-1.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-40 transition-colors"
             >
@@ -395,7 +535,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <button
               type="button"
               title="Save changes (Ctrl+S)"
-              disabled={!isDirty || readOnly || saving || loading}
+              disabled={!isDirty || readOnly || saving || loading || tailModeActive}
               onClick={() => void handleSave()}
               className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1 text-xs font-semibold text-white shadow-sm hover:bg-sky-400 disabled:opacity-40 transition-colors ml-1"
             >
@@ -424,6 +564,48 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
           <span className="font-mono truncate">{entry.path}</span>
           <span className="shrink-0">{formatBytes(entry.size)}</span>
         </div>
+
+        {/* Tail Mode Banner */}
+        {tailModeActive && (
+          <div className="flex items-center justify-between border-b border-emerald-900/60 bg-emerald-950/40 px-3 py-1.5 text-xs text-emerald-300">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="font-semibold">TAIL -F STREAM ACTIVE</span>
+              <span className="text-[11px] opacity-80">
+                ({autoScroll ? 'Auto-scrolling' : 'Auto-scroll paused (scroll down to bottom to resume)'})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void stopTailSession();
+                void loadFile();
+              }}
+              className="rounded bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-800/80"
+            >
+              Stop Stream
+            </button>
+          </div>
+        )}
+
+        {/* Large File Warning Banner (>20MB) */}
+        {!tailModeActive && entry.size > 20 * 1024 * 1024 && (
+          <div className="flex items-center justify-between gap-2 border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-300">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                Large file ({formatBytes(entry.size)}). Loading the full file may freeze the app. Consider using Tail -f mode.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void startTailSession()}
+              className="rounded bg-amber-800/50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-700/60 shrink-0"
+            >
+              Switch to Tail -f
+            </button>
+          </div>
+        )}
 
         {/* In-Editor Search Bar */}
         {showSearch && (
@@ -524,7 +706,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         )}
 
         {/* Truncated warning banner */}
-        {truncated && (
+        {truncated && !tailModeActive && (
           <div className="flex items-center gap-1.5 border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-300">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
             <span>File exceeds 5 MB. Displaying the first 5 MB.</span>
@@ -553,7 +735,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-txt-muted text-sm">
               <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
-              <span>Loading file...</span>
+              <span>{tailModeActive ? 'Starting Tail -f stream...' : 'Loading file...'}</span>
             </div>
           ) : (
             <>
@@ -574,7 +756,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <textarea
                 ref={textareaRef}
                 value={content}
-                readOnly={readOnly || saving}
+                readOnly={readOnly || saving || tailModeActive}
                 spellCheck={false}
                 wrap={wordWrap ? 'soft' : 'off'}
                 onChange={(e) => {
@@ -588,7 +770,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 onKeyDown={handleKeyDown}
                 className={classNames(
                   'flex-1 h-full w-full bg-transparent p-2.5 font-mono text-xs leading-5 text-txt-primary outline-none resize-none overflow-auto border-none select-text',
-                  readOnly && 'opacity-90'
+                  (readOnly || tailModeActive) && 'opacity-90'
                 )}
                 placeholder="Empty file"
               />
@@ -613,12 +795,14 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <span
               className={classNames(
                 'font-sans uppercase text-[10px] font-semibold px-1.5 py-0.5 rounded',
-                readOnly
+                tailModeActive
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : readOnly
                   ? 'bg-amber-500/20 text-amber-400'
                   : 'bg-sky-500/20 text-sky-400'
               )}
             >
-              {readOnly ? 'Read-Only' : 'Edit'}
+              {tailModeActive ? 'Tail -f' : readOnly ? 'Read-Only' : 'Edit'}
             </span>
             <span>UTF-8</span>
           </div>
