@@ -126,6 +126,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onCloseTabRef.current = onCloseTab;
   const copyOnSelectRef = useRef(copyOnSelect);
   copyOnSelectRef.current = copyOnSelect;
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  // Tracks the size last reported to the PTY, shared between the resize observer and the
+  // "becomes active" effect so both can decide whether a SIGWINCH sync is actually needed.
+  const lastColsRef = useRef(0);
+  const lastRowsRef = useRef(0);
 
   const [sessionKey, setSessionKey] = useState(0);
   const [exitEvent, setExitEvent] = useState<SSHPtyExitEvent | null>(null);
@@ -141,6 +147,28 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       try {
         fitAddonRef.current.fit();
         termRef.current.focus();
+        // The pane was `display: none` while inactive; xterm's renderer can leave a stale
+        // paint (cursor drawn at its pre-hide position) until new PTY output forces a redraw.
+        termRef.current.refresh(0, termRef.current.rows - 1);
+
+        // fit() only resizes xterm's local buffer. If the pane's size actually changed while
+        // hidden (font metrics loading, sidebar toggling, etc.) but the ResizeObserver below
+        // never fired because the element was `display: none`, the PTY never got a SIGWINCH.
+        // Bash's readline then computes cursor position against the stale width while xterm
+        // renders at the new one, producing a horizontal offset until the next keystroke
+        // partially self-corrects it. Explicitly re-sync here so the PTY size can never drift.
+        const newCols = termRef.current.cols;
+        const newRows = termRef.current.rows;
+        if (
+          sessionIdRef.current &&
+          (newCols !== lastColsRef.current || newRows !== lastRowsRef.current) &&
+          newCols > 0 &&
+          newRows > 0
+        ) {
+          lastColsRef.current = newCols;
+          lastRowsRef.current = newRows;
+          window.multissh?.terminalResize(sessionIdRef.current, newCols, newRows);
+        }
       } catch {
         // Safe to ignore resize on hidden element
       }
@@ -261,8 +289,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     const cols = term.cols || 80;
     const rows = term.rows || 24;
-    let lastCols = cols;
-    let lastRows = rows;
+    lastColsRef.current = cols;
+    lastRowsRef.current = rows;
 
     // 2. Create Terminal Session via IPC
     // Always spawn under a fresh session id, never the saved profile's own id:
@@ -377,6 +405,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
       resizeObserver = new ResizeObserver(() => {
         if (!fitAddonRef.current || !termRef.current) return;
+        // While the pane is `display: none` (inactive tab, or hidden split), its content box
+        // is 0x0. fit() would compute a degenerate near-zero size (xterm clamps to a minimum
+        // of 1x1) and push that to the real PTY, corrupting the shell's readline width tracking
+        // until the pane is shown again. The "becomes active" effect re-syncs the real size then.
+        if (!isActiveRef.current) return;
         try {
           fitAddonRef.current.fit();
           const newCols = termRef.current.cols;
@@ -384,12 +417,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
           if (
             sessionIdRef.current &&
-            (newCols !== lastCols || newRows !== lastRows) &&
+            (newCols !== lastColsRef.current || newRows !== lastRowsRef.current) &&
             newCols > 0 &&
             newRows > 0
           ) {
-            lastCols = newCols;
-            lastRows = newRows;
+            lastColsRef.current = newCols;
+            lastRowsRef.current = newRows;
             window.multissh?.terminalResize(sessionIdRef.current, newCols, newRows);
           }
         } catch {
