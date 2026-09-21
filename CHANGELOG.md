@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.21] - 2026-09-21
+
+### Added
+- New opt-in **"Unlock smartcard at app startup"** toggle (Settings → Security & Smartcard, only shown under 'agent-global' PIN caching): prompts for the PIN as soon as the app opens instead of waiting for the first connection that needs it, so the card is already unlocked by the time you open your first terminal — including a local shell tab, which otherwise triggers no smartcard prompt on its own. Prefers `p11-kit` when it's among the detected PKCS#11 libraries (it proxies every other registered module, so e.g. `p11-kit-proxy.so` and `opensc-pkcs11.so` coexisting is one physical card reachable two ways, not two cards to pick between); otherwise only acts when exactly one non-p11-kit library is detected ([IpcBridge.ts](src/main/IpcBridge.ts)).
+
+### Fixed
+- Fixed local shell terminal tabs not reliably getting the app's own managed `ssh-agent`: `SSH_AUTH_SOCK` is now set explicitly rather than relying on inherited `process.env`, and — when a smartcard is cached under 'agent-global' PIN caching — points at that same cached agent instead of a generic default one, so an already-unlocked card is immediately usable from a plain shell too ([SSHPtyManager.ts](src/main/ssh/SSHPtyManager.ts), [IpcBridge.ts](src/main/IpcBridge.ts)).
+- Fixed a race condition in `AgentLifecycleManager.ensureAgent()` where a caller arriving while a spawn was already in flight got a stale/premature status snapshot instead of the actual final result, which could leave a local shell tab opened right at startup (e.g. one restored from session) with no `SSH_AUTH_SOCK` override at all ([AgentLifecycleManager.ts](src/main/ssh/AgentLifecycleManager.ts)).
+
+---
+
 ## [0.2.20] - 2026-09-20
 
 ### Added
