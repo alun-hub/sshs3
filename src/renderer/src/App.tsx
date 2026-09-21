@@ -9,12 +9,15 @@ import { TransferConflictModal } from './components/TransferConflictModal';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
+import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSavedProfilesModal';
+import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
 import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
+import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import {
   closePane,
   collectLeafIds,
@@ -62,6 +65,8 @@ export const App: React.FC = () => {
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
+  const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
+  const [dirSyncRunProfile, setDirSyncRunProfile] = useState<DirectorySyncProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -545,6 +550,7 @@ export const App: React.FC = () => {
             onNewTab={handleNewTab}
             onOpenProfiles={handleOpenProfiles}
             onOpenSettings={handleOpenSettings}
+            onOpenDirSyncProfiles={() => setDirSyncProfilesOpen(true)}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
             onLockSmartcard={() => window.multissh!.smartcardLockAll()}
             onListCachedSmartcards={() => window.multissh!.smartcardListCached()}
@@ -718,6 +724,21 @@ export const App: React.FC = () => {
         open={syncBootstrapModalOpen}
         onClose={() => setSyncBootstrapModalOpen(false)}
         onComplete={handleSyncBootstrapComplete}
+      />
+
+      {/* Saved directory-sync profiles: "Run" always jumps to a fresh diff review, never straight to applying */}
+      <DirSyncSavedProfilesModal
+        open={dirSyncProfilesOpen}
+        onClose={() => setDirSyncProfilesOpen(false)}
+        onRun={(profile) => {
+          setDirSyncProfilesOpen(false);
+          setDirSyncRunProfile(profile);
+        }}
+      />
+      <DirectorySyncModal
+        open={dirSyncRunProfile !== null}
+        onClose={() => setDirSyncRunProfile(null)}
+        runProfile={dirSyncRunProfile}
       />
     </div>
   );

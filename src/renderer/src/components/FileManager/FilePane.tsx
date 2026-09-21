@@ -11,6 +11,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  FolderSync,
   HardDrive,
   History,
   Info,
@@ -40,6 +41,7 @@ import { PresignedUrlModal } from './PresignedUrlModal';
 import { NewFolderModal } from './NewFolderModal';
 import { AddToDotfilePoolModal } from './AddToDotfilePoolModal';
 import { FileEditorModal } from './FileEditorModal';
+import { DirectorySyncModal, type DirectorySyncModalSource } from './DirectorySyncModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 
@@ -52,6 +54,8 @@ interface FilePaneProps {
   onTransferRequested: (params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => void;
   onOpenTerminal?: (path: string) => void;
   refreshToken: number;
+  /** The sibling pane's current connection + path, offered as a one-click target in "Sync to...". */
+  otherPane?: DirectorySyncModalSource;
 }
 
 const SOURCE_ICONS: Record<SourceType, React.ComponentType<{ className?: string }>> = {
@@ -69,6 +73,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onTransferRequested,
   onOpenTerminal,
   refreshToken,
+  otherPane,
 }) => {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +89,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [presignedOpen, setPresignedOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
   const [editorTailMode, setEditorTailMode] = useState(false);
   const [dotfilesFeedback, setDotfilesFeedback] = useState<string | null>(null);
@@ -316,7 +322,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
       : selectedEntries.length > 0
         ? [
             ...(selectedEntries.length === 1 && selectedEntries[0].isDirectory
-              ? [{ key: 'open', label: 'Open', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) }]
+              ? [
+                  { key: 'open', label: 'Open', icon: FolderOpen, onSelect: () => handleOpen(selectedEntries[0]) },
+                  {
+                    key: 'dirsync',
+                    label: 'Sync to...',
+                    icon: FolderSync,
+                    onSelect: () => setSyncModalOpen(true),
+                  },
+                ]
               : []),
             ...(selectedEntries.length === 1 && !selectedEntries[0].isDirectory
               ? [
@@ -788,6 +802,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
           setDotfilesFeedback(msg);
           setTimeout(() => setDotfilesFeedback(null), 4000);
         }}
+      />
+
+      <DirectorySyncModal
+        open={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        initialSource={
+          selectedEntries.length === 1 && selectedEntries[0].isDirectory
+            ? {
+                providerId: source.providerId,
+                sourceType: source.sourceType,
+                label: source.label,
+                path: selectedEntries[0].path,
+              }
+            : null
+        }
+        otherPane={otherPane ?? null}
       />
 
       {dotfilesFeedback && (

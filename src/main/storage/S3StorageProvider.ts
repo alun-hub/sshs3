@@ -221,6 +221,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         size: 0,
         isDirectory: true,
         mtime: b.CreationDate ? formatDate(b.CreationDate) : undefined,
+        mtimeMs: b.CreationDate ? b.CreationDate.getTime() : undefined,
       }));
       results.sort((a, b) => a.name.localeCompare(b.name));
       this.listCache.set(normalizedPath, { entries: results, timestamp: Date.now() });
@@ -268,6 +269,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           size: item.Size ?? 0,
           isDirectory: false,
           mtime: item.LastModified ? formatDate(item.LastModified) : undefined,
+          mtimeMs: item.LastModified ? item.LastModified.getTime() : undefined,
           mimeType: getMimeType(name),
         });
       }
@@ -324,6 +326,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           size: head.ContentLength ?? 0,
           isDirectory: false,
           mtime: head.LastModified ? formatDate(head.LastModified) : undefined,
+          mtimeMs: head.LastModified ? head.LastModified.getTime() : undefined,
           mimeType: head.ContentType || getMimeType(name),
         };
       } catch {
@@ -343,6 +346,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         size: 0,
         isDirectory: true,
         mtime: headDir.LastModified ? formatDate(headDir.LastModified) : undefined,
+        mtimeMs: headDir.LastModified ? headDir.LastModified.getTime() : undefined,
       };
     } catch {
       // Fall through to prefix check

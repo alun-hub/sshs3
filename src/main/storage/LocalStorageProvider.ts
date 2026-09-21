@@ -95,6 +95,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
           size: itemStats.size,
           isDirectory: isDir,
           mtime: formatDate(itemStats.mtime),
+          mtimeMs: itemStats.mtime.getTime(),
           mimeType: isDir ? undefined : getMimeType(entry.name),
           permissions: formatPermissions(itemStats.mode),
         });
@@ -133,6 +134,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
       size: stats.size,
       isDirectory: isDir,
       mtime: formatDate(stats.mtime),
+      mtimeMs: stats.mtime.getTime(),
       mimeType: isDir ? undefined : getMimeType(name),
       permissions: formatPermissions(stats.mode),
     };
@@ -223,6 +225,12 @@ export class LocalStorageProvider extends BaseStorageProvider {
       throw new Error(`Invalid chmod mode: ${mode}`);
     }
     await fsp.chmod(fullPath, numericMode);
+  }
+
+  async setModifiedTime(remotePath: string, mtimeMs: number): Promise<void> {
+    const fullPath = this.resolvePath(remotePath);
+    const mtime = new Date(mtimeMs);
+    await fsp.utimes(fullPath, mtime, mtime);
   }
 
   async disconnect(): Promise<void> {

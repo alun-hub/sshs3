@@ -27,6 +27,7 @@ import type {
   DotfilesSyncStatusEvent,
 } from './dotfiles';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
+import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -167,6 +168,15 @@ export const IPC_CHANNELS = {
   X11_STOP_SERVER: 'x11:stop-server',
   DIALOG_OPEN_FILE: 'dialog:open-file',
   DIALOG_OPEN_FOLDER: 'dialog:open-folder',
+
+  // Directory sync (dual-pane folder → folder diff/copy between any two storage providers)
+  DIR_SYNC_COMPUTE_DIFF: 'dirsync:compute-diff',
+  DIR_SYNC_SCAN_PROGRESS: 'dirsync:scan-progress',
+  DIR_SYNC_APPLY: 'dirsync:apply',
+  DIR_SYNC_APPLY_PROGRESS: 'dirsync:apply-progress',
+  DIR_SYNC_PROFILE_LIST: 'dirsync:profile-list',
+  DIR_SYNC_PROFILE_SAVE: 'dirsync:profile-save',
+  DIR_SYNC_PROFILE_DELETE: 'dirsync:profile-delete',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -193,6 +203,28 @@ export interface TransferConflictPromptEvent {
   targetPath: string;
   fileName: string;
   isDirectory: boolean;
+}
+
+export interface DirSyncComputeDiffOptions {
+  sourceProviderId: string;
+  sourcePath: string;
+  targetProviderId: string;
+  targetPath: string;
+}
+
+export interface DirSyncScanProgressEvent {
+  side: 'source' | 'target';
+  filesCount: number;
+  currentItem: string;
+}
+
+export interface DirSyncApplyOptions {
+  entries: DirectoryDiffEntry[];
+  sourceProviderId: string;
+  sourcePath: string;
+  targetProviderId: string;
+  targetPath: string;
+  deleteExtraneous: boolean;
 }
 
 export interface StorageConnectConfig {
@@ -379,6 +411,15 @@ export interface MultiSSHApi {
   x11StopServer(): Promise<{ success: boolean }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
   dialogOpenFolder(options?: { title?: string }): Promise<string | null>;
+
+  // Directory sync
+  dirSyncComputeDiff(options: DirSyncComputeDiffOptions): Promise<DirectoryDiffResult>;
+  onDirSyncScanProgress(callback: (event: DirSyncScanProgressEvent) => void): () => void;
+  dirSyncApply(options: DirSyncApplyOptions): Promise<DirectorySyncApplyResult>;
+  onDirSyncApplyProgress(callback: (progress: TransferProgress) => void): () => void;
+  dirSyncProfileList(): Promise<DirectorySyncProfile[]>;
+  dirSyncProfileSave(profile: DirectorySyncProfile): Promise<DirectorySyncProfile>;
+  dirSyncProfileDelete(id: string): Promise<void>;
 }
 
 export interface FileReadResult {

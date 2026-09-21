@@ -85,6 +85,29 @@ function parseModifyTime(stats: any): string | undefined {
   return undefined;
 }
 
+/**
+ * Parses modifyTime / mtime into epoch ms (UTC), for precise diffing.
+ */
+function parseModifyTimeMs(stats: any): number | undefined {
+  const m = stats.modifyTime ?? stats.mtime;
+  if (m === undefined || m === null) {
+    return undefined;
+  }
+  if (m instanceof Date) {
+    return m.getTime();
+  }
+  if (typeof m === 'number') {
+    return m > 1e11 ? m : m * 1000;
+  }
+  if (typeof m === 'string') {
+    const d = new Date(m);
+    if (!isNaN(d.getTime())) {
+      return d.getTime();
+    }
+  }
+  return undefined;
+}
+
 // Mirrors the OpenSSH client's own default identity file lookup order, since
 // that is what terminal sessions (spawned via the real `ssh` binary) already
 // rely on - an SFTP profile with no explicit password/key should fail no more
@@ -519,6 +542,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         const isDir = item.type === 'd' || (item as any).isDirectory === true;
         const entryPath = path.posix.join(resolved, item.name);
         const mtime = parseModifyTime(item);
+        const mtimeMs = parseModifyTimeMs(item);
 
         results.push({
           name: item.name,
@@ -526,6 +550,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           size: item.size,
           isDirectory: isDir,
           mtime,
+          mtimeMs,
           mimeType: isDir ? undefined : getMimeType(item.name),
           permissions: extractPermissions(item),
         });
@@ -549,6 +574,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       const isDir = Boolean(stats.isDirectory);
       const name = path.posix.basename(resolved) || resolved;
       const mtime = parseModifyTime(stats);
+      const mtimeMs = parseModifyTimeMs(stats);
 
       return {
         name,
@@ -556,6 +582,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         size: stats.size,
         isDirectory: isDir,
         mtime,
+        mtimeMs,
         mimeType: isDir ? undefined : getMimeType(name),
         permissions: extractPermissions(stats),
       };
@@ -682,6 +709,23 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
       await this.client.chmod(resolved, numericMode);
+    });
+  }
+
+  async setModifiedTime(remotePath: string, mtimeMs: number): Promise<void> {
+    return this.executeWithReconnect(async () => {
+      const resolved = await this.resolveRemotePath(remotePath);
+      const rawSftp = (this.client as any).sftp;
+      if (!rawSftp || typeof rawSftp.setstat !== 'function') {
+        throw new Error('setModifiedTime is not supported by this SFTP connection');
+      }
+      const epochSeconds = Math.floor(mtimeMs / 1000);
+      await new Promise<void>((resolve, reject) => {
+        rawSftp.setstat(resolved, { atime: epochSeconds, mtime: epochSeconds }, (err: Error | undefined) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
     });
   }
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Folder, X, Plus, Server, Settings, Unlock, Loader2, CreditCard } from 'lucide-react';
+import { Terminal, Folder, X, Plus, Server, Settings, Unlock, Loader2, CreditCard, FolderSync } from 'lucide-react';
 import type { CachedSmartcardAgent } from '@shared/types/ssh';
 
 export type TabType = 'terminal' | 'filemanager';
@@ -18,6 +18,7 @@ export interface TabBarProps {
   onNewTab: (type: TabType) => void;
   onOpenProfiles?: () => void;
   onOpenSettings?: () => void;
+  onOpenDirSyncProfiles?: () => void;
   /** Shown only when Settings > Security > Smartcard PIN Caching is set to 'Global (App Lifetime)'. */
   showLockSmartcardButton?: boolean;
   onLockSmartcard?: () => Promise<{ locked: number }>;
@@ -32,6 +33,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onNewTab,
   onOpenProfiles,
   onOpenSettings,
+  onOpenDirSyncProfiles,
   showLockSmartcardButton,
   onLockSmartcard,
   onListCachedSmartcards,
@@ -274,6 +276,15 @@ export const TabBar: React.FC<TabBarProps> = ({
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Server className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          data-testid="quick-dirsync-profiles-btn"
+          title="Katalogsynkronisering: sparade profiler"
+          onClick={onOpenDirSyncProfiles}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+        >
+          <FolderSync className="h-4 w-4" />
         </button>
         <button
           type="button"

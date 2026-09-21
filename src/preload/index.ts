@@ -10,7 +10,11 @@ import {
   type FileReadResult,
   type ExternalFileStatusEvent,
   type AwsSsoPromptEvent,
+  type DirSyncComputeDiffOptions,
+  type DirSyncScanProgressEvent,
+  type DirSyncApplyOptions,
 } from '../shared/types/ipc';
+import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
@@ -488,6 +492,38 @@ export const api: MultiSSHApi = {
 
   dialogOpenFolder: (options?: { title?: string }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FOLDER, options),
+
+  // Directory sync
+  dirSyncComputeDiff: (options: DirSyncComputeDiffOptions): Promise<DirectoryDiffResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_COMPUTE_DIFF, options),
+
+  onDirSyncScanProgress: (callback: (event: DirSyncScanProgressEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: DirSyncScanProgressEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.DIR_SYNC_SCAN_PROGRESS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.DIR_SYNC_SCAN_PROGRESS, listener);
+    };
+  },
+
+  dirSyncApply: (options: DirSyncApplyOptions): Promise<DirectorySyncApplyResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_APPLY, options),
+
+  onDirSyncApplyProgress: (callback: (progress: TransferProgress) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: TransferProgress) => callback(progress);
+    ipcRenderer.on(IPC_CHANNELS.DIR_SYNC_APPLY_PROGRESS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.DIR_SYNC_APPLY_PROGRESS, listener);
+    };
+  },
+
+  dirSyncProfileList: (): Promise<DirectorySyncProfile[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_PROFILE_LIST),
+
+  dirSyncProfileSave: (profile: DirectorySyncProfile): Promise<DirectorySyncProfile> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_PROFILE_SAVE, profile),
+
+  dirSyncProfileDelete: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_PROFILE_DELETE, id),
 };
 
 export function exposePreloadApi(): void {

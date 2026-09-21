@@ -571,13 +571,13 @@ export const FileList: React.FC<FileListProps> = ({
           className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-sky-500/40 bg-app-surface/95 px-3 py-1.5 text-xs text-txt-primary shadow-xl backdrop-blur transition-all"
         >
           <Search className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-          <span className="text-txt-muted text-[11px]">Sök:</span>
+          <span className="text-txt-muted text-[11px]">Search:</span>
           <span className={classNames('font-mono font-bold', typeaheadMatch ? 'text-sky-400' : 'text-amber-400')}>
             {typeaheadText}
           </span>
           {!typeaheadMatch && (
             <span className="text-[10px] text-amber-400/80">
-              (ingen träff)
+              (no match)
             </span>
           )}
         </div>

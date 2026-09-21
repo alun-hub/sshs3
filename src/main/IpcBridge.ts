@@ -28,6 +28,8 @@ import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
+import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from './dirsync/DirectorySyncService';
+import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
@@ -51,7 +53,10 @@ import {
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type AwsSsoPromptEvent,
+  type DirSyncComputeDiffOptions,
+  type DirSyncApplyOptions,
 } from '../shared/types/ipc';
+import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type {
@@ -69,6 +74,7 @@ import type {
   BucketVersioningInfo,
   ObjectVersionEntry,
   SFTPConfig,
+  StorageType,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
@@ -108,6 +114,7 @@ export interface IpcBridgeOptions {
   settingsStore?: SettingsStore;
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
+  directorySyncProfileStore?: DirectorySyncProfileStore;
   fileEditorService?: FileEditorService;
   fileTailService?: FileTailService;
   awsSsoAuthService?: AwsSsoAuthService;
@@ -128,6 +135,7 @@ export class IpcBridge {
   public readonly settingsStore: SettingsStore;
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
+  public readonly directorySyncProfileStore: DirectorySyncProfileStore;
   public readonly fileEditorService: FileEditorService;
   public readonly fileTailService: FileTailService;
   public readonly awsSsoAuthService: AwsSsoAuthService;
@@ -181,6 +189,7 @@ export class IpcBridge {
     this.settingsStore = options.settingsStore ?? new SettingsStore();
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
+    this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
     this.fileTailService = options.fileTailService ?? new FileTailService();
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
@@ -218,6 +227,7 @@ export class IpcBridge {
     this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
     this.registerGeneralHandlers();
+    this.registerDirSyncHandlers();
     this.setupEventListeners();
 
     if (process.platform === 'win32') {
@@ -2272,6 +2282,131 @@ export class IpcBridge {
         return result.filePaths[0];
       }
     );
+  }
+
+  /**
+   * The target field always names an existing parent directory (so it stays
+   * browsable even when the eventual sync root doesn't exist yet); the
+   * source folder's own name is nested under it, mirroring how drag/drop
+   * copy (TRANSFER_ADD, above) and most file managers behave.
+   */
+  private resolveDirSyncTargetRoot(
+    sourcePath: string,
+    targetProviderType: StorageType,
+    targetParentPath: string
+  ): string {
+    const sourceBaseName = getBaseName(sourcePath);
+    if (!sourceBaseName) {
+      return targetParentPath;
+    }
+    return joinPaths(targetProviderType, targetParentPath, sourceBaseName);
+  }
+
+  private registerDirSyncHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.DIR_SYNC_COMPUTE_DIFF,
+      async (_event, options: DirSyncComputeDiffOptions): Promise<DirectoryDiffResult> => {
+        if (!options?.sourceProviderId || !options?.targetProviderId) {
+          throw new Error('sourceProviderId and targetProviderId are required for directory sync');
+        }
+        const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
+        if (!sourceProvider) {
+          throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
+        }
+        const targetProvider = this.storageRegistry.get(options.targetProviderId);
+        if (!targetProvider) {
+          throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
+        }
+
+        const targetRoot = this.resolveDirSyncTargetRoot(
+          options.sourcePath,
+          targetProvider.type,
+          options.targetPath
+        );
+
+        return computeDirSyncDiff(
+          sourceProvider,
+          options.sourcePath,
+          targetProvider,
+          targetRoot,
+          (side, filesCount, currentItem) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.DIR_SYNC_SCAN_PROGRESS, { side, filesCount, currentItem });
+            }
+          }
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.DIR_SYNC_APPLY,
+      async (_event, options: DirSyncApplyOptions): Promise<DirectorySyncApplyResult> => {
+        if (!options?.sourceProviderId || !options?.targetProviderId) {
+          throw new Error('sourceProviderId and targetProviderId are required for directory sync apply');
+        }
+        const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
+        if (!sourceProvider) {
+          throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
+        }
+        const targetProvider = this.storageRegistry.get(options.targetProviderId);
+        if (!targetProvider) {
+          throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
+        }
+
+        const targetRoot = this.resolveDirSyncTargetRoot(
+          options.sourcePath,
+          targetProvider.type,
+          options.targetPath
+        );
+
+        const result = await applyDirSync(
+          options.entries ?? [],
+          sourceProvider,
+          targetProvider,
+          targetRoot,
+          { deleteExtraneous: Boolean(options.deleteExtraneous) },
+          (progress) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.DIR_SYNC_APPLY_PROGRESS, progress);
+            }
+          }
+        );
+
+        // Piggyback a synthetic "completed" TRANSFER_PROGRESS event so any
+        // open pane auto-refreshes its listing, same as a regular transfer.
+        const webContents = this.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          webContents.send(IPC_CHANNELS.TRANSFER_PROGRESS, {
+            jobId: 'dirsync-apply',
+            fileName: '',
+            transferredBytes: 0,
+            totalBytes: 0,
+            percentage: 100,
+            bytesPerSecond: 0,
+            status: 'completed',
+          });
+        }
+
+        return result;
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.DIR_SYNC_PROFILE_LIST, async (): Promise<DirectorySyncProfile[]> => {
+      return this.directorySyncProfileStore.list();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.DIR_SYNC_PROFILE_SAVE,
+      async (_event, profile: DirectorySyncProfile): Promise<DirectorySyncProfile> => {
+        return this.directorySyncProfileStore.save(profile);
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.DIR_SYNC_PROFILE_DELETE, async (_event, id: string): Promise<void> => {
+      await this.directorySyncProfileStore.delete(id);
+    });
   }
 
   private setupEventListeners(): void {

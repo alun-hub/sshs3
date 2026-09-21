@@ -384,6 +384,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onTransferRequested={(params) => handleTransferRequested('left', params)}
             onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.left.source.providerId, path) : undefined}
             refreshToken={refreshToken}
+            otherPane={{ ...panes.right.source, path: panes.right.path }}
           />
           <FilePane
             side="right"
@@ -394,6 +395,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onTransferRequested={(params) => handleTransferRequested('right', params)}
             onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.right.source.providerId, path) : undefined}
             refreshToken={refreshToken}
+            otherPane={{ ...panes.left.source, path: panes.left.path }}
           />
         </div>
         <TransferQueueDrawer />

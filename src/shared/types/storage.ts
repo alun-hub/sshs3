@@ -6,6 +6,7 @@ export interface FileEntry {
   size: number;
   isDirectory: boolean;
   mtime?: string; // ISO 8601 string yyyy-mm-dd HH:mm or ISO
+  mtimeMs?: number; // epoch ms, UTC — precise value for diffing, unlike the display-rounded `mtime` above
   mimeType?: string;
   permissions?: string;
 }
@@ -65,6 +66,12 @@ export interface IStorageProvider {
   readFile?(remotePath: string): Promise<Buffer>;
   chmod?(remotePath: string, mode: number | string): Promise<void>;
   setMetadata?(remotePath: string, metadata: ObjectMetadata): Promise<void>;
+  /**
+   * Sets a file's modification time (epoch ms) after it's written, so a copy
+   * preserves the source's mtime instead of taking the write time. Not
+   * supported by all providers (e.g. S3's LastModified is server-controlled).
+   */
+  setModifiedTime?(remotePath: string, mtimeMs: number): Promise<void>;
   disconnect?(): Promise<void>;
   // S3-specific administration (buckets & objects)
   getTags?(remotePath: string): Promise<S3Tag[]>;
