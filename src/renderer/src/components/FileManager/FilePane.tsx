@@ -331,7 +331,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   },
                   {
                     key: 'tail',
-                    label: 'Tail -f (Strömma logg)',
+                    label: 'Tail -f (Stream Log)',
                     icon: Terminal,
                     onSelect: () => {
                       setEditorTailMode(true);
