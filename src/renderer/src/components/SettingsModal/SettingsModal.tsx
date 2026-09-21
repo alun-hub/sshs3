@@ -355,7 +355,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Theme */}
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-txt-primary">Color Theme</label>
-                    <div className="grid grid-cols-3 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <button
                         type="button"
                         onClick={() => setTheme('dark')}
@@ -379,6 +379,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       >
                         <Sun className="h-4 w-4 text-amber-400" />
                         Light
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTheme('breeze')}
+                        className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
+                          theme === 'breeze'
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                        }`}
+                      >
+                        <Sliders className="h-4 w-4 text-cyan-400" />
+                        Breeze
                       </button>
                       <button
                         type="button"
@@ -509,9 +521,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </label>
                     <div
                       className={`rounded-lg border p-3 font-mono transition-colors shadow-inner ${
-                        theme === 'light'
-                          ? 'border-border-subtle bg-white text-slate-900'
-                          : 'border-border-subtle bg-black/40 text-slate-100'
+                        theme === 'breeze'
+                          ? 'border-border-subtle bg-[#232627] text-[#fcfcfc]'
+                          : theme === 'light'
+                            ? 'border-border-subtle bg-white text-slate-900'
+                            : 'border-border-subtle bg-black/40 text-slate-100'
                       }`}
                       style={{
                         fontFamily: fontFamily || 'monospace',
@@ -519,9 +533,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         lineHeight: '1.45',
                       }}
                     >
-                      <div className="text-emerald-400">$ uname -srm</div>
+                      <div className={theme === 'breeze' ? 'text-[#11d116]' : 'text-emerald-400'}>$ uname -srm</div>
                       <div>Linux 6.1.0-custom x86_64</div>
-                      <div className="text-sky-400">sshs3 session active. Ready.</div>
+                      <div className={theme === 'breeze' ? 'text-[#3daee9]' : 'text-sky-400'}>sshs3 session active. Ready.</div>
                     </div>
                   </div>
 

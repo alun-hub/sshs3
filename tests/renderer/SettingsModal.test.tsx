@@ -35,6 +35,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('Settings')).toBeInTheDocument();
     expect(screen.getByText('Dark')).toBeInTheDocument();
     expect(screen.getByText('Light')).toBeInTheDocument();
+    expect(screen.getByText('Breeze')).toBeInTheDocument();
     expect(screen.getByText('System')).toBeInTheDocument();
     expect(screen.getByText('Default Tab Type')).toBeInTheDocument();
 
@@ -57,8 +58,8 @@ describe('SettingsModal', () => {
       />
     );
 
-    // Click "Light"
-    fireEvent.click(screen.getByText('Light'));
+    // Click "Breeze"
+    fireEvent.click(screen.getByText('Breeze'));
 
     // Select default tab "File Manager"
     fireEvent.click(screen.getByText('File Manager'));
@@ -74,7 +75,7 @@ describe('SettingsModal', () => {
 
     expect(onSave).toHaveBeenCalledWith<[AppSettings]>(
       expect.objectContaining({
-        theme: 'light',
+        theme: 'breeze',
         terminalFontSize: 16,
         defaultNewTabType: 'filemanager',
       })

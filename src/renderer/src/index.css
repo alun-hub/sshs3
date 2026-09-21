@@ -44,6 +44,27 @@
   --accent-subtle: rgba(2, 132, 199, 0.12);
 }
 
+.breeze {
+  color-scheme: dark;
+  --bg-app: #232627;
+  --bg-surface: #31363b;
+  --bg-surface-subtle: #2a2e32;
+  --bg-surface-hover: #41474d;
+  --bg-card: #31363b;
+  --bg-input: #232627;
+
+  --border-subtle: #41474d;
+  --border-strong: #616870;
+
+  --text-primary: #fcfcfc;
+  --text-secondary: #eff0f1;
+  --text-muted: #7f8c8d;
+
+  --accent-primary: #3daee9;
+  --accent-hover: #1d9bf3;
+  --accent-subtle: rgba(61, 174, 233, 0.15);
+}
+
 html,
 body,
 #root {

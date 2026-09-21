@@ -21,7 +21,7 @@ export interface TerminalViewProps {
   className?: string;
   fontSize?: number;
   fontFamily?: string;
-  theme?: 'dark' | 'light' | 'system';
+  theme?: 'dark' | 'light' | 'breeze' | 'system';
   /** Remote directory to `cd` into once the shell prompt appears (sent once, after first PTY output). */
   initialCwd?: string;
   /** Action on session exit: 'reconnect' (default), 'close' (auto-close tab on clean exit), or 'keep' (passive). */
@@ -85,6 +85,40 @@ const XTERM_DARK_THEME = {
   brightCyan: '#22d3ee',
   brightWhite: '#ffffff',
 };
+
+const XTERM_BREEZE_THEME = {
+  background: '#232627',
+  foreground: '#fcfcfc',
+  cursor: '#3daee9',
+  cursorAccent: '#232627',
+  selectionBackground: '#31363b',
+  black: '#232627',
+  red: '#ed1515',
+  green: '#11d116',
+  yellow: '#f67400',
+  blue: '#1d9bf3',
+  magenta: '#9b59b6',
+  cyan: '#1abc9c',
+  white: '#fcfcfc',
+  brightBlack: '#7f8c8d',
+  brightRed: '#c0392b',
+  brightGreen: '#1cdc9a',
+  brightYellow: '#fdbc4b',
+  brightBlue: '#3daee9',
+  brightMagenta: '#8e44ad',
+  brightCyan: '#16a085',
+  brightWhite: '#ffffff',
+};
+
+function getXTermTheme(themeName: 'dark' | 'light' | 'breeze' | 'system') {
+  if (themeName === 'breeze') return XTERM_BREEZE_THEME;
+  if (themeName === 'light') return XTERM_LIGHT_THEME;
+  if (themeName === 'system') {
+    const isSystemLight = Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches);
+    return isSystemLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME;
+  }
+  return XTERM_DARK_THEME;
+}
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
   config,
@@ -180,10 +214,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     if (termRef.current) {
       termRef.current.options.fontSize = fontSize;
       termRef.current.options.fontFamily = fontFamily;
-      const isLight =
-        theme === 'light' ||
-        (theme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
-      termRef.current.options.theme = isLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME;
+      termRef.current.options.theme = getXTermTheme(theme);
       try {
         fitAddonRef.current?.fit();
       } catch {
@@ -213,9 +244,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let resizeObserver: ResizeObserver | null = null;
 
     const currentTheme = themeRef.current;
-    const isLight =
-      currentTheme === 'light' ||
-      (currentTheme === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
 
     // 1. Initialize Terminal & FitAddon
     const term = new Terminal({
@@ -223,7 +251,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       cursorStyle: 'bar',
       fontSize: fontSizeRef.current,
       fontFamily: fontFamilyRef.current,
-      theme: isLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME,
+      theme: getXTermTheme(currentTheme),
       allowProposedApi: true,
     });
     termRef.current = term;
@@ -465,12 +493,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     (theme === 'system' &&
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
+  const isBreeze = theme === 'breeze';
 
   return (
     <div
       data-testid="terminal-view"
       className={`relative h-full w-full overflow-hidden ${
-        isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
+        isBreeze ? 'bg-[#232627]' : isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
       } ${className}`}
     >
       <div

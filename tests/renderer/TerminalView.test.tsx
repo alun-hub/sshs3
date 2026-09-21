@@ -276,4 +276,15 @@ describe('TerminalView Component', () => {
 
     expect(screen.queryByTestId('session-exit-overlay')).not.toBeInTheDocument();
   });
+
+  it('renders correctly with breeze theme background', async () => {
+    render(<TerminalView config={sampleConfig} theme="breeze" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const termView = screen.getByTestId('terminal-view');
+    expect(termView).toHaveClass('bg-[#232627]');
+  });
 });

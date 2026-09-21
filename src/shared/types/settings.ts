@@ -1,4 +1,4 @@
-export type AppTheme = 'dark' | 'light' | 'system';
+export type AppTheme = 'dark' | 'light' | 'breeze' | 'system';
 export type SessionExitAction = 'reconnect' | 'close' | 'keep';
 
 export interface ShortcutDefinition {
