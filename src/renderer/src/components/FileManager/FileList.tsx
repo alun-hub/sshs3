@@ -27,6 +27,8 @@ interface FileListProps {
   filterText?: string;
   onEntryContextMenu?: (entry: FileEntry, e: React.MouseEvent) => void;
   onPaneContextMenu?: (e: React.MouseEvent) => void;
+  /** Invoked when the user presses Delete/Backspace with a selection and no rename/typeahead in progress. */
+  onDeleteSelected?: () => void;
 }
 
 function iconForEntry(entry: FileEntry) {
@@ -59,6 +61,7 @@ export const FileList: React.FC<FileListProps> = ({
   filterText,
   onEntryContextMenu,
   onPaneContextMenu,
+  onDeleteSelected,
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -244,6 +247,12 @@ export const FileList: React.FC<FileListProps> = ({
         return;
       }
 
+      if (e.key === 'Delete' && selectedPaths.size > 0) {
+        e.preventDefault();
+        onDeleteSelected?.();
+        return;
+      }
+
       if (sorted.length === 0) return;
 
       const activeIndex = activePath ? sorted.findIndex((item) => item.path === activePath) : -1;
@@ -355,7 +364,7 @@ export const FileList: React.FC<FileListProps> = ({
       onSelectionChange(next);
       rowVirtualizer.scrollToIndex(matchIndex, { align: 'auto' });
     },
-    [sorted, onSelectionChange, renamingPath, selectedPaths, onOpen, rowVirtualizer, clearTypeahead, searchAndSelect, activePath]
+    [sorted, onSelectionChange, renamingPath, selectedPaths, onOpen, rowVirtualizer, clearTypeahead, searchAndSelect, activePath, onDeleteSelected]
   );
 
   const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string }> = ({

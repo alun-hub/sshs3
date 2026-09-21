@@ -26,6 +26,8 @@ export interface TerminalViewProps {
   initialCwd?: string;
   /** Action on session exit: 'reconnect' (default), 'close' (auto-close tab on clean exit), or 'keep' (passive). */
   sessionExitAction?: SessionExitAction;
+  /** Mirror text selections into the system clipboard, not just the X11 PRIMARY selection. */
+  copyOnSelect?: boolean;
   /** Callback to close the enclosing tab. */
   onCloseTab?: () => void;
   /** Emitted when an OSC 0 or OSC 2 title sequence is received from the shell. */
@@ -97,6 +99,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   theme = 'dark',
   initialCwd,
   sessionExitAction = 'reconnect',
+  copyOnSelect = false,
   onCloseTab,
   onTitleChange,
 }) => {
@@ -121,6 +124,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   sessionExitActionRef.current = sessionExitAction;
   const onCloseTabRef = useRef(onCloseTab);
   onCloseTabRef.current = onCloseTab;
+  const copyOnSelectRef = useRef(copyOnSelect);
+  copyOnSelectRef.current = copyOnSelect;
 
   const [sessionKey, setSessionKey] = useState(0);
   const [exitEvent, setExitEvent] = useState<SSHPtyExitEvent | null>(null);
@@ -203,6 +208,37 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     const titleSub = term.onTitleChange((title) => {
       onTitleChangeRef.current?.(title);
+    });
+
+    // Copy-on-select mirrors the selection into the system CLIPBOARD (not just the
+    // browser/X11 PRIMARY selection middle-click already gets for free), so keyboard
+    // paste shortcuts that read CLIPBOARD have something to paste.
+    const selectionSub = term.onSelectionChange(() => {
+      if (!copyOnSelectRef.current) return;
+      const selection = term.getSelection();
+      if (selection) {
+        navigator.clipboard?.writeText(selection).catch(() => {
+          // Ignore: clipboard access can be denied (no focus, permissions, etc.)
+        });
+      }
+    });
+
+    // Shift+Insert is the conventional Linux terminal "paste from clipboard" shortcut;
+    // xterm.js only reacts to the browser's native paste event (typically Ctrl/Cmd+V),
+    // so it's wired up explicitly here.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
+        navigator.clipboard
+          ?.readText()
+          .then((text) => {
+            if (text) term.paste(text);
+          })
+          .catch(() => {
+            // Ignore: clipboard access can be denied
+          });
+        return false;
+      }
+      return true;
     });
 
     try {
@@ -376,6 +412,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         unsubExit();
       }
       titleSub.dispose();
+      selectionSub.dispose();
       const sid = sessionIdRef.current;
       if (sid && window.multissh?.terminalKill) {
         window.multissh.terminalKill(sid);

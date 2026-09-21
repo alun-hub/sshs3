@@ -417,8 +417,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
+      // xterm.js captures keyboard input via a hidden <textarea class="xterm-helper-textarea">
+      // inside every terminal pane. Treating it as a real input field would swallow every
+      // app-level shortcut (tab switching, split, etc.) whenever a terminal has focus, which
+      // is effectively always — so it's explicitly excluded from the "is a text field" check.
       const isInput =
         target &&
+        !target.classList?.contains('xterm-helper-textarea') &&
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'SELECT' ||

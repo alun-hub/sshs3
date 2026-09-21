@@ -663,6 +663,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onRenameCancel={() => setRenamingPath(null)}
           onEntryContextMenu={(_entry, e) => setContextMenu({ x: e.clientX, y: e.clientY })}
           onPaneContextMenu={(e) => setContextMenu({ x: e.clientX, y: e.clientY })}
+          onDeleteSelected={() => void handleDelete()}
         />
       </div>
 

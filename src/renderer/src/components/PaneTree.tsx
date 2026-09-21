@@ -220,6 +220,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             theme={settings.theme}
             initialCwd={props.initialCwdPaneId === node.id ? props.initialCwd : undefined}
             sessionExitAction={settings.sessionExitAction}
+            copyOnSelect={settings.copyOnSelect}
             onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
             onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
           />
@@ -233,6 +234,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             fontFamily={settings.terminalFontFamily}
             theme={settings.theme}
             sessionExitAction={settings.sessionExitAction}
+            copyOnSelect={settings.copyOnSelect}
             onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
             onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
           />
