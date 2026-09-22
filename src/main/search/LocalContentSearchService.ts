@@ -1,7 +1,8 @@
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import crypto from 'node:crypto';
-import { ListObjectsV2Command } from '@aws-sdk/client-s3';
 import type { StorageRegistry } from '../storage/StorageRegistry';
-import { S3StorageProvider, parseS3Path } from '../storage/S3StorageProvider';
+import { LocalStorageProvider } from '../storage/LocalStorageProvider';
 import { buildLineMatcher } from './lineMatcher';
 import { matchesAnyGlob, isLikelyBinary } from './globMatch';
 import type {
@@ -14,7 +15,7 @@ import type {
   SearchStartOptions,
 } from '../../shared/types/search';
 
-const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 const CONCURRENCY = 8;
 const BATCH_MAX_MATCHES = 25;
 const BATCH_MAX_DELAY_MS = 150;
@@ -28,65 +29,16 @@ interface ActiveSearchSession {
 interface Candidate {
   path: string;
   displayPath: string;
-  size: number;
-}
-
-/** Reads a stream into a Buffer, stopping (and destroying the stream) once `capBytes`
- * is exceeded so a single unexpectedly large or still-growing object can't blow up memory. */
-function streamToBuffer(stream: NodeJS.ReadableStream, capBytes: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let total = 0;
-    let settled = false;
-
-    stream.on('data', (chunk: Buffer | string) => {
-      if (settled) return;
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      total += buf.length;
-      if (total > capBytes) {
-        settled = true;
-        (stream as any).destroy?.();
-        resolve(Buffer.concat(chunks));
-        return;
-      }
-      chunks.push(buf);
-    });
-    stream.on('end', () => {
-      if (!settled) {
-        settled = true;
-        resolve(Buffer.concat(chunks));
-      }
-    });
-    stream.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
-      }
-    });
-  });
-}
-
-async function runPool<T>(items: T[], concurrency: number, shouldStop: () => boolean, worker: (item: T) => Promise<void>): Promise<void> {
-  let index = 0;
-  const next = async (): Promise<void> => {
-    while (index < items.length) {
-      if (shouldStop()) return;
-      const item = items[index++];
-      await worker(item);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, next));
 }
 
 /**
- * Searches inside S3 objects by downloading (or ranged-GETting) each candidate and
- * scanning it in memory — the same model as RemoteSearchService's SFTP grep, just over
- * GetObject instead of an SSH exec channel. S3 Select would let the server do this
- * filtering, but it's no longer available to new AWS accounts and is inconsistently
- * supported by S3-compatible providers (MinIO, NetApp), so download + scan is the only
- * approach that works identically everywhere this app connects.
+ * Searches inside local files by walking the directory tree with plain Node `fs` and
+ * scanning matching files in memory — deliberately the same shape as
+ * S3ContentSearchService (list candidates, worker pool, line matcher) rather than
+ * shelling out to `find`/`grep`. That keeps this backend working identically on Linux,
+ * macOS, and Windows without depending on WSL, Git Bash, or PowerShell being installed.
  */
-export class S3ContentSearchService {
+export class LocalContentSearchService {
   private sessions = new Map<string, ActiveSearchSession>();
 
   public async startSearch(
@@ -98,16 +50,11 @@ export class S3ContentSearchService {
     onProgress?: (event: SearchProgressEvent) => void
   ): Promise<{ searchId: string }> {
     const provider = storageRegistry.get(options.providerId);
-    if (!provider || !(provider instanceof S3StorageProvider)) {
-      throw new Error(`S3 storage provider not found: ${options.providerId}`);
+    if (!provider || !(provider instanceof LocalStorageProvider)) {
+      throw new Error(`Local storage provider not found: ${options.providerId}`);
     }
 
-    const { bucket, key } = parseS3Path(options.rootPath);
-    if (!bucket) {
-      throw new Error('Select a bucket before searching inside files');
-    }
-    const prefix = key ? (key.endsWith('/') ? key : `${key}/`) : '';
-
+    const rootDir = provider.resolvePath(options.rootPath);
     const searchId = crypto.randomUUID();
     const maxResults = options.maxResults ?? 500;
     const maxFileSizeBytes = options.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
@@ -165,48 +112,69 @@ export class S3ContentSearchService {
       },
     });
 
-    void (async () => {
+    const collectCandidates = async (dir: string, depth: number, out: Candidate[]): Promise<void> => {
+      if (shouldStop()) return;
+      let entries;
       try {
-        const candidates: Candidate[] = [];
-        let continuationToken: string | undefined;
-        do {
-          if (shouldStop()) break;
-          const output = await provider.client.send(
-            new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: continuationToken })
-          );
-          for (const item of output.Contents ?? []) {
-            const itemKey = item.Key ?? '';
-            if (!itemKey || itemKey.endsWith('/')) continue;
-            const size = item.Size ?? 0;
-            if (size > maxFileSizeBytes) {
-              onError({
-                searchId,
-                path: `/${bucket}/${itemKey}`,
-                message: `Skipped: exceeds size cap (${size} bytes > ${maxFileSizeBytes} bytes)`,
-                fatal: false,
-              });
-              continue;
-            }
-            const name = itemKey.split('/').pop() ?? itemKey;
-            if (options.includeGlobs?.length && !matchesAnyGlob(name, options.includeGlobs)) continue;
-            if (options.excludeGlobs?.length && matchesAnyGlob(name, options.excludeGlobs)) continue;
-            candidates.push({
-              path: `/${bucket}/${itemKey}`,
-              displayPath: itemKey.startsWith(prefix) ? itemKey.slice(prefix.length) : itemKey,
-              size,
-            });
-          }
-          continuationToken = output.NextContinuationToken;
-        } while (continuationToken);
+        entries = await fsp.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        onError({
+          searchId,
+          path: dir,
+          message: err instanceof Error ? err.message : String(err),
+          fatal: false,
+        });
+        return;
+      }
 
-        await runPool(candidates, CONCURRENCY, shouldStop, async (candidate) => {
+      for (const entry of entries) {
+        if (shouldStop()) return;
+        // Skip symlinks to avoid following cycles back up the tree, same as SFTP's `! -type l`.
+        if (entry.isSymbolicLink()) continue;
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (options.maxDepth === undefined || depth < options.maxDepth) {
+            await collectCandidates(fullPath, depth + 1, out);
+          }
+          continue;
+        }
+        if (!entry.isFile()) continue;
+
+        if (options.includeGlobs?.length && !matchesAnyGlob(entry.name, options.includeGlobs)) continue;
+        if (options.excludeGlobs?.length && matchesAnyGlob(entry.name, options.excludeGlobs)) continue;
+
+        let size: number;
+        try {
+          size = (await fsp.stat(fullPath)).size;
+        } catch {
+          continue; // Gone/inaccessible between readdir and stat — skip quietly.
+        }
+        if (size > maxFileSizeBytes) {
+          onError({
+            searchId,
+            path: fullPath,
+            message: `Skipped: exceeds size cap (${size} bytes > ${maxFileSizeBytes} bytes)`,
+            fatal: false,
+          });
+          continue;
+        }
+
+        out.push({ path: fullPath, displayPath: path.relative(rootDir, fullPath) || entry.name });
+      }
+    };
+
+    const runPool = async (items: Candidate[]): Promise<void> => {
+      let index = 0;
+      const next = async (): Promise<void> => {
+        while (index < items.length) {
           if (shouldStop()) return;
+          const candidate = items[index++];
           scannedCount += 1;
           currentPath = candidate.displayPath;
           try {
-            const stream = await provider.createReadStream(candidate.path);
-            const buf = await streamToBuffer(stream, maxFileSizeBytes);
-            if (isLikelyBinary(buf)) return;
+            const buf = await fsp.readFile(candidate.path);
+            if (isLikelyBinary(buf)) continue;
             const lines = buf.toString('utf-8').split('\n');
             for (let i = 0; i < lines.length; i++) {
               if (hasHitCap()) break;
@@ -222,7 +190,7 @@ export class S3ContentSearchService {
                 snippet: lines[i].trim(),
                 matchStart: offsets.start,
                 matchEnd: offsets.end,
-                source: 's3-download',
+                source: 'local-fs',
               });
               if (pendingBatch.length >= BATCH_MAX_MATCHES) flushBatch();
               else scheduleFlush();
@@ -235,7 +203,16 @@ export class S3ContentSearchService {
               fatal: false,
             });
           }
-        });
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, next));
+    };
+
+    void (async () => {
+      try {
+        const candidates: Candidate[] = [];
+        await collectCandidates(rootDir, 0, candidates);
+        await runPool(candidates);
       } catch (err) {
         onError({ searchId, message: err instanceof Error ? err.message : String(err), fatal: true });
       } finally {
@@ -254,11 +231,8 @@ export class S3ContentSearchService {
     }
   }
 
-  /**
-   * Re-downloads the object and slices out the lines around a match for click-to-preview.
-   * There's no server-side index to seek by line, but every object eligible for search was
-   * already under maxFileSizeBytes, so re-fetching it here is bounded by the same cap.
-   */
+  /** Slices out the lines around a match for click-to-preview, reading only the file's
+   * own lines — bounded by the same size cap every searched file already respected. */
   public async previewLines(
     storageRegistry: StorageRegistry,
     providerId: string,
@@ -267,8 +241,8 @@ export class S3ContentSearchService {
     contextLines: number
   ): Promise<SearchPreviewResult> {
     const provider = storageRegistry.get(providerId);
-    if (!provider || !(provider instanceof S3StorageProvider)) {
-      throw new Error(`S3 storage provider not found: ${providerId}`);
+    if (!provider || !(provider instanceof LocalStorageProvider)) {
+      throw new Error(`Local storage provider not found: ${providerId}`);
     }
 
     const safeLine = Number.isInteger(lineNumber) && lineNumber >= 1 ? lineNumber : 1;
@@ -276,8 +250,8 @@ export class S3ContentSearchService {
     const startLine = Math.max(1, safeLine - safeContext);
     const endLine = safeLine + safeContext;
 
-    const stream = await provider.createReadStream(remotePath);
-    const buf = await streamToBuffer(stream, DEFAULT_MAX_FILE_SIZE_BYTES);
+    const fullPath = provider.resolvePath(remotePath);
+    const buf = await fsp.readFile(fullPath);
     const lines = buf.toString('utf-8').split('\n');
     const slice = lines.slice(startLine - 1, endLine).join('\n');
 

@@ -12,7 +12,7 @@ interface SearchWarning {
 interface SearchModalProps {
   open: boolean;
   providerId: string;
-  sourceType: SearchSourceType | 'local';
+  sourceType: SearchSourceType;
   rootPath: string;
   onClose: () => void;
   /** Navigates the owning pane to a match's containing folder and closes the search modal. */
@@ -47,8 +47,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   const activeSearchIdRef = useRef<string | null>(null);
   const queryInputRef = useRef<HTMLInputElement>(null);
-
-  const supportsSearch = sourceType === 'sftp' || sourceType === 's3';
 
   useEffect(() => {
     if (open) setTimeout(() => queryInputRef.current?.focus(), 50);
@@ -102,7 +100,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!supportsSearch || !query.trim() || searching) return;
+      if (!query.trim() || searching) return;
 
       stopActiveSearch();
       setMatches([]);
@@ -115,8 +113,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setSelectedMatch(null);
       setSearching(true);
       setHasSearched(true);
-
-      if (sourceType !== 'sftp' && sourceType !== 's3') return;
 
       try {
         const { searchId } = await window.multissh.searchStart({
@@ -141,7 +137,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         setError(err instanceof Error ? err.message : 'Failed to start search');
       }
     },
-    [supportsSearch, query, searching, providerId, sourceType, rootPath, mode, caseSensitive, includeGlobs, excludeGlobs, stopActiveSearch]
+    [query, searching, providerId, sourceType, rootPath, mode, caseSensitive, includeGlobs, excludeGlobs, stopActiveSearch]
   );
 
   const handleCancel = useCallback(() => {
@@ -181,157 +177,149 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </button>
         </div>
 
-        {!supportsSearch ? (
-          <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-txt-muted">
-            Content search is available for SFTP and S3 connections, not the local disk.
+        <form onSubmit={handleSubmit} className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
+          <div className="flex items-center gap-2">
+            <input
+              ref={queryInputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search inside files..."
+              className="flex-1 rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+            />
+            {searching ? (
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!query.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
+              >
+                {searching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Search
+              </button>
+            )}
           </div>
-        ) : (
-          <>
-            <form onSubmit={handleSubmit} className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
-              <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-txt-secondary">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="radio"
+                checked={mode === 'literal'}
+                onChange={() => setMode('literal')}
+                className="text-sky-500 focus:ring-0"
+              />
+              Literal
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="radio"
+                checked={mode === 'regex'}
+                onChange={() => setMode('regex')}
+                className="text-sky-500 focus:ring-0"
+              />
+              Regex
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={caseSensitive}
+                onChange={(e) => setCaseSensitive(e.target.checked)}
+                className="rounded border-border-subtle text-sky-500 focus:ring-0"
+              />
+              Case sensitive
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+              className="ml-auto text-txt-muted hover:text-txt-primary transition-colors"
+            >
+              {showAdvanced ? 'Hide advanced' : 'Advanced...'}
+            </button>
+          </div>
+          {showAdvanced && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-txt-secondary">
+              <label className="flex items-center gap-1.5">
+                Include:
                 <input
-                  ref={queryInputRef}
                   type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search inside files..."
-                  className="flex-1 rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                  value={includeGlobs}
+                  onChange={(e) => setIncludeGlobs(e.target.value)}
+                  placeholder="*.log, *.csv"
+                  className="w-40 rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                 />
-                {searching ? (
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                  >
-                    Cancel
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!query.trim()}
-                    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
-                  >
-                    {searching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    Search
-                  </button>
-                )}
+              </label>
+              <label className="flex items-center gap-1.5">
+                Exclude:
+                <input
+                  type="text"
+                  value={excludeGlobs}
+                  onChange={(e) => setExcludeGlobs(e.target.value)}
+                  placeholder="*.min.js"
+                  className="w-40 rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                />
+              </label>
+            </div>
+          )}
+        </form>
+
+        {error && (
+          <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
+        )}
+
+        <div className="flex min-h-0 flex-1">
+          <div className="flex w-1/3 min-w-[280px] flex-col border-r border-border-subtle">
+            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-[11px] text-txt-muted">
+              <span className="truncate">
+                {matches.length} match{matches.length === 1 ? '' : 'es'} · {scannedCount} scanned
+                {searching && currentPath ? ` · ${currentPath}` : ''}
+              </span>
+              {searching && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-400" />}
+            </div>
+            {truncated && (
+              <div className="border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[11px] text-amber-300">
+                Result limit reached — narrow your search to see more.
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-txt-secondary">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="radio"
-                    checked={mode === 'literal'}
-                    onChange={() => setMode('literal')}
-                    className="text-sky-500 focus:ring-0"
-                  />
-                  Literal
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="radio"
-                    checked={mode === 'regex'}
-                    onChange={() => setMode('regex')}
-                    className="text-sky-500 focus:ring-0"
-                  />
-                  Regex
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={caseSensitive}
-                    onChange={(e) => setCaseSensitive(e.target.checked)}
-                    className="rounded border-border-subtle text-sky-500 focus:ring-0"
-                  />
-                  Case sensitive
-                </label>
+            )}
+            {warnings.length > 0 && (
+              <div className="border-b border-amber-900/60 bg-amber-950/20 text-[11px] text-amber-300">
                 <button
                   type="button"
-                  onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="ml-auto text-txt-muted hover:text-txt-primary transition-colors"
+                  onClick={() => setWarningsExpanded((prev) => !prev)}
+                  className="flex w-full items-center justify-between px-3 py-1 hover:bg-amber-950/30"
                 >
-                  {showAdvanced ? 'Hide advanced' : 'Advanced...'}
-                </button>
-              </div>
-              {showAdvanced && (
-                <div className="flex flex-wrap items-center gap-3 text-xs text-txt-secondary">
-                  <label className="flex items-center gap-1.5">
-                    Include:
-                    <input
-                      type="text"
-                      value={includeGlobs}
-                      onChange={(e) => setIncludeGlobs(e.target.value)}
-                      placeholder="*.log, *.csv"
-                      className="w-40 rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    Exclude:
-                    <input
-                      type="text"
-                      value={excludeGlobs}
-                      onChange={(e) => setExcludeGlobs(e.target.value)}
-                      placeholder="*.min.js"
-                      className="w-40 rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-                    />
-                  </label>
-                </div>
-              )}
-            </form>
-
-            {error && (
-              <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
-            )}
-
-            <div className="flex min-h-0 flex-1">
-              <div className="flex w-1/3 min-w-[280px] flex-col border-r border-border-subtle">
-                <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-[11px] text-txt-muted">
-                  <span className="truncate">
-                    {matches.length} match{matches.length === 1 ? '' : 'es'} · {scannedCount} scanned
-                    {searching && currentPath ? ` · ${currentPath}` : ''}
+                  <span>
+                    {warnings.length} warning{warnings.length === 1 ? '' : 's'} (skipped files/objects)
                   </span>
-                  {searching && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-400" />}
-                </div>
-                {truncated && (
-                  <div className="border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[11px] text-amber-300">
-                    Result limit reached — narrow your search to see more.
-                  </div>
+                  <span>{warningsExpanded ? '▲' : '▼'}</span>
+                </button>
+                {warningsExpanded && (
+                  <ul className="max-h-24 overflow-y-auto border-t border-amber-900/40 px-3 py-1 space-y-0.5">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="truncate">
+                        {w.path ? <span className="font-mono">{w.path}: </span> : null}
+                        {w.message}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-                {warnings.length > 0 && (
-                  <div className="border-b border-amber-900/60 bg-amber-950/20 text-[11px] text-amber-300">
-                    <button
-                      type="button"
-                      onClick={() => setWarningsExpanded((prev) => !prev)}
-                      className="flex w-full items-center justify-between px-3 py-1 hover:bg-amber-950/30"
-                    >
-                      <span>
-                        {warnings.length} warning{warnings.length === 1 ? '' : 's'} (skipped files/objects)
-                      </span>
-                      <span>{warningsExpanded ? '▲' : '▼'}</span>
-                    </button>
-                    {warningsExpanded && (
-                      <ul className="max-h-24 overflow-y-auto border-t border-amber-900/40 px-3 py-1 space-y-0.5">
-                        {warnings.map((w, i) => (
-                          <li key={i} className="truncate">
-                            {w.path ? <span className="font-mono">{w.path}: </span> : null}
-                            {w.message}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-                <SearchResultsList
-                  matches={matches}
-                  selectedMatchId={selectedMatch?.id ?? null}
-                  onSelect={setSelectedMatch}
-                  onJumpToFile={onJumpToFile ? handleJumpToFile : undefined}
-                  hasSearched={hasSearched}
-                />
               </div>
-              <SearchPreviewPane providerId={providerId} match={selectedMatch} />
-            </div>
-          </>
-        )}
+            )}
+            <SearchResultsList
+              matches={matches}
+              selectedMatchId={selectedMatch?.id ?? null}
+              onSelect={setSelectedMatch}
+              onJumpToFile={onJumpToFile ? handleJumpToFile : undefined}
+              hasSearched={hasSearched}
+            />
+          </div>
+          <SearchPreviewPane providerId={providerId} match={selectedMatch} />
+        </div>
       </div>
     </div>
   );

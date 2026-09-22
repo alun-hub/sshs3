@@ -1,4 +1,4 @@
-export type SearchSourceType = 'sftp' | 's3';
+export type SearchSourceType = 'sftp' | 's3' | 'local';
 export type SearchMode = 'literal' | 'regex';
 /**
  * 's3-select' is reserved for a possible future accelerator; Amazon S3 Select is no
@@ -6,7 +6,7 @@ export type SearchMode = 'literal' | 'regex';
  * providers (MinIO, NetApp), so v1 always searches S3 objects the same way as SFTP files —
  * download (or a ranged GET) plus an in-memory line scan.
  */
-export type SearchMatchSource = 'sftp-grep' | 's3-select' | 's3-download';
+export type SearchMatchSource = 'sftp-grep' | 's3-select' | 's3-download' | 'local-fs';
 
 export interface SearchStartOptions {
   providerId: string;
@@ -20,7 +20,7 @@ export interface SearchStartOptions {
   includeGlobs?: string[];
   /** Filename glob patterns that exclude a file, e.g. ["*.min.js"]. */
   excludeGlobs?: string[];
-  /** SFTP only. Undefined means unlimited depth. */
+  /** SFTP and local only (S3 has no directory concept to bound). Undefined means unlimited depth. */
   maxDepth?: number;
   /** Objects/files larger than this are skipped (default 10 MB for S3, unbounded for SFTP). */
   maxFileSizeBytes?: number;

@@ -111,17 +111,21 @@ describe('S3ContentSearchService', () => {
       throw new Error('GetObjectCommand should not be called for an oversized object');
     });
 
+    const errors: any[] = [];
     const done: any[] = [];
     await service.startSearch(
       registry,
       baseOptions({ maxFileSizeBytes: 1024 }),
       () => {},
-      () => {},
+      (e) => errors.push(e),
       (e) => done.push(e)
     );
 
     await waitFor(() => done.length === 1);
     expect(done[0]).toMatchObject({ scannedCount: 0, matchCount: 0 });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ path: '/my-bucket/huge.log', fatal: false });
+    expect(errors[0].message).toContain('exceeds size cap');
   });
 
   it('applies include/exclude glob filters to object keys', async () => {

@@ -1,7 +1,9 @@
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { RemoteSearchService } from './RemoteSearchService';
 import { S3ContentSearchService } from './S3ContentSearchService';
+import { LocalContentSearchService } from './LocalContentSearchService';
 import { S3StorageProvider } from '../storage/S3StorageProvider';
+import { LocalStorageProvider } from '../storage/LocalStorageProvider';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -19,6 +21,7 @@ import type {
 export class SearchOrchestrator {
   private remoteSearchService = new RemoteSearchService();
   private s3ContentSearchService = new S3ContentSearchService();
+  private localContentSearchService = new LocalContentSearchService();
 
   public async startSearch(
     storageRegistry: StorageRegistry,
@@ -33,6 +36,8 @@ export class SearchOrchestrator {
         return this.remoteSearchService.startSearch(storageRegistry, options, onResult, onError, onDone, onProgress);
       case 's3':
         return this.s3ContentSearchService.startSearch(storageRegistry, options, onResult, onError, onDone, onProgress);
+      case 'local':
+        return this.localContentSearchService.startSearch(storageRegistry, options, onResult, onError, onDone, onProgress);
       default:
         throw new Error(`Unsupported search source type: ${(options as SearchStartOptions).sourceType}`);
     }
@@ -41,6 +46,7 @@ export class SearchOrchestrator {
   public cancelSearch(searchId: string): void {
     this.remoteSearchService.cancelSearch(searchId);
     this.s3ContentSearchService.cancelSearch(searchId);
+    this.localContentSearchService.cancelSearch(searchId);
   }
 
   public async previewLines(
@@ -54,11 +60,15 @@ export class SearchOrchestrator {
     if (provider instanceof S3StorageProvider) {
       return this.s3ContentSearchService.previewLines(storageRegistry, providerId, remotePath, lineNumber, contextLines);
     }
+    if (provider instanceof LocalStorageProvider) {
+      return this.localContentSearchService.previewLines(storageRegistry, providerId, remotePath, lineNumber, contextLines);
+    }
     return this.remoteSearchService.previewLines(storageRegistry, providerId, remotePath, lineNumber, contextLines);
   }
 
   public dispose(): void {
     this.remoteSearchService.dispose();
     this.s3ContentSearchService.dispose();
+    this.localContentSearchService.dispose();
   }
 }

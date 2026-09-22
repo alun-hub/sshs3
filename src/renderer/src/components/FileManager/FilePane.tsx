@@ -494,7 +494,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               key: 'search-in-files',
               label: 'Search in Files...',
               icon: Search,
-              disabled: source.sourceType === 'local',
               onSelect: () => setSearchOpen(true),
             },
           ];
@@ -652,16 +651,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
           <Search className="h-4 w-4" />
         </button>
-        {source.sourceType !== 'local' && (
-          <button
-            type="button"
-            title="Search in Files..."
-            onClick={() => setSearchOpen(true)}
-            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
-            <FileSearch className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          title="Search in Files..."
+          onClick={() => setSearchOpen(true)}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+        >
+          <FileSearch className="h-4 w-4" />
+        </button>
         {source.sourceType === 'sftp' && onOpenTerminal && (
           <button
             type="button"
