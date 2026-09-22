@@ -247,7 +247,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
         };
         const providerId = `sftp-${config.id}`;
         const session = await window.multissh.sessionGet?.();
-        const initialPath = session?.lastPaths?.[providerId] || config.initialPath?.trim() || '/';
+        const initialPath = config.initialPath?.trim() || session?.lastPaths?.[providerId] || '/';
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
         setPanes((prev) => {
           const next = {
@@ -293,7 +293,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       try {
         const providerId = `s3-${config.id}`;
         const session = await window.multissh.sessionGet?.();
-        const initialPath = session?.lastPaths?.[providerId] || config.initialPath?.trim() || '/';
+        const initialPath = config.initialPath?.trim() || session?.lastPaths?.[providerId] || '/';
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 's3', s3Config: config });
         setPanes((prev) => {
           const next = {
