@@ -139,6 +139,35 @@ att bygga.
    visa små statusikoner i filträdet (grönt = ändrat, rött = konflikt) likt VS Code,
    via ett `git status --porcelain`-anrop i bakgrunden över samma SSH-anslutning.
    Förhindrar att man råkar skriva över filer som någon annan redan har ändrat.
+- [x] **64. Certifikatdetaljer i "Cached smartcard identities".** Popovern (kort-ikonen
+   i toppfältet, `TabBar.tsx`) listade tidigare bara vad `ssh-add -l` rapporterar
+   (fingerprint/keytype/PIV-slotetikett) — ingen certifikatinfo. Varje identitet kan nu
+   expanderas till Subject CN, UPN (Microsoft `otherName`-SAN, vanligt på PIV/CAC/SITHS)
+   och giltighetstid. Läser certifikatet direkt från samma PKCS#11-modul (`.so`/`.dll`)
+   som redan används för `ssh-add -s` (`SmartcardCertificateReader.ts`, via `pkcs11js`)
+   istället för att shella ut till OpenSC:s `pkcs11-tool` — det verktyget saknas helt hos
+   t.ex. Net iD-användare som bara har PKCS#11-biblioteket, inte OpenSC:s CLI-paket.
+   Matchning mot rätt `ssh-add`-identitet sker via en egenberäknad SSH-fingerprint av
+   certifikatets publika nyckel (`CertificateParser.ts`), inte via CKA_ID/etikett som
+   varierar mellan leverantörer. UPN extraheras med en liten handskriven DER-parser
+   (Node's inbyggda `X509Certificate` avkodar inte Microsofts UPN-OID). Nytt native
+   npm-beroende (`pkcs11js`) — byggs redan idag av electron-builders befintliga
+   native-rebuild-steg (samma mekanism som `node-pty`).
+- [ ] **63. FIDO2/WebAuthn-nycklar (`sk-ecdsa-sha2-nistp256@openssh.com` /
+   `sk-ssh-ed25519@openssh.com`) som eget autentiseringsspår.** Tekniskt separat
+   från dagens PKCS#11-smartcardstöd — FIDO2-nycklar går via `libfido2` direkt i
+   OpenSSH, ingen PIV-applet eller certifikatutfärdare inblandad, så askpass-dialogen
+   och PIN-cache-logiken behöver en parallell kodväg, inte en utökning av den
+   befintliga. Användningsfall: (1) utvecklare/mindre team med en YubiKey men utan
+   PIV/CA-infrastruktur — `ssh-keygen -t ed25519-sk` fungerar direkt utan
+   provisionering, (2) resident/discoverable keys — nyckeln lever på tokenet, ingen
+   privat nyckelfil att synka mellan flera maskiner, (3) `verify-required` — fysisk
+   beröring krävs vid *varje* anslutning, striktare policy än dagens
+   Global-PIN-cachning för högkänsliga bastion-hosts, (4) alternativ
+   WebAuthn-baserad upplåsning av Remote profile sync-valvet (#egen sektion ovan)
+   för användare med YubiKey men utan PIV-kort. Breddar målgruppen mot
+   devops/mindre org snarare än att fördjupa nuvarande SITHS/Net iD/PIV-fokus —
+   lägre prioritet än #16, men värt om målgruppen ska breddas.
 - [x] **46. S3 Versionshantering (Versioning)** — `S3StorageProvider` stöder `listObjectVersions`/`deleteObjectVersion`/`restoreObjectVersion` samt `getBucketVersioning`/`setBucketVersioning`. `VersionsModal` i filhanteraren visar tidigare versioner och raderingsmarkörer med återställning/permanent radering för objekt, och aktivera/pausa-knapp för bucket-nivå.
 - [ ] **47. S3 Metadata & HTTP-headers editor** — granska och redigera `Content-Type`, `Cache-Control`, `Content-Disposition` och anpassade användarmetadata (`x-amz-meta-*`) för valda objekt.
 - [x] **48. S3 Bucket Policy & CORS-redigerare** — `BucketPolicyModal` med flikar för JSON-policy och CORS-regler, backat av `getBucketPolicy`/`setBucketPolicy`/`getBucketCors`/`setBucketCors` i `S3StorageProvider`, nås via bucket-kontextmenyn.

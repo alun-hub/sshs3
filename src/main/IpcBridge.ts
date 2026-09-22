@@ -10,6 +10,7 @@ import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { loadSmartcardIntoPrivateAgent, listAgentIdentities } from './smartcard/SmartcardAgentLoader';
+import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
 import { S3StorageProvider } from './storage/S3StorageProvider';
@@ -1210,14 +1211,39 @@ export class IpcBridge {
    * Reports what's currently cached under 'agent-global' PIN caching mode:
    * which PKCS#11 libraries have an unlocked agent, and which certificate(s)
    * each one is holding (queried live from the agent via `ssh-add -l`).
+   *
+   * Each identity is additionally enriched with X.509 certificate details
+   * (subject, UPN, validity) read directly from the same PKCS#11 module —
+   * see SmartcardCertificateReader for why that goes through the module
+   * itself rather than a vendor CLI tool. This is read fresh (no PIN, no
+   * login) on every call rather than cached, since it's cheap and the card
+   * could in principle be swapped while the agent stays loaded.
    */
   private async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
     const entries = Array.from(this.globalSmartcardAgents.entries());
     return Promise.all(
-      entries.map(async ([pkcs11LibPath, { socketPath }]) => ({
-        pkcs11LibPath,
-        identities: await listAgentIdentities(socketPath),
-      }))
+      entries.map(async ([pkcs11LibPath, { socketPath }]) => {
+        const identities = await listAgentIdentities(socketPath);
+        const certsByFingerprint = await readSmartcardCertificates(pkcs11LibPath);
+        return {
+          pkcs11LibPath,
+          identities: identities.map((identity) => {
+            const cert = certsByFingerprint.get(identity.fingerprint);
+            return cert
+              ? {
+                  ...identity,
+                  certificate: {
+                    subject: cert.subject,
+                    issuer: cert.issuer,
+                    validFrom: cert.validFrom,
+                    validTo: cert.validTo,
+                    upn: cert.upn,
+                  },
+                }
+              : identity;
+          }),
+        };
+      })
     );
   }
 

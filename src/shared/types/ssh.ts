@@ -73,6 +73,18 @@ export interface CachedSmartcardIdentity {
   comment: string; // e.g. "PIV AUTH pubkey" — the certificate's label
   fingerprint: string;
   keyType: string;
+  /**
+   * X.509 certificate details for this identity, read directly from the PKCS#11 token and
+   * matched to it by fingerprint. Undefined if the token doesn't expose a readable certificate
+   * for this key, or reading/parsing it failed — the identity itself is still valid either way.
+   */
+  certificate?: {
+    subject: string;
+    issuer: string;
+    validFrom: string;
+    validTo: string;
+    upn?: string;
+  };
 }
 
 /** One cached global smartcard agent ('agent-global' PIN caching mode), and what it holds. */

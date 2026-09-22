@@ -1,5 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Folder, X, Plus, Server, Settings, Unlock, Loader2, CreditCard, FolderSync } from 'lucide-react';
+import {
+  Terminal,
+  Folder,
+  X,
+  Plus,
+  Server,
+  Settings,
+  Unlock,
+  Loader2,
+  CreditCard,
+  FolderSync,
+  ChevronRight,
+  ChevronDown,
+} from 'lucide-react';
 import type { CachedSmartcardAgent } from '@shared/types/ssh';
 
 export type TabType = 'terminal' | 'filemanager';
@@ -47,6 +60,17 @@ export const TabBar: React.FC<TabBarProps> = ({
   const smartcardMenuRef = useRef<HTMLDivElement>(null);
   const [cachedAgents, setCachedAgents] = useState<CachedSmartcardAgent[] | null>(null);
   const [loadingCachedAgents, setLoadingCachedAgents] = useState(false);
+  const [expandedFingerprints, setExpandedFingerprints] = useState<Set<string>>(new Set());
+
+  const formatCertDate = (isoLike: string): string => {
+    const d = new Date(isoLike);
+    return Number.isNaN(d.getTime()) ? isoLike : d.toLocaleDateString();
+  };
+
+  const certSubjectCN = (subject: string): string => {
+    const line = subject.split('\n').find((l) => l.startsWith('CN='));
+    return line ? line.slice(3) : subject;
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -219,14 +243,72 @@ export const TabBar: React.FC<TabBarProps> = ({
                           <div className="text-[11px] text-txt-muted">(no identities reported)</div>
                         ) : (
                           <ul className="mt-0.5 space-y-0.5">
-                            {agent.identities.map((id) => (
-                              <li key={id.fingerprint} className="flex items-center gap-1.5 text-[11px] text-txt-primary">
-                                <span className="truncate">{id.comment}</span>
-                                <span className="shrink-0 font-mono text-[10px] text-txt-muted">
-                                  ({id.keyType})
-                                </span>
-                              </li>
-                            ))}
+                            {agent.identities.map((id) => {
+                              const isExpanded = expandedFingerprints.has(id.fingerprint);
+                              return (
+                                <li key={id.fingerprint}>
+                                  <button
+                                    type="button"
+                                    disabled={!id.certificate}
+                                    onClick={() =>
+                                      setExpandedFingerprints((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(id.fingerprint)) next.delete(id.fingerprint);
+                                        else next.add(id.fingerprint);
+                                        return next;
+                                      })
+                                    }
+                                    className="flex w-full items-center gap-1 text-left text-[11px] text-txt-primary disabled:cursor-default"
+                                    title={
+                                      id.certificate
+                                        ? 'Show certificate details'
+                                        : 'No certificate details available for this identity'
+                                    }
+                                  >
+                                    {id.certificate ? (
+                                      isExpanded ? (
+                                        <ChevronDown className="h-3 w-3 shrink-0 text-txt-muted" />
+                                      ) : (
+                                        <ChevronRight className="h-3 w-3 shrink-0 text-txt-muted" />
+                                      )
+                                    ) : (
+                                      <span className="w-3 shrink-0" />
+                                    )}
+                                    <span className="truncate">{id.comment}</span>
+                                    <span className="shrink-0 font-mono text-[10px] text-txt-muted">
+                                      ({id.keyType})
+                                    </span>
+                                  </button>
+                                  {!id.certificate && (
+                                    <div className="ml-4 text-[10px] text-txt-muted/70">
+                                      No certificate details found on the card
+                                    </div>
+                                  )}
+                                  {isExpanded && id.certificate && (
+                                    <dl className="ml-1 mt-0.5 space-y-0.5 border-l border-border-subtle pl-2 text-[10px] text-txt-muted">
+                                      <div className="flex gap-1">
+                                        <dt className="shrink-0 text-txt-muted/70">Subject:</dt>
+                                        <dd className="truncate text-txt-primary" title={id.certificate.subject}>
+                                          {certSubjectCN(id.certificate.subject)}
+                                        </dd>
+                                      </div>
+                                      {id.certificate.upn && (
+                                        <div className="flex gap-1">
+                                          <dt className="shrink-0 text-txt-muted/70">UPN:</dt>
+                                          <dd className="truncate text-txt-primary">{id.certificate.upn}</dd>
+                                        </div>
+                                      )}
+                                      <div className="flex gap-1">
+                                        <dt className="shrink-0 text-txt-muted/70">Valid:</dt>
+                                        <dd className="truncate text-txt-primary">
+                                          {formatCertDate(id.certificate.validFrom)} – {formatCertDate(id.certificate.validTo)}
+                                        </dd>
+                                      </div>
+                                    </dl>
+                                  )}
+                                </li>
+                              );
+                            })}
                           </ul>
                         )}
                       </li>

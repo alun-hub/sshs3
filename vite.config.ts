@@ -33,6 +33,7 @@ export default defineConfig({
               external: [
                 'ssh2',
                 'node-pty',
+                'pkcs11js',
                 'ssh2-sftp-client',
                 '@aws-sdk/client-s3',
                 '@aws-sdk/lib-storage',
