@@ -523,6 +523,13 @@ describe('SSHPtyManager', () => {
       await manager.createShellSession({ cols: 80, rows: 24 });
 
       const { options } = (mockPtyInstances[0] as any)._spawnArgs;
+      if (process.platform === 'win32') {
+        // There's no app-managed agent concept on Windows (no Unix socket
+        // path to hand into env) — createShellSession skips this injection
+        // entirely on win32, by design.
+        expect(options.env.SSH_AUTH_SOCK).toBeUndefined();
+        return;
+      }
       expect(options.env.SSH_AUTH_SOCK).toBe('/tmp/app-managed-agent.sock');
     });
 

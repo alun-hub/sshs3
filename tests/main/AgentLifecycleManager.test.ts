@@ -106,6 +106,15 @@ describe('AgentLifecycleManager', () => {
     // calls ensureAgent() before the first spawn has resolved.
     const [first, second] = await Promise.all([AgentLifecycleManager.ensureAgent(), AgentLifecycleManager.ensureAgent()]);
 
+    if (process.platform === 'win32') {
+      // doEnsureAgent() never spawns on Windows (the shared OpenSSH agent
+      // service can't be started on demand) — the race-sharing behavior
+      // still applies, it just resolves to the same "not running" snapshot.
+      expect(second).toEqual(first);
+      expect(mockedExecFile).not.toHaveBeenCalled();
+      return;
+    }
+
     expect(first.isRunning).toBe(true);
     expect(first.socketPath).toBe('/tmp/managed-agent-race.sock');
     expect(second).toEqual(first);
