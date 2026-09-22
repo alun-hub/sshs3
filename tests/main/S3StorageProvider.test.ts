@@ -347,6 +347,7 @@ describe('S3StorageProvider', () => {
         size: 0,
         isDirectory: true,
         mtime: formatDate(creationDate),
+        mtimeMs: creationDate.getTime(),
       });
       expect(entries[1]).toEqual({
         name: 'beta-bucket',
@@ -354,6 +355,7 @@ describe('S3StorageProvider', () => {
         size: 0,
         isDirectory: true,
         mtime: formatDate(creationDate),
+        mtimeMs: creationDate.getTime(),
       });
 
       // Verify date format follows yyyy-mm-dd HH:mm
@@ -413,6 +415,7 @@ describe('S3StorageProvider', () => {
         size: 2048,
         isDirectory: false,
         mtime: formatDate(fileDate),
+        mtimeMs: fileDate.getTime(),
         mimeType: 'application/zip',
       });
       expect(entries[3]).toEqual({
@@ -421,6 +424,7 @@ describe('S3StorageProvider', () => {
         size: 256,
         isDirectory: false,
         mtime: formatDate(fileDate),
+        mtimeMs: fileDate.getTime(),
         mimeType: 'text/plain',
       });
     });
@@ -469,6 +473,7 @@ describe('S3StorageProvider', () => {
         size: 512,
         isDirectory: false,
         mtime: formatDate(fileDate),
+        mtimeMs: fileDate.getTime(),
         mimeType: 'text/markdown',
       });
     });
@@ -565,6 +570,7 @@ describe('S3StorageProvider', () => {
         size: 4096,
         isDirectory: false,
         mtime: formatDate(modifiedDate),
+        mtimeMs: modifiedDate.getTime(),
         mimeType: 'application/pdf',
       });
       expect(entry.mtime).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
@@ -624,6 +630,7 @@ describe('S3StorageProvider', () => {
         size: 0,
         isDirectory: true,
         mtime: formatDate(folderDate),
+        mtimeMs: folderDate.getTime(),
       });
     });
 

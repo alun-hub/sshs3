@@ -306,7 +306,7 @@ describe('FileList Component', () => {
       expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('tar');
     });
 
-    it('shows "(ingen träff)" when no file matches typed characters', () => {
+    it('shows "(no match)" when no file matches typed characters', () => {
       const onSelectionChange = vi.fn();
       const { container } = render(
         <FileList
@@ -324,7 +324,7 @@ describe('FileList Component', () => {
       fireEvent.keyDown(listContainer, { key: 'z' });
 
       expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('zz');
-      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('ingen träff');
+      expect(screen.getByTestId('typeahead-badge')).toHaveTextContent('no match');
     });
 
     it('ignores modifier keys like Ctrl and Meta', () => {

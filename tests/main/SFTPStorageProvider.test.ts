@@ -479,6 +479,7 @@ describe('SFTPStorageProvider', () => {
         size: 4096,
         isDirectory: true,
         mtime: formatDate(date1),
+        mtimeMs: date1.getTime(),
         mimeType: undefined,
         permissions: '755',
       });
@@ -488,6 +489,7 @@ describe('SFTPStorageProvider', () => {
         size: 1048576,
         isDirectory: false,
         mtime: formatDate(date2),
+        mtimeMs: date2.getTime(),
         mimeType: 'application/pdf',
         permissions: '644',
       });
@@ -632,6 +634,7 @@ describe('SFTPStorageProvider', () => {
         size: 54321,
         isDirectory: false,
         mtime: formatDate(mtimeDate),
+        mtimeMs: mtimeDate.getTime(),
         mimeType: 'text/plain',
         permissions: '644',
       });
@@ -657,6 +660,7 @@ describe('SFTPStorageProvider', () => {
         size: 4096,
         isDirectory: true,
         mtime: formatDate(mtimeDate),
+        mtimeMs: mtimeDate.getTime(),
         mimeType: undefined,
         permissions: '755',
       });
