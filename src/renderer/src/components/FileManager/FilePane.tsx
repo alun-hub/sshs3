@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowUp,
@@ -98,15 +98,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
   const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
+  const latestRequestRef = useRef<string>('');
 
   const load = useCallback(
     async (force?: boolean) => {
+      const requestKey = `${source.providerId}::${currentPath}`;
+      latestRequestRef.current = requestKey;
       setLoading(true);
       setError(null);
       try {
         const result = await window.multissh.storageList(source.providerId, currentPath, force);
+        // A newer pane connection/navigation may have started while this request was
+        // in flight (e.g. switching profiles before a slow SFTP host responds) — discard
+        // a stale response instead of clobbering the pane with the wrong host's content.
+        if (latestRequestRef.current !== requestKey) return;
         setEntries(result);
       } catch (err) {
+        if (latestRequestRef.current !== requestKey) return;
         if (source.sourceType === 'local') {
           const home = await window.multissh.getHomeDir?.();
           if (home && currentPath !== home) {
@@ -125,7 +133,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         setError(msg);
         setEntries([]);
       } finally {
-        setLoading(false);
+        if (latestRequestRef.current === requestKey) setLoading(false);
       }
     },
     [source.providerId, source.sourceType, currentPath, onPathChange]
