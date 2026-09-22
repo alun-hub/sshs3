@@ -171,6 +171,32 @@ describe('LocalContentSearchService', () => {
     expect(done[0]).toMatchObject({ cancelled: true });
   });
 
+  it('stops scanning a single large file immediately when cancelled mid-file, instead of finishing it', async () => {
+    // Regression test: the per-line loop used to check only `hasHitCap()`, not the
+    // cancellation flag, so cancelling while a worker was deep inside one large file let
+    // it keep matching every remaining line before the outer loop noticed the cancel.
+    const lineCount = 500_000;
+    const content = 'this line contains needle\n'.repeat(lineCount);
+    await fsp.writeFile(path.join(tempDir, 'huge.txt'), content);
+
+    const results: any[] = [];
+    const done: any[] = [];
+    const { searchId } = await service.startSearch(
+      registry,
+      baseOptions({ maxFileSizeBytes: 100 * 1024 * 1024, maxResults: 10_000_000 }),
+      (e) => results.push(...e.matches),
+      () => {},
+      (e) => done.push(e)
+    );
+
+    service.cancelSearch(searchId);
+
+    await waitFor(() => done.length === 1, 5000);
+
+    expect(done[0]).toMatchObject({ cancelled: true });
+    expect(results.length).toBeLessThan(lineCount);
+  });
+
   it('stops accepting matches once maxResults is hit and marks the result truncated', async () => {
     for (let i = 0; i < 5; i++) {
       await fsp.writeFile(path.join(tempDir, `file${i}.txt`), 'needle\n');

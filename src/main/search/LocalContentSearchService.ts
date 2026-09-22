@@ -31,6 +31,10 @@ interface Candidate {
   displayPath: string;
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
 /**
  * Searches inside local files by walking the directory tree with plain Node `fs` and
  * scanning matching files in memory — deliberately the same shape as
@@ -60,6 +64,7 @@ export class LocalContentSearchService {
     const maxFileSizeBytes = options.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
     const matcher = buildLineMatcher(options.query, options.mode, options.caseSensitive);
 
+    const abortController = new AbortController();
     let cancelled = false;
     let timedOut = false;
     let finished = false;
@@ -89,6 +94,7 @@ export class LocalContentSearchService {
 
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
+      abortController.abort();
       onError({ searchId, message: 'Search timed out after 120 seconds', fatal: false });
     }, SEARCH_TIMEOUT_MS);
 
@@ -109,6 +115,7 @@ export class LocalContentSearchService {
     this.sessions.set(searchId, {
       cancel: () => {
         cancelled = true;
+        abortController.abort();
       },
     });
 
@@ -116,14 +123,24 @@ export class LocalContentSearchService {
       if (shouldStop()) return;
       let entries;
       try {
-        entries = await fsp.readdir(dir, { withFileTypes: true });
+        // `signal` is supported by Node's fs.promises.readdir at runtime (verified against the
+        // bundled Node 22) but missing from @types/node's overloads for it. Assigning through a
+        // typed variable (rather than casting the call's own literal) avoids losing the
+        // `withFileTypes: true` overload resolution that an `as any` on the literal would erase.
+        const readdirOptions: { withFileTypes: true; signal?: AbortSignal } = {
+          withFileTypes: true,
+          signal: abortController.signal,
+        };
+        entries = await fsp.readdir(dir, readdirOptions);
       } catch (err) {
-        onError({
-          searchId,
-          path: dir,
-          message: err instanceof Error ? err.message : String(err),
-          fatal: false,
-        });
+        if (!isAbortError(err)) {
+          onError({
+            searchId,
+            path: dir,
+            message: err instanceof Error ? err.message : String(err),
+            fatal: false,
+          });
+        }
         return;
       }
 
@@ -146,9 +163,10 @@ export class LocalContentSearchService {
 
         let size: number;
         try {
-          size = (await fsp.stat(fullPath)).size;
+          // Same @types/node gap as above: fsp.stat supports `signal` at runtime.
+          size = (await fsp.stat(fullPath, { signal: abortController.signal } as any)).size;
         } catch {
-          continue; // Gone/inaccessible between readdir and stat — skip quietly.
+          continue; // Gone/inaccessible between readdir and stat, or aborted — skip quietly.
         }
         if (size > maxFileSizeBytes) {
           onError({
@@ -173,11 +191,13 @@ export class LocalContentSearchService {
           scannedCount += 1;
           currentPath = candidate.displayPath;
           try {
-            const buf = await fsp.readFile(candidate.path);
+            const buf = await fsp.readFile(candidate.path, { signal: abortController.signal });
             if (isLikelyBinary(buf)) continue;
             const lines = buf.toString('utf-8').split('\n');
             for (let i = 0; i < lines.length; i++) {
-              if (hasHitCap()) break;
+              // Checked every line (not just per file) so cancelling mid-scan of one very
+              // large file takes effect immediately instead of waiting for it to finish.
+              if (shouldStop()) break;
               const offsets = matcher(lines[i]);
               if (!offsets) continue;
               matchIdCounter += 1;
@@ -196,12 +216,14 @@ export class LocalContentSearchService {
               else scheduleFlush();
             }
           } catch (err) {
-            onError({
-              searchId,
-              path: candidate.path,
-              message: err instanceof Error ? err.message : String(err),
-              fatal: false,
-            });
+            if (!isAbortError(err)) {
+              onError({
+                searchId,
+                path: candidate.path,
+                message: err instanceof Error ? err.message : String(err),
+                fatal: false,
+              });
+            }
           }
         }
       };
