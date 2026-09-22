@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.23] - 2026-09-22
+
+### Fixed
+- Fixed two tests that deterministically failed the Windows leg of the release build (blocking every release since 0.2.21): both asserted Unix-only `ssh-agent` spawn/injection behavior without accounting for `process.platform === 'win32'`, where that's intentionally skipped ([AgentLifecycleManager.test.ts](tests/main/AgentLifecycleManager.test.ts), [SSHPtyManager.test.ts](tests/main/SSHPtyManager.test.ts)).
+
+---
+
 ## [0.2.22] - 2026-09-22
 
 ### Added
