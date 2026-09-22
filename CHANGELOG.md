@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.22] - 2026-09-22
+
+### Added
+- New **directory sync** between any two hosts (local/SFTP/S3, including remote↔remote): right-click a folder in the dual-pane file manager and choose "Sync to..." to compute a size+mtime diff against a target (defaulting to the other pane), review a New/Changed/Only-in-target report — including a per-file content **Compare** view — choose what to apply, and optionally delete files missing from the source. Sync pairs can be saved and re-run as named profiles from a "Saved Sync Profiles" list, always re-diffing before applying ([DirectorySyncService.ts](src/main/dirsync/DirectorySyncService.ts), [DirectorySyncModal.tsx](src/renderer/src/components/FileManager/DirectorySyncModal.tsx), [FileDiffModal.tsx](src/renderer/src/components/FileManager/FileDiffModal.tsx)).
+- `IStorageProvider` gained an optional `setModifiedTime()`, implemented for local disk and SFTP, so a directory sync copy preserves the source's original modification time on the target instead of taking the write time — otherwise every synced file would look "changed" again on the very next re-sync ([storage.ts](src/shared/types/storage.ts), [LocalStorageProvider.ts](src/main/storage/LocalStorageProvider.ts), [SFTPStorageProvider.ts](src/main/storage/SFTPStorageProvider.ts)).
+
+---
+
 ## [0.2.21] - 2026-09-21
 
 ### Added
