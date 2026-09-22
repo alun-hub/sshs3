@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
+import { quoteShellArg } from '../search/shellQuote';
 
 export interface FileTailDataEvent {
   tailId: string;
@@ -23,10 +24,6 @@ interface ActiveTailSession {
   providerId: string;
   remotePath: string;
   stop: () => void;
-}
-
-function quotePosixPath(p: string): string {
-  return `'${p.replace(/'/g, "'\\''")}'`;
 }
 
 export class FileTailService {
@@ -90,7 +87,7 @@ export class FileTailService {
         const rawSshClient = (provider as any).client?.client;
         if (rawSshClient && typeof rawSshClient.exec === 'function') {
           const resolvedPath = await provider.resolveRemotePath(remotePath);
-          const cmd = `tail -n 0 -f ${quotePosixPath(resolvedPath)}`;
+          const cmd = `tail -n 0 -f ${quoteShellArg(resolvedPath)}`;
 
           await new Promise<void>((resolve, reject) => {
             rawSshClient.exec(cmd, (err: any, stream: any) => {

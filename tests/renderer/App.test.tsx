@@ -55,6 +55,13 @@ describe('App Component', () => {
       profilesGet: vi.fn().mockResolvedValue({ ssh: [], s3: [] }),
       profilesSaveSSH: vi.fn().mockResolvedValue(undefined),
       getHostname: vi.fn().mockResolvedValue('my-laptop'),
+      onSearchResult: vi.fn(() => vi.fn()),
+      onSearchProgress: vi.fn(() => vi.fn()),
+      onSearchError: vi.fn(() => vi.fn()),
+      onSearchDone: vi.fn(() => vi.fn()),
+      searchStart: vi.fn().mockResolvedValue({ searchId: 'search-1' }),
+      searchCancel: vi.fn().mockResolvedValue(undefined),
+      searchPreview: vi.fn().mockResolvedValue({ content: '', startLine: 1 }),
     } as any;
   });
 
@@ -261,6 +268,16 @@ describe('App Component', () => {
     });
 
     expect(screen.getAllByRole('tab').length).toBe(1);
+  });
+
+  it('opens Quick Connect on Ctrl+K but not on Ctrl+Shift+K (reserved for Search in Files)', async () => {
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true, shiftKey: true });
+    expect(screen.queryByText('Connection Manager')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.getByText('Connection Manager')).toBeInTheDocument();
   });
 
   it('reuses closed tab numbers instead of incrementing endlessly', async () => {

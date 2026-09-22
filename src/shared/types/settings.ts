@@ -24,6 +24,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   // guaranteed. Letters don't have that problem — Shift+N is always reported as 'N'.
   { id: 'nextPane', name: 'Next Split Pane', defaultKeys: 'Ctrl+Shift+N', category: 'Terminal' },
   { id: 'prevPane', name: 'Previous Split Pane', defaultKeys: 'Ctrl+Shift+P', category: 'Terminal' },
+  { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = SHORTCUT_DEFINITIONS.reduce(

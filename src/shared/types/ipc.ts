@@ -28,6 +28,15 @@ import type {
 } from './dotfiles';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
 import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
+import type {
+  SearchDoneEvent,
+  SearchErrorEvent,
+  SearchPreviewResult,
+  SearchProgressEvent,
+  SearchResultEvent,
+  SearchStartOptions,
+  SearchStartResult,
+} from './search';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -154,6 +163,15 @@ export const IPC_CHANNELS = {
   FILE_TAIL_STOP: 'file:tail:stop',
   FILE_TAIL_DATA: 'file:tail:data',
   FILE_TAIL_ERROR: 'file:tail:error',
+
+  // Content search ("search inside files")
+  SEARCH_START: 'search:start',
+  SEARCH_CANCEL: 'search:cancel',
+  SEARCH_PREVIEW: 'search:preview',
+  SEARCH_RESULT: 'search:result',
+  SEARCH_PROGRESS: 'search:progress',
+  SEARCH_ERROR: 'search:error',
+  SEARCH_DONE: 'search:done',
 
   // General
   APP_GET_VERSION: 'app:get-version',
@@ -386,6 +404,20 @@ export interface MultiSSHApi {
   fileTailStop(tailId: string): Promise<void>;
   onFileTailData(callback: (event: { tailId: string; chunk: string }) => void): () => void;
   onFileTailError(callback: (event: { tailId: string; error: string }) => void): () => void;
+
+  // Content search ("search inside files")
+  searchStart(options: SearchStartOptions): Promise<SearchStartResult>;
+  searchCancel(searchId: string): Promise<void>;
+  searchPreview(
+    providerId: string,
+    remotePath: string,
+    lineNumber: number,
+    contextLines: number
+  ): Promise<SearchPreviewResult>;
+  onSearchResult(callback: (event: SearchResultEvent) => void): () => void;
+  onSearchProgress(callback: (event: SearchProgressEvent) => void): () => void;
+  onSearchError(callback: (event: SearchErrorEvent) => void): () => void;
+  onSearchDone(callback: (event: SearchDoneEvent) => void): () => void;
 
   // Window / General
   getVersion(): Promise<string>;

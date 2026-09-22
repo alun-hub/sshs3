@@ -22,9 +22,11 @@ interface PaneState {
 
 interface DualPaneExplorerProps {
   onOpenTerminal?: (config: SSHConnectionConfig, path: string) => void;
+  /** Current keyboard shortcut bindings, forwarded to each pane for Search in Files. */
+  shortcuts?: Record<string, string>;
 }
 
-export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTerminal }) => {
+export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTerminal, shortcuts }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
@@ -385,6 +387,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.left.source.providerId, path) : undefined}
             refreshToken={refreshToken}
             otherPane={{ ...panes.right.source, path: panes.right.path }}
+            shortcuts={shortcuts}
           />
           <FilePane
             side="right"
@@ -396,6 +399,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.right.source.providerId, path) : undefined}
             refreshToken={refreshToken}
             otherPane={{ ...panes.left.source, path: panes.left.path }}
+            shortcuts={shortcuts}
           />
         </div>
         <TransferQueueDrawer />

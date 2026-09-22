@@ -33,6 +33,7 @@ import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from './dirs
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
+import { SearchOrchestrator } from './search/SearchOrchestrator';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
@@ -47,6 +48,7 @@ import {
 } from './smartcard/SmartcardSyncService';
 import { encryptSecretValue, decryptSecretValue, isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
+import type { SearchStartOptions } from '../shared/types/search';
 import {
   IPC_CHANNELS,
   type StorageConnectConfig,
@@ -118,6 +120,7 @@ export interface IpcBridgeOptions {
   directorySyncProfileStore?: DirectorySyncProfileStore;
   fileEditorService?: FileEditorService;
   fileTailService?: FileTailService;
+  searchOrchestrator?: SearchOrchestrator;
   awsSsoAuthService?: AwsSsoAuthService;
   syncConfigStore?: SyncConfigStore;
   syncCryptoService?: SyncCryptoService;
@@ -139,6 +142,7 @@ export class IpcBridge {
   public readonly directorySyncProfileStore: DirectorySyncProfileStore;
   public readonly fileEditorService: FileEditorService;
   public readonly fileTailService: FileTailService;
+  public readonly searchOrchestrator: SearchOrchestrator;
   public readonly awsSsoAuthService: AwsSsoAuthService;
   public readonly syncConfigStore: SyncConfigStore;
   public readonly syncCryptoService: SyncCryptoService;
@@ -193,6 +197,7 @@ export class IpcBridge {
     this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
     this.fileTailService = options.fileTailService ?? new FileTailService();
+    this.searchOrchestrator = options.searchOrchestrator ?? new SearchOrchestrator();
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
@@ -227,6 +232,7 @@ export class IpcBridge {
     this.registerConnectionTestHandlers();
     this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
+    this.registerSearchHandlers();
     this.registerGeneralHandlers();
     this.registerDirSyncHandlers();
     this.setupEventListeners();
@@ -2192,6 +2198,62 @@ export class IpcBridge {
     );
   }
 
+  private registerSearchHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.SEARCH_START,
+      async (_event, options: SearchStartOptions) => {
+        return await this.searchOrchestrator.startSearch(
+          this.storageRegistry,
+          options,
+          (resultEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.SEARCH_RESULT, resultEvent);
+            }
+          },
+          (errorEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.SEARCH_ERROR, errorEvent);
+            }
+          },
+          (doneEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.SEARCH_DONE, doneEvent);
+            }
+          },
+          (progressEvent) => {
+            const webContents = this.getWebContents();
+            if (webContents && !webContents.isDestroyed?.()) {
+              webContents.send(IPC_CHANNELS.SEARCH_PROGRESS, progressEvent);
+            }
+          }
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.SEARCH_CANCEL,
+      async (_event, searchId: string) => {
+        this.searchOrchestrator.cancelSearch(searchId);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.SEARCH_PREVIEW,
+      async (_event, providerId: string, remotePath: string, lineNumber: number, contextLines: number) => {
+        return await this.searchOrchestrator.previewLines(
+          this.storageRegistry,
+          providerId,
+          remotePath,
+          lineNumber,
+          contextLines
+        );
+      }
+    );
+  }
+
   private registerGeneralHandlers(): void {
     this.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
       try {
@@ -2564,6 +2626,7 @@ export class IpcBridge {
     await this.storageRegistry.disconnectAll?.();
     await this.fileEditorService.dispose();
     this.fileTailService.dispose();
+    this.searchOrchestrator.dispose();
     if (this.autoSyncTimer) {
       clearTimeout(this.autoSyncTimer);
       this.autoSyncTimer = null;

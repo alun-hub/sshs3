@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileCode,
   FileJson,
+  FileSearch,
   FileText,
   FolderOpen,
   FolderPlus,
@@ -43,7 +44,10 @@ import { AddToDotfilePoolModal } from './AddToDotfilePoolModal';
 import { FileEditorModal } from './FileEditorModal';
 import { DirectorySyncModal, type DirectorySyncModalSource } from './DirectorySyncModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { SearchModal } from './SearchModal';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
+import { comboFromKeyboardEvent } from '../../lib/shortcuts';
+import { DEFAULT_SHORTCUTS } from '@shared/types/settings';
 
 interface FilePaneProps {
   side: PaneSide;
@@ -56,6 +60,8 @@ interface FilePaneProps {
   refreshToken: number;
   /** The sibling pane's current connection + path, offered as a one-click target in "Sync to...". */
   otherPane?: DirectorySyncModalSource;
+  /** Current keyboard shortcut bindings, used to open Search in Files while this pane has focus. */
+  shortcuts?: Record<string, string>;
 }
 
 const SOURCE_ICONS: Record<SourceType, React.ComponentType<{ className?: string }>> = {
@@ -74,6 +80,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onOpenTerminal,
   refreshToken,
   otherPane,
+  shortcuts,
 }) => {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,6 +103,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
   const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
   const latestRequestRef = useRef<string>('');
@@ -482,14 +490,41 @@ export const FilePane: React.FC<FilePaneProps> = ({
         : [
             { key: 'newfolder', label: 'New Folder', icon: FolderPlus, onSelect: () => void handleNewFolder() },
             { key: 'refresh', label: 'Refresh', icon: RefreshCw, onSelect: () => void load(true) },
+            {
+              key: 'search-in-files',
+              label: 'Search in Files...',
+              icon: Search,
+              disabled: source.sourceType === 'local',
+              onSelect: () => setSearchOpen(true),
+            },
           ];
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
   const isReceivingForeignDrag = activeDrag !== null && activeDrag.fromPane !== side;
 
+  const handlePaneKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    const isInput =
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+    if (isInput) return;
+
+    const combo = comboFromKeyboardEvent(e);
+    if (combo === null) return;
+    const binding = (shortcuts || DEFAULT_SHORTCUTS)['searchInFiles'];
+    if (binding && combo.toLowerCase() === binding.toLowerCase()) {
+      e.preventDefault();
+      setSearchOpen(true);
+    }
+  };
+
   return (
     <div
       className="flex h-full min-w-0 flex-1 flex-col rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-sm"
+      onKeyDown={handlePaneKeyDown}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -617,6 +652,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
           <Search className="h-4 w-4" />
         </button>
+        {source.sourceType !== 'local' && (
+          <button
+            type="button"
+            title="Search in Files..."
+            onClick={() => setSearchOpen(true)}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            <FileSearch className="h-4 w-4" />
+          </button>
+        )}
         {source.sourceType === 'sftp' && onOpenTerminal && (
           <button
             type="button"
@@ -826,6 +871,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             : null
         }
         otherPane={otherPane ?? null}
+      />
+
+      <SearchModal
+        open={searchOpen}
+        providerId={source.providerId}
+        sourceType={source.sourceType}
+        rootPath={currentPath}
+        onClose={() => setSearchOpen(false)}
+        onJumpToFile={(path) => onPathChange(parentPath(path))}
       />
 
       {dotfilesFeedback && (

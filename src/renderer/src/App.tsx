@@ -446,8 +446,9 @@ export const App: React.FC = () => {
 
       if (isInput) return;
 
-      // Quick Connect shortcut Ctrl+K
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      // Quick Connect shortcut Ctrl+K (not Ctrl+Shift+K, which is a separate,
+      // user-rebindable shortcut — see 'searchInFiles' below).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setProfilesModalOpen(true);
         return;
@@ -650,7 +651,7 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   <div data-testid={`filemanager-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">
-                    <DualPaneExplorer onOpenTerminal={handleOpenTerminalAt} />
+                    <DualPaneExplorer onOpenTerminal={handleOpenTerminalAt} shortcuts={settings.shortcuts} />
                   </div>
                 )}
               </div>

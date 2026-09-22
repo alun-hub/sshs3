@@ -43,6 +43,15 @@ import type {
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
+import type {
+  SearchDoneEvent,
+  SearchErrorEvent,
+  SearchPreviewResult,
+  SearchProgressEvent,
+  SearchResultEvent,
+  SearchStartOptions,
+  SearchStartResult,
+} from '../shared/types/search';
 
 export const api: MultiSSHApi = {
   // Terminal
@@ -453,6 +462,53 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.FILE_TAIL_ERROR, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.FILE_TAIL_ERROR, listener);
+    };
+  },
+
+  // Content search ("search inside files")
+  searchStart: (options: SearchStartOptions): Promise<SearchStartResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_START, options),
+
+  searchCancel: (searchId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_CANCEL, searchId),
+
+  searchPreview: (
+    providerId: string,
+    remotePath: string,
+    lineNumber: number,
+    contextLines: number
+  ): Promise<SearchPreviewResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_PREVIEW, providerId, remotePath, lineNumber, contextLines),
+
+  onSearchResult: (callback: (event: SearchResultEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: SearchResultEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_RESULT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_RESULT, listener);
+    };
+  },
+
+  onSearchProgress: (callback: (event: SearchProgressEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: SearchProgressEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_PROGRESS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_PROGRESS, listener);
+    };
+  },
+
+  onSearchError: (callback: (event: SearchErrorEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: SearchErrorEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_ERROR, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ERROR, listener);
+    };
+  },
+
+  onSearchDone: (callback: (event: SearchDoneEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: SearchDoneEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_DONE, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_DONE, listener);
     };
   },
 
