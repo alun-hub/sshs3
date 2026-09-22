@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.24] - 2026-09-22
+
+### Added
+- **Certificate details in "Cached smartcard identities"** — each cached identity in the top-bar smartcard popover (`TabBar.tsx`) can now be expanded to show its certificate's Subject, UPN (Microsoft `otherName` SAN, common on PIV/CAC/SITHS cards), and validity period. Reads the certificate directly from the same PKCS#11 module (`.so`/`.dll`) already used for `ssh-add -s`, via a new `pkcs11js` native binding ([SmartcardCertificateReader.ts](src/main/smartcard/SmartcardCertificateReader.ts)) — not a vendor CLI tool like OpenSC's `pkcs11-tool`, which isn't installed at all for providers such as Net iD. Matches each certificate to its `ssh-add`-reported identity by independently computing the SSH fingerprint of the certificate's public key ([CertificateParser.ts](src/main/smartcard/CertificateParser.ts)), including a small hand-written DER walker for the UPN extension, which Node's built-in `X509Certificate` doesn't decode.
+
+---
+
 ## [0.2.23] - 2026-09-22
 
 ### Fixed
