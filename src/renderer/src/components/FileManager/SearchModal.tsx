@@ -98,8 +98,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   }, [open, stopActiveSearch]);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+    async () => {
       if (!query.trim() || searching) return;
 
       stopActiveSearch();
@@ -177,16 +176,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <input
               ref={queryInputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleSubmit();
+                }
+              }}
               placeholder="Search inside files..."
               className="flex-1 rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
             />
+            {/* Always a plain button, never type="submit": swapping a button's type at
+                the same screen position inside a <form> mid-click let Chromium treat a
+                single click on "Cancel" as also submitting the form once React
+                re-rendered it into the "Search" button — restarting the very search
+                that click had just cancelled. Handling Enter and the click explicitly,
+                with no <form> at all, removes that whole class of native-submit race. */}
             {searching ? (
               <button
                 type="button"
@@ -197,7 +208,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               </button>
             ) : (
               <button
-                type="submit"
+                type="button"
+                onClick={() => void handleSubmit()}
                 disabled={!query.trim()}
                 className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
               >
@@ -266,7 +278,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               </label>
             </div>
           )}
-        </form>
+        </div>
 
         {error && (
           <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
