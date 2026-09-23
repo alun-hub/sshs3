@@ -37,7 +37,15 @@ import type {
   SearchStartOptions,
   SearchStartResult,
 } from './search';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from './kubernetes';
+import type {
+  K8sClusterNode,
+  K8sNamespaceNode,
+  K8sPodNode,
+  K8sTerminalTarget,
+  K8sPodDescription,
+  K8sPortForwardTarget,
+  K8sActivePortForward,
+} from './kubernetes';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -216,6 +224,15 @@ export const IPC_CHANNELS = {
   K8S_LOG_STOP: 'k8s-log:stop',
   K8S_LOG_DATA: 'k8s-log:data',
   K8S_LOG_END: 'k8s-log:end',
+
+  // Kubernetes / OpenShift pod describe & details
+  K8S_POD_DESCRIBE: 'k8s:pod-describe',
+
+  // Kubernetes / OpenShift port forward
+  K8S_PORT_FORWARD_START: 'k8s-port-forward:start',
+  K8S_PORT_FORWARD_STOP: 'k8s-port-forward:stop',
+  K8S_PORT_FORWARD_LIST: 'k8s-port-forward:list',
+  K8S_PORT_FORWARD_EVENT: 'k8s-port-forward:event',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -458,6 +475,11 @@ export interface MultiSSHApi {
   k8sLogStop(sessionId: string): Promise<void>;
   onK8sLogData(callback: (sessionId: string, data: string) => void): () => void;
   onK8sLogEnd(callback: (sessionId: string) => void): () => void;
+  k8sDescribePod(contextName: string, namespace: string, podName: string): Promise<K8sPodDescription>;
+  k8sStartPortForward(target: K8sPortForwardTarget): Promise<K8sActivePortForward>;
+  k8sStopPortForward(id: string): Promise<boolean>;
+  k8sListPortForwards(): Promise<K8sActivePortForward[]>;
+  onK8sPortForwardEvent(callback: (activeForwards: K8sActivePortForward[]) => void): () => void;
 
   // Window / General
   getVersion(): Promise<string>;

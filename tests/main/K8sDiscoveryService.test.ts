@@ -6,6 +6,9 @@ const loadFromDefaultMock = vi.fn();
 const loadFromOptionsMock = vi.fn();
 const listNamespaceMock = vi.fn();
 const listNamespacedPodMock = vi.fn();
+const readNamespacedPodMock = vi.fn();
+const listNamespacedEventMock = vi.fn();
+const dumpYamlMock = vi.fn((obj: any) => `yaml-output: ${obj?.metadata?.name || 'unknown'}`);
 const coreV1ApiConstructorMock = vi.fn();
 
 const listClusterCustomObjectMock = vi.fn();
@@ -46,11 +49,13 @@ vi.mock('@kubernetes/client-node', () => {
       return {
         listNamespace: listNamespaceMock,
         listNamespacedPod: listNamespacedPodMock,
+        readNamespacedPod: readNamespacedPodMock,
+        listNamespacedEvent: listNamespacedEventMock,
       };
     });
   }
 
-  return { KubeConfig, CoreV1Api, CustomObjectsApi };
+  return { KubeConfig, CoreV1Api, CustomObjectsApi, dumpYaml: dumpYamlMock };
 });
 
 import { K8sDiscoveryService } from '../../src/main/services/K8sDiscoveryService';
@@ -263,6 +268,134 @@ describe('K8sDiscoveryService', () => {
       const svc = new K8sDiscoveryService('/fake/kubeconfig');
       const pods = await svc.listPods('default', 'default');
       expect(pods[0].containers[0]).toEqual({ name: 'c', image: 'img', ready: false, state: 'unknown' });
+    });
+  });
+
+  describe('describePod', () => {
+    it('returns full pod details, status, conditions, container details and sorted events', async () => {
+      readNamespacedPodMock.mockResolvedValueOnce({
+        metadata: {
+          name: 'frontend-xyz',
+          namespace: 'production',
+          creationTimestamp: new Date('2026-09-23T12:00:00Z'),
+          labels: { app: 'frontend', env: 'prod' },
+        },
+        spec: {
+          nodeName: 'worker-1',
+          containers: [
+            {
+              name: 'web',
+              image: 'nginx:alpine',
+              ports: [{ containerPort: 80, protocol: 'TCP' }],
+              command: ['nginx', '-g', 'daemon off;'],
+            },
+          ],
+        },
+        status: {
+          phase: 'Running',
+          podIP: '10.244.0.5',
+          hostIP: '192.168.1.10',
+          startTime: new Date('2026-09-23T12:01:00Z'),
+          conditions: [
+            {
+              type: 'Ready',
+              status: 'True',
+              lastTransitionTime: new Date('2026-09-23T12:01:05Z'),
+            },
+          ],
+          containerStatuses: [
+            {
+              name: 'web',
+              ready: true,
+              restartCount: 2,
+              image: 'nginx:alpine@sha256:123',
+              state: { running: { startedAt: new Date('2026-09-23T12:01:02Z') } },
+            },
+          ],
+        },
+      });
+
+      listNamespacedEventMock.mockResolvedValueOnce({
+        items: [
+          {
+            type: 'Normal',
+            reason: 'Scheduled',
+            message: 'Successfully assigned to worker-1',
+            count: 1,
+            lastTimestamp: new Date('2026-09-23T12:00:01Z'),
+          },
+          {
+            type: 'Warning',
+            reason: 'BackOff',
+            message: 'Back-off restarting failed container',
+            count: 2,
+            lastTimestamp: new Date('2026-09-23T12:05:00Z'),
+          },
+        ],
+      });
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      const details = await svc.describePod('default', 'production', 'frontend-xyz');
+
+      expect(readNamespacedPodMock).toHaveBeenCalledWith({
+        name: 'frontend-xyz',
+        namespace: 'production',
+      });
+      expect(details.name).toBe('frontend-xyz');
+      expect(details.namespace).toBe('production');
+      expect(details.nodeName).toBe('worker-1');
+      expect(details.podIP).toBe('10.244.0.5');
+      expect(details.hostIP).toBe('192.168.1.10');
+      expect(details.phase).toBe('Running');
+      expect(details.labels).toEqual({ app: 'frontend', env: 'prod' });
+      expect(details.conditions).toHaveLength(1);
+      expect(details.conditions[0].type).toBe('Ready');
+      expect(details.containers).toHaveLength(1);
+      expect(details.containers[0].name).toBe('web');
+      expect(details.containers[0].restartCount).toBe(2);
+      expect(details.containers[0].ports).toEqual([{ containerPort: 80, protocol: 'TCP' }]);
+      expect(details.events).toHaveLength(2);
+      // Events should be sorted newest first
+      expect(details.events[0].reason).toBe('BackOff');
+      expect(details.events[0].type).toBe('Warning');
+      expect(details.yaml).toContain('yaml-output: frontend-xyz');
+    });
+
+    it('falls back to listing namespace events if filtered event query fails', async () => {
+      readNamespacedPodMock.mockResolvedValueOnce({
+        metadata: { name: 'my-pod', namespace: 'default' },
+        spec: { containers: [] },
+        status: { phase: 'Running' },
+      });
+
+      // First call (with fieldSelector) rejects with forbidden/RBAC error
+      listNamespacedEventMock.mockRejectedValueOnce(new Error('Forbidden: fieldSelector not allowed'));
+      // Second call (without fieldSelector) resolves
+      listNamespacedEventMock.mockResolvedValueOnce({
+        items: [
+          {
+            involvedObject: { name: 'my-pod' },
+            type: 'Normal',
+            reason: 'Pulling',
+            message: 'Pulling image',
+            count: 1,
+            lastTimestamp: new Date('2026-09-23T12:00:00Z'),
+          },
+          {
+            involvedObject: { name: 'other-pod' },
+            type: 'Normal',
+            reason: 'Pulling',
+            message: 'Not for my pod',
+            count: 1,
+          },
+        ],
+      });
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      const details = await svc.describePod('default', 'default', 'my-pod');
+
+      expect(details.events).toHaveLength(1);
+      expect(details.events[0].reason).toBe('Pulling');
     });
   });
 

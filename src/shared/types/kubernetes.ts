@@ -3,6 +3,7 @@ export interface K8sContainerNode {
   image: string;
   ready: boolean;
   state: 'running' | 'waiting' | 'terminated' | 'unknown';
+  ports?: Array<{ containerPort: number; name?: string; protocol?: string }>;
 }
 
 export interface K8sPodNode {
@@ -58,3 +59,76 @@ export interface K8sStorageConfig {
   group?: string;
   lastUsedAt?: string;
 }
+
+export interface K8sPodCondition {
+  type: string;
+  status: string;
+  lastTransitionTime?: string;
+  reason?: string;
+  message?: string;
+}
+
+export interface K8sPodContainerStatus {
+  name: string;
+  image: string;
+  ready: boolean;
+  restartCount: number;
+  state: 'running' | 'waiting' | 'terminated' | 'unknown';
+  stateDetails?: {
+    startedAt?: string;
+    reason?: string;
+    message?: string;
+    exitCode?: number;
+    finishedAt?: string;
+  };
+  ports?: Array<{ containerPort: number; name?: string; protocol?: string }>;
+}
+
+export interface K8sPodEvent {
+  type: 'Normal' | 'Warning' | string;
+  reason: string;
+  message: string;
+  count?: number;
+  firstTimestamp?: string;
+  lastTimestamp?: string;
+  source?: string;
+}
+
+export interface K8sPodDescription {
+  name: string;
+  namespace: string;
+  nodeName?: string;
+  phase: string;
+  podIP?: string;
+  hostIP?: string;
+  startTime?: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  conditions: K8sPodCondition[];
+  containers: K8sPodContainerStatus[];
+  initContainers?: K8sPodContainerStatus[];
+  events: K8sPodEvent[];
+  yaml: string;
+}
+
+export interface K8sPortForwardTarget {
+  contextName: string;
+  namespace: string;
+  podName: string;
+  containerPort: number;
+  localPort?: number;
+}
+
+export interface K8sActivePortForward {
+  id: string;
+  contextName: string;
+  namespace: string;
+  podName: string;
+  containerPort: number;
+  localPort: number;
+  activeConnections: number;
+  startedAt: string;
+  status: 'active' | 'error' | 'stopped';
+  error?: string;
+}
+

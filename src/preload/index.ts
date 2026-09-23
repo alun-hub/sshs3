@@ -14,7 +14,15 @@ import {
   type DirSyncScanProgressEvent,
   type DirSyncApplyOptions,
 } from '../shared/types/ipc';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '../shared/types/kubernetes';
+import type {
+  K8sClusterNode,
+  K8sNamespaceNode,
+  K8sPodNode,
+  K8sTerminalTarget,
+  K8sPodDescription,
+  K8sPortForwardTarget,
+  K8sActivePortForward,
+} from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type {
@@ -576,6 +584,35 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.K8S_LOG_END, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.K8S_LOG_END, listener);
+    };
+  },
+
+  k8sDescribePod: (
+    contextName: string,
+    namespace: string,
+    podName: string
+  ): Promise<K8sPodDescription> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_POD_DESCRIBE, contextName, namespace, podName),
+
+  k8sStartPortForward: (target: K8sPortForwardTarget): Promise<K8sActivePortForward> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_START, target),
+
+  k8sStopPortForward: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_STOP, id),
+
+  k8sListPortForwards: (): Promise<K8sActivePortForward[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_LIST),
+
+  onK8sPortForwardEvent: (
+    callback: (activeForwards: K8sActivePortForward[]) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      activeForwards: K8sActivePortForward[]
+    ) => callback(activeForwards);
+    ipcRenderer.on(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, listener);
     };
   },
 

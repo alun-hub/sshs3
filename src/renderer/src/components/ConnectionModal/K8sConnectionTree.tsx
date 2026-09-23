@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ArrowUpRight,
   Box,
   ChevronDown,
   ChevronRight,
   Cpu,
   Folder,
+  Info,
   Loader2,
   Network,
   RefreshCw,
@@ -14,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '@shared/types/kubernetes';
+import { K8sPodDetailModal } from '../K8s/K8sPodDetailModal';
+import { K8sPortForwardModal } from '../K8s/K8sPortForwardModal';
 
 type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T };
 
@@ -55,6 +59,34 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
   const [podsByNamespace, setPodsByNamespace] = useState<Record<string, Loadable<K8sPodNode[]>>>({});
   const [expandedPods, setExpandedPods] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
+  const [describeTarget, setDescribeTarget] = useState<{
+    contextName: string;
+    namespace: string;
+    podName: string;
+  } | null>(null);
+  const [portForwardTarget, setPortForwardTarget] = useState<{
+    contextName: string;
+    namespace: string;
+    podName: string;
+    containerPort?: number;
+  } | null>(null);
+  const [portForwardModalOpen, setPortForwardModalOpen] = useState(false);
+  const [activePortForwardsCount, setActivePortForwardsCount] = useState(0);
+
+  useEffect(() => {
+    window.multissh
+      .k8sListPortForwards()
+      .then((list) => setActivePortForwardsCount(list.length))
+      .catch(() => {});
+
+    const unsubscribe = window.multissh.onK8sPortForwardEvent((list) => {
+      setActivePortForwardsCount(list.length);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const loadContexts = () => {
     setContexts({ status: 'loading' });
@@ -157,7 +189,8 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
   }
 
   return (
-    <div className="space-y-2">
+    <>
+      <div className="space-y-2">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-txt-muted pointer-events-none" />
@@ -179,6 +212,23 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            setPortForwardTarget(null);
+            setPortForwardModalOpen(true);
+          }}
+          className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          title="Manage active port forwards"
+        >
+          <Network className="h-3.5 w-3.5 text-sky-400" />
+          Port Forwards
+          {activePortForwardsCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400 px-1">
+              {activePortForwardsCount}
+            </span>
+          )}
+        </button>
         <button
           type="button"
           onClick={handleRefresh}
@@ -304,20 +354,59 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                                 const podExpanded = expandedPods.has(podKey);
                                 return (
                                   <div key={podKey} className="space-y-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => togglePod(podKey)}
-                                      className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover transition-colors"
-                                    >
-                                      {podExpanded ? (
-                                        <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
-                                      ) : (
-                                        <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
-                                      )}
-                                      <Box className="h-3.5 w-3.5 text-indigo-400" />
-                                      <span className="truncate">{pod.name}</span>
-                                      <span className="truncate text-[10px] text-txt-muted">{pod.phase}</span>
-                                    </button>
+                                    <div className="group flex items-center justify-between gap-1 rounded-lg px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover transition-colors">
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePod(podKey)}
+                                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                                      >
+                                        {podExpanded ? (
+                                          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-txt-muted" />
+                                        ) : (
+                                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-txt-muted" />
+                                        )}
+                                        <Box className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+                                        <span className="truncate">{pod.name}</span>
+                                        <span className="truncate text-[10px] text-txt-muted">{pod.phase}</span>
+                                      </button>
+                                      <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDescribeTarget({
+                                              contextName: ctx.contextName,
+                                              namespace: ns.name,
+                                              podName: pod.name,
+                                            });
+                                          }}
+                                          title="Describe pod details & events"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
+                                        >
+                                          <Info className="h-3 w-3" />
+                                          <span className="hidden sm:inline">Describe</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const firstPort = pod.containers.find((c) => c.ports && c.ports.length > 0)?.ports?.[0];
+                                            setPortForwardTarget({
+                                              contextName: ctx.contextName,
+                                              namespace: ns.name,
+                                              podName: pod.name,
+                                              containerPort: firstPort?.containerPort,
+                                            });
+                                            setPortForwardModalOpen(true);
+                                          }}
+                                          title="Port Forward into pod"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
+                                        >
+                                          <ArrowUpRight className="h-3 w-3" />
+                                          <span className="hidden sm:inline">Forward</span>
+                                        </button>
+                                      </div>
+                                    </div>
 
                                     {podExpanded && (
                                       <div className="flex flex-col gap-1 pl-5">
@@ -342,6 +431,24 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                                               </div>
                                             </div>
                                             <div className="flex shrink-0 items-center gap-1.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const port = container.ports?.[0];
+                                                  setPortForwardTarget({
+                                                    contextName: ctx.contextName,
+                                                    namespace: ns.name,
+                                                    podName: pod.name,
+                                                    containerPort: port?.containerPort,
+                                                  });
+                                                  setPortForwardModalOpen(true);
+                                                }}
+                                                title="Port Forward to this container"
+                                                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+                                              >
+                                                <ArrowUpRight className="h-3 w-3" />
+                                                Forward
+                                              </button>
                                               {onViewLogs && (
                                                 <button
                                                   type="button"
@@ -396,7 +503,34 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
           </div>
         );
       })}
-    </div>
+      </div>
+
+      {describeTarget && (
+        <K8sPodDetailModal
+          contextName={describeTarget.contextName}
+          namespace={describeTarget.namespace}
+          podName={describeTarget.podName}
+          onClose={() => setDescribeTarget(null)}
+          onExec={onExec}
+          onViewLogs={onViewLogs}
+          onPortForward={(cName, nName, pName, cPort) => {
+            setPortForwardTarget({
+              contextName: cName,
+              namespace: nName,
+              podName: pName,
+              containerPort: cPort,
+            });
+            setPortForwardModalOpen(true);
+          }}
+        />
+      )}
+
+      <K8sPortForwardModal
+        open={portForwardModalOpen}
+        initialTarget={portForwardTarget ?? undefined}
+        onClose={() => setPortForwardModalOpen(false)}
+      />
+    </>
   );
 };
 

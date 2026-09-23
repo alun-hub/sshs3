@@ -36,6 +36,7 @@ import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
 import { K8sDiscoveryService } from './services/K8sDiscoveryService';
+import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
@@ -64,7 +65,15 @@ import {
   type DirSyncApplyOptions,
 } from '../shared/types/ipc';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '../shared/types/kubernetes';
+import type {
+  K8sClusterNode,
+  K8sNamespaceNode,
+  K8sPodNode,
+  K8sTerminalTarget,
+  K8sPodDescription,
+  K8sPortForwardTarget,
+  K8sActivePortForward,
+} from '../shared/types/kubernetes';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type {
@@ -133,6 +142,7 @@ export interface IpcBridgeOptions {
   k8sDiscoveryService?: K8sDiscoveryService;
   k8sTerminalManager?: K8sTerminalManager;
   k8sLogManager?: K8sLogManager;
+  k8sPortForwardManager?: K8sPortForwardManager;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -158,6 +168,7 @@ export class IpcBridge {
   public readonly k8sDiscoveryService: K8sDiscoveryService;
   public readonly k8sTerminalManager: K8sTerminalManager;
   public readonly k8sLogManager: K8sLogManager;
+  public readonly k8sPortForwardManager: K8sPortForwardManager;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -197,6 +208,7 @@ export class IpcBridge {
   private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
   private onK8sLogData?: (event: { sessionId: string; data: string }) => void;
   private onK8sLogEnd?: (event: { sessionId: string }) => void;
+  private onK8sPortForwardChange?: (list: K8sActivePortForward[]) => void;
 
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
@@ -232,6 +244,7 @@ export class IpcBridge {
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
+    this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -2300,6 +2313,39 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.K8S_LOG_STOP, async (_event, sessionId: string) => {
       this.k8sLogManager.stop(sessionId);
     });
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_POD_DESCRIBE,
+      async (
+        _event,
+        contextName: string,
+        namespace: string,
+        podName: string
+      ): Promise<K8sPodDescription> => {
+        return await this.k8sDiscoveryService.describePod(contextName, namespace, podName);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_PORT_FORWARD_START,
+      async (_event, target: K8sPortForwardTarget): Promise<K8sActivePortForward> => {
+        return await this.k8sPortForwardManager.startPortForward(target);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_PORT_FORWARD_STOP,
+      async (_event, id: string): Promise<boolean> => {
+        return await this.k8sPortForwardManager.stopPortForward(id);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_PORT_FORWARD_LIST,
+      async (): Promise<K8sActivePortForward[]> => {
+        return this.k8sPortForwardManager.listActive();
+      }
+    );
   }
 
   private registerSearchHandlers(): void {
@@ -2691,6 +2737,14 @@ export class IpcBridge {
       }
     };
     this.k8sLogManager.on('end', this.onK8sLogEnd);
+
+    this.onK8sPortForwardChange = (activeForwards) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, activeForwards);
+      }
+    };
+    this.k8sPortForwardManager.on('change', this.onK8sPortForwardChange);
   }
 
   public async dispose(): Promise<void> {
@@ -2728,6 +2782,11 @@ export class IpcBridge {
       this.k8sLogManager.off('end', this.onK8sLogEnd);
     }
     void this.k8sLogManager.stopAll();
+
+    if (this.onK8sPortForwardChange) {
+      this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
+    }
+    void this.k8sPortForwardManager.stopAll();
 
     for (const prompt of this.pendingAskpass.values()) {
       try {

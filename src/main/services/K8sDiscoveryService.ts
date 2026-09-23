@@ -5,6 +5,10 @@ import type {
   K8sClusterNode,
   K8sContainerNode,
   K8sNamespaceNode,
+  K8sPodCondition,
+  K8sPodContainerStatus,
+  K8sPodDescription,
+  K8sPodEvent,
   K8sPodNode,
 } from '../../shared/types/kubernetes';
 
@@ -185,6 +189,11 @@ export class K8sDiscoveryService {
           image: c.image || '',
           ready: status?.ready ?? false,
           state: containerState(status),
+          ports: c.ports?.map((p) => ({
+            containerPort: p.containerPort,
+            name: p.name,
+            protocol: p.protocol,
+          })),
         };
       });
 
@@ -195,5 +204,159 @@ export class K8sDiscoveryService {
         containers,
       };
     });
+  }
+
+  /**
+   * Fetches detailed information, conditions, container statuses, and events for a pod.
+   */
+  public async describePod(
+    contextName: string,
+    namespace: string,
+    podName: string
+  ): Promise<K8sPodDescription> {
+    const client = await this.getApiClient(contextName);
+    const pod = await client.readNamespacedPod({ name: podName, namespace });
+
+    let events: K8sPodEvent[] = [];
+    try {
+      const eventRes = await client.listNamespacedEvent({
+        namespace,
+        fieldSelector: `involvedObject.name=${podName}`,
+      });
+      events = (eventRes.items || []).map((e): K8sPodEvent => ({
+        type: e.type || 'Normal',
+        reason: e.reason || '',
+        message: e.message || '',
+        count: e.count ?? 1,
+        firstTimestamp: e.firstTimestamp ? new Date(e.firstTimestamp).toISOString() : undefined,
+        lastTimestamp: (e.lastTimestamp || e.eventTime)
+          ? new Date(e.lastTimestamp || e.eventTime!).toISOString()
+          : undefined,
+        source: e.source?.component || e.reportingComponent || '',
+      }));
+    } catch {
+      // Fallback: list all namespace events and filter in-memory if fieldSelector is unsupported
+      try {
+        const eventRes = await client.listNamespacedEvent({ namespace });
+        events = (eventRes.items || [])
+          .filter((e) => e.involvedObject?.name === podName)
+          .map((e): K8sPodEvent => ({
+            type: e.type || 'Normal',
+            reason: e.reason || '',
+            message: e.message || '',
+            count: e.count ?? 1,
+            firstTimestamp: e.firstTimestamp ? new Date(e.firstTimestamp).toISOString() : undefined,
+            lastTimestamp: (e.lastTimestamp || e.eventTime)
+              ? new Date(e.lastTimestamp || e.eventTime!).toISOString()
+              : undefined,
+            source: e.source?.component || e.reportingComponent || '',
+          }));
+      } catch {
+        // Events might be inaccessible due to RBAC
+      }
+    }
+
+    // Sort events newest first
+    events.sort((a, b) => {
+      const tA = a.lastTimestamp || a.firstTimestamp || '';
+      const tB = b.lastTimestamp || b.firstTimestamp || '';
+      return tB.localeCompare(tA);
+    });
+
+    const statusByName = new Map(
+      (pod.status?.containerStatuses || []).map((s) => [s.name, s])
+    );
+    const initStatusByName = new Map(
+      (pod.status?.initContainerStatuses || []).map((s) => [s.name, s])
+    );
+
+    const mapContainer = (
+      c: k8s.V1Container,
+      s?: k8s.V1ContainerStatus
+    ): K8sPodContainerStatus => {
+      let state: K8sPodContainerStatus['state'] = 'unknown';
+      let stateDetails: K8sPodContainerStatus['stateDetails'];
+
+      if (s?.state?.running) {
+        state = 'running';
+        stateDetails = {
+          startedAt: s.state.running.startedAt
+            ? new Date(s.state.running.startedAt).toISOString()
+            : undefined,
+        };
+      } else if (s?.state?.waiting) {
+        state = 'waiting';
+        stateDetails = {
+          reason: s.state.waiting.reason,
+          message: s.state.waiting.message,
+        };
+      } else if (s?.state?.terminated) {
+        state = 'terminated';
+        stateDetails = {
+          exitCode: s.state.terminated.exitCode,
+          reason: s.state.terminated.reason,
+          message: s.state.terminated.message,
+          startedAt: s.state.terminated.startedAt
+            ? new Date(s.state.terminated.startedAt).toISOString()
+            : undefined,
+          finishedAt: s.state.terminated.finishedAt
+            ? new Date(s.state.terminated.finishedAt).toISOString()
+            : undefined,
+        };
+      }
+
+      return {
+        name: c.name,
+        image: c.image || '',
+        ready: s?.ready ?? false,
+        restartCount: s?.restartCount ?? 0,
+        state,
+        stateDetails,
+        ports: c.ports?.map((p) => ({
+          containerPort: p.containerPort,
+          name: p.name,
+          protocol: p.protocol,
+        })),
+      };
+    };
+
+    const containers = (pod.spec?.containers || []).map((c) =>
+      mapContainer(c, statusByName.get(c.name))
+    );
+    const initContainers = (pod.spec?.initContainers || []).map((c) =>
+      mapContainer(c, initStatusByName.get(c.name))
+    );
+
+    const conditions: K8sPodCondition[] = (pod.status?.conditions || []).map((c) => ({
+      type: c.type,
+      status: c.status,
+      lastTransitionTime: c.lastTransitionTime
+        ? new Date(c.lastTransitionTime).toISOString()
+        : undefined,
+      reason: c.reason,
+      message: c.message,
+    }));
+
+    const { dumpYaml } = await loadK8sClient();
+    const yaml = dumpYaml ? dumpYaml(pod) : JSON.stringify(pod, null, 2);
+
+    return {
+      name: pod.metadata?.name || podName,
+      namespace,
+      nodeName: pod.spec?.nodeName,
+      phase: pod.status?.phase || 'Unknown',
+      podIP: pod.status?.podIP,
+      hostIP: pod.status?.hostIP,
+      startTime: pod.status?.startTime
+        ? new Date(pod.status.startTime).toISOString()
+        : undefined,
+      labels: (pod.metadata?.labels as Record<string, string>) || {},
+      annotations: (pod.metadata?.annotations as Record<string, string>) || {},
+      conditions,
+      containers,
+      initContainers: initContainers.length > 0 ? initContainers : undefined,
+      events,
+      yaml,
+    };
   }
 }
