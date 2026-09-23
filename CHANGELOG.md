@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Terminal title detection** — Added `oc`, `helm`, `minikube`, `k9s`, and `crc` to disallowed title prefixes to prevent active CLI commands from being mistakenly recognized as remote hostnames.
+- **File descriptor leak on Linux local terminals** — Wrapped local shell execution in `/bin/sh` to close leaked Electron file descriptors (such as GPU and Dawn caches) before executing the user's shell, preventing SELinux AVC denials when running tools like `kubectl`/`k3s` and `iptables-restore`.
 
 ---
 

@@ -393,15 +393,43 @@ describe('SSHPtyManager', () => {
       expect(session.sessionId).toMatch(/^shell-/);
       expect(mockPtyInstances).toHaveLength(1);
 
-      const { file, options } = (mockPtyInstances[0] as any)._spawnArgs;
+      const { file, args, options } = (mockPtyInstances[0] as any)._spawnArgs;
       const expectedShell =
         process.platform === 'win32'
           ? (process.env.COMSPEC || 'cmd.exe')
           : (process.env.SHELL || '/bin/bash');
 
-      expect(file).toBe(expectedShell);
+      if (process.platform === 'linux') {
+        expect(file).toBe('/bin/sh');
+        expect(args[0]).toBe('-c');
+        expect(args[1]).toContain('/proc/self/fd');
+        expect(args).toContain(expectedShell);
+      } else {
+        expect(file).toBe(expectedShell);
+      }
       expect(options.cols).toBe(90);
       expect(options.rows).toBe(30);
+    });
+
+    it('wraps shell on Linux with /bin/sh to close leaked parent file descriptors', async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+
+      try {
+        await manager.createShellSession({ cols: 80, rows: 24 });
+        const spawned = mockPtyInstances[mockPtyInstances.length - 1];
+        const { file, args } = (spawned as any)._spawnArgs;
+
+        expect(file).toBe('/bin/sh');
+        expect(args[0]).toBe('-c');
+        expect(args[1]).toContain('/proc/self/fd');
+        expect(args[1]).toContain('exec $fd>&-');
+        expect(args[1]).toContain('exec "$@"');
+        expect(args[2]).toBe('--');
+        expect(args[3]).toBe(process.env.SHELL || '/bin/bash');
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+      }
     });
   });
 

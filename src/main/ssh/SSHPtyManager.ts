@@ -514,7 +514,28 @@ export class SSHPtyManager extends EventEmitter {
     };
 
     const spawn = getSpawn();
-    const ptyProcess = spawn(shellBinary, args, {
+
+    // On Linux, node-pty uses `forkpty()` which does not close file descriptors
+    // above stderr. In Electron, dozens of internal file descriptors (GPU cache,
+    // Dawn Graphite cache, sockets, render nodes) remain open. When user commands
+    // (such as k3s/kubectl executing iptables-restore) undergo SELinux domain transitions,
+    // the kernel checks all inherited fds and logs AVC denials if the target domain
+    // cannot access Electron cache files. Wrapping execution in `/bin/sh` to close
+    // all fds > 2 before `exec "$@"` cleanly eliminates this descriptor leak.
+    let spawnBinary = shellBinary;
+    let spawnArgs = args;
+    if (process.platform === 'linux') {
+      const script =
+        'for fd in $(ls /proc/self/fd 2>/dev/null); do ' +
+        'case "$fd" in ""|*[!0-9]*) continue ;; esac; ' +
+        'if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi; ' +
+        'done; ' +
+        'exec "$@"';
+      spawnBinary = '/bin/sh';
+      spawnArgs = ['-c', script, '--', shellBinary, ...args];
+    }
+
+    const ptyProcess = spawn(spawnBinary, spawnArgs, {
       cols,
       rows,
       cwd,
