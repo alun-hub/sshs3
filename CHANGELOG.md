@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3] - 2026-09-23
+
+### Added
+- **Kubernetes / OpenShift cluster exploration & exec terminal** — Added a new "Kubernetes" tab in the Connection Manager and "+" tab menu:
+  - `K8sDiscoveryService` parses `~/.kube/config` and lazily inspects cluster contexts, namespaces, pods, and containers without blocking on unreachable clusters.
+  - `K8sTerminalManager` runs interactive exec sessions into containers over WebSockets, functioning seamlessly inside the tab/pane layout.
+  - `K8sLogManager` & `K8sLogView` stream live container logs into resizable panes with search support via `@xterm/addon-search` and safe abort handling.
+  - Lazy-loads `@kubernetes/client-node` on first use to preserve app startup speed.
+
+### Fixed
+- **Smartcard certificate cache** — Cached certificate details at agent load instead of querying the PKCS#11 token on every dropdown open, eliminating session contention and process crashes with drivers like Net iD.
+
+---
+
 ## [0.2.24] - 2026-09-22
 
 ### Added
