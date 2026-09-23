@@ -4,6 +4,7 @@ import type { StorageRegistry } from '../storage/StorageRegistry';
 import { S3StorageProvider, parseS3Path } from '../storage/S3StorageProvider';
 import { buildLineMatcher } from './lineMatcher';
 import { matchesAnyGlob, isLikelyBinary } from './globMatch';
+import { yieldToEventLoop } from './yieldToEventLoop';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -20,6 +21,9 @@ const BATCH_MAX_MATCHES = 25;
 const BATCH_MAX_DELAY_MS = 150;
 const SEARCH_TIMEOUT_MS = 120_000;
 const PROGRESS_INTERVAL_MS = 300;
+/** Also yields every N lines regardless of matches, so a huge object with few/no hits
+ * can't block the event loop either. */
+const LINES_PER_YIELD = 5000;
 
 interface ActiveSearchSession {
   cancel: () => void;
@@ -209,7 +213,10 @@ export class S3ContentSearchService {
             if (isLikelyBinary(buf)) return;
             const lines = buf.toString('utf-8').split('\n');
             for (let i = 0; i < lines.length; i++) {
-              if (hasHitCap()) break;
+              // Checked every line (not just per object) so cancelling mid-scan of one
+              // very large object takes effect immediately instead of waiting it out.
+              if (shouldStop()) break;
+              if (i > 0 && i % LINES_PER_YIELD === 0) await yieldToEventLoop();
               const offsets = matcher(lines[i]);
               if (!offsets) continue;
               matchIdCounter += 1;
@@ -224,8 +231,15 @@ export class S3ContentSearchService {
                 matchEnd: offsets.end,
                 source: 's3-download',
               });
-              if (pendingBatch.length >= BATCH_MAX_MATCHES) flushBatch();
-              else scheduleFlush();
+              if (pendingBatch.length >= BATCH_MAX_MATCHES) {
+                flushBatch();
+                // Same event-loop-starvation risk as the local backend: an object with
+                // thousands of matching lines would otherwise flush synchronously in a
+                // tight loop with no `await`, blocking the IPC handler that cancels this.
+                await yieldToEventLoop();
+              } else {
+                scheduleFlush();
+              }
             }
           } catch (err) {
             onError({

@@ -158,6 +158,46 @@ describe('LocalContentSearchService', () => {
     }
   });
 
+  it('stays responsive to cancel while deep inside one file with many matching lines', async () => {
+    // Regression test: the per-line loop used to run fully synchronously with no
+    // `await` anywhere in it once a file was being scanned. Node has one JS thread, so
+    // a single large enough file blocks that thread for its *entire* scan — including
+    // the `search:cancel` IPC handler, which can't run (and so can't set the
+    // cancellation flag) until the loop finally yields on its own. A real user's
+    // "Cancel does nothing" report traces to exactly this: cancelling mid-file did
+    // nothing until that one file happened to finish.
+    //
+    // Measured directly: scanning 15,000,000 matching lines in one file with no
+    // in-loop yield takes ~4.5s end to end, i.e. cancel would be stuck for that long.
+    const lineCount = 15_000_000;
+    await fsp.writeFile(path.join(tempDir, 'giant.txt'), 'this line contains needle\n'.repeat(lineCount));
+
+    const done: any[] = [];
+    const { searchId } = await service.startSearch(
+      registry,
+      baseOptions({ maxFileSizeBytes: 500 * 1024 * 1024, maxResults: 100_000_000 }),
+      () => {},
+      () => {},
+      (e) => done.push(e)
+    );
+
+    // Wait long enough that the file has definitely finished being read off disk and
+    // the per-line loop is genuinely underway, so cancelling now tests interrupting a
+    // loop already in progress — not just aborting the initial read. Scheduled via
+    // setTimeout, like a real IPC message would be: it only runs once Node's event loop
+    // is free to process queued callbacks — exactly what an unyielding loop would starve.
+    await new Promise((r) => setTimeout(r, 500));
+    const scheduledAt = Date.now();
+    setTimeout(() => service.cancelSearch(searchId), 0);
+
+    await waitFor(() => done.length === 1, 8000);
+    const elapsed = Date.now() - scheduledAt;
+
+    expect(done[0].cancelled).toBe(true);
+    expect(done[0].matchCount).toBeLessThan(lineCount);
+    expect(elapsed).toBeLessThan(1500);
+  }, 15000);
+
   it('cancelSearch stops the search and marks the done event cancelled', async () => {
     for (let i = 0; i < 20; i++) {
       await fsp.writeFile(path.join(tempDir, `file${i}.txt`), 'needle\n');

@@ -5,6 +5,7 @@ import type { StorageRegistry } from '../storage/StorageRegistry';
 import { LocalStorageProvider } from '../storage/LocalStorageProvider';
 import { buildLineMatcher } from './lineMatcher';
 import { matchesAnyGlob, isLikelyBinary } from './globMatch';
+import { yieldToEventLoop } from './yieldToEventLoop';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -21,6 +22,9 @@ const BATCH_MAX_MATCHES = 25;
 const BATCH_MAX_DELAY_MS = 150;
 const SEARCH_TIMEOUT_MS = 120_000;
 const PROGRESS_INTERVAL_MS = 300;
+/** Also yields every N lines regardless of matches, so a huge file with few/no hits
+ * (all `matcher()` calls, no `flushBatch()` calls) can't block the event loop either. */
+const LINES_PER_YIELD = 5000;
 
 interface ActiveSearchSession {
   cancel: () => void;
@@ -198,6 +202,7 @@ export class LocalContentSearchService {
               // Checked every line (not just per file) so cancelling mid-scan of one very
               // large file takes effect immediately instead of waiting for it to finish.
               if (shouldStop()) break;
+              if (i > 0 && i % LINES_PER_YIELD === 0) await yieldToEventLoop();
               const offsets = matcher(lines[i]);
               if (!offsets) continue;
               matchIdCounter += 1;
@@ -212,8 +217,17 @@ export class LocalContentSearchService {
                 matchEnd: offsets.end,
                 source: 'local-fs',
               });
-              if (pendingBatch.length >= BATCH_MAX_MATCHES) flushBatch();
-              else scheduleFlush();
+              if (pendingBatch.length >= BATCH_MAX_MATCHES) {
+                flushBatch();
+                // A file with thousands of matching lines would otherwise flush
+                // synchronously in a tight loop with no `await` anywhere in it — on
+                // Node's single-threaded event loop that starves every other pending
+                // callback, including the IPC handler that sets `cancelled`. Yielding
+                // here is what actually makes cancel responsive against such files.
+                await yieldToEventLoop();
+              } else {
+                scheduleFlush();
+              }
             }
           } catch (err) {
             if (!isAbortError(err)) {
