@@ -16,6 +16,11 @@ function containerState(status: k8s.V1ContainerStatus | undefined): K8sContainer
   return 'unknown';
 }
 
+function looksLikeOpenShift(contextName: string, user?: string, server?: string): boolean {
+  const text = `${contextName} ${user || ''} ${server || ''}`.toLowerCase();
+  return text.includes('openshift') || text.includes('crc') || (Boolean(user?.includes('/')) && /api.*:6443/.test(user || ''));
+}
+
 /**
  * Reads the user's kubeconfig and exposes a lazily-expandable
  * cluster -> namespace -> pod -> container tree for the sidebar.
@@ -30,6 +35,14 @@ export class K8sDiscoveryService {
 
   constructor(kubeConfigPath?: string) {
     this.kubeConfigPath = kubeConfigPath;
+  }
+
+  private isForbiddenError(err: unknown): boolean {
+    if (!err) return false;
+    const e = err as { code?: number; statusCode?: number; response?: { statusCode?: number }; message?: string };
+    if (e.code === 403 || e.statusCode === 403 || e.response?.statusCode === 403) return true;
+    if (typeof e.message === 'string' && /forbidden|403/i.test(e.message)) return true;
+    return false;
   }
 
   private async loadKubeConfig(): Promise<k8s.KubeConfig> {
@@ -82,12 +95,14 @@ export class K8sDiscoveryService {
 
     return kc.getContexts().map((context): K8sClusterNode => {
       const cluster = kc.getCluster(context.cluster);
+      const server = cluster?.server || '';
       return {
         contextName: context.name,
         clusterName: context.cluster,
-        server: cluster?.server || '',
+        server,
         user: context.user,
         isCurrent: context.name === currentContext,
+        isOpenShift: looksLikeOpenShift(context.name, context.user, server),
         namespaces: [],
       };
     });
@@ -95,14 +110,61 @@ export class K8sDiscoveryService {
 
   /**
    * Lists namespaces for a single context (one tree-node expansion).
+   * Falls back to OpenShift Projects API if standard namespace listing
+   * is forbidden (common for non-admin OpenShift users), or context.namespace.
    */
   public async listNamespaces(contextName: string): Promise<K8sNamespaceNode[]> {
     const client = await this.getApiClient(contextName);
-    const res = await client.listNamespace();
-    return res.items.map((ns) => ({
-      name: ns.metadata?.name || '',
-      pods: [],
-    }));
+    try {
+      const res = await client.listNamespace();
+      return res.items.map((ns) => ({
+        name: ns.metadata?.name || '',
+        pods: [],
+      }));
+    } catch (err) {
+      if (this.isForbiddenError(err)) {
+        // Fallback 1: Try OpenShift Projects API (project.openshift.io/v1/projects)
+        try {
+          const [kc, { CustomObjectsApi }] = await Promise.all([
+            loadKubeConfigForContext(contextName, this.kubeConfigPath),
+            loadK8sClient(),
+          ]);
+          const customApi = kc.makeApiClient(CustomObjectsApi);
+          const projectsRes = (await customApi.listClusterCustomObject({
+            group: 'project.openshift.io',
+            version: 'v1',
+            plural: 'projects',
+          })) as { items?: Array<{ metadata?: { name?: string; annotations?: Record<string, string> } }> };
+
+          if (Array.isArray(projectsRes.items) && projectsRes.items.length > 0) {
+            return projectsRes.items.map((p) => {
+              const name = p.metadata?.name || '';
+              const displayName = p.metadata?.annotations?.['openshift.io/display-name'];
+              return {
+                name,
+                displayName: displayName && displayName !== name ? displayName : undefined,
+                pods: [],
+              };
+            });
+          }
+        } catch {
+          // OpenShift Projects call failed or not an OpenShift cluster; fall through
+        }
+
+        // Fallback 2: Check if current kubeconfig context specifies a default namespace
+        const kc = await this.loadKubeConfig();
+        const ctxObj = kc.getContextObject(contextName);
+        if (ctxObj?.namespace) {
+          return [
+            {
+              name: ctxObj.namespace,
+              pods: [],
+            },
+          ];
+        }
+      }
+      throw err;
+    }
   }
 
   /**

@@ -9,7 +9,9 @@ import {
   Network,
   RefreshCw,
   ScrollText,
+  Search,
   TerminalSquare,
+  X,
 } from 'lucide-react';
 import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '@shared/types/kubernetes';
 
@@ -52,6 +54,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
   const [expandedNamespaces, setExpandedNamespaces] = useState<Set<string>>(new Set());
   const [podsByNamespace, setPodsByNamespace] = useState<Record<string, Loadable<K8sPodNode[]>>>({});
   const [expandedPods, setExpandedPods] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState('');
 
   const loadContexts = () => {
     setContexts({ status: 'loading' });
@@ -154,8 +157,28 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
   }
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex justify-end">
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-txt-muted pointer-events-none" />
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter clusters, projects, pods..."
+            className="w-full rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1 pl-8 pr-7 text-xs text-txt-primary placeholder:text-txt-muted focus:border-sky-500/50 focus:outline-none transition-colors"
+          />
+          {filter && (
+            <button
+              type="button"
+              onClick={() => setFilter('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-txt-muted hover:text-txt-primary p-0.5 rounded transition-colors"
+              title="Clear filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleRefresh}
@@ -166,7 +189,22 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
         </button>
       </div>
 
-      {contexts.data.map((ctx) => {
+      {contexts.data
+        .filter((ctx) => {
+          if (!filter.trim()) return true;
+          const q = filter.trim().toLowerCase();
+          if (ctx.contextName.toLowerCase().includes(q) || ctx.server.toLowerCase().includes(q)) return true;
+          const nsState = namespacesByContext[ctx.contextName];
+          if (nsState?.status === 'ready') {
+            return nsState.data.some(
+              (ns) =>
+                ns.name.toLowerCase().includes(q) ||
+                (ns.displayName && ns.displayName.toLowerCase().includes(q))
+            );
+          }
+          return false;
+        })
+        .map((ctx) => {
         const isExpanded = expandedContexts.has(ctx.contextName);
         const nsState = namespacesByContext[ctx.contextName];
         return (
@@ -183,6 +221,11 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
               )}
               <Network className="h-3.5 w-3.5 text-sky-400" />
               <span className="truncate">{ctx.contextName}</span>
+              {ctx.isOpenShift && (
+                <span className="rounded bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-[10px] font-medium text-rose-400">
+                  OpenShift
+                </span>
+              )}
               {ctx.isCurrent && (
                 <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-[10px] text-sky-400">
                   current
@@ -203,25 +246,44 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                     {nsState.error}
                   </div>
                 ) : (
-                  nsState.data.map((ns) => {
-                    const nsKey = `${ctx.contextName}/${ns.name}`;
-                    const nsExpanded = expandedNamespaces.has(nsKey);
-                    const podState = podsByNamespace[nsKey];
-                    return (
-                      <div key={nsKey} className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleNamespace(ctx.contextName, ns.name)}
-                          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover transition-colors"
-                        >
-                          {nsExpanded ? (
-                            <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
-                          ) : (
-                            <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
-                          )}
-                          <Folder className="h-3.5 w-3.5 text-amber-400" />
-                          <span className="truncate">{ns.name}</span>
-                        </button>
+                  (() => {
+                    const visibleNamespaces = nsState.data.filter((ns) => {
+                      if (!filter.trim()) return true;
+                      const q = filter.trim().toLowerCase();
+                      return (
+                        ns.name.toLowerCase().includes(q) ||
+                        (ns.displayName && ns.displayName.toLowerCase().includes(q))
+                      );
+                    });
+
+                    if (visibleNamespaces.length === 0) {
+                      return <p className="py-1 text-[11px] text-txt-muted">No matching namespaces or projects</p>;
+                    }
+
+                    return visibleNamespaces.map((ns) => {
+                      const nsKey = `${ctx.contextName}/${ns.name}`;
+                      const nsExpanded = expandedNamespaces.has(nsKey);
+                      const podState = podsByNamespace[nsKey];
+                      return (
+                        <div key={nsKey} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleNamespace(ctx.contextName, ns.name)}
+                            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover transition-colors"
+                          >
+                            {nsExpanded ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
+                            )}
+                            <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate">{ns.name}</span>
+                            {ns.displayName && (
+                              <span className="truncate text-[11px] font-normal text-txt-muted">
+                                ({ns.displayName})
+                              </span>
+                            )}
+                          </button>
 
                         {nsExpanded && (
                           <div className="flex flex-col gap-1 pl-5">
@@ -327,8 +389,8 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                         )}
                       </div>
                     );
-                  })
-                )}
+                  });
+                })())}
               </div>
             )}
           </div>

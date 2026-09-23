@@ -14,6 +14,7 @@ export interface K8sPodNode {
 
 export interface K8sNamespaceNode {
   name: string;
+  displayName?: string;
   pods: K8sPodNode[];
 }
 
@@ -24,6 +25,7 @@ export interface K8sClusterNode {
   server: string;
   user: string;
   isCurrent: boolean;
+  isOpenShift?: boolean;
   namespaces: K8sNamespaceNode[];
 }
 

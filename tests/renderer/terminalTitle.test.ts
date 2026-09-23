@@ -56,6 +56,11 @@ describe('terminalTitle', () => {
       expect(extractHostnameFromTitle('top')).toBeNull();
       expect(extractHostnameFromTitle('bash')).toBeNull();
       expect(extractHostnameFromTitle('htop')).toBeNull();
+      expect(extractHostnameFromTitle('oc')).toBeNull();
+      expect(extractHostnameFromTitle('helm')).toBeNull();
+      expect(extractHostnameFromTitle('minikube')).toBeNull();
+      expect(extractHostnameFromTitle('k9s')).toBeNull();
+      expect(extractHostnameFromTitle('crc')).toBeNull();
     });
   });
 

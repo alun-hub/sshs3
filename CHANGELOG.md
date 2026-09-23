@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4] - 2026-09-23
+
+### Added
+- **OpenShift Projects & RBAC fallback**:
+  - Automatic fallback to OpenShift Projects API (`project.openshift.io/v1`) when `client.listNamespace()` fails with `403 Forbidden` for non-cluster-admin users.
+  - Secondary fallback to `context.namespace` from `~/.kube/config` for heavily restricted developer accounts.
+  - Support for OpenShift project display names (`openshift.io/display-name`) in the tree view.
+  - OpenShift cluster detection badge in the cluster list.
+  - Real-time search filter in the Kubernetes dialog to quickly filter across clusters, projects, and pods.
+
+### Fixed
+- **Terminal title detection** — Added `oc`, `helm`, `minikube`, `k9s`, and `crc` to disallowed title prefixes to prevent active CLI commands from being mistakenly recognized as remote hostnames.
+
+---
+
 ## [0.3] - 2026-09-23
 
 ### Added

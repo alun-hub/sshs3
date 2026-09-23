@@ -8,15 +8,22 @@ const listNamespaceMock = vi.fn();
 const listNamespacedPodMock = vi.fn();
 const coreV1ApiConstructorMock = vi.fn();
 
-const FAKE_CONTEXTS = [
+const listClusterCustomObjectMock = vi.fn();
+
+const FAKE_CONTEXTS: Array<{ name: string; cluster: string; user: string; namespace?: string }> = [
   { name: 'default', cluster: 'k3s-cluster', user: 'default' },
   { name: 'staging', cluster: 'staging-cluster', user: 'staging-user' },
+  { name: 'openshift-dev', cluster: 'ocp-cluster', user: 'developer/api-ocp-example-com:6443', namespace: 'my-project' },
 ];
 const FAKE_CLUSTERS = [
   { name: 'k3s-cluster', server: 'https://192.168.2.163:6443' },
   { name: 'staging-cluster', server: 'https://staging.example.com:6443' },
+  { name: 'ocp-cluster', server: 'https://api.openshift.example.com:6443' },
 ];
-const FAKE_USERS = [{ name: 'default' }, { name: 'staging-user' }];
+const FAKE_USERS = [{ name: 'default' }, { name: 'staging-user' }, { name: 'developer' }];
+
+class CustomObjectsApi {}
+class CoreV1Api {}
 
 vi.mock('@kubernetes/client-node', () => {
   class KubeConfig {
@@ -28,7 +35,13 @@ vi.mock('@kubernetes/client-node', () => {
     getClusters = vi.fn(() => FAKE_CLUSTERS);
     getUsers = vi.fn(() => FAKE_USERS);
     getCluster = vi.fn((name: string) => FAKE_CLUSTERS.find((c) => c.name === name));
-    makeApiClient = vi.fn(() => {
+    getContextObject = vi.fn((name: string) => FAKE_CONTEXTS.find((c) => c.name === name));
+    makeApiClient = vi.fn((apiClass) => {
+      if (apiClass === CustomObjectsApi) {
+        return {
+          listClusterCustomObject: listClusterCustomObjectMock,
+        };
+      }
       coreV1ApiConstructorMock();
       return {
         listNamespace: listNamespaceMock,
@@ -37,9 +50,7 @@ vi.mock('@kubernetes/client-node', () => {
     });
   }
 
-  class CoreV1Api {}
-
-  return { KubeConfig, CoreV1Api };
+  return { KubeConfig, CoreV1Api, CustomObjectsApi };
 });
 
 import { K8sDiscoveryService } from '../../src/main/services/K8sDiscoveryService';
@@ -78,6 +89,7 @@ describe('K8sDiscoveryService', () => {
           server: 'https://192.168.2.163:6443',
           user: 'default',
           isCurrent: true,
+          isOpenShift: false,
           namespaces: [],
         },
         {
@@ -86,6 +98,16 @@ describe('K8sDiscoveryService', () => {
           server: 'https://staging.example.com:6443',
           user: 'staging-user',
           isCurrent: false,
+          isOpenShift: false,
+          namespaces: [],
+        },
+        {
+          contextName: 'openshift-dev',
+          clusterName: 'ocp-cluster',
+          server: 'https://api.openshift.example.com:6443',
+          user: 'developer/api-ocp-example-com:6443',
+          isCurrent: false,
+          isOpenShift: true,
           namespaces: [],
         },
       ]);
@@ -108,6 +130,67 @@ describe('K8sDiscoveryService', () => {
       expect(loadFromOptionsMock).toHaveBeenCalledWith(
         expect.objectContaining({ currentContext: 'default' })
       );
+    });
+
+    it('falls back to OpenShift Projects API with display names when listNamespace returns 403 Forbidden', async () => {
+      listNamespaceMock.mockRejectedValueOnce({
+        statusCode: 403,
+        message: 'namespaces is forbidden: User developer cannot list resource namespaces in API group at cluster scope',
+      });
+      listClusterCustomObjectMock.mockResolvedValueOnce({
+        items: [
+          {
+            metadata: {
+              name: 'frontend-dev',
+              annotations: { 'openshift.io/display-name': 'Frontend Dev Project' },
+            },
+          },
+          {
+            metadata: {
+              name: 'backend-prod',
+              annotations: {},
+            },
+          },
+        ],
+      });
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      const namespaces = await svc.listNamespaces('openshift-dev');
+
+      expect(listClusterCustomObjectMock).toHaveBeenCalledWith({
+        group: 'project.openshift.io',
+        version: 'v1',
+        plural: 'projects',
+      });
+      expect(namespaces).toEqual([
+        { name: 'frontend-dev', displayName: 'Frontend Dev Project', pods: [] },
+        { name: 'backend-prod', displayName: undefined, pods: [] },
+      ]);
+    });
+
+    it('falls back to context.namespace when listNamespace and OpenShift projects are both forbidden', async () => {
+      listNamespaceMock.mockRejectedValueOnce({
+        code: 403,
+        message: 'Forbidden',
+      });
+      listClusterCustomObjectMock.mockRejectedValueOnce({
+        code: 403,
+        message: 'Forbidden',
+      });
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      const namespaces = await svc.listNamespaces('openshift-dev');
+
+      expect(namespaces).toEqual([{ name: 'my-project', pods: [] }]);
+    });
+
+    it('re-throws non-403 errors from listNamespace without invoking fallbacks', async () => {
+      const networkError = new Error('ECONNREFUSED');
+      listNamespaceMock.mockRejectedValueOnce(networkError);
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      await expect(svc.listNamespaces('default')).rejects.toThrow('ECONNREFUSED');
+      expect(listClusterCustomObjectMock).not.toHaveBeenCalled();
     });
 
     it('reuses the cached API client for repeated calls to the same context', async () => {
