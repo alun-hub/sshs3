@@ -2413,6 +2413,12 @@ export class IpcBridge {
       }
     });
 
+    this.registerHandler(IPC_CHANNELS.APP_OPEN_EXTERNAL, async (_event, url: string) => {
+      if (url && (url.startsWith('http://') || url.startsWith('https://')) && electronShell?.openExternal) {
+        await electronShell.openExternal(url);
+      }
+    });
+
     this.registerHandler(IPC_CHANNELS.APP_GET_HOMEDIR, async () => {
       return os.homedir();
     });

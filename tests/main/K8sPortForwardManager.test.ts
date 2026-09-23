@@ -106,7 +106,7 @@ describe('K8sPortForwardManager', () => {
       'web-pod',
       [8080],
       expect.anything(),
-      null,
+      expect.anything(),
       expect.anything()
     );
   });

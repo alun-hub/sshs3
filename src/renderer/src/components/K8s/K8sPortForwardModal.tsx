@@ -43,6 +43,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
   const [localPort, setLocalPort] = useState<string>(
     initialTarget?.containerPort ? String(initialTarget.containerPort) : '8080'
   );
+  const [discoveredPorts, setDiscoveredPorts] = useState<number[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
@@ -59,6 +60,36 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
       }
     }
   }, [initialTarget]);
+
+  // Discover ports for the pod automatically
+  useEffect(() => {
+    if (contextName && namespace && podName) {
+      window.multissh
+        .k8sDescribePod(contextName, namespace, podName)
+        .then((desc) => {
+          const ports: number[] = [];
+          for (const c of desc.containers) {
+            if (c.ports) {
+              for (const p of c.ports) {
+                if (!ports.includes(p.containerPort)) {
+                  ports.push(p.containerPort);
+                }
+              }
+            }
+          }
+          setDiscoveredPorts(ports);
+          if (ports.length > 0 && (!containerPort || containerPort === '8080' || !ports.includes(Number(containerPort)))) {
+            setContainerPort(String(ports[0]));
+            setLocalPort(String(ports[0]));
+          }
+        })
+        .catch(() => {
+          setDiscoveredPorts([]);
+        });
+    } else {
+      setDiscoveredPorts([]);
+    }
+  }, [contextName, namespace, podName]);
 
   // Load and subscribe to active port forwards
   useEffect(() => {
@@ -222,6 +253,28 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   placeholder="e.g. 8080, 5432"
                   className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-primary font-mono focus:border-sky-500/50 focus:outline-none transition-colors"
                 />
+                {discoveredPorts.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-txt-muted">
+                    <span>Pod ports:</span>
+                    {discoveredPorts.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          setContainerPort(String(p));
+                          setLocalPort(String(p));
+                        }}
+                        className={`rounded px-1.5 py-0.5 font-mono border transition-colors ${
+                          containerPort === String(p)
+                            ? 'border-sky-500/80 bg-sky-500/20 text-sky-300 font-semibold'
+                            : 'border-border-subtle bg-app-surface hover:bg-app-surface-hover text-txt-secondary'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -283,7 +336,13 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   >
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span
+                          className={`flex h-2 w-2 rounded-full ${
+                            pf.status === 'error' || pf.error
+                              ? 'bg-rose-500'
+                              : 'bg-emerald-500 animate-pulse'
+                          }`}
+                        />
                         <span className="font-mono text-xs font-semibold text-emerald-400">
                           127.0.0.1:{pf.localPort}
                         </span>
@@ -292,7 +351,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                           {pf.podName}:{pf.containerPort}
                         </span>
                       </div>
-                      <div className="text-[11px] text-txt-muted flex items-center gap-2">
+                      <div className="text-[11px] text-txt-muted flex flex-wrap items-center gap-2">
                         <span>{pf.namespace} · {pf.contextName}</span>
                         <span>·</span>
                         <span>Started: {formatDateTime(pf.startedAt)}</span>
@@ -302,18 +361,25 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                           </span>
                         )}
                       </div>
+                      {pf.error && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-rose-400 pt-0.5">
+                          <XCircle className="h-3 w-3 shrink-0" />
+                          <span className="break-all">{pf.error}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <a
-                        href={`http://127.0.0.1:${pf.localPort}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.multissh.openExternal(`http://127.0.0.1:${pf.localPort}`);
+                        }}
                         className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                       >
                         <ExternalLink className="h-3 w-3 text-sky-400" />
                         Open
-                      </a>
+                      </button>
 
                       <button
                         type="button"

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
 import net from 'node:net';
+import stream from 'node:stream';
 import { loadK8sClient } from './k8sClient';
 import { loadKubeConfigForContext } from './k8sKubeConfig';
 import type {
@@ -15,6 +16,7 @@ interface ActiveSession {
   localPort: number;
   activeSockets: Set<net.Socket>;
   startedAt: string;
+  error?: string;
 }
 
 /**
@@ -43,10 +45,15 @@ export class K8sPortForwardManager extends EventEmitter {
 
     const pf = new PortForward(kc);
     const activeSockets = new Set<net.Socket>();
+    let session: ActiveSession | undefined;
 
     const server = net.createServer((socket) => {
       activeSockets.add(socket);
       this.emitChange();
+
+      // Pause socket immediately so incoming HTTP request data is buffered
+      // and NOT lost while the WebSocket handshake completes.
+      socket.pause();
 
       let closed = false;
       const cleanup = () => {
@@ -58,7 +65,19 @@ export class K8sPortForwardManager extends EventEmitter {
       };
 
       socket.on('close', cleanup);
-      socket.on('error', cleanup);
+      socket.on('error', () => cleanup());
+
+      const errStream = new stream.PassThrough();
+      errStream.on('data', (errChunk) => {
+        const msg = errChunk.toString().trim();
+        console.warn(`[K8sPortForward] Pod ${target.podName}:${target.containerPort} error:`, msg);
+        if (session) {
+          session.error = msg;
+          this.emitChange();
+        }
+        cleanup();
+        socket.destroy(new Error(msg));
+      });
 
       // Open a WebSocket port-forward stream for this incoming TCP connection
       pf.portForward(
@@ -66,10 +85,12 @@ export class K8sPortForwardManager extends EventEmitter {
         target.podName,
         [target.containerPort],
         socket,
-        null,
+        errStream,
         socket
       )
         .then((ws) => {
+          socket.resume();
+
           socket.on('close', () => {
             try {
               if (typeof ws === 'function') {
@@ -84,6 +105,11 @@ export class K8sPortForwardManager extends EventEmitter {
           });
         })
         .catch((err) => {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (session) {
+            session.error = errMsg;
+            this.emitChange();
+          }
           cleanup();
           socket.destroy(err instanceof Error ? err : new Error(String(err)));
         });
@@ -100,7 +126,7 @@ export class K8sPortForwardManager extends EventEmitter {
     const assignedPort = address.port;
     const startedAt = new Date().toISOString();
 
-    const session: ActiveSession = {
+    session = {
       id,
       target: { ...target, localPort: assignedPort },
       server,
@@ -159,7 +185,8 @@ export class K8sPortForwardManager extends EventEmitter {
       localPort: s.localPort,
       activeConnections: s.activeSockets.size,
       startedAt: s.startedAt,
-      status: 'active',
+      status: s.error ? 'error' : 'active',
+      error: s.error,
     }));
   }
 

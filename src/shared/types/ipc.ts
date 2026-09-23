@@ -183,6 +183,7 @@ export const IPC_CHANNELS = {
   SEARCH_DONE: 'search:done',
 
   // General
+  APP_OPEN_EXTERNAL: 'app:open-external',
   APP_GET_VERSION: 'app:get-version',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
@@ -482,6 +483,7 @@ export interface MultiSSHApi {
   onK8sPortForwardEvent(callback: (activeForwards: K8sActivePortForward[]) => void): () => void;
 
   // Window / General
+  openExternal(url: string): Promise<void>;
   getVersion(): Promise<string>;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;

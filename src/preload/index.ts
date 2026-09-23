@@ -617,6 +617,9 @@ export const api: MultiSSHApi = {
   },
 
   // Window / General
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_EXTERNAL, url),
+
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
 
