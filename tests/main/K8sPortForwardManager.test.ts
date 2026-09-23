@@ -132,4 +132,16 @@ describe('K8sPortForwardManager', () => {
 
     expect(manager.listActive()).toHaveLength(0);
   });
+
+  it('rejects privileged local ports (< 1024) with a descriptive error', async () => {
+    await expect(
+      manager.startPortForward({
+        contextName: 'minikube',
+        namespace: 'default',
+        podName: 'nginx-123',
+        containerPort: 80,
+        localPort: 80,
+      })
+    ).rejects.toThrow(/privileged \(< 1024\)/);
+  });
 });

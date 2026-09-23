@@ -28,6 +28,15 @@ interface K8sPortForwardModalProps {
   onClose: () => void;
 }
 
+export function suggestLocalPort(containerPort: number): number {
+  if (containerPort >= 1024) return containerPort;
+  if (containerPort === 80) return 8080;
+  if (containerPort === 443) return 8443;
+  if (containerPort === 22) return 2222;
+  if (containerPort === 53) return 5353;
+  return containerPort + 10000;
+}
+
 export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
   initialTarget,
   open,
@@ -41,7 +50,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     initialTarget?.containerPort ? String(initialTarget.containerPort) : '8080'
   );
   const [localPort, setLocalPort] = useState<string>(
-    initialTarget?.containerPort ? String(initialTarget.containerPort) : '8080'
+    initialTarget?.containerPort ? String(suggestLocalPort(initialTarget.containerPort)) : '8080'
   );
   const [discoveredPorts, setDiscoveredPorts] = useState<number[]>([]);
   const [starting, setStarting] = useState(false);
@@ -56,7 +65,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
       setPodName(initialTarget.podName);
       if (initialTarget.containerPort) {
         setContainerPort(String(initialTarget.containerPort));
-        setLocalPort(String(initialTarget.containerPort));
+        setLocalPort(String(suggestLocalPort(initialTarget.containerPort)));
       }
     }
   }, [initialTarget]);
@@ -80,7 +89,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
           setDiscoveredPorts(ports);
           if (ports.length > 0 && (!containerPort || containerPort === '8080' || !ports.includes(Number(containerPort)))) {
             setContainerPort(String(ports[0]));
-            setLocalPort(String(ports[0]));
+            setLocalPort(String(suggestLocalPort(ports[0])));
           }
         })
         .catch(() => {
@@ -115,6 +124,13 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
     if (!contextName || !namespace || !podName || Number.isNaN(cPort) || cPort <= 0) {
       setError('Please provide valid pod, namespace, and container port.');
+      return;
+    }
+
+    if (lPort > 0 && lPort < 1024) {
+      setError(
+        `Local port ${lPort} is privileged (< 1024) and requires root/administrator privileges. Please choose a port >= 1024 (e.g. ${suggestLocalPort(lPort)}) or 0 for auto-assign.`
+      );
       return;
     }
 
@@ -249,7 +265,14 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   min={1}
                   max={65535}
                   value={containerPort}
-                  onChange={(e) => setContainerPort(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setContainerPort(val);
+                    const num = parseInt(val, 10);
+                    if (!Number.isNaN(num) && num > 0) {
+                      setLocalPort(String(suggestLocalPort(num)));
+                    }
+                  }}
                   placeholder="e.g. 8080, 5432"
                   className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-primary font-mono focus:border-sky-500/50 focus:outline-none transition-colors"
                 />
@@ -262,7 +285,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                         type="button"
                         onClick={() => {
                           setContainerPort(String(p));
-                          setLocalPort(String(p));
+                          setLocalPort(String(suggestLocalPort(p)));
                         }}
                         className={`rounded px-1.5 py-0.5 font-mono border transition-colors ${
                           containerPort === String(p)
@@ -290,6 +313,9 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   placeholder="e.g. 8080 (0 for random)"
                   className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-primary font-mono focus:border-sky-500/50 focus:outline-none transition-colors"
                 />
+                <p className="mt-1 text-[10px] text-txt-muted">
+                  Use 0 for auto-assign. Ports &lt; 1024 require root/admin privileges.
+                </p>
               </div>
             </div>
 

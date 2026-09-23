@@ -37,6 +37,12 @@ export class K8sPortForwardManager extends EventEmitter {
    * If target.localPort is omitted or 0, an available random port is assigned by the OS.
    */
   public async startPortForward(target: K8sPortForwardTarget): Promise<K8sActivePortForward> {
+    if (target.localPort && target.localPort > 0 && target.localPort < 1024) {
+      throw new Error(
+        `Local port ${target.localPort} is privileged (< 1024) and requires root/administrator privileges. Please choose a port >= 1024 or 0 for auto-assign.`
+      );
+    }
+
     const id = `pf-${crypto.randomUUID()}`;
     const [kc, { PortForward }] = await Promise.all([
       loadKubeConfigForContext(target.contextName, this.kubeConfigPath),
