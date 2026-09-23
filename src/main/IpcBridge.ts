@@ -11,6 +11,7 @@ import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { loadSmartcardIntoPrivateAgent, listAgentIdentities } from './smartcard/SmartcardAgentLoader';
 import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
+import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
 import { S3StorageProvider } from './storage/S3StorageProvider';
@@ -161,6 +162,16 @@ export class IpcBridge {
   private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string }>();
   /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
   private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string }>>();
+  /**
+   * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
+   * global agent, instead of on every "cached smartcard identities" dropdown open. Re-reading on
+   * every open meant opening a fresh PKCS#11 session against the token on every click, which can
+   * race the already-live ssh-agent session for the same module — some PKCS#11 providers (e.g.
+   * Net iD) handle that contention far worse than others and have been observed to crash the
+   * whole process instead of returning a clean error. Reading once, right after `ssh-add -s`
+   * already proved the card is present and responsive, avoids that race entirely.
+   */
+  private globalSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
   private autoSyncTimer: NodeJS.Timeout | null = null;
   private autoPullTimer: NodeJS.Timeout | null = null;
   private lastSmartcardAutoUnlockAttempt = 0;
@@ -1133,6 +1144,12 @@ export class IpcBridge {
       console.log(
         `[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, pid=${result.pid}, socket=${result.socketPath}`
       );
+      // Fire-and-forget: read the certificate details once now, while the card has just proven
+      // responsive to ssh-add, instead of opening a fresh PKCS#11 session on every dropdown open
+      // (see the doc comment on `globalSmartcardCerts`). Must not delay returning the socket path.
+      void readSmartcardCertificates(pkcs11LibPath)
+        .then((certs) => this.globalSmartcardCerts.set(pkcs11LibPath, certs))
+        .catch((err) => console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err));
       return result.socketPath;
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
@@ -1207,6 +1224,7 @@ export class IpcBridge {
     for (const [pkcs11LibPath, { pid, socketPath }] of this.globalSmartcardAgents.entries()) {
       void AgentLifecycleManager.unloadCard(socketPath, pkcs11LibPath);
       AgentLifecycleManager.killPrivateAgent(pid);
+      this.globalSmartcardCerts.delete(pkcs11LibPath);
       count++;
     }
     this.globalSmartcardAgents.clear();
@@ -1219,18 +1237,17 @@ export class IpcBridge {
    * each one is holding (queried live from the agent via `ssh-add -l`).
    *
    * Each identity is additionally enriched with X.509 certificate details
-   * (subject, UPN, validity) read directly from the same PKCS#11 module —
-   * see SmartcardCertificateReader for why that goes through the module
-   * itself rather than a vendor CLI tool. This is read fresh (no PIN, no
-   * login) on every call rather than cached, since it's cheap and the card
-   * could in principle be swapped while the agent stays loaded.
+   * (subject, UPN, validity) — see `globalSmartcardCerts` for why those come
+   * from a cache populated once at load time rather than a fresh PKCS#11
+   * read on every call.
    */
   private async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
     const entries = Array.from(this.globalSmartcardAgents.entries());
     return Promise.all(
       entries.map(async ([pkcs11LibPath, { socketPath }]) => {
         const identities = await listAgentIdentities(socketPath);
-        const certsByFingerprint = await readSmartcardCertificates(pkcs11LibPath);
+        const certsByFingerprint =
+          this.globalSmartcardCerts.get(pkcs11LibPath) ?? new Map<string, SmartcardCertificateDetails>();
         return {
           pkcs11LibPath,
           identities: identities.map((identity) => {
@@ -1732,6 +1749,7 @@ export class IpcBridge {
               void AgentLifecycleManager.unloadCard(cached.socketPath, options.pkcs11LibPath);
               AgentLifecycleManager.killPrivateAgent(cached.pid);
               this.globalSmartcardAgents.delete(options.pkcs11LibPath);
+              this.globalSmartcardCerts.delete(options.pkcs11LibPath);
             }
           }
           throw err;
@@ -1902,6 +1920,7 @@ export class IpcBridge {
           void AgentLifecycleManager.unloadCard(cached.socketPath, libPath);
           AgentLifecycleManager.killPrivateAgent(cached.pid);
           this.globalSmartcardAgents.delete(libPath);
+          this.globalSmartcardCerts.delete(libPath);
         }
       }
       throw err;

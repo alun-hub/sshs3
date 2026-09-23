@@ -56,6 +56,7 @@ import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardAgentLoader from '../../src/main/smartcard/SmartcardAgentLoader';
+import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
 import type { IStorageProvider, FileEntry } from '../../src/shared/types/storage';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -390,6 +391,92 @@ describe('IpcBridge', () => {
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
+      });
+    });
+
+    describe('global smartcard certificate caching', () => {
+      const pkcs11LibPath = '/usr/lib/opensc-pkcs11.so';
+      const identity = { bits: '256', fingerprint: 'SHA256:abc', comment: 'PIV AUTH pubkey', keyType: 'ECDSA' };
+      const certDetails = {
+        fingerprint: identity.fingerprint,
+        subject: 'CN=Test User',
+        issuer: 'CN=Test CA',
+        validFrom: '2024-01-01',
+        validTo: '2026-01-01',
+        upn: 'test.user@example.com',
+      };
+
+      it('reads the certificate once when the card is loaded, then serves it from cache on every list call', async () => {
+        const loadSpy = vi
+          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
+          .mockResolvedValue({ pid: 123, socketPath: '/tmp/global.sock' });
+        const listIdentitiesSpy = vi.spyOn(SmartcardAgentLoader, 'listAgentIdentities').mockResolvedValue([identity]);
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
+
+        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        // readSmartcardCertificates is kicked off fire-and-forget after the agent load resolves —
+        // flush the microtask queue so its `.then()` (which populates the cache) has run.
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(readCertsSpy).toHaveBeenCalledTimes(1);
+        expect(readCertsSpy).toHaveBeenCalledWith(pkcs11LibPath);
+
+        const first = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
+        const second = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
+
+        // The certificate is only ever read once — not again for either "list cached" call.
+        expect(readCertsSpy).toHaveBeenCalledTimes(1);
+        expect(listIdentitiesSpy).toHaveBeenCalledTimes(2); // identities themselves are still queried live
+
+        for (const res of [first, second]) {
+          expect(res).toEqual([
+            {
+              pkcs11LibPath,
+              identities: [
+                {
+                  ...identity,
+                  certificate: {
+                    subject: certDetails.subject,
+                    issuer: certDetails.issuer,
+                    validFrom: certDetails.validFrom,
+                    validTo: certDetails.validTo,
+                    upn: certDetails.upn,
+                  },
+                },
+              ],
+            },
+          ]);
+        }
+
+        loadSpy.mockRestore();
+        listIdentitiesSpy.mockRestore();
+        readCertsSpy.mockRestore();
+      });
+
+      it('drops the cached certificate when the card is locked', async () => {
+        const { AgentLifecycleManager } = await import('../../src/main/ssh/AgentLifecycleManager');
+        const killSpy = vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});
+        const unloadSpy = vi.spyOn(AgentLifecycleManager, 'unloadCard').mockResolvedValue();
+        const loadSpy = vi
+          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
+          .mockResolvedValue({ pid: 123, socketPath: '/tmp/global.sock' });
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
+
+        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(true);
+
+        await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
+        expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(false);
+
+        killSpy.mockRestore();
+        unloadSpy.mockRestore();
+        loadSpy.mockRestore();
+        readCertsSpy.mockRestore();
       });
     });
 
