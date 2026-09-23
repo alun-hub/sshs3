@@ -5,6 +5,7 @@ import 'xterm/css/xterm.css';
 import { RotateCcw, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction } from '@shared/types/settings';
+import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
 
 export interface TerminalViewProps {
@@ -16,6 +17,8 @@ export interface TerminalViewProps {
   shellType?: LocalShellType;
   /** Windows only: specific WSL distribution to launch. */
   wslDistro?: string;
+  /** Set to run an interactive exec session inside a Kubernetes/OpenShift container instead of SSH or a local shell. */
+  k8sTarget?: K8sTerminalTarget;
   isActive?: boolean;
   onExit?: (event: SSHPtyExitEvent) => void;
   className?: string;
@@ -125,6 +128,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   local = false,
   shellType,
   wslDistro,
+  k8sTarget,
   isActive = true,
   onExit,
   className = '',
@@ -147,6 +151,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onTitleChangeRef.current = onTitleChange;
   const initialCwdRef = useRef(initialCwd);
   initialCwdRef.current = initialCwd;
+  const k8sTargetRef = useRef(k8sTarget);
+  k8sTargetRef.current = k8sTarget;
   const fontSizeRef = useRef(fontSize);
   fontSizeRef.current = fontSize;
   const fontFamilyRef = useRef(fontFamily);
@@ -201,7 +207,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         ) {
           lastColsRef.current = newCols;
           lastRowsRef.current = newRows;
-          window.multissh?.terminalResize(sessionIdRef.current, newCols, newRows);
+          const resize = k8sTargetRef.current ? window.multissh?.k8sTerminalResize : window.multissh?.terminalResize;
+          resize?.(sessionIdRef.current, newCols, newRows);
         }
       } catch {
         // Safe to ignore resize on hidden element
@@ -325,16 +332,20 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // reusing it would let two mounts of the same profile (two tabs, or React
     // StrictMode's dev-mode double-invoke) collide on the same map entry in
     // SSHPtyManager, so killing one session tears down the other instead.
-    if (window.multissh?.terminalCreate && (local || config)) {
-      const createOptions = local
-        ? { local: true as const, ptyOptions: { cols, rows, shellType, wslDistro } }
-        : { config: { ...(config as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } };
-      window.multissh
-        .terminalCreate(createOptions)
-        .then(({ sessionId }) => {
+    if (local || config || k8sTarget) {
+      const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
+      const createPromise = k8sTarget
+        ? window.multissh?.k8sTerminalCreate?.(k8sTarget, { cols, rows })
+        : window.multissh?.terminalCreate?.(
+            local
+              ? { local: true as const, ptyOptions: { cols, rows, shellType, wslDistro } }
+              : { config: { ...(config as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } }
+          );
+      createPromise
+        ?.then(({ sessionId }) => {
           if (isDisposed) {
             // Already unmounted while waiting for session creation
-            window.multissh?.terminalKill(sessionId);
+            killSession?.(sessionId);
             return;
           }
           sessionIdRef.current = sessionId;
@@ -360,8 +371,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           // 3. User input to PTY
           let inputLineBuffer = '';
           term.onData((data) => {
-            if (sessionIdRef.current && window.multissh?.terminalWrite) {
-              window.multissh.terminalWrite(sessionIdRef.current, data);
+            const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
+            if (sessionIdRef.current && write) {
+              write(sessionIdRef.current, data);
             }
             if (data.includes('\r') || data.includes('\n')) {
               const parts = data.split(/[\r\n]+/);
@@ -387,21 +399,41 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           });
 
           // 4. Data from PTY to xterm
-          if (window.multissh?.onTerminalData) {
-            unsubData = window.multissh.onTerminalData((sessId, data) => {
+          const onData = k8sTarget ? window.multissh?.onK8sTerminalData : window.multissh?.onTerminalData;
+          if (onData) {
+            unsubData = onData((sessId, data) => {
               if (sessId === sessionIdRef.current) {
                 term.write(data);
                 sendInitialCwd();
-                const detectedHost = scanOutputForHost(data);
-                if (detectedHost) {
-                  onTitleChangeRef.current?.(detectedHost);
+                if (!k8sTarget) {
+                  const detectedHost = scanOutputForHost(data);
+                  if (detectedHost) {
+                    onTitleChangeRef.current?.(detectedHost);
+                  }
                 }
               }
             });
           }
 
-          // 5. Exit from PTY
-          if (window.multissh?.onTerminalExit) {
+          // 5. Exit from PTY / exec session
+          if (k8sTarget) {
+            if (window.multissh?.onK8sTerminalExit) {
+              unsubExit = window.multissh.onK8sTerminalExit((sessId, event) => {
+                if (sessId === sessionIdRef.current) {
+                  term.write(`\r\n\x1b[33m[Session terminated: ${event.status}]\x1b[0m\r\n`);
+                  const mapped: SSHPtyExitEvent = { exitCode: event.status === 'Success' ? 0 : 1 };
+                  onExitRef.current?.(mapped);
+
+                  const action = sessionExitActionRef.current;
+                  if (action === 'close' && mapped.exitCode === 0 && onCloseTabRef.current) {
+                    onCloseTabRef.current();
+                  } else if (action !== 'keep') {
+                    setExitEvent(mapped);
+                  }
+                }
+              });
+            }
+          } else if (window.multissh?.onTerminalExit) {
             unsubExit = window.multissh.onTerminalExit((sessId, event) => {
               if (sessId === sessionIdRef.current) {
                 term.write(
@@ -451,7 +483,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           ) {
             lastColsRef.current = newCols;
             lastRowsRef.current = newRows;
-            window.multissh?.terminalResize(sessionIdRef.current, newCols, newRows);
+            const resize = k8sTargetRef.current ? window.multissh?.k8sTerminalResize : window.multissh?.terminalResize;
+            resize?.(sessionIdRef.current, newCols, newRows);
           }
         } catch {
           // Ignore resize errors when hidden
@@ -475,8 +508,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       titleSub.dispose();
       selectionSub.dispose();
       const sid = sessionIdRef.current;
-      if (sid && window.multissh?.terminalKill) {
-        window.multissh.terminalKill(sid);
+      const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
+      if (sid && killSession) {
+        killSession(sid);
       }
       term.dispose();
       if (containerRef.current) {
@@ -486,7 +520,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [config, local, shellType, wslDistro, sessionKey]);
+  }, [config, local, shellType, wslDistro, k8sTarget, sessionKey]);
 
   const isLight =
     theme === 'light' ||

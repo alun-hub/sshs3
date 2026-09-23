@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  Boxes,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -15,11 +16,13 @@ import {
 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
+import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
+import { K8sConnectionTree } from './K8sConnectionTree';
 import { formatDateTime } from '../../lib/format';
 
-type Tab = 'ssh' | 's3';
+export type Tab = 'ssh' | 's3' | 'k8s';
 
 interface ConnectionManagerModalProps {
   open: boolean;
@@ -28,6 +31,9 @@ interface ConnectionManagerModalProps {
   /** When set, shows a "Connect" action per profile and invokes this instead of only managing profiles. */
   onConnectSSH?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
+  onConnectK8s?: (target: K8sTerminalTarget) => void;
+  /** Opens a new tab following a container's logs. */
+  onViewK8sLogs?: (target: K8sTerminalTarget) => void;
   /** Master switch from Settings > Files & Storage. Off by default; hides the dotfiles pool field in the SSH form. */
   dotfilesPoolEnabled?: boolean;
 }
@@ -38,6 +44,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   initialTab = 'ssh',
   onConnectSSH,
   onConnectS3,
+  onConnectK8s,
+  onViewK8sLogs,
   dotfilesPoolEnabled = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -233,6 +241,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             [
               { key: 'ssh' as Tab, label: 'SSH / SFTP', icon: Server },
               { key: 's3' as Tab, label: 'S3 Object Storage', icon: Cloud },
+              { key: 'k8s' as Tab, label: 'Kubernetes', icon: Boxes },
             ]
           ).map(({ key, label, icon: Icon }) => (
             <button
@@ -279,26 +288,42 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             )
           ) : (
             <>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search profiles or folders..."
-                    className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-                  />
+              {tab !== 'k8s' && (
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search profiles or folders..."
+                      className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditing({ type: tab })}
+                    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0 shadow-sm transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New Profile
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditing({ type: tab })}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0 shadow-sm transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New Profile
-                </button>
-              </div>
+              )}
+
+              {tab === 'k8s' && (
+                <K8sConnectionTree
+                  onExec={onConnectK8s}
+                  onViewLogs={
+                    onViewK8sLogs
+                      ? (target) => {
+                          onViewK8sLogs(target);
+                          onClose();
+                        }
+                      : undefined
+                  }
+                />
+              )}
 
               {loading && (
                 <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">

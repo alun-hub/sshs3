@@ -14,6 +14,7 @@ import {
   type DirSyncScanProgressEvent,
   type DirSyncApplyOptions,
 } from '../shared/types/ipc';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type {
@@ -509,6 +510,72 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.SEARCH_DONE, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_DONE, listener);
+    };
+  },
+
+  // Kubernetes / OpenShift discovery
+  k8sListContexts: (): Promise<K8sClusterNode[]> => ipcRenderer.invoke(IPC_CHANNELS.K8S_LIST_CONTEXTS),
+
+  k8sListNamespaces: (contextName: string): Promise<K8sNamespaceNode[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_LIST_NAMESPACES, contextName),
+
+  k8sListPods: (contextName: string, namespace: string): Promise<K8sPodNode[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_LIST_PODS, contextName, namespace),
+
+  k8sReload: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_RELOAD),
+
+  k8sTerminalCreate: (
+    target: K8sTerminalTarget,
+    options?: { cols?: number; rows?: number }
+  ): Promise<{ sessionId: string }> => ipcRenderer.invoke(IPC_CHANNELS.K8S_TERMINAL_CREATE, target, options),
+
+  k8sTerminalWrite: (sessionId: string, data: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_TERMINAL_WRITE, sessionId, data),
+
+  k8sTerminalResize: (sessionId: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_TERMINAL_RESIZE, sessionId, cols, rows),
+
+  k8sTerminalKill: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_TERMINAL_KILL, sessionId),
+
+  onK8sTerminalData: (callback: (sessionId: string, data: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) =>
+      callback(sessionId, data);
+    ipcRenderer.on(IPC_CHANNELS.K8S_TERMINAL_DATA, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_TERMINAL_DATA, listener);
+    };
+  },
+
+  onK8sTerminalExit: (callback: (sessionId: string, event: { status: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sessionId: string, event: { status: string }) =>
+      callback(sessionId, event);
+    ipcRenderer.on(IPC_CHANNELS.K8S_TERMINAL_EXIT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_TERMINAL_EXIT, listener);
+    };
+  },
+
+  k8sLogStart: (
+    target: K8sTerminalTarget,
+    options?: { tailLines?: number; timestamps?: boolean; previous?: boolean }
+  ): Promise<{ sessionId: string }> => ipcRenderer.invoke(IPC_CHANNELS.K8S_LOG_START, target, options),
+
+  k8sLogStop: (sessionId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_LOG_STOP, sessionId),
+
+  onK8sLogData: (callback: (sessionId: string, data: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) => callback(sessionId, data);
+    ipcRenderer.on(IPC_CHANNELS.K8S_LOG_DATA, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_LOG_DATA, listener);
+    };
+  },
+
+  onK8sLogEnd: (callback: (sessionId: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sessionId: string) => callback(sessionId);
+    ipcRenderer.on(IPC_CHANNELS.K8S_LOG_END, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_LOG_END, listener);
     };
   },
 

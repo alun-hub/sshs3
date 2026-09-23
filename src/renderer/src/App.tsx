@@ -11,12 +11,13 @@ import { CredentialEncryptionWarningBanner } from './components/CredentialEncryp
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSavedProfilesModal';
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
-import { ConnectionManagerModal } from './components/ConnectionModal/ConnectionManagerModal';
+import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
+import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import {
   closePane,
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('term-1');
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
+  const [profilesModalTab, setProfilesModalTab] = useState<ConnectionManagerTab>('ssh');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
@@ -284,6 +286,44 @@ export const App: React.FC = () => {
     setConnectTarget(null);
   };
 
+  const handleConnectK8sTerminal = (
+    target: { tabId: string; paneId?: string },
+    k8sTarget: K8sTerminalTarget
+  ) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== target.tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        const paneId = target.paneId ?? getFirstLeafId(t.paneTree);
+        const paneTree = updateLeaf(t.paneTree, paneId, (leaf) => ({
+          ...leaf,
+          config: undefined,
+          local: false,
+          shellType: undefined,
+          k8sTarget,
+          baseHost: `${k8sTarget.podName}/${k8sTarget.containerName}`,
+          dynamicHost: undefined,
+        }));
+        const leavesCount = countLeaves(paneTree);
+        const isDefaultTitle = !t.title || /^Terminal\s+\d+$/.test(t.title);
+        const title = isDefaultTitle || leavesCount <= 1 ? k8sTarget.podName : t.title;
+        return { ...t, paneTree, title };
+      })
+    );
+    setConnectTarget(null);
+  };
+
+  const handleViewK8sLogs = useCallback((k8sLogTarget: K8sTerminalTarget) => {
+    const newId = `term-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'terminal',
+      title: `Logs: ${k8sLogTarget.podName}`,
+      paneTree: createLeaf(`${newId}-root`, { k8sLogTarget }),
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
   const handleOpenLocalTerminal = useCallback(
     (target: { tabId: string; paneId?: string }, shellType?: LocalShellType, wslDistro?: string) => {
       setTabs((prev) =>
@@ -408,6 +448,12 @@ export const App: React.FC = () => {
   );
 
   const handleOpenProfiles = () => {
+    setProfilesModalTab('ssh');
+    setProfilesModalOpen(true);
+  };
+
+  const handleNewK8sSession = () => {
+    setProfilesModalTab('k8s');
     setProfilesModalOpen(true);
   };
 
@@ -549,6 +595,7 @@ export const App: React.FC = () => {
             onSelectTab={handleSelectTab}
             onCloseTab={handleCloseTab}
             onNewTab={handleNewTab}
+            onNewK8sSession={handleNewK8sSession}
             onOpenProfiles={handleOpenProfiles}
             onOpenSettings={handleOpenSettings}
             onOpenDirSyncProfiles={() => setDirSyncProfilesOpen(true)}
@@ -604,11 +651,22 @@ export const App: React.FC = () => {
                             ? `Split view (${totalPanes} panes)`
                             : rootLeaf?.dynamicHost
                               ? `${rootLeaf.config?.name || (rootLeaf?.local ? 'Local Shell' : 'Terminal')} → ${rootLeaf.dynamicHost}`
-                              : rootLeaf?.config?.name || (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
+                              : rootLeaf?.config?.name ||
+                                (rootLeaf?.k8sTarget &&
+                                  `${rootLeaf.k8sTarget.podName} / ${rootLeaf.k8sTarget.containerName}`) ||
+                                (rootLeaf?.k8sLogTarget &&
+                                  `Logs: ${rootLeaf.k8sLogTarget.podName} / ${rootLeaf.k8sLogTarget.containerName}`) ||
+                                (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
                         </span>
                         {totalPanes === 1 && rootLeaf?.config?.username && (
                           <span className="text-[11px] text-txt-muted">
                             ({rootLeaf.config.username}@{rootLeaf.config.host}:{rootLeaf.config.port ?? 22})
+                          </span>
+                        )}
+                        {totalPanes === 1 && (rootLeaf?.k8sTarget || rootLeaf?.k8sLogTarget) && (
+                          <span className="text-[11px] text-txt-muted">
+                            ({(rootLeaf.k8sTarget || rootLeaf.k8sLogTarget)!.namespace} ·{' '}
+                            {(rootLeaf.k8sTarget || rootLeaf.k8sLogTarget)!.contextName})
                           </span>
                         )}
                       </div>
@@ -687,11 +745,16 @@ export const App: React.FC = () => {
         onConnectSSH={(config) => {
           if (connectTarget) handleConnectTerminal(connectTarget, config);
         }}
+        onConnectK8s={(target) => {
+          if (connectTarget) handleConnectK8sTerminal(connectTarget, target);
+        }}
+        onViewK8sLogs={handleViewK8sLogs}
       />
 
       {/* Quick-link / Ctrl+K / Top Bar: manage or connect to saved SSH/S3 profiles */}
       <ConnectionManagerModal
         open={profilesModalOpen}
+        initialTab={profilesModalTab}
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         onClose={() => setProfilesModalOpen(false)}
         onConnectSSH={(config) => {
@@ -711,6 +774,24 @@ export const App: React.FC = () => {
           }
           setProfilesModalOpen(false);
         }}
+        onConnectK8s={(target) => {
+          const activeTab = tabs.find((t) => t.id === activeTabId);
+          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
+            handleConnectK8sTerminal({ tabId: activeTab.id }, target);
+          } else {
+            const newId = `term-${Date.now()}`;
+            const newTab: AppTab = {
+              id: newId,
+              type: 'terminal',
+              title: target.podName,
+              paneTree: createLeaf(`${newId}-root`, { k8sTarget: target }),
+            };
+            setTabs((prev) => [...prev, newTab]);
+            setActiveTabId(newId);
+          }
+          setProfilesModalOpen(false);
+        }}
+        onViewK8sLogs={handleViewK8sLogs}
       />
 
       {/* Settings Modal */}

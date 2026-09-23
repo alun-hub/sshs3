@@ -37,6 +37,7 @@ import type {
   SearchStartOptions,
   SearchStartResult,
 } from './search';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from './kubernetes';
 
 export const IPC_CHANNELS = {
   // Terminal
@@ -195,6 +196,26 @@ export const IPC_CHANNELS = {
   DIR_SYNC_PROFILE_LIST: 'dirsync:profile-list',
   DIR_SYNC_PROFILE_SAVE: 'dirsync:profile-save',
   DIR_SYNC_PROFILE_DELETE: 'dirsync:profile-delete',
+
+  // Kubernetes / OpenShift discovery
+  K8S_LIST_CONTEXTS: 'k8s:list-contexts',
+  K8S_LIST_NAMESPACES: 'k8s:list-namespaces',
+  K8S_LIST_PODS: 'k8s:list-pods',
+  K8S_RELOAD: 'k8s:reload',
+
+  // Kubernetes / OpenShift interactive exec terminal
+  K8S_TERMINAL_CREATE: 'k8s-terminal:create',
+  K8S_TERMINAL_WRITE: 'k8s-terminal:write',
+  K8S_TERMINAL_RESIZE: 'k8s-terminal:resize',
+  K8S_TERMINAL_KILL: 'k8s-terminal:kill',
+  K8S_TERMINAL_DATA: 'k8s-terminal:data',
+  K8S_TERMINAL_EXIT: 'k8s-terminal:exit',
+
+  // Kubernetes / OpenShift log follow
+  K8S_LOG_START: 'k8s-log:start',
+  K8S_LOG_STOP: 'k8s-log:stop',
+  K8S_LOG_DATA: 'k8s-log:data',
+  K8S_LOG_END: 'k8s-log:end',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -418,6 +439,25 @@ export interface MultiSSHApi {
   onSearchProgress(callback: (event: SearchProgressEvent) => void): () => void;
   onSearchError(callback: (event: SearchErrorEvent) => void): () => void;
   onSearchDone(callback: (event: SearchDoneEvent) => void): () => void;
+
+  // Kubernetes / OpenShift discovery
+  k8sListContexts(): Promise<K8sClusterNode[]>;
+  k8sListNamespaces(contextName: string): Promise<K8sNamespaceNode[]>;
+  k8sListPods(contextName: string, namespace: string): Promise<K8sPodNode[]>;
+  k8sReload(): Promise<void>;
+  k8sTerminalCreate(target: K8sTerminalTarget, options?: { cols?: number; rows?: number }): Promise<{ sessionId: string }>;
+  k8sTerminalWrite(sessionId: string, data: string): Promise<void>;
+  k8sTerminalResize(sessionId: string, cols: number, rows: number): Promise<void>;
+  k8sTerminalKill(sessionId: string): Promise<void>;
+  onK8sTerminalData(callback: (sessionId: string, data: string) => void): () => void;
+  onK8sTerminalExit(callback: (sessionId: string, event: { status: string }) => void): () => void;
+  k8sLogStart(
+    target: K8sTerminalTarget,
+    options?: { tailLines?: number; timestamps?: boolean; previous?: boolean }
+  ): Promise<{ sessionId: string }>;
+  k8sLogStop(sessionId: string): Promise<void>;
+  onK8sLogData(callback: (sessionId: string, data: string) => void): () => void;
+  onK8sLogEnd(callback: (sessionId: string) => void): () => void;
 
   // Window / General
   getVersion(): Promise<string>;

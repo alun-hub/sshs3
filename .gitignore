@@ -3,6 +3,7 @@ dist/
 dist-electron/
 release/
 .superpowers/
+*.tsbuildinfo
 
 # AI Assistants & LLM tooling
 .gemini/

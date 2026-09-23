@@ -35,6 +35,9 @@ import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
+import { K8sDiscoveryService } from './services/K8sDiscoveryService';
+import { K8sTerminalManager } from './terminal/K8sTerminalManager';
+import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
@@ -61,6 +64,7 @@ import {
   type DirSyncApplyOptions,
 } from '../shared/types/ipc';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '../shared/types/kubernetes';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type {
@@ -126,6 +130,9 @@ export interface IpcBridgeOptions {
   syncConfigStore?: SyncConfigStore;
   syncCryptoService?: SyncCryptoService;
   profileSyncService?: ProfileSyncService;
+  k8sDiscoveryService?: K8sDiscoveryService;
+  k8sTerminalManager?: K8sTerminalManager;
+  k8sLogManager?: K8sLogManager;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -148,6 +155,9 @@ export class IpcBridge {
   public readonly syncConfigStore: SyncConfigStore;
   public readonly syncCryptoService: SyncCryptoService;
   public readonly profileSyncService: ProfileSyncService;
+  public readonly k8sDiscoveryService: K8sDiscoveryService;
+  public readonly k8sTerminalManager: K8sTerminalManager;
+  public readonly k8sLogManager: K8sLogManager;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -183,6 +193,10 @@ export class IpcBridge {
   private onPtyExit?: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
   private onPtyAskpass?: (event: { sessionId: string; prompt: string; callback: (pin: string) => void }) => void;
   private onTransferProgress?: (progress: TransferProgress) => void;
+  private onK8sTerminalData?: (event: { sessionId: string; data: string }) => void;
+  private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
+  private onK8sLogData?: (event: { sessionId: string; data: string }) => void;
+  private onK8sLogEnd?: (event: { sessionId: string }) => void;
 
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
@@ -215,6 +229,9 @@ export class IpcBridge {
     this.profileSyncService =
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService);
+    this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
+    this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
+    this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -246,6 +263,7 @@ export class IpcBridge {
     this.registerSearchHandlers();
     this.registerGeneralHandlers();
     this.registerDirSyncHandlers();
+    this.registerK8sHandlers();
     this.setupEventListeners();
 
     if (process.platform === 'win32') {
@@ -2217,6 +2235,73 @@ export class IpcBridge {
     );
   }
 
+  private registerK8sHandlers(): void {
+    this.registerHandler(IPC_CHANNELS.K8S_LIST_CONTEXTS, async (): Promise<K8sClusterNode[]> => {
+      return this.k8sDiscoveryService.listContexts();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_LIST_NAMESPACES,
+      async (_event, contextName: string): Promise<K8sNamespaceNode[]> => {
+        return await this.k8sDiscoveryService.listNamespaces(contextName);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_LIST_PODS,
+      async (_event, contextName: string, namespace: string): Promise<K8sPodNode[]> => {
+        return await this.k8sDiscoveryService.listPods(contextName, namespace);
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.K8S_RELOAD, async (): Promise<void> => {
+      this.k8sDiscoveryService.reload();
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_TERMINAL_CREATE,
+      async (
+        _event,
+        target: K8sTerminalTarget,
+        options?: { cols?: number; rows?: number }
+      ): Promise<{ sessionId: string }> => {
+        const sessionId = await this.k8sTerminalManager.createSession(target, options);
+        return { sessionId };
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.K8S_TERMINAL_WRITE, async (_event, sessionId: string, data: string) => {
+      this.k8sTerminalManager.write(sessionId, data);
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_TERMINAL_RESIZE,
+      async (_event, sessionId: string, cols: number, rows: number) => {
+        this.k8sTerminalManager.resize(sessionId, cols, rows);
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.K8S_TERMINAL_KILL, async (_event, sessionId: string) => {
+      this.k8sTerminalManager.kill(sessionId);
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_LOG_START,
+      async (
+        _event,
+        target: K8sTerminalTarget,
+        options?: { tailLines?: number; timestamps?: boolean; previous?: boolean }
+      ): Promise<{ sessionId: string }> => {
+        const sessionId = await this.k8sLogManager.startFollow(target, options);
+        return { sessionId };
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.K8S_LOG_STOP, async (_event, sessionId: string) => {
+      this.k8sLogManager.stop(sessionId);
+    });
+  }
+
   private registerSearchHandlers(): void {
     this.registerHandler(
       IPC_CHANNELS.SEARCH_START,
@@ -2574,6 +2659,38 @@ export class IpcBridge {
       }
     };
     this.transferQueue.on('progress', this.onTransferProgress);
+
+    this.onK8sTerminalData = ({ sessionId, data }) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_TERMINAL_DATA, sessionId, data);
+      }
+    };
+    this.k8sTerminalManager.on('data', this.onK8sTerminalData);
+
+    this.onK8sTerminalExit = ({ sessionId, status }) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_TERMINAL_EXIT, sessionId, { status });
+      }
+    };
+    this.k8sTerminalManager.on('exit', this.onK8sTerminalExit);
+
+    this.onK8sLogData = ({ sessionId, data }) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_LOG_DATA, sessionId, data);
+      }
+    };
+    this.k8sLogManager.on('data', this.onK8sLogData);
+
+    this.onK8sLogEnd = ({ sessionId }) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_LOG_END, sessionId);
+      }
+    };
+    this.k8sLogManager.on('end', this.onK8sLogEnd);
   }
 
   public async dispose(): Promise<void> {
@@ -2595,6 +2712,22 @@ export class IpcBridge {
       this.transferQueue.off('progress', this.onTransferProgress);
     }
     this.transferQueue?.cancelAll?.();
+
+    if (this.onK8sTerminalData) {
+      this.k8sTerminalManager.off('data', this.onK8sTerminalData);
+    }
+    if (this.onK8sTerminalExit) {
+      this.k8sTerminalManager.off('exit', this.onK8sTerminalExit);
+    }
+    void this.k8sTerminalManager.killAll();
+
+    if (this.onK8sLogData) {
+      this.k8sLogManager.off('data', this.onK8sLogData);
+    }
+    if (this.onK8sLogEnd) {
+      this.k8sLogManager.off('end', this.onK8sLogEnd);
+    }
+    void this.k8sLogManager.stopAll();
 
     for (const prompt of this.pendingAskpass.values()) {
       try {

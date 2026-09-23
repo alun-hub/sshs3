@@ -1,6 +1,7 @@
 import React from 'react';
 import { Columns2, RefreshCw, Rows2, Terminal, X } from 'lucide-react';
 import { TerminalView } from './TerminalView';
+import { K8sLogView } from './K8sLogView';
 import type { AppSettings } from '@shared/types/settings';
 import type { LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
@@ -158,6 +159,8 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
           {(() => {
             const baseName =
               node.config?.name ||
+              (node.k8sTarget && `${node.k8sTarget.podName} / ${node.k8sTarget.containerName}`) ||
+              (node.k8sLogTarget && `Logs: ${node.k8sLogTarget.podName} / ${node.k8sLogTarget.containerName}`) ||
               (node.local
                 ? node.shellType === 'wsl'
                   ? node.wslDistro
@@ -223,6 +226,25 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             copyOnSelect={settings.copyOnSelect}
             onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
             onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
+          />
+        ) : node.k8sTarget ? (
+          <TerminalView
+            k8sTarget={node.k8sTarget}
+            isActive={isActive}
+            fontSize={settings.terminalFontSize}
+            fontFamily={settings.terminalFontFamily}
+            theme={settings.theme}
+            sessionExitAction={settings.sessionExitAction}
+            copyOnSelect={settings.copyOnSelect}
+            onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
+            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
+          />
+        ) : node.k8sLogTarget ? (
+          <K8sLogView
+            target={node.k8sLogTarget}
+            isActive={isActive}
+            fontSize={settings.terminalFontSize}
+            fontFamily={settings.terminalFontFamily}
           />
         ) : node.local ? (
           <TerminalView

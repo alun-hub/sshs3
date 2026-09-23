@@ -1,5 +1,6 @@
 import type { SSHConnectionConfig, LocalShellType } from './ssh';
 import type { StorageType } from './storage';
+import type { K8sTerminalTarget } from './kubernetes';
 
 /** 'row' places children side by side (a vertical divider); 'column' stacks them (a horizontal divider). */
 export type PaneOrientation = 'row' | 'column';
@@ -10,6 +11,10 @@ export interface PaneLeaf {
   config?: SSHConnectionConfig;
   /** True when this pane runs a local shell instead of an SSH connection. */
   local?: boolean;
+  /** Set when this pane is an interactive exec session into a Kubernetes/OpenShift container. */
+  k8sTarget?: K8sTerminalTarget;
+  /** Set when this pane is a read-only follow view of a Kubernetes/OpenShift container's logs. */
+  k8sLogTarget?: K8sTerminalTarget;
   /** Windows only: which local shell to spawn when `local` is set. */
   shellType?: LocalShellType;
   /** Windows only: specific WSL distribution to launch. */

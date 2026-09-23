@@ -12,6 +12,7 @@ import {
   FolderSync,
   ChevronRight,
   ChevronDown,
+  Boxes,
 } from 'lucide-react';
 import type { CachedSmartcardAgent } from '@shared/types/ssh';
 
@@ -29,6 +30,8 @@ export interface TabBarProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: (type: TabType) => void;
+  /** Opens the Connection Manager directly on the Kubernetes tab, for picking a pod/container to exec into or follow logs from. */
+  onNewK8sSession?: () => void;
   onOpenProfiles?: () => void;
   onOpenSettings?: () => void;
   onOpenDirSyncProfiles?: () => void;
@@ -44,6 +47,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onSelectTab,
   onCloseTab,
   onNewTab,
+  onNewK8sSession,
   onOpenProfiles,
   onOpenSettings,
   onOpenDirSyncProfiles,
@@ -193,6 +197,20 @@ export const TabBar: React.FC<TabBarProps> = ({
               <Folder className="h-3.5 w-3.5 text-amber-400" />
               <span>New File Manager</span>
             </button>
+            {onNewK8sSession && (
+              <button
+                type="button"
+                data-testid="new-k8s-btn"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onNewK8sSession();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
+              >
+                <Boxes className="h-3.5 w-3.5 text-emerald-400" />
+                <span>New Kubernetes Session</span>
+              </button>
+            )}
           </div>
         )}
       </div>
