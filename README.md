@@ -11,9 +11,104 @@
 > [!WARNING]
 > **Early Development Notice**: sshs3 is under active early-stage development. Expect occasional bugs, incomplete edge-case handling, and breaking changes or frequent UI improvements between releases. Feedback and bug reports are warmly welcome — please file any issues or suggestions on [GitHub Issues](https://github.com/alun-hub/sshs3/issues)!
 
-<p align="center">
-  <img src="docs/sshs3-demo.gif" alt="sshs3 walkthrough demo" width="850" />
-</p>
+---
+
+## Screenshots & Interface Tour
+
+<details open>
+  <summary><b>🖥️ Terminal & Split Views</b> (SSH, Local Shell, Windows)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/ssh.png" alt="SSH terminal session" width="850" />
+    <br><em>Full OpenSSH terminal session with remote host tracking and tab management</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/split.png" alt="Split terminal panes" width="850" />
+    <br><em>Konsole-style recursive split panes (horizontal & vertical) with independent sessions</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/localshell.png" alt="Local shell" width="850" />
+    <br><em>Local shell sessions (Linux / macOS) with automatic SSH_AUTH_SOCK smartcard wiring</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/windows.png" alt="Windows session" width="850" />
+    <br><em>Native Windows shell terminals (PowerShell, cmd, WSL)</em>
+  </p>
+</details>
+
+<details>
+  <summary><b>☸️ Kubernetes & OpenShift</b> (Cluster Tree, Pods, Exec & Logs)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/conn-k8s.png" alt="Kubernetes connection tree" width="850" />
+    <br><em>Lazy-loading Kubernetes & OpenShift cluster tree from ~/.kube/config</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/sshs3-logs.png" alt="Live log streaming" width="850" />
+    <br><em>Live container and file log streaming with real-time text search</em>
+  </p>
+</details>
+
+<details>
+  <summary><b>📁 Dual-Pane File Manager & S3 Object Storage</b> (SFTP, S3, Directory Sync)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/filemanager.png" alt="Dual-pane file manager" width="850" />
+    <br><em>Dual-pane file explorer for local disk, SFTP servers, and S3 buckets</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/sftp-options.png" alt="SFTP options and permissions" width="850" />
+    <br><em>SFTP options, directory synchronization, and permissions editor (chmod)</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/connection-s3.png" alt="S3 Connection profile" width="850" />
+    <br><em>S3 connection setup (AWS, MinIO, NetApp) with AWS SSO support</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/s3-options.png" alt="S3 bucket options" width="850" />
+    <br><em>Bucket management: policies, CORS configuration, tagging, and object versioning</em>
+  </p>
+</details>
+
+<details>
+  <summary><b>🔐 Smartcard & Security</b> (PKCS#11, SITHS, Net iD, Askpass)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/smarcard.png" alt="Smartcard identities and PIN modal" width="850" />
+    <br><em>Cached smartcard identities, certificate details popover, and in-app PIN dialog</em>
+  </p>
+</details>
+
+<details>
+  <summary><b>⚙️ Connection Manager & Settings</b> (Profiles, Sync, Themes, Dotfiles, Shortcuts)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/connection-manager.png" alt="Connection manager" width="850" />
+    <br><em>Saved connections manager with folders, filtering, and quick connect</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/settings2.png" alt="Terminal settings and themes" width="850" />
+    <br><em>Terminal appearance, fonts, cursor styles, and color themes (Dark, Light, Breeze)</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/settings3.png" alt="Security and smartcard settings" width="850" />
+    <br><em>Smartcard PIN caching modes (Always Prompt, Once Per Terminal, App Lifetime)</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/settings4.png" alt="Remote profile synchronization" width="850" />
+    <br><em>Zero-knowledge client-side encrypted remote profile sync (S3/SFTP) with hardware unlock</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/settings5.png" alt="Dotfile pools" width="850" />
+    <br><em>Dotfiles pool management for syncing .bashrc, .vimrc, etc. to remote hosts</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/settings6.png" alt="Keyboard shortcuts" width="850" />
+    <br><em>Fully rebindable keyboard shortcuts with interactive key capture</em>
+  </p>
+</details>
+
+<sub>Prefer an automated walkthrough? See the animated [Demo GIF](docs/sshs3-demo.gif).</sub>
 
 ---
 
