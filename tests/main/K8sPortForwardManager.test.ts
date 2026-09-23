@@ -112,14 +112,14 @@ describe('K8sPortForwardManager', () => {
   });
 
   it('stops all active tunnels cleanly', async () => {
-    const session1 = await manager.startPortForward({
+    await manager.startPortForward({
       contextName: 'minikube',
       namespace: 'default',
       podName: 'pod-1',
       containerPort: 80,
     });
 
-    const session2 = await manager.startPortForward({
+    await manager.startPortForward({
       contextName: 'minikube',
       namespace: 'default',
       podName: 'pod-2',
