@@ -8,7 +8,12 @@
 
 > **A modern, security-focused, cross-platform SSH, SFTP, S3, and Kubernetes client** for Linux and Windows, with smartcard support (PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager, directory sync, and container exec & log tools.
 
-![sshs3 icon](build/icons/128x128.png)
+> [!WARNING]
+> **Early Development Notice**: sshs3 is under active early-stage development. Expect occasional bugs, incomplete edge-case handling, and breaking changes or frequent UI improvements between releases. Feedback and bug reports are warmly welcome — please file any issues or suggestions on [GitHub Issues](https://github.com/alun-hub/sshs3/issues)!
+
+<p align="center">
+  <img src="docs/sshs3-demo.gif" alt="sshs3 walkthrough demo" width="850" />
+</p>
 
 ---
 
