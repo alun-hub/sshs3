@@ -1,6 +1,9 @@
 # sshs3
 
 [![CI](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml/badge.svg)](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/alun-hub/sshs3?style=flat&color=3388ff)](https://github.com/alun-hub/sshs3/releases/latest)
+![Platform: Linux | Windows](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)
+[![Downloads](https://img.shields.io/github/downloads/alun-hub/sshs3/total?color=success)](https://github.com/alun-hub/sshs3/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **A modern, security-focused, cross-platform SSH, SFTP, S3, and Kubernetes client** for Linux and Windows, with smartcard support (PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager, directory sync, and container exec & log tools.
@@ -14,6 +17,16 @@
 **sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP and S3-compatible object storage (AWS, MinIO, NetApp) plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware-token (smartcard) authentication.
 
 Under the hood it's a fairly thin, security-conscious shell around a handful of proven building blocks: your system's own `ssh` binary drives the terminal (so `~/.ssh/config`, agents, and aliases just work), `ssh2`/`ssh2-sftp-client` power file transfers, and the AWS SDK talks to any S3-compatible endpoint. See [How it works](#how-it-works) below for the architecture, and [Built on open source](#built-on-open-source) for the full list of libraries this project depends on.
+
+### Quick Download
+
+| Platform | Format | Download |
+| :--- | :--- | :--- |
+| **Linux** | Standalone AppImage | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.AppImage`) |
+| **Linux (Debian / Ubuntu)** | DEB package | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.deb`) |
+| **Linux (Fedora / RHEL)** | RPM package | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.rpm`) |
+| **Windows** | Setup Installer (with bundled VcXsrv) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`Setup-*.exe`) |
+| **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.exe`) |
 
 ---
 
