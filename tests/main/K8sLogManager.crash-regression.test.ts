@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Deliberately runs in a spawned child process against a REAL (unmocked)
@@ -68,10 +69,11 @@ describe('K8sLogManager crash regression (unmocked @kubernetes/client-node, chil
     // reproduce the "error window" the user saw in the packaged app.
     scriptPath = path.join(os.tmpdir(), `k8s-log-crash-test-${Date.now()}.mjs`);
     const managerPath = path.resolve(__dirname, '../../src/main/terminal/K8sLogManager.ts');
+    const managerUrl = pathToFileURL(managerPath).href;
     fs.writeFileSync(
       scriptPath,
       [
-        `import { K8sLogManager } from ${JSON.stringify(managerPath)};`,
+        `import { K8sLogManager } from ${JSON.stringify(managerUrl)};`,
         `const manager = new K8sLogManager(${JSON.stringify(kubeconfigPath)});`,
         `const sessionId = await manager.startFollow({ contextName: 'test', namespace: 'default', podName: 'pod', containerName: 'c' });`,
         `await new Promise((r) => setTimeout(r, 100));`,
