@@ -51,7 +51,6 @@ export class K8sPortForwardManager extends EventEmitter {
 
     const pf = new PortForward(kc);
     const activeSockets = new Set<net.Socket>();
-    let session: ActiveSession | undefined;
 
     const server = net.createServer((socket) => {
       activeSockets.add(socket);
@@ -77,8 +76,9 @@ export class K8sPortForwardManager extends EventEmitter {
       errStream.on('data', (errChunk) => {
         const msg = errChunk.toString().trim();
         console.warn(`[K8sPortForward] Pod ${target.podName}:${target.containerPort} error:`, msg);
-        if (session) {
-          session.error = msg;
+        const currentSession = this.sessions.get(id);
+        if (currentSession) {
+          currentSession.error = msg;
           this.emitChange();
         }
         cleanup();
@@ -112,8 +112,9 @@ export class K8sPortForwardManager extends EventEmitter {
         })
         .catch((err) => {
           const errMsg = err instanceof Error ? err.message : String(err);
-          if (session) {
-            session.error = errMsg;
+          const currentSession = this.sessions.get(id);
+          if (currentSession) {
+            currentSession.error = errMsg;
             this.emitChange();
           }
           cleanup();
@@ -132,7 +133,7 @@ export class K8sPortForwardManager extends EventEmitter {
     const assignedPort = address.port;
     const startedAt = new Date().toISOString();
 
-    session = {
+    const session: ActiveSession = {
       id,
       target: { ...target, localPort: assignedPort },
       server,
