@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7] - 2026-09-24
+
+### Security & Hardening
+- **X11 server isolation & argument sanitization**:
+  - Restricted internal X server spawning strictly to Windows platforms.
+  - Added binary allowlist (`vcxsrv.exe`, `xming.exe`, `xwin.exe`) preventing execution of arbitrary user-specified binaries.
+  - Stripped unsafe `-ac` access control bypass flag from user-supplied server arguments.
+- **Smartcard SSH argument injection prevention**:
+  - Filtered dangerous OpenSSH directives (`ProxyCommand`, `LocalCommand`, `PermitLocalCommand`, `RemoteCommand`, `Match`, `Include`) from agent argument construction.
+  - Stripped newline and carriage return characters from extra option keys and values.
+- **Dotfile pool path traversal defense**:
+  - Validated pool IDs against path traversal sequences (`..`, path separators) preventing recursive deletion or arbitrary directory wipe.
+  - Enforced strict containment within pool master directory for local files.
+- **Session credential sanitization**:
+  - Recursively scrubbed plaintext passwords and passphrases from session tab trees prior to disk persistence in `session.json` and upon session loading.
+- **Electron window navigation hardening**:
+  - Added `will-navigate` and `will-redirect` guards to prevent renderer top-level navigation to unauthorized URLs or dropped files.
+- **URL scheme validation for AWS SSO**:
+  - Enforced `http:`/`https:` scheme validation before launching external browsers for verification URIs.
+- **Known hosts line injection defense**:
+  - Validated hostnames, ports, and key types to reject line injection and control characters before appending to `~/.ssh/known_hosts`.
+- **Command line null-byte stripping**:
+  - Stripped null bytes (`\0`) in `quoteShellArg` to prevent POSIX shell command truncation.
+- **Cross-platform Kubeconfig resolution**:
+  - Used `os.homedir()` instead of `process.env.HOME` for reliable kubeconfig lookup on Windows.
+
+---
+
 ## [0.6] - 2026-09-24
 
 ### Fixed
