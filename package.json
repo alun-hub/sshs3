@@ -1,6 +1,6 @@
 {
   "name": "sshs3",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Modern cross-platform SSH, SFTP, and S3 client with smartcard and drag-and-drop support",
   "main": "dist-electron/index.js",
   "type": "module",

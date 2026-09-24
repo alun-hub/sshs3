@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9] - 2026-09-24
+
+### Security & Hardening
+- **CodeQL workflow permission hardening**: Enforced explicit `permissions: contents: read` in `.github/workflows/ci.yml` adhering to the principle of least privilege.
+- **CSS attribute selector sanitization**: Hardened `focusElement` in `FileList.tsx` by escaping backslashes prior to quotes to prevent selector breakout on special path characters.
+- **GitHub automated security analysis**: Enabled GitHub Secret Scanning validity checks, non-provider pattern scanning, and Private Vulnerability Reporting (`/security/advisories`).
+- **Dependabot configuration & policy**: Added `.github/dependabot.yml` with automated weekly dependency checks, group bundling (`@aws-sdk/*`, `actions/*`), and protection against breaking major peer dependency updates (TypeScript 7, React 19).
+
+### Changed & Updated Dependencies
+- Updated AWS SDK packages (`@aws-sdk/client-s3`, `@aws-sdk/client-sso`, `@aws-sdk/client-sso-oidc`, `@aws-sdk/lib-storage`, `@aws-sdk/s3-request-presigner`) to `3.1137.0`.
+- Updated `electron` to `44.4.3`.
+- Updated `eslint` to `10.11.0`, `vitest` to `5.0.1`, and `autoprefixer` to `10.6.1`.
+- Upgraded CI and Release GitHub Actions workflows to latest major versions (`actions/checkout@v7`, `actions/setup-node@v7`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`, `softprops/action-gh-release@v3`).
+- Added interface screenshots for Kubernetes Pod File Explorer and Live Pod Debugging to `README.md`.
+
 ---
 
 ## [0.8] - 2026-09-24
