@@ -71,6 +71,17 @@ function createWindow(): BrowserWindow {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  mainWindow.webContents.on('will-redirect', (event) => {
+    event.preventDefault();
+  });
+
   mainWindow.on('close', (event) => {
     if (isQuitting) return;
     if (!confirmQuitIfActiveTransfers(mainWindow)) {

@@ -45,15 +45,31 @@ export class DotfilePoolStore {
     return this.masterDir;
   }
 
+  public sanitizePoolId(poolId: string): string {
+    if (!poolId || typeof poolId !== 'string') {
+      throw new Error('Invalid pool ID');
+    }
+    const trimmed = poolId.trim();
+    if (!trimmed || trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..') || !/^[a-zA-Z0-9_\-.]+$/.test(trimmed)) {
+      throw new Error(`Invalid pool ID format: ${poolId}`);
+    }
+    const resolved = path.resolve(this.masterDir, trimmed);
+    if (!resolved.startsWith(this.masterDir + path.sep)) {
+      throw new Error(`Path traversal detected in pool ID: ${poolId}`);
+    }
+    return trimmed;
+  }
+
   public getPoolDirectory(poolId: string): string {
-    return path.join(this.masterDir, poolId);
+    const cleanId = this.sanitizePoolId(poolId);
+    return path.join(this.masterDir, cleanId);
   }
 
   public getMasterFilePath(poolId: string, remotePath: string): string {
     const rel = remotePath.replace(/^~[/\\]?/, '').replace(/^[/\\]+/, '');
     const poolDir = this.getPoolDirectory(poolId);
     const resolved = path.resolve(poolDir, rel || 'unnamed-file');
-    if (!resolved.startsWith(poolDir)) {
+    if (!resolved.startsWith(poolDir + path.sep) && resolved !== poolDir) {
       return path.join(poolDir, path.basename(remotePath) || 'unnamed-file');
     }
     return resolved;
@@ -70,18 +86,28 @@ export class DotfilePoolStore {
   }
 
   public async getPools(options?: { includeDeleted?: boolean }): Promise<DotfilePool[]> {
-    const pools = await this.readRawPools();
-    for (const pool of pools) {
-      pool.masterDirectory = this.getPoolDirectory(pool.id);
+    const rawPools = await this.readRawPools();
+    const pools: DotfilePool[] = [];
+    for (const pool of rawPools) {
+      try {
+        pool.masterDirectory = this.getPoolDirectory(pool.id);
+      } catch {
+        continue;
+      }
+      pools.push(pool);
       for (const file of pool.files) {
-        const masterPath = this.getMasterFilePath(pool.id, file.remotePath);
-        file.masterFilePath = masterPath;
-        file.masterFileName = path.basename(masterPath);
         try {
-          const diskContent = await fs.readFile(masterPath, 'utf-8');
-          file.content = diskContent;
+          const masterPath = this.getMasterFilePath(pool.id, file.remotePath);
+          file.masterFilePath = masterPath;
+          file.masterFileName = path.basename(masterPath);
+          try {
+            const diskContent = await fs.readFile(masterPath, 'utf-8');
+            file.content = diskContent;
+          } catch {
+            // If file does not exist on disk yet, keep pool file content
+          }
         } catch {
-          // If file does not exist on disk yet, keep pool file content
+          // Skip invalid file path mapping
         }
       }
     }
@@ -191,7 +217,13 @@ export class DotfilePoolStore {
   }
 
   public async deletePool(id: string): Promise<void> {
-    if (!id) return;
+    if (!id || typeof id !== 'string') return;
+    let poolDir: string;
+    try {
+      poolDir = this.getPoolDirectory(id);
+    } catch {
+      return;
+    }
     return this.queueMutation(async () => {
       const pools = await this.readRawPools();
       const pool = pools.find((p) => p.id === id && !p.deletedAt);
@@ -206,7 +238,7 @@ export class DotfilePoolStore {
         await this.persist(pools);
       }
       try {
-        await fs.rm(this.getPoolDirectory(id), { recursive: true, force: true });
+        await fs.rm(poolDir, { recursive: true, force: true });
       } catch {
         // Ignore folder deletion failure
       }

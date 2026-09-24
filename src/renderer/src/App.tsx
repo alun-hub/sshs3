@@ -53,6 +53,32 @@ function normalizeTab(tab: AppTab): AppTab {
   return { ...tab, paneTree: createLeaf(`${tab.id}-root`) };
 }
 
+function sanitizePaneNode(node: PaneNode): PaneNode {
+  if (node.type === 'leaf') {
+    if (!node.config) return node;
+    const { password: _password, passphrase: _passphrase, ...restConfig } = node.config;
+    return {
+      ...node,
+      config: restConfig,
+    };
+  }
+  if (node.type === 'split' && Array.isArray(node.children)) {
+    return {
+      ...node,
+      children: node.children.map(sanitizePaneNode),
+    };
+  }
+  return node;
+}
+
+function sanitizeTabForSession(tab: AppTab): AppTab {
+  if (!tab.paneTree) return tab;
+  return {
+    ...tab,
+    paneTree: sanitizePaneNode(tab.paneTree),
+  };
+}
+
 export const App: React.FC = () => {
   const [tabs, setTabs] = useState<AppTab[]>([
     {
@@ -105,7 +131,7 @@ export const App: React.FC = () => {
     if (!sessionLoaded) return;
     void window.multissh.sessionGet?.().then((current) => {
       void window.multissh.sessionSave?.({
-        tabs,
+        tabs: tabs.map(sanitizeTabForSession),
         activeTabId,
         lastPaths: current?.lastPaths || {},
         panes: current?.panes,

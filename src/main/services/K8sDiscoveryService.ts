@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import type * as k8s from '@kubernetes/client-node';
 import { loadK8sClient } from './k8sClient';
 import { loadKubeConfigForContext } from './k8sKubeConfig';
@@ -63,7 +65,7 @@ export class K8sDiscoveryService {
   }
 
   public getKubeconfigPath(): string {
-    return this.kubeConfigPath || process.env.KUBECONFIG || `${process.env.HOME}/.kube/config`;
+    return this.kubeConfigPath || process.env.KUBECONFIG || path.join(os.homedir(), '.kube', 'config');
   }
 
   /**

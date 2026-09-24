@@ -55,4 +55,44 @@ describe('SessionStore', () => {
     const loaded = await store.getSession();
     expect(loaded).toBeNull();
   });
+
+  it('strips password and passphrase from session data on save', async () => {
+    const dataWithSecrets: SessionData = {
+      tabs: [
+        {
+          id: 'tab-ssh',
+          type: 'terminal',
+          title: 'Secret Server',
+          paneTree: {
+            type: 'leaf',
+            id: 'leaf-1',
+            config: {
+              id: 'prof-1',
+              name: 'Prod',
+              host: 'example.com',
+              port: 22,
+              username: 'admin',
+              authType: 'password',
+              password: 'super-secret-password',
+              passphrase: 'secret-key-passphrase',
+            },
+          },
+        },
+      ],
+      activeTabId: 'tab-ssh',
+    };
+
+    await store.saveSession(dataWithSecrets);
+
+    // Read the raw file from disk to ensure it was stripped before writing
+    const rawOnDisk = await fs.readFile(sessionFile, 'utf-8');
+    expect(rawOnDisk).not.toContain('super-secret-password');
+    expect(rawOnDisk).not.toContain('secret-key-passphrase');
+
+    const loaded = await store.getSession();
+    const leaf = loaded?.tabs[0].paneTree as any;
+    expect(leaf.config.password).toBeUndefined();
+    expect(leaf.config.passphrase).toBeUndefined();
+    expect(leaf.config.username).toBe('admin');
+  });
 });

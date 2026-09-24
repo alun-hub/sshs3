@@ -138,8 +138,17 @@ export class KnownHostsStore {
    * non-destructive.
    */
   public async addHostKey(host: string, port: number, keyBuffer: Buffer): Promise<void> {
+    if (!host || typeof host !== 'string' || /[\r\n\s\0]/.test(host)) {
+      throw new Error(`Invalid host for known_hosts: ${host}`);
+    }
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid port for known_hosts: ${port}`);
+    }
     const identifier = hostIdentifier(host, port);
     const keyType = readKeyType(keyBuffer);
+    if (!keyType || keyType === 'unknown' || /[\r\n\s\0]/.test(keyType)) {
+      throw new Error(`Invalid key type for known_hosts: ${keyType}`);
+    }
     const line = `${identifier} ${keyType} ${keyBuffer.toString('base64')}\n`;
 
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });

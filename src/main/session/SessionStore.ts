@@ -2,7 +2,41 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
-import type { SessionData } from '../../shared/types/session';
+import type { SessionData, PaneNode } from '../../shared/types/session';
+
+function sanitizePaneNode(node: PaneNode): PaneNode {
+  if (node.type === 'leaf') {
+    if (!node.config) return node;
+    const { password: _password, passphrase: _passphrase, ...restConfig } = node.config;
+    return {
+      ...node,
+      config: restConfig,
+    };
+  }
+  if (node.type === 'split' && Array.isArray(node.children)) {
+    return {
+      ...node,
+      children: node.children.map(sanitizePaneNode),
+    };
+  }
+  return node;
+}
+
+export function sanitizeSessionData(data: SessionData): SessionData {
+  if (!data || !Array.isArray(data.tabs)) {
+    return data;
+  }
+  return {
+    ...data,
+    tabs: data.tabs.map((tab) => {
+      if (!tab.paneTree) return tab;
+      return {
+        ...tab,
+        paneTree: sanitizePaneNode(tab.paneTree),
+      };
+    }),
+  };
+}
 
 export class SessionStore {
   private filePath: string;
@@ -45,7 +79,7 @@ export class SessionStore {
       if (!data || !Array.isArray(data.tabs)) {
         return null;
       }
-      return data as SessionData;
+      return sanitizeSessionData(data as SessionData);
     } catch {
       const legacyPath = this.getLegacyFilePath();
       if (legacyPath) {
@@ -54,7 +88,7 @@ export class SessionStore {
           const data = JSON.parse(raw);
           if (data && Array.isArray(data.tabs)) {
             void this.saveSession(data as SessionData).catch(() => {});
-            return data as SessionData;
+            return sanitizeSessionData(data as SessionData);
           }
         } catch {
           // Ignore legacy read errors
@@ -66,10 +100,11 @@ export class SessionStore {
 
   public async saveSession(data: SessionData): Promise<void> {
     if (!data) return;
+    const cleanData = sanitizeSessionData(data);
 
     return this.queueMutation(async () => {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-      await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), {
+      await fs.writeFile(this.filePath, JSON.stringify(cleanData, null, 2), {
         encoding: 'utf-8',
         mode: 0o600,
       });

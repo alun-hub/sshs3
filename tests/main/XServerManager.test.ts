@@ -33,10 +33,40 @@ describe('XServerManager', () => {
   });
 
   describe('detectExecutable', () => {
-    it('returns customPath if file exists on disk', async () => {
+    it('returns customPath if file exists on disk and is an allowed X binary on win32', async () => {
+      const origPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
       vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === 'C:\\custom\\vcxsrv.exe');
-      const result = await XServerManager.detectExecutable('C:\\custom\\vcxsrv.exe');
-      expect(result).toBe('C:\\custom\\vcxsrv.exe');
+      try {
+        const result = await XServerManager.detectExecutable('C:\\custom\\vcxsrv.exe');
+        expect(result).toBe('C:\\custom\\vcxsrv.exe');
+      } finally {
+        Object.defineProperty(process, 'platform', { value: origPlatform });
+      }
+    });
+
+    it('rejects unallowed custom binary name even if it exists', async () => {
+      const origPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      try {
+        const result = await XServerManager.detectExecutable('C:\\Windows\\System32\\cmd.exe');
+        expect(result).toBeNull();
+      } finally {
+        Object.defineProperty(process, 'platform', { value: origPlatform });
+      }
+    });
+
+    it('returns null on non-win32 platforms even with custom path', async () => {
+      const origPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      try {
+        const result = await XServerManager.detectExecutable('/usr/bin/vcxsrv.exe');
+        expect(result).toBeNull();
+      } finally {
+        Object.defineProperty(process, 'platform', { value: origPlatform });
+      }
     });
 
     it('returns null on non-win32 platforms without custom path', async () => {
@@ -174,7 +204,7 @@ describe('XServerManager', () => {
       expect(postStopStatus.managedByApp).toBe(false);
     });
 
-    it('supports custom args when supplied', async () => {
+    it('supports custom args when supplied, stripping dangerous flags like -ac', async () => {
       vi.spyOn(XServerManager, 'isListening')
         .mockResolvedValueOnce({ running: false, display: '127.0.0.1:0.0' })
         .mockResolvedValue({ running: true, display: '127.0.0.1:0.0' });
@@ -188,7 +218,7 @@ describe('XServerManager', () => {
       await XServerManager.startServer({ customArgs: ':1 -ac -nodecoration' });
       expect(mockSpawn).toHaveBeenCalledWith(
         'C:\\VcXsrv\\vcxsrv.exe',
-        [':1', '-ac', '-nodecoration'],
+        [':1', '-nodecoration'],
         expect.anything()
       );
     });

@@ -154,4 +154,19 @@ describe('DotfilePoolStore with Master Files', () => {
     const dirExists = await fs.stat(poolDir).then(() => true, () => false);
     expect(dirExists).toBe(false);
   });
+
+  it('rejects path traversal attempts in pool IDs', async () => {
+    expect(() => store.getPoolDirectory('../evil')).toThrow(/Invalid pool ID/);
+    expect(() => store.getPoolDirectory('..')).toThrow(/Invalid pool ID/);
+    expect(() => store.getPoolDirectory('pool/sub')).toThrow(/Invalid pool ID/);
+    expect(() => store.getPoolDirectory('pool\\sub')).toThrow(/Invalid pool ID/);
+
+    await expect(
+      store.savePool({
+        id: '../escape',
+        name: 'Evil',
+        files: [],
+      })
+    ).rejects.toThrow();
+  });
 });

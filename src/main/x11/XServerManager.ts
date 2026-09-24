@@ -8,6 +8,8 @@ import type { XServerStatus } from '../../shared/types/ssh';
 
 const execFileAsync = promisify(execFile);
 
+const ALLOWED_X_BINARIES = new Set(['vcxsrv.exe', 'xming.exe', 'xwin.exe']);
+
 export class XServerManager {
   private static xProcess: ChildProcess | null = null;
   private static managedPid: number | null = null;
@@ -16,11 +18,16 @@ export class XServerManager {
    * Discovers the VcXsrv / Xming / XWin executable on Windows.
    */
   public static async detectExecutable(customPath?: string): Promise<string | null> {
-    if (customPath && fs.existsSync(customPath)) {
-      return customPath;
+    if (process.platform !== 'win32') {
+      return null;
     }
 
-    if (process.platform !== 'win32') {
+    if (customPath) {
+      const normalized = customPath.replace(/\\/g, '/');
+      const base = path.posix.basename(normalized).toLowerCase();
+      if (ALLOWED_X_BINARIES.has(base) && fs.existsSync(customPath)) {
+        return customPath;
+      }
       return null;
     }
 
@@ -187,9 +194,10 @@ export class XServerManager {
     // MIT-MAGIC-COOKIE xauth exchange ssh already performs for -X/-Y, which
     // this server enforces as long as `-ac` is absent. Do not reintroduce it.
     const defaultArgs = [':0', '-multiwindow', '-clipboard', '-wgl'];
-    const args = options?.customArgs?.trim()
+    const rawArgs = options?.customArgs?.trim()
       ? options.customArgs.trim().split(/\s+/)
       : defaultArgs;
+    const args = rawArgs.filter((arg) => arg.toLowerCase() !== '-ac');
 
     try {
       const proc = spawn(exe, args, {

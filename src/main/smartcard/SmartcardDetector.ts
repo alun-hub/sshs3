@@ -25,6 +25,15 @@ function isSafeHostToken(value: unknown): value is string {
 
 const PROXY_TYPES = new Set(['http', 'socks4', 'socks5']);
 
+const BLOCKED_SSH_DIRECTIVES = new Set([
+  'proxycommand',
+  'localcommand',
+  'permitlocalcommand',
+  'remotecommand',
+  'match',
+  'include',
+]);
+
 export class SmartcardDetector {
   private static readonly LINUX_LIBRARIES: Array<{ name: string; path: string; platform: 'linux' }> = [
     // p11-kit (prioritized: proxies all system-registered PKCS#11 modules)
@@ -253,7 +262,18 @@ export class SmartcardDetector {
     // Extra SSH options (-o Key=Value)
     if (config.extraOptions) {
       for (const [key, value] of Object.entries(config.extraOptions)) {
-        args.push('-o', `${key}=${value}`);
+        const trimmedKey = key.trim();
+        const trimmedVal = String(value).trim();
+        if (!trimmedKey || !trimmedVal) continue;
+        if (BLOCKED_SSH_DIRECTIVES.has(trimmedKey.toLowerCase())) {
+          console.warn(`[smartcard] buildSSHArguments: blocked dangerous SSH option "${trimmedKey}"`);
+          continue;
+        }
+        if (/[\r\n]/.test(trimmedKey) || /[\r\n]/.test(trimmedVal)) {
+          console.warn(`[smartcard] buildSSHArguments: blocked SSH option with newline "${trimmedKey}"`);
+          continue;
+        }
+        args.push('-o', `${trimmedKey}=${trimmedVal}`);
       }
     }
 

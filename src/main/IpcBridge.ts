@@ -2138,7 +2138,11 @@ export class IpcBridge {
           return await this.awsSsoAuthService.login(startUrl, region, {
             onPrompt: (prompt) => {
               const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;
-              if (urlToOpen && electronShell?.openExternal) {
+              if (
+                urlToOpen &&
+                (urlToOpen.startsWith('http://') || urlToOpen.startsWith('https://')) &&
+                electronShell?.openExternal
+              ) {
                 void electronShell.openExternal(urlToOpen).catch(() => {});
               }
               const webContents = this.getWebContents();

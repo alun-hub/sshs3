@@ -118,6 +118,17 @@ describe('KnownHostsStore', () => {
     expect(raw).toContain('ssh-ed25519');
   });
 
+  it('rejects injection attempts in host and invalid ports', async () => {
+    const store = new KnownHostsStore(filePath);
+    const key = fakeKeyBuffer('ssh-ed25519', 'first-key');
+
+    await expect(store.addHostKey('example.com\nevil.com', 22, key)).rejects.toThrow(/Invalid host/);
+    await expect(store.addHostKey('example.com evil.com', 22, key)).rejects.toThrow(/Invalid host/);
+    await expect(store.addHostKey('example.com\r\nevil.com', 22, key)).rejects.toThrow(/Invalid host/);
+    await expect(store.addHostKey('example.com', -1, key)).rejects.toThrow(/Invalid port/);
+    await expect(store.addHostKey('example.com', 70000, key)).rejects.toThrow(/Invalid port/);
+  });
+
   describe('helper functions', () => {
     it('hostIdentifier omits the port for 22 and includes it otherwise', () => {
       expect(hostIdentifier('h', 22)).toBe('h');
