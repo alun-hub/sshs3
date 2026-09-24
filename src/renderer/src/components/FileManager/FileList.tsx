@@ -27,6 +27,15 @@ interface FileListProps {
   filterText?: string;
   onEntryContextMenu?: (entry: FileEntry, e: React.MouseEvent) => void;
   onPaneContextMenu?: (e: React.MouseEvent) => void;
+  onRenameStart?: () => void;
+  onRefresh?: () => void;
+  onNavigateParent?: () => void;
+  onNavigateBack?: () => void;
+  onNavigateForward?: () => void;
+  onCopySelected?: () => void;
+  onCutSelected?: () => void;
+  onPaste?: () => void;
+  cutPaths?: Set<string>;
   /** Invoked when the user presses Delete/Backspace with a selection and no rename/typeahead in progress. */
   onDeleteSelected?: () => void;
 }
@@ -61,6 +70,15 @@ export const FileList: React.FC<FileListProps> = ({
   filterText,
   onEntryContextMenu,
   onPaneContextMenu,
+  onRenameStart,
+  onRefresh,
+  onNavigateParent,
+  onNavigateBack,
+  onNavigateForward,
+  onCopySelected,
+  onCutSelected,
+  onPaste,
+  cutPaths,
   onDeleteSelected,
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -156,6 +174,71 @@ export const FileList: React.FC<FileListProps> = ({
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRafId = useRef<number | null>(null);
+  const scrollSpeedRef = useRef<number>(0);
+
+  const stopAutoScroll = useCallback(() => {
+    scrollSpeedRef.current = 0;
+    if (autoScrollRafId.current !== null) {
+      cancelAnimationFrame(autoScrollRafId.current);
+      autoScrollRafId.current = null;
+    }
+  }, []);
+
+  const updateAutoScroll = useCallback(
+    (clientY: number) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const topDist = clientY - rect.top;
+      const bottomDist = rect.bottom - clientY;
+      const EDGE_THRESHOLD = 50;
+
+      if (topDist >= 0 && topDist < EDGE_THRESHOLD) {
+        const intensity = (EDGE_THRESHOLD - topDist) / EDGE_THRESHOLD;
+        scrollSpeedRef.current = -Math.round(3 + intensity * 15);
+      } else if (bottomDist >= 0 && bottomDist < EDGE_THRESHOLD) {
+        const intensity = (EDGE_THRESHOLD - bottomDist) / EDGE_THRESHOLD;
+        scrollSpeedRef.current = Math.round(3 + intensity * 15);
+      } else {
+        scrollSpeedRef.current = 0;
+      }
+
+      if (scrollSpeedRef.current !== 0) {
+        if (autoScrollRafId.current === null) {
+          const step = () => {
+            if (scrollSpeedRef.current !== 0 && containerRef.current) {
+              containerRef.current.scrollTop += scrollSpeedRef.current;
+              autoScrollRafId.current = requestAnimationFrame(step);
+            } else {
+              autoScrollRafId.current = null;
+            }
+          };
+          autoScrollRafId.current = requestAnimationFrame(step);
+        }
+      } else {
+        stopAutoScroll();
+      }
+    },
+    [stopAutoScroll]
+  );
+
+  const springLoadedTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const springLoadedTargetRef = useRef<string | null>(null);
+
+  const clearSpringLoadedTimer = useCallback(() => {
+    if (springLoadedTimerRef.current) {
+      clearTimeout(springLoadedTimerRef.current);
+      springLoadedTimerRef.current = null;
+    }
+    springLoadedTargetRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopAutoScroll();
+      clearSpringLoadedTimer();
+    };
+  }, [stopAutoScroll, clearSpringLoadedTimer]);
 
   const focusElement = useCallback((path: string) => {
     if (!containerRef.current) return;
@@ -258,6 +341,52 @@ export const FileList: React.FC<FileListProps> = ({
       const activeIndex = activePath ? sorted.findIndex((item) => item.path === activePath) : -1;
       const firstSelectedIndex = sorted.findIndex((item) => selectedPaths.has(item.path));
       const currentIndex = activeIndex !== -1 ? activeIndex : firstSelectedIndex;
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onCopySelected?.();
+        return;
+      }
+
+      if (e.key === 'x' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onCutSelected?.();
+        return;
+      }
+
+      if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onPaste?.();
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && e.altKey) {
+        e.preventDefault();
+        onNavigateBack?.();
+        return;
+      }
+
+      if (e.key === 'ArrowRight' && e.altKey) {
+        e.preventDefault();
+        onNavigateForward?.();
+        return;
+      }
+
+      if (e.key === 'F2') {
+        e.preventDefault();
+        clearTypeahead();
+        if (selectedPaths.size === 1) {
+          onRenameStart?.();
+        }
+        return;
+      }
+
+      if (e.key === 'F5') {
+        e.preventDefault();
+        clearTypeahead();
+        onRefresh?.();
+        return;
+      }
+
       let matchIndex = -1;
 
       if (e.key === 'ArrowDown') {
@@ -271,6 +400,10 @@ export const FileList: React.FC<FileListProps> = ({
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         clearTypeahead();
+        if (e.altKey) {
+          onNavigateParent?.();
+          return;
+        }
         if (currentIndex === -1) {
           matchIndex = sorted.length - 1;
         } else {
@@ -364,7 +497,26 @@ export const FileList: React.FC<FileListProps> = ({
       onSelectionChange(next);
       rowVirtualizer.scrollToIndex(matchIndex, { align: 'auto' });
     },
-    [sorted, onSelectionChange, renamingPath, selectedPaths, onOpen, rowVirtualizer, clearTypeahead, searchAndSelect, activePath, onDeleteSelected]
+    [
+      sorted,
+      onSelectionChange,
+      renamingPath,
+      selectedPaths,
+      onOpen,
+      rowVirtualizer,
+      clearTypeahead,
+      searchAndSelect,
+      activePath,
+      onDeleteSelected,
+      onRenameStart,
+      onRefresh,
+      onNavigateParent,
+      onNavigateBack,
+      onNavigateForward,
+      onCopySelected,
+      onCutSelected,
+      onPaste,
+    ]
   );
 
   const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string }> = ({
@@ -409,14 +561,22 @@ export const FileList: React.FC<FileListProps> = ({
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
+          updateAutoScroll(e.clientY);
         }}
         onDragEnter={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
+          updateAutoScroll(e.clientY);
+        }}
+        onDragLeave={() => {
+          stopAutoScroll();
+          clearSpringLoadedTimer();
         }}
         onDrop={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          stopAutoScroll();
+          clearSpringLoadedTimer();
           onEntryDragLeave?.(entries[0]);
           onPaneDrop?.(e);
         }}
@@ -475,27 +635,51 @@ export const FileList: React.FC<FileListProps> = ({
                   onDragStart={(e) => {
                     onDraggableStart?.(entry, e);
                   }}
-                  onDragEnd={() => onDraggableEnd?.()}
+                  onDragEnd={() => {
+                    stopAutoScroll();
+                    clearSpringLoadedTimer();
+                    onDraggableEnd?.();
+                  }}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
+                    updateAutoScroll(e.clientY);
                     if (isDropTarget?.(entry)) {
                       onEntryDragOver?.(entry, e);
+                      if (entry.isDirectory) {
+                        if (springLoadedTargetRef.current !== entry.path) {
+                          clearSpringLoadedTimer();
+                          springLoadedTargetRef.current = entry.path;
+                          springLoadedTimerRef.current = setTimeout(() => {
+                            clearSpringLoadedTimer();
+                            onOpen(entry);
+                          }, 900);
+                        }
+                      } else {
+                        clearSpringLoadedTimer();
+                      }
                     } else if (dragOverPath) {
+                      clearSpringLoadedTimer();
                       onEntryDragLeave?.(entry);
                     }
                   }}
                   onDragEnter={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
+                    updateAutoScroll(e.clientY);
                     if (isDropTarget?.(entry)) {
                       onEntryDragOver?.(entry, e);
                     }
                   }}
-                  onDragLeave={() => onEntryDragLeave?.(entry)}
+                  onDragLeave={() => {
+                    clearSpringLoadedTimer();
+                    onEntryDragLeave?.(entry);
+                  }}
                   onDrop={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    stopAutoScroll();
+                    clearSpringLoadedTimer();
                     if (isDropTarget?.(entry)) {
                       onEntryDrop?.(entry, e);
                     } else {
@@ -529,7 +713,8 @@ export const FileList: React.FC<FileListProps> = ({
                       ? 'bg-sky-500/15 text-txt-primary font-medium'
                       : 'text-txt-primary hover:bg-app-surface-hover',
                     isFocused && 'ring-1 ring-inset ring-sky-400 bg-sky-500/25',
-                    isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-500/20'
+                    isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-500/20 animate-pulse',
+                    cutPaths?.has(entry.path) && 'opacity-40'
                   )}
                 >
                   <div className="pointer-events-none flex min-w-0 items-center gap-2">
@@ -563,6 +748,41 @@ export const FileList: React.FC<FileListProps> = ({
             })}
           </div>
         )}
+
+        {/* Neutral drop zone below the list to safely drop into the current directory */}
+        <div
+          data-testid="neutral-drop-zone"
+          className="min-h-[80px] w-full flex items-center justify-center text-xs text-txt-muted transition-colors cursor-default"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            updateAutoScroll(e.clientY);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stopAutoScroll();
+            onPaneDrop?.(e);
+          }}
+          onClick={(e) => {
+            if (e.currentTarget === e.target) {
+              setFocusedPath(null);
+              onSelectionChange(new Set());
+            }
+          }}
+          onContextMenu={(e) => {
+            if (e.currentTarget === e.target) {
+              e.preventDefault();
+              setFocusedPath(null);
+              onSelectionChange(new Set());
+              onPaneContextMenu?.(e);
+            }
+          }}
+        />
       </div>
 
       {typeaheadText && (

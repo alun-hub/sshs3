@@ -211,6 +211,16 @@ att bygga.
 - [x] **53. S3 Taggning (Tagging)** — `getTags`/`setTags` i `S3StorageProvider` (bucket- och objekt-taggning) samt `TagsModal` i filhanteraren för att hantera nyckel-värdetaggar via kontextmenyn.
 - [ ] **54. S3 Statisk webbhotellskonfiguration (Static website hosting)** — konfigurera index- och feldokument samt hämta webbendpoint för buckets.
 - [ ] **55. S3 Multipart- och prestandainställningar** — finjustera delstorlek (part size) och antal samtidiga strömmar vid upp-/nedladdning av stora objekt.
+- [x] **65. Skrivbords- och Windows-ergonomi i filhanteraren (Drag & Drop, Urklipp & Tangentbordsstyrning)** —
+   Auto-scroll vid Drag & Drop nära över- och underkant (`requestAnimationFrame`), neutral droppyta i
+   botten av listan för att tryggt kunna släppa filer i aktuell katalog även när fönstret är fullt av
+   undermappar, brödsmulor (breadcrumbs) som aktiva droppmål (släpp på roten `/` eller valfri överordnad mapp),
+   spring-loaded folders (hover-to-open vid drag efter 900ms på mappar och breadcrumb-segment),
+   fullständigt urklippsstöd för filer (`Ctrl+C` / `Ctrl+X` med visuell nedtoning / `Ctrl+V` både via kortkommandon
+   och kontextmenyer), framåt-/bakåt-kataloghistorik med toolbar-knappar, `Alt+Vänster`/`Höger` och musknappar (3 & 4),
+   tangentbordsreflexer (`F2` för Rename, `F5` för Refresh, `Alt + Uppil` för föräldrakatalog) samt avbryt
+   pågående drag med `Escape`.
+
 
 ## Funktionsanalys: PuTTY, WinSCP & S3 Browser
 
@@ -257,7 +267,7 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57** redan är
+Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57, 65** redan är
 färdigställda (samt encryption-halvan av **22**), är de mest värdefulla nästa stegen:
 
 1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.

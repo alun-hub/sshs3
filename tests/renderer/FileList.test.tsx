@@ -439,4 +439,306 @@ describe('FileList Component', () => {
       expect(docRow).toHaveAttribute('data-focused', 'true');
     });
   });
+
+  describe('Keyboard navigation shortcuts (F2, F5, Alt+ArrowUp)', () => {
+    it('triggers onRenameStart when F2 is pressed on a single selected item', () => {
+      const onRenameStart = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/config.json'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onRenameStart={onRenameStart}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'F2' });
+      expect(onRenameStart).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not trigger onRenameStart when F2 is pressed with multiple or zero items selected', () => {
+      const onRenameStart = vi.fn();
+      const { container, rerender } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onRenameStart={onRenameStart}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'F2' });
+      expect(onRenameStart).not.toHaveBeenCalled();
+
+      rerender(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/config.json', '/image.png'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onRenameStart={onRenameStart}
+        />
+      );
+
+      fireEvent.keyDown(listContainer, { key: 'F2' });
+      expect(onRenameStart).not.toHaveBeenCalled();
+    });
+
+    it('triggers onRefresh when F5 is pressed', () => {
+      const onRefresh = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onRefresh={onRefresh}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'F5' });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('triggers onNavigateParent when Alt+ArrowUp is pressed', () => {
+      const onNavigateParent = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/documents'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onNavigateParent={onNavigateParent}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'ArrowUp', altKey: true });
+      expect(onNavigateParent).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Drag & drop enhancements', () => {
+    it('provides a neutral drop zone below the list that triggers onPaneDrop', () => {
+      const onPaneDrop = vi.fn();
+      render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onPaneDrop={onPaneDrop}
+        />
+      );
+
+      const dropZone = screen.getByTestId('neutral-drop-zone');
+      expect(dropZone).toBeInTheDocument();
+
+      const dropEvent = { dataTransfer: { dropEffect: 'none' } };
+      fireEvent.drop(dropZone, dropEvent);
+      expect(onPaneDrop).toHaveBeenCalled();
+    });
+
+    it('updates auto-scroll on dragOver near top and bottom boundaries', () => {
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]') as HTMLElement;
+      vi.spyOn(listContainer, 'getBoundingClientRect').mockReturnValue({
+        top: 100,
+        bottom: 500,
+        height: 400,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: 100,
+        toJSON: () => {},
+      });
+
+      // Hover near top (< 50px from rect.top: clientY = 110)
+      fireEvent.dragOver(listContainer, { clientY: 110, dataTransfer: { dropEffect: 'none' } });
+
+      // Hover near bottom (> 400 - 50: clientY = 480)
+      fireEvent.dragOver(listContainer, { clientY: 480, dataTransfer: { dropEffect: 'none' } });
+
+      // Moving away stops auto-scroll
+      fireEvent.dragLeave(listContainer);
+    });
+
+    it('spring-loads (auto-opens) a folder when hovered for 900ms during drag', () => {
+      vi.useFakeTimers();
+      const onOpen = vi.fn();
+      render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={onOpen}
+          isDropTarget={(entry) => entry.isDirectory}
+        />
+      );
+
+      const docRow = screen.getByText('documents').closest('[role="row"]')!;
+
+      // Drag over directory
+      fireEvent.dragOver(docRow, { dataTransfer: { dropEffect: 'none' } });
+
+      // Before timer finishes, onOpen not called
+      vi.advanceTimersByTime(500);
+      expect(onOpen).not.toHaveBeenCalled();
+
+      // Advance past 900ms
+      vi.advanceTimersByTime(450);
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ name: 'documents', isDirectory: true }));
+
+      vi.useRealTimers();
+    });
+
+    it('cancels spring-loaded timer if drag leaves directory before delay', () => {
+      vi.useFakeTimers();
+      const onOpen = vi.fn();
+      render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={onOpen}
+          isDropTarget={(entry) => entry.isDirectory}
+        />
+      );
+
+      const docRow = screen.getByText('documents').closest('[role="row"]')!;
+
+      // Drag over directory
+      fireEvent.dragOver(docRow, { dataTransfer: { dropEffect: 'none' } });
+      vi.advanceTimersByTime(500);
+
+      // Leave directory before 900ms
+      fireEvent.dragLeave(docRow);
+
+      // Advance past 900ms
+      vi.advanceTimersByTime(600);
+      expect(onOpen).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('triggers onCopySelected on Ctrl+C', () => {
+      const onCopySelected = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/config.json'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onCopySelected={onCopySelected}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'c', ctrlKey: true });
+      expect(onCopySelected).toHaveBeenCalledTimes(1);
+    });
+
+    it('triggers onCutSelected on Ctrl+X', () => {
+      const onCutSelected = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/config.json'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onCutSelected={onCutSelected}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'x', ctrlKey: true });
+      expect(onCutSelected).toHaveBeenCalledTimes(1);
+    });
+
+    it('triggers onPaste on Ctrl+V', () => {
+      const onPaste = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onPaste={onPaste}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'v', ctrlKey: true });
+      expect(onPaste).toHaveBeenCalledTimes(1);
+    });
+
+    it('triggers onNavigateBack on Alt+Left and onNavigateForward on Alt+Right', () => {
+      const onNavigateBack = vi.fn();
+      const onNavigateForward = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onNavigateBack={onNavigateBack}
+          onNavigateForward={onNavigateForward}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'ArrowLeft', altKey: true });
+      expect(onNavigateBack).toHaveBeenCalledTimes(1);
+
+      fireEvent.keyDown(listContainer, { key: 'ArrowRight', altKey: true });
+      expect(onNavigateForward).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies opacity-40 styling to cutPaths entries', () => {
+      render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set()}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          cutPaths={new Set(['/config.json'])}
+        />
+      );
+
+      const row = screen.getByText('config.json').closest('[role="row"]')!;
+      expect(row.className).toContain('opacity-40');
+
+      const uncutRow = screen.getByText('documents').closest('[role="row"]')!;
+      expect(uncutRow.className).not.toContain('opacity-40');
+    });
+  });
 });
+

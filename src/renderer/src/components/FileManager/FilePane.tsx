@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Clipboard,
   Cloud,
+  Copy,
   Download,
   ExternalLink,
   FileCode,
@@ -19,6 +22,7 @@ import {
   Link2,
   Pencil,
   RefreshCw,
+  Scissors,
   Search,
   Server,
   Shield,
@@ -105,8 +109,93 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
-  const { activeDrag, beginDrag, endDrag, readDropPayload, readOsFilePaths } = useDragDrop();
+  const {
+    activeDrag,
+    beginDrag,
+    endDrag,
+    readDropPayload,
+    readOsFilePaths,
+    clipboard,
+    copyFiles,
+    cutFiles,
+    clearClipboard,
+  } = useDragDrop();
   const latestRequestRef = useRef<string>('');
+
+  // Navigation history
+  const [navHistory, setNavHistory] = useState<{ paths: string[]; index: number }>({
+    paths: [currentPath],
+    index: 0,
+  });
+  const isNavigatingHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (isNavigatingHistoryRef.current) {
+      isNavigatingHistoryRef.current = false;
+      return;
+    }
+    setNavHistory((prev) => {
+      if (prev.paths[prev.index] === currentPath) return prev;
+      const nextPaths = prev.paths.slice(0, prev.index + 1);
+      nextPaths.push(currentPath);
+      return {
+        paths: nextPaths,
+        index: nextPaths.length - 1,
+      };
+    });
+  }, [currentPath]);
+
+  const prevProviderRef = useRef(source.providerId);
+  useEffect(() => {
+    if (prevProviderRef.current !== source.providerId) {
+      prevProviderRef.current = source.providerId;
+      setNavHistory({ paths: [currentPath], index: 0 });
+    }
+  }, [source.providerId, currentPath]);
+
+  const canGoBack = navHistory.index > 0;
+  const canGoForward = navHistory.index < navHistory.paths.length - 1;
+
+  const handleGoBack = useCallback(() => {
+    if (navHistory.index > 0) {
+      const target = navHistory.paths[navHistory.index - 1];
+      isNavigatingHistoryRef.current = true;
+      setNavHistory((prev) => ({ ...prev, index: prev.index - 1 }));
+      onPathChange(target);
+    }
+  }, [navHistory, onPathChange]);
+
+  const handleGoForward = useCallback(() => {
+    if (navHistory.index < navHistory.paths.length - 1) {
+      const target = navHistory.paths[navHistory.index + 1];
+      isNavigatingHistoryRef.current = true;
+      setNavHistory((prev) => ({ ...prev, index: prev.index + 1 }));
+      onPathChange(target);
+    }
+  }, [navHistory, onPathChange]);
+
+  // Clipboard operations
+  const handleCopy = useCallback(() => {
+    if (selectedPaths.size === 0) return;
+    copyFiles(side, source.providerId, Array.from(selectedPaths));
+  }, [selectedPaths, copyFiles, side, source.providerId]);
+
+  const handleCut = useCallback(() => {
+    if (selectedPaths.size === 0) return;
+    cutFiles(side, source.providerId, Array.from(selectedPaths));
+  }, [selectedPaths, cutFiles, side, source.providerId]);
+
+  const handlePaste = useCallback(() => {
+    if (!clipboard || clipboard.sourcePaths.length === 0) return;
+    onTransferRequested({
+      sourceProviderId: clipboard.providerId,
+      sourcePaths: clipboard.sourcePaths,
+      targetPath: currentPath,
+    });
+    if (clipboard.mode === 'cut') {
+      clearClipboard();
+    }
+  }, [clipboard, onTransferRequested, currentPath, clearClipboard]);
 
   const load = useCallback(
     async (force?: boolean) => {
@@ -319,6 +408,41 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, side, endDrag]
   );
 
+  const handleBreadcrumbDrop = useCallback(
+    (targetPath: string, e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverPath(null);
+      const osPaths = readOsFilePaths(e.dataTransfer);
+      if (osPaths.length > 0) {
+        onTransferRequested({
+          sourceProviderId: 'local',
+          sourcePaths: osPaths,
+          targetPath,
+        });
+        endDrag();
+        return;
+      }
+      const payload = readDropPayload(e.dataTransfer);
+      if (!payload) return;
+      if (payload.entries.some((i) => i.path === targetPath)) {
+        endDrag();
+        return;
+      }
+      if (payload.fromPane === side && payload.providerId === source.providerId && targetPath === currentPath) {
+        endDrag();
+        return;
+      }
+      onTransferRequested({
+        sourceProviderId: payload.providerId,
+        sourcePaths: payload.entries.map((i) => i.path),
+        targetPath,
+      });
+      endDrag();
+    },
+    [readOsFilePaths, readDropPayload, onTransferRequested, endDrag, side, source.providerId, currentPath]
+  );
+
   const supportsChmod = source.sourceType !== 's3';
   const selectedEntries = entries.filter((e) => selectedPaths.has(e.path));
 
@@ -376,6 +500,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   },
                 ]
               : []),
+            {
+              key: 'cut',
+              label: 'Cut (Ctrl+X)',
+              icon: Scissors,
+              disabled: selectedEntries.length === 0,
+              onSelect: handleCut,
+            },
+            {
+              key: 'copy',
+              label: 'Copy (Ctrl+C)',
+              icon: Copy,
+              disabled: selectedEntries.length === 0,
+              onSelect: handleCopy,
+            },
+            {
+              key: 'paste',
+              label: 'Paste (Ctrl+V)',
+              icon: Clipboard,
+              disabled: !clipboard || clipboard.sourcePaths.length === 0,
+              onSelect: handlePaste,
+            },
             {
               key: 'rename',
               label: 'Rename',
@@ -489,6 +634,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
           ]
         : [
             { key: 'newfolder', label: 'New Folder', icon: FolderPlus, onSelect: () => void handleNewFolder() },
+            {
+              key: 'paste',
+              label: 'Paste (Ctrl+V)',
+              icon: Clipboard,
+              disabled: !clipboard || clipboard.sourcePaths.length === 0,
+              onSelect: handlePaste,
+            },
             { key: 'refresh', label: 'Refresh', icon: RefreshCw, onSelect: () => void load(true) },
             {
               key: 'search-in-files',
@@ -509,7 +661,50 @@ export const FilePane: React.FC<FilePaneProps> = ({
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.isContentEditable);
+
+    if (e.key === 'F5') {
+      e.preventDefault();
+      void load(true);
+      return;
+    }
+
     if (isInput) return;
+
+    if (e.key === 'ArrowUp' && e.altKey) {
+      e.preventDefault();
+      onPathChange(parentPath(currentPath));
+      return;
+    }
+
+    if (e.key === 'ArrowLeft' && e.altKey) {
+      e.preventDefault();
+      handleGoBack();
+      return;
+    }
+
+    if (e.key === 'ArrowRight' && e.altKey) {
+      e.preventDefault();
+      handleGoForward();
+      return;
+    }
+
+    if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleCopy();
+      return;
+    }
+
+    if (e.key === 'x' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleCut();
+      return;
+    }
+
+    if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handlePaste();
+      return;
+    }
 
     const combo = comboFromKeyboardEvent(e);
     if (combo === null) return;
@@ -524,6 +719,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     <div
       className="flex h-full min-w-0 flex-1 flex-col rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-sm"
       onKeyDown={handlePaneKeyDown}
+      onMouseUp={(e) => {
+        if (e.button === 3) {
+          e.preventDefault();
+          handleGoBack();
+        } else if (e.button === 4) {
+          e.preventDefault();
+          handleGoForward();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -573,13 +777,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="flex items-center gap-1 border-b border-border-subtle bg-app-surface-subtle px-2 py-1">
         <button
           type="button"
-          title="Up one level"
+          title="Back (Alt+Left)"
+          disabled={!canGoBack}
+          onClick={handleGoBack}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="Forward (Alt+Right)"
+          disabled={!canGoForward}
+          onClick={handleGoForward}
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="Up one level (Alt+Up)"
           onClick={() => onPathChange(parentPath(currentPath))}
           className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <ArrowUp className="h-4 w-4" />
         </button>
-        <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} />
+        <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
         <button
           type="button"
           title="Refresh"
@@ -754,6 +976,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onRenameCancel={() => setRenamingPath(null)}
           onEntryContextMenu={(_entry, e) => setContextMenu({ x: e.clientX, y: e.clientY })}
           onPaneContextMenu={(e) => setContextMenu({ x: e.clientX, y: e.clientY })}
+          onRenameStart={handleRenameStart}
+          onRefresh={() => void load(true)}
+          onNavigateParent={() => onPathChange(parentPath(currentPath))}
+          onNavigateBack={handleGoBack}
+          onNavigateForward={handleGoForward}
+          onCopySelected={handleCopy}
+          onCutSelected={handleCut}
+          onPaste={handlePaste}
+          cutPaths={
+            clipboard?.mode === 'cut' && clipboard.providerId === source.providerId
+              ? new Set(clipboard.sourcePaths)
+              : undefined
+          }
           onDeleteSelected={() => void handleDelete()}
         />
       </div>

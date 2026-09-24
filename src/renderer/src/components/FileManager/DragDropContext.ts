@@ -1,5 +1,12 @@
 import { createContext, useContext } from 'react';
-import type { DragPayload } from './types';
+import type { DragPayload, PaneSide } from './types';
+
+export interface FileClipboard {
+  mode: 'copy' | 'cut';
+  sourcePane: PaneSide;
+  providerId: string;
+  sourcePaths: string[];
+}
 
 export interface DragDropContextValue {
   activeDrag: DragPayload | null;
@@ -9,6 +16,10 @@ export interface DragDropContextValue {
   setHoveredTarget: (target: string | null) => void;
   readDropPayload: (dataTransfer: DataTransfer) => DragPayload | null;
   readOsFilePaths: (dataTransfer: DataTransfer) => string[];
+  clipboard: FileClipboard | null;
+  copyFiles: (sourcePane: PaneSide, providerId: string, sourcePaths: string[]) => void;
+  cutFiles: (sourcePane: PaneSide, providerId: string, sourcePaths: string[]) => void;
+  clearClipboard: () => void;
 }
 
 export const DragDropContext = createContext<DragDropContextValue | null>(null);
