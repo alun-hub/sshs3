@@ -1166,7 +1166,25 @@ export class IpcBridge {
         ? sessionIdOrPinPrompt
         : () => this.sshPtyManager.promptForPin(sessionIdOrPinPrompt, `Enter your smartcard PIN to ${promptLabel}:`);
 
-    const loadPromise = loadSmartcardIntoPrivateAgent(pkcs11LibPath, pinHandler);
+    const loadPromise = (async () => {
+      // Read the certificate details *before* handing the module to `ssh-add -s` below (see
+      // the doc comment on `globalSmartcardCerts` for why we want them at all). This must run
+      // strictly before, not concurrently with or fire-and-forget after: once `ssh-add -s`
+      // succeeds, the private agent process keeps the PKCS#11 module initialized and the token
+      // open for as long as the agent lives, and opening a second, independent PKCS#11 session
+      // against the same physical token from this (separate) process while that first one is
+      // live crashed the vendor's Net iD module outright (SIGTRAP inside the driver, observed
+      // right at startup's auto-unlock). No PIN/session is needed to read certs (they're public
+      // objects, see readSmartcardCertificates' doc comment), so doing this first is safe and
+      // guarantees we're never more than one process talking to the token at a time.
+      try {
+        const certs = await readSmartcardCertificates(pkcs11LibPath);
+        this.globalSmartcardCerts.set(pkcs11LibPath, certs);
+      } catch (err) {
+        console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err);
+      }
+      return loadSmartcardIntoPrivateAgent(pkcs11LibPath, pinHandler);
+    })();
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
 
     try {
@@ -1175,12 +1193,6 @@ export class IpcBridge {
       console.log(
         `[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, pid=${result.pid}, socket=${result.socketPath}`
       );
-      // Fire-and-forget: read the certificate details once now, while the card has just proven
-      // responsive to ssh-add, instead of opening a fresh PKCS#11 session on every dropdown open
-      // (see the doc comment on `globalSmartcardCerts`). Must not delay returning the socket path.
-      void readSmartcardCertificates(pkcs11LibPath)
-        .then((certs) => this.globalSmartcardCerts.set(pkcs11LibPath, certs))
-        .catch((err) => console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err));
       return result.socketPath;
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
