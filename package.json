@@ -28,7 +28,7 @@
     "package:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/client-s3": "^3.1137.0",
     "@aws-sdk/client-sso": "^3.1135.0",
     "@aws-sdk/client-sso-oidc": "^3.1135.0",
     "@aws-sdk/credential-provider-sso": "^3.973.15",
