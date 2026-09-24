@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6] - 2026-09-24
+
+### Fixed
+- **Kubernetes HTTP/2 stream timeout & process crash**:
+  - Intercepted the piped source stream in `K8sLogManager` to handle `undici` HTTP/2 timeouts (`TypeError: terminated`) and remote connection drops gracefully without triggering an unhandled exception dialog.
+  - Added stream error listeners in `K8sPortForwardManager` and `K8sTerminalManager`.
+  - Added a global `uncaughtException` protection in the Electron main process to safely ignore benign stream timeouts and transient socket disconnects.
+
+---
+
 ## [0.5] - 2026-09-24
 
 ### Added
