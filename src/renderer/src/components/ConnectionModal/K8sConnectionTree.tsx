@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowUpRight,
   Box,
+  Bug,
   ChevronDown,
   ChevronRight,
   Cpu,
@@ -18,6 +19,7 @@ import {
 import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '@shared/types/kubernetes';
 import { K8sPodDetailModal } from '../K8s/K8sPodDetailModal';
 import { K8sPortForwardModal } from '../K8s/K8sPortForwardModal';
+import { K8sDebugModal } from '../K8s/K8sDebugModal';
 
 type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T };
 
@@ -49,9 +51,11 @@ interface K8sConnectionTreeProps {
   onExec?: (target: K8sTerminalTarget) => void;
   /** Invoked when the user clicks "Logs" on a container. */
   onViewLogs?: (target: K8sTerminalTarget) => void;
+  /** Invoked when the user clicks "Files" to browse container filesystem. */
+  onBrowseFiles?: (target: K8sTerminalTarget) => void;
 }
 
-export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, onViewLogs }) => {
+export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, onViewLogs, onBrowseFiles }) => {
   const [contexts, setContexts] = useState<Loadable<K8sClusterNode[]>>({ status: 'loading' });
   const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
   const [namespacesByContext, setNamespacesByContext] = useState<Record<string, Loadable<K8sNamespaceNode[]>>>({});
@@ -71,6 +75,13 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
     containerPort?: number;
   } | null>(null);
   const [portForwardModalOpen, setPortForwardModalOpen] = useState(false);
+  const [debugTarget, setDebugTarget] = useState<{
+    contextName: string;
+    namespace: string;
+    podName: string;
+    containers?: string[];
+  } | null>(null);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
   const [activePortForwardsCount, setActivePortForwardsCount] = useState(0);
 
   useEffect(() => {
@@ -405,6 +416,24 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                                           <ArrowUpRight className="h-3 w-3" />
                                           <span className="hidden sm:inline">Forward</span>
                                         </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDebugTarget({
+                                              contextName: ctx.contextName,
+                                              namespace: ns.name,
+                                              podName: pod.name,
+                                              containers: pod.containers.map((c) => c.name),
+                                            });
+                                            setDebugModalOpen(true);
+                                          }}
+                                          title="Attach ephemeral debug container (kubectl debug)"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-amber-400 hover:bg-app-surface hover:text-amber-300 border border-transparent hover:border-amber-500/30 transition-colors"
+                                        >
+                                          <Bug className="h-3 w-3" />
+                                          <span className="hidden sm:inline">Debug</span>
+                                        </button>
                                       </div>
                                     </div>
 
@@ -424,8 +453,15 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                                                 title={container.state}
                                               />
                                               <div className="min-w-0">
-                                                <div className="truncate text-xs font-medium text-txt-primary">
-                                                  {container.name}
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="truncate text-xs font-medium text-txt-primary">
+                                                    {container.name}
+                                                  </span>
+                                                  {container.isEphemeral && (
+                                                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] text-amber-400 font-medium">
+                                                      debug
+                                                    </span>
+                                                  )}
                                                 </div>
                                                 <div className="truncate text-[10px] text-txt-muted">{container.image}</div>
                                               </div>
@@ -449,6 +485,24 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
                                                 <ArrowUpRight className="h-3 w-3" />
                                                 Forward
                                               </button>
+                                              {onBrowseFiles && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    onBrowseFiles({
+                                                      contextName: ctx.contextName,
+                                                      namespace: ns.name,
+                                                      podName: pod.name,
+                                                      containerName: container.name,
+                                                    })
+                                                  }
+                                                  title="Browse container filesystem"
+                                                  className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                                                >
+                                                  <Folder className="h-3 w-3 text-amber-400" />
+                                                  Files
+                                                </button>
+                                              )}
                                               {onViewLogs && (
                                                 <button
                                                   type="button"
@@ -513,6 +567,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
           onClose={() => setDescribeTarget(null)}
           onExec={onExec}
           onViewLogs={onViewLogs}
+          onBrowseFiles={onBrowseFiles}
           onPortForward={(cName, nName, pName, cPort) => {
             setPortForwardTarget({
               contextName: cName,
@@ -522,6 +577,15 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
             });
             setPortForwardModalOpen(true);
           }}
+          onDebug={(cName, nName, pName, containers) => {
+            setDebugTarget({
+              contextName: cName,
+              namespace: nName,
+              podName: pName,
+              containers,
+            });
+            setDebugModalOpen(true);
+          }}
         />
       )}
 
@@ -529,6 +593,18 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
         open={portForwardModalOpen}
         initialTarget={portForwardTarget ?? undefined}
         onClose={() => setPortForwardModalOpen(false)}
+      />
+
+      <K8sDebugModal
+        open={debugModalOpen}
+        target={debugTarget}
+        onClose={() => {
+          setDebugModalOpen(false);
+          setDebugTarget(null);
+        }}
+        onAttachSuccess={(target) => {
+          onExec?.(target);
+        }}
       />
     </>
   );

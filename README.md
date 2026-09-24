@@ -37,7 +37,7 @@
 </details>
 
 <details>
-  <summary><b>☸️ Kubernetes & OpenShift</b> (Cluster Tree, Pods, Exec & Logs)</summary>
+  <summary><b>☸️ Kubernetes & OpenShift</b> (Cluster Tree, Pods, Exec, Logs, File Explorer & Live Debugging)</summary>
   <br>
   <p align="center">
     <img src="docs/screenshots/conn-k8s.png" alt="Kubernetes connection tree" width="850" />
@@ -114,7 +114,7 @@
 
 ## Overview
 
-**sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP and S3-compatible object storage (AWS, MinIO, NetApp) plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware-token (smartcard) authentication.
+**sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP, S3-compatible object storage (AWS, MinIO, NetApp), and Kubernetes container filesystems, plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, live ephemeral pod debugging (`kubectl debug`), and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware-token (smartcard) authentication.
 
 Under the hood it's a fairly thin, security-conscious shell around a handful of proven building blocks: your system's own `ssh` binary drives the terminal (so `~/.ssh/config`, agents, and aliases just work), `ssh2`/`ssh2-sftp-client` power file transfers, and the AWS SDK talks to any S3-compatible endpoint. See [How it works](#how-it-works) below for the architecture, and [Built on open source](#built-on-open-source) for the full list of libraries this project depends on.
 
@@ -145,6 +145,10 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 - **Resilient lazy loading** — Never blocks the UI or stalls on unreachable clusters; contexts and namespaces are only queried on-demand when expanded.
 - **Interactive container exec terminal** — Open WebSocket-backed interactive tty exec sessions (`sh`, `bash`, or custom commands) directly into running containers, rendered inside the standard split-pane terminal interface (`Ctrl+Shift+D`/`E`).
 - **Live container log viewer & search** — Follow container logs in real time in a dedicated resizable pane with search support via `@xterm/addon-search`, auto-scrolling, and crash-resilient abort handling.
+- **Kubernetes Pod File Explorer** — Browse, upload, download, view, and edit files directly inside running containers using the full dual-pane file manager interface. Implemented via non-interactive exec streams (`K8sPodStorageProvider`) with zero dependencies or agents required inside the container (works on standard POSIX base images). Supports in-place file viewing/editing with external editors (`FileEditorService`), file permissions (`chmod`), directory creation, and launching a terminal directly in the current container folder ("Open Terminal Here").
+- **Live Ephemeral Pod Debugging (`kubectl debug`)** — Attach ephemeral debug containers directly to running pods without restarting them via the Kubernetes `/ephemeralcontainers` API. Inspect distroless or crashed containers with process/PID namespace sharing (`targetContainerName`). Includes pre-configured images for **Netshoot** (network diagnostics), **RHEL Support Tools** (strace, gdb, sysstat, ubi9), **BusyBox**, **Curl**, and **Ubuntu**, plus custom images and commands. Custom presets can be managed under **Settings → Kubernetes & Debug**. Automatically launches an interactive terminal attached to the debug container upon creation.
+- **Pod Inspector & Detailed Status** — Inspect complete pod metadata, container states, restart counts, conditions, YAML manifests, and live cluster events in a dedicated modal.
+- **Port Forwarding** — Forward ports from remote pods or services to localhost with background lifecycle management and status tracking.
 - **Zero startup impact** — The `@kubernetes/client-node` engine is lazy-loaded on first actual use, preserving instant desktop application startup.
 
 ### X11 & GUI forwarding (Windows & Linux)
@@ -169,7 +173,7 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
   - On **Windows**, there's no equivalent of a caller-spawned private agent: Win32-OpenSSH's `ssh-agent.exe` only runs as the single system-wide "OpenSSH Authentication Agent" service, bound to the fixed pipe `\\.\pipe\openssh-ssh-agent`, and refuses to start a second independent instance. All three modes there — including **Always Prompt** — load the card into that shared service pipe via `ssh-add -s` instead of a direct `-I` login (requires the service to be enabled: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`, once, as Administrator), and evict just that card afterwards via `ssh-add -e` rather than killing a process they don't own. This isn't optional on Windows: Win32-OpenSSH's `ssh-pkcs11-helper` subprocess doesn't reliably route a smartcard PIN prompt through sshs3's askpass server the way it does for a plain account password, so a direct `-I` login there silently falls through to a Windows account password prompt instead of ever asking for the card's PIN.
 
 ### Dual-pane file manager
-- Two independent panes, each pointed at local disk, SFTP, or S3, with drag-and-drop between panes and to/from the OS file manager.
+- Two independent panes, each pointed at local disk, SFTP, S3, or Kubernetes container filesystems, with drag-and-drop between panes and to/from the OS file manager.
 - **Directory synchronization (Folder sync & diff)** — Diff and synchronize any two folders across local disk, SFTP, and S3 (including remote↔remote):
   - Size and modification time (`mtime`) diff engine with New, Changed, and Target-Only categorizations.
   - Interactive file comparison (**Compare**) to review differences before applying.

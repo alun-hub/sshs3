@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8] - 2026-09-24
+
+### Added
+- **Kubernetes Live Pod Debugging (`kubectl debug`)**:
+  - Live injection of ephemeral debug containers directly into running pods without restarting them via `K8sDebugService` (`/ephemeralcontainers` subresource).
+  - Target container process & IPC namespace sharing (`targetContainerName`), enabling inspecting processes (`ps`), sockets (`netstat`), and filesystems across containers in the same pod.
+  - Interactive debugging modal with pre-configured toolsets: **Netshoot** (network troubleshooting), **RHEL Support Tools** (sysstat, strace, gdb, ubi9), **BusyBox** (minimal shell), **Curl** (HTTP/API testing), and **Ubuntu**.
+  - Configurable debug image presets in Settings under a new dedicated **Kubernetes & Debug** tab, supporting custom corporate images, registry paths, and default shell commands.
+  - Automatically launches an interactive terminal session in the debug container upon attachment.
+  - Pod listing and detail views now display ephemeral containers with a distinct `[debug]` / `[Ephemeral Debug]` badge.
+- **Kubernetes Pod File Explorer**:
+  - Full dual-pane file management inside running Kubernetes/OpenShift containers via `K8sPodStorageProvider` using non-interactive Exec streams.
+  - Browse directories, download, upload, create folders, rename, delete, and chmod files directly in container filesystems.
+  - In-place file viewing and editing via internal `FileEditorModal` and external editors (`FileEditorService`), streaming changes back on save.
+  - "Browse Files" button in `K8sConnectionTree` and `K8sPodDetailModal` to jump directly into a container's filesystem.
+  - "Open Terminal Here" inside pod folders to launch an interactive container shell rooted in the current path.
+
+---
+
 ## [0.7] - 2026-09-24
 
 ### Security & Hardening

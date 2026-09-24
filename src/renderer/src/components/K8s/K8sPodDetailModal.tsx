@@ -3,12 +3,14 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Box,
+  Bug,
   CheckCircle2,
   Clock,
   Copy,
   Check,
   Cpu,
   FileCode,
+  Folder,
   Info,
   Loader2,
   Network,
@@ -33,7 +35,9 @@ interface K8sPodDetailModalProps {
   onClose: () => void;
   onExec?: (target: K8sTerminalTarget) => void;
   onViewLogs?: (target: K8sTerminalTarget) => void;
+  onBrowseFiles?: (target: K8sTerminalTarget) => void;
   onPortForward?: (contextName: string, namespace: string, podName: string, containerPort?: number) => void;
+  onDebug?: (contextName: string, namespace: string, podName: string, containers: string[]) => void;
 }
 
 type TabType = 'overview' | 'containers' | 'events' | 'yaml';
@@ -45,7 +49,9 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
   onClose,
   onExec,
   onViewLogs,
+  onBrowseFiles,
   onPortForward,
+  onDebug,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
@@ -131,6 +137,21 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onDebug && (
+              <button
+                type="button"
+                onClick={() => {
+                  const containerNames = pod ? pod.containers.map((c) => c.name) : [];
+                  onDebug(contextName, namespace, podName, containerNames);
+                }}
+                disabled={loading}
+                title="Attach ephemeral debug container (kubectl debug)"
+                className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 transition-colors disabled:opacity-50"
+              >
+                <Bug className="h-3.5 w-3.5" />
+                Debug
+              </button>
+            )}
             <button
               type="button"
               onClick={fetchPod}
@@ -340,7 +361,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
               {/* TAB: Containers */}
               {activeTab === 'containers' && (
                 <div className="space-y-4 text-xs">
-                  {pod.containers.map((c) => (
+                  {[...pod.containers, ...(pod.ephemeralContainers || [])].map((c) => (
                     <div
                       key={c.name}
                       className="rounded-xl border border-border-subtle bg-app-surface p-4 space-y-3"
@@ -349,6 +370,11 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                         <div className="flex items-center gap-2">
                           <Cpu className="h-4 w-4 text-indigo-400" />
                           <span className="text-sm font-semibold text-txt-primary">{c.name}</span>
+                          {c.isEphemeral && (
+                            <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[10px] text-amber-400 font-medium">
+                              Ephemeral Debug
+                            </span>
+                          )}
                           <span
                             className={`rounded border px-2 py-0.5 text-[10px] font-medium capitalize ${
                               c.state === 'running'
@@ -379,6 +405,24 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                             >
                               <ArrowUpRight className="h-3 w-3 text-sky-400" />
                               Port Forward ({c.ports[0].containerPort})
+                            </button>
+                          )}
+                           {onBrowseFiles && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onBrowseFiles({
+                                  contextName,
+                                  namespace,
+                                  podName,
+                                  containerName: c.name,
+                                })
+                              }
+                              title="Browse container filesystem"
+                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                            >
+                              <Folder className="h-3 w-3 text-amber-400" />
+                              Files
                             </button>
                           )}
                           {onViewLogs && (
@@ -597,6 +641,23 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
               >
                 <ArrowUpRight className="h-3.5 w-3.5 text-sky-400" />
                 Port Forward
+              </button>
+            )}
+             {onBrowseFiles && pod?.containers[0] && (
+              <button
+                type="button"
+                onClick={() =>
+                  onBrowseFiles({
+                    contextName,
+                    namespace,
+                    podName,
+                    containerName: pod.containers[0].name,
+                  })
+                }
+                className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              >
+                <Folder className="h-3.5 w-3.5 text-amber-400" />
+                Browse Files
               </button>
             )}
             {onViewLogs && pod?.containers[0] && (

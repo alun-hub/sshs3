@@ -220,6 +220,8 @@ att bygga.
    och kontextmenyer), framåt-/bakåt-kataloghistorik med toolbar-knappar, `Alt+Vänster`/`Höger` och musknappar (3 & 4),
    tangentbordsreflexer (`F2` för Rename, `F5` för Refresh, `Alt + Uppil` för föräldrakatalog) samt avbryt
    pågående drag med `Escape`.
+- [x] **66. K8s Pod File Explorer** — integrerad filhantering mot körande Kubernetes/OpenShift-containrar via `K8sPodStorageProvider`. Utvecklare och administratörer kan bläddra i containerfilsystem, redigera konfigurations- och miljöfiler direkt i `FileEditorModal` och externa editorer med autosparning tillbaka till podden, ladda upp/ner filer via drag & drop samt starta interaktiv terminal i aktuell containerkatalog via "Open in Terminal".
+- [x] **67. K8s Live Pod Debugging (`kubectl debug`)** — koppla på temporära felsökningscontainrar (ephemeral containers) i körande poddar utan omstart via `K8sDebugService` (`/ephemeralcontainers`). Stöd för process/PID-delning (`targetContainerName`), fördefinierade felsökningsimages (Netshoot, RHEL Support Tools, BusyBox, Curl, Ubuntu) samt konfigurerbara custom images under Inställningar -> Kubernetes & Debug. Startar automatiskt interaktiv terminal session i felsökningscontainern.
 
 
 ## Funktionsanalys: PuTTY, WinSCP & S3 Browser
@@ -267,7 +269,7 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57, 65** redan är
+Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57, 65, 66, 67** redan är
 färdigställda (samt encryption-halvan av **22**), är de mest värdefulla nästa stegen:
 
 1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.

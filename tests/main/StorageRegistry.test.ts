@@ -3,6 +3,7 @@ import { StorageRegistry } from '../../src/main/storage/StorageRegistry';
 import { LocalStorageProvider } from '../../src/main/storage/LocalStorageProvider';
 import { SFTPStorageProvider } from '../../src/main/storage/SFTPStorageProvider';
 import { S3StorageProvider } from '../../src/main/storage/S3StorageProvider';
+import { K8sPodStorageProvider } from '../../src/main/storage/K8sPodStorageProvider';
 
 describe('StorageRegistry', () => {
   let registry: StorageRegistry;
@@ -141,6 +142,35 @@ describe('StorageRegistry', () => {
         type: 's3',
       })
     ).rejects.toThrow('S3 config is required');
+  });
+
+  it('creates a K8sPodStorageProvider with k8sConfig', async () => {
+    const provider = await registry.getOrCreate({
+      id: 'k8s-ctx/ns/pod/container',
+      name: 'pod (container)',
+      type: 'k8s',
+      k8sConfig: {
+        id: 'k8s-ctx/ns/pod/container',
+        name: 'pod (container)',
+        contextName: 'ctx',
+        namespace: 'ns',
+        podName: 'pod',
+        containerName: 'container',
+      },
+    });
+
+    expect(provider).toBeInstanceOf(K8sPodStorageProvider);
+    expect(provider.id).toBe('k8s-ctx/ns/pod/container');
+  });
+
+  it('throws when creating K8sPodStorageProvider without k8sConfig', async () => {
+    await expect(
+      registry.getOrCreate({
+        id: 'k8s-invalid',
+        name: 'Invalid K8s',
+        type: 'k8s',
+      })
+    ).rejects.toThrow('Kubernetes storage config is required');
   });
 
   it('throws on unsupported storage type', async () => {

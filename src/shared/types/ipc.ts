@@ -45,6 +45,8 @@ import type {
   K8sPodDescription,
   K8sPortForwardTarget,
   K8sActivePortForward,
+  K8sStorageConfig,
+  K8sDebugTarget,
 } from './kubernetes';
 
 export const IPC_CHANNELS = {
@@ -234,6 +236,9 @@ export const IPC_CHANNELS = {
   K8S_PORT_FORWARD_STOP: 'k8s-port-forward:stop',
   K8S_PORT_FORWARD_LIST: 'k8s-port-forward:list',
   K8S_PORT_FORWARD_EVENT: 'k8s-port-forward:event',
+
+  // Kubernetes / OpenShift debug
+  K8S_DEBUG_ATTACH: 'k8s:debug-attach',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -287,10 +292,11 @@ export interface DirSyncApplyOptions {
 export interface StorageConnectConfig {
   id: string;
   name: string;
-  type: 'local' | 'sftp' | 's3';
+  type: 'local' | 'sftp' | 's3' | 'k8s';
   localBasePath?: string;
   sftpConfig?: SFTPConfig;
   s3Config?: S3Config;
+  k8sConfig?: K8sStorageConfig;
 }
 
 export interface MultiSSHApi {
@@ -481,6 +487,7 @@ export interface MultiSSHApi {
   k8sStopPortForward(id: string): Promise<boolean>;
   k8sListPortForwards(): Promise<K8sActivePortForward[]>;
   onK8sPortForwardEvent(callback: (activeForwards: K8sActivePortForward[]) => void): () => void;
+  k8sAttachDebugContainer(target: K8sDebugTarget): Promise<{ containerName: string }>;
 
   // Window / General
   openExternal(url: string): Promise<void>;

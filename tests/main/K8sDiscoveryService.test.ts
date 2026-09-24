@@ -269,6 +269,44 @@ describe('K8sDiscoveryService', () => {
       const pods = await svc.listPods('default', 'default');
       expect(pods[0].containers[0]).toEqual({ name: 'c', image: 'img', ready: false, state: 'unknown' });
     });
+
+    it('maps ephemeral containers with isEphemeral=true in listPods', async () => {
+      listNamespacedPodMock.mockResolvedValueOnce({
+        items: [
+          {
+            metadata: { name: 'debugged-pod' },
+            status: {
+              phase: 'Running',
+              containerStatuses: [{ name: 'app', ready: true, state: { running: {} } }],
+              ephemeralContainerStatuses: [
+                { name: 'debug-tool', ready: true, state: { running: {} } },
+              ],
+            },
+            spec: {
+              containers: [{ name: 'app', image: 'my-app:1.0' }],
+              ephemeralContainers: [{ name: 'debug-tool', image: 'nicolaka/netshoot' }],
+            },
+          },
+        ],
+      });
+
+      const svc = new K8sDiscoveryService('/fake/kubeconfig');
+      const pods = await svc.listPods('default', 'default');
+      expect(pods[0].containers).toHaveLength(2);
+      expect(pods[0].containers[0]).toEqual({
+        name: 'app',
+        image: 'my-app:1.0',
+        ready: true,
+        state: 'running',
+      });
+      expect(pods[0].containers[1]).toEqual({
+        name: 'debug-tool',
+        image: 'nicolaka/netshoot',
+        ready: true,
+        state: 'running',
+        isEphemeral: true,
+      });
+    });
   });
 
   describe('describePod', () => {

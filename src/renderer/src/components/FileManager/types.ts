@@ -2,7 +2,7 @@ import type { FileEntry } from '@shared/types/storage';
 
 export type PaneSide = 'left' | 'right';
 
-export type SourceType = 'local' | 'sftp' | 's3';
+export type SourceType = 'local' | 'sftp' | 's3' | 'k8s';
 
 export interface PaneSource {
   providerId: string;

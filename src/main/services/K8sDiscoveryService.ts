@@ -184,26 +184,48 @@ export class K8sDiscoveryService {
       const statusByName = new Map(
         (pod.status?.containerStatuses || []).map((s) => [s.name, s])
       );
-      const containers: K8sContainerNode[] = (pod.spec?.containers || []).map((c) => {
+      const regularContainers: K8sContainerNode[] = (pod.spec?.containers || []).map((c) => {
         const status = statusByName.get(c.name);
-        return {
+        const node: K8sContainerNode = {
           name: c.name,
           image: c.image || '',
           ready: status?.ready ?? false,
           state: containerState(status),
-          ports: c.ports?.map((p) => ({
+        };
+        if (c.ports && c.ports.length > 0) {
+          node.ports = c.ports.map((p) => ({
             containerPort: p.containerPort,
             name: p.name,
             protocol: p.protocol,
-          })),
+          }));
+        }
+        return node;
+      });
+
+      const ephemeralContainers: K8sContainerNode[] = (pod.spec?.ephemeralContainers || []).map((c) => {
+        const status = (pod.status?.ephemeralContainerStatuses || []).find((s) => s.name === c.name);
+        const node: K8sContainerNode = {
+          name: c.name,
+          image: c.image || '',
+          ready: status?.ready ?? false,
+          state: containerState(status),
+          isEphemeral: true,
         };
+        if (c.ports && c.ports.length > 0) {
+          node.ports = c.ports.map((p) => ({
+            containerPort: p.containerPort,
+            name: p.name,
+            protocol: p.protocol,
+          }));
+        }
+        return node;
       });
 
       return {
         name: pod.metadata?.name || '',
         namespace,
         phase: pod.status?.phase || 'Unknown',
-        containers,
+        containers: [...regularContainers, ...ephemeralContainers],
       };
     });
   }
@@ -328,6 +350,13 @@ export class K8sDiscoveryService {
     const initContainers = (pod.spec?.initContainers || []).map((c) =>
       mapContainer(c, initStatusByName.get(c.name))
     );
+    const ephemeralStatusByName = new Map(
+      (pod.status?.ephemeralContainerStatuses || []).map((s) => [s.name, s])
+    );
+    const ephemeralContainers = (pod.spec?.ephemeralContainers || []).map((c) => ({
+      ...mapContainer(c as any, ephemeralStatusByName.get(c.name)),
+      isEphemeral: true,
+    }));
 
     const conditions: K8sPodCondition[] = (pod.status?.conditions || []).map((c) => ({
       type: c.type,
@@ -357,6 +386,7 @@ export class K8sDiscoveryService {
       conditions,
       containers,
       initContainers: initContainers.length > 0 ? initContainers : undefined,
+      ephemeralContainers: ephemeralContainers.length > 0 ? ephemeralContainers : undefined,
       events,
       yaml,
     };

@@ -1,3 +1,5 @@
+import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from './kubernetes';
+
 export type AppTheme = 'dark' | 'light' | 'breeze' | 'system';
 export type SessionExitAction = 'reconnect' | 'close' | 'keep';
 
@@ -90,6 +92,8 @@ export interface AppSettings {
   x11ServerArgs?: string;
   /** ISO 8601 timestamp of the last edit. Used by remote profile sync to pick the newer whole-object copy. */
   updatedAt?: string;
+  /** Ephemeral debug container images used for Kubernetes / OpenShift pod debugging. */
+  k8sDebugImages?: K8sDebugImage[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -109,4 +113,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   smartcardAuthMode: 'always-prompt',
   smartcardUnlockAtStartup: false,
   x11ServerMode: 'auto',
+  k8sDebugImages: [...DEFAULT_K8S_DEBUG_IMAGES],
 };

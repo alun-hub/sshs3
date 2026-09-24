@@ -34,6 +34,8 @@ interface ConnectionManagerModalProps {
   onConnectK8s?: (target: K8sTerminalTarget) => void;
   /** Opens a new tab following a container's logs. */
   onViewK8sLogs?: (target: K8sTerminalTarget) => void;
+  /** Opens file manager targeting the container filesystem. */
+  onBrowseK8sFiles?: (target: K8sTerminalTarget) => void;
   /** Master switch from Settings > Files & Storage. Off by default; hides the dotfiles pool field in the SSH form. */
   dotfilesPoolEnabled?: boolean;
 }
@@ -46,6 +48,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onConnectS3,
   onConnectK8s,
   onViewK8sLogs,
+  onBrowseK8sFiles,
   dotfilesPoolEnabled = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -318,6 +321,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                     onViewK8sLogs
                       ? (target) => {
                           onViewK8sLogs(target);
+                          onClose();
+                        }
+                      : undefined
+                  }
+                  onBrowseFiles={
+                    onBrowseK8sFiles
+                      ? (target) => {
+                          onBrowseK8sFiles(target);
                           onClose();
                         }
                       : undefined

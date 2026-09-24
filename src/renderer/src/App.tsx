@@ -38,6 +38,8 @@ export interface AppTab extends TabItem {
   /** The pane the user last interacted with; keyboard shortcuts (split/close) target this pane. */
   activePaneId?: string;
   initialCwd?: string;
+  /** Set when opening a filemanager tab focused on a K8s container. */
+  initialK8sTarget?: K8sTerminalTarget;
 }
 
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */
@@ -473,6 +475,34 @@ export const App: React.FC = () => {
     []
   );
 
+  const handleOpenK8sTerminalAt = useCallback((target: K8sTerminalTarget, folderPath: string) => {
+    const newId = `term-${Date.now()}`;
+    const shellCommand = folderPath && folderPath !== '/' ? `cd ${JSON.stringify(folderPath)} && exec /bin/sh` : undefined;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'terminal',
+      title: target.podName,
+      paneTree: createLeaf(`${newId}-root`, {
+        k8sTarget: shellCommand ? { ...target, shell: shellCommand } : target,
+      }),
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
+  const handleBrowseK8sFiles = useCallback((target: K8sTerminalTarget) => {
+    const newId = `fm-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'filemanager',
+      title: `${target.podName} (${target.containerName})`,
+      initialK8sTarget: target,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+    setProfilesModalOpen(false);
+  }, []);
+
   const handleOpenProfiles = () => {
     setProfilesModalTab('ssh');
     setProfilesModalOpen(true);
@@ -735,7 +765,12 @@ export const App: React.FC = () => {
                   </div>
                 ) : (
                   <div data-testid={`filemanager-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">
-                    <DualPaneExplorer onOpenTerminal={handleOpenTerminalAt} shortcuts={settings.shortcuts} />
+                    <DualPaneExplorer
+                      onOpenTerminal={handleOpenTerminalAt}
+                      onOpenK8sTerminal={handleOpenK8sTerminalAt}
+                      shortcuts={settings.shortcuts}
+                      initialK8sTarget={tab.initialK8sTarget}
+                    />
                   </div>
                 )}
               </div>
@@ -818,6 +853,7 @@ export const App: React.FC = () => {
           setProfilesModalOpen(false);
         }}
         onViewK8sLogs={handleViewK8sLogs}
+        onBrowseK8sFiles={handleBrowseK8sFiles}
       />
 
       {/* Settings Modal */}

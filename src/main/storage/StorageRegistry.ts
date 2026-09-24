@@ -1,6 +1,7 @@
 import { LocalStorageProvider } from './LocalStorageProvider';
 import { SFTPStorageProvider } from './SFTPStorageProvider';
 import { S3StorageProvider } from './S3StorageProvider';
+import { K8sPodStorageProvider } from './K8sPodStorageProvider';
 import type { IStorageProvider } from '../../shared/types/storage';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SshHostVerifierFn } from '../ssh/HostKeyVerifier';
@@ -68,6 +69,13 @@ export class StorageRegistry {
           id: config.id,
           name: config.name || config.s3Config.name,
         });
+        break;
+      }
+      case 'k8s': {
+        if (!config.k8sConfig) {
+          throw new Error(`Kubernetes storage config is required for provider "${config.id}"`);
+        }
+        provider = new K8sPodStorageProvider(config.k8sConfig);
         break;
       }
       default: {

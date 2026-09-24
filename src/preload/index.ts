@@ -22,6 +22,7 @@ import type {
   K8sPodDescription,
   K8sPortForwardTarget,
   K8sActivePortForward,
+  K8sDebugTarget,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
@@ -615,6 +616,9 @@ export const api: MultiSSHApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, listener);
     };
   },
+
+  k8sAttachDebugContainer: (target: K8sDebugTarget): Promise<{ containerName: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_DEBUG_ATTACH, target),
 
   // Window / General
   openExternal: (url: string): Promise<void> =>

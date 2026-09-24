@@ -3,6 +3,7 @@ export interface K8sContainerNode {
   image: string;
   ready: boolean;
   state: 'running' | 'waiting' | 'terminated' | 'unknown';
+  isEphemeral?: boolean;
   ports?: Array<{ containerPort: number; name?: string; protocol?: string }>;
 }
 
@@ -74,6 +75,7 @@ export interface K8sPodContainerStatus {
   ready: boolean;
   restartCount: number;
   state: 'running' | 'waiting' | 'terminated' | 'unknown';
+  isEphemeral?: boolean;
   stateDetails?: {
     startedAt?: string;
     reason?: string;
@@ -107,6 +109,7 @@ export interface K8sPodDescription {
   conditions: K8sPodCondition[];
   containers: K8sPodContainerStatus[];
   initContainers?: K8sPodContainerStatus[];
+  ephemeralContainers?: K8sPodContainerStatus[];
   events: K8sPodEvent[];
   yaml: string;
 }
@@ -131,4 +134,61 @@ export interface K8sActivePortForward {
   status: 'active' | 'error' | 'stopped';
   error?: string;
 }
+
+export interface K8sDebugImage {
+  id: string;
+  name: string;
+  image: string;
+  description?: string;
+  defaultCommand?: string;
+}
+
+export const DEFAULT_K8S_DEBUG_IMAGES: K8sDebugImage[] = [
+  {
+    id: 'netshoot',
+    name: 'Netshoot (Network Troubleshooting)',
+    image: 'nicolaka/netshoot',
+    description: 'Swiss army knife for network troubleshooting (tcpdump, curl, iperf, netstat, nmap, etc.)',
+    defaultCommand: 'bash',
+  },
+  {
+    id: 'rhel-support-tools',
+    name: 'RHEL Support Tools',
+    image: 'registry.access.redhat.com/ubi9/rhel-support-tools',
+    description: 'Red Hat Enterprise Linux UBI with sysstat, gdb, strace, iproute, etc.',
+    defaultCommand: 'bash',
+  },
+  {
+    id: 'busybox',
+    name: 'BusyBox (Minimal Shell)',
+    image: 'busybox:latest',
+    description: 'Lightweight POSIX shell environment with standard core utilities',
+    defaultCommand: 'sh',
+  },
+  {
+    id: 'curl',
+    name: 'Curl (HTTP Testing)',
+    image: 'curlimages/curl:latest',
+    description: 'Minimal Alpine-based image with curl for HTTP/HTTPS API testing',
+    defaultCommand: 'sh',
+  },
+  {
+    id: 'ubuntu',
+    name: 'Ubuntu (Full Linux Utilities)',
+    image: 'ubuntu:latest',
+    description: 'Standard Ubuntu environment with apt-get package manager',
+    defaultCommand: 'bash',
+  },
+];
+
+export interface K8sDebugTarget {
+  contextName: string;
+  namespace: string;
+  podName: string;
+  image: string;
+  containerName?: string;
+  targetContainerName?: string;
+  command?: string[];
+}
+
 

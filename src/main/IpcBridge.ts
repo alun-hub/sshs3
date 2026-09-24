@@ -36,6 +36,7 @@ import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
 import { K8sDiscoveryService } from './services/K8sDiscoveryService';
+import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
 import { K8sLogManager } from './terminal/K8sLogManager';
@@ -73,6 +74,7 @@ import type {
   K8sPodDescription,
   K8sPortForwardTarget,
   K8sActivePortForward,
+  K8sDebugTarget,
 } from '../shared/types/kubernetes';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
@@ -140,6 +142,7 @@ export interface IpcBridgeOptions {
   syncCryptoService?: SyncCryptoService;
   profileSyncService?: ProfileSyncService;
   k8sDiscoveryService?: K8sDiscoveryService;
+  k8sDebugService?: K8sDebugService;
   k8sTerminalManager?: K8sTerminalManager;
   k8sLogManager?: K8sLogManager;
   k8sPortForwardManager?: K8sPortForwardManager;
@@ -166,6 +169,7 @@ export class IpcBridge {
   public readonly syncCryptoService: SyncCryptoService;
   public readonly profileSyncService: ProfileSyncService;
   public readonly k8sDiscoveryService: K8sDiscoveryService;
+  public readonly k8sDebugService: K8sDebugService;
   public readonly k8sTerminalManager: K8sTerminalManager;
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
@@ -242,6 +246,7 @@ export class IpcBridge {
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService);
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
+    this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
     this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
@@ -2360,6 +2365,13 @@ export class IpcBridge {
       IPC_CHANNELS.K8S_PORT_FORWARD_LIST,
       async (): Promise<K8sActivePortForward[]> => {
         return this.k8sPortForwardManager.listActive();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.K8S_DEBUG_ATTACH,
+      async (_event, target: K8sDebugTarget): Promise<{ containerName: string }> => {
+        return await this.k8sDebugService.attachEphemeralContainer(target);
       }
     );
   }

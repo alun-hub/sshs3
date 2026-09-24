@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  Boxes,
   Clipboard,
   Cloud,
   Copy,
@@ -72,6 +73,7 @@ const SOURCE_ICONS: Record<SourceType, React.ComponentType<{ className?: string 
   local: HardDrive,
   sftp: Server,
   s3: Cloud,
+  k8s: Boxes,
 };
 
 export const FilePane: React.FC<FilePaneProps> = ({
@@ -746,13 +748,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-2.5 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border-subtle bg-app-card p-0.5 text-xs">
-            {(['local', 'sftp', 's3'] as SourceType[]).map((type) => {
+            {(['local', 'sftp', 's3', 'k8s'] as SourceType[]).map((type) => {
               const Icon = SOURCE_ICONS[type];
+              const titleMap: Record<SourceType, string> = {
+                local: 'Local Disk',
+                sftp: 'SFTP',
+                s3: 'S3 Object Storage',
+                k8s: 'Kubernetes Pods',
+              };
               return (
                 <button
                   key={type}
                   type="button"
-                  title={type.toUpperCase()}
+                  title={titleMap[type]}
                   onClick={() => onSourceTypeRequest(type)}
                   className={
                     'rounded-md p-1 transition-colors ' +
@@ -875,13 +883,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </button>
         <button
           type="button"
-          title="Search in Files..."
+          title={source.sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}
+          disabled={source.sourceType === 'k8s'}
           onClick={() => setSearchOpen(true)}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
         >
           <FileSearch className="h-4 w-4" />
         </button>
-        {source.sourceType === 'sftp' && onOpenTerminal && (
+        {(source.sourceType === 'sftp' || source.sourceType === 'k8s') && onOpenTerminal && (
           <button
             type="button"
             title="Open Terminal Here"
@@ -1105,14 +1114,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
         otherPane={otherPane ?? null}
       />
 
-      <SearchModal
-        open={searchOpen}
-        providerId={source.providerId}
-        sourceType={source.sourceType}
-        rootPath={currentPath}
-        onClose={() => setSearchOpen(false)}
-        onJumpToFile={(path) => onPathChange(parentPath(path))}
-      />
+      {source.sourceType !== 'k8s' && (
+        <SearchModal
+          open={searchOpen}
+          providerId={source.providerId}
+          sourceType={source.sourceType}
+          rootPath={currentPath}
+          onClose={() => setSearchOpen(false)}
+          onJumpToFile={(path) => onPathChange(parentPath(path))}
+        />
+      )}
 
       {dotfilesFeedback && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white shadow-lg flex items-center gap-1.5 animate-in fade-in">

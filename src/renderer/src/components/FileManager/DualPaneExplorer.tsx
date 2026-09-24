@@ -3,6 +3,7 @@ import { KeyRound } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config, SFTPConfig } from '@shared/types/storage';
 import type { SavedPaneState } from '@shared/types/session';
+import type { K8sTerminalTarget, K8sStorageConfig } from '@shared/types/kubernetes';
 import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModal';
 import { DragDropProvider } from './DragDropLayer';
 import { FilePane } from './FilePane';
@@ -22,11 +23,19 @@ interface PaneState {
 
 interface DualPaneExplorerProps {
   onOpenTerminal?: (config: SSHConnectionConfig, path: string) => void;
+  onOpenK8sTerminal?: (target: K8sTerminalTarget, path: string) => void;
   /** Current keyboard shortcut bindings, forwarded to each pane for Search in Files. */
   shortcuts?: Record<string, string>;
+  /** Automatically connect one of the panes to this K8s container on mount. */
+  initialK8sTarget?: K8sTerminalTarget;
 }
 
-export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTerminal, shortcuts }) => {
+export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
+  onOpenTerminal,
+  onOpenK8sTerminal,
+  shortcuts,
+  initialK8sTarget,
+}) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
@@ -122,6 +131,36 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
                 };
               } catch (err) {
                 console.warn('Could not auto-reconnect SFTP pane on startup:', err);
+              }
+            }
+          }
+
+          if (savedPane.sourceType === 'k8s') {
+            const match = savedPane.providerId.replace(/^k8s-/, '').split('/');
+            if (match.length === 4) {
+              const [contextName, namespace, podName, containerName] = match;
+              try {
+                const k8sConfig: K8sStorageConfig = {
+                  id: savedPane.providerId,
+                  name: savedPane.label,
+                  contextName,
+                  namespace,
+                  podName,
+                  containerName,
+                  initialPath: savedPane.path || '/',
+                };
+                await window.multissh.connectStorage({
+                  id: savedPane.providerId,
+                  name: savedPane.label,
+                  type: 'k8s',
+                  k8sConfig,
+                });
+                return {
+                  source: { providerId: savedPane.providerId, sourceType: 'k8s', label: savedPane.label },
+                  path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
+                };
+              } catch (err) {
+                console.warn('Could not auto-reconnect K8s pane on startup:', err);
               }
             }
           }
@@ -315,8 +354,70 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
     [connectionRequest]
   );
 
+  const connectPaneToK8s = useCallback(
+    async (target: K8sTerminalTarget, targetSide?: PaneSide) => {
+      const side = targetSide || (connectionRequest ? connectionRequest.side : 'left');
+      setConnecting(true);
+      try {
+        const providerId = `k8s-${target.contextName}/${target.namespace}/${target.podName}/${target.containerName}`;
+        const k8sConfig: K8sStorageConfig = {
+          id: providerId,
+          name: `${target.podName} (${target.containerName})`,
+          contextName: target.contextName,
+          namespace: target.namespace,
+          podName: target.podName,
+          containerName: target.containerName,
+          initialPath: '/',
+        };
+        const session = await window.multissh.sessionGet?.();
+        const initialPath = session?.lastPaths?.[providerId] || '/';
+        await window.multissh.connectStorage({
+          id: providerId,
+          name: `${target.podName} (${target.containerName})`,
+          type: 'k8s',
+          k8sConfig,
+        });
+        setPanes((prev) => {
+          const next = {
+            ...prev,
+            [side]: {
+              source: {
+                providerId,
+                sourceType: 'k8s' as const,
+                label: `${target.podName} (${target.containerName})`,
+              },
+              path: initialPath,
+            },
+          };
+          persistPaneState(next);
+          return next;
+        });
+        setConnectionRequest(null);
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : 'Could not connect to Kubernetes pod');
+      } finally {
+        setConnecting(false);
+      }
+    },
+    [connectionRequest]
+  );
+
+  useEffect(() => {
+    if (initialK8sTarget && ready) {
+      void connectPaneToK8s(initialK8sTarget, 'left');
+    }
+  }, [initialK8sTarget, ready, connectPaneToK8s]);
+
   const handleOpenTerminal = useCallback(
     async (providerId: string, path: string) => {
+      if (providerId.startsWith('k8s-') && onOpenK8sTerminal) {
+        const match = providerId.replace(/^k8s-/, '').split('/');
+        if (match.length === 4) {
+          const [contextName, namespace, podName, containerName] = match;
+          onOpenK8sTerminal({ contextName, namespace, podName, containerName }, path);
+          return;
+        }
+      }
       if (!onOpenTerminal || !providerId.startsWith('sftp-')) return;
       const sshId = providerId.slice('sftp-'.length);
       const profiles = await window.multissh.profilesGet?.();
@@ -327,7 +428,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       }
       onOpenTerminal(sshProfile, path);
     },
-    [onOpenTerminal]
+    [onOpenTerminal, onOpenK8sTerminal]
   );
 
   const handleTransferRequested = useCallback(
@@ -384,7 +485,11 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onPathChange={(path) => setPanePath('left', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('left', type)}
             onTransferRequested={(params) => handleTransferRequested('left', params)}
-            onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.left.source.providerId, path) : undefined}
+            onOpenTerminal={
+              onOpenTerminal || onOpenK8sTerminal
+                ? (path) => void handleOpenTerminal(panes.left.source.providerId, path)
+                : undefined
+            }
             refreshToken={refreshToken}
             otherPane={{ ...panes.right.source, path: panes.right.path }}
             shortcuts={shortcuts}
@@ -396,7 +501,11 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
             onPathChange={(path) => setPanePath('right', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('right', type)}
             onTransferRequested={(params) => handleTransferRequested('right', params)}
-            onOpenTerminal={onOpenTerminal ? (path) => void handleOpenTerminal(panes.right.source.providerId, path) : undefined}
+            onOpenTerminal={
+              onOpenTerminal || onOpenK8sTerminal
+                ? (path) => void handleOpenTerminal(panes.right.source.providerId, path)
+                : undefined
+            }
             refreshToken={refreshToken}
             otherPane={{ ...panes.left.source, path: panes.left.path }}
             shortcuts={shortcuts}
@@ -406,12 +515,19 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({ onOpenTermin
       </div>
       <ConnectionManagerModal
         open={connectionRequest !== null}
-        initialTab={connectionRequest?.type === 's3' ? 's3' : 'ssh'}
+        initialTab={
+          connectionRequest?.type === 's3'
+            ? 's3'
+            : connectionRequest?.type === 'k8s'
+              ? 'k8s'
+              : 'ssh'
+        }
         onClose={() => {
           if (!connecting) setConnectionRequest(null);
         }}
         onConnectSSH={connecting ? undefined : (config) => void connectPaneToSSH(config)}
         onConnectS3={connecting ? undefined : (config) => void connectPaneToS3(config)}
+        onBrowseK8sFiles={connecting ? undefined : (target) => void connectPaneToK8s(target)}
       />
       {passwordPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

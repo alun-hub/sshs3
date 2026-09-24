@@ -1,4 +1,4 @@
-export type StorageType = 'local' | 'sftp' | 's3';
+export type StorageType = 'local' | 'sftp' | 's3' | 'k8s';
 
 export interface FileEntry {
   name: string;
