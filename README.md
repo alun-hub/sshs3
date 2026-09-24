@@ -44,8 +44,20 @@
     <br><em>Lazy-loading Kubernetes & OpenShift cluster tree from ~/.kube/config</em>
   </p>
   <p align="center">
+    <img src="docs/screenshots/k8s-filemanager.png" alt="Kubernetes Pod File Explorer" width="850" />
+    <br><em>Dual-pane file explorer inside running Kubernetes & OpenShift containers</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/k8s-debug.png" alt="Kubernetes ephemeral pod debugging" width="850" />
+    <br><em>Live ephemeral pod debugging (kubectl debug) with preset tools and process namespace sharing</em>
+  </p>
+  <p align="center">
     <img src="docs/screenshots/sshs3-logs.png" alt="Live log streaming" width="850" />
     <br><em>Live container and file log streaming with real-time text search</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/k8s-debug-settings.png" alt="Kubernetes debug image presets settings" width="850" />
+    <br><em>Configurable Kubernetes debug image presets under Settings</em>
   </p>
 </details>
 
