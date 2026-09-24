@@ -73,6 +73,21 @@ export class K8sLogManager extends EventEmitter {
     const output = new PassThrough();
     const session: K8sLogSession = { sessionId, output, disposed: false };
 
+    // @kubernetes/client-node pipes the internal fetch response stream into output.
+    // Attach an error listener directly to the source stream so HTTP/2 timeouts
+    // (e.g. TypeError: terminated) and remote disconnects never become unhandled errors.
+    output.on('pipe', (src) => {
+      src.on('error', (err: Error) => {
+        if (!session.disposed) {
+          const isTerminated = err.message === 'terminated' || /terminated|abort|timeout/i.test(err.message);
+          if (!isTerminated) {
+            this.emit('data', { sessionId, data: `\r\n\x1b[33m[sshs3: log stream ended: ${err.message}]\x1b[0m\r\n` });
+          }
+          void this.finish(sessionId);
+        }
+      });
+    });
+
     output.on('data', (chunk: Buffer) => {
       this.emit('data', { sessionId, data: chunk.toString('utf-8') });
     });

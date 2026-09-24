@@ -12,6 +12,20 @@ if (process.platform === 'linux') {
   app.disableHardwareAcceleration();
 }
 
+process.on('uncaughtException', (err) => {
+  // Gracefully log undici/HTTP2 stream termination and transient socket aborts
+  // instead of crashing Electron with an unexpected error dialog.
+  if (err instanceof TypeError && err.message === 'terminated') {
+    console.warn('[sshs3] Ignored stream termination error:', err);
+    return;
+  }
+  if (err && typeof err === 'object' && 'code' in err && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
+    console.warn('[sshs3] Ignored transient socket error:', err);
+    return;
+  }
+  console.error('[sshs3] Uncaught exception in main process:', err);
+});
+
 let mainWindow: BrowserWindow | null = null;
 let ipcBridge: IpcBridge | null = null;
 let isQuitting = false;

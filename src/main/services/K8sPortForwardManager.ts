@@ -73,6 +73,7 @@ export class K8sPortForwardManager extends EventEmitter {
       socket.on('error', () => cleanup());
 
       const errStream = new stream.PassThrough();
+      errStream.on('error', () => cleanup());
       errStream.on('data', (errChunk) => {
         const msg = errChunk.toString().trim();
         console.warn(`[K8sPortForward] Pod ${target.podName}:${target.containerPort} error:`, msg);

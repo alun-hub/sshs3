@@ -133,4 +133,22 @@ describe('K8sLogManager', () => {
     manager.stop(idB);
     expect(onEnd).not.toHaveBeenCalled();
   });
+
+  it('handles source stream errors (such as TypeError: terminated) gracefully without crashing', async () => {
+    const manager = new K8sLogManager();
+    const onEnd = vi.fn();
+    manager.on('end', onEnd);
+
+    const sessionId = await manager.startFollow(TARGET);
+
+    // Simulate @kubernetes/client-node piping an internal stream that encounters an HTTP/2 timeout or disconnect
+    const fakeSourceStream = new PassThrough();
+    fakeSourceStream.pipe(calls[0].output);
+
+    // Emit TypeError: terminated on the source stream
+    fakeSourceStream.emit('error', new TypeError('terminated'));
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onEnd).toHaveBeenCalledWith({ sessionId });
+  });
 });

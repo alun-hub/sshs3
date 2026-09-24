@@ -74,6 +74,8 @@ export class K8sTerminalManager extends EventEmitter {
 
     const output = new ResizableOutputStream(rows, cols);
     const stdin = new PassThrough();
+    output.on('error', () => {});
+    stdin.on('error', () => {});
     const session: K8sTerminalSession = { sessionId, target, output, stdin, disposed: false };
 
     output.on('data', (chunk: Buffer) => {
