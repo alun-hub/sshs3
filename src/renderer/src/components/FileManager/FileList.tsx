@@ -242,7 +242,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   const focusElement = useCallback((path: string) => {
     if (!containerRef.current) return;
-    const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(path) : path.replace(/"/g, '\\"');
+    const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(path) : path.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const el = containerRef.current.querySelector<HTMLElement>(`[data-entry-path="${escaped}"]`);
     if (el) {
       el.focus({ preventScroll: true });
