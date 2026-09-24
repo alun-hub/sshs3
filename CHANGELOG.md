@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5] - 2026-09-24
+
+### Added
+- **File manager desktop & Windows ergonomics**:
+  - Auto-scroll when dragging items near top or bottom edges of the file list via `requestAnimationFrame`.
+  - Neutral drop zone at the bottom of the file list and interactive breadcrumb segments as drop targets, allowing files to be safely dropped into current folder root or ancestor paths.
+  - Spring-loaded folders (hover-to-open after 900ms) on folder rows and breadcrumb segments during drag operations.
+  - File clipboard operations (`Ctrl+C` copy, `Ctrl+X` cut with visual dimming, `Ctrl+V` paste) available through keyboard shortcuts and context menus.
+  - Directory navigation history per pane with toolbar Back/Forward buttons, `Alt+Left`/`Alt+Right` shortcuts, and mouse back/forward button support.
+  - Windows keyboard navigation shortcuts: `F2` to rename, `F5` to refresh directory, `Alt+Up` to navigate to parent directory, and `Escape` to cancel active drag operations.
+- **Kubernetes pod describe & events viewer**:
+  - Detailed pod inspector modal (`K8sPodDetailModal`) showing status, conditions, IP addresses, node placement, containers, and live event stream.
+- **Kubernetes port forwarding**:
+  - Forward local ports to cluster pods with auto-assignment of non-privileged ports, traffic buffering, and one-click browser launch (`K8sPortForwardModal` & `K8sPortForwardManager`).
+
+### Fixed
+- **Smartcard PKCS#11 concurrent access**:
+  - Read certificate details prior to `ssh-add -s` invocation to eliminate token session contention and prevent driver crashes (e.g. Net iD SIGTRAP).
+- **Kubernetes port forward session initialization**:
+  - Fixed variable assignment in port forward manager session creation.
+
+---
+
 ## [0.4] - 2026-09-23
 
 ### Added
