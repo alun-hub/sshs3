@@ -123,7 +123,8 @@ interface PaneTreeLayoutProps extends PaneTreeViewProps {
 const PaneSlot: React.FC<{
   paneId: string;
   getPaneContainer: (paneId: string) => HTMLDivElement;
-}> = ({ paneId, getPaneContainer }) => {
+  onSelectPane: (paneId: string) => void;
+}> = ({ paneId, getPaneContainer, onSelectPane }) => {
   const slotRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -136,7 +137,13 @@ const PaneSlot: React.FC<{
     }
   });
 
-  return <div ref={slotRef} className="flex-1 min-h-0 relative" />;
+  return (
+    <div
+      ref={slotRef}
+      onMouseDownCapture={() => onSelectPane(paneId)}
+      className="flex-1 min-h-0 relative"
+    />
+  );
 };
 
 const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
@@ -250,7 +257,7 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
         </div>
       </div>
 
-      <PaneSlot paneId={node.id} getPaneContainer={props.getPaneContainer} />
+      <PaneSlot paneId={node.id} getPaneContainer={props.getPaneContainer} onSelectPane={props.onSelectPane} />
     </div>
   );
 };
@@ -268,6 +275,7 @@ const PaneLeafContent: React.FC<{
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onTitleChange?: (paneId: string, title: string) => void;
+  onSelectPane: (paneId: string) => void;
 }> = ({
   leaf,
   isActive,
@@ -281,11 +289,14 @@ const PaneLeafContent: React.FC<{
   onChangeConnection,
   onOpenLocalTerminal,
   onTitleChange,
+  onSelectPane,
 }) => {
   const isSole = totalPanes === 1;
 
+  let content: React.ReactNode = null;
+
   if (leaf.config) {
-    return (
+    content = (
       <TerminalView
         config={leaf.config}
         isActive={isActive}
@@ -299,10 +310,8 @@ const PaneLeafContent: React.FC<{
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
     );
-  }
-
-  if (leaf.k8sTarget) {
-    return (
+  } else if (leaf.k8sTarget) {
+    content = (
       <TerminalView
         k8sTarget={leaf.k8sTarget}
         isActive={isActive}
@@ -315,10 +324,8 @@ const PaneLeafContent: React.FC<{
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
     );
-  }
-
-  if (leaf.k8sLogTarget) {
-    return (
+  } else if (leaf.k8sLogTarget) {
+    content = (
       <K8sLogView
         target={leaf.k8sLogTarget}
         isActive={isActive}
@@ -326,10 +333,8 @@ const PaneLeafContent: React.FC<{
         fontFamily={settings.terminalFontFamily}
       />
     );
-  }
-
-  if (leaf.local) {
-    return (
+  } else if (leaf.local) {
+    content = (
       <TerminalView
         local
         shellType={leaf.shellType}
@@ -344,10 +349,8 @@ const PaneLeafContent: React.FC<{
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
     );
-  }
-
-  if (isSole) {
-    return (
+  } else if (isSole) {
+    content = (
       <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
         <Terminal className="h-10 w-10 text-txt-muted" />
         <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
@@ -364,34 +367,60 @@ const PaneLeafContent: React.FC<{
         />
       </div>
     );
+  } else {
+    content = (
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
+        <p className="text-xs text-txt-secondary">No connection selected</p>
+        <button
+          type="button"
+          onClick={() => onChangeConnection(leaf.id)}
+          className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+        >
+          Select SSH Connection
+        </button>
+        <LocalTerminalButtons
+          platform={platform}
+          onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
-      <p className="text-xs text-txt-secondary">No connection selected</p>
-      <button
-        type="button"
-        onClick={() => onChangeConnection(leaf.id)}
-        className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-      >
-        Select SSH Connection
-      </button>
-      <LocalTerminalButtons
-        platform={platform}
-        onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
-      />
+    <div
+      className="h-full w-full"
+      onMouseDownCapture={() => onSelectPane(leaf.id)}
+      onFocusCapture={() => onSelectPane(leaf.id)}
+    >
+      {content}
     </div>
   );
 };
 
 export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
   const paneContainersRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const onSelectPaneRef = useRef(props.onSelectPane);
+  onSelectPaneRef.current = props.onSelectPane;
 
   const getPaneContainer = useCallback((paneId: string) => {
     let el = paneContainersRef.current.get(paneId);
     if (!el) {
       el = document.createElement('div');
       el.className = 'h-full w-full';
+      el.addEventListener(
+        'mousedown',
+        () => {
+          onSelectPaneRef.current(paneId);
+        },
+        true
+      );
+      el.addEventListener(
+        'focusin',
+        () => {
+          onSelectPaneRef.current(paneId);
+        },
+        true
+      );
       paneContainersRef.current.set(paneId, el);
     }
     return el;
@@ -429,6 +458,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onChangeConnection={props.onChangeConnection}
             onOpenLocalTerminal={props.onOpenLocalTerminal}
             onTitleChange={props.onTitleChange}
+            onSelectPane={props.onSelectPane}
           />,
           container,
           leaf.id

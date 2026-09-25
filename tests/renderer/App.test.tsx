@@ -321,6 +321,13 @@ describe('App Component', () => {
 
     expect(isPaneFocused(otherPaneId)).toBe(true);
     expect(isPaneFocused(rootPaneId)).toBe(false);
+
+    // Clicking the root pane activates it
+    const rootPaneEl = screen.getByTestId(`terminal-pane-${rootPaneId}`);
+    fireEvent.mouseDown(rootPaneEl);
+
+    expect(isPaneFocused(rootPaneId)).toBe(true);
+    expect(isPaneFocused(otherPaneId)).toBe(false);
   });
 
   it('handles keyboard shortcuts for new terminal, split vertical, and close tab', async () => {
