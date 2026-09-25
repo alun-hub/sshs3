@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Columns2, RefreshCw, Rows2, Terminal, X } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { K8sLogView } from './K8sLogView';
+import { collectLeaves } from '../lib/paneTree';
 import type { AppSettings } from '@shared/types/settings';
 import type { LocalShellType } from '@shared/types/ssh';
-import type { PaneNode, PaneOrientation } from '@shared/types/session';
+import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
 
 /** Buttons for launching a local shell (no SSH connection) in a pane. */
 const LocalTerminalButtons: React.FC<{
@@ -114,7 +116,30 @@ export interface PaneTreeViewProps {
   initialCwd?: string;
 }
 
-export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
+interface PaneTreeLayoutProps extends PaneTreeViewProps {
+  getPaneContainer: (paneId: string) => HTMLDivElement;
+}
+
+const PaneSlot: React.FC<{
+  paneId: string;
+  getPaneContainer: (paneId: string) => HTMLDivElement;
+}> = ({ paneId, getPaneContainer }) => {
+  const slotRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const slotEl = slotRef.current;
+    const container = getPaneContainer(paneId);
+    if (slotEl && container) {
+      if (container.parentElement !== slotEl) {
+        slotEl.appendChild(container);
+      }
+    }
+  });
+
+  return <div ref={slotRef} className="flex-1 min-h-0 relative" />;
+};
+
+const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
   const { node } = props;
 
   if (node.type === 'split') {
@@ -131,14 +156,14 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
                 : ''
             }`}
           >
-            <PaneTreeView {...props} node={child} />
+            <PaneTreeLayout {...props} node={child} />
           </div>
         ))}
       </div>
     );
   }
 
-  const { isActive, activePaneId, totalPanes, settings, platform } = props;
+  const { activePaneId, totalPanes } = props;
   const isSole = totalPanes === 1;
   const isFocused = activePaneId === node.id;
 
@@ -213,87 +238,190 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
-        {node.config ? (
-          <TerminalView
-            config={node.config}
-            isActive={isActive}
-            fontSize={settings.terminalFontSize}
-            fontFamily={settings.terminalFontFamily}
-            theme={settings.theme}
-            initialCwd={props.initialCwdPaneId === node.id ? props.initialCwd : undefined}
-            sessionExitAction={settings.sessionExitAction}
-            copyOnSelect={settings.copyOnSelect}
-            onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
-            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
-          />
-        ) : node.k8sTarget ? (
-          <TerminalView
-            k8sTarget={node.k8sTarget}
-            isActive={isActive}
-            fontSize={settings.terminalFontSize}
-            fontFamily={settings.terminalFontFamily}
-            theme={settings.theme}
-            sessionExitAction={settings.sessionExitAction}
-            copyOnSelect={settings.copyOnSelect}
-            onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
-            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
-          />
-        ) : node.k8sLogTarget ? (
-          <K8sLogView
-            target={node.k8sLogTarget}
-            isActive={isActive}
-            fontSize={settings.terminalFontSize}
-            fontFamily={settings.terminalFontFamily}
-          />
-        ) : node.local ? (
-          <TerminalView
-            local
-            shellType={node.shellType}
-            wslDistro={node.wslDistro}
-            isActive={isActive}
-            fontSize={settings.terminalFontSize}
-            fontFamily={settings.terminalFontFamily}
-            theme={settings.theme}
-            sessionExitAction={settings.sessionExitAction}
-            copyOnSelect={settings.copyOnSelect}
-            onCloseTab={isSole ? props.onCloseTab : () => props.onClosePane(node.id)}
-            onTitleChange={props.onTitleChange ? (title) => props.onTitleChange!(node.id, title) : undefined}
-          />
-        ) : isSole ? (
-          <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
-            <Terminal className="h-10 w-10 text-txt-muted" />
-            <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
-            <button
-              type="button"
-              onClick={() => props.onChangeConnection(node.id)}
-              className="rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-            >
-              Select SSH Connection
-            </button>
-            <LocalTerminalButtons
-              platform={platform}
-              onOpen={(shellType, wslDistro) => props.onOpenLocalTerminal(node.id, shellType, wslDistro)}
-            />
-          </div>
-        ) : (
-          <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
-            <p className="text-xs text-txt-secondary">No connection selected</p>
-            <button
-              type="button"
-              onClick={() => props.onChangeConnection(node.id)}
-              className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-            >
-              Select SSH Connection
-            </button>
-            <LocalTerminalButtons
-              platform={platform}
-              onOpen={(shellType, wslDistro) => props.onOpenLocalTerminal(node.id, shellType, wslDistro)}
-            />
-          </div>
-        )}
-      </div>
+      <PaneSlot paneId={node.id} getPaneContainer={props.getPaneContainer} />
     </div>
+  );
+};
+
+const PaneLeafContent: React.FC<{
+  leaf: PaneLeaf;
+  isActive: boolean;
+  totalPanes: number;
+  settings: AppSettings;
+  platform: string;
+  initialCwdPaneId?: string;
+  initialCwd?: string;
+  onCloseTab: () => void;
+  onClosePane: (paneId: string) => void;
+  onChangeConnection: (paneId: string) => void;
+  onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
+  onTitleChange?: (paneId: string, title: string) => void;
+}> = ({
+  leaf,
+  isActive,
+  totalPanes,
+  settings,
+  platform,
+  initialCwdPaneId,
+  initialCwd,
+  onCloseTab,
+  onClosePane,
+  onChangeConnection,
+  onOpenLocalTerminal,
+  onTitleChange,
+}) => {
+  const isSole = totalPanes === 1;
+
+  if (leaf.config) {
+    return (
+      <TerminalView
+        config={leaf.config}
+        isActive={isActive}
+        fontSize={settings.terminalFontSize}
+        fontFamily={settings.terminalFontFamily}
+        theme={settings.theme}
+        initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
+        sessionExitAction={settings.sessionExitAction}
+        copyOnSelect={settings.copyOnSelect}
+        onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
+        onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
+      />
+    );
+  }
+
+  if (leaf.k8sTarget) {
+    return (
+      <TerminalView
+        k8sTarget={leaf.k8sTarget}
+        isActive={isActive}
+        fontSize={settings.terminalFontSize}
+        fontFamily={settings.terminalFontFamily}
+        theme={settings.theme}
+        sessionExitAction={settings.sessionExitAction}
+        copyOnSelect={settings.copyOnSelect}
+        onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
+        onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
+      />
+    );
+  }
+
+  if (leaf.k8sLogTarget) {
+    return (
+      <K8sLogView
+        target={leaf.k8sLogTarget}
+        isActive={isActive}
+        fontSize={settings.terminalFontSize}
+        fontFamily={settings.terminalFontFamily}
+      />
+    );
+  }
+
+  if (leaf.local) {
+    return (
+      <TerminalView
+        local
+        shellType={leaf.shellType}
+        wslDistro={leaf.wslDistro}
+        isActive={isActive}
+        fontSize={settings.terminalFontSize}
+        fontFamily={settings.terminalFontFamily}
+        theme={settings.theme}
+        sessionExitAction={settings.sessionExitAction}
+        copyOnSelect={settings.copyOnSelect}
+        onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
+        onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
+      />
+    );
+  }
+
+  if (isSole) {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
+        <Terminal className="h-10 w-10 text-txt-muted" />
+        <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
+        <button
+          type="button"
+          onClick={() => onChangeConnection(leaf.id)}
+          className="rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+        >
+          Select SSH Connection
+        </button>
+        <LocalTerminalButtons
+          platform={platform}
+          onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
+      <p className="text-xs text-txt-secondary">No connection selected</p>
+      <button
+        type="button"
+        onClick={() => onChangeConnection(leaf.id)}
+        className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+      >
+        Select SSH Connection
+      </button>
+      <LocalTerminalButtons
+        platform={platform}
+        onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
+      />
+    </div>
+  );
+};
+
+export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
+  const paneContainersRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const getPaneContainer = useCallback((paneId: string) => {
+    let el = paneContainersRef.current.get(paneId);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'h-full w-full';
+      paneContainersRef.current.set(paneId, el);
+    }
+    return el;
+  }, []);
+
+  const leaves = useMemo(() => collectLeaves(props.node), [props.node]);
+
+  useEffect(() => {
+    const currentIds = new Set(leaves.map((l) => l.id));
+    for (const [id, el] of paneContainersRef.current.entries()) {
+      if (!currentIds.has(id)) {
+        el.remove();
+        paneContainersRef.current.delete(id);
+      }
+    }
+  }, [leaves]);
+
+  return (
+    <>
+      <PaneTreeLayout {...props} getPaneContainer={getPaneContainer} />
+      {leaves.map((leaf) => {
+        const container = getPaneContainer(leaf.id);
+        return createPortal(
+          <PaneLeafContent
+            key={leaf.id}
+            leaf={leaf}
+            isActive={props.isActive}
+            totalPanes={props.totalPanes}
+            settings={props.settings}
+            platform={props.platform}
+            initialCwdPaneId={props.initialCwdPaneId}
+            initialCwd={props.initialCwd}
+            onCloseTab={props.onCloseTab}
+            onClosePane={props.onClosePane}
+            onChangeConnection={props.onChangeConnection}
+            onOpenLocalTerminal={props.onOpenLocalTerminal}
+            onTitleChange={props.onTitleChange}
+          />,
+          container
+        );
+      })}
+    </>
   );
 };
 

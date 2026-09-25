@@ -34,6 +34,12 @@ export function collectLeafIds(node: PaneNode): string[] {
   return node.children.flatMap((c) => collectLeafIds(c));
 }
 
+/** Returns every leaf in the tree, in depth-first (left-to-right) order. */
+export function collectLeaves(node: PaneNode): PaneLeaf[] {
+  if (node.type === 'leaf') return [node];
+  return node.children.flatMap((c) => collectLeaves(c));
+}
+
 /** Returns a new tree with the leaf matching `id` replaced via `updater`; other leaves keep their identity. */
 export function updateLeaf(node: PaneNode, id: string, updater: (leaf: PaneLeaf) => PaneLeaf): PaneNode {
   if (node.type === 'leaf') {

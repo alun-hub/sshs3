@@ -10,7 +10,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
 }
+
+app.on('child-process-gone', (_event, details) => {
+  if (details.type === 'GPU') {
+    console.warn(
+      `[sshs3] GPU process exited (reason: ${details.reason}, exitCode: ${details.exitCode}). Continuing with software rendering.`
+    );
+  }
+});
 
 process.on('uncaughtException', (err) => {
   // Gracefully log undici/HTTP2 stream termination and transient socket aborts

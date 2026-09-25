@@ -172,6 +172,13 @@ describe('App Component', () => {
   it('splits a pane without recreating the existing session, and lets you close a specific pane', async () => {
     render(<App />);
 
+    // Start a local terminal first
+    fireEvent.click(screen.getByText('Open Local Terminal'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.multissh.terminalCreate).toHaveBeenCalled();
+
     // A fresh tab always has exactly one (root) pane.
     let panes = screen.getAllByTestId(/^terminal-pane-/);
     expect(panes.length).toBe(1);
@@ -189,15 +196,71 @@ describe('App Component', () => {
     expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
     expect(window.multissh.terminalKill).not.toHaveBeenCalled();
 
-    // Close the *other* pane (not the original) — original must remain, its own session untouched.
     const otherPaneId = panes
       .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
       .find((id) => id !== rootPaneId)!;
+
+    // Start a session in the other pane too
+    const otherPane = screen.getByTestId(`terminal-pane-${otherPaneId}`);
+    fireEvent.click(within(otherPane).getByText('Open Local Terminal'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.multissh.terminalCreate).toHaveBeenCalled();
+    (window.multissh.terminalKill as any).mockClear();
+
+    // Close the *other* pane (not the original) — original must remain, its own session untouched.
     fireEvent.click(screen.getByTestId(`close-pane-${otherPaneId}`));
 
     panes = screen.getAllByTestId(/^terminal-pane-/);
     expect(panes.length).toBe(1);
     expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
+    // Only the other pane's session was killed when it closed
+    expect(window.multissh.terminalKill).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsplit keeps the active pane alive without recreating its session, while closing other panes', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Open Local Terminal'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const rootPaneId = screen
+      .getAllByTestId(/^terminal-pane-/)[0]
+      .getAttribute('data-testid')!
+      .replace('terminal-pane-', '');
+
+    fireEvent.click(screen.getByTestId(`split-row-${rootPaneId}`));
+
+    const panes = screen.getAllByTestId(/^terminal-pane-/);
+    const otherPaneId = panes
+      .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
+      .find((id) => id !== rootPaneId)!;
+
+    const otherPane = screen.getByTestId(`terminal-pane-${otherPaneId}`);
+    fireEvent.click(within(otherPane).getByText('Open Local Terminal'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Clear mocks before unsplit
+    (window.multissh.terminalKill as any).mockClear();
+
+    // Select the root pane as active
+    fireEvent.mouseDown(screen.getByTestId(`terminal-pane-${rootPaneId}`));
+
+    // Click unsplit button in the tab bar
+    const unsplitBtn = screen.getByTestId(/^unsplit-/);
+    fireEvent.click(unsplitBtn);
+
+    // Only root pane remains
+    const remainingPanes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(remainingPanes.length).toBe(1);
+    expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
+    // Only other pane's session was killed
+    expect(window.multissh.terminalKill).toHaveBeenCalledTimes(1);
   });
 
   it('cycles focus between split panes via keyboard (Ctrl+Shift+N / Ctrl+Shift+P)', async () => {
