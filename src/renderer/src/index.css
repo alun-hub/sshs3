@@ -1,6 +1,32 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-app: var(--bg-app);
+  --color-app-surface: var(--bg-surface);
+  --color-app-surface-subtle: var(--bg-surface-subtle);
+  --color-app-surface-hover: var(--bg-surface-hover);
+  --color-app-card: var(--bg-card);
+  --color-app-input: var(--bg-input);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-txt-primary: var(--text-primary);
+  --color-txt-secondary: var(--text-secondary);
+  --color-txt-muted: var(--text-muted);
+
+  --color-accent: var(--accent-primary);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-terminal-bg: #0f172a;
+  --color-terminal-surface: #1e293b;
+  --color-terminal-border: #334155;
+  --color-terminal-text: #f8fafc;
+  --color-terminal-accent: #38bdf8;
+}
 
 :root {
   /* Dark Theme (Default) */
