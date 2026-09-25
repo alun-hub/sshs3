@@ -101,7 +101,9 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                 className="flex items-center gap-1.5 border-b border-border-subtle/50 bg-app-surface-subtle px-3 text-[11px] font-medium text-txt-secondary"
               >
                 <FileText className="h-3 w-3 shrink-0 text-sky-400" />
-                <span className="truncate">{row.displayPath}</span>
+                <span className="truncate" title={row.displayPath}>
+                  {row.displayPath}
+                </span>
                 <span className="shrink-0 text-txt-muted">
                   ({row.count} match{row.count === 1 ? '' : 'es'})
                 </span>
@@ -138,7 +140,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               <span className="flex items-center gap-1.5 text-txt-muted">
                 {match.lineNumber !== undefined && <span className="shrink-0">Line {match.lineNumber}</span>}
               </span>
-              <span className="truncate font-mono text-[11px] text-txt-secondary">
+              <span className="truncate font-mono text-[11px] text-txt-secondary" title={match.snippet}>
                 {highlightSnippet(match.snippet, match.matchStart, match.matchEnd)}
               </span>
             </button>

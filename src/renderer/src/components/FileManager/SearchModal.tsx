@@ -1,6 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Search, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Search,
+  X,
+} from 'lucide-react';
 import type { SearchMatch, SearchMode, SearchSourceType } from '@shared/types/search';
+import { classNames } from '../../lib/format';
 import { SearchResultsList } from './SearchResultsList';
 import { SearchPreviewPane } from './SearchPreviewPane';
 
@@ -43,7 +55,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<SearchWarning[]>([]);
   const [warningsExpanded, setWarningsExpanded] = useState(false);
+  const [warningsDismissed, setWarningsDismissed] = useState(false);
+  const [copiedWarnings, setCopiedWarnings] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<SearchMatch | null>(null);
+
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [leftWidth, setLeftWidth] = useState<number>(400);
+  const [isDragging, setIsDragging] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   const activeSearchIdRef = useRef<string | null>(null);
   const queryInputRef = useRef<HTMLInputElement>(null);
@@ -106,6 +125,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setError(null);
       setWarnings([]);
       setWarningsExpanded(false);
+      setWarningsDismissed(false);
+      setCopiedWarnings(false);
       setTruncated(false);
       setScannedCount(0);
       setCurrentPath(undefined);
@@ -157,41 +178,135 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     [onJumpToFile, handleClose]
   );
 
+  const handleCopyWarnings = useCallback(() => {
+    if (warnings.length === 0) return;
+    const text = warnings
+      .map((w) => (w.path ? `${w.path}: ${w.message}` : w.message))
+      .join('\n');
+    void navigator.clipboard.writeText(text);
+    setCopiedWarnings(true);
+    setTimeout(() => setCopiedWarnings(false), 2000);
+  }, [warnings]);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const newWidth = e.clientX - rect.left;
+      const minWidth = 260;
+      const maxWidth = Math.max(minWidth, rect.width - 320);
+      setLeftWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, handleClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
-      <div className="flex h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-sky-400" />
-            <h2 className="text-sm font-semibold text-txt-primary">Search in Files — {rootPath}</h2>
+    <div
+      className={classNames(
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150',
+        isMaximized ? 'p-0' : 'p-2 sm:p-4'
+      )}
+    >
+      <div
+        className={classNames(
+          'flex flex-col overflow-hidden bg-app-card shadow-2xl transition-[width,height,border-radius] duration-150',
+          isMaximized
+            ? 'h-full w-full rounded-none border-0'
+            : 'h-[90vh] w-[95vw] max-w-[1600px] rounded-xl border border-border-subtle'
+        )}
+      >
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 select-none cursor-default"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <Search className="h-4 w-4 shrink-0 text-sky-400" />
+            <h2 className="truncate text-sm font-semibold text-txt-primary" title={`Search in Files — ${rootPath}`}>
+              Search in Files — <span className="font-mono font-normal text-txt-secondary">{rootPath}</span>
+            </h2>
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0 ml-2">
+            <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Restore size' : 'Maximize'}
+              className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              title="Close (Esc)"
+              className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <input
-              ref={queryInputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void handleSubmit();
-                }
-              }}
-              placeholder="Search inside files..."
-              className="flex-1 rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            />
+            <div className="relative flex-1">
+              <input
+                ref={queryInputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleSubmit();
+                  }
+                }}
+                placeholder="Search inside files..."
+                className="w-full rounded-lg border border-border-subtle bg-app-input pl-3 pr-8 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+              />
+              {query.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    queryInputRef.current?.focus();
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-txt-muted hover:text-txt-primary transition-colors"
+                  title="Clear search query"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             {/* Always a plain button, never type="submit": swapping a button's type at
                 the same screen position inside a <form> mid-click let Chromium treat a
                 single click on "Cancel" as also submitting the form once React
@@ -284,10 +399,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
         )}
 
-        <div className="flex min-h-0 flex-1">
-          <div className="flex w-1/3 min-w-[280px] flex-col border-r border-border-subtle">
+        <div ref={splitContainerRef} className="relative flex min-h-0 flex-1 overflow-hidden">
+          {isDragging && <div className="fixed inset-0 z-50 cursor-col-resize select-none" />}
+          <div
+            style={{ width: `${leftWidth}px` }}
+            className="flex shrink-0 flex-col border-r border-border-subtle overflow-hidden"
+          >
             <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-[11px] text-txt-muted">
-              <span className="truncate">
+              <span className="truncate" title={currentPath}>
                 {matches.length} match{matches.length === 1 ? '' : 'es'} · {scannedCount} scanned
                 {searching && currentPath ? ` · ${currentPath}` : ''}
               </span>
@@ -298,27 +417,66 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 Result limit reached — narrow your search to see more.
               </div>
             )}
-            {warnings.length > 0 && (
-              <div className="border-b border-amber-900/60 bg-amber-950/20 text-[11px] text-amber-300">
-                <button
-                  type="button"
-                  onClick={() => setWarningsExpanded((prev) => !prev)}
-                  className="flex w-full items-center justify-between px-3 py-1 hover:bg-amber-950/30"
-                >
-                  <span>
-                    {warnings.length} warning{warnings.length === 1 ? '' : 's'} (skipped files/objects)
-                  </span>
-                  <span>{warningsExpanded ? '▲' : '▼'}</span>
-                </button>
+            {warnings.length > 0 && !warningsDismissed && (
+              <div className="border-b border-amber-900/60 bg-amber-950/25 text-xs text-amber-300">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-amber-950/35">
+                  <button
+                    type="button"
+                    onClick={() => setWarningsExpanded((prev) => !prev)}
+                    className="flex min-w-0 items-center gap-1.5 hover:text-amber-200 transition-colors text-left"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    <span className="font-medium text-[11px] truncate">
+                      {warnings.length} warning{warnings.length === 1 ? '' : 's'} (skipped files/objects)
+                    </span>
+                    {warningsExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5 shrink-0 text-amber-400/80" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-amber-400/80" />
+                    )}
+                  </button>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyWarnings}
+                      title="Copy all warnings to clipboard"
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-amber-300/90 hover:bg-amber-900/40 hover:text-amber-100 transition-colors"
+                    >
+                      {copiedWarnings ? (
+                        <Check className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      <span>{copiedWarnings ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWarningsDismissed(true)}
+                      title="Dismiss warning bar"
+                      className="rounded p-0.5 text-amber-400/70 hover:bg-amber-900/40 hover:text-amber-200 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
                 {warningsExpanded && (
-                  <ul className="max-h-24 overflow-y-auto border-t border-amber-900/40 px-3 py-1 space-y-0.5">
-                    {warnings.map((w, i) => (
-                      <li key={i} className="truncate">
-                        {w.path ? <span className="font-mono">{w.path}: </span> : null}
-                        {w.message}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="border-t border-amber-900/40 bg-amber-950/40 px-3 py-2">
+                    <ul className="max-h-48 overflow-y-auto space-y-1.5 pr-1 select-text">
+                      {warnings.map((w, i) => (
+                        <li
+                          key={i}
+                          title={w.path ? `${w.path}: ${w.message}` : w.message}
+                          className="break-all whitespace-pre-wrap rounded border border-amber-900/40 bg-black/30 px-2 py-1 font-mono text-[11px] leading-relaxed text-amber-200/90"
+                        >
+                          {w.path ? <span className="font-semibold text-amber-300">{w.path}: </span> : null}
+                          <span>{w.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1.5 text-[10px] text-amber-400/60 italic">
+                      Skipped entries are typically system-protected files or unreadable sockets/pipes (e.g. /tmp/systemd-private-*).
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -330,7 +488,32 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               hasSearched={hasSearched}
             />
           </div>
-          <SearchPreviewPane providerId={providerId} match={selectedMatch} />
+
+          {/* Draggable Divider */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize panels (Double-click to reset)"
+            onMouseDown={handleDividerMouseDown}
+            onDoubleClick={() => setLeftWidth(400)}
+            className={classNames(
+              'group relative z-10 flex w-2 shrink-0 cursor-col-resize items-center justify-center transition-colors select-none -ml-1 hover:bg-sky-500/20 active:bg-sky-500/30',
+              isDragging && 'bg-sky-500/30'
+            )}
+          >
+            <div
+              className={classNames(
+                'h-8 w-1 rounded-full transition-colors',
+                isDragging ? 'bg-sky-400' : 'bg-border-subtle group-hover:bg-sky-400'
+              )}
+            />
+          </div>
+
+          <SearchPreviewPane
+            providerId={providerId}
+            match={selectedMatch}
+            onJumpToFile={onJumpToFile ? handleJumpToFile : undefined}
+          />
         </div>
       </div>
     </div>

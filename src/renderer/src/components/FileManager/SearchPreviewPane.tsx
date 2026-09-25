@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { Check, Copy, FileText, FolderOpen, Loader2 } from 'lucide-react';
 import type { SearchMatch } from '@shared/types/search';
 
 interface SearchPreviewPaneProps {
   providerId: string;
   match: SearchMatch | null;
+  onJumpToFile?: (match: SearchMatch) => void;
 }
 
 const CONTEXT_LINES = 6;
 
-export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({ providerId, match }) => {
+export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
+  providerId,
+  match,
+  onJumpToFile,
+}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [startLine, setStartLine] = useState(1);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!match || match.lineNumber === undefined) {
@@ -45,22 +51,57 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({ providerId
     };
   }, [providerId, match]);
 
+  const handleCopyPath = () => {
+    if (!match) return;
+    void navigator.clipboard.writeText(match.path);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   if (!match) {
     return (
-      <div className="flex flex-1 items-center justify-center text-xs text-txt-muted">
-        Select a match to preview it here
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-xs text-txt-muted select-none">
+        <FileText className="h-8 w-8 text-txt-muted/30" />
+        <span className="font-medium text-txt-secondary">Select a match to preview code</span>
+        <span className="text-[11px] text-txt-muted max-w-sm">
+          Click on any result in the list to inspect surrounding file lines. You can also drag the center divider to resize panels.
+        </span>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-1.5 border-b border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-secondary">
-        <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-        <span className="truncate font-mono">{match.displayPath}</span>
-        {match.lineNumber !== undefined && (
-          <span className="shrink-0 text-txt-muted">:{match.lineNumber}</span>
-        )}
+      <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-secondary">
+        <div className="flex min-w-0 items-center gap-1.5" title={match.path}>
+          <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+          <span className="truncate font-mono text-txt-primary">{match.displayPath}</span>
+          {match.lineNumber !== undefined && (
+            <span className="shrink-0 font-mono text-sky-400/80">:{match.lineNumber}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={handleCopyPath}
+            title="Copy path to clipboard"
+            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            <span>{copied ? 'Copied' : 'Copy path'}</span>
+          </button>
+          {onJumpToFile && (
+            <button
+              type="button"
+              onClick={() => onJumpToFile(match)}
+              title="Reveal in File Explorer"
+              className="flex items-center gap-1 rounded bg-app-surface-subtle px-2 py-1 text-[11px] text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors border border-border-subtle/50"
+            >
+              <FolderOpen className="h-3 w-3 text-sky-400" />
+              <span>Reveal in Explorer</span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-app-surface-subtle font-mono text-xs">
         {loading && (
