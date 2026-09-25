@@ -4,6 +4,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 function copyProxyCliPlugin() {
   return {
@@ -49,6 +50,7 @@ function copyOcShimCliPlugin() {
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     react(),
     copyProxyCliPlugin(),
     copyCertWorkerPlugin(),
