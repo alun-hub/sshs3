@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.91] - 2026-09-25
+
+### Fixed
+- **Terminal size synchronization on startup & tab activation**:
+  - Centralized terminal PTY sizing and fixed issue where terminal dimensions were stuck at 80×24 rows/cols on application startup and tab restoration.
+  - Resolved issue where background tabs activating for the first time failed to calculate terminal dimensions due to unmeasured font metrics during `display: none` mount; added forced character metric measurement and scheduled re-sync passes across animation frames and timers.
+
+### Added
+- **OpenShift toggle in Settings**:
+  - Added an "Enable OpenShift support" setting toggle (`enableOpenShift`) under Settings → General.
+  - Conditionally displays the "OpenShift (oc login)" action in the Kubernetes connection tree and starts the local OpenShift CLI shim only when OpenShift support is enabled.
+- **OpenShift OAuth token login & CLI shim**:
+  - Built-in OpenShift OAuth login and token extraction support.
+  - Cross-platform `oc` emulation shim with live kubeconfig watching.
+
+### Changed & Updated Dependencies
+- **Tailwind CSS v4 Migration**: Migrated from Tailwind CSS v3 to Tailwind CSS v4 using `@tailwindcss/vite` and native CSS `@theme`.
+- **Smartcard Net iD PKCS#11 stability**: Isolated Net iD PKCS#11 crashes and improved fallback when PIN prompting is required.
+- Updated dependencies: `jsdom` (30.1.0), `lucide-react` (1.47.0), `typescript-eslint` (8.70.1), and `@types/node` (22.20.4).
+
+---
+
 ## [0.9] - 2026-09-24
 
 ### Security & Hardening
