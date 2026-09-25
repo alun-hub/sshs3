@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93] - 2026-09-25
+
+### Added
+- **Quick Start workspace dashboard**:
+  - Replaced empty tab state with a welcoming 4-card dashboard (New Terminal, New File Manager, Saved Connections, Cloud Sync & Backup) with keyboard shortcuts and descriptions.
+  - Added shortcut badges (`Ctrl+Shift+T`, `Ctrl+Shift+F`) to TabBar New Tab dropdown menu.
+  - Added quick split horizontally and vertically buttons to split view top bar.
+- **Split pane active indicator & click-to-focus**:
+  - Added active focus glow ring, accented header, and live pulsing status dot to the active terminal split pane.
+  - Added capture-phase event listeners to activate split panes immediately upon clicking anywhere inside the terminal area or focusing xterm.
+- **Dual-pane File Manager enhancements**:
+  - Added active pane state tracking (`activeSide`) with distinct focus ring and "Active" badge.
+  - Reorganized toolbar buttons into 5 logical separator-delimited groups (Navigation, Breadcrumbs, File Operations, Management, Search & Tools).
+  - Added manual edit button and full-path text selection in Breadcrumbs.
+  - Added failed transfers count badge in Transfer Queue drawer header.
+- **Modal sizing & window consistency**:
+  - Expanded `FileEditorModal` and `DirectorySyncModal` default sizes to `94vw` / `88vh`.
+  - Added Maximize/Restore toggle buttons and titlebar double-click to toggle fullscreen across all modals.
+  - Added global `Esc` key handling to close modals safely.
+
+---
+
 ## [0.92] - 2026-09-25
 
 ### Added
