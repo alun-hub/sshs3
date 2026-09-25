@@ -114,6 +114,26 @@ describe('TerminalView Component', () => {
     expect(mockTerminalResize).toHaveBeenCalledWith('session-123', expect.any(Number), expect.any(Number));
   });
 
+  it('synchronizes dimensions to PTY when an initially background tab becomes active', async () => {
+    const { rerender } = render(<TerminalView config={sampleConfig} isActive={false} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // While inactive, terminalResize should not have been called
+    expect(mockTerminalResize).not.toHaveBeenCalled();
+
+    // Now activate the tab
+    rerender(<TerminalView config={sampleConfig} isActive={true} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockTerminalResize).toHaveBeenCalledWith('session-123', expect.any(Number), expect.any(Number));
+  });
+
   it('receives terminal data from IPC and writes matching session data to terminal', async () => {
     render(<TerminalView config={sampleConfig} />);
 

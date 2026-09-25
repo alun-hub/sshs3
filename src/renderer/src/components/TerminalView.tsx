@@ -189,6 +189,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     if (!termRef.current || !fitAddonRef.current) return;
     if (!isActiveRef.current) return;
     try {
+      try {
+        const core = (termRef.current as any)?._core;
+        if (core?._charSizeService && !core._charSizeService.hasValidSize) {
+          core._charSizeService.measure();
+        }
+      } catch {
+        // Safe to ignore if charSizeService is not accessible
+      }
       fitAddonRef.current.fit();
       const newCols = termRef.current.cols;
       const newRows = termRef.current.rows;
@@ -211,6 +219,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   // Focus and fit when becoming active
   useEffect(() => {
     if (isActive && fitAddonRef.current && termRef.current) {
+      let isCancelled = false;
       try {
         termRef.current.focus();
         // The pane was `display: none` while inactive; xterm's renderer can leave a stale
@@ -220,7 +229,47 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       } catch {
         // Safe to ignore resize on hidden element
       }
+
+      // When activating a tab that was in the background (display: none),
+      // the DOM layout pass and font metrics measurement need frames/ticks to settle.
+      // Repeatedly sync dimensions across requestAnimationFrame and short intervals
+      // to ensure the PTY receives the true cols/rows immediately on activation.
+      const raf1 = requestAnimationFrame(() => {
+        if (!isCancelled) syncPtySize(true);
+      });
+      const raf2 = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!isCancelled) syncPtySize(true);
+        });
+      });
+      const t1 = setTimeout(() => {
+        if (!isCancelled) syncPtySize(true);
+      }, 50);
+      const t2 = setTimeout(() => {
+        if (!isCancelled) syncPtySize(true);
+      }, 150);
+      const t3 = setTimeout(() => {
+        if (!isCancelled) syncPtySize(true);
+      }, 300);
+
+      if (document.fonts) {
+        document.fonts.ready.then(() => {
+          if (!isCancelled) {
+            syncPtySize(true);
+          }
+        });
+      }
+
+      return () => {
+        isCancelled = true;
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
     }
+    return undefined;
   }, [isActive, syncPtySize]);
 
   // Update terminal options when props change without recreating the PTY session
