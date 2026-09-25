@@ -1026,20 +1026,21 @@ export class IpcBridge {
    * PTY authenticate purely through it means only one process ever opens a
    * PKCS#11 session for a given connection.
    *
-   * In 'always-prompt' mode (the default) on Linux/macOS, or if loading the
-   * agent fails, this is a no-op — the PTY falls back to its own direct -I
-   * login, and dotfiles sync (if any) prompts for its own PIN independently.
+   * If loading the agent fails, this is a no-op — the PTY falls back to its
+   * own direct -I login, and dotfiles sync (if any) prompts for its own PIN
+   * independently.
    *
-   * On Windows, 'always-prompt' also goes through the per-session agent
-   * (see resolveSmartcardAgentPath): Win32-OpenSSH's ssh-pkcs11-helper
-   * subprocess doesn't reliably route its PIN prompt through our askpass
-   * server the way the plain account-password prompt does, so a direct -I
-   * login there silently falls through to password auth instead of ever
-   * asking for the card's PIN. Loading through ssh-add (which runs
-   * headless, with no console, so askpass is used unconditionally) sidesteps
-   * that, while still discarding the card the moment the session ends — a
-   * reconnect still needs a fresh PIN, keeping 'always-prompt's "ask every
-   * time" contract.
+   * 'always-prompt' also goes through the per-session agent (see
+   * resolveSmartcardAgentPath), on every platform: OpenSSH's
+   * ssh-pkcs11-helper subprocess doesn't reliably route its PIN prompt
+   * through our askpass server the way the plain account-password prompt
+   * does, so a direct -I login can silently fall through to password auth
+   * instead of ever asking for the card's PIN (observed on both Win32-OpenSSH
+   * and Linux OpenSSH — ssh-pkcs11-helper doesn't trust our askpass chain
+   * either way). Loading through ssh-add (which runs headless, with no
+   * console, so askpass is used unconditionally) sidesteps that, while still
+   * discarding the card the moment the session ends — a reconnect still
+   * needs a fresh PIN, keeping 'always-prompt's "ask every time" contract.
    */
   private async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
@@ -1085,10 +1086,9 @@ export class IpcBridge {
 
   /**
    * Resolves (loading it if necessary) the ssh-agent socket to use for a PKCS#11 library, per the
-   * user's Settings > Security > Smartcard PIN Caching mode. Returns undefined in 'always-prompt'
-   * mode on Linux/macOS (Windows also routes 'always-prompt' through the per-session agent — see
-   * above), or if loading the agent fails — callers should then fall back to a direct `-I` login
-   * (SSH) or their own ephemeral agent (SFTP), which still prompts for the PIN on its own.
+   * user's Settings > Security > Smartcard PIN Caching mode. Returns undefined only if loading the
+   * agent fails — callers should then fall back to a direct `-I` login (SSH) or their own ephemeral
+   * agent (SFTP), which still prompts for the PIN on its own.
    */
   private async resolveSmartcardAgentPath(
     pkcs11LibPath: string,
@@ -1110,15 +1110,12 @@ export class IpcBridge {
       }
     }
 
-    // On Windows, 'always-prompt' is routed through the same per-session agent as
-    // 'agent-per-session' — see the doc comment on prepareSmartcardConfig for why a
-    // direct -I login can't reliably prompt for the card's PIN there. It's still
-    // discarded at session end (never cached across connections), so this doesn't
-    // change 'always-prompt's behavior on Linux/macOS, where the direct -I askpass
-    // flow already works correctly.
-    const usesPerSessionAgent =
-      mode === 'agent-per-session' || (mode === 'always-prompt' && process.platform === 'win32');
-    if (!usesPerSessionAgent) {
+    // 'always-prompt' is routed through the same per-session agent as 'agent-per-session' on
+    // every platform — see the doc comment on prepareSmartcardConfig for why a direct -I login
+    // can't reliably prompt for the card's PIN via ssh-pkcs11-helper. It's still discarded at
+    // session end (never cached across connections), so 'always-prompt's "ask every time"
+    // contract is unchanged — only *how* the PIN is collected differs from a direct -I login.
+    if (mode !== 'agent-per-session' && mode !== 'always-prompt') {
       return undefined;
     }
 
@@ -1248,9 +1245,9 @@ export class IpcBridge {
 
   /**
    * Kills the private per-session smartcard agent (if any) that was loaded for `sessionId` under
-   * 'agent-per-session' mode (or Windows's 'always-prompt', which reuses the same per-session
-   * mechanism), whether that session was a terminal (PTY exit) or a file manager SFTP connection
-   * (STORAGE_DISCONNECT).
+   * 'agent-per-session' mode (or 'always-prompt', which reuses the same per-session mechanism —
+   * see resolveSmartcardAgentPath), whether that session was a terminal (PTY exit) or a file
+   * manager SFTP connection (STORAGE_DISCONNECT).
    */
   private cleanupSmartcardSessionAgent(sessionId: string): void {
     const entry = this.smartcardSessionAgents.get(sessionId);

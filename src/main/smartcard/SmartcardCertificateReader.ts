@@ -1,17 +1,21 @@
-import { createRequire } from 'node:module';
-import type * as Pkcs11jsTypes from 'pkcs11js';
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseCertificateDer, type SmartcardCertificateDetails } from './CertificateParser';
-
-// pkcs11js's CJS entry point ends with `module.exports = { ...pkcs11, PKCS11 }` — a spread of
-// the native addon's exports object. Bundler/Node CJS-interop static analysis (which decides
-// what `import * as ns from 'pkcs11js'` exposes) can't see through that spread, so only the
-// directly-named `PKCS11` export is found; every constant (CKF_SERIAL_SESSION, CKA_CLASS, ...)
-// comes back `undefined`, which then fails deep inside the native call with a confusing
-// "wrong type, should be a Number" error. `createRequire` sidesteps static export detection
-// entirely by returning the real `module.exports` object, exactly as plain `require()` would.
-const pkcs11js = createRequire(import.meta.url)('pkcs11js') as typeof Pkcs11jsTypes;
+import { withPkcs11Lock } from './Pkcs11Lock';
 
 const log = (...args: unknown[]) => console.warn('[smartcard-cert]', ...args);
+
+/** Same resolution `proxyCli.cjs` uses (see SmartcardDetector's proxy handling): `__dirname` is
+ * either this source file's own directory (`src/main/smartcard`, dev/unbundled — `certWorker.cjs`
+ * already lives right there) or the flattened build output directory (`dist-electron`, packaged —
+ * where the vite plugin copies `certWorker.cjs` alongside the bundled main process). Either way
+ * it's a sibling of this file. */
+function resolveWorkerPath(): string {
+  const currentDir =
+    typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(currentDir, 'certWorker.cjs');
+}
 
 /**
  * Reads every X.509 certificate object off a PKCS#11 token and returns its
@@ -32,54 +36,54 @@ const log = (...args: unknown[]) => console.warn('[smartcard-cert]', ...args);
  * every failure is logged with `console.warn`, since silently returning
  * nothing gave no way to diagnose why a given card's details don't show up.
  *
- * Retries each slot's read once after a short delay: most PIV readers only
- * allow one active PKCS#11 transaction at a time (see the same note in
- * SmartcardAgentLoader), and the already-loaded ssh-agent can transiently
- * be mid-operation against the card when this runs.
+ * The actual PKCS#11 calls run in a short-lived child process (`certWorker.cjs`), not inline
+ * here: some vendor modules (observed with Net iD's libiidp11.so) raise a native SIGTRAP inside
+ * `C_Finalize()` when this runs in the same process that also holds the token open elsewhere
+ * (e.g. the app-lifetime agent loaded via `ssh-add -s` for 'agent-global' mode, which is exactly
+ * when this function is called — see getOrLoadGlobalSmartcardAgent). That's a native-level crash;
+ * no in-process try/catch can catch a SIGTRAP, and it took down the whole Electron main process.
+ * Isolating it in a worker means a crash there only kills the worker — this function just gets an
+ * empty result and logs it, the same as any other failure to read certs.
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function readSmartcardCertificates(
   pkcs11LibPath: string
 ): Promise<Map<string, SmartcardCertificateDetails>> {
   const results = new Map<string, SmartcardCertificateDetails>();
-  const pkcs11 = new pkcs11js.PKCS11();
 
+  let stdout: string;
   try {
-    pkcs11.load(pkcs11LibPath);
-    pkcs11.C_Initialize();
+    // See Pkcs11Lock's doc comment: this must never race a concurrent `ssh-add -s` (or another
+    // cert read) against the same physical token.
+    stdout = await withPkcs11Lock(() => runCertWorker(pkcs11LibPath));
   } catch (err) {
-    log(`C_Initialize failed for ${pkcs11LibPath}:`, err);
+    log(`certWorker failed for ${pkcs11LibPath}:`, err);
     return results;
   }
 
+  const line = stdout.trim().split('\n').pop() ?? '';
+  let parsed: { certs?: string[]; error?: string };
   try {
-    let slots: Buffer[] = [];
-    try {
-      slots = pkcs11.C_GetSlotList(true);
-    } catch (err) {
-      log(`C_GetSlotList failed for ${pkcs11LibPath}:`, err);
-      return results;
-    }
-    log(`${pkcs11LibPath}: ${slots.length} slot(s) with a token present`);
+    parsed = JSON.parse(line);
+  } catch (err) {
+    log(`certWorker produced unparseable output for ${pkcs11LibPath}:`, err, line);
+    return results;
+  }
 
-    for (const slot of slots) {
-      const found = readCertificatesFromSlot(pkcs11, slot, results);
-      if (!found.attempted) continue;
-      if (found.objectCount === 0 && found.error) {
-        // Likely transient contention with the card (see doc comment above) — one retry.
-        log(`retrying slot after error:`, found.error);
-        await sleep(300);
-        readCertificatesFromSlot(pkcs11, slot, results);
-      }
-    }
-  } finally {
+  if (parsed.error) {
+    log(`certWorker reported an error for ${pkcs11LibPath}:`, parsed.error);
+    return results;
+  }
+
+  for (const derBase64 of parsed.certs ?? []) {
     try {
-      pkcs11.C_Finalize();
+      const details = parseCertificateDer(Buffer.from(derBase64, 'base64'));
+      if (details) {
+        results.set(details.fingerprint, details);
+      } else {
+        log('found a certificate but could not parse it or derive an SSH fingerprint for it (unsupported key type?)');
+      }
     } catch (err) {
-      log(`C_Finalize failed for ${pkcs11LibPath}:`, err);
+      log('failed to parse a certificate returned by certWorker:', err);
     }
   }
 
@@ -87,47 +91,27 @@ export async function readSmartcardCertificates(
   return results;
 }
 
-function readCertificatesFromSlot(
-  pkcs11: Pkcs11jsTypes.PKCS11,
-  slot: Buffer,
-  results: Map<string, SmartcardCertificateDetails>
-): { attempted: boolean; objectCount: number; error?: unknown } {
-  let session: Buffer | undefined;
-  try {
-    session = pkcs11.C_OpenSession(slot, pkcs11js.CKF_SERIAL_SESSION);
-    pkcs11.C_FindObjectsInit(session, [{ type: pkcs11js.CKA_CLASS, value: pkcs11js.CKO_CERTIFICATE }]);
-    const objects = pkcs11.C_FindObjects(session, 10);
-    pkcs11.C_FindObjectsFinal(session);
-    log(`slot: found ${objects.length} certificate object(s)`);
-
-    for (const obj of objects) {
-      try {
-        const attrs = pkcs11.C_GetAttributeValue(session, obj, [{ type: pkcs11js.CKA_VALUE }]);
-        const der = attrs[0]?.value;
-        if (!der || der.length === 0) {
-          log('certificate object has no CKA_VALUE, skipping');
-          continue;
+function runCertWorker(pkcs11LibPath: string): Promise<string> {
+  const workerPath = resolveWorkerPath();
+  return new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      [workerPath, pkcs11LibPath],
+      {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        timeout: 15000,
+        maxBuffer: 4 * 1024 * 1024,
+      },
+      (err, stdout) => {
+        // The worker may still exit non-zero or be killed (e.g. by the vendor module's
+        // C_Finalize crash) *after* it already wrote its JSON result line — treat any non-empty
+        // stdout as usable even if the process itself ended badly.
+        if (stdout && stdout.trim().length > 0) {
+          resolve(stdout);
+          return;
         }
-        const details = parseCertificateDer(Buffer.from(der));
-        if (details) {
-          results.set(details.fingerprint, details);
-        } else {
-          log('found a certificate but could not parse it or derive an SSH fingerprint for it (unsupported key type?)');
-        }
-      } catch (err) {
-        log('C_GetAttributeValue failed for a certificate object:', err);
+        reject(err ?? new Error('certWorker produced no output'));
       }
-    }
-    return { attempted: true, objectCount: objects.length };
-  } catch (err) {
-    return { attempted: true, objectCount: 0, error: err };
-  } finally {
-    if (session !== undefined) {
-      try {
-        pkcs11.C_CloseSession(session);
-      } catch {
-        // Ignore — we're done with this session either way.
-      }
-    }
-  }
+    );
+  });
 }

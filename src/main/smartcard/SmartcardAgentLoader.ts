@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
 import { AskpassServer, type AskpassPromptHandler } from './AskpassServer';
+import { withPkcs11Lock } from './Pkcs11Lock';
 
 const execFileAsync = promisify(execFile);
 
@@ -93,7 +94,10 @@ export async function loadSmartcardIntoPrivateAgent(
     let lastErr: unknown;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        await execFileAsync(sshAddBin, ['-s', pkcs11LibPath], { env, timeout: 60000 });
+        // See Pkcs11Lock's doc comment: `ssh-add -s` is the one moment this process actually
+        // opens a PKCS#11 session against the token, so it must never race a concurrent load for
+        // a different session, or the global agent's cert read, against the same physical card.
+        await withPkcs11Lock(() => execFileAsync(sshAddBin, ['-s', pkcs11LibPath], { env, timeout: 60000 }));
         lastErr = undefined;
       } catch (err) {
         lastErr = err;

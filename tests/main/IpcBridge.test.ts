@@ -350,13 +350,20 @@ describe('IpcBridge', () => {
         const loadSpy = vi
           .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
           .mockImplementation(() => new Promise(() => {}));
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map());
 
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
         expect(res).toEqual({ started: true });
+        // readSmartcardCertificates runs (and must resolve) before loadSmartcardIntoPrivateAgent —
+        // flush the microtask queue so that ordering has had a chance to play out.
+        await new Promise((resolve) => setImmediate(resolve));
         expect(loadSpy).toHaveBeenCalledWith('/usr/lib/p11-kit-proxy.so', expect.any(Function));
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
+        readCertsSpy.mockRestore();
       });
 
       it('starts loading the single detected card into the global agent', async () => {
@@ -367,13 +374,18 @@ describe('IpcBridge', () => {
         const loadSpy = vi
           .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
           .mockImplementation(() => new Promise(() => {})); // never resolves; only started:true matters here
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map());
 
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
         expect(res).toEqual({ started: true });
+        await new Promise((resolve) => setImmediate(resolve));
         expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function));
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
+        readCertsSpy.mockRestore();
       });
 
       it('does not start a second load when a card is already cached or loading', async () => {

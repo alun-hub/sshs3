@@ -19,10 +19,25 @@ function copyProxyCliPlugin() {
   }
 }
 
+function copyCertWorkerPlugin() {
+  return {
+    name: 'copy-cert-worker',
+    closeBundle() {
+      const src = path.resolve(import.meta.dirname, 'src/main/smartcard/certWorker.cjs')
+      const dest = path.resolve(import.meta.dirname, 'dist-electron/certWorker.cjs')
+      if (fs.existsSync(src)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(src, dest)
+      }
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     copyProxyCliPlugin(),
+    copyCertWorkerPlugin(),
     electron({
       main: {
         entry: 'src/main/index.ts',
