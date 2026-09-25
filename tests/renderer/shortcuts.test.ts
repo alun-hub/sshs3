@@ -26,4 +26,17 @@ describe('comboFromKeyboardEvent', () => {
     const withoutCode = comboFromKeyboardEvent({ key: ';', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true });
     expect(withoutCode).toBe('Ctrl+Shift+;');
   });
+
+  it('normalizes Tab and Linux ISO_Left_Tab to Tab for Ctrl+Tab and Ctrl+Shift+Tab', () => {
+    expect(comboFromKeyboardEvent({ key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+Tab'
+    );
+    expect(comboFromKeyboardEvent({ key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Tab'
+    );
+    // Linux X11/Wayland reports Shift+Tab as key 'ISO_Left_Tab'
+    expect(comboFromKeyboardEvent({ key: 'ISO_Left_Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Tab'
+    );
+  });
 });

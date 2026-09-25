@@ -347,6 +347,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // Shift+Insert is the conventional Linux terminal "paste from clipboard" shortcut;
     // xterm.js only reacts to the browser's native paste event (typically Ctrl/Cmd+V),
     // so it's wired up explicitly here.
+    // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
         navigator.clipboard
@@ -357,6 +358,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           .catch(() => {
             // Ignore: clipboard access can be denied
           });
+        return false;
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === 'Tab' || e.key === 'ISO_Left_Tab' || e.code === 'Tab' || e.keyCode === 9)
+      ) {
         return false;
       }
       return true;

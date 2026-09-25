@@ -564,6 +564,7 @@ export const App: React.FC = () => {
       for (const [actionId, keyBinding] of Object.entries(activeShortcuts)) {
         if (combo === keyBinding.toLowerCase()) {
           e.preventDefault();
+          e.stopPropagation();
           switch (actionId) {
             case 'newTerminal':
               handleNewTab('terminal');
@@ -575,17 +576,19 @@ export const App: React.FC = () => {
               if (activeTabId) handleCloseTab(activeTabId);
               break;
             case 'nextTab': {
-              const idx = tabs.findIndex((t) => t.id === activeTabId);
-              if (idx >= 0 && tabs.length > 1) {
-                const nextIdx = (idx + 1) % tabs.length;
+              if (tabs.length > 1) {
+                const idx = tabs.findIndex((t) => t.id === activeTabId);
+                const currentIdx = idx >= 0 ? idx : 0;
+                const nextIdx = (currentIdx + 1) % tabs.length;
                 setActiveTabId(tabs[nextIdx].id);
               }
               break;
             }
             case 'prevTab': {
-              const idx = tabs.findIndex((t) => t.id === activeTabId);
-              if (idx >= 0 && tabs.length > 1) {
-                const prevIdx = (idx - 1 + tabs.length) % tabs.length;
+              if (tabs.length > 1) {
+                const idx = tabs.findIndex((t) => t.id === activeTabId);
+                const currentIdx = idx >= 0 ? idx : 0;
+                const prevIdx = (currentIdx - 1 + tabs.length) % tabs.length;
                 setActiveTabId(tabs[prevIdx].id);
               }
               break;
@@ -626,9 +629,9 @@ export const App: React.FC = () => {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
   }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane, handleSelectPane]);
 

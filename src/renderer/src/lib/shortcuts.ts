@@ -59,7 +59,9 @@ export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
   if (e.shiftKey) parts.push('Shift');
 
   let key = e.key;
-  if (e.shiftKey && e.code && PHYSICAL_KEY_BASE_SYMBOLS[e.code]) {
+  if (key === 'ISO_Left_Tab' || e.code === 'Tab') {
+    key = 'Tab';
+  } else if (e.shiftKey && e.code && PHYSICAL_KEY_BASE_SYMBOLS[e.code]) {
     key = PHYSICAL_KEY_BASE_SYMBOLS[e.code];
   }
   if (key === ' ') key = 'Space';

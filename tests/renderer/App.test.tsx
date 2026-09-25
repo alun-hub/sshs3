@@ -357,6 +357,40 @@ describe('App Component', () => {
     expect(screen.getAllByRole('tab').length).toBe(1);
   });
 
+  it('cycles tabs indefinitely with Ctrl+Tab and Ctrl+Shift+Tab without getting stuck', async () => {
+    render(<App />);
+
+    // Create two more terminal tabs -> total 3 tabs
+    fireEvent.keyDown(window, { key: 'T', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: 'T', ctrlKey: true, shiftKey: true });
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.length).toBe(3);
+
+    // Initial active tab is Terminal 3 (newly created)
+    expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
+
+    // Cycle forward: 3 -> 1 -> 2 -> 3 -> 1 -> 2 (multiple times)
+    fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true');
+
+    // Cycle backward with Ctrl+Shift+Tab (also testing Linux ISO_Left_Tab)
+    fireEvent.keyDown(window, { key: 'ISO_Left_Tab', code: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('opens Quick Connect on Ctrl+K but not on Ctrl+Shift+K (reserved for Search in Files)', async () => {
     render(<App />);
 
