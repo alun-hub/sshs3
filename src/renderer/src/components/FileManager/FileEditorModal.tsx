@@ -1,15 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
   Check,
   Code,
+  Eye,
   ExternalLink,
   FileText,
   Lock,
   Loader2,
   Maximize2,
   Minimize2,
+  Pencil,
   RotateCw,
   Save,
   Search,
@@ -22,6 +24,16 @@ import type { FileEntry } from '@shared/types/storage';
 import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc';
 import { classNames, formatBytes, formatDateTime } from '../../lib/format';
 import type { SourceType } from './types';
+
+const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
+
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+function isMarkdownFile(name: string): boolean {
+  const idx = name.lastIndexOf('.');
+  if (idx === -1) return false;
+  return MARKDOWN_EXTENSIONS.has(name.slice(idx + 1).toLowerCase());
+}
 
 interface FileEditorModalProps {
   open: boolean;
@@ -53,6 +65,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [wordWrap, setWordWrap] = useState(true);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [markdownPreview, setMarkdownPreview] = useState(false);
+
+  const isMarkdown = useMemo(() => (entry ? isMarkdownFile(entry.name) : false), [entry]);
 
   // Tail state
   const [tailModeActive, setTailModeActive] = useState(false);
@@ -165,6 +180,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       }
       return;
     }
+
+    setMarkdownPreview(isMarkdownFile(entry.name));
 
     if (isTailMode) {
       void startTailSession();
@@ -466,6 +483,24 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <Terminal className="h-3.5 w-3.5" />
               <span>{tailModeActive ? 'TAILING...' : 'Tail -f'}</span>
             </button>
+
+            {/* Markdown Preview Toggle */}
+            {isMarkdown && (
+              <button
+                type="button"
+                title={markdownPreview ? 'Switch to Source (Edit)' : 'Switch to Preview'}
+                onClick={() => setMarkdownPreview((p) => !p)}
+                className={classNames(
+                  'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors',
+                  markdownPreview
+                    ? 'bg-sky-500/20 text-sky-400'
+                    : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                )}
+              >
+                {markdownPreview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                <span>{markdownPreview ? 'Edit' : 'Preview'}</span>
+              </button>
+            )}
 
             {/* Search Toggle */}
             <button
@@ -774,6 +809,21 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-txt-muted text-sm">
               <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
               <span>{tailModeActive ? 'Starting Tail -f stream...' : 'Loading file...'}</span>
+            </div>
+          ) : isMarkdown && markdownPreview ? (
+            <div className="flex-1 h-full overflow-auto p-6">
+              <div className="markdown-preview max-w-3xl mx-auto prose prose-invert prose-sm sm:prose-base prose-headings:font-semibold prose-a:text-sky-400 prose-pre:bg-app-surface prose-pre:border prose-pre:border-border-subtle prose-code:text-sky-300">
+                <Suspense
+                  fallback={
+                    <div className="flex items-center gap-2 text-txt-muted text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                      <span>Loading preview...</span>
+                    </div>
+                  }
+                >
+                  <MarkdownPreview content={content} />
+                </Suspense>
+              </div>
             </div>
           ) : (
             <>
