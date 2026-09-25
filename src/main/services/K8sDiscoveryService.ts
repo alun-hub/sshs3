@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type * as k8s from '@kubernetes/client-node';
@@ -38,6 +39,10 @@ export class K8sDiscoveryService {
   private kubeConfigPath?: string;
   private kc: k8s.KubeConfig | undefined;
   private apiClients: Map<string, k8s.CoreV1Api> = new Map();
+  private watcher?: fs.FSWatcher;
+  private changeListeners: Set<() => void> = new Set();
+  private debounceTimer: NodeJS.Timeout | null = null;
+  private watchingPath?: string;
 
   constructor(kubeConfigPath?: string) {
     this.kubeConfigPath = kubeConfigPath;
@@ -76,6 +81,91 @@ export class K8sDiscoveryService {
   public reload(): void {
     this.kc = undefined;
     this.apiClients.clear();
+  }
+
+  /**
+   * Registers a listener that is invoked when the underlying kubeconfig file
+   * is modified, created, or changed on disk. Automatically begins watching.
+   */
+  public onConfigChanged(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    this.ensureWatcher();
+    return () => {
+      this.changeListeners.delete(listener);
+      if (this.changeListeners.size === 0) {
+        this.stopWatcher();
+      }
+    };
+  }
+
+  public ensureWatcher(): void {
+    const kubePath = this.getKubeconfigPath();
+    if (this.watcher && this.watchingPath === kubePath) return;
+    this.stopWatcher();
+    this.watchingPath = kubePath;
+
+    const kubeDir = path.dirname(kubePath);
+    if (!fs.existsSync(kubeDir)) {
+      try {
+        fs.mkdirSync(kubeDir, { recursive: true });
+      } catch {
+        // Ignored
+      }
+    }
+
+    try {
+      this.watcher = fs.watch(kubeDir, (_eventType, filename) => {
+        const targetFilename = path.basename(kubePath);
+        if (!filename || filename === targetFilename) {
+          this.triggerChange();
+        }
+      });
+    } catch {
+      if (fs.existsSync(kubePath)) {
+        try {
+          this.watcher = fs.watch(kubePath, () => {
+            this.triggerChange();
+          });
+        } catch {
+          // Ignored
+        }
+      }
+    }
+  }
+
+  private triggerChange(): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.reload();
+      for (const listener of this.changeListeners) {
+        try {
+          listener();
+        } catch {
+          // Ignored
+        }
+      }
+    }, 250);
+  }
+
+  public stopWatcher(): void {
+    if (this.watcher) {
+      try {
+        this.watcher.close();
+      } catch {
+        // Ignored
+      }
+      this.watcher = undefined;
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.watchingPath = undefined;
+  }
+
+  public destroy(): void {
+    this.stopWatcher();
+    this.changeListeners.clear();
   }
 
   private async getApiClient(contextName: string): Promise<k8s.CoreV1Api> {

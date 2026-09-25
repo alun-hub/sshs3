@@ -23,6 +23,8 @@ import type {
   K8sPortForwardTarget,
   K8sActivePortForward,
   K8sDebugTarget,
+  K8sLoginOptions,
+  K8sLoginResult,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
@@ -532,6 +534,17 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.K8S_LIST_PODS, contextName, namespace),
 
   k8sReload: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_RELOAD),
+
+  k8sLogin: (options: K8sLoginOptions): Promise<K8sLoginResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_LOGIN, options),
+
+  onK8sConfigChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);
+    };
+  },
 
   k8sTerminalCreate: (
     target: K8sTerminalTarget,

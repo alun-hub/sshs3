@@ -2,9 +2,11 @@ import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
 import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
+import path from 'node:path';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
+import { K8sShimManager } from '../services/K8sShimManager';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -494,6 +496,14 @@ export class SSHPtyManager extends EventEmitter {
       if (agentStatus.isRunning && agentStatus.socketPath) {
         env.SSH_AUTH_SOCK = agentStatus.socketPath;
       }
+    }
+
+    try {
+      const shimDir = K8sShimManager.ensureShim();
+      const currentPath = env.PATH || process.env.PATH || '';
+      env.PATH = `${shimDir}${path.delimiter}${currentPath}`;
+    } catch {
+      // Non-fatal if shim directory cannot be provisioned
     }
 
     Object.assign(env, options?.env || {});

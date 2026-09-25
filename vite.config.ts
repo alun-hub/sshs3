@@ -33,11 +33,26 @@ function copyCertWorkerPlugin() {
   }
 }
 
+function copyOcShimCliPlugin() {
+  return {
+    name: 'copy-oc-shim-cli',
+    closeBundle() {
+      const src = path.resolve(import.meta.dirname, 'src/main/services/ocShimCli.cjs')
+      const dest = path.resolve(import.meta.dirname, 'dist-electron/ocShimCli.cjs')
+      if (fs.existsSync(src)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(src, dest)
+      }
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     copyProxyCliPlugin(),
     copyCertWorkerPlugin(),
+    copyOcShimCliPlugin(),
     electron({
       main: {
         entry: 'src/main/index.ts',

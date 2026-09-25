@@ -9,6 +9,7 @@ import {
   Folder,
   Info,
   Loader2,
+  LogIn,
   Network,
   RefreshCw,
   ScrollText,
@@ -20,6 +21,7 @@ import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } 
 import { K8sPodDetailModal } from '../K8s/K8sPodDetailModal';
 import { K8sPortForwardModal } from '../K8s/K8sPortForwardModal';
 import { K8sDebugModal } from '../K8s/K8sDebugModal';
+import { K8sLoginModal } from '../K8s/K8sLoginModal';
 
 type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T };
 
@@ -82,6 +84,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
     containers?: string[];
   } | null>(null);
   const [debugModalOpen, setDebugModalOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [activePortForwardsCount, setActivePortForwardsCount] = useState(0);
 
   useEffect(() => {
@@ -109,10 +112,22 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
 
   useEffect(() => {
     loadContexts();
+
+    const unsubscribe = window.multissh.onK8sConfigChanged?.(() => {
+      loadContexts();
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
-  const handleRefresh = () => {
-    void window.multissh.k8sReload();
+  const handleRefresh = async () => {
+    try {
+      await window.multissh.k8sReload();
+    } catch {
+      // Ignored
+    }
     setNamespacesByContext({});
     setPodsByNamespace({});
     setExpandedContexts(new Set());
@@ -196,7 +211,29 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
   }
 
   if (contexts.data.length === 0) {
-    return <p className="py-6 text-center text-sm text-txt-muted">No contexts found in ~/.kube/config</p>;
+    return (
+      <div className="flex flex-col items-center justify-center py-10 text-center space-y-4">
+        <p className="text-sm text-txt-muted">No contexts found in ~/.kube/config</p>
+        <button
+          type="button"
+          onClick={() => setLoginModalOpen(true)}
+          className="flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-xs font-medium shadow-sm transition-colors"
+        >
+          <LogIn className="h-4 w-4" />
+          OpenShift / Kubernetes Login
+        </button>
+        <K8sLoginModal
+          open={loginModalOpen}
+          onClose={() => setLoginModalOpen(false)}
+          onSuccess={(result) => {
+            handleRefresh();
+            if (result?.contextName) {
+              setExpandedContexts((prev) => new Set(prev).add(result.contextName));
+            }
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -223,6 +260,15 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setLoginModalOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-colors"
+          title="Log in to OpenShift or Kubernetes with token"
+        >
+          <LogIn className="h-3.5 w-3.5 text-red-400" />
+          OpenShift Login
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -604,6 +650,17 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
         }}
         onAttachSuccess={(target) => {
           onExec?.(target);
+        }}
+      />
+
+      <K8sLoginModal
+        open={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        onSuccess={(result) => {
+          handleRefresh();
+          if (result?.contextName) {
+            setExpandedContexts((prev) => new Set(prev).add(result.contextName));
+          }
         }}
       />
     </>

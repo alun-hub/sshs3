@@ -191,4 +191,21 @@ export interface K8sDebugTarget {
   command?: string[];
 }
 
+export interface K8sLoginOptions {
+  server: string;
+  token: string;
+  insecureSkipTlsVerify?: boolean;
+  namespace?: string;
+  username?: string;
+  kubeConfigPath?: string;
+}
 
+export interface K8sLoginResult {
+  success: boolean;
+  contextName: string;
+  clusterName: string;
+  userName: string;
+  server: string;
+  namespace: string;
+  projects: string[];
+}

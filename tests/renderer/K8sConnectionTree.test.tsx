@@ -40,6 +40,16 @@ describe('K8sConnectionTree', () => {
       k8sListPortForwards: vi.fn().mockResolvedValue([]),
       onK8sPortForwardEvent: vi.fn().mockReturnValue(() => {}),
       k8sReload: vi.fn().mockResolvedValue(undefined),
+      k8sLogin: vi.fn().mockResolvedValue({
+        success: true,
+        contextName: 'default/api-test-com:6443/user',
+        clusterName: 'api-test-com:6443',
+        userName: 'user/api-test-com:6443',
+        server: 'https://api.test.com:6443',
+        namespace: 'default',
+        projects: ['default'],
+      }),
+      onK8sConfigChanged: vi.fn().mockReturnValue(() => {}),
     };
   });
 
@@ -94,5 +104,61 @@ describe('K8sConnectionTree', () => {
       podName: 'nginx-pod',
       containerName: 'nginx',
     });
+  });
+
+  it('opens OpenShift Login modal and performs token login', async () => {
+    render(<K8sConnectionTree />);
+
+    expect(await screen.findByText('minikube')).toBeInTheDocument();
+
+    const loginBtn = screen.getByTitle('Log in to OpenShift or Kubernetes with token');
+    expect(loginBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(loginBtn);
+    });
+
+    expect(screen.getByText('OpenShift / Kubernetes Token Login')).toBeInTheDocument();
+
+    // Paste an oc login command
+    const pasteArea = screen.getByPlaceholderText(/oc login --token=/);
+    await act(async () => {
+      fireEvent.change(pasteArea, {
+        target: { value: 'oc login --token=sha256~secret123 --server=https://api.mycluster.com:6443 --insecure-skip-tls-verify' },
+      });
+    });
+
+    // Check that server and token fields auto-populated
+    expect(screen.getByPlaceholderText('https://api.mycluster.example.com:6443')).toHaveValue('https://api.mycluster.com:6443');
+    expect(screen.getByPlaceholderText('sha256~...')).toHaveValue('sha256~secret123');
+
+    // Click submit
+    const submitBtn = screen.getByRole('button', { name: /Log in & Connect/ });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    expect((window as any).multissh.k8sLogin).toHaveBeenCalledWith({
+      server: 'https://api.mycluster.com:6443',
+      token: 'sha256~secret123',
+      namespace: undefined,
+      insecureSkipTlsVerify: true,
+    });
+  });
+
+  it('shows OpenShift / Kubernetes Login button when no contexts exist', async () => {
+    (window as any).multissh.k8sListContexts.mockResolvedValueOnce([]);
+
+    render(<K8sConnectionTree />);
+
+    expect(await screen.findByText('No contexts found in ~/.kube/config')).toBeInTheDocument();
+    const loginBtn = screen.getByRole('button', { name: /OpenShift \/ Kubernetes Login/ });
+    expect(loginBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(loginBtn);
+    });
+
+    expect(screen.getByText('OpenShift / Kubernetes Token Login')).toBeInTheDocument();
   });
 });

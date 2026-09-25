@@ -47,6 +47,8 @@ import type {
   K8sActivePortForward,
   K8sStorageConfig,
   K8sDebugTarget,
+  K8sLoginOptions,
+  K8sLoginResult,
 } from './kubernetes';
 
 export const IPC_CHANNELS = {
@@ -213,6 +215,8 @@ export const IPC_CHANNELS = {
   K8S_LIST_NAMESPACES: 'k8s:list-namespaces',
   K8S_LIST_PODS: 'k8s:list-pods',
   K8S_RELOAD: 'k8s:reload',
+  K8S_LOGIN: 'k8s:login',
+  K8S_CONFIG_CHANGED: 'k8s:config-changed',
 
   // Kubernetes / OpenShift interactive exec terminal
   K8S_TERMINAL_CREATE: 'k8s-terminal:create',
@@ -469,6 +473,8 @@ export interface MultiSSHApi {
   k8sListNamespaces(contextName: string): Promise<K8sNamespaceNode[]>;
   k8sListPods(contextName: string, namespace: string): Promise<K8sPodNode[]>;
   k8sReload(): Promise<void>;
+  k8sLogin(options: K8sLoginOptions): Promise<K8sLoginResult>;
+  onK8sConfigChanged(callback: () => void): () => void;
   k8sTerminalCreate(target: K8sTerminalTarget, options?: { cols?: number; rows?: number }): Promise<{ sessionId: string }>;
   k8sTerminalWrite(sessionId: string, data: string): Promise<void>;
   k8sTerminalResize(sessionId: string, cols: number, rows: number): Promise<void>;

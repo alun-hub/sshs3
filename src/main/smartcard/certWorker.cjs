@@ -72,7 +72,7 @@ async function main() {
     return;
   }
 
-  let slots = [];
+  let slots;
   try {
     slots = pkcs11.C_GetSlotList(true);
   } catch (err) {

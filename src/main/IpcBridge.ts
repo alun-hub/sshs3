@@ -36,6 +36,7 @@ import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
 import { K8sDiscoveryService } from './services/K8sDiscoveryService';
+import { loginWithToken } from './services/K8sAuthService';
 import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
@@ -75,6 +76,8 @@ import type {
   K8sPortForwardTarget,
   K8sActivePortForward,
   K8sDebugTarget,
+  K8sLoginOptions,
+  K8sLoginResult,
 } from '../shared/types/kubernetes';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
@@ -213,6 +216,8 @@ export class IpcBridge {
   private onK8sLogData?: (event: { sessionId: string; data: string }) => void;
   private onK8sLogEnd?: (event: { sessionId: string }) => void;
   private onK8sPortForwardChange?: (list: K8sActivePortForward[]) => void;
+  private onK8sConfigChanged?: () => void;
+  private unsubscribeK8sConfig?: () => void;
 
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
@@ -2290,6 +2295,19 @@ export class IpcBridge {
     });
 
     this.registerHandler(
+      IPC_CHANNELS.K8S_LOGIN,
+      async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
+        const result = await loginWithToken(options);
+        this.k8sDiscoveryService.reload();
+        const webContents = this.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
+        }
+        return result;
+      }
+    );
+
+    this.registerHandler(
       IPC_CHANNELS.K8S_TERMINAL_CREATE,
       async (
         _event,
@@ -2776,6 +2794,14 @@ export class IpcBridge {
       }
     };
     this.k8sPortForwardManager.on('change', this.onK8sPortForwardChange);
+
+    this.onK8sConfigChanged = () => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
+      }
+    };
+    this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);
   }
 
   public async dispose(): Promise<void> {
@@ -2818,6 +2844,11 @@ export class IpcBridge {
       this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
     }
     void this.k8sPortForwardManager.stopAll();
+
+    if (this.unsubscribeK8sConfig) {
+      this.unsubscribeK8sConfig();
+      this.unsubscribeK8sConfig = undefined;
+    }
 
     for (const prompt of this.pendingAskpass.values()) {
       try {
