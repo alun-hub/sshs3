@@ -104,6 +104,16 @@ describe('TerminalView Component', () => {
     expect(createArgs.config.id).not.toBe(sampleConfig.id);
   });
 
+  it('synchronizes dimensions to PTY via terminalResize once session creation resolves', async () => {
+    render(<TerminalView config={sampleConfig} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockTerminalResize).toHaveBeenCalledWith('session-123', expect.any(Number), expect.any(Number));
+  });
+
   it('receives terminal data from IPC and writes matching session data to terminal', async () => {
     render(<TerminalView config={sampleConfig} />);
 
