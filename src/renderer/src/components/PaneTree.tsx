@@ -171,31 +171,43 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
     <div
       data-testid={`terminal-pane-${node.id}`}
       onMouseDownCapture={() => props.onSelectPane(node.id)}
-      className="relative flex h-full w-full flex-col overflow-hidden"
+      className={`relative flex h-full w-full flex-col overflow-hidden transition-all duration-150 ${
+        isFocused && !isSole
+          ? 'ring-1 ring-inset ring-sky-500/60 shadow-[inset_0_0_12px_rgba(14,165,233,0.06)]'
+          : ''
+      }`}
     >
       <div
-        className={`flex h-6 shrink-0 items-center justify-between border-b px-2 text-[11px] ${
+        className={`flex h-6.5 shrink-0 items-center justify-between border-b px-2.5 text-[11px] transition-colors ${
           isFocused && !isSole
-            ? 'border-sky-500/40 bg-sky-500/5 text-txt-primary'
+            ? 'border-sky-500/50 bg-sky-500/5 text-txt-primary font-medium'
             : 'border-border-subtle bg-app-surface text-txt-muted'
         }`}
       >
-        <span className="truncate font-mono">
-          {(() => {
-            const baseName =
-              node.config?.name ||
-              (node.k8sTarget && `${node.k8sTarget.podName} / ${node.k8sTarget.containerName}`) ||
-              (node.k8sLogTarget && `Logs: ${node.k8sLogTarget.podName} / ${node.k8sLogTarget.containerName}`) ||
-              (node.local
-                ? node.shellType === 'wsl'
-                  ? node.wslDistro
-                    ? `WSL: ${node.wslDistro}`
-                    : 'WSL'
-                  : 'Local Shell'
-                : 'No connection');
-            return node.dynamicHost ? `${baseName} → ${node.dynamicHost}` : baseName;
-          })()}
-        </span>
+        <div className="flex items-center min-w-0 mr-2">
+          {isFocused && !isSole && (
+            <span className="relative flex h-2 w-2 mr-1.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
+            </span>
+          )}
+          <span className="truncate font-mono">
+            {(() => {
+              const baseName =
+                node.config?.name ||
+                (node.k8sTarget && `${node.k8sTarget.podName} / ${node.k8sTarget.containerName}`) ||
+                (node.k8sLogTarget && `Logs: ${node.k8sLogTarget.podName} / ${node.k8sLogTarget.containerName}`) ||
+                (node.local
+                  ? node.shellType === 'wsl'
+                    ? node.wslDistro
+                      ? `WSL: ${node.wslDistro}`
+                      : 'WSL'
+                    : 'Local Shell'
+                  : 'No connection');
+              return node.dynamicHost ? `${baseName} → ${node.dynamicHost}` : baseName;
+            })()}
+          </span>
+        </div>
         <div className="flex items-center gap-0.5">
           <button
             type="button"

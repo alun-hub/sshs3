@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Square, Terminal } from 'lucide-react';
+import { Cloud, Columns2, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
@@ -668,22 +668,121 @@ export const App: React.FC = () => {
       {/* Main Content Area: non-active tabs stay mounted with display: none */}
       <main className="relative flex flex-1 w-full overflow-hidden bg-app">
         {tabs.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-txt-muted gap-3">
-            <p className="text-sm">No tabs open</p>
-            <button
-              type="button"
-              onClick={() => handleNewTab('terminal')}
-              className="rounded-lg bg-sky-500/15 border border-sky-500/30 px-3.5 py-1.5 text-xs text-sky-400 hover:bg-sky-500/25 transition-colors"
-            >
-              Open New Terminal
-            </button>
-            <button
-              type="button"
-              onClick={() => setSyncBootstrapModalOpen(true)}
-              className="text-[11px] text-txt-muted hover:text-sky-400 hover:underline transition-colors"
-            >
-              Import existing profile from the cloud
-            </button>
+          <div className="flex flex-1 flex-col items-center justify-center p-6 text-txt-secondary animate-in fade-in duration-200">
+            <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-6">
+              {/* Brand Header */}
+              <div className="flex flex-col items-center space-y-2">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 border border-sky-500/25 shadow-lg shadow-sky-500/5 text-sky-400">
+                  <Terminal className="h-7 w-7" />
+                </div>
+                <h1 className="text-xl font-bold tracking-tight text-txt-primary">sshs3</h1>
+                <p className="text-xs text-txt-muted max-w-md">
+                  Multi-session SSH & SFTP client with dual-pane file management, Kubernetes support and cloud sync.
+                </p>
+              </div>
+
+              {/* Action Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
+                <button
+                  type="button"
+                  onClick={() => handleNewTab('terminal')}
+                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
+                      <Terminal className="h-5 w-5" />
+                    </div>
+                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
+                      Ctrl+Shift+T
+                    </kbd>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
+                      Open New Terminal
+                    </div>
+                    <div className="text-[11px] text-txt-muted mt-0.5">
+                      Launch a local shell, ad-hoc SSH connection or WSL
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleNewTab('filemanager')}
+                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
+                      <Folder className="h-5 w-5" />
+                    </div>
+                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
+                      Ctrl+Shift+F
+                    </kbd>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
+                      New File Manager
+                    </div>
+                    <div className="text-[11px] text-txt-muted mt-0.5">
+                      Dual-pane explorer for SFTP, S3 and local drives
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenProfiles}
+                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
+                      <Server className="h-5 w-5" />
+                    </div>
+                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
+                      Ctrl+Shift+P
+                    </kbd>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
+                      Saved Connections
+                    </div>
+                    <div className="text-[11px] text-txt-muted mt-0.5">
+                      Manage profiles, SSH keys and credentials
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSyncBootstrapModalOpen(true)}
+                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25 group-hover:scale-105 transition-all">
+                      <Cloud className="h-5 w-5" />
+                    </div>
+                    <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400">
+                      Cloud Sync
+                    </span>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-txt-primary group-hover:text-purple-400 transition-colors">
+                      Import / Cloud Sync
+                    </div>
+                    <div className="text-[11px] text-txt-muted mt-0.5">
+                      Restore configuration and profiles from cloud storage
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Keyboard shortcuts reminder */}
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-txt-muted pt-2 border-t border-border-subtle/50 w-full">
+                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+Tab</kbd> Cycle tabs</span>
+                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+W</kbd> Close tab</span>
+                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+,</kbd> Settings</span>
+              </div>
+            </div>
           </div>
         ) : (
           tabs.map((tab) => {
@@ -731,15 +830,33 @@ export const App: React.FC = () => {
                       </div>
 
                       {totalPanes > 1 && (
-                        <button
-                          type="button"
-                          title="Unsplit: close every other pane, keep only the active one"
-                          data-testid={`unsplit-${tab.id}`}
-                          onClick={() => handleUnsplit(tab.id)}
-                          className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                        >
-                          <Square className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title="Split horizontally (add pane below)"
+                            onClick={() => handleSplitPane(tab.id, 'column', tab.activePaneId)}
+                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                          >
+                            <Rows2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Split vertically (add pane to right)"
+                            onClick={() => handleSplitPane(tab.id, 'row', tab.activePaneId)}
+                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                          >
+                            <Columns2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Unsplit: close every other pane, keep only the active one"
+                            data-testid={`unsplit-${tab.id}`}
+                            onClick={() => handleUnsplit(tab.id)}
+                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                          >
+                            <Square className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
 

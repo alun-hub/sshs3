@@ -58,6 +58,8 @@ interface FilePaneProps {
   side: PaneSide;
   source: PaneSource;
   currentPath: string;
+  isActive?: boolean;
+  onFocus?: () => void;
   onPathChange: (path: string) => void;
   onSourceTypeRequest: (type: SourceType) => void;
   onTransferRequested: (params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => void;
@@ -80,6 +82,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   side,
   source,
   currentPath,
+  isActive = false,
+  onFocus,
   onPathChange,
   onSourceTypeRequest,
   onTransferRequested,
@@ -719,7 +723,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   return (
     <div
-      className="flex h-full min-w-0 flex-1 flex-col rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-sm"
+      data-testid={`file-pane-${side}`}
+      className={`flex h-full min-w-0 flex-1 flex-col rounded-xl border transition-all duration-150 bg-app-card overflow-hidden ${
+        isActive
+          ? 'border-sky-500/50 shadow-md ring-1 ring-inset ring-sky-500/20'
+          : 'border-border-subtle shadow-sm'
+      }`}
+      onClickCapture={onFocus}
+      onFocusCapture={onFocus}
       onKeyDown={handlePaneKeyDown}
       onMouseUp={(e) => {
         if (e.button === 3) {
@@ -779,127 +790,156 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {source.label}
           </span>
         </div>
+        {isActive && (
+          <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] font-semibold text-sky-400 select-none">
+            Active
+          </span>
+        )}
       </div>
 
       {/* Pane Action Toolbar */}
       <div className="flex items-center gap-1 border-b border-border-subtle bg-app-surface-subtle px-2 py-1">
-        <button
-          type="button"
-          title="Back (Alt+Left)"
-          disabled={!canGoBack}
-          onClick={handleGoBack}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Forward (Alt+Right)"
-          disabled={!canGoForward}
-          onClick={handleGoForward}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <ArrowRight className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Up one level (Alt+Up)"
-          onClick={() => onPathChange(parentPath(currentPath))}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-        >
-          <ArrowUp className="h-4 w-4" />
-        </button>
-        <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
-        <button
-          type="button"
-          title="Refresh"
-          onClick={() => void load(true)}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="New Folder"
-          onClick={() => void handleNewFolder()}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-        >
-          <FolderPlus className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="View / Edit File"
-          disabled={selectedPaths.size !== 1 || Boolean(selectedEntries[0]?.isDirectory)}
-          onClick={() => selectedEntries[0] && setEditorEntry(selectedEntries[0])}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <FileText className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Rename"
-          disabled={selectedPaths.size !== 1}
-          onClick={handleRenameStart}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Delete"
-          disabled={selectedPaths.size === 0}
-          onClick={() => void handleDelete()}
-          className="rounded-lg p-1 text-red-400 hover:bg-app-surface-hover disabled:opacity-30 transition-colors"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Change Permissions (chmod)"
-          disabled={selectedPaths.size === 0 || source.sourceType === 's3'}
-          onClick={() => setChmodOpen(true)}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <Shield className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Search / Filter files (Ctrl+F)"
-          onClick={() => {
-            setShowFilter((prev) => {
-              const next = !prev;
-              if (next) setTimeout(() => filterInputRef.current?.focus(), 50);
-              return next;
-            });
-          }}
-          className={
-            'rounded-lg p-1 transition-colors ' +
-            (showFilter || filterText
-              ? 'bg-sky-500/20 text-sky-400'
-              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary')
-          }
-        >
-          <Search className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title={source.sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}
-          disabled={source.sourceType === 'k8s'}
-          onClick={() => setSearchOpen(true)}
-          className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
-        >
-          <FileSearch className="h-4 w-4" />
-        </button>
-        {(source.sourceType === 'sftp' || source.sourceType === 'k8s') && onOpenTerminal && (
+        {/* Navigation Group */}
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
-            title="Open Terminal Here"
-            onClick={() => onOpenTerminal(currentPath)}
+            title="Back (Alt+Left)"
+            disabled={!canGoBack}
+            onClick={handleGoBack}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Forward (Alt+Right)"
+            disabled={!canGoForward}
+            onClick={handleGoForward}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Up one level (Alt+Up)"
+            onClick={() => onPathChange(parentPath(currentPath))}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
-            <Terminal className="h-4 w-4" />
+            <ArrowUp className="h-4 w-4" />
           </button>
-        )}
+        </div>
+
+        <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
+
+        <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
+
+        <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
+
+        {/* File Ops Group */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            title="Refresh"
+            onClick={() => void load(true)}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="New Folder"
+            onClick={() => void handleNewFolder()}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="View / Edit File"
+            disabled={selectedPaths.size !== 1 || Boolean(selectedEntries[0]?.isDirectory)}
+            onClick={() => selectedEntries[0] && setEditorEntry(selectedEntries[0])}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
+
+        {/* Manage Group */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            title="Rename"
+            disabled={selectedPaths.size !== 1}
+            onClick={handleRenameStart}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Delete"
+            disabled={selectedPaths.size === 0}
+            onClick={() => void handleDelete()}
+            className="rounded-lg p-1 text-red-400 hover:bg-app-surface-hover disabled:opacity-30 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Change Permissions (chmod)"
+            disabled={selectedPaths.size === 0 || source.sourceType === 's3'}
+            onClick={() => setChmodOpen(true)}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <Shield className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
+
+        {/* Search & Terminal Group */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            title="Search / Filter files (Ctrl+F)"
+            onClick={() => {
+              setShowFilter((prev) => {
+                const next = !prev;
+                if (next) setTimeout(() => filterInputRef.current?.focus(), 50);
+                return next;
+              });
+            }}
+            className={
+              'rounded-lg p-1 transition-colors ' +
+              (showFilter || filterText
+                ? 'bg-sky-500/20 text-sky-400'
+                : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary')
+            }
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title={source.sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}
+            disabled={source.sourceType === 'k8s'}
+            onClick={() => setSearchOpen(true)}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
+          >
+            <FileSearch className="h-4 w-4" />
+          </button>
+          {(source.sourceType === 'sftp' || source.sourceType === 'k8s') && onOpenTerminal && (
+            <button
+              type="button"
+              title="Open Terminal Here"
+              onClick={() => onOpenTerminal(currentPath)}
+              className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              <Terminal className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter Bar */}

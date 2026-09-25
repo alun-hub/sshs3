@@ -530,7 +530,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                     {container.name}
                                                   </span>
                                                   {container.isEphemeral && (
-                                                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.2 text-[9px] text-amber-400 font-medium">
+                                                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.5 text-[10px] text-amber-400 font-medium">
                                                       debug
                                                     </span>
                                                   )}

@@ -7,6 +7,8 @@ import {
   FileDiff,
   FolderSync,
   Loader2,
+  Maximize2,
+  Minimize2,
   Save,
   Square,
   X,
@@ -23,7 +25,7 @@ import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModa
 import { FolderBrowserModal } from './FolderBrowserModal';
 import { FileDiffModal } from './FileDiffModal';
 import { DirSyncSavedProfilesModal } from './DirSyncSavedProfilesModal';
-import { formatBytes, formatDateTime } from '../../lib/format';
+import { classNames, formatBytes, formatDateTime } from '../../lib/format';
 import type { SourceType } from './types';
 
 /** Last path segment, used to preview the nested sync root under the chosen target parent. */
@@ -171,6 +173,21 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
 
   const [saveProfileName, setSaveProfileName] = useState('');
   const [showSaveProfile, setShowSaveProfile] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (folderBrowserOpen || compareEntry || profilePickerOpen || connectionPickerOpen) {
+          return;
+        }
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [open, folderBrowserOpen, compareEntry, profilePickerOpen, connectionPickerOpen, onClose]);
 
   // Reset + prefill only on the rising edge of `open` (closed -> open), not
   // on every re-render while already open — otherwise an unrelated prop
@@ -432,19 +449,39 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+      <div
+        className={classNames(
+          'flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden transition-all duration-150',
+          isMaximized ? 'w-[98vw] h-[96vh] max-w-none' : 'w-[94vw] max-w-[1400px] h-[88vh]'
+        )}
+      >
+        <div
+          onDoubleClick={() => setIsMaximized((m) => !m)}
+          title="Double-click header to maximize / restore"
+          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 select-none cursor-default shrink-0"
+        >
           <div className="flex items-center gap-2">
             <FolderSync className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Sync Directory</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title={isMaximized ? 'Restore size' : 'Maximize window'}
+              onClick={() => setIsMaximized((m) => !m)}
+              className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              title="Close (Esc)"
+              onClick={onClose}
+              className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs text-txt-secondary">

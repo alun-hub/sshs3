@@ -8,6 +8,8 @@ import {
   FileText,
   Lock,
   Loader2,
+  Maximize2,
+  Minimize2,
   RotateCw,
   Save,
   Search,
@@ -50,6 +52,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [readOnly, setReadOnly] = useState(false);
   const [wordWrap, setWordWrap] = useState(true);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   // Tail state
   const [tailModeActive, setTailModeActive] = useState(false);
@@ -298,6 +301,22 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     onClose();
   }, [isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
 
+  // Global Escape key handling
+  useEffect(() => {
+    if (!open) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showSearch) {
+          setShowSearch(false);
+          return;
+        }
+        handleRequestClose();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [open, showSearch, handleRequestClose]);
+
   // Textarea key handling
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -386,9 +405,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       aria-label={`Editing ${entry.name}`}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150"
     >
-      <div className="flex flex-col w-full max-w-5xl h-[88vh] rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div
+        className={classNames(
+          'flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden transition-all duration-150',
+          isMaximized ? 'w-[98vw] h-[96vh] max-w-none' : 'w-[94vw] max-w-[1500px] h-[88vh]'
+        )}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-2.5 select-none shrink-0">
+        <div
+          onDoubleClick={() => setIsMaximized((m) => !m)}
+          title="Double-click header to maximize / restore"
+          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-2.5 select-none shrink-0 cursor-default"
+        >
           <div className="flex items-center gap-2.5 min-w-0">
             <FileText className="h-4 w-4 text-sky-400 shrink-0" />
             <div className="flex items-center gap-2 min-w-0">
@@ -545,6 +573,16 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 <Save className="h-3.5 w-3.5" />
               )}
               <span>Save</span>
+            </button>
+
+            {/* Maximize / Restore toggle */}
+            <button
+              type="button"
+              title={isMaximized ? 'Restore size' : 'Maximize editor'}
+              onClick={() => setIsMaximized((m) => !m)}
+              className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
+            >
+              {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
 
             {/* Close button */}

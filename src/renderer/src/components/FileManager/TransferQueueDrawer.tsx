@@ -48,6 +48,7 @@ export const TransferQueueDrawer: React.FC = () => {
   }, []);
 
   const activeCount = jobs.filter((j) => j.status === 'running' || j.status === 'pending').length;
+  const failedCount = jobs.filter((j) => j.status === 'failed').length;
 
   return (
     <div className="flex flex-col border-t border-border-subtle bg-app-surface text-txt-primary">
@@ -56,9 +57,16 @@ export const TransferQueueDrawer: React.FC = () => {
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
       >
-        <span>
-          Transfers {activeCount > 0 ? `(${activeCount} active)` : ''}
-        </span>
+        <div className="flex items-center gap-2">
+          <span>
+            Transfers {activeCount > 0 ? `(${activeCount} active)` : ''}
+          </span>
+          {failedCount > 0 && (
+            <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-400">
+              {failedCount} failed
+            </span>
+          )}
+        </div>
         <span className="flex items-center gap-2">
           {jobs.some((j) => j.status === 'completed' || j.status === 'failed' || j.status === 'cancelled') && (
             <button

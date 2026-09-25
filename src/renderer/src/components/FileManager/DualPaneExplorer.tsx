@@ -40,6 +40,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
   });
+  const [activeSide, setActiveSide] = useState<PaneSide>('left');
   const [refreshToken, setRefreshToken] = useState(0);
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -482,6 +483,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             side="left"
             source={panes.left.source}
             currentPath={panes.left.path}
+            isActive={activeSide === 'left'}
+            onFocus={() => setActiveSide('left')}
             onPathChange={(path) => setPanePath('left', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('left', type)}
             onTransferRequested={(params) => handleTransferRequested('left', params)}
@@ -498,6 +501,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             side="right"
             source={panes.right.source}
             currentPath={panes.right.path}
+            isActive={activeSide === 'right'}
+            onFocus={() => setActiveSide('right')}
             onPathChange={(path) => setPanePath('right', path)}
             onSourceTypeRequest={(type) => setPaneSourceType('right', type)}
             onTransferRequested={(params) => handleTransferRequested('right', params)}

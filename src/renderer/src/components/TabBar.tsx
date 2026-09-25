@@ -172,7 +172,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
 
         {isMenuOpen && (
-          <div className="absolute top-8 right-0 z-50 min-w-[160px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl">
+          <div className="absolute top-8 right-0 z-50 min-w-[210px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
             <button
               type="button"
               data-testid="new-terminal-btn"
@@ -180,10 +180,15 @@ export const TabBar: React.FC<TabBarProps> = ({
                 setIsMenuOpen(false);
                 onNewTab('terminal');
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
+              className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
             >
-              <Terminal className="h-3.5 w-3.5 text-sky-400" />
-              <span>New Terminal</span>
+              <div className="flex items-center gap-2">
+                <Terminal className="h-3.5 w-3.5 text-sky-400" />
+                <span>New Terminal</span>
+              </div>
+              <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
+                Ctrl+Shift+T
+              </kbd>
             </button>
             <button
               type="button"
@@ -192,10 +197,15 @@ export const TabBar: React.FC<TabBarProps> = ({
                 setIsMenuOpen(false);
                 onNewTab('filemanager');
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
+              className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
             >
-              <Folder className="h-3.5 w-3.5 text-amber-400" />
-              <span>New File Manager</span>
+              <div className="flex items-center gap-2">
+                <Folder className="h-3.5 w-3.5 text-amber-400" />
+                <span>New File Manager</span>
+              </div>
+              <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
+                Ctrl+Shift+F
+              </kbd>
             </button>
             {onNewK8sSession && (
               <button

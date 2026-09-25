@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { classNames, pathSegments } from '../../lib/format';
 
 interface BreadcrumbsProps {
@@ -46,6 +47,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
         <input
           autoFocus
           value={draft}
+          onFocus={(e) => e.target.select()}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => setEditing(false)}
           onKeyDown={(e) => {
@@ -54,7 +56,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
               setEditing(false);
             }
           }}
-          className="w-full rounded-md border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+          className="w-full rounded-md border border-sky-500 bg-app-input px-2 py-1 text-xs text-txt-primary outline-none font-mono shadow-inner"
         />
       </form>
     );
@@ -64,9 +66,9 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-md border border-transparent px-1 py-0.5 text-xs hover:border-border-subtle transition-colors cursor-pointer"
+      className="group/bc relative flex min-w-0 flex-1 items-center justify-between gap-1 overflow-x-auto rounded-md border border-border-subtle/40 bg-app-input/40 px-1.5 py-0.5 text-xs hover:border-border-subtle transition-colors cursor-pointer"
       onDoubleClick={() => setEditing(true)}
-      title="Double-click to enter path, or drop files on any folder"
+      title="Click edit button or double-click to enter path manually, or drop files on any folder"
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -83,6 +85,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
         onDropToPath?.(currentPath, e);
       }}
     >
+      <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto py-0.5">
       {segments.map((segment, idx) => {
         const isHovered = dragOverSegment === segment.path;
         return (
@@ -136,6 +139,18 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
           </React.Fragment>
         );
       })}
+      </div>
+      <button
+        type="button"
+        title="Edit path manually"
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(true);
+        }}
+        className="opacity-0 group-hover/bc:opacity-100 shrink-0 rounded p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover transition-opacity"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
     </div>
   );
 };
