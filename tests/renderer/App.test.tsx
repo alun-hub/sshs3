@@ -195,6 +195,7 @@ describe('App Component', () => {
     // The original pane keeps its id and DOM node (no unmount/remount of the existing terminal).
     expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
     expect(window.multissh.terminalKill).not.toHaveBeenCalled();
+    expect(window.multissh.terminalCreate).not.toHaveBeenCalled();
 
     const otherPaneId = panes
       .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
@@ -207,9 +208,32 @@ describe('App Component', () => {
       await Promise.resolve();
     });
     expect(window.multissh.terminalCreate).toHaveBeenCalled();
+    (window.multissh.terminalCreate as any).mockClear();
     (window.multissh.terminalKill as any).mockClear();
 
-    // Close the *other* pane (not the original) — original must remain, its own session untouched.
+    // Now split the ROOT pane again while the second pane is active.
+    // This inserts a new pane between root and otherPane, shifting otherPane's index.
+    // Neither rootPane nor otherPane must be unmounted or killed!
+    fireEvent.click(screen.getByTestId(`split-row-${rootPaneId}`));
+    panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(3);
+    expect(window.multissh.terminalKill).not.toHaveBeenCalled();
+    expect(window.multissh.terminalCreate).not.toHaveBeenCalled();
+
+    const middlePaneId = panes
+      .map((p) => p.getAttribute('data-testid')!.replace('terminal-pane-', ''))
+      .find((id) => id !== rootPaneId && id !== otherPaneId)!;
+
+    // Close the middle pane: otherPane shifts back down in index.
+    (window.multissh.terminalKill as any).mockClear();
+    fireEvent.click(screen.getByTestId(`close-pane-${middlePaneId}`));
+    panes = screen.getAllByTestId(/^terminal-pane-/);
+    expect(panes.length).toBe(2);
+    // Middle pane had no active PTY session so terminalKill is 0, and other panes were untouched
+    expect(window.multissh.terminalKill).not.toHaveBeenCalled();
+
+    // Close the *other* pane (which has an active session) — its session must be killed cleanly
+    (window.multissh.terminalKill as any).mockClear();
     fireEvent.click(screen.getByTestId(`close-pane-${otherPaneId}`));
 
     panes = screen.getAllByTestId(/^terminal-pane-/);

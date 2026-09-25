@@ -418,7 +418,8 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onOpenLocalTerminal={props.onOpenLocalTerminal}
             onTitleChange={props.onTitleChange}
           />,
-          container
+          container,
+          leaf.id
         );
       })}
     </>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
@@ -149,6 +149,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onExitRef.current = onExit;
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
+  const configRef = useRef(config);
+  configRef.current = config;
   const initialCwdRef = useRef(initialCwd);
   initialCwdRef.current = initialCwd;
   const k8sTargetRef = useRef(k8sTarget);
@@ -159,6 +161,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontFamilyRef.current = fontFamily;
   const themeRef = useRef(theme);
   themeRef.current = theme;
+
+  const connectionKey = useMemo(() => {
+    if (local) return `local:${shellType || ''}:${wslDistro || ''}`;
+    if (k8sTarget) return `k8s:${k8sTarget.contextName}:${k8sTarget.namespace}:${k8sTarget.podName}:${k8sTarget.containerName}`;
+    if (config) return `ssh:${config.id || ''}:${config.host}:${config.port ?? 22}:${config.username}`;
+    return '';
+  }, [local, shellType, wslDistro, k8sTarget, config?.id, config?.host, config?.port, config?.username]);
 
   const sessionExitActionRef = useRef(sessionExitAction);
   sessionExitActionRef.current = sessionExitAction;
@@ -203,8 +212,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       if (
         sessionIdRef.current &&
         (force || newCols !== lastColsRef.current || newRows !== lastRowsRef.current) &&
-        newCols > 0 &&
-        newRows > 0
+        newCols >= 10 &&
+        newRows >= 3
       ) {
         lastColsRef.current = newCols;
         lastRowsRef.current = newRows;
@@ -377,14 +386,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // reusing it would let two mounts of the same profile (two tabs, or React
     // StrictMode's dev-mode double-invoke) collide on the same map entry in
     // SSHPtyManager, so killing one session tears down the other instead.
-    if (local || config || k8sTarget) {
+    const activeConfig = configRef.current;
+    if (local || activeConfig || k8sTarget) {
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
       const createPromise = k8sTarget
         ? window.multissh?.k8sTerminalCreate?.(k8sTarget, { cols, rows })
         : window.multissh?.terminalCreate?.(
             local
               ? { local: true as const, ptyOptions: { cols, rows, shellType, wslDistro } }
-              : { config: { ...(config as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } }
+              : { config: { ...(activeConfig as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } }
           );
       createPromise
         ?.then(({ sessionId }) => {
@@ -551,7 +561,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [config, local, shellType, wslDistro, k8sTarget, sessionKey, syncPtySize]);
+  }, [connectionKey, sessionKey, syncPtySize]);
 
   const isLight =
     theme === 'light' ||
