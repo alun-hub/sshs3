@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92] - 2026-09-25
+
+### Added
+- **Search in Files UI overhaul**:
+  - Significantly expanded default window size (`95vw` / `90vh`, up to 1600px width).
+  - Added Maximize/Restore button and titlebar double-click to toggle fullscreen.
+  - Added draggable splitter divider to adjust results list and preview pane widths, with double-click to reset.
+  - Added full path copy and "Reveal in Explorer" buttons to the preview pane.
+  - Added clear button (`✕`) in the search input query box and `Esc` shortcut to close modal.
+
+### Fixed
+- **Search in Files warning visibility**:
+  - Removed line truncation on search warnings so long paths and permission-denied messages (e.g., `/tmp/systemd-private-*`) are fully readable without being cut off.
+  - Added native tooltips for paths and snippets in both results and warning lists.
+  - Added one-click "Copy all warnings" and dismiss action to collapse or hide skipped object notices.
+- **Terminal session preservation on pane split & unsplit**:
+  - Preserved active terminal sessions across pane split and unsplit actions by keying portals and connection identity.
+  - Prevented unnecessary session teardowns and restarts when splitting views.
+  - Fixed Linux GPU crash fallback handling during pane layout transitions.
+
+---
+
 ## [0.91] - 2026-09-25
 
 ### Fixed
