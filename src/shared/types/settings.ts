@@ -92,6 +92,8 @@ export interface AppSettings {
   x11ServerArgs?: string;
   /** ISO 8601 timestamp of the last edit. Used by remote profile sync to pick the newer whole-object copy. */
   updatedAt?: string;
+  /** Master switch for OpenShift support and tools (e.g. oc login, oc CLI shim). Off by default. */
+  enableOpenShift?: boolean;
   /** Ephemeral debug container images used for Kubernetes / OpenShift pod debugging. */
   k8sDebugImages?: K8sDebugImage[];
 }
@@ -109,6 +111,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultConflictPolicy: 'ask',
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
+  enableOpenShift: false,
   sessionExitAction: 'reconnect',
   smartcardAuthMode: 'always-prompt',
   smartcardUnlockAtStartup: false,

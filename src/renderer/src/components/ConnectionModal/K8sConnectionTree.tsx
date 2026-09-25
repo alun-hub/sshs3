@@ -55,9 +55,29 @@ interface K8sConnectionTreeProps {
   onViewLogs?: (target: K8sTerminalTarget) => void;
   /** Invoked when the user clicks "Files" to browse container filesystem. */
   onBrowseFiles?: (target: K8sTerminalTarget) => void;
+  /** Master switch for OpenShift support and tools (e.g. oc login, oc CLI shim). Off by default. */
+  enableOpenShift?: boolean;
 }
 
-export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, onViewLogs, onBrowseFiles }) => {
+export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
+  onExec,
+  onViewLogs,
+  onBrowseFiles,
+  enableOpenShift: enableOpenShiftProp,
+}) => {
+  const [enableOpenShift, setEnableOpenShift] = useState<boolean>(enableOpenShiftProp ?? false);
+
+  useEffect(() => {
+    if (enableOpenShiftProp !== undefined) {
+      setEnableOpenShift(enableOpenShiftProp);
+    } else {
+      window.multissh?.settingsGet?.().then((settings) => {
+        if (settings && typeof settings.enableOpenShift === 'boolean') {
+          setEnableOpenShift(settings.enableOpenShift);
+        }
+      }).catch(() => {});
+    }
+  }, [enableOpenShiftProp]);
   const [contexts, setContexts] = useState<Loadable<K8sClusterNode[]>>({ status: 'loading' });
   const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
   const [namespacesByContext, setNamespacesByContext] = useState<Record<string, Loadable<K8sNamespaceNode[]>>>({});
@@ -214,24 +234,28 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
     return (
       <div className="flex flex-col items-center justify-center py-10 text-center space-y-4">
         <p className="text-sm text-txt-muted">No contexts found in ~/.kube/config</p>
-        <button
-          type="button"
-          onClick={() => setLoginModalOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-xs font-medium shadow-sm transition-colors"
-        >
-          <LogIn className="h-4 w-4" />
-          OpenShift / Kubernetes Login
-        </button>
-        <K8sLoginModal
-          open={loginModalOpen}
-          onClose={() => setLoginModalOpen(false)}
-          onSuccess={(result) => {
-            handleRefresh();
-            if (result?.contextName) {
-              setExpandedContexts((prev) => new Set(prev).add(result.contextName));
-            }
-          }}
-        />
+        {enableOpenShift && (
+          <>
+            <button
+              type="button"
+              onClick={() => setLoginModalOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-xs font-medium shadow-sm transition-colors"
+            >
+              <LogIn className="h-4 w-4" />
+              OpenShift / Kubernetes Login
+            </button>
+            <K8sLoginModal
+              open={loginModalOpen}
+              onClose={() => setLoginModalOpen(false)}
+              onSuccess={(result) => {
+                handleRefresh();
+                if (result?.contextName) {
+                  setExpandedContexts((prev) => new Set(prev).add(result.contextName));
+                }
+              }}
+            />
+          </>
+        )}
       </div>
     );
   }
@@ -260,15 +284,17 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
             </button>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setLoginModalOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-colors"
-          title="Log in to OpenShift or Kubernetes with token"
-        >
-          <LogIn className="h-3.5 w-3.5 text-red-400" />
-          OpenShift Login
-        </button>
+        {enableOpenShift && (
+          <button
+            type="button"
+            onClick={() => setLoginModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-colors"
+            title="Log in to OpenShift or Kubernetes with token"
+          >
+            <LogIn className="h-3.5 w-3.5 text-red-400" />
+            OpenShift Login
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -653,16 +679,18 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({ onExec, on
         }}
       />
 
-      <K8sLoginModal
-        open={loginModalOpen}
-        onClose={() => setLoginModalOpen(false)}
-        onSuccess={(result) => {
-          handleRefresh();
-          if (result?.contextName) {
-            setExpandedContexts((prev) => new Set(prev).add(result.contextName));
-          }
-        }}
-      />
+      {enableOpenShift && (
+        <K8sLoginModal
+          open={loginModalOpen}
+          onClose={() => setLoginModalOpen(false)}
+          onSuccess={(result) => {
+            handleRefresh();
+            if (result?.contextName) {
+              setExpandedContexts((prev) => new Set(prev).add(result.contextName));
+            }
+          }}
+        />
+      )}
     </>
   );
 };

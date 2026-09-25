@@ -130,6 +130,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [x11Operating, setX11Operating] = useState<boolean>(false);
   const [platform, setPlatform] = useState<string>('');
 
+  const [enableOpenShift, setEnableOpenShift] = useState<boolean>(
+    currentSettings.enableOpenShift ?? false
+  );
   const [k8sDebugImages, setK8sDebugImages] = useState<K8sDebugImage[]>(
     currentSettings.k8sDebugImages ?? [...DEFAULT_K8S_DEBUG_IMAGES]
   );
@@ -167,6 +170,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
       setRecordingAction(null);
       setShortcutSearch('');
+      setEnableOpenShift(currentSettings.enableOpenShift ?? false);
+      setK8sDebugImages(currentSettings.k8sDebugImages ?? [...DEFAULT_K8S_DEBUG_IMAGES]);
+      setShowAddDebugImage(false);
 
       // Auto detect smartcards for security tab
       setDetectingSmartcard(true);
@@ -271,6 +277,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       x11ServerPath,
       x11ServerArgs,
       shortcuts,
+      enableOpenShift,
       k8sDebugImages,
     });
     onClose();
@@ -1373,14 +1380,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Category: Kubernetes & Debug */}
               {activeCategory === 'kubernetes' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-txt-primary">Kubernetes & OpenShift Debug Images</h3>
-                      <p className="text-[11px] text-txt-muted mt-0.5">
-                        Pre-configured container images used when attaching an ephemeral debug container (<code>kubectl debug</code>) into a running pod.
-                      </p>
-                    </div>
+                <div className="space-y-6">
+                  {/* OpenShift Support Toggle */}
+                  <div className="rounded-xl border border-border-subtle bg-app-surface p-4 space-y-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enableOpenShift}
+                        onChange={(e) => setEnableOpenShift(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs font-semibold text-txt-primary">
+                        Enable OpenShift Support
+                      </span>
+                    </label>
+                    <p className="pl-6 text-[11px] text-txt-muted leading-relaxed">
+                      Enables OpenShift-specific capabilities, such as the OpenShift Login dialog (token-based <code>oc login</code>) in the Kubernetes connection tree and the local <code>oc</code> CLI shim in terminal sessions.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-semibold text-txt-primary">Kubernetes & OpenShift Debug Images</h3>
+                        <p className="text-[11px] text-txt-muted mt-0.5">
+                          Pre-configured container images used when attaching an ephemeral debug container (<code>kubectl debug</code>) into a running pod.
+                        </p>
+                      </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -1530,7 +1556,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
 
             {/* Modal Footer */}

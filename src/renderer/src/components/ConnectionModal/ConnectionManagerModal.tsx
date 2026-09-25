@@ -38,6 +38,8 @@ interface ConnectionManagerModalProps {
   onBrowseK8sFiles?: (target: K8sTerminalTarget) => void;
   /** Master switch from Settings > Files & Storage. Off by default; hides the dotfiles pool field in the SSH form. */
   dotfilesPoolEnabled?: boolean;
+  /** Master switch from Settings > Kubernetes & Debug. Off by default; enables OpenShift login and tools. */
+  enableOpenShift?: boolean;
 }
 
 export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
@@ -50,6 +52,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onViewK8sLogs,
   onBrowseK8sFiles,
   dotfilesPoolEnabled = false,
+  enableOpenShift = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [sshProfiles, setSshProfiles] = useState<SSHConnectionConfig[]>([]);
@@ -316,6 +319,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
               {tab === 'k8s' && (
                 <K8sConnectionTree
+                  enableOpenShift={enableOpenShift}
                   onExec={onConnectK8s}
                   onViewLogs={
                     onViewK8sLogs

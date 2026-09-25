@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../src/shared/types/settings';
@@ -245,5 +245,46 @@ describe('SettingsModal', () => {
     expect(screen.getByText(/Native display support active/i)).toBeInTheDocument();
     expect(screen.getByText(/Local X11 display is active and ready/i)).toBeInTheDocument();
     expect(screen.queryByText(/VcXsrv not detected/i)).not.toBeInTheDocument();
+  });
+
+  it('renders OpenShift support toggle in Kubernetes tab and saves preference', async () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+
+    // Switch to Kubernetes tab
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Kubernetes/ }));
+    });
+
+    expect(screen.getByText('Enable OpenShift Support')).toBeInTheDocument();
+    const checkbox = screen.getByRole('checkbox', { name: /Enable OpenShift Support/ });
+    expect(checkbox).not.toBeChecked();
+
+    // Toggle on
+    await act(async () => {
+      fireEvent.click(checkbox);
+    });
+    expect(checkbox).toBeChecked();
+
+    // Save
+    await act(async () => {
+      fireEvent.click(screen.getByText('Save Settings'));
+    });
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableOpenShift: true,
+      })
+    );
+    expect(onClose).toHaveBeenCalled();
   });
 });

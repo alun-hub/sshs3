@@ -7,6 +7,7 @@ import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
 import { K8sShimManager } from '../services/K8sShimManager';
+import type { SettingsStore } from '../settings/SettingsStore';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -287,9 +288,19 @@ export class InternalSSHPtySession implements SSHPtySession {
   }
 }
 
+export interface SSHPtyManagerOptions {
+  settingsStore?: SettingsStore;
+}
+
 export class SSHPtyManager extends EventEmitter {
   private sessions: Map<string, SSHPtySession> = new Map();
   private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
+  private settingsStore?: SettingsStore;
+
+  constructor(options?: SSHPtyManagerOptions) {
+    super();
+    this.settingsStore = options?.settingsStore;
+  }
 
   /**
    * Asks the UI (via the same 'askpass' channel used for in-session smartcard
@@ -498,15 +509,18 @@ export class SSHPtyManager extends EventEmitter {
       }
     }
 
-    try {
-      const shimDir = K8sShimManager.ensureShim();
-      const currentPath = env.PATH || process.env.PATH || '';
-      env.PATH = `${shimDir}${path.delimiter}${currentPath}`;
-    } catch {
-      // Non-fatal if shim directory cannot be provisioned
-    }
-
     Object.assign(env, options?.env || {});
+
+    try {
+      const settings = await this.settingsStore?.getSettings();
+      if (settings?.enableOpenShift) {
+        const shimDir = K8sShimManager.ensureShim();
+        const currentPath = env.PATH || process.env.PATH || '';
+        env.PATH = `${shimDir}${path.delimiter}${currentPath}`;
+      }
+    } catch {
+      // Non-fatal if shim directory cannot be provisioned or settings cannot be read
+    }
 
     const sessionName =
       options?.shellType === 'wsl'

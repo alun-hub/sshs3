@@ -106,8 +106,25 @@ describe('K8sConnectionTree', () => {
     });
   });
 
-  it('opens OpenShift Login modal and performs token login', async () => {
-    render(<K8sConnectionTree />);
+  it('does not show OpenShift login button when enableOpenShift is false or omitted', async () => {
+    render(<K8sConnectionTree enableOpenShift={false} />);
+
+    expect(await screen.findByText('minikube')).toBeInTheDocument();
+    expect(screen.queryByTitle('Log in to OpenShift or Kubernetes with token')).not.toBeInTheDocument();
+    expect(screen.queryByText('OpenShift Login')).not.toBeInTheDocument();
+  });
+
+  it('does not show OpenShift login button in empty state when enableOpenShift is false', async () => {
+    (window as any).multissh.k8sListContexts.mockResolvedValueOnce([]);
+
+    render(<K8sConnectionTree enableOpenShift={false} />);
+
+    expect(await screen.findByText('No contexts found in ~/.kube/config')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /OpenShift \/ Kubernetes Login/ })).not.toBeInTheDocument();
+  });
+
+  it('opens OpenShift Login modal and performs token login when enableOpenShift is true', async () => {
+    render(<K8sConnectionTree enableOpenShift={true} />);
 
     expect(await screen.findByText('minikube')).toBeInTheDocument();
 
@@ -146,10 +163,10 @@ describe('K8sConnectionTree', () => {
     });
   });
 
-  it('shows OpenShift / Kubernetes Login button when no contexts exist', async () => {
+  it('shows OpenShift / Kubernetes Login button when no contexts exist and enableOpenShift is true', async () => {
     (window as any).multissh.k8sListContexts.mockResolvedValueOnce([]);
 
-    render(<K8sConnectionTree />);
+    render(<K8sConnectionTree enableOpenShift={true} />);
 
     expect(await screen.findByText('No contexts found in ~/.kube/config')).toBeInTheDocument();
     const loginBtn = screen.getByRole('button', { name: /OpenShift \/ Kubernetes Login/ });

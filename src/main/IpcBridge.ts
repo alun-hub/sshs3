@@ -221,7 +221,8 @@ export class IpcBridge {
 
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
-    this.sshPtyManager = options.sshPtyManager ?? new SSHPtyManager();
+    this.settingsStore = options.settingsStore ?? new SettingsStore();
+    this.sshPtyManager = options.sshPtyManager ?? new SSHPtyManager({ settingsStore: this.settingsStore });
     this.knownHostsStore = options.knownHostsStore ?? new KnownHostsStore();
     this.storageRegistry =
       options.storageRegistry ??
@@ -237,7 +238,6 @@ export class IpcBridge {
     this.transferQueue = options.transferQueue ?? new TransferQueue();
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.sessionStore = options.sessionStore ?? new SessionStore();
-    this.settingsStore = options.settingsStore ?? new SettingsStore();
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();

@@ -802,6 +802,7 @@ export const App: React.FC = () => {
         open={connectTarget !== null}
         initialTab="ssh"
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
+        enableOpenShift={settings.enableOpenShift ?? false}
         onClose={() => setConnectTarget(null)}
         onConnectSSH={(config) => {
           if (connectTarget) handleConnectTerminal(connectTarget, config);
@@ -817,6 +818,7 @@ export const App: React.FC = () => {
         open={profilesModalOpen}
         initialTab={profilesModalTab}
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
+        enableOpenShift={settings.enableOpenShift ?? false}
         onClose={() => setProfilesModalOpen(false)}
         onConnectSSH={(config) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);

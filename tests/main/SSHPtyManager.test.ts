@@ -642,5 +642,28 @@ describe('SSHPtyManager', () => {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
       }
     });
+
+    it('does not inject oc shim PATH when enableOpenShift is false or omitted', async () => {
+      const mockSettingsStore = {
+        getSettings: vi.fn().mockResolvedValue({ enableOpenShift: false }),
+      } as any;
+      const customManager = new SSHPtyManager({ settingsStore: mockSettingsStore });
+      await customManager.createShellSession({ cols: 80, rows: 24, env: { PATH: '/usr/bin' } });
+
+      const { options } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs;
+      expect(options.env.PATH).toBe('/usr/bin');
+    });
+
+    it('injects oc shim PATH when enableOpenShift is true', async () => {
+      const mockSettingsStore = {
+        getSettings: vi.fn().mockResolvedValue({ enableOpenShift: true }),
+      } as any;
+      const customManager = new SSHPtyManager({ settingsStore: mockSettingsStore });
+      await customManager.createShellSession({ cols: 80, rows: 24, env: { PATH: '/usr/bin' } });
+
+      const { options } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs;
+      expect(options.env.PATH).toContain('.sshs3');
+      expect(options.env.PATH).toContain('/usr/bin');
+    });
   });
 });
