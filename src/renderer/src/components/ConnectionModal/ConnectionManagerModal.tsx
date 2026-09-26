@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Boxes,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -16,7 +15,6 @@ import {
   Plus,
   Search,
   Server,
-  Terminal,
   Trash2,
   Upload,
   X,
@@ -28,7 +26,6 @@ import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
 import { formatDateTime } from '../../lib/format';
-import { buildSshCliCommand } from '../../lib/sshCli';
 
 export type Tab = 'ssh' | 's3' | 'k8s';
 
@@ -83,9 +80,6 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   // Drag and drop target feedback
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
-
-  // CLI copy feedback
-  const [copyFeedbackId, setCopyFeedbackId] = useState<string | null>(null);
 
   // Import / Export menu and modal
   const [importMenuOpen, setImportMenuOpen] = useState(false);
@@ -213,31 +207,6 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clone profile');
-    }
-  };
-
-  // Option A: Copy CLI command
-  const handleCopySshCli = async (profile: SSHConnectionConfig) => {
-    let agentSocket = profile.agentPath;
-    if (!agentSocket) {
-      try {
-        const agentStatus = await window.multissh.getSshAgentStatus();
-        if (agentStatus?.isRunning && agentStatus?.socketPath) {
-          agentSocket = agentStatus.socketPath;
-        }
-      } catch {
-        // Safe to proceed without agent status
-      }
-    }
-    const cmd = buildSshCliCommand(profile, agentSocket);
-    try {
-      await navigator.clipboard.writeText(cmd);
-      setCopyFeedbackId(profile.id);
-      setTimeout(() => {
-        setCopyFeedbackId((curr) => (curr === profile.id ? null : curr));
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy CLI command:', err);
     }
   };
 
@@ -953,21 +922,6 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                           SFTP
                                         </button>
                                       )}
-                                      <button
-                                        type="button"
-                                        title="Copy SSH CLI Command (ssh user@host)"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void handleCopySshCli(profile);
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-sky-400 transition-colors"
-                                      >
-                                        {copyFeedbackId === profile.id ? (
-                                          <Check className="h-3.5 w-3.5 text-emerald-400" />
-                                        ) : (
-                                          <Terminal className="h-3.5 w-3.5" />
-                                        )}
-                                      </button>
                                       <button
                                         type="button"
                                         title="Duplicate / Clone Profile"
