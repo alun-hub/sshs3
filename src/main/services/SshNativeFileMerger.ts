@@ -1,4 +1,5 @@
 import { fingerprintKey } from '../ssh/KnownHostsStore';
+import { BLOCKED_SSH_DIRECTIVES } from '../ssh/blockedSshDirectives';
 import type { KnownHostsConflict } from '../../shared/types/sync';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 
@@ -24,35 +25,13 @@ export interface ManagedSshConfigBlock {
   body: string;
 }
 
-/**
- * ssh_config directives that can execute an arbitrary command (client-side
- * or server-side) or pull in additional, unvalidated config, so are never
- * allowed into a block written by remote profile sync. This block lands in
- * the user's *real* `~/.ssh/config` — read by the system's own `ssh` binary
- * for every future connection, not just inside sshs3 — so a sync source
- * that can plant `ProxyCommand`/`LocalCommand`/etc. here (a compromised
- * sync target, a compromised paired device, or a leaked master password)
- * would get silent, persistent code execution on every subsequent `ssh`
- * invocation matching the Host pattern, from any tool, indefinitely.
- * SECURITY: do not remove entries from this list without understanding why
- * they're here — see the finding this addresses.
- */
-const BLOCKED_DIRECTIVES = new Set([
-  'proxycommand',
-  'localcommand',
-  'permitlocalcommand',
-  'remotecommand',
-  'match',
-  'include',
-]);
-
 export interface SanitizeSshConfigBodyResult {
   body: string;
   removedLines: string[];
 }
 
 /**
- * Strips any line whose directive is in BLOCKED_DIRECTIVES from a managed
+ * Strips any line whose directive is in BLOCKED_SSH_DIRECTIVES from a managed
  * block body before it's ever written to disk. Applied only on the
  * receiving end of a sync pull (see writeManagedSshConfigBlock) — the
  * user's own locally-authored content is never touched, only content
@@ -71,7 +50,7 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
     // ssh_config directives are "Key value" or "Key=value", optionally
     // preceded by whitespace; keys are case-insensitive.
     const directive = trimmed.split(/[\s=]+/, 1)[0]?.toLowerCase();
-    if (directive && BLOCKED_DIRECTIVES.has(directive)) {
+    if (directive && BLOCKED_SSH_DIRECTIVES.has(directive)) {
       removedLines.push(line);
       continue;
     }

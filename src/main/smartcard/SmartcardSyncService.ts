@@ -345,8 +345,14 @@ export function verifyAgentSignature(
       return crypto.verify(null, challenge, pubKey, rawSig);
     }
 
-    // Default: signature response from agent was code 14, accept
-    return true;
+    // Unknown/unsupported key algorithm: fail closed. This value gates
+    // whether the app trusts an ssh-agent's signature as proof of smartcard
+    // possession (used to derive/decrypt the Remote Profile Sync master
+    // password) — accepting an unrecognized algorithm without actually
+    // verifying anything would let a malicious SSH_AUTH_SOCK hand over
+    // attacker-controlled bytes as if they were a verified signature.
+    console.warn(`Unsupported key algorithm for signature verification: ${algo}`);
+    return false;
   } catch (err) {
     console.warn('Failed to verify agent signature cryptographically:', err);
     return false;

@@ -3,6 +3,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
+import { BLOCKED_SSH_DIRECTIVES } from '../ssh/blockedSshDirectives';
 
 export interface DetectOptions {
   customPaths?: Array<{ name: string; path: string; platform: 'linux' | 'win32' }>;
@@ -24,15 +25,6 @@ function isSafeHostToken(value: unknown): value is string {
 }
 
 const PROXY_TYPES = new Set(['http', 'socks4', 'socks5']);
-
-const BLOCKED_SSH_DIRECTIVES = new Set([
-  'proxycommand',
-  'localcommand',
-  'permitlocalcommand',
-  'remotecommand',
-  'match',
-  'include',
-]);
 
 export class SmartcardDetector {
   private static readonly LINUX_LIBRARIES: Array<{ name: string; path: string; platform: 'linux' }> = [
