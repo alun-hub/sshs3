@@ -124,6 +124,12 @@ export const IPC_CHANNELS = {
   PROFILES_DELETE_SSH: 'profiles:delete-ssh',
   PROFILES_SAVE_S3: 'profiles:save-s3',
   PROFILES_DELETE_S3: 'profiles:delete-s3',
+  PROFILES_SAVE_FOLDER: 'profiles:save-folder',
+  PROFILES_DELETE_FOLDER: 'profiles:delete-folder',
+  PROFILES_RENAME_FOLDER: 'profiles:rename-folder',
+  PROFILES_IMPORT_SSH_CONFIG: 'profiles:import-ssh-config',
+  PROFILES_EXPORT_JSON: 'profiles:export-json',
+  PROFILES_IMPORT_JSON: 'profiles:import-json',
 
   // Session & Tabs
   SESSION_GET: 'session:get',
@@ -208,6 +214,7 @@ export const IPC_CHANNELS = {
   X11_STOP_SERVER: 'x11:stop-server',
   DIALOG_OPEN_FILE: 'dialog:open-file',
   DIALOG_OPEN_FOLDER: 'dialog:open-folder',
+  DIALOG_SAVE_FILE: 'dialog:save-file',
 
   // Directory sync (dual-pane folder → folder diff/copy between any two storage providers)
   DIR_SYNC_COMPUTE_DIFF: 'dirsync:compute-diff',
@@ -427,11 +434,17 @@ export interface MultiSSHApi {
   startDrag?(options: { file: string; icon?: string }): void;
 
   // Profiles
-  profilesGet(): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[] }>;
+  profilesGet(): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[]; folders?: string[] }>;
   profilesSaveSSH(config: SSHConnectionConfig): Promise<void>;
   profilesDeleteSSH(id: string): Promise<void>;
   profilesSaveS3(config: S3Config): Promise<void>;
   profilesDeleteS3(id: string): Promise<void>;
+  profilesSaveFolder(name: string): Promise<void>;
+  profilesDeleteFolder(name: string, deleteProfiles?: boolean): Promise<void>;
+  profilesRenameFolder(oldName: string, newName: string): Promise<void>;
+  profilesImportSshConfig(filePath?: string): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }>;
+  profilesExportJson(targetFilePath?: string): Promise<{ count: number; filePath: string } | null>;
+  profilesImportJson(filePath?: string): Promise<{ count: number }>;
 
   // Session
   sessionGet(): Promise<SessionData | null>;
@@ -569,6 +582,7 @@ export interface MultiSSHApi {
   /** Windows: Stop managed local X server. */
   x11StopServer(): Promise<{ success: boolean }>;
   dialogOpenFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+  dialogSaveFile(options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
   dialogOpenFolder(options?: { title?: string }): Promise<string | null>;
 
   // Directory sync

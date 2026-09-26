@@ -52,6 +52,7 @@ import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthSe
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
+import { importSshConfigFile } from './services/SshConfigImporter';
 import {
   getAgentIdentities,
   signChallengeWithAgent,
@@ -1061,6 +1062,118 @@ export class IpcBridge {
       async (_event, id: string) => {
         await this.profileStore.deleteS3(id);
         this.scheduleAutoSync();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_SAVE_FOLDER,
+      async (_event, name: string) => {
+        await this.profileStore.saveFolder(name);
+        this.scheduleAutoSync();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_DELETE_FOLDER,
+      async (_event, name: string, deleteProfiles?: boolean) => {
+        await this.profileStore.deleteFolder(name, Boolean(deleteProfiles));
+        this.scheduleAutoSync();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_RENAME_FOLDER,
+      async (_event, oldName: string, newName: string) => {
+        await this.profileStore.renameFolder(oldName, newName);
+        this.scheduleAutoSync();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG,
+      async (_event, filePath?: string) => {
+        return await importSshConfigFile(filePath);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_EXPORT_JSON,
+      async (_event, targetFilePath?: string) => {
+        let exportPath = targetFilePath;
+        if (!exportPath) {
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const result = await electronDialog.showSaveDialog({
+            title: 'Export Profiles',
+            defaultPath: `sshs3-profiles-${dateStr}.json`,
+            filters: [{ name: 'JSON Files', extensions: ['json'] }],
+          });
+          if (result.canceled || !result.filePath) return null;
+          exportPath = result.filePath;
+        }
+
+        const profiles = await this.profileStore.getProfiles();
+        const exportData = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          folders: profiles.folders || [],
+          ssh: profiles.ssh.map((p) => {
+            const { password: _pw, passphrase: _pp, ...rest } = p;
+            return rest;
+          }),
+          s3: profiles.s3.map((p) => {
+            const { secretAccessKey: _sec, sessionToken: _tok, ...rest } = p;
+            return rest;
+          }),
+        };
+
+        await fs.writeFile(exportPath, JSON.stringify(exportData, null, 2), 'utf-8');
+        return { count: profiles.ssh.length + profiles.s3.length, filePath: exportPath };
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.PROFILES_IMPORT_JSON,
+      async (_event, filePath?: string) => {
+        let importPath = filePath;
+        if (!importPath) {
+          const result = await electronDialog.showOpenDialog({
+            title: 'Import Profiles JSON',
+            filters: [{ name: 'JSON Files', extensions: ['json'] }],
+            properties: ['openFile'],
+          });
+          if (result.canceled || result.filePaths.length === 0) return { count: 0 };
+          importPath = result.filePaths[0];
+        }
+
+        const content = await fs.readFile(importPath, 'utf-8');
+        const parsed = JSON.parse(content);
+        const sshList = Array.isArray(parsed.ssh) ? parsed.ssh : [];
+        const s3List = Array.isArray(parsed.s3) ? parsed.s3 : [];
+        const foldersList = Array.isArray(parsed.folders) ? parsed.folders : [];
+
+        let count = 0;
+        for (const f of foldersList) {
+          if (typeof f === 'string' && f.trim()) {
+            await this.profileStore.saveFolder(f.trim()).catch(() => {});
+          }
+        }
+        for (const ssh of sshList) {
+          if (ssh && typeof ssh === 'object' && ssh.host) {
+            const id = ssh.id || crypto.randomUUID();
+            await this.profileStore.saveSSH({ ...ssh, id });
+            count++;
+          }
+        }
+        for (const s3 of s3List) {
+          if (s3 && typeof s3 === 'object' && s3.name) {
+            const id = s3.id || crypto.randomUUID();
+            await this.profileStore.saveS3({ ...s3, id });
+            count++;
+          }
+        }
+
+        this.scheduleAutoSync();
+        return { count };
       }
     );
   }
@@ -3094,6 +3207,21 @@ export class IpcBridge {
           return null;
         }
         return result.filePaths[0];
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.DIALOG_SAVE_FILE,
+      async (_event, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+        const result = await electronDialog.showSaveDialog({
+          title: options?.title,
+          defaultPath: options?.defaultPath,
+          filters: options?.filters,
+        });
+        if (result.canceled || !result.filePath) {
+          return null;
+        }
+        return result.filePath;
       }
     );
   }

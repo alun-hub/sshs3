@@ -41,6 +41,8 @@ export interface AppTab extends TabItem {
   initialCwd?: string;
   /** Set when opening a filemanager tab focused on a K8s container. */
   initialK8sTarget?: K8sTerminalTarget;
+  /** Set when opening a filemanager tab focused on an SSH/SFTP profile. */
+  initialSSHConfig?: SSHConnectionConfig;
 }
 
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */
@@ -504,6 +506,20 @@ export const App: React.FC = () => {
     setProfilesModalOpen(false);
   }, []);
 
+  const handleConnectSFTP = useCallback((config: SSHConnectionConfig) => {
+    const newId = `fm-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'filemanager',
+      title: `${config.name} (SFTP)`,
+      initialSSHConfig: config,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+    setProfilesModalOpen(false);
+    setConnectTarget(null);
+  }, []);
+
   const handleOpenProfiles = () => {
     setProfilesModalTab('ssh');
     setProfilesModalOpen(true);
@@ -891,6 +907,7 @@ export const App: React.FC = () => {
                       onOpenK8sTerminal={handleOpenK8sTerminalAt}
                       shortcuts={settings.shortcuts}
                       initialK8sTarget={tab.initialK8sTarget}
+                      initialSSHConfig={tab.initialSSHConfig}
                     />
                   </div>
                 )}
@@ -931,6 +948,7 @@ export const App: React.FC = () => {
         onConnectSSH={(config) => {
           if (connectTarget) handleConnectTerminal(connectTarget, config);
         }}
+        onConnectSFTP={handleConnectSFTP}
         onConnectK8s={(target) => {
           if (connectTarget) handleConnectK8sTerminal(connectTarget, target);
         }}
@@ -961,6 +979,7 @@ export const App: React.FC = () => {
           }
           setProfilesModalOpen(false);
         }}
+        onConnectSFTP={handleConnectSFTP}
         onConnectK8s={(target) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);
           if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {

@@ -9,6 +9,7 @@ import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '.
 export interface ProfilesData {
   ssh: SSHConnectionConfig[];
   s3: S3Config[];
+  folders?: string[];
 }
 
 const SSH_SECRET_FIELDS: Array<keyof SSHConnectionConfig> = ['password', 'passphrase'];
@@ -50,10 +51,14 @@ export class ProfileStore {
 
   public async getProfiles(): Promise<ProfilesData> {
     const profiles = await this.getProfilesIncludingTombstones();
-    return {
+    const result: ProfilesData = {
       ssh: profiles.ssh.filter((p) => !p.deletedAt),
       s3: profiles.s3.filter((p) => !p.deletedAt),
     };
+    if (profiles.folders && profiles.folders.length > 0) {
+      result.folders = profiles.folders;
+    }
+    return result;
   }
 
   /**
@@ -68,9 +73,11 @@ export class ProfileStore {
       const data = JSON.parse(raw);
       const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
       const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
+      const folders: string[] = Array.isArray(data.folders) ? data.folders : [];
       return {
         ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue)),
         s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptSecretValue)),
+        folders,
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
@@ -81,11 +88,13 @@ export class ProfileStore {
             const data = JSON.parse(raw);
             const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
             const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
-            const profiles = {
+            const folders: string[] = Array.isArray(data.folders) ? data.folders : [];
+            const profiles: ProfilesData = {
               ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue)),
               s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptSecretValue)),
+              folders,
             };
-            if (ssh.length > 0 || s3.length > 0) {
+            if (ssh.length > 0 || s3.length > 0 || folders.length > 0) {
               void this.queueMutation(async () => {
                 await fs.mkdir(path.dirname(this.filePath), { recursive: true });
                 await fs.copyFile(legacyPath, this.filePath);
@@ -176,6 +185,87 @@ export class ProfileStore {
     });
   }
 
+  public async saveFolder(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Folder name is required');
+    }
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfilesIncludingTombstones();
+      profiles.folders = profiles.folders || [];
+      if (!profiles.folders.includes(trimmed)) {
+        profiles.folders.push(trimmed);
+        await this.persist(profiles);
+      }
+    });
+  }
+
+  public async deleteFolder(name: string, deleteProfiles = false): Promise<void> {
+    if (!name) return;
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfilesIncludingTombstones();
+      profiles.folders = (profiles.folders || []).filter((f) => f !== name);
+      const now = new Date().toISOString();
+      if (deleteProfiles) {
+        profiles.ssh.forEach((p) => {
+          if (p.group === name && !p.deletedAt) {
+            p.deletedAt = now;
+            p.updatedAt = now;
+          }
+        });
+        profiles.s3.forEach((p) => {
+          if (p.group === name && !p.deletedAt) {
+            p.deletedAt = now;
+            p.updatedAt = now;
+          }
+        });
+      } else {
+        profiles.ssh.forEach((p) => {
+          if (p.group === name) {
+            p.group = undefined;
+            p.updatedAt = now;
+          }
+        });
+        profiles.s3.forEach((p) => {
+          if (p.group === name) {
+            p.group = undefined;
+            p.updatedAt = now;
+          }
+        });
+      }
+      await this.persist(profiles);
+    });
+  }
+
+  public async renameFolder(oldName: string, newName: string): Promise<void> {
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      throw new Error('New folder name is required');
+    }
+    if (oldName === trimmed) return;
+    return this.queueMutation(async () => {
+      const profiles = await this.getProfilesIncludingTombstones();
+      profiles.folders = (profiles.folders || []).map((f) => (f === oldName ? trimmed : f));
+      if (!profiles.folders.includes(trimmed)) {
+        profiles.folders.push(trimmed);
+      }
+      const now = new Date().toISOString();
+      profiles.ssh.forEach((p) => {
+        if (p.group === oldName) {
+          p.group = trimmed;
+          p.updatedAt = now;
+        }
+      });
+      profiles.s3.forEach((p) => {
+        if (p.group === oldName) {
+          p.group = trimmed;
+          p.updatedAt = now;
+        }
+      });
+      await this.persist(profiles);
+    });
+  }
+
   /**
    * Replaces the entire profile set as-is (including tombstones), without
    * stamping updatedAt. Used exclusively by remote profile sync to write
@@ -193,6 +283,9 @@ export class ProfileStore {
       ssh: data.ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, encryptSecretValue)),
       s3: data.s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, encryptSecretValue)),
     };
+    if (data.folders && data.folders.length > 0) {
+      onDisk.folders = data.folders;
+    }
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {
       encoding: 'utf-8',

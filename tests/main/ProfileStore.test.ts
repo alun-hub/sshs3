@@ -233,4 +233,34 @@ describe('ProfileStore', () => {
     expect(profiles.ssh.find((p) => p.id === 'ssh-custom-path')?.initialPath).toBe('/var/www/html');
     expect(profiles.s3.find((p) => p.id === 's3-custom-path')?.initialPath).toBe('my-bucket/backups/2026');
   });
+
+  it('saves, renames, and deletes folders while updating profile groups', async () => {
+    const store = new ProfileStore(storePath);
+    await store.saveFolder('Production');
+    await store.saveFolder('Staging');
+
+    let profiles = await store.getProfiles();
+    expect(profiles.folders).toEqual(['Production', 'Staging']);
+
+    await store.saveSSH({
+      id: 'ssh-1',
+      name: 'Prod DB',
+      host: 'db.prod.com',
+      username: 'root',
+      authType: 'password',
+      group: 'Production',
+    });
+
+    // Rename folder
+    await store.renameFolder('Production', 'Prod-EU');
+    profiles = await store.getProfiles();
+    expect(profiles.folders).toEqual(['Prod-EU', 'Staging']);
+    expect(profiles.ssh[0].group).toBe('Prod-EU');
+
+    // Delete folder without deleting profile (ungroup)
+    await store.deleteFolder('Prod-EU', false);
+    profiles = await store.getProfiles();
+    expect(profiles.folders).toEqual(['Staging']);
+    expect(profiles.ssh[0].group).toBeUndefined();
+  });
 });

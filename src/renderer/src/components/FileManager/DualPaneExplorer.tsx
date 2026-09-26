@@ -28,6 +28,8 @@ interface DualPaneExplorerProps {
   shortcuts?: Record<string, string>;
   /** Automatically connect one of the panes to this K8s container on mount. */
   initialK8sTarget?: K8sTerminalTarget;
+  /** Automatically connect the right pane to this SSH/SFTP profile on mount. */
+  initialSSHConfig?: SSHConnectionConfig;
 }
 
 export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
@@ -35,6 +37,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   onOpenK8sTerminal,
   shortcuts,
   initialK8sTarget,
+  initialSSHConfig,
 }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
@@ -255,8 +258,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   }, [homeDir]);
 
   const connectPaneToSSH = useCallback(
-    async (config: SSHConnectionConfig, overridePassword?: string) => {
-      const side = connectionRequest ? connectionRequest.side : passwordPrompt?.side;
+    async (config: SSHConnectionConfig, overridePassword?: string, targetSide?: PaneSide) => {
+      const side = targetSide || (connectionRequest ? connectionRequest.side : passwordPrompt?.side) || 'right';
       if (!side) return;
 
       const passwordToUse = overridePassword !== undefined ? overridePassword : config.password;
@@ -408,6 +411,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       void connectPaneToK8s(initialK8sTarget, 'left');
     }
   }, [initialK8sTarget, ready, connectPaneToK8s]);
+
+  useEffect(() => {
+    if (initialSSHConfig && ready) {
+      void connectPaneToSSH(initialSSHConfig, undefined, 'right');
+    }
+  }, [initialSSHConfig, ready, connectPaneToSSH]);
 
   const handleOpenTerminal = useCallback(
     async (providerId: string, path: string) => {

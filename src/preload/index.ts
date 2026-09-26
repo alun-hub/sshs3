@@ -309,7 +309,7 @@ export const api: MultiSSHApi = {
   },
 
   // Profiles
-  profilesGet: (): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[] }> =>
+  profilesGet: (): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[]; folders?: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_GET),
 
   profilesSaveSSH: (config: SSHConnectionConfig): Promise<void> =>
@@ -323,6 +323,24 @@ export const api: MultiSSHApi = {
 
   profilesDeleteS3: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_DELETE_S3, id),
+
+  profilesSaveFolder: (name: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_SAVE_FOLDER, name),
+
+  profilesDeleteFolder: (name: string, deleteProfiles?: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_DELETE_FOLDER, name, deleteProfiles),
+
+  profilesRenameFolder: (oldName: string, newName: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_RENAME_FOLDER, oldName, newName),
+
+  profilesImportSshConfig: (filePath?: string): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG, filePath),
+
+  profilesExportJson: (targetFilePath?: string): Promise<{ count: number; filePath: string } | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON, targetFilePath),
+
+  profilesImportJson: (filePath?: string): Promise<{ count: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON, filePath),
 
   // Session
   sessionGet: (): Promise<SessionData | null> =>
@@ -699,6 +717,9 @@ export const api: MultiSSHApi = {
 
   dialogOpenFile: (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FILE, options),
+
+  dialogSaveFile: (options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SAVE_FILE, options),
 
   dialogOpenFolder: (options?: { title?: string }): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_OPEN_FOLDER, options),
