@@ -1576,14 +1576,20 @@ export class IpcBridge {
 
     let hasFido2 = false;
     let hasSmartcard = Boolean(chosen);
+    const targetSmartcardPaths = new Set<string>();
 
     try {
       const profiles = await this.profileStore.getProfiles();
       if (profiles.ssh?.some((p) => p.authType === 'fido2')) {
         hasFido2 = true;
       }
-      if (profiles.ssh?.some((p) => p.authType === 'smartcard')) {
-        hasSmartcard = true;
+      for (const p of profiles.ssh ?? []) {
+        if (p.authType === 'smartcard') {
+          hasSmartcard = true;
+          if (p.pkcs11LibPath) {
+            targetSmartcardPaths.add(p.pkcs11LibPath);
+          }
+        }
       }
     } catch {}
 
@@ -1597,13 +1603,31 @@ export class IpcBridge {
       }
     } catch {}
 
-    if (!hasFido2 && (!chosen || !hasSmartcard)) {
+    // Fall back to detected library if smartcard is used but no specific library was saved in profiles
+    if (targetSmartcardPaths.size === 0 && chosen) {
+      targetSmartcardPaths.add(chosen.path);
+    }
+
+    // Filter to only libraries that exist on the system
+    const existingLibPaths = new Set(libs.map((l) => l.path));
+    const validPathsToUnlock: string[] = [];
+    for (const libPath of targetSmartcardPaths) {
+      if (existingLibPaths.has(libPath) || (await SmartcardDetector.validateLibraryPath(libPath))) {
+        validPathsToUnlock.push(libPath);
+      }
+    }
+
+    const pathsNeedingUnlock = validPathsToUnlock.filter(
+      (p) => !this.globalSmartcardAgents.has(p) && !this.globalSmartcardAgentLoads.has(p)
+    );
+
+    if (!hasFido2 && (!hasSmartcard || validPathsToUnlock.length === 0)) {
       return { started: false };
     }
 
     const fido2Active = this.globalSmartcardAgents.has('__fido2__') || this.globalSmartcardAgentLoads.has('__fido2__');
-    const smartcardActive = !chosen || !hasSmartcard || this.globalSmartcardAgents.has(chosen.path) || this.globalSmartcardAgentLoads.has(chosen.path);
-    if ((!hasFido2 || fido2Active) && (!chosen || !hasSmartcard || smartcardActive)) {
+    const smartcardActive = !hasSmartcard || pathsNeedingUnlock.length === 0;
+    if ((!hasFido2 || fido2Active) && smartcardActive) {
       return { started: false };
     }
 
@@ -1619,16 +1643,35 @@ export class IpcBridge {
       }
 
       // 2. Smartcard / PIV unlock second (if detected and not yet active)
-      if (chosen && hasSmartcard && !this.globalSmartcardAgents.has(chosen.path) && !this.globalSmartcardAgentLoads.has(chosen.path)) {
+      if (hasSmartcard && pathsNeedingUnlock.length > 0) {
         try {
-          console.log('[smartcard] Startup unlock: loading Smartcard into global agent...');
-          await this.getOrLoadGlobalSmartcardAgent(chosen.path, () =>
-            this.promptForPinDirect(
+          console.log(
+            `[smartcard] Startup unlock: loading Smartcard into global agent for ${pathsNeedingUnlock.join(', ')}...`
+          );
+          let transientPin: string | null = null;
+          const startupPinPrompt = async () => {
+            if (transientPin !== null) {
+              return transientPin;
+            }
+            transientPin = await this.promptForPinDirect(
               'Enter your smartcard PIN to unlock it for this app session:',
               'smartcard',
               'Startup: Global Agent Cache'
-            )
-          );
+            );
+            return transientPin;
+          };
+
+          try {
+            for (const libPath of pathsNeedingUnlock) {
+              try {
+                await this.getOrLoadGlobalSmartcardAgent(libPath, startupPinPrompt);
+              } catch (err) {
+                console.warn(`[smartcard] Startup unlock failed for ${libPath}:`, err);
+              }
+            }
+          } finally {
+            transientPin = null;
+          }
         } catch (err) {
           console.warn('[smartcard] Startup unlock failed or cancelled:', err);
         }

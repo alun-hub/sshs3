@@ -496,6 +496,44 @@ describe('IpcBridge', () => {
         detectSpy.mockRestore();
         loadSpy.mockRestore();
       });
+
+      it('loads all configured smartcard libraries from user profiles during startup unlock', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        mockProfileStore.getProfiles.mockResolvedValue({
+          ssh: [
+            { id: '1', name: 'OpenSC profile', authType: 'smartcard', pkcs11LibPath: '/usr/lib/opensc-pkcs11.so' } as any,
+            { id: '2', name: 'YubiKey profile', authType: 'smartcard', pkcs11LibPath: '/usr/lib64/libykcs11.so.2' } as any,
+          ],
+        });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+          { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.2', platform: 'linux', exists: true },
+        ]);
+        const loadSpy = vi
+          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
+          .mockResolvedValue({ pid: 123, socketPath: '/tmp/test.sock' });
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map());
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        expect(res).toEqual({ started: true });
+
+        // Await the startup unlock background task
+        await (bridge as any).startupUnlockPromise;
+
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function), expect.any(Object));
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib64/libykcs11.so.2', expect.any(Function), expect.any(Object));
+
+        detectSpy.mockRestore();
+        loadSpy.mockRestore();
+        readCertsSpy.mockRestore();
+        mockProfileStore.getProfiles.mockResolvedValue({ ssh: [] });
+      });
+
+      it('does not retain any plaintext PIN in memory after startup unlock finishes', async () => {
+        expect((bridge as any).cachedGlobalSmartcardPin).toBeUndefined();
+      });
     });
 
     describe('global smartcard certificate caching', () => {
