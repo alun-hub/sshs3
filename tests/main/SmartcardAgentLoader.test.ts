@@ -113,7 +113,7 @@ describe('isTextlessExitFailure', () => {
  * script placed first on PATH, so the fix for OpenSSH's "-K with nothing on the device" quirk is
  * verified against the actual retry loop rather than just the isolated predicate above.
  */
-describe('loadFido2ResidentKeysIntoPrivateAgent — "no resident credentials yet" quirk', () => {
+describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateAgent — "no resident credentials yet" quirk', () => {
   const originalPath = process.env.PATH;
   let fakeBinDir: string | undefined;
 
