@@ -6,7 +6,7 @@
 [![Downloads](https://img.shields.io/github/downloads/alun-hub/sshs3/total?color=success)](https://github.com/alun-hub/sshs3/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **A modern, security-focused, cross-platform SSH, SFTP, S3, and Kubernetes client** for Linux and Windows, with smartcard support (PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager, directory sync, and container exec & log tools.
+> **A modern, security-focused, cross-platform SSH, SFTP, S3, and Kubernetes client** for Linux and Windows, featuring hardware security key & smartcard support (FIDO2 / YubiKey / PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager with live Markdown preview, directory sync, and container exec & log tools.
 
 > [!WARNING]
 > **Early Development Notice**: sshs3 is under active early-stage development. Expect occasional bugs, incomplete edge-case handling, and breaking changes or frequent UI improvements between releases. Feedback and bug reports are warmly welcome — please file any issues or suggestions on [GitHub Issues](https://github.com/alun-hub/sshs3/issues)!
@@ -83,7 +83,7 @@
 </details>
 
 <details>
-  <summary><b>🔐 Smartcard & Security</b> (PKCS#11, SITHS, Net iD, Askpass)</summary>
+  <summary><b>🔐 Hardware Security Keys & Smartcards</b> (FIDO2, YubiKey, PKCS#11, SITHS, Net iD, Askpass)</summary>
   <br>
   <p align="center">
     <img src="docs/screenshots/smarcard.png" alt="Smartcard identities and PIN modal" width="850" />
@@ -126,7 +126,7 @@
 
 ## Overview
 
-**sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP, S3-compatible object storage (AWS, MinIO, NetApp), and Kubernetes container filesystems, plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, live ephemeral pod debugging (`kubectl debug`), and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware-token (smartcard) authentication.
+**sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP, S3-compatible object storage (AWS, MinIO, NetApp), and Kubernetes container filesystems, plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, live ephemeral pod debugging (`kubectl debug`), and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware security token authentication (FIDO2 resident credentials, YubiKey, and PKCS#11 smartcards).
 
 Under the hood it's a fairly thin, security-conscious shell around a handful of proven building blocks: your system's own `ssh` binary drives the terminal (so `~/.ssh/config`, agents, and aliases just work), `ssh2`/`ssh2-sftp-client` power file transfers, and the AWS SDK talks to any S3-compatible endpoint. See [How it works](#how-it-works) below for the architecture, and [Built on open source](#built-on-open-source) for the full list of libraries this project depends on.
 
@@ -175,20 +175,27 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
   - *Manual / External*: Use an external X server (e.g. WSLg, manual VcXsrv, or Xming) or custom binary path/arguments.
 - **Live reachability checks** — Automatic detection of whether an X server is listening on the target display (port 6000+), with real-time status indicators in both connection profiles and settings.
 
+### FIDO2 & Hardware Security Keys (YubiKey)
+- **Native FIDO2 / WebAuthn resident credential support** — Discover resident (discoverable) keys directly from connected FIDO2 hardware tokens (`ykman` / `ssh-keygen -K`) and generate fresh `ed25519-sk` and `ecdsa-sk` credentials with PIN/User Verification (UV) and touch policies.
+- **Visual touch presence banner** — An unobtrusive in-app banner prompts you whenever your security key requires physical touch verification (*"Touch your security key to authenticate"*), eliminating mystery terminal hangs.
+- **Resident and non-resident keys** — Seamlessly use both standard security key files (`id_ed25519_sk`, `id_ecdsa_sk`) and hardware-resident credentials without complex command-line setup.
+- **Global agent & startup unlock** — Optionally unlock and load FIDO2 resident keys into an isolated, managed agent at startup with a single PIN verification.
+- **Multiplexed dotfiles sync over FIDO2** — Uses OpenSSH connection multiplexing (`ControlMaster`/`ControlPath`) for background dotfiles sync, allowing files to be synchronized over existing FIDO2 sessions without requiring extra physical touches.
+
 ### Smartcard & PKCS#11 authentication
-- Built-in support for **SITHS cards**, **Net iD**, **OpenSC**, and **p11-kit**, with automatic detection of installed PKCS#11 modules on Linux and Windows.
+- Built-in support for **SITHS cards**, **Net iD**, **OpenSC**, **YubiKey PIV (libykcs11)**, and **p11-kit**, with automatic detection of installed PKCS#11 modules on Linux and Windows.
 - A local **Askpass server** intercepts OpenSSH's PIN prompts over a loopback socket and surfaces them as an in-app PIN dialog, instead of falling back to a terminal prompt or failing silently.
 - **PIN caching modes** — one setting under Settings → Security & Smartcard, applied uniformly to every smartcard profile (no per-profile override, since almost everyone has a single physical card and mixing modes for the same card can cause the same PIN to be asked for redundantly, or reintroduce PKCS#11 reader contention between differently-scoped agents):
   - **Always Prompt** *(default)* — no caching across connections: reconnecting always asks for the PIN again. On Linux/macOS, the interactive terminal and a dotfiles-sync connection (if enabled) each prompt for their own PIN separately. On Windows, both share one PIN entry for that connection instead (see the platform note below) — reconnecting still asks again either way. Use this where policy requires re-authenticating the card on every login.
   - **Once Per Terminal Connection** — the PIN is entered once into a private, app-managed `ssh-agent` shared by that terminal tab and its dotfiles sync, so opening one tab means one prompt even with dotfiles sync on. The agent is scoped to that terminal, not the app: it's killed the moment the terminal disconnects, and reconnecting — even within the same app run — asks for the PIN again. Auto-reconnects on a dropped connection *do* reuse the still-open agent, so a flaky network doesn't repeatedly ask for the PIN either.
-  - **Global (App Lifetime)** — the PIN is entered once per physical card and shared by every terminal and profile using it, for as long as the app keeps running — including local shell tabs opened afterwards (see **SSH agent lifecycle management** above), not just SSH profile connections. Most convenient, least strict: the card stays usable by anything in the app until you quit or lock it manually. A **card icon in the top bar** (shown only while this mode is active) opens a popover listing exactly what's currently cached — each unlocked PKCS#11 library and the certificate label(s)/key type it's holding, queried live from the agent — with a **Lock All Now** button to clear it on demand. Each identity can be expanded to show its certificate's Subject, UPN (Microsoft's `otherName` SAN, common on PIV/CAC/SITHS cards), and validity period, read directly from the PKCS#11 module rather than a vendor-specific CLI tool — so it works the same regardless of which PKCS#11 provider (OpenSC, Net iD, p11-kit) is behind the card. Certificate details are cached once at agent load to avoid repeated PKCS#11 reader polling that can race live sessions and crash sensitive tokens (e.g. Net iD).
+  - **Global (App Lifetime)** — the PIN is entered once per physical card and shared by every terminal and profile using it, for as long as the app keeps running — including local shell tabs opened afterwards (see **SSH agent lifecycle management** above), not just SSH profile connections. Most convenient, least strict: the card stays usable by anything in the app until you quit or lock it manually. A **card icon in the top bar** (shown only while this mode is active) opens a popover listing exactly what's currently cached — each unlocked PKCS#11 library and the certificate label(s)/key type it's holding, queried live from the agent — with a **Lock All Now** button to clear it on demand. Each identity can be expanded to show its certificate's Subject, UPN (Microsoft's `otherName` SAN, common on PIV/CAC/SITHS cards), and validity period, read directly from the PKCS#11 module rather than a vendor-specific CLI tool — so it works the same regardless of which PKCS#11 provider (OpenSC, Net iD, libykcs11, p11-kit) is behind the card. Certificate details are cached once at agent load to avoid repeated PKCS#11 reader polling that can race live sessions and crash sensitive tokens (e.g. Net iD).
     - **Unlock smartcard at app startup** *(opt-in, only shown/effective in this mode)* — prompts for the PIN as soon as the app opens instead of waiting for the first connection that needs it, so the card is already unlocked by the time you open your first terminal — including a local shell tab, which otherwise wouldn't trigger any smartcard prompt on its own. Prefers **p11-kit** whenever it's among the detected libraries (it proxies every other registered PKCS#11 module, so e.g. `p11-kit-proxy.so` and `opensc-pkcs11.so` coexisting is one physical card reachable two ways, not two cards to pick between); otherwise only acts when exactly one non-p11-kit library is detected, doing nothing rather than guess when there are several unrelated candidates.
   - On Linux/macOS, every mode spawns its own private `ssh-agent`, never the process's inherited `SSH_AUTH_SOCK` — loading a smartcard into the desktop's own agent (GNOME Keyring, KWallet, …) was found to make the OS prompt for the PIN independently, outside sshs3's own dialog, and to leave the card usable by other applications. Loading the card is retried a few times with a short backoff without re-prompting, since most PIV/CAC readers only support one active transaction at a time and a stray concurrent PKCS#11 session can transiently collide with it; the user is only ever asked for the PIN once per agent load.
   - On **Windows**, there's no equivalent of a caller-spawned private agent: Win32-OpenSSH's `ssh-agent.exe` only runs as the single system-wide "OpenSSH Authentication Agent" service, bound to the fixed pipe `\\.\pipe\openssh-ssh-agent`, and refuses to start a second independent instance. All three modes there — including **Always Prompt** — load the card into that shared service pipe via `ssh-add -s` instead of a direct `-I` login (requires the service to be enabled: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`, once, as Administrator), and evict just that card afterwards via `ssh-add -e` rather than killing a process they don't own. This isn't optional on Windows: Win32-OpenSSH's `ssh-pkcs11-helper` subprocess doesn't reliably route a smartcard PIN prompt through sshs3's askpass server the way it does for a plain account password, so a direct `-I` login there silently falls through to a Windows account password prompt instead of ever asking for the card's PIN.
 
 ### Dual-pane file manager
 - Two independent panes, each pointed at local disk, SFTP, S3, or Kubernetes container filesystems, with drag-and-drop between panes and to/from the OS file manager.
-- **In-app text file editor**, with a dedicated **Edit/Preview toggle and live Markdown preview** for `.md`/`.markdown`/`.mdx` files (rendered with `react-markdown` + `remark-gfm`, lazy-loaded so it's not part of the main app bundle). Works across local disk, SFTP, S3, and Kubernetes pod files alike.
+- **In-app text file editor & live Markdown preview** — edit files directly across local disk, SFTP, S3, and Kubernetes pod files with a dedicated **Edit/Preview toggle and live Markdown preview** for `.md`/`.markdown`/`.mdx` files (rendered with `react-markdown` + `remark-gfm` with GitHub Flavored Markdown tables, checklists, and code formatting, lazy-loaded for zero app bundle bloat).
 - **File clipboard** — copy (`Ctrl+C`), cut (`Ctrl+X`, with visual dimming of the cut item), and paste (`Ctrl+V`) files and folders via keyboard or the context menu.
 - **Directory navigation history** — back/forward toolbar buttons, `Alt+Left`/`Alt+Right`, and mouse back/forward buttons to retrace recently visited folders.
 - **Spring-loaded folders & drag auto-scroll** — hovering a dragged item over a folder row or breadcrumb segment for ~900ms navigates into it automatically, and the file list auto-scrolls when dragging near its top/bottom edge.
@@ -352,16 +359,19 @@ While sshs3 bundles its core runtime (Chromium, Node.js, AWS SDK, and SFTP engin
   - **Linux**: `libsecret` and a desktop keyring service (e.g. `gnome-keyring` or `kwallet`).
   - **Windows**: Built-in (Windows DPAPI / Credential Manager).
 
-### For Smartcard & Hardware Token Authentication (Optional)
-If connecting with SITHS, YubiKey, PIV/CAC, or Net iD cards:
-- **PC/SC Smart Card Daemon & Reader Drivers**:
+### For Hardware Security Keys (FIDO2 / YubiKey) & Smartcards (Optional)
+If connecting with FIDO2 security keys, SITHS, YubiKey, PIV/CAC, or Net iD cards:
+- **FIDO2 / WebAuthn Security Keys (`ed25519-sk` / `ecdsa-sk`)**:
+  - OpenSSH 8.2+ with FIDO2/U2F support (standard on modern Linux distributions and Windows 10/11 OpenSSH).
+  - *(Optional)* `ykman` (`yubikey-manager`) CLI for automated resident credential listing and hardware discovery (`sudo dnf install yubikey-manager` / `sudo apt install yubikey-manager` / `winget install Yubico.YubiKeyManager`).
+- **PC/SC Smart Card Daemon & Reader Drivers (for PIV / PKCS#11)**:
   - **Linux**: Install `pcscd` and the CCID reader driver, then ensure the daemon is running:
     - *Fedora / RHEL*: `sudo dnf install pcsc-lite pcsc-lite-ccid && sudo systemctl enable --now pcscd`
     - *Debian / Ubuntu*: `sudo apt install pcscd pcsc-tools libccid && sudo systemctl enable --now pcscd`
   - **Windows**: The native *Smart Card* service (`SCardSvr`) is installed and enabled by default; standard CCID readers are plug-and-play.
 - **PKCS#11 Library / Driver**:
-  - **Linux**: `p11-kit` (providing `/usr/lib64/p11-kit-proxy.so` or `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so`, recommended as it proxies all registered system tokens), `opensc` (`opensc-pkcs11.so`), or Net iD (`libiidp11.so`).
-  - **Windows**: OpenSC (`opensc-pkcs11.dll`) or Net iD Client (`iidp11.dll`).
+  - **Linux**: `p11-kit` (providing `/usr/lib64/p11-kit-proxy.so` or `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so`, recommended as it proxies all registered system tokens), `opensc` (`opensc-pkcs11.so`), `libykcs11` (Yubico PIV tool / YubiKey Manager), or Net iD (`libiidp11.so`).
+  - **Windows**: OpenSC (`opensc-pkcs11.dll`), YubiKey PIV (`libykcs11.dll`), or Net iD Client (`iidp11.dll`).
 - **Windows only, for "Once Per Terminal Connection" / "Global" PIN caching**: the built-in **OpenSSH Authentication Agent** service, disabled by default. The Windows installer enables and starts it automatically; if you're on the portable build or it didn't take (e.g. no admin rights during install), enable it once yourself, as Administrator: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`. Not needed for "Always Prompt" mode, which logs into the card directly per connection.
 
 ### Bundled Features (No Extra Software Required)
