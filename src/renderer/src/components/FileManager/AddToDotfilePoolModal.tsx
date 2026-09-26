@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, FileCode, Loader2, Plus, X } from 'lucide-react';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import type { FileEntry } from '@shared/types/storage';
+import { describeIpcError } from '../../lib/format';
 
 interface AddToDotfilePoolModalProps {
   open: boolean;
@@ -50,7 +51,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
         }
       })
       .catch((err) => {
-        setError(String(err));
+        setError(describeIpcError(err, 'Failed to load dotfile pools'));
       })
       .finally(() => {
         setLoading(false);
@@ -96,14 +97,14 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       onSuccess?.(`Saved ${entry.name} as a master file in "${poolName}"`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeIpcError(err, String(err)));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -145,7 +146,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               placeholder="e.g. ~/.bashrc"
               className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary outline-none focus:border-sky-500"
             />
-            <p className="text-[11px] text-txt-muted">
+            <p className="text-xs text-txt-muted">
               The path the file is automatically written to when the pool syncs to a connected server.
             </p>
           </div>

@@ -543,7 +543,7 @@ export const FileList: React.FC<FileListProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (
-            <span className="truncate rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.2 text-[10px] font-medium text-sky-400">
+            <span className="truncate rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.2 text-2xs font-medium text-sky-400">
               {sorted.length} of {entries.length}
             </span>
           )}
@@ -791,12 +791,12 @@ export const FileList: React.FC<FileListProps> = ({
           className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-sky-500/40 bg-app-surface/95 px-3 py-1.5 text-xs text-txt-primary shadow-xl backdrop-blur transition-all"
         >
           <Search className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-          <span className="text-txt-muted text-[11px]">Search:</span>
+          <span className="text-txt-muted text-xs">Search:</span>
           <span className={classNames('font-mono font-bold', typeaheadMatch ? 'text-sky-400' : 'text-amber-400')}>
             {typeaheadText}
           </span>
           {!typeaheadMatch && (
-            <span className="text-[10px] text-amber-400/80">
+            <span className="text-2xs text-amber-400/80">
               (no match)
             </span>
           )}

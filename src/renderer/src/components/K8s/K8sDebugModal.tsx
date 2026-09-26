@@ -14,6 +14,7 @@ import {
   type K8sDebugImage,
   type K8sTerminalTarget,
 } from '@shared/types/kubernetes';
+import { describeIpcError } from '../../lib/format';
 
 export interface K8sDebugModalProps {
   target: {
@@ -125,7 +126,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeIpcError(err, String(err)));
       setSubmitting(false);
     }
   };
@@ -160,9 +161,9 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           {/* Target pod summary banner */}
           <div className="flex items-center justify-between rounded-lg border border-border-subtle bg-app-surface p-3">
             <div className="min-w-0">
-              <div className="text-[11px] text-txt-muted">Target Pod</div>
+              <div className="text-xs text-txt-muted">Target Pod</div>
               <div className="truncate font-semibold text-txt-primary text-sm">{target.podName}</div>
-              <div className="truncate text-[11px] text-txt-muted">
+              <div className="truncate text-xs text-txt-muted">
                 Namespace: <span className="font-mono text-txt-secondary">{target.namespace}</span> · Cluster:{' '}
                 <span className="font-mono text-txt-secondary">{target.contextName}</span>
               </div>
@@ -176,7 +177,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           <div className="space-y-1.5">
             <label className="font-medium text-txt-primary flex items-center justify-between">
               <span>Debug Toolset / Image Preset</span>
-              <span className="text-[11px] font-normal text-txt-muted">Configurable in Settings</span>
+              <span className="text-xs font-normal text-txt-muted">Configurable in Settings</span>
             </label>
             <select
               value={selectedPresetId}
@@ -192,7 +193,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
               <option value="custom">Custom Image...</option>
             </select>
             {selectedPreset?.description && (
-              <p className="text-[11px] text-txt-muted">{selectedPreset.description}</p>
+              <p className="text-xs text-txt-muted">{selectedPreset.description}</p>
             )}
           </div>
 
@@ -239,7 +240,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-txt-muted">
+              <p className="text-2xs text-txt-muted">
                 Shares process & IPC namespace with the selected container.
               </p>
             </div>
@@ -258,7 +259,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
                 placeholder="e.g. bash or sh"
                 className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 font-mono text-xs text-txt-primary focus:border-amber-500 focus:outline-none disabled:opacity-50"
               />
-              <p className="text-[10px] text-txt-muted">Default command to start interactive session.</p>
+              <p className="text-2xs text-txt-muted">Default command to start interactive session.</p>
             </div>
           </div>
 
@@ -276,7 +277,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           </div>
 
           {/* Info note */}
-          <div className="flex items-start gap-2 rounded-lg bg-sky-500/10 border border-sky-500/20 p-2.5 text-[11px] text-sky-300">
+          <div className="flex items-start gap-2 rounded-lg bg-sky-500/10 border border-sky-500/20 p-2.5 text-xs text-sky-300">
             <Info className="h-4 w-4 shrink-0 text-sky-400 mt-0.5" />
             <div className="space-y-0.5">
               <p className="font-medium">Live debugging via Ephemeral Containers (kubectl debug)</p>
@@ -297,7 +298,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
           {/* Footer actions */}
           <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
-            <div className="text-[11px] text-txt-muted">
+            <div className="text-xs text-txt-muted">
               {submitting ? (
                 <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Copy, FileText, FolderOpen, Loader2 } from 'lucide-react';
 import type { SearchMatch } from '@shared/types/search';
+import { describeIpcError } from '../../lib/format';
 
 interface SearchPreviewPaneProps {
   providerId: string;
@@ -41,7 +42,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load a preview for this file');
+        setError(describeIpcError(err, 'Could not load a preview for this file'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,7 +64,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-xs text-txt-muted select-none">
         <FileText className="h-8 w-8 text-txt-muted/30" />
         <span className="font-medium text-txt-secondary">Select a match to preview code</span>
-        <span className="text-[11px] text-txt-muted max-w-sm">
+        <span className="text-xs text-txt-muted max-w-sm">
           Click on any result in the list to inspect surrounding file lines. You can also drag the center divider to resize panels.
         </span>
       </div>
@@ -85,7 +86,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
             type="button"
             onClick={handleCopyPath}
             title="Copy path to clipboard"
-            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
             <span>{copied ? 'Copied' : 'Copy path'}</span>
@@ -95,7 +96,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
               type="button"
               onClick={() => onJumpToFile(match)}
               title="Reveal in File Explorer"
-              className="flex items-center gap-1 rounded bg-app-surface-subtle px-2 py-1 text-[11px] text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors border border-border-subtle/50"
+              className="flex items-center gap-1 rounded bg-app-surface-subtle px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors border border-border-subtle/50"
             >
               <FolderOpen className="h-3 w-3 text-sky-400" />
               <span>Reveal in Explorer</span>

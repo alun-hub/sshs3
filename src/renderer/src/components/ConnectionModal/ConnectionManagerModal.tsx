@@ -25,7 +25,7 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime, describeIpcError } from '../../lib/format';
 
 export type Tab = 'ssh' | 's3' | 'k8s';
 
@@ -96,7 +96,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setS3Profiles(profiles.s3 || []);
       setFolders(profiles.folders || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profiles');
+      setError(describeIpcError(err, 'Failed to load profiles'));
     } finally {
       setLoading(false);
     }
@@ -145,7 +145,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile');
+      setError(describeIpcError(err, 'Failed to save profile'));
     }
   };
 
@@ -155,7 +155,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile');
+      setError(describeIpcError(err, 'Failed to save profile'));
     }
   };
 
@@ -165,7 +165,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.profilesDeleteSSH(id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete profile');
+      setError(describeIpcError(err, 'Failed to delete profile'));
     }
   };
 
@@ -175,7 +175,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.profilesDeleteS3(id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete profile');
+      setError(describeIpcError(err, 'Failed to delete profile'));
     }
   };
 
@@ -191,7 +191,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.profilesSaveSSH(clone);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clone profile');
+      setError(describeIpcError(err, 'Failed to clone profile'));
     }
   };
 
@@ -206,7 +206,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.profilesSaveS3(clone);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clone profile');
+      setError(describeIpcError(err, 'Failed to clone profile'));
     }
   };
 
@@ -220,7 +220,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setNewFolderOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
+      setError(describeIpcError(err, 'Failed to create folder'));
     }
   };
 
@@ -235,7 +235,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setRenamingFolder(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename folder');
+      setError(describeIpcError(err, 'Failed to rename folder'));
     }
   };
 
@@ -247,7 +247,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.profilesDeleteFolder(folderName, false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete folder');
+      setError(describeIpcError(err, 'Failed to delete folder'));
     }
   };
 
@@ -292,7 +292,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setSelectedCandidateIds(new Set(result.profiles.map((p) => p.id)));
       setImportTargetFolder('Imported');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import ~/.ssh/config');
+      setError(describeIpcError(err, 'Failed to import ~/.ssh/config'));
     }
   };
 
@@ -315,7 +315,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setImportCandidates(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save imported profiles');
+      setError(describeIpcError(err, 'Failed to save imported profiles'));
     }
   };
 
@@ -327,7 +327,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         window.alert(`Successfully exported ${res.count} profiles to ${res.filePath}`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export profiles');
+      setError(describeIpcError(err, 'Failed to export profiles'));
     }
   };
 
@@ -340,7 +340,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         window.alert(`Successfully imported ${res.count} profiles!`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import profiles');
+      setError(describeIpcError(err, 'Failed to import profiles'));
     }
   };
 
@@ -505,28 +505,41 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {error && (
+        <div
+          className={
+            editing
+              ? 'flex flex-1 min-h-0 flex-col overflow-hidden'
+              : 'flex-1 overflow-y-auto p-4'
+          }
+        >
+          {error && !editing && (
             <div className="mb-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
               {error}
             </div>
           )}
 
           {editing ? (
-            editing.type === 'ssh' ? (
-              <SSHProfileForm
-                initial={editing.config as SSHConnectionConfig | undefined}
-                onSave={handleSaveSSH}
-                onCancel={() => setEditing(null)}
-                dotfilesPoolEnabled={dotfilesPoolEnabled}
-              />
-            ) : (
-              <S3ProfileForm
-                initial={editing.config as S3Config | undefined}
-                onSave={handleSaveS3}
-                onCancel={() => setEditing(null)}
-              />
-            )
+            <>
+              {error && (
+                <div className="mx-4 mt-4 shrink-0 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                  {error}
+                </div>
+              )}
+              {editing.type === 'ssh' ? (
+                <SSHProfileForm
+                  initial={editing.config as SSHConnectionConfig | undefined}
+                  onSave={handleSaveSSH}
+                  onCancel={() => setEditing(null)}
+                  dotfilesPoolEnabled={dotfilesPoolEnabled}
+                />
+              ) : (
+                <S3ProfileForm
+                  initial={editing.config as S3Config | undefined}
+                  onSave={handleSaveS3}
+                  onCancel={() => setEditing(null)}
+                />
+              )}
+            </>
           ) : (
             <>
               {tab !== 'k8s' && (
@@ -574,7 +587,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
                       >
                         <Download className="h-3.5 w-3.5 text-sky-400" />
-                        <span className="text-[11px]">Sync</span>
+                        <span className="text-xs">Sync</span>
                       </button>
 
                       {importMenuOpen && (
@@ -700,17 +713,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
                                 {profile.forwardAgent && (
-                                  <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-[10px] text-amber-400">
+                                  <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-2xs text-amber-400">
                                     Agent Fwd
                                   </span>
                                 )}
                                 {profile.group && (
-                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
+                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
                                     {profile.group}
                                   </span>
                                 )}
                               </div>
-                              <div className="truncate text-[11px] text-txt-muted">
+                              <div className="truncate text-xs text-txt-muted">
                                 {profile.username}@{profile.host}:{profile.port ?? 22} · Last connected:{' '}
                                 {profile.lastUsedAt}
                               </div>
@@ -804,7 +817,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               ) : (
                                 <span>{groupName}</span>
                               )}
-                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-[10px] text-txt-muted">
+                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
                                 {profiles.length}
                               </span>
                             </button>
@@ -875,17 +888,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                           {profile.name}
                                         </span>
                                         {profile.proxyJump && (
-                                          <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-[10px] text-sky-400">
+                                          <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
                                             Jump
                                           </span>
                                         )}
                                         {profile.forwardAgent && (
-                                          <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-[10px] text-amber-400">
+                                          <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-2xs text-amber-400">
                                             Agent Fwd
                                           </span>
                                         )}
                                         {profile.tunnels && profile.tunnels.length > 0 && (
-                                          <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.2 text-[10px] text-indigo-400">
+                                          <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.2 text-2xs text-indigo-400">
                                             {profile.tunnels.length} tunnel{profile.tunnels.length > 1 ? 's' : ''}
                                           </span>
                                         )}
@@ -989,12 +1002,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
                                 {profile.group && (
-                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
+                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
                                     {profile.group}
                                   </span>
                                 )}
                               </div>
-                              <div className="truncate text-[11px] text-txt-muted">
+                              <div className="truncate text-xs text-txt-muted">
                                 {profile.endpoint || 'AWS S3'} · {profile.region} · Last connected:{' '}
                                 {profile.lastUsedAt}
                               </div>
@@ -1074,7 +1087,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               ) : (
                                 <span>{groupName}</span>
                               )}
-                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-[10px] text-txt-muted">
+                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
                                 {profiles.length}
                               </span>
                             </button>
@@ -1281,7 +1294,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           {candidate.host}:{candidate.port ?? 22}
                         </span>
                       </div>
-                      <span className="rounded bg-app-surface-subtle px-1.5 py-0.5 text-[10px] text-txt-muted">
+                      <span className="rounded bg-app-surface-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
                         {candidate.authType}
                       </span>
                     </label>

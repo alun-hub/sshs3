@@ -25,10 +25,42 @@ import { K8sLoginModal } from '../K8s/K8sLoginModal';
 
 type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T };
 
+// Electron wraps every main-process throw with this prefix, which leaks the
+// internal IPC channel name (e.g. "k8s:list-namespaces") to the user.
+const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
+
+/** Known technical failure substrings mapped to actionable, user-facing text. */
+const KNOWN_ERROR_HINTS: Array<{ match: RegExp; hint: string }> = [
+  {
+    match: /HTTP protocol is not allowed when skipTLSVerify is not set or false/i,
+    hint:
+      "This cluster's API server uses plain HTTP. Enable \"Skip TLS verification\" for this context, or update your kubeconfig to use an HTTPS endpoint.",
+  },
+  {
+    match: /ECONNREFUSED/,
+    hint:
+      "Connection refused — the cluster's API server is unreachable at this address. Check that any required port-forward, VPN or proxy is running.",
+  },
+  {
+    match: /ENOTFOUND|EAI_AGAIN/,
+    hint: "Host not found — check the cluster's API server address in your kubeconfig.",
+  },
+  {
+    match: /certificate|x509|self[- ]signed/i,
+    hint:
+      'TLS certificate problem — this app does not trust the certificate presented by the cluster. Check your kubeconfig\'s certificate authority, or enable "Skip TLS verification" if you trust this cluster.',
+  },
+  {
+    match: /\b401\b|unauthorized/i,
+    hint: 'Not authorized — your credentials for this context have expired or are invalid. Try logging in again.',
+  },
+];
+
 /**
  * The k8s client wraps connection failures in a bare `TypeError: fetch failed`
  * with the actual reason (e.g. ECONNREFUSED) nested in `.cause`. Walk the
- * chain so the tree shows something more useful than "fetch failed".
+ * chain, strip Electron's internal IPC error prefix, and map known causes to
+ * actionable text instead of showing raw system errors (UX review #12).
  */
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
@@ -38,7 +70,9 @@ function describeError(err: unknown): string {
     parts.push(cause.message);
     cause = (cause as { cause?: unknown }).cause;
   }
-  return parts.join(' — caused by: ');
+  const raw = parts.join(' — caused by: ').replace(ELECTRON_IPC_PREFIX, '');
+  const known = KNOWN_ERROR_HINTS.find((h) => h.match.test(raw));
+  return known ? known.hint : raw;
 }
 
 const stateDotClass: Record<string, string> = {
@@ -307,7 +341,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
           <Network className="h-3.5 w-3.5 text-sky-400" />
           Port Forwards
           {activePortForwardsCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400 px-1">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/20 text-2xs font-bold text-emerald-400 px-1">
               {activePortForwardsCount}
             </span>
           )}
@@ -355,16 +389,16 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
               <Network className="h-3.5 w-3.5 text-sky-400" />
               <span className="truncate">{ctx.contextName}</span>
               {ctx.isOpenShift && (
-                <span className="rounded bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-[10px] font-medium text-rose-400">
+                <span className="rounded bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-2xs font-medium text-rose-400">
                   OpenShift
                 </span>
               )}
               {ctx.isCurrent && (
-                <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-[10px] text-sky-400">
+                <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
                   current
                 </span>
               )}
-              <span className="truncate text-[11px] font-normal text-txt-muted">{ctx.server}</span>
+              <span className="truncate text-xs font-normal text-txt-muted">{ctx.server}</span>
             </button>
 
             {isExpanded && (
@@ -375,7 +409,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                     Loading namespaces...
                   </div>
                 ) : nsState.status === 'error' ? (
-                  <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-2.5 py-1.5 text-[11px] text-red-300">
+                  <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-2.5 py-1.5 text-xs text-red-300">
                     {nsState.error}
                   </div>
                 ) : (
@@ -390,7 +424,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                     });
 
                     if (visibleNamespaces.length === 0) {
-                      return <p className="py-1 text-[11px] text-txt-muted">No matching namespaces or projects</p>;
+                      return <p className="py-1 text-xs text-txt-muted">No matching namespaces or projects</p>;
                     }
 
                     return visibleNamespaces.map((ns) => {
@@ -412,7 +446,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                             <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
                             <span className="truncate">{ns.name}</span>
                             {ns.displayName && (
-                              <span className="truncate text-[11px] font-normal text-txt-muted">
+                              <span className="truncate text-xs font-normal text-txt-muted">
                                 ({ns.displayName})
                               </span>
                             )}
@@ -426,11 +460,11 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                 Loading pods...
                               </div>
                             ) : podState.status === 'error' ? (
-                              <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-2.5 py-1.5 text-[11px] text-red-300">
+                              <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-2.5 py-1.5 text-xs text-red-300">
                                 {podState.error}
                               </div>
                             ) : podState.data.length === 0 ? (
-                              <p className="py-1 text-[11px] text-txt-muted">No pods in this namespace</p>
+                              <p className="py-1 text-xs text-txt-muted">No pods in this namespace</p>
                             ) : (
                               podState.data.map((pod) => {
                                 const podKey = `${nsKey}/${pod.name}`;
@@ -450,7 +484,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                         )}
                                         <Box className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
                                         <span className="truncate">{pod.name}</span>
-                                        <span className="truncate text-[10px] text-txt-muted">{pod.phase}</span>
+                                        <span className="truncate text-2xs text-txt-muted">{pod.phase}</span>
                                       </button>
                                       <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
@@ -464,7 +498,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                             });
                                           }}
                                           title="Describe pod details & events"
-                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
                                         >
                                           <Info className="h-3 w-3" />
                                           <span className="hidden sm:inline">Describe</span>
@@ -483,7 +517,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                             setPortForwardModalOpen(true);
                                           }}
                                           title="Port Forward into pod"
-                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
                                         >
                                           <ArrowUpRight className="h-3 w-3" />
                                           <span className="hidden sm:inline">Forward</span>
@@ -501,7 +535,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                             setDebugModalOpen(true);
                                           }}
                                           title="Attach ephemeral debug container (kubectl debug)"
-                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-amber-400 hover:bg-app-surface hover:text-amber-300 border border-transparent hover:border-amber-500/30 transition-colors"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-amber-400 hover:bg-app-surface hover:text-amber-300 border border-transparent hover:border-amber-500/30 transition-colors"
                                         >
                                           <Bug className="h-3 w-3" />
                                           <span className="hidden sm:inline">Debug</span>
@@ -530,12 +564,12 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                     {container.name}
                                                   </span>
                                                   {container.isEphemeral && (
-                                                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.5 text-[10px] text-amber-400 font-medium">
+                                                    <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1 py-0.5 text-2xs text-amber-400 font-medium">
                                                       debug
                                                     </span>
                                                   )}
                                                 </div>
-                                                <div className="truncate text-[10px] text-txt-muted">{container.image}</div>
+                                                <div className="truncate text-2xs text-txt-muted">{container.image}</div>
                                               </div>
                                             </div>
                                             <div className="flex shrink-0 items-center gap-1.5">
@@ -552,7 +586,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                   setPortForwardModalOpen(true);
                                                 }}
                                                 title="Port Forward to this container"
-                                                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+                                                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
                                               >
                                                 <ArrowUpRight className="h-3 w-3" />
                                                 Forward
@@ -569,7 +603,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                     })
                                                   }
                                                   title="Browse container filesystem"
-                                                  className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                                                  className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                                                 >
                                                   <Folder className="h-3 w-3 text-amber-400" />
                                                   Files
@@ -586,7 +620,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                       containerName: container.name,
                                                     })
                                                   }
-                                                  className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+                                                  className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
                                                 >
                                                   <ScrollText className="h-3 w-3" />
                                                   Logs
@@ -603,7 +637,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                                       containerName: container.name,
                                                     })
                                                   }
-                                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
+                                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
                                                 >
                                                   <TerminalSquare className="h-3 w-3" />
                                                   Exec

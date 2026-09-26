@@ -63,12 +63,12 @@ export const DotfilesSyncBanner: React.FC = () => {
               <div id="dotfiles-sync-banner-title" className="text-xs font-semibold text-txt-primary">
                 Dotfiles out of date on {currentPrompt.hostLabel}
               </div>
-              <p className="mt-0.5 text-[11px] text-txt-muted">
+              <p className="mt-0.5 text-xs text-txt-muted">
                 {currentPrompt.entries.length} file{currentPrompt.entries.length === 1 ? '' : 's'} from pool
                 &ldquo;{currentPrompt.poolName}&rdquo; {currentPrompt.entries.length === 1 ? 'differs' : 'differ'}{' '}
                 from this server.
               </p>
-              <ul className="mt-1.5 space-y-0.5 font-mono text-[10px] text-txt-muted">
+              <ul className="mt-1.5 space-y-0.5 font-mono text-2xs text-txt-muted">
                 {currentPrompt.entries.slice(0, 4).map((entry) => (
                   <li key={entry.fileId} className="truncate">
                     {entry.remotePath} {entry.reason === 'missing' ? '(missing)' : '(changed)'}
@@ -80,21 +80,21 @@ export const DotfilesSyncBanner: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void respond('update')}
-                  className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-sky-500 transition-colors"
+                  className="rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500 transition-colors"
                 >
                   Update
                 </button>
                 <button
                   type="button"
                   onClick={() => void respond('ignore')}
-                  className="rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                  className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                 >
                   Ignore
                 </button>
                 <button
                   type="button"
                   onClick={() => void respond('always')}
-                  className="rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                  className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                 >
                   Always update this host
                 </button>
@@ -115,7 +115,7 @@ export const DotfilesSyncBanner: React.FC = () => {
       {!currentPrompt && status && (
         <div
           data-testid="dotfiles-sync-status"
-          className="fixed top-3 right-3 z-50 w-full max-w-xs rounded-lg border border-border-subtle bg-app-card px-3 py-2 text-[11px] shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+          className="fixed top-3 right-3 z-50 w-full max-w-xs rounded-lg border border-border-subtle bg-app-card px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
         >
           {status.status === 'updated' ? (
             <span className="text-emerald-400">

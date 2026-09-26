@@ -15,6 +15,7 @@ import {
   Boxes,
 } from 'lucide-react';
 import type { CachedSmartcardAgent } from '@shared/types/ssh';
+import { Kbd } from './ui/Kbd';
 
 export type TabType = 'terminal' | 'filemanager';
 
@@ -165,6 +166,9 @@ export const TabBar: React.FC<TabBarProps> = ({
           type="button"
           data-testid="add-tab-btn"
           title="Open new tab"
+          aria-label="Open new tab"
+          aria-haspopup="menu"
+          aria-expanded={isMenuOpen}
           onClick={() => setIsMenuOpen((prev) => !prev)}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
@@ -186,9 +190,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <Terminal className="h-3.5 w-3.5 text-sky-400" />
                 <span>New Terminal</span>
               </div>
-              <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
-                Ctrl+Shift+T
-              </kbd>
+              <Kbd>Ctrl+Shift+T</Kbd>
             </button>
             <button
               type="button"
@@ -203,9 +205,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <Folder className="h-3.5 w-3.5 text-amber-400" />
                 <span>New File Manager</span>
               </div>
-              <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
-                Ctrl+Shift+F
-              </kbd>
+              <Kbd>Ctrl+Shift+F</Kbd>
             </button>
             {onNewK8sSession && (
               <button
@@ -233,6 +233,9 @@ export const TabBar: React.FC<TabBarProps> = ({
               type="button"
               data-testid="quick-lock-smartcard-btn"
               title="Cached smartcard identities"
+              aria-label="Cached smartcard identities"
+              aria-haspopup="menu"
+              aria-expanded={isSmartcardMenuOpen}
               onClick={() => {
                 const next = !isSmartcardMenuOpen;
                 setIsSmartcardMenuOpen(next);
@@ -251,24 +254,24 @@ export const TabBar: React.FC<TabBarProps> = ({
 
             {isSmartcardMenuOpen && (
               <div className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
-                <div className="mb-1.5 text-[11px] font-semibold text-txt-primary">Cached smartcard identities</div>
+                <div className="mb-1.5 text-xs font-semibold text-txt-primary">Cached smartcard identities</div>
 
                 {loadingCachedAgents ? (
-                  <div className="flex items-center gap-1.5 py-2 text-[11px] text-txt-muted">
+                  <div className="flex items-center gap-1.5 py-2 text-xs text-txt-muted">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Loading...
                   </div>
                 ) : !cachedAgents || cachedAgents.length === 0 ? (
-                  <p className="py-1 text-[11px] text-txt-muted">Nothing cached — no PIN unlocked right now.</p>
+                  <p className="py-1 text-xs text-txt-muted">Nothing cached — no PIN unlocked right now.</p>
                 ) : (
                   <ul className="space-y-2">
                     {cachedAgents.map((agent) => (
                       <li key={agent.pkcs11LibPath}>
-                        <div className="truncate font-mono text-[10px] text-txt-muted" title={agent.pkcs11LibPath}>
+                        <div className="truncate select-text font-mono text-2xs text-txt-muted" title={agent.pkcs11LibPath}>
                           {agent.pkcs11LibPath}
                         </div>
                         {agent.identities.length === 0 ? (
-                          <div className="text-[11px] text-txt-muted">(no identities reported)</div>
+                          <div className="text-xs text-txt-muted">(no identities reported)</div>
                         ) : (
                           <ul className="mt-0.5 space-y-0.5">
                             {agent.identities.map((id) => {
@@ -286,7 +289,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                                         return next;
                                       })
                                     }
-                                    className="flex w-full items-center gap-1 text-left text-[11px] text-txt-primary disabled:cursor-default"
+                                    className="flex w-full items-center gap-1 text-left text-xs text-txt-primary disabled:cursor-default"
                                     title={
                                       id.certificate
                                         ? 'Show certificate details'
@@ -303,32 +306,32 @@ export const TabBar: React.FC<TabBarProps> = ({
                                       <span className="w-3 shrink-0" />
                                     )}
                                     <span className="truncate">{id.comment}</span>
-                                    <span className="shrink-0 font-mono text-[10px] text-txt-muted">
+                                    <span className="shrink-0 font-mono text-2xs text-txt-muted">
                                       ({id.keyType})
                                     </span>
                                   </button>
                                   {!id.certificate && (
-                                    <div className="ml-4 text-[10px] text-txt-muted/70">
+                                    <div className="ml-4 text-2xs text-txt-muted/70">
                                       No certificate details found on the card
                                     </div>
                                   )}
                                   {isExpanded && id.certificate && (
-                                    <dl className="ml-1 mt-0.5 space-y-0.5 border-l border-border-subtle pl-2 text-[10px] text-txt-muted">
+                                    <dl className="ml-1 mt-0.5 space-y-0.5 border-l border-border-subtle pl-2 text-2xs text-txt-muted">
                                       <div className="flex gap-1">
                                         <dt className="shrink-0 text-txt-muted/70">Subject:</dt>
-                                        <dd className="truncate text-txt-primary" title={id.certificate.subject}>
+                                        <dd className="truncate select-text text-txt-primary" title={id.certificate.subject}>
                                           {certSubjectCN(id.certificate.subject)}
                                         </dd>
                                       </div>
                                       {id.certificate.upn && (
                                         <div className="flex gap-1">
                                           <dt className="shrink-0 text-txt-muted/70">UPN:</dt>
-                                          <dd className="truncate text-txt-primary">{id.certificate.upn}</dd>
+                                          <dd className="truncate select-text text-txt-primary">{id.certificate.upn}</dd>
                                         </div>
                                       )}
                                       <div className="flex gap-1">
                                         <dt className="shrink-0 text-txt-muted/70">Valid:</dt>
-                                        <dd className="truncate text-txt-primary">
+                                        <dd className="truncate select-text text-txt-primary">
                                           {formatCertDate(id.certificate.validFrom)} – {formatCertDate(id.certificate.validTo)}
                                         </dd>
                                       </div>
@@ -365,7 +368,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                         setTimeout(() => setLockFeedback(null), 4000);
                       });
                   }}
-                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
                 >
                   {lockingSmartcard ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -382,6 +385,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           type="button"
           data-testid="quick-profiles-btn"
           title="Connections & Profiles (Ctrl+Shift+O)"
+          aria-label="Connections & Profiles"
           onClick={onOpenProfiles}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
@@ -391,6 +395,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           type="button"
           data-testid="quick-dirsync-profiles-btn"
           title="Directory Sync: Saved Profiles"
+          aria-label="Directory Sync: Saved Profiles"
           onClick={onOpenDirSyncProfiles}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
@@ -400,6 +405,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           type="button"
           data-testid="quick-settings-btn"
           title="Settings (Ctrl+,)"
+          aria-label="Settings"
           onClick={onOpenSettings}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
@@ -412,7 +418,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       <div
         data-testid="lock-smartcard-toast"
         role="status"
-        className="fixed top-12 right-3 z-50 flex w-full max-w-xs items-center gap-1.5 rounded-lg border border-amber-500/30 bg-app-card px-3 py-2 text-[11px] text-amber-300 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+        className="fixed top-12 right-3 z-50 flex w-full max-w-xs items-center gap-1.5 rounded-lg border border-amber-500/30 bg-app-card px-3 py-2 text-xs text-amber-300 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
       >
         <Unlock className="h-3.5 w-3.5 shrink-0" />
         {lockFeedback}

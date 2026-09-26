@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { SearchMatch, SearchMode, SearchSourceType } from '@shared/types/search';
-import { classNames } from '../../lib/format';
+import { classNames, describeIpcError } from '../../lib/format';
 import { SearchResultsList } from './SearchResultsList';
 import { SearchPreviewPane } from './SearchPreviewPane';
 
@@ -154,7 +154,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         activeSearchIdRef.current = searchId;
       } catch (err) {
         setSearching(false);
-        setError(err instanceof Error ? err.message : 'Failed to start search');
+        setError(describeIpcError(err, 'Failed to start search'));
       }
     },
     [query, searching, providerId, sourceType, rootPath, mode, caseSensitive, includeGlobs, excludeGlobs, stopActiveSearch]
@@ -405,7 +405,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             style={{ width: `${leftWidth}px` }}
             className="flex shrink-0 flex-col border-r border-border-subtle overflow-hidden"
           >
-            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-[11px] text-txt-muted">
+            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-xs text-txt-muted">
               <span className="truncate" title={currentPath}>
                 {matches.length} match{matches.length === 1 ? '' : 'es'} · {scannedCount} scanned
                 {searching && currentPath ? ` · ${currentPath}` : ''}
@@ -413,7 +413,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               {searching && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-400" />}
             </div>
             {truncated && (
-              <div className="border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[11px] text-amber-300">
+              <div className="border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-xs text-amber-300">
                 Result limit reached — narrow your search to see more.
               </div>
             )}
@@ -426,7 +426,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     className="flex min-w-0 items-center gap-1.5 hover:text-amber-200 transition-colors text-left"
                   >
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                    <span className="font-medium text-[11px] truncate">
+                    <span className="font-medium text-xs truncate">
                       {warnings.length} warning{warnings.length === 1 ? '' : 's'} (skipped files/objects)
                     </span>
                     {warningsExpanded ? (
@@ -440,7 +440,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       type="button"
                       onClick={handleCopyWarnings}
                       title="Copy all warnings to clipboard"
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-amber-300/90 hover:bg-amber-900/40 hover:text-amber-100 transition-colors"
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-amber-300/90 hover:bg-amber-900/40 hover:text-amber-100 transition-colors"
                     >
                       {copiedWarnings ? (
                         <Check className="h-3 w-3 text-emerald-400" />
@@ -466,14 +466,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         <li
                           key={i}
                           title={w.path ? `${w.path}: ${w.message}` : w.message}
-                          className="break-all whitespace-pre-wrap rounded border border-amber-900/40 bg-black/30 px-2 py-1 font-mono text-[11px] leading-relaxed text-amber-200/90"
+                          className="break-all whitespace-pre-wrap rounded border border-amber-900/40 bg-black/30 px-2 py-1 font-mono text-xs leading-relaxed text-amber-200/90"
                         >
                           {w.path ? <span className="font-semibold text-amber-300">{w.path}: </span> : null}
                           <span>{w.message}</span>
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-1.5 text-[10px] text-amber-400/60 italic">
+                    <p className="mt-1.5 text-2xs text-amber-400/60 italic">
                       Skipped entries are typically system-protected files or unreadable sockets/pipes (e.g. /tmp/systemd-private-*).
                     </p>
                   </div>

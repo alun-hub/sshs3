@@ -303,14 +303,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setRecordingAction(null);
   };
 
-  const categories: { id: SettingsCategory; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'general', label: 'General & Appearance', icon: Sliders },
-    { id: 'terminal', label: 'Terminal', icon: Terminal },
-    { id: 'files', label: 'Files & Storage', icon: FolderTree },
-    { id: 'security', label: 'Security & Smartcard', icon: Shield },
-    { id: 'sync', label: 'Synchronization', icon: RefreshCw },
-    { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
-    { id: 'kubernetes', label: 'Kubernetes & Debug', icon: Boxes },
+  // Grouped under short section headers (UX review #9) so a 7-item sidebar
+  // scans faster than one flat list.
+  const categoryGroups: {
+    group: string;
+    items: { id: SettingsCategory; label: string; icon: React.ComponentType<{ className?: string }> }[];
+  }[] = [
+    {
+      group: 'Appearance',
+      items: [
+        { id: 'general', label: 'General & Appearance', icon: Sliders },
+        { id: 'terminal', label: 'Terminal', icon: Terminal },
+      ],
+    },
+    {
+      group: 'Connectivity & Storage',
+      items: [
+        { id: 'files', label: 'Files & Storage', icon: FolderTree },
+        { id: 'sync', label: 'Synchronization', icon: RefreshCw },
+        { id: 'kubernetes', label: 'Kubernetes & Debug', icon: Boxes },
+      ],
+    },
+    {
+      group: 'Security & Shortcuts',
+      items: [
+        { id: 'security', label: 'Security & Smartcard', icon: Shield },
+        { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
+      ],
+    },
   ];
 
   const filteredShortcuts = SHORTCUT_DEFINITIONS.filter(
@@ -323,7 +343,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="flex h-[560px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      {/* max-h instead of a fixed h- (UX review, section 7/8.7): a fixed
+          height left sparse categories (General, Files & Storage) with
+          ~60% empty space while dense ones needed to scroll. Letting the
+          modal size to its content, capped at 85vh, fixes both. */}
+      <div className="flex max-h-[85vh] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -346,31 +370,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Body with Sidebar & Content */}
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-          <aside className="w-52 shrink-0 border-r border-border-subtle bg-app-surface p-2.5 flex flex-col gap-1">
-            {categories.map((cat) => {
-              const Icon = cat.icon;
-              const isActive = activeCategory === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
-                    isActive
-                      ? 'bg-sky-500/15 text-sky-400 font-semibold'
-                      : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
-                  }`}
-                >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-sky-400' : 'text-txt-muted'}`} />
-                  <span>{cat.label}</span>
-                </button>
-              );
-            })}
+          <aside className="w-52 shrink-0 overflow-y-auto border-r border-border-subtle bg-app-surface p-2.5 flex flex-col gap-3">
+            {categoryGroups.map(({ group, items }) => (
+              <div key={group} className="flex flex-col gap-1">
+                <div className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
+                  {group}
+                </div>
+                {items.map((cat) => {
+                  const Icon = cat.icon;
+                  const isActive = activeCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setActiveCategory(cat.id)}
+                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
+                        isActive
+                          ? 'bg-sky-500/15 text-sky-400 font-semibold'
+                          : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                      }`}
+                    >
+                      <Icon className={`h-4 w-4 ${isActive ? 'text-sky-400' : 'text-txt-muted'}`} />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </aside>
 
           {/* Form Content Area */}
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-w-0 bg-app-card">
-            <div className="flex-1 overflow-y-auto p-5 text-xs text-txt-secondary space-y-5">
+            <div className="flex-1 overflow-y-auto p-5 pb-8 text-xs text-txt-secondary space-y-5">
               {/* Category: General & Appearance */}
               {activeCategory === 'general' && (
                 <div className="space-y-4">
@@ -538,7 +569,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Terminal Live Preview */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">
+                    <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider">
                       Terminal Live Preview
                     </label>
                     <div
@@ -605,7 +636,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-2 pt-2 border-t border-border-subtle">
                     <div>
                       <label className="text-xs font-medium text-txt-primary">On Logout / Session End</label>
-                      <p className="text-[11px] text-txt-muted">Choose what happens when an SSH session or local terminal ends.</p>
+                      <p className="text-xs text-txt-muted">Choose what happens when an SSH session or local terminal ends.</p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <label
@@ -626,7 +657,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <RotateCcw className="h-3.5 w-3.5 text-sky-400" />
                           <span>Reconnect (Default)</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           Shows quick buttons to reconnect directly or close the tab.
                         </span>
                       </label>
@@ -649,7 +680,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <X className="h-3.5 w-3.5 text-amber-400" />
                           <span>Close Tab Immediately</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           Closes the tab automatically on a clean logout (code 0).
                         </span>
                       </label>
@@ -672,7 +703,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <Terminal className="h-3.5 w-3.5 text-slate-400" />
                           <span>Keep Open</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           Leave the terminal open with no quick buttons (classic mode).
                         </span>
                       </label>
@@ -690,13 +721,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         {x11Status?.running ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             Running ({x11Status.display})
                             {x11Status.managedByApp && x11Status.pid ? ` [PID ${x11Status.pid}]` : ''}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
                             Stopped
                           </span>
                         )}
@@ -710,7 +741,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </button>
                       </div>
                     </div>
-                    <p className="text-[11px] text-txt-muted">
+                    <p className="text-xs text-txt-muted">
                       {isLinux
                         ? 'Allows remote Linux GUI applications (like xclock, gedit, Firefox, or IDEs) to display seamlessly on your local desktop when X11 forwarding is enabled.'
                         : 'Allows Linux GUI applications (like xclock, gedit, Firefox, or IDEs) to display seamlessly on Windows when X11 forwarding is enabled.'}
@@ -724,14 +755,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <CheckCircle2 className="h-4 w-4 text-sky-400 shrink-0" />
                             <span>Linux system detected — Native display support active</span>
                           </div>
-                          <span className="text-[10px] uppercase font-semibold tracking-wider text-sky-400 bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
+                          <span className="text-2xs uppercase font-semibold tracking-wider text-sky-400 bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
                             Native Display
                           </span>
                         </div>
-                        <p className="text-[11px] text-txt-secondary leading-relaxed">
+                        <p className="text-xs text-txt-secondary leading-relaxed">
                           Your system uses native X11 / Wayland display forwarding ({x11Status?.display || ':0'}). External X servers (such as VcXsrv or Xming) and their launch settings are only required on Windows — no background daemon or extra configuration is needed on Linux.
                         </p>
-                        <div className="pt-1 border-t border-sky-500/20 text-[11px]">
+                        <div className="pt-1 border-t border-sky-500/20 text-xs">
                           {x11Status?.running ? (
                             <span className="text-emerald-400 font-medium flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -752,10 +783,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span className="font-medium text-txt-secondary">
                             Windows X Server Settings (Optional / Only used on Windows)
                           </span>
-                          <span className="text-[10px] text-txt-muted group-open:rotate-180 transition-transform">▼</span>
+                          <span className="text-2xs text-txt-muted group-open:rotate-180 transition-transform">▼</span>
                         </summary>
                         <div className="mt-3 space-y-3 pt-2 border-t border-border-subtle/50">
-                          <p className="text-[11px] text-txt-muted">
+                          <p className="text-xs text-txt-muted">
                             These settings configure VcXsrv when sshs3 runs on Windows. They are saved in your settings profile if you sync across multiple operating systems.
                           </p>
 
@@ -778,7 +809,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 />
                                 <span>Auto-start (Default)</span>
                               </div>
-                              <span className="text-[11px] text-txt-muted leading-tight">
+                              <span className="text-xs text-txt-muted leading-tight">
                                 Starts VcXsrv on demand when an X11 session opens.
                               </span>
                             </label>
@@ -800,7 +831,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 />
                                 <span>Always Running</span>
                               </div>
-                              <span className="text-[11px] text-txt-muted leading-tight">
+                              <span className="text-xs text-txt-muted leading-tight">
                                 Launches in background when sshs3 starts up.
                               </span>
                             </label>
@@ -822,7 +853,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 />
                                 <span>Manual / External</span>
                               </div>
-                              <span className="text-[11px] text-txt-muted leading-tight">
+                              <span className="text-xs text-txt-muted leading-tight">
                                 Manage server manually or use WSLg / external X server.
                               </span>
                             </label>
@@ -830,7 +861,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                           {/* Path & Controls */}
                           <div className="space-y-2">
-                            <label className="text-[11px] font-medium text-txt-primary">X Server Binary Path</label>
+                            <label className="text-xs font-medium text-txt-primary">X Server Binary Path</label>
                             <div className="flex items-center gap-2">
                               <input
                                 type="text"
@@ -856,7 +887,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                           {/* Custom Arguments */}
                           <div className="space-y-1.5">
-                            <label className="text-[11px] font-medium text-txt-primary">Server Arguments</label>
+                            <label className="text-xs font-medium text-txt-primary">Server Arguments</label>
                             <input
                               type="text"
                               value={x11ServerArgs}
@@ -888,7 +919,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               />
                               <span>Auto-start (Default)</span>
                             </div>
-                            <span className="text-[11px] text-txt-muted leading-tight">
+                            <span className="text-xs text-txt-muted leading-tight">
                               Starts VcXsrv on demand when an X11 session opens.
                             </span>
                           </label>
@@ -910,7 +941,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               />
                               <span>Always Running</span>
                             </div>
-                            <span className="text-[11px] text-txt-muted leading-tight">
+                            <span className="text-xs text-txt-muted leading-tight">
                               Launches in background when sshs3 starts up.
                             </span>
                           </label>
@@ -932,7 +963,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               />
                               <span>Manual / External</span>
                             </div>
-                            <span className="text-[11px] text-txt-muted leading-tight">
+                            <span className="text-xs text-txt-muted leading-tight">
                               Manage server manually or use WSLg / external X server.
                             </span>
                           </label>
@@ -941,9 +972,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {/* Path & Controls */}
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-medium text-txt-primary">X Server Binary Path</label>
+                            <label className="text-xs font-medium text-txt-primary">X Server Binary Path</label>
                             {x11Status?.available && !x11ServerPath && (
-                              <span className="text-[10px] text-emerald-400">
+                              <span className="text-2xs text-emerald-400">
                                 Auto-detected: {x11Status.executablePath}
                               </span>
                             )}
@@ -973,7 +1004,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         {/* Custom Arguments */}
                         <div className="space-y-1.5">
-                          <label className="text-[11px] font-medium text-txt-primary">Server Arguments</label>
+                          <label className="text-xs font-medium text-txt-primary">Server Arguments</label>
                           <input
                             type="text"
                             value={x11ServerArgs}
@@ -1008,7 +1039,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </button>
                           )}
                           {!x11Status?.running && !x11Status?.available && !x11ServerPath && (
-                            <span className="text-[11px] text-amber-400">
+                            <span className="text-xs text-amber-400">
                               VcXsrv not detected. Please install VcXsrv or specify path above.
                             </span>
                           )}
@@ -1052,7 +1083,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             />
                             <span className="font-semibold text-xs text-txt-primary">{opt.label}</span>
                           </div>
-                          <span className="text-[11px] text-txt-muted">{opt.desc}</span>
+                          <span className="text-xs text-txt-muted">{opt.desc}</span>
                         </label>
                       ))}
                     </div>
@@ -1093,7 +1124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Enable dotfiles pool sync (off by default)
                       </span>
                     </label>
-                    <p className="pl-6 text-[11px] text-txt-muted leading-relaxed">
+                    <p className="pl-6 text-xs text-txt-muted leading-relaxed">
                       Keeps chosen dotfiles (.bashrc, .vimrc, etc.) present on servers you connect to. Disabled
                       here, nothing runs. Even when enabled, a host only syncs after you explicitly assign it a
                       pool and a sync policy in its connection profile.
@@ -1122,7 +1153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <ShieldAlert className="h-4 w-4" />
                         <span className="font-semibold text-xs">Credentials are stored in plaintext</span>
                       </div>
-                      <p className="text-[11px] text-txt-muted leading-relaxed">
+                      <p className="text-xs text-txt-muted leading-relaxed">
                         No OS keyring (Secret Service / KWallet / gnome-keyring, etc.) was found, so sshs3 cannot
                         encrypt saved SSH and S3 credentials at rest. Any password, passphrase, or proxy password you
                         save is written to disk unencrypted. Install and unlock a keyring service to enable
@@ -1139,7 +1170,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             : 'OS Keychain Encryption Active'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-txt-muted leading-relaxed">
+                      <p className="text-xs text-txt-muted leading-relaxed">
                         All stored passwords, SSH passphrases, and S3 credentials are encrypted via Electron safeStorage
                         (libsecret on Linux, DPAPI on Windows, Keychain on macOS) before persisting to disk.
                       </p>
@@ -1150,7 +1181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-2">
                     <div>
                       <label className="text-xs font-medium text-txt-primary">Smartcard & Security Key PIN Caching</label>
-                      <p className="text-[11px] text-txt-muted">
+                      <p className="text-xs text-txt-muted">
                         Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.
                       </p>
                     </div>
@@ -1173,7 +1204,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <Lock className="h-3.5 w-3.5 text-emerald-400" />
                           <span>Always Prompt (Default)</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           No caching. Every connection that needs the card or security key (terminal, dotfiles sync) prompts for its
                           own PIN. Use this if your organization requires re-authentication on every login.
                         </span>
@@ -1197,7 +1228,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <Shield className="h-3.5 w-3.5 text-sky-400" />
                           <span>Once Per Terminal Connection</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and
                           its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even
                           in the same app run) asks for the PIN again.
@@ -1222,7 +1253,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <Globe className="h-3.5 w-3.5 text-amber-400" />
                           <span>Global (App Lifetime)</span>
                         </div>
-                        <span className="text-[11px] text-txt-muted leading-tight">
+                        <span className="text-xs text-txt-muted leading-tight">
                           Enter the PIN once per card or key, shared by every terminal and profile using it, for as long as
                           the app runs. Most convenient, least strict — anything in the app can use the card/key until
                           you quit or lock it manually below.
@@ -1232,7 +1263,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {smartcardAuthMode === 'agent-global' && (
                       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">
-                        <p className="text-[11px] text-amber-300/90 leading-tight">
+                        <p className="text-xs text-amber-300/90 leading-tight">
                           Cached smartcard and security key agents stay unlocked until the app quits. Use the lock icon in the top bar
                           to lock them on demand without quitting.
                         </p>
@@ -1245,7 +1276,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           />
                           <span>Unlock smartcard at app startup</span>
                         </label>
-                        <p className="text-[11px] text-txt-muted leading-tight pl-6">
+                        <p className="text-xs text-txt-muted leading-tight pl-6">
                           Prompts for the PIN as soon as the app opens instead of waiting for the first connection
                           that needs it, so it's already unlocked once you get to a terminal. Only takes effect when
                           exactly one PKCS#11 library is detected below.
@@ -1271,7 +1302,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             })
                             ?.finally(() => setDetectingSmartcard(false));
                         }}
-                        className="text-[11px] text-sky-400 hover:underline"
+                        className="text-xs text-sky-400 hover:underline"
                       >
                         Rescan
                       </button>
@@ -1296,9 +1327,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                                 <span>{lib.name}</span>
                               </div>
-                              <div className="truncate font-mono text-[10px] text-txt-muted">{lib.path}</div>
+                              <div className="truncate font-mono text-2xs text-txt-muted">{lib.path}</div>
                             </div>
-                            <span className="rounded bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400 shrink-0">
+                            <span className="rounded bg-sky-500/10 px-2 py-0.5 text-2xs font-medium text-sky-400 shrink-0">
                               Available
                             </span>
                           </div>
@@ -1348,7 +1379,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         >
                           <div>
                             <div className="font-medium text-txt-primary">{def.name}</div>
-                            <div className="text-[10px] text-txt-muted">{def.category}</div>
+                            <div className="text-2xs text-txt-muted">{def.category}</div>
                           </div>
 
                           <div>
@@ -1394,7 +1425,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Enable OpenShift Support
                       </span>
                     </label>
-                    <p className="pl-6 text-[11px] text-txt-muted leading-relaxed">
+                    <p className="pl-6 text-xs text-txt-muted leading-relaxed">
                       Enables OpenShift-specific capabilities, such as the OpenShift Login dialog (token-based <code>oc login</code>) in the Kubernetes connection tree and the local <code>oc</code> CLI shim in terminal sessions.
                     </p>
                   </div>
@@ -1403,7 +1434,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xs font-semibold text-txt-primary">Kubernetes & OpenShift Debug Images</h3>
-                        <p className="text-[11px] text-txt-muted mt-0.5">
+                        <p className="text-xs text-txt-muted mt-0.5">
                           Pre-configured container images used when attaching an ephemeral debug container (<code>kubectl debug</code>) into a running pod.
                         </p>
                       </div>
@@ -1419,7 +1450,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowAddDebugImage((prev) => !prev)}
-                        className="flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500 transition-colors shadow-sm"
+                        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500 transition-colors shadow-sm"
                       >
                         <Plus className="h-3.5 w-3.5" />
                         Add Image
@@ -1433,7 +1464,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="font-semibold text-xs text-txt-primary">Add Custom Debug Image</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <label className="text-[11px] font-medium text-txt-secondary">Display Name *</label>
+                          <label className="text-xs font-medium text-txt-secondary">Display Name *</label>
                           <input
                             type="text"
                             value={newImageName}
@@ -1443,7 +1474,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[11px] font-medium text-txt-secondary">Image Reference *</label>
+                          <label className="text-xs font-medium text-txt-secondary">Image Reference *</label>
                           <input
                             type="text"
                             value={newImageRef}
@@ -1455,7 +1486,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1 sm:col-span-1">
-                          <label className="text-[11px] font-medium text-txt-secondary">Default Shell / Command</label>
+                          <label className="text-xs font-medium text-txt-secondary">Default Shell / Command</label>
                           <input
                             type="text"
                             value={newImageCmd}
@@ -1465,7 +1496,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           />
                         </div>
                         <div className="space-y-1 sm:col-span-2">
-                          <label className="text-[11px] font-medium text-txt-secondary">Description</label>
+                          <label className="text-xs font-medium text-txt-secondary">Description</label>
                           <input
                             type="text"
                             value={newImageDesc}
@@ -1527,16 +1558,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-txt-primary text-xs">{img.name}</span>
                             {img.defaultCommand && (
-                              <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 font-mono text-[10px] text-sky-400">
+                              <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 font-mono text-2xs text-sky-400">
                                 {img.defaultCommand}
                               </span>
                             )}
                           </div>
-                          <div className="font-mono text-[11px] text-txt-secondary break-all">
+                          <div className="font-mono text-xs text-txt-secondary break-all">
                             {img.image}
                           </div>
                           {img.description && (
-                            <p className="text-[11px] text-txt-muted">{img.description}</p>
+                            <p className="text-xs text-txt-muted">{img.description}</p>
                           )}
                         </div>
 

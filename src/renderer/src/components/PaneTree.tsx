@@ -185,7 +185,7 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
       }`}
     >
       <div
-        className={`flex h-6.5 shrink-0 items-center justify-between border-b px-2.5 text-[11px] transition-colors ${
+        className={`flex h-6.5 shrink-0 items-center justify-between border-b px-2.5 text-xs transition-colors ${
           isFocused && !isSole
             ? 'border-sky-500/50 bg-sky-500/5 text-txt-primary font-medium'
             : 'border-border-subtle bg-app-surface text-txt-muted'

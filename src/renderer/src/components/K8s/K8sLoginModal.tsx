@@ -117,7 +117,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-4">
@@ -148,7 +148,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 <Terminal className="h-3.5 w-3.5 text-red-400" />
                 <span>Paste `oc login` command</span>
               </div>
-              <span className="text-[11px] text-txt-muted">Auto-populates fields below</span>
+              <span className="text-xs text-txt-muted">Auto-populates fields below</span>
             </div>
             <textarea
               rows={2}
@@ -157,7 +157,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               placeholder="e.g. oc login --token=sha256~... --server=https://api.cluster.example.com:6443"
               className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle p-2 text-xs font-mono text-txt-primary placeholder:text-txt-muted/70 focus:border-red-500/50 focus:outline-none transition-colors resize-none"
             />
-            <div className="flex items-start gap-1.5 text-[11px] text-txt-muted">
+            <div className="flex items-start gap-1.5 text-xs text-txt-muted">
               <HelpCircle className="h-3 w-3 shrink-0 mt-0.5 text-txt-muted/80" />
               <span>
                 Tip: In OpenShift Web Console, click your username in the top right &rarr;{' '}
@@ -177,7 +177,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
           {/* Form */}
           <form id="k8s-login-form" onSubmit={handleSubmit} className="space-y-3.5 text-xs">
             <div>
-              <label className="block text-[11px] font-medium text-txt-secondary mb-1">
+              <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Server URL <span className="text-red-400">*</span>
               </label>
               <input
@@ -192,13 +192,13 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-medium text-txt-secondary">
+                <label className="text-xs font-medium text-txt-secondary">
                   API Token <span className="text-red-400">*</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowToken(!showToken)}
-                  className="flex items-center gap-1 text-[11px] text-txt-muted hover:text-txt-primary transition-colors"
+                  className="flex items-center gap-1 text-xs text-txt-muted hover:text-txt-primary transition-colors"
                 >
                   {showToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                   {showToken ? 'Hide token' : 'Show token'}
@@ -218,7 +218,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-txt-secondary mb-1">
+              <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Default Project / Namespace <span className="text-txt-muted font-normal">(optional)</span>
               </label>
               <input
@@ -240,9 +240,9 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 />
                 <div className="text-xs">
                   <span className="font-medium text-txt-primary">Skip TLS certificate verification</span>
-                  <p className="text-[11px] text-txt-muted mt-0.5">
+                  <p className="text-xs text-txt-muted mt-0.5">
                     Enable if your cluster uses private, self-signed, or internal CA certificates (equivalent to{' '}
-                    <code className="rounded bg-app-surface px-1 py-0.5 text-[10px] font-mono">
+                    <code className="rounded bg-app-surface px-1 py-0.5 text-2xs font-mono">
                       --insecure-skip-tls-verify=true
                     </code>
                     ).
@@ -255,7 +255,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-5 py-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-txt-muted">
+          <div className="flex items-center gap-1.5 text-xs text-txt-muted">
             <ShieldAlert className="h-3.5 w-3.5 text-txt-muted" />
             <span>Updates ~/.kube/config automatically</span>
           </div>

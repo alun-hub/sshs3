@@ -98,7 +98,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               <div
                 key={`header-${row.displayPath}`}
                 style={style}
-                className="flex items-center gap-1.5 border-b border-border-subtle/50 bg-app-surface-subtle px-3 text-[11px] font-medium text-txt-secondary"
+                className="flex items-center gap-1.5 border-b border-border-subtle/50 bg-app-surface-subtle px-3 text-xs font-medium text-txt-secondary"
               >
                 <FileText className="h-3 w-3 shrink-0 text-sky-400" />
                 <span className="truncate" title={row.displayPath}>
@@ -140,7 +140,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               <span className="flex items-center gap-1.5 text-txt-muted">
                 {match.lineNumber !== undefined && <span className="shrink-0">Line {match.lineNumber}</span>}
               </span>
-              <span className="truncate font-mono text-[11px] text-txt-secondary" title={match.snippet}>
+              <span className="truncate font-mono text-xs text-txt-secondary" title={match.snippet}>
                 {highlightSnippet(match.snippet, match.matchStart, match.matchEnd)}
               </span>
             </button>

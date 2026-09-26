@@ -57,7 +57,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     >
       {items.map((item) => (
         <React.Fragment key={item.key}>
-          {item.separatorBefore && <div className="my-1 border-t border-border-subtle" />}
+          {/* border-strong, not border-subtle (UX review #14): border-subtle's
+              contrast against bg-app-card is too low to actually read as a
+              separator, so the intended grouping (e.g. Delete set apart from
+              the rest) was invisible in practice. */}
+          {item.separatorBefore && <div className="my-1.5 border-t border-border-strong" />}
           <button
             type="button"
             role="menuitem"

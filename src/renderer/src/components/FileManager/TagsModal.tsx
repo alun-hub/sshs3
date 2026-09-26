@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Tag as TagIcon, X, Loader2, Plus, Trash2 } from 'lucide-react';
 import type { S3Tag } from '@shared/types/storage';
+import { describeIpcError } from '../../lib/format';
+import { Button } from '../ui/Button';
 
 interface TagsModalProps {
   open: boolean;
@@ -31,7 +33,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
     window.multissh
       .storageGetTags(providerId, targetPath)
       .then(setTags)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve tags'))
+      .catch((err) => setError(describeIpcError(err, 'Failed to retrieve tags')))
       .finally(() => setLoading(false));
   }, [open, providerId, targetPath]);
 
@@ -53,7 +55,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save tags');
+      setError(describeIpcError(err, 'Failed to save tags'));
     } finally {
       setSaving(false);
     }
@@ -74,7 +76,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
 
         <div className="p-4 space-y-3 text-xs text-txt-secondary">
           <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
-            <div className="text-[11px] text-txt-muted uppercase tracking-wider font-semibold">Target</div>
+            <div className="text-xs text-txt-muted uppercase tracking-wider font-semibold">Target</div>
             <div className="mt-1 font-mono text-xs text-txt-primary truncate">{targetName}</div>
           </div>
 
@@ -121,36 +123,22 @@ export const TagsModal: React.FC<TagsModalProps> = ({
                   </button>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={handleAdd}
-                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              >
+              <Button type="button" variant="secondary" onClick={handleAdd} className="px-3">
                 <Plus className="h-3.5 w-3.5" />
                 Add Tag
-              </button>
+              </Button>
             </div>
           )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving || loading}
-            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={() => void handleSave()} disabled={saving || loading}>
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </div>
