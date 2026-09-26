@@ -48,7 +48,14 @@ describe('App Component', () => {
       storageList: vi.fn().mockResolvedValue([]),
       transferGetJobs: vi.fn().mockResolvedValue([]),
       onTransferProgress: vi.fn(() => vi.fn()),
-      sessionGet: vi.fn().mockResolvedValue(null),
+      // A default single terminal tab, as a returning user would have saved
+      // (App.tsx no longer seeds one synchronously — see the "no saved
+      // session" empty-state unification in the UX review — so tests that
+      // don't care about that empty state get a stable starting tab here).
+      sessionGet: vi.fn().mockResolvedValue({
+        tabs: [{ id: 'term-1', type: 'terminal', title: 'Terminal 1' }],
+        activeTabId: 'term-1',
+      }),
       sessionSave: vi.fn().mockResolvedValue(undefined),
       settingsGet: vi.fn().mockResolvedValue(undefined),
       settingsSave: vi.fn().mockResolvedValue(undefined),
@@ -71,6 +78,7 @@ describe('App Component', () => {
 
   it('renders application header, initial terminal tab, and tab bar', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     expect(screen.getByText('sshs3')).toBeInTheDocument();
     expect(screen.getByTestId('add-tab-btn')).toBeInTheDocument();
@@ -83,6 +91,7 @@ describe('App Component', () => {
 
   it('opens a new filemanager tab when selected from new tab menu', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Click "+" button
     fireEvent.click(screen.getByTestId('add-tab-btn'));
@@ -101,6 +110,7 @@ describe('App Component', () => {
 
   it('maintains non-active tabs mounted in DOM with display none', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Add a filemanager tab
     fireEvent.click(screen.getByTestId('add-tab-btn'));
@@ -124,6 +134,7 @@ describe('App Component', () => {
 
   it('closes a tab and switches active tab when close button is clicked', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Add a second tab
     fireEvent.click(screen.getByTestId('add-tab-btn'));
@@ -171,6 +182,7 @@ describe('App Component', () => {
 
   it('splits a pane without recreating the existing session, and lets you close a specific pane', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Start a local terminal first
     fireEvent.click(screen.getByText('Open Local Terminal'));
@@ -245,6 +257,7 @@ describe('App Component', () => {
 
   it('unsplit keeps the active pane alive without recreating its session, while closing other panes', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     fireEvent.click(screen.getByText('Open Local Terminal'));
     await act(async () => {
@@ -289,6 +302,7 @@ describe('App Component', () => {
 
   it('cycles focus between split panes via keyboard (Ctrl+Shift+N / Ctrl+Shift+P)', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     const rootPaneId = screen
       .getAllByTestId(/^terminal-pane-/)[0]
@@ -332,6 +346,7 @@ describe('App Component', () => {
 
   it('handles keyboard shortcuts for new terminal, split vertical, and close tab', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     expect(screen.getAllByRole('tab').length).toBe(1);
 
@@ -366,6 +381,7 @@ describe('App Component', () => {
 
   it('cycles tabs indefinitely with Ctrl+Tab and Ctrl+Shift+Tab without getting stuck', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Create two more terminal tabs -> total 3 tabs
     fireEvent.keyDown(window, { key: 'T', ctrlKey: true, shiftKey: true });
@@ -410,6 +426,7 @@ describe('App Component', () => {
 
   it('reuses closed tab numbers instead of incrementing endlessly', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     expect(screen.getByText('Terminal 1')).toBeInTheDocument();
 
@@ -445,6 +462,7 @@ describe('App Component', () => {
     });
 
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     expect(within(screen.getByTestId('tab-term-1')).getByText('Terminal 1')).toBeInTheDocument();
 
@@ -466,6 +484,7 @@ describe('App Component', () => {
 
   it('dynamically updates tab title when SSHing further to a new host and restores on exit', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     expect(within(screen.getByTestId('tab-term-1')).getByText('Terminal 1')).toBeInTheDocument();
 
@@ -507,6 +526,7 @@ describe('App Component', () => {
 
   it('detects nested hostname from plain prompt output and restores on exit', async () => {
     render(<App />);
+    await screen.findByTestId('tab-term-1');
 
     // Open local terminal
     fireEvent.click(screen.getByText('Open Local Terminal'));
