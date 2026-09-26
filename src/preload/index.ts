@@ -594,8 +594,8 @@ export const api: MultiSSHApi = {
   k8sLogin: (options: K8sLoginOptions): Promise<K8sLoginResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_LOGIN, options),
 
-  onK8sConfigChanged: (callback: () => void): (() => void) => {
-    const listener = () => callback();
+  onK8sConfigChanged: (callback: (execAuthWarning?: string | null) => void): (() => void) => {
+    const listener = (_event: unknown, execAuthWarning?: string | null) => callback(execAuthWarning);
     ipcRenderer.on(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);

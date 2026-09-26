@@ -3504,7 +3504,10 @@ export class IpcBridge {
     this.onK8sConfigChanged = () => {
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
+        // Carries an optional warning (H8 code-review finding) when this
+        // reload just introduced a new exec-auth user — see
+        // K8sDiscoveryService.checkExecAuthChange.
+        webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED, this.k8sDiscoveryService.consumePendingExecAuthWarning());
       }
     };
     this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);

@@ -537,7 +537,7 @@ export interface MultiSSHApi {
   k8sListPods(contextName: string, namespace: string): Promise<K8sPodNode[]>;
   k8sReload(): Promise<void>;
   k8sLogin(options: K8sLoginOptions): Promise<K8sLoginResult>;
-  onK8sConfigChanged(callback: () => void): () => void;
+  onK8sConfigChanged(callback: (execAuthWarning?: string | null) => void): () => void;
   k8sTerminalCreate(target: K8sTerminalTarget, options?: { cols?: number; rows?: number }): Promise<{ sessionId: string }>;
   k8sTerminalWrite(sessionId: string, data: string): Promise<void>;
   k8sTerminalResize(sessionId: string, cols: number, rows: number): Promise<void>;

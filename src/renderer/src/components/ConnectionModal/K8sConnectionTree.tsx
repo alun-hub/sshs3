@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowUpRight,
   Box,
   Bug,
@@ -48,6 +49,26 @@ const stateDotClass: Record<string, string> = {
   unknown: 'bg-txt-muted',
 };
 
+/**
+ * Warns that a kubeconfig change picked up while the app was running
+ * introduced a new exec-auth (credential plugin) user — see the H8
+ * code-review finding and K8sDiscoveryService.checkExecAuthChange.
+ */
+const ExecAuthWarningBanner: React.FC<{ warning: string; onDismiss: () => void }> = ({ warning, onDismiss }) => (
+  <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
+    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+    <span className="flex-1">{warning}</span>
+    <button
+      type="button"
+      onClick={onDismiss}
+      aria-label="Dismiss warning"
+      className="shrink-0 rounded p-0.5 hover:bg-amber-900/40"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  </div>
+);
+
 interface K8sConnectionTreeProps {
   /** Invoked when the user clicks "Exec" on a container. */
   onExec?: (target: K8sTerminalTarget) => void;
@@ -79,6 +100,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
     }
   }, [enableOpenShiftProp]);
   const [contexts, setContexts] = useState<Loadable<K8sClusterNode[]>>({ status: 'loading' });
+  const [execAuthWarning, setExecAuthWarning] = useState<string | null>(null);
   const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
   const [namespacesByContext, setNamespacesByContext] = useState<Record<string, Loadable<K8sNamespaceNode[]>>>({});
   const [expandedNamespaces, setExpandedNamespaces] = useState<Set<string>>(new Set());
@@ -133,7 +155,8 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
   useEffect(() => {
     loadContexts();
 
-    const unsubscribe = window.multissh.onK8sConfigChanged?.(() => {
+    const unsubscribe = window.multissh.onK8sConfigChanged?.((warning) => {
+      if (warning) setExecAuthWarning(warning);
       loadContexts();
     });
 
@@ -224,9 +247,14 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
 
   if (contexts.status === 'error') {
     return (
-      <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
-        {contexts.error}
-      </div>
+      <>
+        {execAuthWarning && (
+          <ExecAuthWarningBanner warning={execAuthWarning} onDismiss={() => setExecAuthWarning(null)} />
+        )}
+        <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+          {contexts.error}
+        </div>
+      </>
     );
   }
 
@@ -262,6 +290,9 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
 
   return (
     <>
+      {execAuthWarning && (
+        <ExecAuthWarningBanner warning={execAuthWarning} onDismiss={() => setExecAuthWarning(null)} />
+      )}
       <div className="space-y-2">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
