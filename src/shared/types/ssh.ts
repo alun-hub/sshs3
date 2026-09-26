@@ -1,6 +1,6 @@
 import type { ProxyConfig } from './storage';
 
-export type SSHAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
+export type SSHAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent' | 'fido2';
 
 export type SSHTunnelType = 'local' | 'remote' | 'dynamic';
 
@@ -27,6 +27,16 @@ export interface SSHConnectionConfig {
   pkcs11LibPath?: string; // path to .so or .dll
   pin?: string;
   agentPath?: string;
+  /**
+   * authType 'fido2' only. true = a discoverable/resident credential loaded
+   * straight off the connected security key (no privateKeyPath); false/unset
+   * = a regular `id_*_sk` key file referenced by privateKeyPath, same as a
+   * plain 'privateKey' profile. Resident mode requires an ssh-agent (the app
+   * loads one privately per session) — SFTP (ssh2) can't use either FIDO2
+   * mode directly, since ssh2 has no libfido2/PKCS#11 support; both need an
+   * agent already holding the key.
+   */
+  fido2Resident?: boolean;
   extraOptions?: Record<string, string>;
   initialPath?: string;
   proxy?: ProxyConfig;
@@ -93,6 +103,44 @@ export interface CachedSmartcardAgent {
   identities: CachedSmartcardIdentity[];
 }
 
+export type Fido2KeyType = 'ed25519-sk' | 'ecdsa-sk';
+
+/** One discoverable ("resident") FIDO2 credential found on a connected security key. */
+export interface Fido2ResidentKey {
+  fingerprint: string;
+  comment: string;
+  keyType: string;
+  /**
+   * Present only when this entry came from `ykman` rather than the `ssh-add
+   * -K` fallback — required to delete this specific credential (`ssh-add`
+   * has no per-credential delete of its own). Its absence is what the UI
+   * uses to decide whether to show a delete button for this entry at all.
+   */
+  credentialId?: string;
+}
+
+/**
+ * Marks the specific "outPath already exists" error `generateFido2Key` throws, so the renderer
+ * (which only ever sees a thrown Error's `message` across the IPC boundary — everything else about
+ * a custom error class is lost) can offer an overwrite-and-retry instead of just showing the text.
+ */
+export const FIDO2_KEY_FILE_EXISTS_PREFIX = 'FIDO2_KEY_FILE_EXISTS:';
+
+export interface GenerateFido2KeyRequest {
+  outPath: string;
+  keyType: Fido2KeyType;
+  resident: boolean;
+  verifyRequired: boolean;
+  /** Replace a pre-existing file at outPath instead of failing — only send this after the user has confirmed it. */
+  overwrite?: boolean;
+}
+
+export interface GeneratedFido2Key {
+  publicKey: string;
+  privateKeyPath: string;
+  publicKeyPath: string;
+}
+
 /** Local shell to spawn on Windows. Ignored on macOS/Linux, which always use the user's $SHELL. */
 export type LocalShellType = 'default' | 'cmd' | 'powershell' | 'pwsh' | 'wsl';
 
@@ -118,6 +166,8 @@ export interface SSHPtySession {
   pid: number;
   cols: number;
   rows: number;
+  /** Path to OpenSSH multiplexing control socket (on Unix platforms), if active. */
+  controlPath?: string;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;

@@ -150,9 +150,57 @@ describe('AgentLifecycleManager', () => {
     });
   });
 
+  describe('spawnPrivateAgent extraEnv', () => {
+    it('merges extraEnv into the spawned ssh-agent process\'s own environment (non-Windows)', async () => {
+      if (process.platform === 'win32') return;
+      mockSpawnedAgent('/tmp/extra-env-agent.sock', 12345);
+
+      await AgentLifecycleManager.spawnPrivateAgent({ SSH_ASKPASS: '/fake/askpass.sh', SSH_ASKPASS_REQUIRE: 'force' });
+
+      const call = vi.mocked(mockedExecFile).mock.calls[0];
+      const options = call[2] as { env?: Record<string, string> };
+      expect(options.env?.SSH_ASKPASS).toBe('/fake/askpass.sh');
+      expect(options.env?.SSH_ASKPASS_REQUIRE).toBe('force');
+      // The rest of this process's own environment must still be present, not replaced by extraEnv alone.
+      expect(options.env?.PATH).toBe(process.env.PATH);
+    });
+
+    it('spawns with the process\'s own environment, unmodified, when extraEnv is omitted', async () => {
+      if (process.platform === 'win32') return;
+      mockSpawnedAgent('/tmp/no-extra-env-agent.sock', 12346);
+
+      await AgentLifecycleManager.spawnPrivateAgent();
+
+      const call = vi.mocked(mockedExecFile).mock.calls[0];
+      const options = call[2] as { env?: Record<string, string> };
+      // Whatever this app process itself inherited for SSH_ASKPASS (e.g. the desktop's own
+      // ksshaskpass/gnome-ssh-askpass, or nothing at all) passes through unchanged — this is
+      // exactly the "falls back to the desktop's system dialog" case extraEnv exists to override.
+      expect(options.env?.SSH_ASKPASS).toBe(process.env.SSH_ASKPASS);
+    });
+  });
+
   it('killPrivateAgent no-ops for sentinel/non-owned pids instead of signaling a process group', () => {
     expect(() => AgentLifecycleManager.killPrivateAgent(0)).not.toThrow();
     expect(() => AgentLifecycleManager.killPrivateAgent(-1)).not.toThrow();
+  });
+
+  it('tracks spawned private agents and terminates them on killAllPrivateAgents', async () => {
+    if (process.platform === 'win32') return;
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+
+    mockSpawnedAgent('/tmp/agent-1.sock', 54321);
+    await AgentLifecycleManager.spawnPrivateAgent();
+
+    mockSpawnedAgent('/tmp/agent-2.sock', 54322);
+    await AgentLifecycleManager.spawnPrivateAgent();
+
+    AgentLifecycleManager.killAllPrivateAgents();
+
+    expect(killSpy).toHaveBeenCalledWith(54321, 'SIGTERM');
+    expect(killSpy).toHaveBeenCalledWith(54322, 'SIGTERM');
+
+    killSpy.mockRestore();
   });
 
   it('unloadCard resolves even when the socket/module is unreachable (best-effort)', async () => {

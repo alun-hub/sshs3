@@ -4,6 +4,9 @@ import {
   type MultiSSHApi,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
+  type PresencePromptEvent,
+  type PresenceClearEvent,
+  type AskpassPromptEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type SshAgentStatus,
@@ -42,6 +45,9 @@ import type {
   DetectedSmartcardLib,
   CachedSmartcardAgent,
   XServerStatus,
+  GenerateFido2KeyRequest,
+  GeneratedFido2Key,
+  Fido2ResidentKey,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -132,9 +138,8 @@ export const api: MultiSSHApi = {
   smartcardUnlockAtStartup: (): Promise<{ started: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP),
 
-  onAskpassPrompt: (callback: (event: { id: string; prompt: string; sessionId?: string }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, event: { id: string; prompt: string; sessionId?: string }) =>
-      callback(event);
+  onAskpassPrompt: (callback: (event: AskpassPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: AskpassPromptEvent) => callback(event);
     ipcRenderer.on(IPC_CHANNELS.ASKPASS_PROMPT, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.ASKPASS_PROMPT, listener);
@@ -143,6 +148,31 @@ export const api: MultiSSHApi = {
 
   submitAskpassPin: (id: string, pin: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, id, pin),
+
+  onPresencePrompt: (callback: (event: PresencePromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: PresencePromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.PRESENCE_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.PRESENCE_PROMPT, listener);
+    };
+  },
+
+  onPresenceClear: (callback: (event: PresenceClearEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: PresenceClearEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.PRESENCE_CLEAR, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.PRESENCE_CLEAR, listener);
+    };
+  },
+
+  fido2GenerateKey: (options: GenerateFido2KeyRequest): Promise<GeneratedFido2Key> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FIDO2_GENERATE_KEY, options),
+
+  fido2ListResidentKeys: (): Promise<Fido2ResidentKey[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FIDO2_LIST_RESIDENT_KEYS),
+
+  fido2DeleteResidentKey: (credentialId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FIDO2_DELETE_RESIDENT_KEY, credentialId),
 
   onHostKeyPrompt: (callback: (event: HostKeyPromptEvent) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: HostKeyPromptEvent) => callback(event);

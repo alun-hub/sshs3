@@ -232,6 +232,98 @@ describe('IpcBridge', () => {
       expect(res).toEqual({ sessionId: 'session-123' });
     });
 
+    it('forwards the agent/OpenSSH\'s own raw prompt text for a FIDO2 resident connect, rather than replacing it with a fixed string', async () => {
+      // Regression test: prepareFido2Config used to build its own fixed "Enter your security
+      // key's PIN to connect to X:" string and pass that to promptForPin instead of the actual
+      // raw prompt ssh-add/the agent asked for — silently discarding wording like "Confirm user
+      // presence for key ..." that the renderer's touch-hint UI depends on to detect that a
+      // physical touch, not just a PIN, is needed for this specific prompt.
+      let capturedPromptHandler: ((prompt: string) => Promise<string> | string) | undefined;
+      const loadSpy = vi
+        .spyOn(SmartcardAgentLoader, 'loadFido2ResidentKeysIntoPrivateAgent')
+        .mockImplementation((promptHandler) => {
+          capturedPromptHandler = promptHandler;
+          return new Promise(() => {}); // never resolves; only the captured handler matters here
+        });
+      mockPtyManager.promptForPin = vi.fn().mockResolvedValue('123456');
+
+      const config: SSHConnectionConfig = {
+        id: 'fido2-conn-1',
+        name: 'gnarg fido2',
+        host: 'gnarg.example.com',
+        username: 'alun',
+        authType: 'fido2',
+        fido2Resident: true,
+      };
+      void mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { config, ptyOptions: { cols: 100, rows: 40 } });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(capturedPromptHandler).toBeTypeOf('function');
+      await capturedPromptHandler!('Confirm user presence for key ED25519-SK SHA256:abc123');
+
+      expect(mockPtyManager.promptForPin).toHaveBeenCalledWith(
+        'fido2-conn-1',
+        expect.stringContaining('Confirm user presence for key ED25519-SK SHA256:abc123'),
+        'fido2',
+        'connecting to gnarg fido2'
+      );
+
+      loadSpy.mockRestore();
+    });
+
+    it('caches FIDO2 resident keys globally across connections when smartcardAuthMode is agent-global', async () => {
+      mockSettingsStore.getSettings = vi.fn().mockResolvedValue({
+        smartcardAuthMode: 'agent-global',
+      });
+
+      let loadCount = 0;
+      const loadSpy = vi
+        .spyOn(SmartcardAgentLoader, 'loadFido2ResidentKeysIntoPrivateAgent')
+        .mockImplementation(async () => {
+          loadCount++;
+          return { pid: 9999, socketPath: '/tmp/fido2-global-agent.sock' };
+        });
+
+      const config1: SSHConnectionConfig = {
+        id: 'fido2-conn-1',
+        name: 'host1',
+        host: 'host1.example.com',
+        username: 'alun',
+        authType: 'fido2',
+        fido2Resident: true,
+      };
+
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { config: config1, ptyOptions: { cols: 100, rows: 40 } });
+      expect(loadCount).toBe(1);
+      expect(mockPtyManager.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ agentPath: '/tmp/fido2-global-agent.sock' }),
+        expect.anything()
+      );
+
+      // Second connection reuses the cached global agent without calling loadFido2ResidentKeysIntoPrivateAgent again
+      const config2: SSHConnectionConfig = {
+        id: 'fido2-conn-2',
+        name: 'host2',
+        host: 'host2.example.com',
+        username: 'alun',
+        authType: 'fido2',
+        fido2Resident: true,
+      };
+
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { config: config2, ptyOptions: { cols: 100, rows: 40 } });
+      expect(loadCount).toBe(1);
+      expect(mockPtyManager.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ agentPath: '/tmp/fido2-global-agent.sock' }),
+        expect.anything()
+      );
+
+      // Locking smartcards clears the global FIDO2 agent
+      const lockedResult = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
+      expect(lockedResult).toEqual({ locked: 1 });
+
+      loadSpy.mockRestore();
+    });
+
     it('throws when creating terminal without config', async () => {
       await expect(mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, null as any)).rejects.toThrow();
     });
@@ -359,7 +451,7 @@ describe('IpcBridge', () => {
         // readSmartcardCertificates runs (and must resolve) before loadSmartcardIntoPrivateAgent —
         // flush the microtask queue so that ordering has had a chance to play out.
         await new Promise((resolve) => setImmediate(resolve));
-        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/p11-kit-proxy.so', expect.any(Function));
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/p11-kit-proxy.so', expect.any(Function), expect.any(Object));
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
@@ -381,7 +473,7 @@ describe('IpcBridge', () => {
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
         expect(res).toEqual({ started: true });
         await new Promise((resolve) => setImmediate(resolve));
-        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function));
+        expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function), expect.any(Object));
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
@@ -1156,6 +1248,7 @@ describe('IpcBridge', () => {
       (bridge as any).smartcardSessionAgents.set('session-1', {
         pid: 4242,
         socketPath: '/tmp/session-agent.sock',
+        kind: 'pkcs11',
         pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
       });
       (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', {

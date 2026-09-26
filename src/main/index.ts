@@ -160,12 +160,20 @@ app.on('before-quit', async (event) => {
         // ignore
       }
       ipcBridge = null;
+      AgentLifecycleManager.killAllPrivateAgents();
       app.quit();
+    } else {
+      AgentLifecycleManager.killAllPrivateAgents();
     }
   }
 });
 
+app.on('will-quit', () => {
+  AgentLifecycleManager.killAllPrivateAgents();
+});
+
 app.on('window-all-closed', () => {
+  AgentLifecycleManager.killAllPrivateAgents();
   if (process.platform !== 'darwin') {
     app.quit();
   }

@@ -41,15 +41,41 @@ export class SmartcardDetector {
     { name: 'p11-kit', path: '/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so', platform: 'linux' },
     { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux' },
     { name: 'p11-kit', path: '/usr/local/lib/p11-kit-proxy.so', platform: 'linux' },
+    // Yubico PIV Tool / YubiKey Manager (libykcs11) — official Yubico PKCS#11
+    // module, works out of the box for YubiKey PIV without installing OpenSC.
+    // Note: Linux package managers (Fedora/RHEL, Debian/Ubuntu, Arch) package the
+    // runtime library with its SONAME (libykcs11.so.2 or libykcs11.so.1); the unversioned
+    // .so symlink is only provided when development packages (-devel / -dev) are installed.
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.2', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.1', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/x86_64-linux-gnu/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/x86_64-linux-gnu/libykcs11.so.2', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/x86_64-linux-gnu/libykcs11.so.1', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/aarch64-linux-gnu/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/aarch64-linux-gnu/libykcs11.so.2', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/libykcs11.so.2', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/lib/libykcs11.so.1', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/local/lib/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/local/lib/libykcs11.so.2', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/local/lib64/libykcs11.so', platform: 'linux' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/local/lib64/libykcs11.so.2', platform: 'linux' },
     // Net iD
     { name: 'Net iD', path: '/usr/lib/libiidp11.so', platform: 'linux' },
     { name: 'Net iD', path: '/usr/lib64/libiidp11.so', platform: 'linux' },
     { name: 'Net iD', path: '/usr/local/lib/libiidp11.so', platform: 'linux' },
     { name: 'Net iD', path: '/usr/lib/x86_64-linux-gnu/libiidp11.so', platform: 'linux' },
     // OpenSC
-    { name: 'OpenSC', path: '/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so', platform: 'linux' },
-    { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib64/pkcs11/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib64/pkcs11/onepin-opensc-pkcs11.so', platform: 'linux' },
     { name: 'OpenSC', path: '/usr/lib64/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib64/onepin-opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib/x86_64-linux-gnu/onepin-opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib/x86_64-linux-gnu/pkcs11/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib/aarch64-linux-gnu/opensc-pkcs11.so', platform: 'linux' },
+    { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux' },
     { name: 'OpenSC', path: '/usr/lib/pkcs11/opensc-pkcs11.so', platform: 'linux' },
     { name: 'OpenSC', path: '/usr/local/lib/opensc-pkcs11.so', platform: 'linux' },
   ];
@@ -58,6 +84,14 @@ export class SmartcardDetector {
     // Net iD
     { name: 'Net iD', path: 'C:\\Program Files\\Net iD\\iidp11.dll', platform: 'win32' },
     { name: 'Net iD', path: 'C:\\Program Files (x86)\\Net iD\\iidp11.dll', platform: 'win32' },
+    // Yubico PIV Tool / YubiKey Manager (libykcs11) — official Yubico PKCS#11
+    // module, works out of the box for YubiKey PIV without installing OpenSC.
+    { name: 'YubiKey (libykcs11)', path: 'C:\\Program Files\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll', platform: 'win32' },
+    {
+      name: 'YubiKey (libykcs11)',
+      path: 'C:\\Program Files (x86)\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll',
+      platform: 'win32',
+    },
     // OpenSC
     {
       name: 'OpenSC',
@@ -132,7 +166,23 @@ export class SmartcardDetector {
     );
 
     if (options?.onlyExisting) {
-      return results.filter((lib) => lib.exists);
+      const existing = results.filter((lib) => lib.exists);
+      const seen = new Set<string>();
+      const deduped: DetectedSmartcardLib[] = [];
+      for (const lib of existing) {
+        let key = `${lib.name}:${lib.path}`;
+        try {
+          const canonical = await fs.realpath(lib.path);
+          key = `${lib.name}:${canonical}`;
+        } catch {
+          // Fall back to original path if realpath fails
+        }
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(lib);
+        }
+      }
+      return deduped;
     }
 
     return results;
@@ -141,7 +191,7 @@ export class SmartcardDetector {
   /**
    * Generates command-line arguments for OpenSSH (ssh) client.
    */
-  public static buildSSHArguments(config: SSHConnectionConfig): string[] {
+  public static buildSSHArguments(config: SSHConnectionConfig, controlPath?: string): string[] {
     if (!config.host || typeof config.host !== 'string' || config.host.startsWith('-')) {
       throw new Error('Invalid SSH host: host cannot start with "-"');
     }
@@ -159,6 +209,13 @@ export class SmartcardDetector {
     }
 
     const args: string[] = [];
+
+    // OpenSSH connection multiplexing (master mode, Unix only)
+    if (controlPath && process.platform !== 'win32') {
+      args.push('-o', 'ControlMaster=auto');
+      args.push('-o', `ControlPath=${controlPath}`);
+      args.push('-o', 'ControlPersist=120');
+    }
 
     // Port argument
     args.push('-p', String(port));
@@ -202,6 +259,22 @@ export class SmartcardDetector {
         // our own askpass-driven -I flow.
         args.push('-o', 'IdentitiesOnly=yes');
         args.push('-o', 'IdentityAgent=none');
+      }
+    } else {
+      // Prevent OpenSSH from picking up a PKCS11Provider configured in ~/.ssh/config for this host
+      // (e.g. when connecting via FIDO2, password, or privateKey to a host that has a PKCS11Provider defined).
+      args.push('-o', 'PKCS11Provider=none');
+    }
+
+    // FIDO2 resident-key authentication: the credential was pre-loaded into a private
+    // agent by IpcBridge (see prepareFido2Config) since there's no key file on disk to
+    // point -i at. A non-resident FIDO2 profile instead has privateKeyPath set and is
+    // handled by the generic -i argument below, exactly like a plain SSH key file.
+    if (config.authType === 'fido2' && config.fido2Resident && config.agentPath) {
+      // See the matching comment on the smartcard branch above for why this is skipped
+      // on Windows (SSH_AUTH_SOCK env var instead, set by SSHPtyManager).
+      if (process.platform !== 'win32') {
+        args.push('-o', `IdentityAgent=${config.agentPath}`);
       }
     }
 

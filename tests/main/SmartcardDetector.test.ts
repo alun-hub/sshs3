@@ -48,6 +48,10 @@ describe('SmartcardDetector', () => {
       expect(firstP11Index).toBeLessThan(firstNetIdIndex);
       expect(firstP11Index).toBeLessThan(firstOpenScIndex);
 
+      const yubikeyPaths = linuxPaths.filter((l) => l.name === 'YubiKey (libykcs11)');
+      expect(yubikeyPaths.length).toBeGreaterThan(0);
+      expect(yubikeyPaths.some((l) => l.path.includes('libykcs11.so.2'))).toBe(true);
+
       expect(linuxPaths.every((l) => l.platform === 'linux')).toBe(true);
     });
 
@@ -144,6 +148,29 @@ describe('SmartcardDetector', () => {
       expect(detected[0].name).toBe('Found Lib');
       expect(detected[0].exists).toBe(true);
     });
+
+    it('should deduplicate multiple candidate paths pointing to the same file', async () => {
+      const realLib = path.join(tempDir, 'libykcs11.so.2.7.3');
+      const symlinkLib = path.join(tempDir, 'libykcs11.so.2');
+      await fs.writeFile(realLib, 'binary-lib');
+      try {
+        await fs.symlink(realLib, symlinkLib);
+      } catch {
+        // If symlinks not supported, skip
+        return;
+      }
+
+      const detected = await SmartcardDetector.detectAvailableLibraries('linux', {
+        customPaths: [
+          { name: 'YubiKey (libykcs11)', path: symlinkLib, platform: 'linux' },
+          { name: 'YubiKey (libykcs11)', path: realLib, platform: 'linux' },
+        ],
+        onlyExisting: true,
+      });
+
+      expect(detected).toHaveLength(1);
+      expect(detected[0].path).toBe(symlinkLib);
+    });
   });
 
   describe('buildSSHArguments', () => {
@@ -197,7 +224,7 @@ describe('SmartcardDetector', () => {
       }
     });
 
-    it('should NOT include -I when authType is not smartcard', () => {
+    it('should NOT include -I and include PKCS11Provider=none when authType is not smartcard', () => {
       const config: SSHConnectionConfig = {
         id: 'pw-1',
         name: 'Password Host',
@@ -210,6 +237,7 @@ describe('SmartcardDetector', () => {
       const args = SmartcardDetector.buildSSHArguments(config);
 
       expect(args).not.toContain('-I');
+      expect(args).toContain('PKCS11Provider=none');
       expect(args).toContain('-p');
       expect(args[args.indexOf('-p') + 1]).toBe('22');
       expect(args).toContain('--');

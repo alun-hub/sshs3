@@ -185,6 +185,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [sessionKey, setSessionKey] = useState(0);
   const [exitEvent, setExitEvent] = useState<SSHPtyExitEvent | null>(null);
 
+  // Lazy connection: background tabs (isActive === false on mount) defer
+  // creating the PTY and spawning SSH until they become active for the first time.
+  const [hasEverBeenActive, setHasEverBeenActive] = useState<boolean>(isActive);
+
+  useEffect(() => {
+    if (isActive && !hasEverBeenActive) {
+      setHasEverBeenActive(true);
+    }
+  }, [isActive, hasEverBeenActive]);
+
   const handleReconnect = useCallback(() => {
     setExitEvent(null);
     setSessionKey((prev) => prev + 1);
@@ -299,6 +309,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   // Main lifecycle: spawns and manages the PTY session.
   // Style properties are intentionally managed by the separate effect above to avoid session resets.
   useEffect(() => {
+    if (!hasEverBeenActive) return;
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -326,6 +338,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     term.loadAddon(fitAddon);
 
     term.open(containerRef.current);
+    if (isActiveRef.current) {
+      try {
+        term.focus();
+      } catch {
+        // Safe to ignore in test/headless env
+      }
+    }
 
     const titleSub = term.onTitleChange((title) => {
       onTitleChangeRef.current?.(title);
@@ -568,7 +587,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
-  }, [connectionKey, sessionKey, syncPtySize]);
+  }, [connectionKey, sessionKey, syncPtySize, hasEverBeenActive]);
 
   const isLight =
     theme === 'light' ||

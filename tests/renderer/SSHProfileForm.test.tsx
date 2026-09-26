@@ -150,4 +150,51 @@ describe('SSHProfileForm', () => {
       );
     });
   });
+
+  it('offers an overwrite retry when generating a FIDO2 key hits a stale local file, even through Electron\'s wrapped error message', async () => {
+    const fido2GenerateKey = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          "Error invoking remote method 'fido2:generate-key': Error: FIDO2_KEY_FILE_EXISTS: A file already exists at /home/alun/.ssh/id_ed25519_sk."
+        )
+      )
+      .mockResolvedValueOnce({
+        publicKey: 'sk-ssh-ed25519@openssh.com AAAA...',
+        privateKeyPath: '/home/alun/.ssh/id_ed25519_sk',
+        publicKeyPath: '/home/alun/.ssh/id_ed25519_sk.pub',
+      });
+    window.multissh = {
+      ...window.multissh,
+      fido2GenerateKey,
+      fido2ListResidentKeys: vi.fn().mockResolvedValue([]),
+    } as unknown as typeof window.multissh;
+
+    const initialConfig: SSHConnectionConfig = {
+      id: 'test-fido2',
+      name: 'Fido2 Host',
+      host: 'fido2.example.com',
+      port: 22,
+      username: 'admin',
+      authType: 'fido2',
+      fido2Resident: true,
+    };
+
+    render(<SSHProfileForm initial={initialConfig} onSave={vi.fn()} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate a new key on this security key/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Generate Key$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/A file already exists at \/home\/alun\/\.ssh\/id_ed25519_sk\./)).toBeInTheDocument();
+    });
+    const overwriteBtn = screen.getByRole('button', { name: /Overwrite/i });
+    expect(overwriteBtn).toBeInTheDocument();
+
+    fireEvent.click(overwriteBtn);
+
+    await waitFor(() => {
+      expect(fido2GenerateKey).toHaveBeenLastCalledWith(expect.objectContaining({ overwrite: true }));
+    });
+  });
 });

@@ -18,6 +18,28 @@ export class AgentLifecycleManager {
   private static spawnedPid: number | null = null;
   private static spawnedSocket: string | null = null;
   private static ensuringPromise: Promise<AgentStatus> | null = null;
+  private static activePrivateAgents = new Set<number>();
+  private static exitHandlersInstalled = false;
+
+  private static installExitHandlers(): void {
+    if (this.exitHandlersInstalled) return;
+    this.exitHandlersInstalled = true;
+
+    process.once('exit', () => {
+      this.killAllPrivateAgents();
+    });
+
+    const signalHandler = (sig: string) => {
+      this.killAllPrivateAgents();
+      process.exit(sig === 'SIGINT' ? 130 : 143);
+    };
+
+    // In non-test environments, catch process termination signals
+    if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+      process.once('SIGINT', () => signalHandler('SIGINT'));
+      process.once('SIGTERM', () => signalHandler('SIGTERM'));
+    }
+  }
 
   /**
    * Probes a Windows named pipe or Unix socket to check if it accepts connections.
@@ -216,7 +238,21 @@ export class AgentLifecycleManager {
    * knows not to kill it — see unloadCard() for how a caller actually evicts
    * just its own card from that shared agent afterwards.
    */
-  public static async spawnPrivateAgent(): Promise<{ pid: number; socketPath: string }> {
+  /**
+   * `extraEnv` is merged into the spawned `ssh-agent` process's own
+   * environment (e.g. SSH_ASKPASS/SSH_ASKPASS_REQUIRE) — needed for FIDO2
+   * keys with `verify-required`, which prompt for PIN+touch again on every
+   * future signature, not just when first loaded. Since that later prompt
+   * comes from the long-lived agent process itself (not the one-off
+   * `ssh-add` call that loaded the key), giving the *loader* an askpass env
+   * isn't enough on its own — without this, the agent falls back to
+   * whatever SSH_ASKPASS this app process itself inherited (e.g. the
+   * desktop's own ksshaskpass/gnome-ssh-askpass), popping up an
+   * unstyled system dialog instead of this app's own PIN modal. Ignored on
+   * Windows, which reuses the shared system agent service rather than
+   * spawning its own process.
+   */
+  public static async spawnPrivateAgent(extraEnv?: Record<string, string>): Promise<{ pid: number; socketPath: string }> {
     if (process.platform === 'win32') {
       const pipe = '\\\\.\\pipe\\openssh-ssh-agent';
       if (await this.probeSocket(pipe)) {
@@ -228,7 +264,9 @@ export class AgentLifecycleManager {
       );
     }
 
-    const { stdout } = await execFileAsync('ssh-agent', ['-s']);
+    const { stdout } = await execFileAsync('ssh-agent', ['-s'], {
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
     const sockMatch = stdout.match(/SSH_AUTH_SOCK=([^;]+);/);
     const pidMatch = stdout.match(/SSH_AGENT_PID=(\d+);/);
 
@@ -236,7 +274,12 @@ export class AgentLifecycleManager {
       throw new Error('Failed to parse ssh-agent output while spawning a private agent.');
     }
 
-    return { pid: parseInt(pidMatch[1], 10), socketPath: sockMatch[1].trim() };
+    this.installExitHandlers();
+    const pid = parseInt(pidMatch[1], 10);
+    if (pid > 0) {
+      this.activePrivateAgents.add(pid);
+    }
+    return { pid, socketPath: sockMatch[1].trim() };
   }
 
   /**
@@ -246,11 +289,28 @@ export class AgentLifecycleManager {
    */
   public static killPrivateAgent(pid: number): void {
     if (pid <= 0) return;
+    this.activePrivateAgents.delete(pid);
     try {
       process.kill(pid, 'SIGTERM');
     } catch {
       // Already dead or permission denied
     }
+  }
+
+  /**
+   * Terminates every private agent currently tracked as spawned by this process.
+   */
+  public static killAllPrivateAgents(): void {
+    for (const pid of this.activePrivateAgents) {
+      if (pid > 0) {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {
+          // Already dead or permission denied
+        }
+      }
+    }
+    this.activePrivateAgents.clear();
   }
 
   /**
@@ -299,6 +359,7 @@ export class AgentLifecycleManager {
    * For testing: resets internal state.
    */
   public static _reset(): void {
+    this.killAllPrivateAgents();
     this.spawnedPid = null;
     this.spawnedSocket = null;
     this.ensuringPromise = null;

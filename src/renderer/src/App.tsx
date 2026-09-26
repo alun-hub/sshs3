@@ -3,6 +3,7 @@ import { Cloud, Columns2, Folder, Rows2, Server, Square, Terminal } from 'lucide
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
+import { TouchPresenceBanner } from './components/TouchPresenceBanner';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
@@ -901,6 +902,9 @@ export const App: React.FC = () => {
 
       {/* Global Smartcard PIN Modal */}
       <SmartcardPinModal />
+
+      {/* Global "touch your YubiKey/smartcard" banner */}
+      <TouchPresenceBanner />
 
       {/* Global SFTP host key trust-on-first-use dialog */}
       <HostKeyTrustModal />

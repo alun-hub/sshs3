@@ -5,6 +5,9 @@ import type {
   DetectedSmartcardLib,
   CachedSmartcardAgent,
   XServerStatus,
+  GenerateFido2KeyRequest,
+  GeneratedFido2Key,
+  Fido2ResidentKey,
 } from './ssh';
 import type {
   FileEntry,
@@ -70,6 +73,11 @@ export const IPC_CHANNELS = {
   SMARTCARD_UNLOCK_AT_STARTUP: 'smartcard:unlock-at-startup',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
+  PRESENCE_PROMPT: 'presence:prompt',
+  PRESENCE_CLEAR: 'presence:clear',
+  FIDO2_GENERATE_KEY: 'fido2:generate-key',
+  FIDO2_LIST_RESIDENT_KEYS: 'fido2:list-resident-keys',
+  FIDO2_DELETE_RESIDENT_KEY: 'fido2:delete-resident-key',
 
   // SFTP host key verification (TOFU)
   HOSTKEY_PROMPT: 'hostkey:prompt',
@@ -247,6 +255,38 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
+/** Informational only — no reply is expected or accepted, unlike an Askpass prompt. */
+export interface PresencePromptEvent {
+  id: string;
+  sessionId?: string;
+  message: string;
+}
+
+export interface PresenceClearEvent {
+  id?: string;
+  sessionId?: string;
+}
+
+/**
+ * `kind` tells the renderer which physical credential this PIN belongs to
+ * (FIDO2 security key vs PIV smartcard) so the modal can label itself
+ * correctly instead of leaving the user to guess from OpenSSH's own raw
+ * prompt text, which doesn't consistently say so. Set explicitly by
+ * whichever flow requested the prompt — never inferred from the prompt
+ * string itself, since that text varies across OpenSSH/libfido2 versions.
+ * Undefined for prompts this app can't attribute (e.g. a plain account
+ * password or key passphrase) — the modal falls back to generic wording.
+ */
+export type AskpassPromptKind = 'smartcard' | 'fido2' | 'password';
+
+export interface AskpassPromptEvent {
+  id: string;
+  prompt: string;
+  sessionId?: string;
+  kind?: AskpassPromptKind;
+  context?: string;
+}
+
 export interface HostKeyPromptEvent {
   id: string;
   host: string;
@@ -325,8 +365,18 @@ export interface MultiSSHApi {
   smartcardListCached(): Promise<CachedSmartcardAgent[]>;
   /** Called once on renderer startup; a no-op unless 'agent-global' PIN caching + the startup-unlock setting are both on and exactly one PKCS#11 library is detected. */
   smartcardUnlockAtStartup(): Promise<{ started: boolean }>;
-  onAskpassPrompt(callback: (event: { id: string; prompt: string; sessionId?: string }) => void): () => void;
+  onAskpassPrompt(callback: (event: AskpassPromptEvent) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
+  /** Fired when a smartcard/FIDO2 operation is blocked waiting for a physical touch. Informational only. */
+  onPresencePrompt(callback: (event: PresencePromptEvent) => void): () => void;
+  /** Fired once the operation that triggered a matching `onPresencePrompt` id has finished. */
+  onPresenceClear(callback: (event: PresenceClearEvent) => void): () => void;
+
+  // FIDO2 / hardware security keys
+  fido2GenerateKey(options: GenerateFido2KeyRequest): Promise<GeneratedFido2Key>;
+  fido2ListResidentKeys(): Promise<Fido2ResidentKey[]>;
+  /** Only valid for an entry whose `credentialId` was set (i.e. sourced from `ykman`, see Fido2ResidentKey). */
+  fido2DeleteResidentKey(credentialId: string): Promise<void>;
 
   // SFTP host key verification (TOFU)
   onHostKeyPrompt(callback: (event: HostKeyPromptEvent) => void): () => void;

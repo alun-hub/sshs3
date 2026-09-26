@@ -5,13 +5,19 @@ import '@testing-library/jest-dom/vitest';
 import { SmartcardPinModal } from '../../src/renderer/src/components/SmartcardPinModal';
 
 describe('SmartcardPinModal Component', () => {
-  let promptCallback: ((event: { id: string; prompt: string; sessionId?: string }) => void) | null = null;
-  const mockUnsubscribe = vi.fn();
+  let promptCallback:
+    | ((event: { id: string; prompt: string; sessionId?: string; kind?: 'smartcard' | 'fido2' }) => void)
+    | null = null;
+  let presenceClearCallback: ((event: { id?: string; sessionId?: string }) => void) | null = null;
+  const mockUnsubscribeAskpass = vi.fn();
+  const mockUnsubscribePresenceClear = vi.fn();
   const mockSubmitAskpassPin = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
+    presenceClearCallback = null;
     promptCallback = null;
-    mockUnsubscribe.mockClear();
+    mockUnsubscribeAskpass.mockClear();
+    mockUnsubscribePresenceClear.mockClear();
     mockSubmitAskpassPin.mockClear();
 
     // Mock window.multissh
@@ -19,7 +25,11 @@ describe('SmartcardPinModal Component', () => {
       ...(window.multissh || {}),
       onAskpassPrompt: vi.fn((cb) => {
         promptCallback = cb;
-        return mockUnsubscribe;
+        return mockUnsubscribeAskpass;
+      }),
+      onPresenceClear: vi.fn((cb) => {
+        presenceClearCallback = cb;
+        return mockUnsubscribePresenceClear;
       }),
       submitAskpassPin: mockSubmitAskpassPin,
     } as any;
@@ -132,6 +142,214 @@ describe('SmartcardPinModal Component', () => {
     const { unmount } = render(<SmartcardPinModal />);
     unmount();
 
-    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribeAskpass).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribePresenceClear).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels the modal as FIDO2 when the prompt carries kind "fido2"', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-fido2',
+        prompt: "Enter PIN for authenticator:",
+        kind: 'fido2',
+      });
+    });
+
+    expect(screen.getByText('FIDO2 / Security Key Authentication')).toBeInTheDocument();
+    expect(screen.queryByText('Smartcard / PIV Authentication')).not.toBeInTheDocument();
+  });
+
+  it('labels the modal as Smartcard/PIV when the prompt carries kind "smartcard"', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-smartcard',
+        prompt: "Enter PIN for 'PIV_II':",
+        kind: 'smartcard',
+      });
+    });
+
+    expect(screen.getByText('Smartcard / PIV Authentication')).toBeInTheDocument();
+    expect(screen.queryByText('FIDO2 / Security Key Authentication')).not.toBeInTheDocument();
+  });
+
+  it('shows a touch hint when the agent\'s own prompt asks to confirm user presence', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-presence',
+        prompt: 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc123: ',
+        kind: 'fido2',
+      });
+    });
+
+    expect(screen.getByText(/Touch your security key after submitting/i)).toBeInTheDocument();
+  });
+
+  it('does not show a touch hint for a plain PIN prompt with no presence requirement', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-plain',
+        prompt: 'Enter PIN for authenticator: ',
+        kind: 'fido2',
+      });
+    });
+
+    expect(screen.queryByText(/Touch your security key after submitting/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to generic wording when the prompt carries no kind', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-generic',
+        prompt: 'Enter passphrase:',
+      });
+    });
+
+    expect(screen.getByText('Security Authentication')).toBeInTheDocument();
+  });
+
+  describe('the lingering "touch now" banner after submit', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('appears after submitting a presence-needing prompt, even though the modal itself closes', async () => {
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({
+          id: 'askpass-presence',
+          prompt: 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc123: ',
+          kind: 'fido2',
+        });
+      });
+
+      const input = screen.getByTestId('smartcard-pin-input');
+      fireEvent.change(input, { target: { value: '123456' } });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+
+      expect(screen.queryByTestId('smartcard-pin-modal')).not.toBeInTheDocument();
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+      expect(screen.getByText(/Touch your security key now/i)).toBeInTheDocument();
+    });
+
+    it('does not appear for a plain PIN prompt with no presence requirement', async () => {
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({ id: 'askpass-plain', prompt: 'Enter PIN for authenticator: ' });
+      });
+
+      fireEvent.change(screen.getByTestId('smartcard-pin-input'), { target: { value: '123456' } });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+
+      expect(screen.queryByTestId('smartcard-awaiting-touch-banner')).not.toBeInTheDocument();
+    });
+
+    it('auto-clears on its own after the timeout', async () => {
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({
+          id: 'askpass-presence',
+          prompt: 'Confirm user presence for key ED25519-SK SHA256:abc123',
+        });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+
+      expect(screen.queryByTestId('smartcard-awaiting-touch-banner')).not.toBeInTheDocument();
+    });
+
+    it('is cleared early by onPresenceClear event for matching session', async () => {
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({
+          id: 'askpass-presence',
+          sessionId: 'session-42',
+          prompt: 'Confirm user presence for key ED25519-SK SHA256:abc123',
+        });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+
+      // Presence clear event arrives for matching session
+      act(() => {
+        presenceClearCallback!({ sessionId: 'session-42' });
+      });
+
+      expect(screen.queryByTestId('smartcard-awaiting-touch-banner')).not.toBeInTheDocument();
+    });
+
+    it('is cleared early by a new incoming prompt rather than lingering underneath it', async () => {
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({ id: 'askpass-presence-1', prompt: 'Confirm user presence for key ED25519-SK SHA256:abc123' });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+
+      act(() => {
+        promptCallback!({ id: 'askpass-next', prompt: 'Enter PIN for authenticator: ' });
+      });
+
+      expect(screen.queryByTestId('smartcard-awaiting-touch-banner')).not.toBeInTheDocument();
+    });
+
+    it('survives a second touch-needing prompt arriving right behind the first, instead of being wiped before it can be seen', async () => {
+      // Regression test for the real-world sequence reported: "Confirm user presence for key ..."
+      // immediately followed by "Enter PIN and confirm user presence for ... key ...: " — both
+      // need touch, and the second one used to race the first submission's reset effect, clearing
+      // the banner in the same tick it appeared so it was never actually visible on screen.
+      render(<SmartcardPinModal />);
+
+      act(() => {
+        promptCallback!({ id: 'askpass-presence-1', prompt: 'Confirm user presence for key ED25519-SK SHA256:abc123' });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('smartcard-pin-submit'));
+      });
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+
+      // The second presence prompt arrives immediately after, before the user has done anything else.
+      act(() => {
+        promptCallback!({
+          id: 'askpass-presence-2',
+          prompt: 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc123: ',
+        });
+      });
+
+      expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
+      expect(screen.getByTestId('smartcard-pin-modal')).toBeInTheDocument();
+    });
   });
 });

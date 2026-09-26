@@ -317,4 +317,35 @@ describe('TerminalView Component', () => {
     const termView = screen.getByTestId('terminal-view');
     expect(termView).toHaveClass('bg-[#232627]');
   });
+
+  it('defers terminalCreate when mounted with isActive=false until isActive becomes true', async () => {
+    const { rerender } = render(<TerminalView config={sampleConfig} isActive={false} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Background tab should NOT have triggered terminalCreate on mount
+    expect(mockTerminalCreate).not.toHaveBeenCalled();
+
+    // Now tab becomes active (user clicks the tab)
+    rerender(<TerminalView config={sampleConfig} isActive={true} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockTerminalCreate).toHaveBeenCalledTimes(1);
+
+    // Switching away (isActive = false) should NOT kill or recreate the session
+    rerender(<TerminalView config={sampleConfig} isActive={false} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockTerminalKill).not.toHaveBeenCalled();
+    expect(mockTerminalCreate).toHaveBeenCalledTimes(1);
+  });
 });
+

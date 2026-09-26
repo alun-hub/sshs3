@@ -195,8 +195,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
    * Builds one or more candidate connect option sets, tried in order until one
    * succeeds. An explicit password or private key is used as-is (single
    * candidate). Otherwise - no credential configured, or authType 'agent' /
-   * 'smartcard' (ssh2 has no PKCS#11 support) - falls back to ssh-agent and
-   * then the user's default identity files, same as a bare `ssh host` would.
+   * 'smartcard' / 'fido2' (ssh2 has no PKCS#11 or libfido2 support of its
+   * own) - falls back to ssh-agent and then the user's default identity
+   * files, same as a bare `ssh host` would. A 'fido2' profile pointing at a
+   * key *file* (privateKeyPath, non-resident) is NOT read directly here even
+   * though privateKeyPath is set - ssh2 can't parse the `-sk` key format, so
+   * it must go through the agent fallback below too, same as resident mode.
    */
   private buildConnectCandidates(): Record<string, any>[] {
     const base: Record<string, any> = {

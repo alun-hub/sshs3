@@ -88,7 +88,9 @@ export interface IStorageProvider {
   getPresignedUrl?(remotePath: string, expiresInSeconds: number): Promise<string>;
 }
 
-export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent';
+// 'fido2' behaves like 'smartcard'/'agent' here: ssh2 has no libfido2 support of its own, so it
+// only ever works via an already-loaded ssh-agent (see SFTPStorageProvider.buildConnectCandidates).
+export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent' | 'fido2';
 
 export type ProxyType = 'http' | 'socks5' | 'socks4';
 
@@ -114,6 +116,8 @@ export interface SFTPConfig {
   agentPath?: string;
   pkcs11LibPath?: string;
   pin?: string;
+  /** authType 'fido2' only — see SSHConnectionConfig.fido2Resident. */
+  fido2Resident?: boolean;
   initialPath?: string;
   proxy?: ProxyConfig;
   proxyJump?: string;

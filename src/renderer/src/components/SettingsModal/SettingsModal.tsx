@@ -1149,9 +1149,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Smartcard PIN caching */}
                   <div className="space-y-2">
                     <div>
-                      <label className="text-xs font-medium text-txt-primary">Smartcard PIN Caching</label>
+                      <label className="text-xs font-medium text-txt-primary">Smartcard & Security Key PIN Caching</label>
                       <p className="text-[11px] text-txt-muted">
-                        Applies to every smartcard/PKCS#11 profile.
+                        Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.
                       </p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1174,7 +1174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>Always Prompt (Default)</span>
                         </div>
                         <span className="text-[11px] text-txt-muted leading-tight">
-                          No caching. Every connection that needs the card (terminal, dotfiles sync) prompts for its
+                          No caching. Every connection that needs the card or security key (terminal, dotfiles sync) prompts for its
                           own PIN. Use this if your organization requires re-authentication on every login.
                         </span>
                       </label>
@@ -1223,8 +1223,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>Global (App Lifetime)</span>
                         </div>
                         <span className="text-[11px] text-txt-muted leading-tight">
-                          Enter the PIN once per card, shared by every terminal and profile using it, for as long as
-                          the app runs. Most convenient, least strict — anything in the app can use the card until
+                          Enter the PIN once per card or key, shared by every terminal and profile using it, for as long as
+                          the app runs. Most convenient, least strict — anything in the app can use the card/key until
                           you quit or lock it manually below.
                         </span>
                       </label>
@@ -1233,7 +1233,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {smartcardAuthMode === 'agent-global' && (
                       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">
                         <p className="text-[11px] text-amber-300/90 leading-tight">
-                          Cached smartcard agents stay unlocked until the app quits. Use the lock icon in the top bar
+                          Cached smartcard and security key agents stay unlocked until the app quits. Use the lock icon in the top bar
                           to lock them on demand without quitting.
                         </p>
                         <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary border-t border-amber-500/20 pt-2.5">

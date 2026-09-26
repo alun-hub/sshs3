@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
@@ -9,7 +10,13 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
-import { loadSmartcardIntoPrivateAgent, listAgentIdentities } from './smartcard/SmartcardAgentLoader';
+import {
+  loadSmartcardIntoPrivateAgent,
+  loadFido2ResidentKeysIntoPrivateAgent,
+  listAgentIdentities,
+} from './smartcard/SmartcardAgentLoader';
+import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
+import type { AskpassPromptHandler, AskpassServer } from './smartcard/AskpassServer';
 import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
@@ -60,11 +67,14 @@ import {
   IPC_CHANNELS,
   type StorageConnectConfig,
   type HostKeyPromptEvent,
+  type PresencePromptEvent,
+  type PresenceClearEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type AwsSsoPromptEvent,
   type DirSyncComputeDiffOptions,
   type DirSyncApplyOptions,
+  type AskpassPromptKind,
 } from '../shared/types/ipc';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type {
@@ -86,6 +96,9 @@ import type {
   PtyOptions,
   SSHPtyExitEvent,
   CachedSmartcardAgent,
+  GenerateFido2KeyRequest,
+  GeneratedFido2Key,
+  Fido2ResidentKey,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -185,11 +198,19 @@ export class IpcBridge {
   private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
-  private smartcardSessionAgents = new Map<string, { pid: number; socketPath: string; pkcs11LibPath: string }>();
-  /** pkcs11LibPath -> the app-lifetime shared agent for 'agent-global' mode, keyed per smartcard library so multiple different cards can each be cached independently. */
-  private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string }>();
-  /** pkcs11LibPath -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
-  private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string }>>();
+  private smartcardSessionAgents = new Map<
+    string,
+    { pid: number; socketPath: string } & (
+      | { kind: 'pkcs11'; pkcs11LibPath: string }
+      | { kind: 'fido2'; askpassServer?: AskpassServer }
+    )
+  >();
+  /** pkcs11LibPath or '__fido2__' -> the app-lifetime shared agent for 'agent-global' mode, keyed per smartcard library/fido2 so multiple different cards can each be cached independently. */
+  private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string; askpassServer?: AskpassServer }>();
+  /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
+  private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string; askpassServer?: AskpassServer }>>();
+  private globalSmartcardAgentFailures = new Map<string, number>();
+  private startupUnlockPromise?: Promise<void>;
   /**
    * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
    * global agent, instead of on every "cached smartcard identities" dropdown open. Re-reading on
@@ -205,11 +226,18 @@ export class IpcBridge {
   private lastSmartcardAutoUnlockAttempt = 0;
   private static readonly AUTO_PULL_INTERVAL_MS = 10 * 60 * 1000;
   private static readonly SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS = 5 * 60 * 1000;
+  private activePresenceSessions = new Set<string>();
 
   // Event listener references for clean teardown
   private onPtyData?: (event: { sessionId: string; data: string }) => void;
   private onPtyExit?: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
-  private onPtyAskpass?: (event: { sessionId: string; prompt: string; callback: (pin: string) => void }) => void;
+  private onPtyAskpass?: (event: {
+    sessionId: string;
+    prompt: string;
+    kind?: AskpassPromptKind;
+    context?: string;
+    callback: (pin: string) => void;
+  }) => void;
   private onTransferProgress?: (progress: TransferProgress) => void;
   private onK8sTerminalData?: (event: { sessionId: string; data: string }) => void;
   private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
@@ -320,9 +348,18 @@ export class IpcBridge {
           throw new Error('Connection config is required to create terminal');
         }
 
+        if (this.startupUnlockPromise) {
+          try {
+            await this.startupUnlockPromise;
+          } catch {
+            // Ignore error; terminal session proceeds and prompts if needed
+          }
+        }
+
         let config = options.config;
         if (!options.local && config) {
           config = await this.prepareSmartcardConfig(config);
+          config = await this.prepareFido2Config(config);
 
           if (config.x11Forwarding && process.platform === 'win32') {
             try {
@@ -458,6 +495,43 @@ export class IpcBridge {
         prompt.callback(Boolean(trust));
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.FIDO2_GENERATE_KEY,
+      async (_event, options: GenerateFido2KeyRequest): Promise<GeneratedFido2Key> => {
+        const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+          undefined,
+          'Touch your security key to authorize the new SSH key'
+        );
+        return generateFido2Key({
+          ...options,
+          promptHandler: (prompt) => this.promptForPinDirect(prompt, 'fido2'),
+          onPresenceRequested,
+          onPresenceCleared,
+        });
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FIDO2_LIST_RESIDENT_KEYS,
+      async (): Promise<Fido2ResidentKey[]> => {
+        const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+          undefined,
+          'Touch your security key to read its stored SSH keys'
+        );
+        return listFido2ResidentKeys(
+          (prompt) => this.promptForPinDirect(prompt, 'fido2'),
+          { onPresenceRequested, onPresenceCleared }
+        );
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.FIDO2_DELETE_RESIDENT_KEY,
+      async (_event, credentialId: string): Promise<void> => {
+        return deleteFido2ResidentKey(credentialId, (prompt) => this.promptForPinDirect(prompt, 'fido2'));
+      }
+    );
   }
 
   /**
@@ -483,10 +557,17 @@ export class IpcBridge {
   }
 
   /**
-   * Directly prompts the user for a smartcard PIN (e.g. during sync unlock/link)
-   * via the standard Askpass modal in the renderer.
+   * Directly prompts the user for a PIN (e.g. during sync unlock/link, or a
+   * FIDO2 key generation/discovery flow) via the standard Askpass modal in
+   * the renderer. `kind` lets the modal label itself as FIDO2/security key
+   * vs PIV/smartcard rather than showing generic wording — pass it whenever
+   * the caller knows which credential this PIN belongs to.
    */
-  public promptForPinDirect(prompt = 'Enter smartcard PIN:'): Promise<string> {
+  public promptForPinDirect(
+    prompt = 'Enter smartcard PIN:',
+    kind?: AskpassPromptKind,
+    context?: string
+  ): Promise<string> {
     return new Promise((resolve) => {
       const webContents = this.getWebContents();
       if (!webContents || webContents.isDestroyed?.()) {
@@ -496,8 +577,64 @@ export class IpcBridge {
 
       const id = crypto.randomUUID();
       this.pendingAskpass.set(id, { callback: resolve });
-      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt });
+      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, kind, context });
     });
+  }
+
+  /**
+   * Loads a PKCS#11 module into a private ssh-agent (see
+   * `loadSmartcardIntoPrivateAgent`), additionally surfacing a
+   * "touch your key" banner in the renderer for as long as the underlying
+   * `ssh-add -s` looks like it's blocked waiting for a physical touch.
+   * Every IpcBridge call site that spawns a private smartcard agent should
+   * go through this instead of calling `loadSmartcardIntoPrivateAgent`
+   * directly, so the banner appears consistently regardless of which flow
+   * (interactive connect, background sync, vault unlock/link) triggered it.
+   */
+  private loadSmartcardIntoPrivateAgentWithPresence(
+    pkcs11LibPath: string,
+    promptHandler: AskpassPromptHandler,
+    sessionId?: string
+  ): ReturnType<typeof loadSmartcardIntoPrivateAgent> {
+    const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+      sessionId,
+      'Touch your YubiKey / smartcard to confirm'
+    );
+    return loadSmartcardIntoPrivateAgent(pkcs11LibPath, promptHandler, { onPresenceRequested, onPresenceCleared });
+  }
+
+  /**
+   * Builds a fresh (id-scoped) pair of onPresenceRequested/onPresenceCleared
+   * callbacks that surface a "touch your key" banner in the renderer,
+   * shared by every flow that spawns a private agent for a physical
+   * key/card — PIV smartcards (`loadSmartcardIntoPrivateAgentWithPresence`)
+   * and FIDO2 resident-key discovery/generation alike.
+   */
+  private makePresenceNotifier(
+    sessionId: string | undefined,
+    message: string
+  ): { onPresenceRequested: () => void; onPresenceCleared: () => void } {
+    const id = crypto.randomUUID();
+    return {
+      onPresenceRequested: () => {
+        if (sessionId) {
+          this.activePresenceSessions.add(sessionId);
+        }
+        const webContents = this.getWebContents();
+        if (!webContents || webContents.isDestroyed?.()) return;
+        const event: PresencePromptEvent = { id, sessionId, message };
+        webContents.send(IPC_CHANNELS.PRESENCE_PROMPT, event);
+      },
+      onPresenceCleared: () => {
+        if (sessionId) {
+          this.activePresenceSessions.delete(sessionId);
+        }
+        const webContents = this.getWebContents();
+        if (!webContents || webContents.isDestroyed?.()) return;
+        const event: PresenceClearEvent = { id, sessionId };
+        webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
+      },
+    };
   }
 
   /**
@@ -530,8 +667,14 @@ export class IpcBridge {
       IPC_CHANNELS.STORAGE_CONNECT,
       async (_event, config: StorageConnectConfig) => {
         let resolvedConfig = config;
+        if (config.type === 'sftp' && this.startupUnlockPromise) {
+          try {
+            await this.startupUnlockPromise;
+          } catch {}
+        }
         if (config.type === 'sftp' && config.sftpConfig && !this.storageRegistry.has(config.id)) {
-          const sftpConfig = await this.prepareSftpSmartcardConfig(config.sftpConfig, config.id);
+          let sftpConfig = await this.prepareSftpSmartcardConfig(config.sftpConfig, config.id);
+          sftpConfig = await this.prepareFido2SftpConfig(sftpConfig, config.id);
           resolvedConfig = { ...config, sftpConfig };
         }
         await this.storageRegistry.getOrCreate(resolvedConfig);
@@ -1066,6 +1209,39 @@ export class IpcBridge {
   }
 
   /**
+   * For 'fido2' profiles using a discoverable/resident credential (no
+   * privateKeyPath), loads every resident credential on the connected
+   * security key into a private ssh-agent *before* the PTY is spawned, same
+   * rationale as prepareSmartcardConfig: only one process should ever open a
+   * session against the physical key at a time, and the PTY then just points
+   * at that agent via IdentityAgent instead of needing a key file on disk.
+   *
+   * Always spawns a fresh private agent per session (no 'agent-global'-style
+   * caching, unlike PIV) — resident FIDO2 credentials are rarer and the
+   * caching machinery in resolveSmartcardAgentPath is keyed by PKCS#11
+   * library path, which doesn't apply here. A follow-up can add caching if
+   * repeated per-connection touches turn out to be annoying in practice.
+   *
+   * A non-resident 'fido2' profile (privateKeyPath set) is a no-op here —
+   * OpenSSH's own `-i` handling already deals with `-sk` key files natively.
+   */
+  private async prepareFido2Config(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
+      return config;
+    }
+
+    const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
+    const configWithId = { ...config, id: sessionId };
+
+    const agentPath = await this.resolveFido2AgentPath(
+      sessionId,
+      `connecting to ${config.name || config.host}`,
+      'pty'
+    );
+    return agentPath ? { ...configWithId, agentPath } : configWithId;
+  }
+
+  /**
    * Same agent-caching logic as prepareSmartcardConfig, applied to an SFTP connection (used by
    * the file manager's own STORAGE_CONNECT, which — unlike terminals — never went through
    * prepareSmartcardConfig, so it always spawned its own ephemeral PKCS#11 agent even when a
@@ -1087,6 +1263,133 @@ export class IpcBridge {
       `connect via SFTP to ${config.name || config.host}`
     );
     return agentPath ? { ...config, agentPath } : config;
+  }
+
+  /** Same rationale as prepareFido2Config, applied to an SFTP connection (see prepareSftpSmartcardConfig). */
+  private async prepareFido2SftpConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
+    if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
+      return config;
+    }
+
+    const agentPath = await this.resolveFido2AgentPath(
+      providerId,
+      `connecting via SFTP to ${config.name || config.host}`,
+      'direct'
+    );
+    return agentPath ? { ...config, agentPath } : config;
+  }
+
+  /**
+   * Resolves (loading it if necessary) the ssh-agent socket to use for FIDO2 resident keys,
+   * per the user's Settings > Security & Smartcard > Smartcard & Security Key PIN Caching mode.
+   */
+  private async resolveFido2AgentPath(
+    sessionId: string,
+    promptLabel: string,
+    pinPromptKind: 'pty' | 'direct' = 'pty'
+  ): Promise<string | undefined> {
+    const settings = await this.settingsStore.getSettings();
+    const mode = settings.smartcardAuthMode ?? 'always-prompt';
+
+    if (mode === 'agent-global') {
+      try {
+        return await this.getOrLoadGlobalFido2Agent(sessionId, promptLabel, pinPromptKind);
+      } catch (err) {
+        console.warn(
+          'IpcBridge: failed to load FIDO2 resident keys into the global agent, falling back to per-connection prompts:',
+          err
+        );
+        return undefined;
+      }
+    }
+
+    if (mode !== 'agent-per-session' && mode !== 'always-prompt') {
+      return undefined;
+    }
+
+    console.log(`[fido2] resolveFido2AgentPath: starting shared-agent preload for session ${sessionId}`);
+    const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+      sessionId,
+      'Touch your security key to connect'
+    );
+    try {
+      const promptPin = (rawPrompt: string) =>
+        pinPromptKind === 'direct'
+          ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel)
+          : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel);
+
+      const { pid, socketPath, askpassServer } = await loadFido2ResidentKeysIntoPrivateAgent(
+        promptPin,
+        { onPresenceRequested, onPresenceCleared, keepAskpassAliveForAgentLifetime: true }
+      );
+      this.smartcardSessionAgents.set(sessionId, { pid, socketPath, kind: 'fido2', askpassServer });
+      return socketPath;
+    } catch (err) {
+      console.warn('IpcBridge: failed to load FIDO2 resident keys into a private session agent:', err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Returns the socket path for the app-lifetime shared agent holding FIDO2 resident credentials,
+   * loading it (prompting for the PIN once) if it isn't already cached. Concurrent callers share
+   * the same in-flight load rather than each spawning their own agent.
+   */
+  private async getOrLoadGlobalFido2Agent(
+    sessionId: string,
+    promptLabel: string,
+    pinPromptKind: 'pty' | 'direct' = 'pty'
+  ): Promise<string> {
+    const cached = this.globalSmartcardAgents.get('__fido2__');
+    if (cached) {
+      console.log('[fido2] getOrLoadGlobalFido2Agent: reusing cached global agent');
+      return cached.socketPath;
+    }
+
+    const lastFailedAt = this.globalSmartcardAgentFailures.get('__fido2__');
+    if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
+      console.log('[fido2] getOrLoadGlobalFido2Agent: skipping load (failed recently)');
+      throw new Error('FIDO2 agent load failed recently; cooling down');
+    }
+
+    const inFlight = this.globalSmartcardAgentLoads.get('__fido2__');
+    if (inFlight) {
+      console.log('[fido2] getOrLoadGlobalFido2Agent: awaiting in-flight load');
+      const { socketPath } = await inFlight;
+      return socketPath;
+    }
+
+    console.log('[fido2] getOrLoadGlobalFido2Agent: loading global agent for FIDO2');
+    const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+      sessionId,
+      'Touch your security key to connect'
+    );
+
+    const promptPin = (rawPrompt: string) =>
+      pinPromptKind === 'direct'
+        ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel)
+        : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel);
+
+    const loadPromise = loadFido2ResidentKeysIntoPrivateAgent(
+      promptPin,
+      { onPresenceRequested, onPresenceCleared, keepAskpassAliveForAgentLifetime: true }
+    );
+    this.globalSmartcardAgentLoads.set('__fido2__', loadPromise);
+
+    try {
+      const result = await loadPromise;
+      this.globalSmartcardAgentFailures.delete('__fido2__');
+      this.globalSmartcardAgents.set('__fido2__', result);
+      console.log(
+        `[fido2] getOrLoadGlobalFido2Agent: loaded OK, pid=${result.pid}, socket=${result.socketPath}`
+      );
+      return result.socketPath;
+    } catch (err) {
+      this.globalSmartcardAgentFailures.set('__fido2__', Date.now());
+      throw err;
+    } finally {
+      this.globalSmartcardAgentLoads.delete('__fido2__');
+    }
   }
 
   /**
@@ -1126,13 +1429,15 @@ export class IpcBridge {
 
     console.log(`[smartcard] resolveSmartcardAgentPath: starting shared-agent preload for session ${sessionId}`);
     try {
-      const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(pkcs11LibPath, () =>
-        this.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`)
+      const { pid, socketPath } = await this.loadSmartcardIntoPrivateAgentWithPresence(
+        pkcs11LibPath,
+        () => this.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`, 'smartcard', promptLabel),
+        sessionId
       );
       console.log(
         `[smartcard] resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
       );
-      this.smartcardSessionAgents.set(sessionId, { pid, socketPath, pkcs11LibPath });
+      this.smartcardSessionAgents.set(sessionId, { pid, socketPath, kind: 'pkcs11', pkcs11LibPath });
       return socketPath;
     } catch (err) {
       console.warn(
@@ -1160,6 +1465,12 @@ export class IpcBridge {
       return cached.socketPath;
     }
 
+    const lastFailedAt = this.globalSmartcardAgentFailures.get(pkcs11LibPath);
+    if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
+      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: skipping load for ${pkcs11LibPath} (failed recently)`);
+      throw new Error(`Smartcard load for ${pkcs11LibPath} failed recently; cooling down`);
+    }
+
     const inFlight = this.globalSmartcardAgentLoads.get(pkcs11LibPath);
     if (inFlight) {
       console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: awaiting in-flight load for ${pkcs11LibPath}`);
@@ -1171,7 +1482,13 @@ export class IpcBridge {
     const pinHandler =
       typeof sessionIdOrPinPrompt === 'function'
         ? sessionIdOrPinPrompt
-        : () => this.sshPtyManager.promptForPin(sessionIdOrPinPrompt, `Enter your smartcard PIN to ${promptLabel}:`);
+        : () =>
+            this.sshPtyManager.promptForPin(
+              sessionIdOrPinPrompt,
+              `Enter your smartcard PIN to ${promptLabel}:`,
+              'smartcard',
+              promptLabel
+            );
 
     const loadPromise = (async () => {
       // Read the certificate details *before* handing the module to `ssh-add -s` below (see
@@ -1190,17 +1507,25 @@ export class IpcBridge {
       } catch (err) {
         console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err);
       }
-      return loadSmartcardIntoPrivateAgent(pkcs11LibPath, pinHandler);
+      return this.loadSmartcardIntoPrivateAgentWithPresence(
+        pkcs11LibPath,
+        pinHandler,
+        typeof sessionIdOrPinPrompt === 'string' ? sessionIdOrPinPrompt : undefined
+      );
     })();
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
 
     try {
       const result = await loadPromise;
+      this.globalSmartcardAgentFailures.delete(pkcs11LibPath);
       this.globalSmartcardAgents.set(pkcs11LibPath, result);
       console.log(
         `[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, pid=${result.pid}, socket=${result.socketPath}`
       );
       return result.socketPath;
+    } catch (err) {
+      this.globalSmartcardAgentFailures.set(pkcs11LibPath, Date.now());
+      throw err;
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
     }
@@ -1220,9 +1545,25 @@ export class IpcBridge {
    * two different cards. Otherwise falls back to "exactly one candidate";
    * with zero or several non-p11-kit candidates there's no single card to
    * guess at, so it's left to the normal per-connection flow.
-   * Fire-and-forget from the caller's perspective — the PIN prompt itself
-   * resolves later via the renderer's askpass modal, same as every other
-   * smartcard load.
+   */
+  private paneTreeHasAuthType(node: unknown, authType: string): boolean {
+    if (!node || typeof node !== 'object') return false;
+    const n = node as Record<string, any>;
+    if (n.type === 'leaf') {
+      return n.config?.authType === authType;
+    }
+    if (Array.isArray(n.children)) {
+      return n.children.some((child) => this.paneTreeHasAuthType(child, authType));
+    }
+    return false;
+  }
+
+  /**
+   * 'agent-global' PIN caching + the opt-in "unlock at startup" setting: prompts
+   * for security credentials (FIDO2 resident keys and/or smartcard PIN) and loads them
+   * into app-lifetime global agents sequentially before terminal sessions start.
+   * Concurrent terminal session restorations await this startup unlock so that
+   * multiple connections never race against the physical security key hardware.
    */
   private async maybeUnlockSmartcardAtStartup(): Promise<{ started: boolean }> {
     const settings = await this.settingsStore.getSettings();
@@ -1232,19 +1573,75 @@ export class IpcBridge {
 
     const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
     const chosen = libs.find((lib) => lib.name === 'p11-kit') ?? (libs.length === 1 ? libs[0] : undefined);
-    if (!chosen) {
-      return { started: false };
-    }
-    const pkcs11LibPath = chosen.path;
-    if (this.globalSmartcardAgents.has(pkcs11LibPath) || this.globalSmartcardAgentLoads.has(pkcs11LibPath)) {
+
+    let hasFido2 = false;
+    let hasSmartcard = Boolean(chosen);
+
+    try {
+      const profiles = await this.profileStore.getProfiles();
+      if (profiles.ssh?.some((p) => p.authType === 'fido2')) {
+        hasFido2 = true;
+      }
+      if (profiles.ssh?.some((p) => p.authType === 'smartcard')) {
+        hasSmartcard = true;
+      }
+    } catch {}
+
+    try {
+      const session = await this.sessionStore.getSession();
+      if (session?.tabs) {
+        for (const tab of session.tabs) {
+          if (this.paneTreeHasAuthType(tab.paneTree, 'fido2')) hasFido2 = true;
+          if (this.paneTreeHasAuthType(tab.paneTree, 'smartcard')) hasSmartcard = true;
+        }
+      }
+    } catch {}
+
+    if (!hasFido2 && (!chosen || !hasSmartcard)) {
       return { started: false };
     }
 
-    void this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () =>
-      this.promptForPinDirect('Enter your smartcard PIN to unlock it for this app session:')
-    ).catch((err) => {
-      console.warn('[smartcard] Startup unlock failed:', err);
+    const fido2Active = this.globalSmartcardAgents.has('__fido2__') || this.globalSmartcardAgentLoads.has('__fido2__');
+    const smartcardActive = !chosen || !hasSmartcard || this.globalSmartcardAgents.has(chosen.path) || this.globalSmartcardAgentLoads.has(chosen.path);
+    if ((!hasFido2 || fido2Active) && (!chosen || !hasSmartcard || smartcardActive)) {
+      return { started: false };
+    }
+
+    const unlockPromise = (async () => {
+      // 1. FIDO2 resident keys unlock first (if configured and not yet active)
+      if (hasFido2 && !this.globalSmartcardAgents.has('__fido2__') && !this.globalSmartcardAgentLoads.has('__fido2__')) {
+        try {
+          console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
+          await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
+        } catch (err) {
+          console.warn('[fido2] Startup unlock failed or cancelled:', err);
+        }
+      }
+
+      // 2. Smartcard / PIV unlock second (if detected and not yet active)
+      if (chosen && hasSmartcard && !this.globalSmartcardAgents.has(chosen.path) && !this.globalSmartcardAgentLoads.has(chosen.path)) {
+        try {
+          console.log('[smartcard] Startup unlock: loading Smartcard into global agent...');
+          await this.getOrLoadGlobalSmartcardAgent(chosen.path, () =>
+            this.promptForPinDirect(
+              'Enter your smartcard PIN to unlock it for this app session:',
+              'smartcard',
+              'Startup: Global Agent Cache'
+            )
+          );
+        } catch (err) {
+          console.warn('[smartcard] Startup unlock failed or cancelled:', err);
+        }
+      }
+    })();
+
+    this.startupUnlockPromise = unlockPromise;
+    void unlockPromise.finally(() => {
+      if (this.startupUnlockPromise === unlockPromise) {
+        this.startupUnlockPromise = undefined;
+      }
     });
+
     return { started: true };
   }
 
@@ -1255,12 +1652,40 @@ export class IpcBridge {
    * manager SFTP connection (STORAGE_DISCONNECT).
    */
   private cleanupSmartcardSessionAgent(sessionId: string): void {
+    if (this.activePresenceSessions.has(sessionId)) {
+      this.activePresenceSessions.delete(sessionId);
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        const event: PresenceClearEvent = { sessionId };
+        webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
+      }
+    }
     const entry = this.smartcardSessionAgents.get(sessionId);
     if (entry === undefined) return;
     this.smartcardSessionAgents.delete(sessionId);
-    // Evict just this card first — killPrivateAgent() is a no-op on Windows
-    // (the socket is the shared system agent service, not a process we own).
-    void AgentLifecycleManager.unloadCard(entry.socketPath, entry.pkcs11LibPath);
+    if (entry.kind === 'pkcs11') {
+      // Evict just this card first — killPrivateAgent() is a no-op on Windows
+      // (the socket is the shared system agent service, not a process we own).
+      void AgentLifecycleManager.unloadCard(entry.socketPath, entry.pkcs11LibPath);
+    } else {
+      // See loadFido2ResidentKeysIntoPrivateAgent's keepAskpassAliveForAgentLifetime: this
+      // session's agent was given its own long-lived Askpass server so a *later* signature
+      // request (not just the initial load) still prompts through this app's own PIN modal —
+      // that server is never stopped anywhere else, so it must be torn down here or it leaks
+      // for the rest of the app's process lifetime.
+      void entry.askpassServer?.stop();
+      if (process.platform === 'win32') {
+        // Resident FIDO2 credentials have no library path to unload by, and `ssh-add -D`
+        // would nuke every identity in the shared Windows agent service, including ones
+        // unrelated apps loaded — so, unlike PKCS#11, there's currently no way to evict
+        // just this session's credentials from that shared agent. They stay loaded until
+        // the ssh-agent service itself is restarted. Non-Windows doesn't hit this: each
+        // session gets its own freshly-spawned agent process, torn down below.
+        console.warn(
+          `IpcBridge: session ${sessionId}'s FIDO2 resident credentials remain loaded in the shared Windows ssh-agent service (no per-credential eviction implemented yet)`
+        );
+      }
+    }
     AgentLifecycleManager.killPrivateAgent(entry.pid);
   }
 
@@ -1271,13 +1696,17 @@ export class IpcBridge {
    */
   private lockAllGlobalSmartcardAgents(): number {
     let count = 0;
-    for (const [pkcs11LibPath, { pid, socketPath }] of this.globalSmartcardAgents.entries()) {
-      void AgentLifecycleManager.unloadCard(socketPath, pkcs11LibPath);
+    for (const [key, { pid, socketPath, askpassServer }] of this.globalSmartcardAgents.entries()) {
+      if (key !== '__fido2__') {
+        void AgentLifecycleManager.unloadCard(socketPath, key);
+      }
+      void askpassServer?.stop();
       AgentLifecycleManager.killPrivateAgent(pid);
-      this.globalSmartcardCerts.delete(pkcs11LibPath);
+      this.globalSmartcardCerts.delete(key);
       count++;
     }
     this.globalSmartcardAgents.clear();
+    this.globalSmartcardAgentFailures.clear();
     return count;
   }
 
@@ -1299,7 +1728,7 @@ export class IpcBridge {
         const certsByFingerprint =
           this.globalSmartcardCerts.get(pkcs11LibPath) ?? new Map<string, SmartcardCertificateDetails>();
         return {
-          pkcs11LibPath,
+          pkcs11LibPath: pkcs11LibPath === '__fido2__' ? 'FIDO2 Security Key' : pkcs11LibPath,
           identities: identities.map((identity) => {
             const cert = certsByFingerprint.get(identity.fingerprint);
             return cert
@@ -1333,11 +1762,29 @@ export class IpcBridge {
     );
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
+    if (config.authType === 'smartcard' && config.pkcs11LibPath && !config.agentPath) {
+      const lastFailedAt = this.globalSmartcardAgentFailures.get(config.pkcs11LibPath);
+      if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
+        console.log(
+          `[smartcard] runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
+        );
+        return;
+      }
+    }
+
     const settings = await this.settingsStore.getSettings();
     if (!settings.dotfilesPoolEnabled) return;
 
     const pool = await this.dotfilePoolStore.getPool(config.poolId);
     if (!pool || pool.files.length === 0) return;
+
+    const session = this.sshPtyManager.getSession(sessionId);
+    const controlPath = session?.controlPath;
+
+    const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+      sessionId,
+      'Touch your security key to sync dotfiles...'
+    );
 
     const hostVerifier = createHostVerifier({
       host: config.host,
@@ -1351,13 +1798,21 @@ export class IpcBridge {
         ? () =>
             this.sshPtyManager.promptForPin(
               sessionId,
-              `Enter your smartcard PIN to sync dotfiles with ${config.name || config.host}:`
+              `Enter your smartcard PIN to sync dotfiles with ${config.name || config.host}:`,
+              'smartcard',
+              `Dotfiles Sync: ${config.name || config.host}`
             )
         : undefined;
 
     let provider: Awaited<ReturnType<DotfileSyncService['computeDiff']>>['provider'] | undefined;
     try {
-      const diff = await this.dotfileSyncService.computeDiff(config, pool, hostVerifier, pinPromptHandler);
+      const diff = await this.dotfileSyncService.computeDiff(config, pool, {
+        hostVerifier,
+        pinPromptHandler,
+        controlPath,
+        onPresence: onPresenceRequested,
+        onPresenceCleared,
+      });
       provider = diff.provider;
       if (diff.entries.length === 0) {
         return;
@@ -1727,7 +2182,10 @@ export class IpcBridge {
       ): Promise<ProfileSyncStatus> => {
         const pinHandler = async () => {
           if (options.pin) return options.pin;
-          return await this.promptForPinDirect('Enter your smartcard PIN to link this card to Remote Profile Sync:');
+          return await this.promptForPinDirect(
+            'Enter your smartcard PIN to link this card to Remote Profile Sync:',
+            'smartcard'
+          );
         };
 
         const settings = await this.settingsStore.getSettings();
@@ -1741,7 +2199,7 @@ export class IpcBridge {
         } else if (mode === 'agent-global') {
           socketPath = await this.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
         } else {
-          const agent = await loadSmartcardIntoPrivateAgent(options.pkcs11LibPath, pinHandler);
+          const agent = await this.loadSmartcardIntoPrivateAgentWithPresence(options.pkcs11LibPath, pinHandler);
           socketPath = agent.socketPath;
           privateAgentPid = agent.pid;
         }
@@ -1882,7 +2340,7 @@ export class IpcBridge {
 
     const pinHandler = async () => {
       if (options?.pin) return options.pin;
-      return await this.promptForPinDirect('Enter your smartcard PIN to unlock Remote Profile Sync:');
+      return await this.promptForPinDirect('Enter your smartcard PIN to unlock Remote Profile Sync:', 'smartcard');
     };
 
     const settings = await this.settingsStore.getSettings();
@@ -1896,7 +2354,7 @@ export class IpcBridge {
     } else if (mode === 'agent-global') {
       socketPath = await this.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
     } else {
-      const agent = await loadSmartcardIntoPrivateAgent(libPath, pinHandler);
+      const agent = await this.loadSmartcardIntoPrivateAgentWithPresence(libPath, pinHandler);
       socketPath = agent.socketPath;
       privateAgentPid = agent.pid;
     }
@@ -2050,6 +2508,26 @@ export class IpcBridge {
           const valid = await SmartcardDetector.validateLibraryPath(config.pkcs11LibPath);
           if (!valid) {
             return { success: false, error: `Smartcard library not found: ${config.pkcs11LibPath}` };
+          }
+          return { success: true };
+        }
+
+        // Like 'smartcard' above, a live connection test is skipped: a real attempt would need
+        // a physical touch (and possibly the resident agent-load dance) that doesn't fit a quick
+        // "Test Connection" click. Only the config shape is validated here.
+        if (config.authType === 'fido2') {
+          if (config.fido2Resident) {
+            return { success: true };
+          }
+          if (!config.privateKeyPath?.trim()) {
+            return { success: false, error: 'A key file is required (or enable "Resident key on device")' };
+          }
+          const exists = await fs
+            .stat(config.privateKeyPath)
+            .then((s) => s.isFile())
+            .catch(() => false);
+          if (!exists) {
+            return { success: false, error: `Key file not found: ${config.privateKeyPath}` };
           }
           return { success: true };
         }
@@ -2698,6 +3176,14 @@ export class IpcBridge {
 
   private setupEventListeners(): void {
     this.onPtyData = ({ sessionId, data }) => {
+      if (sessionId && this.activePresenceSessions.has(sessionId)) {
+        this.activePresenceSessions.delete(sessionId);
+        const webContents = this.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          const event: PresenceClearEvent = { sessionId };
+          webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
+        }
+      }
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
         webContents.send(IPC_CHANNELS.TERMINAL_DATA, sessionId, data);
@@ -2706,6 +3192,15 @@ export class IpcBridge {
     this.sshPtyManager.on('data', this.onPtyData);
 
     this.onPtyExit = ({ sessionId, exitCode, signal }) => {
+      if (sessionId && this.activePresenceSessions.has(sessionId)) {
+        this.activePresenceSessions.delete(sessionId);
+        const webContents = this.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          const event: PresenceClearEvent = { sessionId };
+          webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
+        }
+      }
+
       // Reject and remove any pending askpass prompts matching that sessionId
       for (const [id, prompt] of this.pendingAskpass.entries()) {
         if (prompt.sessionId === sessionId) {
@@ -2729,13 +3224,16 @@ export class IpcBridge {
     };
     this.sshPtyManager.on('exit', this.onPtyExit);
 
-    this.onPtyAskpass = ({ sessionId, prompt, callback }) => {
+    this.onPtyAskpass = ({ sessionId, prompt, kind, context, callback }) => {
       const id = crypto.randomUUID();
       this.pendingAskpass.set(id, { sessionId, callback });
+      if (sessionId) {
+        this.activePresenceSessions.add(sessionId);
+      }
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, sessionId });
+        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, sessionId, kind, context });
       }
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);
@@ -2914,6 +3412,7 @@ export class IpcBridge {
       this.cleanupSmartcardSessionAgent(sessionId);
     }
     this.lockAllGlobalSmartcardAgents();
+    AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();
   }

@@ -9,6 +9,7 @@ export type AskpassPromptHandler = (prompt: string) => Promise<string> | string;
 
 export interface AskpassServerOptions {
   promptHandler?: AskpassPromptHandler;
+  onPresence?: (prompt: string) => void;
   token?: string;
 }
 
@@ -17,6 +18,7 @@ export class AskpassServer extends EventEmitter {
   private port: number = 0;
   private token: string;
   private promptHandler?: AskpassPromptHandler;
+  private onPresence?: (prompt: string) => void;
   private tempDir: string | null = null;
   private scriptPath: string | null = null;
   private activeSockets: Set<net.Socket> = new Set();
@@ -25,6 +27,7 @@ export class AskpassServer extends EventEmitter {
   constructor(options?: AskpassServerOptions) {
     super();
     this.promptHandler = options?.promptHandler;
+    this.onPresence = options?.onPresence;
     this.token = options?.token ?? crypto.randomBytes(16).toString('hex');
   }
 
@@ -33,6 +36,13 @@ export class AskpassServer extends EventEmitter {
    */
   public setPromptHandler(handler: AskpassPromptHandler): void {
     this.promptHandler = handler;
+  }
+
+  /**
+   * Sets or updates the presence callback handler.
+   */
+  public setOnPresence(handler?: (prompt: string) => void): void {
+    this.onPresence = handler;
   }
 
   /**
@@ -191,6 +201,22 @@ export class AskpassServer extends EventEmitter {
           }
 
           const prompt = req.prompt || '';
+          const promptType = req.promptType || '';
+          const isPurePresence =
+            promptType === 'none' ||
+            (/^confirm user presence/i.test(prompt) && !/pin|password|passphrase/i.test(prompt));
+
+          if (isPurePresence) {
+            console.log(
+              `[askpass] received pure presence notification (promptType="${promptType}", prompt="${prompt}") - resolving immediately without prompting for PIN`
+            );
+            this.emit('presence', prompt);
+            this.onPresence?.(prompt);
+            socket.write(JSON.stringify({ pin: '' }) + '\n');
+            socket.end();
+            return;
+          }
+
           const pin = await this.resolvePin(prompt);
           socket.write(JSON.stringify({ pin }) + '\n');
         } catch (err: any) {
@@ -203,18 +229,28 @@ export class AskpassServer extends EventEmitter {
   }
 
   private async resolvePin(prompt: string): Promise<string> {
+    // Logs the prompt text and the *length* only of whatever was resolved (never the PIN/passphrase
+    // itself) — this is diagnostic output for tracking down cases like an OpenSSH child receiving an
+    // empty answer despite the user having typed something into the renderer's modal (e.g. two
+    // concurrent askpass flows racing for the same single modal queue).
     if (this.promptHandler) {
-      return await this.promptHandler(prompt);
+      const answer = await this.promptHandler(prompt);
+      console.log(`[askpass] resolved prompt "${prompt}" -> ${answer ? `${answer.length} char(s)` : '(empty)'}`);
+      return answer;
     }
 
     if (this.listenerCount('prompt') > 0) {
       return new Promise<string>((resolve) => {
         this.emit('prompt', prompt, (response: string) => {
+          console.log(
+            `[askpass] resolved prompt "${prompt}" -> ${response ? `${response.length} char(s)` : '(empty)'}`
+          );
           resolve(response);
         });
       });
     }
 
+    console.log(`[askpass] resolved prompt "${prompt}" -> (empty, no handler registered)`);
     return '';
   }
 
@@ -225,11 +261,12 @@ export class AskpassServer extends EventEmitter {
     const jsContent = `
 const net = require('net');
 const prompt = process.argv[2] || '';
+const promptType = process.env.SSH_ASKPASS_PROMPT || '';
 const port = ${port};
 const token = ${JSON.stringify(token)};
 
 const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
-  client.write(JSON.stringify({ token, prompt }) + '\\n');
+  client.write(JSON.stringify({ token, prompt, promptType }) + '\\n');
 });
 
 let response = '';

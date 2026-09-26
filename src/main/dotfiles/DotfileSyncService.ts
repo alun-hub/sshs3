@@ -58,27 +58,134 @@ async function readRemoteFile(provider: SFTPStorageProvider, remotePath: string)
   });
 }
 
+import { DotfileCliTransport } from './DotfileCliTransport';
+
+export interface IDotfileTransport {
+  getHomeDir(): Promise<string>;
+  readRemoteFile(remotePath: string): Promise<Buffer>;
+  writeRemoteFile(remotePath: string, content: string, mode?: string): Promise<void>;
+  disconnect?(): Promise<void>;
+}
+
+export class SftpDotfileTransport implements IDotfileTransport {
+  constructor(public readonly provider: SFTPStorageProvider) {}
+
+  public async getHomeDir(): Promise<string> {
+    await this.provider.ensureConnected?.();
+    return this.provider.getHomeDir();
+  }
+
+  public async readRemoteFile(remotePath: string): Promise<Buffer> {
+    return readRemoteFile(this.provider, remotePath);
+  }
+
+  public async writeRemoteFile(remotePath: string, content: string, mode?: string): Promise<void> {
+    const dir = path.posix.dirname(remotePath);
+    if (dir && dir !== '.' && dir !== '/') {
+      try {
+        await this.provider.createFolder(dir);
+      } catch {
+        // Directory likely already exists.
+      }
+    }
+
+    const tmpPath = `${remotePath}.sshs3.tmp`;
+    try {
+      const writeStream = await this.provider.createWriteStream(tmpPath);
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('error', reject);
+        writeStream.on('close', resolve);
+        writeStream.end(content, 'utf-8');
+      });
+      await this.provider.rename(tmpPath, remotePath);
+
+      if (mode) {
+        try {
+          await this.provider.chmod(remotePath, mode);
+        } catch {
+          // Non-fatal: content is correct even if the mode couldn't be set.
+        }
+      }
+    } catch (err) {
+      try {
+        await this.provider.delete(tmpPath, false);
+      } catch {
+        // Ignore cleanup error
+      }
+      throw err;
+    }
+  }
+
+  public async disconnect(): Promise<void> {
+    await this.provider.disconnect?.().catch(() => {});
+  }
+}
+
+export interface ComputeDiffOptions {
+  hostVerifier?: SshHostVerifierFn;
+  pinPromptHandler?: (prompt: string) => Promise<string> | string;
+  controlPath?: string;
+  onPresence?: () => void;
+  onPresenceCleared?: () => void;
+  transport?: IDotfileTransport;
+}
+
 /**
  * Checks a dotfiles pool against a live host and, on request, applies the
- * pool's files. Runs over a short-lived SFTP connection separate from the
- * interactive PTY session, so it never competes with or blocks the terminal.
+ * pool's files. Prefers OpenSSH CLI (multiplexed via ControlMaster on Unix or
+ * direct CLI on Windows) for FIDO2 and speed, falling back to SFTP when needed.
  */
 export class DotfileSyncService {
   public async computeDiff(
     config: SSHConnectionConfig,
     pool: DotfilePool,
-    hostVerifier?: SshHostVerifierFn,
-    pinPromptHandler?: (prompt: string) => Promise<string> | string
-  ): Promise<{ provider: SFTPStorageProvider; entries: DotfileDiffEntry[] }> {
-    const provider = this.createProvider(config, hostVerifier, pinPromptHandler);
-    await provider.ensureConnected();
+    optionsOrHostVerifier?: SshHostVerifierFn | ComputeDiffOptions,
+    pinPromptHandler?: (prompt: string) => Promise<string> | string,
+    controlPath?: string,
+    onPresence?: () => void,
+    onPresenceCleared?: () => void
+  ): Promise<{ provider: IDotfileTransport; entries: DotfileDiffEntry[] }> {
+    let options: ComputeDiffOptions;
+    if (
+      typeof optionsOrHostVerifier === 'object' &&
+      optionsOrHostVerifier !== null &&
+      !('length' in optionsOrHostVerifier)
+    ) {
+      options = optionsOrHostVerifier as ComputeDiffOptions;
+    } else {
+      options = {
+        hostVerifier: optionsOrHostVerifier as SshHostVerifierFn | undefined,
+        pinPromptHandler,
+        controlPath,
+        onPresence,
+        onPresenceCleared,
+      };
+    }
 
-    const homeDir = await provider.getHomeDir();
+    let transport: IDotfileTransport;
+    if (options.transport) {
+      transport = options.transport;
+    } else if (
+      (this as any).createProvider !== (DotfileSyncService.prototype as any).createProvider
+    ) {
+      // Honors mockProvider in tests
+      const sftpProvider = this.createProvider(config, options.hostVerifier, options.pinPromptHandler);
+      transport = new SftpDotfileTransport(sftpProvider);
+    } else {
+      transport = new DotfileCliTransport(
+        config,
+        options.controlPath,
+        options.onPresence,
+        options.onPresenceCleared
+      );
+    }
+
+    const homeDir = await transport.getHomeDir();
     const entries: DotfileDiffEntry[] = [];
     for (const file of pool.files) {
       const targetPath = resolveRemotePath(file.remotePath, homeDir);
       try {
-        const remoteBuf = await readRemoteFile(provider, targetPath);
+        const remoteBuf = await transport.readRemoteFile(targetPath);
         if (hash(remoteBuf.toString('utf-8')) !== hash(file.content)) {
           entries.push({ fileId: file.id, remotePath: file.remotePath, reason: 'different' });
         }
@@ -88,52 +195,23 @@ export class DotfileSyncService {
       }
     }
 
-    return { provider, entries };
+    return { provider: transport, entries };
   }
 
   /**
    * Writes each file to a temp path and renames it over the target so a
    * dropped connection never leaves a half-written dotfile behind.
    */
-  public async applyFiles(provider: SFTPStorageProvider, files: DotfilePoolFile[]): Promise<void> {
-    const homeDir = await provider.getHomeDir();
+  public async applyFiles(providerOrTransport: any, files: DotfilePoolFile[]): Promise<void> {
+    const transport: IDotfileTransport =
+      typeof providerOrTransport.writeRemoteFile === 'function'
+        ? providerOrTransport
+        : new SftpDotfileTransport(providerOrTransport);
+
+    const homeDir = await transport.getHomeDir();
     for (const file of files) {
       const targetPath = resolveRemotePath(file.remotePath, homeDir);
-      const dir = path.posix.dirname(targetPath);
-      if (dir && dir !== '.' && dir !== '/') {
-        try {
-          await provider.createFolder(dir);
-        } catch {
-          // Directory likely already exists.
-        }
-      }
-
-      const tmpPath = `${targetPath}.sshs3.tmp`;
-      try {
-        const writeStream = await provider.createWriteStream(tmpPath);
-        await new Promise<void>((resolve, reject) => {
-          writeStream.on('error', reject);
-          writeStream.on('close', resolve);
-          writeStream.end(file.content, 'utf-8');
-        });
-        await provider.rename(tmpPath, targetPath);
-
-        if (file.mode) {
-          try {
-            await provider.chmod(targetPath, file.mode);
-          } catch {
-            // Non-fatal: content is correct even if the mode couldn't be set.
-          }
-        }
-      } catch (err) {
-        // Clean up temporary file if write or rename failed
-        try {
-          await provider.delete(tmpPath, false);
-        } catch {
-          // Ignore cleanup error
-        }
-        throw err;
-      }
+      await transport.writeRemoteFile(targetPath, file.content, file.mode);
     }
   }
 

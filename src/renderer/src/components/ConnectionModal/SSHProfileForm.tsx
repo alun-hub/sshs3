@@ -1,11 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FolderOpen, Loader2, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FolderOpen,
+  KeyRound,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
+import { FIDO2_KEY_FILE_EXISTS_PREFIX } from '@shared/types/ssh';
 import type {
   SSHAuthType,
   SSHConnectionConfig,
   DetectedSmartcardLib,
   SSHTunnelConfig,
   SSHTunnelType,
+  Fido2KeyType,
+  Fido2ResidentKey,
 } from '@shared/types/ssh';
 import type { DotfilePool } from '@shared/types/dotfiles';
 
@@ -22,6 +37,12 @@ const AUTH_TYPES: { value: SSHAuthType; label: string }[] = [
   { value: 'privateKey', label: 'SSH Key' },
   { value: 'agent', label: 'SSH Agent' },
   { value: 'smartcard', label: 'Smartcard (PKCS#11)' },
+  { value: 'fido2', label: 'FIDO2 / Security Key' },
+];
+
+const FIDO2_KEY_TYPES: { value: Fido2KeyType; label: string }[] = [
+  { value: 'ed25519-sk', label: 'ED25519-SK (recommended)' },
+  { value: 'ecdsa-sk', label: 'ECDSA-SK (older keys / firmware)' },
 ];
 
 function emptyConfig(): SSHConnectionConfig {
@@ -50,6 +71,25 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [tunnelsOpen, setTunnelsOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
   const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string; platform?: string } | null>(null);
+
+  // FIDO2 / security key state
+  const [fido2ResidentKeys, setFido2ResidentKeys] = useState<Fido2ResidentKey[] | null>(null);
+  const [fido2Scanning, setFido2Scanning] = useState(false);
+  const [fido2ScanError, setFido2ScanError] = useState<string | null>(null);
+  const [fido2GenOpen, setFido2GenOpen] = useState(false);
+  const [fido2GenKeyType, setFido2GenKeyType] = useState<Fido2KeyType>('ed25519-sk');
+  const [fido2GenResident, setFido2GenResident] = useState(true);
+  const [fido2GenVerifyRequired, setFido2GenVerifyRequired] = useState(true);
+  const [fido2GenPath, setFido2GenPath] = useState('');
+  const [fido2Generating, setFido2Generating] = useState(false);
+  const [fido2GenResult, setFido2GenResult] = useState<{ publicKey: string; privateKeyPath: string } | null>(null);
+  const [fido2GenError, setFido2GenError] = useState<string | null>(null);
+  const hasAutoScannedFido2Ref = useRef(false);
+  const fido2GenSectionRef = useRef<HTMLDivElement>(null);
+  const [fido2ConfirmDeleteId, setFido2ConfirmDeleteId] = useState<string | null>(null);
+  const [fido2DeletingId, setFido2DeletingId] = useState<string | null>(null);
+  const [fido2DeleteError, setFido2DeleteError] = useState<string | null>(null);
+  const [fido2GenNeedsOverwriteConfirm, setFido2GenNeedsOverwriteConfirm] = useState(false);
 
   useEffect(() => {
     if (!dotfilesPoolEnabled) return;
@@ -127,6 +167,95 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     const path = await window.multissh.dialogOpenFile({ title: 'Choose File' });
     if (path) update(key, path);
   };
+
+  const scanFido2ResidentKeys = async () => {
+    setFido2Scanning(true);
+    setFido2ScanError(null);
+    try {
+      const keys = await window.multissh.fido2ListResidentKeys();
+      setFido2ResidentKeys(keys);
+    } catch (err) {
+      setFido2ScanError(err instanceof Error ? err.message : 'Failed to read the connected security key');
+    } finally {
+      setFido2Scanning(false);
+    }
+  };
+
+  const deleteFido2ResidentKey = async (credentialId: string) => {
+    setFido2DeletingId(credentialId);
+    setFido2DeleteError(null);
+    try {
+      await window.multissh.fido2DeleteResidentKey(credentialId);
+      setFido2ResidentKeys((prev) => (prev ? prev.filter((k) => k.credentialId !== credentialId) : prev));
+      setFido2ConfirmDeleteId(null);
+    } catch (err) {
+      setFido2DeleteError(err instanceof Error ? err.message : 'Failed to delete the credential');
+    } finally {
+      setFido2DeletingId(null);
+    }
+  };
+
+  const generateFido2Key = async (overwrite = false) => {
+    setFido2Generating(true);
+    setFido2GenError(null);
+    setFido2GenNeedsOverwriteConfirm(false);
+    setFido2GenResult(null);
+    try {
+      const outPath = fido2GenPath.trim() || `~/.ssh/id_${fido2GenKeyType.replace('-sk', '')}_sk`;
+      const result = await window.multissh.fido2GenerateKey({
+        outPath,
+        keyType: fido2GenKeyType,
+        resident: fido2GenResident,
+        verifyRequired: fido2GenVerifyRequired,
+        overwrite,
+      });
+      setFido2GenResult({ publicKey: result.publicKey, privateKeyPath: result.privateKeyPath });
+      update('fido2Resident', fido2GenResident);
+      if (!fido2GenResident) {
+        update('privateKeyPath', result.privateKeyPath);
+      } else {
+        // Confirms the freshly generated resident credential is actually discoverable now,
+        // closing the loop for the "scan found nothing -> generate -> did it work?" flow.
+        void scanFido2ResidentKeys();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate the key';
+      // Electron's ipcRenderer.invoke wraps the original thrown message in its own
+      // "Error invoking remote method '<channel>': Error: ..." prefix, so the marker is never at
+      // the very start of what the renderer actually sees — search for it instead of anchoring.
+      const markerIndex = message.indexOf(FIDO2_KEY_FILE_EXISTS_PREFIX);
+      if (markerIndex !== -1) {
+        // Typically a stale local stub file left over from a resident credential that was since
+        // deleted from the device itself (e.g. via the delete button above) — the file on disk
+        // isn't the key material for a resident credential, so overwriting it loses nothing real.
+        setFido2GenNeedsOverwriteConfirm(true);
+        setFido2GenError(message.slice(markerIndex + FIDO2_KEY_FILE_EXISTS_PREFIX.length).trim());
+      } else {
+        setFido2GenError(message);
+      }
+    } finally {
+      setFido2Generating(false);
+    }
+  };
+
+  const startFido2Generate = () => {
+    setFido2GenOpen(true);
+    setTimeout(() => fido2GenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  };
+
+  // Auto-scan once when a profile is set to a resident FIDO2 credential, so the user doesn't have
+  // to know to click "Scan" themselves — but only once per visit to this auth type, since scanning
+  // asks for the device's PIN each time and re-running it on every unrelated re-render would be
+  // an annoying, repeated PIN prompt.
+  useEffect(() => {
+    if (config.authType !== 'fido2' || !config.fido2Resident) {
+      hasAutoScannedFido2Ref.current = false;
+      return;
+    }
+    if (hasAutoScannedFido2Ref.current) return;
+    hasAutoScannedFido2Ref.current = true;
+    void scanFido2ResidentKeys();
+  }, [config.authType, config.fido2Resident]);
 
   const isValid = config.name.trim() && config.host.trim() && config.username.trim();
 
@@ -356,6 +485,283 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           <p className="text-[11px] text-txt-muted pt-1">
             PIN caching behavior is set globally under Settings &gt; Security &amp; Smartcard.
           </p>
+        </div>
+      )}
+
+      {config.authType === 'fido2' && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
+          <label className="flex items-center gap-2 cursor-pointer text-txt-primary font-medium">
+            <input
+              type="checkbox"
+              checked={config.fido2Resident ?? false}
+              onChange={(e) => {
+                update('fido2Resident', e.target.checked);
+                if (e.target.checked) update('privateKeyPath', undefined);
+              }}
+              className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+            />
+            <span>Use a resident (discoverable) credential stored on the device</span>
+          </label>
+
+          {config.fido2Resident ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] text-txt-muted">
+                No key file needed — the app loads whatever resident credentials are on the connected
+                security key at connect time. It scans automatically below; re-scan any time you swap
+                keys or after generating a new one.
+              </p>
+              <button
+                type="button"
+                onClick={() => void scanFido2ResidentKeys()}
+                disabled={fido2Scanning}
+                className="flex w-fit items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+              >
+                {fido2Scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {fido2Scanning ? 'Touch your security key...' : 'Re-scan connected security key'}
+              </button>
+
+              {fido2ScanError && (
+                <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{fido2ScanError}</span>
+                </div>
+              )}
+              {fido2ResidentKeys && fido2ResidentKeys.length === 0 && (
+                <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+                  <p className="text-[11px] text-amber-200">
+                    No resident credentials found on this device yet — this is expected the first time
+                    you use a security key with sshs3. Generate one below to get started.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={startFido2Generate}
+                    className="flex w-fit items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Generate a key now
+                  </button>
+                </div>
+              )}
+              {fido2ResidentKeys && fido2ResidentKeys.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-emerald-300">
+                    Found {fido2ResidentKeys.length} resident credential(s):
+                  </span>
+                  {fido2DeleteError && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{fido2DeleteError}</span>
+                    </div>
+                  )}
+                  {fido2ResidentKeys.map((k) => {
+                    const id = k.credentialId ?? k.fingerprint;
+                    const confirming = fido2ConfirmDeleteId === id;
+                    const deleting = fido2DeletingId === id;
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-[11px] font-mono text-txt-secondary"
+                      >
+                        <span className="truncate">
+                          <span className="text-txt-primary font-semibold">{k.keyType}</span> {k.fingerprint}{' '}
+                          <span className="text-txt-muted">({k.comment})</span>
+                        </span>
+
+                        {k.credentialId &&
+                          (confirming ? (
+                            <span className="flex shrink-0 items-center gap-1">
+                              <span className="text-amber-300">Delete?</span>
+                              <button
+                                type="button"
+                                onClick={() => void deleteFido2ResidentKey(k.credentialId!)}
+                                disabled={deleting}
+                                className="rounded px-1.5 py-0.5 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                              >
+                                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Yes'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFido2ConfirmDeleteId(null)}
+                                disabled={deleting}
+                                className="rounded px-1.5 py-0.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+                              >
+                                No
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFido2DeleteError(null);
+                                setFido2ConfirmDeleteId(id);
+                              }}
+                              className="shrink-0 rounded p-1 text-txt-muted hover:bg-red-500/20 hover:text-red-300 transition-colors"
+                              title="Delete this credential from the security key"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Key File (id_ed25519_sk / id_ecdsa_sk)
+                <div className="flex gap-1.5">
+                  <input
+                    value={config.privateKeyPath ?? ''}
+                    onChange={(e) => update('privateKeyPath', e.target.value)}
+                    className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="~/.ssh/id_ed25519_sk"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void browseFor('privateKeyPath')}
+                    className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                    title="Browse"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </button>
+                </div>
+              </label>
+              <p className="text-[11px] text-amber-400/90">
+                ⚠ SFTP in the File Manager can't read this key file directly (no libfido2 support in the
+                SFTP library used) — it needs the key already loaded in an ssh-agent. If you'll use this
+                profile for file transfers too, load the key with <code className="font-mono">ssh-add</code>{' '}
+                in your own agent and use the &quot;SSH Agent&quot; auth type instead for that purpose.
+              </p>
+            </>
+          )}
+
+          <div ref={fido2GenSectionRef} className="rounded-lg border border-border-subtle bg-app-surface/50">
+            <button
+              type="button"
+              onClick={() => setFido2GenOpen((o) => !o)}
+              className="flex w-full items-center justify-between p-2 text-xs font-medium text-txt-secondary hover:text-txt-primary transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5" />
+                Generate a new key on this security key
+              </span>
+              {fido2GenOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+
+            {fido2GenOpen && (
+              <div className="border-t border-border-subtle p-2.5 space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <label className="flex flex-col gap-1 text-txt-secondary">
+                    Key Type
+                    <select
+                      value={fido2GenKeyType}
+                      onChange={(e) => setFido2GenKeyType(e.target.value as Fido2KeyType)}
+                      className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+                    >
+                      {FIDO2_KEY_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-txt-secondary">
+                    Output Path
+                    <input
+                      value={fido2GenPath}
+                      onChange={(e) => setFido2GenPath(e.target.value)}
+                      placeholder={`~/.ssh/id_${fido2GenKeyType.replace('-sk', '')}_sk`}
+                      className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
+                    <input
+                      type="checkbox"
+                      checked={fido2GenResident}
+                      onChange={(e) => setFido2GenResident(e.target.checked)}
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>Resident (discoverable) — no file needed to authenticate later</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
+                    <input
+                      type="checkbox"
+                      checked={fido2GenVerifyRequired}
+                      onChange={(e) => setFido2GenVerifyRequired(e.target.checked)}
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>Require PIN + touch on every use (recommended)</span>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void generateFido2Key()}
+                  disabled={fido2Generating}
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
+                >
+                  {fido2Generating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {fido2Generating ? 'Touch your security key...' : 'Generate Key'}
+                </button>
+
+                {fido2GenError && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2">
+                    <div className="flex items-center gap-1.5 text-red-300">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{fido2GenError}</span>
+                    </div>
+                    {fido2GenNeedsOverwriteConfirm && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-txt-muted">
+                          If the on-device credential this pointed to was already deleted, the local
+                          file is just a stale leftover — overwrite it?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void generateFido2Key(true)}
+                          disabled={fido2Generating}
+                          className="shrink-0 rounded-md border border-red-400/40 px-2 py-1 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                        >
+                          Overwrite
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {fido2GenResult && (
+                  <div className="flex flex-col gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
+                    <div className="flex items-center gap-1.5 text-emerald-300">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      <span>Key generated at {fido2GenResult.privateKeyPath}</span>
+                    </div>
+                    <p className="text-[11px] text-txt-muted">
+                      Copy the public key below into the server's{' '}
+                      <code className="font-mono">~/.ssh/authorized_keys</code>:
+                    </p>
+                    <div className="flex items-start gap-1.5">
+                      <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-[10px] text-txt-secondary">
+                        {fido2GenResult.publicKey}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(fido2GenResult.publicKey)}
+                        className="shrink-0 rounded-md border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                        title="Copy public key"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

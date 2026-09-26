@@ -21,9 +21,20 @@ let queue: Promise<unknown> = Promise.resolve();
  * to the same physical token, so keying by path wouldn't actually prevent the collision this
  * exists to avoid.
  */
+let nextCallId = 1;
+
 export function withPkcs11Lock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = () => fn();
+  const callId = nextCallId++;
+  console.log(`[pkcs11-lock] #${callId}: queued`);
+  const run = () => {
+    console.log(`[pkcs11-lock] #${callId}: acquired, running`);
+    return fn();
+  };
   const result = queue.then(run, run);
+  result.then(
+    () => console.log(`[pkcs11-lock] #${callId}: released (ok)`),
+    () => console.log(`[pkcs11-lock] #${callId}: released (error)`)
+  );
   queue = result.then(
     () => undefined,
     () => undefined

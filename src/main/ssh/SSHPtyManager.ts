@@ -3,6 +3,8 @@ import crypto from 'node:crypto';
 import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
@@ -50,6 +52,7 @@ function getSpawn(): typeof nodePty.spawn {
   throw new Error('node-pty spawn function not found');
 }
 
+import type { AskpassPromptKind } from '../../shared/types/ipc';
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
@@ -58,6 +61,8 @@ export interface SSHPtyManagerEvents {
   askpass: (event: {
     sessionId: string;
     prompt: string;
+    kind?: AskpassPromptKind;
+    context?: string;
     callback: (pin: string) => void;
   }) => void;
 }
@@ -68,6 +73,7 @@ export class InternalSSHPtySession implements SSHPtySession {
   public pid: number;
   public cols: number;
   public rows: number;
+  public controlPath?: string;
 
   private pty: IPty;
   public askpassServer?: AskpassServer;
@@ -91,6 +97,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     rows: number;
     manager: SSHPtyManager;
     askpassServer?: AskpassServer;
+    controlPath?: string;
   }) {
     this.sessionId = params.sessionId;
     this.config = params.config;
@@ -100,6 +107,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     this.rows = params.rows;
     this.manager = params.manager;
     this.askpassServer = params.askpassServer;
+    this.controlPath = params.controlPath;
 
     this.bindPty(params.pty);
   }
@@ -268,6 +276,10 @@ export class InternalSSHPtySession implements SSHPtySession {
   private async cleanup(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.manager.removeSessionInternal(this.sessionId);
+    this.dataListeners.clear();
+    this.exitListeners.clear();
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
@@ -282,9 +294,15 @@ export class InternalSSHPtySession implements SSHPtySession {
       this.askpassServer = undefined;
     }
 
-    this.dataListeners.clear();
-    this.exitListeners.clear();
-    this.manager.removeSessionInternal(this.sessionId);
+    if (this.controlPath) {
+      try {
+        if (fs.existsSync(this.controlPath)) {
+          fs.unlinkSync(this.controlPath);
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 }
 
@@ -308,12 +326,17 @@ export class SSHPtyManager extends EventEmitter {
    * ssh-agent ahead of or independently of a PTY login. Resolves to '' if
    * nothing is listening.
    */
-  public async promptForPin(sessionId: string, prompt: string): Promise<string> {
+  public async promptForPin(
+    sessionId: string,
+    prompt: string,
+    kind?: AskpassPromptKind,
+    context?: string
+  ): Promise<string> {
     if (this.listenerCount('askpass') === 0) {
       return '';
     }
     return new Promise<string>((resolve) => {
-      this.emit('askpass', { sessionId, prompt, callback: (pin: string) => resolve(pin) });
+      this.emit('askpass', { sessionId, prompt, kind, context, callback: (pin: string) => resolve(pin) });
     });
   }
 
@@ -384,28 +407,35 @@ export class SSHPtyManager extends EventEmitter {
     let askpassServer: AskpassServer | undefined;
     let askpassEnv: Record<string, string> = {};
 
-    // Start Askpass server if Smartcard is used, or if a saved password or private-key passphrase is provided
+    // Start Askpass server if Smartcard/FIDO2/password is used, or if a saved credential or passphrase is provided
     const needsAskpass =
       config.authType === 'smartcard' ||
-      (config.authType === 'password' && Boolean(config.password)) ||
+      config.authType === 'fido2' ||
+      config.authType === 'password' ||
+      Boolean(config.password) ||
       Boolean(config.passphrase);
 
     if (needsAskpass) {
       askpassServer = new AskpassServer({
-        promptHandler: async () => {
+        promptHandler: async (rawPrompt: string) => {
           if (config.authType === 'password' && config.password) {
             return config.password;
           }
           if (config.passphrase) {
             return config.passphrase;
           }
-          // The two branches above cover 'password'/passphrase — by elimination
-          // this is always the smartcard PIN prompt (see needsAskpass above).
           if (this.listenerCount('askpass') > 0) {
+            const isPassword = /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
+            const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
+            const promptText = isPassword
+              ? rawPrompt.trim()
+              : `Enter your smartcard PIN to connect via SSH to ${hostLabel}:`;
             return new Promise<string>((resolve) => {
               this.emit('askpass', {
                 sessionId,
-                prompt: `Enter your smartcard PIN to connect via SSH to ${config.name || config.host}:`,
+                prompt: promptText,
+                kind: isPassword ? 'password' : 'smartcard',
+                context: isPassword ? `SSH: ${hostLabel}` : `Smartcard: ${hostLabel}`,
                 callback: (resolvedPin: string) => resolve(resolvedPin),
               });
             });
@@ -439,7 +469,12 @@ export class SSHPtyManager extends EventEmitter {
         (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
     }
 
-    const sshArgs = SmartcardDetector.buildSSHArguments(config);
+    const controlPath =
+      process.platform !== 'win32'
+        ? path.join(os.tmpdir(), `s3m-${crypto.randomUUID().slice(0, 8)}.sock`)
+        : undefined;
+
+    const sshArgs = SmartcardDetector.buildSSHArguments(config, controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
     let ptyProcess: IPty;
@@ -466,6 +501,7 @@ export class SSHPtyManager extends EventEmitter {
       rows,
       manager: this,
       askpassServer,
+      controlPath,
     });
 
     this.sessions.set(sessionId, session);
