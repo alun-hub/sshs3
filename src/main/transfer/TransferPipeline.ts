@@ -506,7 +506,7 @@ export async function transferDirectory(
     throw err;
   }
 
-  const rootName = getBaseName(options.sourcePath) || options.sourcePath || 'katalog';
+  const rootName = getBaseName(options.sourcePath) || options.sourcePath || 'directory';
 
   // Inform UI that scanning has begun
   options.onProgress?.({

@@ -51,22 +51,22 @@ describe('DirSyncSavedProfilesModal', () => {
       expect(screen.getByText('Web Server to Local Backup')).toBeInTheDocument();
     });
 
-    // Check Source (Från) info
-    expect(screen.getByText('Källa (Från)')).toBeInTheDocument();
+    // Check Source (From) info
+    expect(screen.getByText('Source (From)')).toBeInTheDocument();
     expect(screen.getByText('Production Web')).toBeInTheDocument();
     expect(screen.getByText('SFTP · admin@web.prod.com')).toBeInTheDocument();
     expect(screen.getByText('/var/www/html')).toBeInTheDocument();
 
     // Check Direction indicator
-    expect(screen.getByText('Kopieras till')).toBeInTheDocument();
+    expect(screen.getByText('Syncs to')).toBeInTheDocument();
 
-    // Check Target (Till) info
-    expect(screen.getByText('Mål (Till)')).toBeInTheDocument();
+    // Check Target (To) info
+    expect(screen.getByText('Target (To)')).toBeInTheDocument();
     expect(screen.getByText('Local Disk')).toBeInTheDocument();
     expect(screen.getByText('This computer (Local)')).toBeInTheDocument();
     expect(screen.getByText('/home/alun/backups')).toBeInTheDocument();
 
     // Check Mirror warning
-    expect(screen.getByText(/Spegling: Filer i målet som saknas i källan raderas/)).toBeInTheDocument();
+    expect(screen.getByText(/Mirror: Files in target missing from source will be deleted/)).toBeInTheDocument();
   });
 });

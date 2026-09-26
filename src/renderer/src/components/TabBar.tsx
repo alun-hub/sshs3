@@ -390,7 +390,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button
           type="button"
           data-testid="quick-dirsync-profiles-btn"
-          title="Katalogsynkronisering: sparade profiler"
+          title="Directory Sync: Saved Profiles"
           onClick={onOpenDirSyncProfiles}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >

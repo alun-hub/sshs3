@@ -241,11 +241,11 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
 
                   {/* Flow Comparison: Source (From) -> Target (To) */}
                   <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto,1fr] items-center gap-3 bg-app-card rounded-lg p-3 border border-border-subtle/40">
-                    {/* Source box (KÄLLA) */}
+                    {/* Source box (Source) */}
                     <div className="flex flex-col gap-1 rounded-md bg-app-surface p-2.5 border border-border-subtle min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
-                          Källa (Från)
+                          Source (From)
                         </span>
                         <EndpointIcon type={sourceInfo.type} />
                       </div>
@@ -263,15 +263,15 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                         <ArrowRight className="h-3.5 w-3.5" />
                       </div>
                       <span className="text-[10px] font-medium text-txt-muted uppercase tracking-wider whitespace-nowrap">
-                        Kopieras till
+                        Syncs to
                       </span>
                     </div>
 
-                    {/* Target box (MÅL) */}
+                    {/* Target box (Target) */}
                     <div className="flex flex-col gap-1 rounded-md bg-app-surface p-2.5 border border-border-subtle min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
-                          Mål (Till)
+                          Target (To)
                         </span>
                         <EndpointIcon type={targetInfo.type} />
                       </div>
@@ -289,18 +289,18 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                     {profile.deleteExtraneous ? (
                       <div className="flex items-center gap-1.5 text-amber-400 font-medium">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        <span>Spegling: Filer i målet som saknas i källan raderas</span>
+                        <span>Mirror: Files in target missing from source will be deleted</span>
                       </div>
                     ) : (
                       <div className="text-txt-muted">
-                        Bevarande synk: Filer som finns i målet bevaras
+                        Safe sync: Files in target are preserved
                       </div>
                     )}
 
                     <div className="text-txt-muted ml-auto">
                       {profile.lastRunAt
-                        ? `Senast körd: ${formatDateTime(profile.lastRunAt)}`
-                        : `Skapad: ${formatDateTime(profile.createdAt)}`}
+                        ? `Last run: ${formatDateTime(profile.lastRunAt)}`
+                        : `Created: ${formatDateTime(profile.createdAt)}`}
                     </div>
                   </div>
                 </div>
