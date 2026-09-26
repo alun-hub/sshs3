@@ -576,10 +576,22 @@ export const App: React.FC = () => {
       const rawCombo = comboFromKeyboardEvent(e);
       if (rawCombo === null) return;
       const combo = rawCombo.toLowerCase();
-      const activeShortcuts = settings.shortcuts || DEFAULT_SHORTCUTS;
+      const normalizedCombo = combo.replace(/^cmd\+/, 'ctrl+');
+      const activeShortcuts = { ...DEFAULT_SHORTCUTS, ...(settings.shortcuts || {}) };
 
       for (const [actionId, keyBinding] of Object.entries(activeShortcuts)) {
-        if (combo === keyBinding.toLowerCase()) {
+        const bindingLower = keyBinding.toLowerCase();
+        const isMatch =
+          combo === bindingLower ||
+          normalizedCombo === bindingLower ||
+          (actionId === 'increaseFontSize' &&
+            (bindingLower === 'ctrl++' || bindingLower === 'ctrl+=') &&
+            (normalizedCombo === 'ctrl++' || normalizedCombo === 'ctrl+=' || normalizedCombo === 'ctrl+shift+=')) ||
+          (actionId === 'decreaseFontSize' &&
+            bindingLower === 'ctrl+-' &&
+            (normalizedCombo === 'ctrl+-' || normalizedCombo === 'ctrl+shift+-'));
+
+        if (isMatch) {
           e.preventDefault();
           e.stopPropagation();
           switch (actionId) {
@@ -638,6 +650,38 @@ export const App: React.FC = () => {
                   `[data-testid="terminal-pane-${nextPaneId}"] .xterm-helper-textarea`
                 )
                 ?.focus();
+              break;
+            }
+            case 'increaseFontSize': {
+              setSettings((prev) => {
+                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
+                const next = Math.min(current + 1, 32);
+                if (next === current) return prev;
+                const updated = { ...prev, terminalFontSize: next };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
+              break;
+            }
+            case 'decreaseFontSize': {
+              setSettings((prev) => {
+                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
+                const next = Math.max(current - 1, 8);
+                if (next === current) return prev;
+                const updated = { ...prev, terminalFontSize: next };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
+              break;
+            }
+            case 'resetFontSize': {
+              setSettings((prev) => {
+                const defaultSize = DEFAULT_SETTINGS.terminalFontSize;
+                if (prev.terminalFontSize === defaultSize) return prev;
+                const updated = { ...prev, terminalFontSize: defaultSize };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
               break;
             }
           }

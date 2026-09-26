@@ -385,6 +385,20 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       ) {
         return false;
       }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === '+' ||
+          e.key === '=' ||
+          e.key === '-' ||
+          e.key === '0' ||
+          e.code === 'NumpadAdd' ||
+          e.code === 'NumpadSubtract' ||
+          e.code === 'Minus' ||
+          e.code === 'Equal' ||
+          e.code === 'Digit0')
+      ) {
+        return false;
+      }
       return true;
     });
 
