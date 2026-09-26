@@ -292,8 +292,7 @@ const PaneLeafContent: React.FC<{
   onSelectPane,
 }) => {
   const isSole = totalPanes === 1;
-
-  let content: React.ReactNode = null;
+  let content: React.ReactNode;
 
   if (leaf.config) {
     content = (

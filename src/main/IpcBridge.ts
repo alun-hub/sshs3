@@ -670,7 +670,9 @@ export class IpcBridge {
         if (config.type === 'sftp' && this.startupUnlockPromise) {
           try {
             await this.startupUnlockPromise;
-          } catch {}
+          } catch {
+            // Ignore startup unlock errors during background connect
+          }
         }
         if (config.type === 'sftp' && config.sftpConfig && !this.storageRegistry.has(config.id)) {
           let sftpConfig = await this.prepareSftpSmartcardConfig(config.sftpConfig, config.id);
@@ -1591,7 +1593,9 @@ export class IpcBridge {
           }
         }
       }
-    } catch {}
+    } catch {
+      // Ignore profile read errors on startup
+    }
 
     try {
       const session = await this.sessionStore.getSession();
@@ -1601,7 +1605,9 @@ export class IpcBridge {
           if (this.paneTreeHasAuthType(tab.paneTree, 'smartcard')) hasSmartcard = true;
         }
       }
-    } catch {}
+    } catch {
+      // Ignore session read errors on startup
+    }
 
     // Fall back to detected library if smartcard is used but no specific library was saved in profiles
     if (targetSmartcardPaths.size === 0 && chosen) {

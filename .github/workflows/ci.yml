@@ -11,8 +11,16 @@ permissions:
 
 jobs:
   test:
-    name: Test & Lint
-    runs-on: ubuntu-latest
+    name: Test & Lint (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

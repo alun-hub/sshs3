@@ -32,7 +32,7 @@ describe('parseCsvLine', () => {
   });
 });
 
-describe('isYkmanAvailable', () => {
+describe.skipIf(process.platform === 'win32')('isYkmanAvailable', () => {
   const originalPath = process.env.PATH;
   let fakeBinDir: string | undefined;
 
@@ -58,7 +58,7 @@ describe('isYkmanAvailable', () => {
   });
 });
 
-describe('listYkmanFidoCredentials / deleteYkmanFidoCredential', () => {
+describe.skipIf(process.platform === 'win32')('listYkmanFidoCredentials / deleteYkmanFidoCredential', () => {
   const originalPath = process.env.PATH;
   let fakeBinDir: string | undefined;
 
