@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.94] - 2026-09-26
+
+### Added
+- **FIDO2 & Hardware Security Keys (YubiKey)**:
+  - Added native FIDO2 resident credential discovery and key generation (`ed25519-sk`, `ecdsa-sk`) via `ykman` and `ssh-keygen -K`.
+  - Added in-app touch presence notification banner ("Touch your security key to authenticate") when security keys require physical verification.
+  - Added support for both resident credentials and file-based security keys (`id_ed25519_sk`, `id_ecdsa_sk`) in SSH connection profiles.
+  - Added global agent pre-loading for FIDO2 credentials at application startup with a single PIN verification.
+  - Added OpenSSH connection multiplexing (`ControlMaster`/`ControlPath`) for background dotfiles sync, allowing synchronization over existing FIDO2 sessions without requiring multiple physical touches.
+  - Added automated private `ssh-agent` cleanup on process exit to avoid orphaned agent processes.
+- **In-App File Editor with Live Markdown Preview**:
+  - Added Edit/Preview mode toggle for `.md`, `.markdown`, and `.mdx` files in the dual-pane file manager editor.
+  - Integrated GitHub Flavored Markdown (GFM) renderer using `react-markdown` and `remark-gfm` with support for tables, task lists, code formatting, and theme styling.
+  - Lazy-loaded markdown preview bundle to maintain instant app startup.
+
+### Fixed
+- **Smartcard & PKCS#11 Startup Preload & Detection**:
+  - Enhanced PKCS#11 library detection with SONAME matching (`.so.2`, `.so.1`) and realpath deduplication, resolving detection of `libykcs11` (YubiKey PIV).
+  - Preloaded all detected/configured profile PKCS#11 libraries at startup using a transient PIN verification without storing or caching the PIN in application memory.
+
+---
+
 ## [0.93] - 2026-09-25
 
 ### Added
