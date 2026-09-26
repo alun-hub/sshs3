@@ -55,13 +55,20 @@ describe('AgentLifecycleManager', () => {
 
   it('reports not running when SSH_AUTH_SOCK is unset', async () => {
     delete process.env.SSH_AUTH_SOCK;
-    const status = await AgentLifecycleManager.getStatus();
-    if (process.platform === 'win32') {
-      expect(status.isRunning).toBe(false);
-      expect(status.instructions).toContain('Windows OpenSSH Authentication Agent');
-    } else {
-      expect(status.isRunning).toBe(false);
-      expect(status.instructions).toContain('No active ssh-agent detected');
+    const probeSpy = process.platform === 'win32'
+      ? vi.spyOn(AgentLifecycleManager, 'probeSocket').mockResolvedValue(false)
+      : null;
+    try {
+      const status = await AgentLifecycleManager.getStatus();
+      if (process.platform === 'win32') {
+        expect(status.isRunning).toBe(false);
+        expect(status.instructions).toContain('Windows OpenSSH Authentication Agent');
+      } else {
+        expect(status.isRunning).toBe(false);
+        expect(status.instructions).toContain('No active ssh-agent detected');
+      }
+    } finally {
+      probeSpy?.mockRestore();
     }
   });
 

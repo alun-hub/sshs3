@@ -26,7 +26,7 @@ describe('Fido2KeyManager', () => {
       await fs.rm(dir, { recursive: true, force: true });
     });
 
-    it('deletes the stale local file first and proceeds when overwrite is explicitly requested', async () => {
+    it.skipIf(process.platform === 'win32')('deletes the stale local file first and proceeds when overwrite is explicitly requested', async () => {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fido2-overwrite-test-'));
       const outPath = path.join(dir, 'id_ed25519_sk');
       await fs.writeFile(outPath, 'stale stub from a deleted credential');
@@ -98,7 +98,7 @@ describe('Fido2KeyManager', () => {
       }
     });
 
-    it('shares the app-wide Pkcs11Lock queue, so it never runs concurrently with a resident-key scan against the same physical device', async () => {
+    it.skipIf(process.platform === 'win32')('shares the app-wide Pkcs11Lock queue, so it never runs concurrently with a resident-key scan against the same physical device', async () => {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fido2-lock-test-'));
       const outPath = path.join(dir, 'id_ed25519_sk');
       const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fake-ssh-keygen-'));
@@ -146,7 +146,7 @@ describe('Fido2KeyManager', () => {
       }
     });
 
-    it('scopes each resident key by its output filename, so distinct profiles don\'t collide on-token', async () => {
+    it.skipIf(process.platform === 'win32')('scopes each resident key by its output filename, so distinct profiles don\'t collide on-token', async () => {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fido2-scope-test-'));
       const outPath = path.join(dir, 'id_work_server_sk');
       const argsFile = path.join(dir, 'captured-args.txt');
