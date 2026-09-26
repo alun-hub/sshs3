@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
+import os from 'node:os';
+import fsp from 'node:fs/promises';
 
 const { mockIpcRenderer, mockExposeInMainWorld } = vi.hoisted(() => {
   const listeners = new Map<string, Set<(...args: any[]) => void>>();
@@ -39,6 +41,7 @@ vi.mock('electron', () => {
     },
     dialog: {
       showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: ['/chosen/file.pem'] }),
+      showSaveDialog: vi.fn().mockResolvedValue({ canceled: false, filePath: '/chosen/export.json' }),
     },
     shell: {
       openPath: vi.fn().mockResolvedValue(''),
@@ -63,6 +66,14 @@ import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 // Mock IpcMain implementation for main process testing
 class MockIpcMain {
   handlers: Map<string, (...args: any[]) => any> = new Map();
+  /**
+   * senderFrame simulated by invoke() below, standing in for a call from
+   * the trusted main window (see H3's assertTrustedSender). Tests that
+   * exercise the untrusted-frame rejection path call the registered
+   * handler directly instead of going through invoke() — see the "IPC
+   * sender frame validation (H3)" tests.
+   */
+  defaultSenderFrame: unknown = {};
 
   handle(channel: string, listener: (...args: any[]) => any) {
     this.handlers.set(channel, listener);
@@ -77,7 +88,7 @@ class MockIpcMain {
     if (!handler) {
       throw new Error(`No handler registered for channel "${channel}"`);
     }
-    return await handler({} as any, ...args);
+    return await handler({ senderFrame: this.defaultSenderFrame } as any, ...args);
   }
 }
 
@@ -85,6 +96,8 @@ class MockIpcMain {
 class MockWebContents {
   events: Array<{ channel: string; args: any[] }> = [];
   destroyed = false;
+  /** Stands in for the real WebFrameMain the H3 sender-frame check compares against. */
+  mainFrame = { url: 'file:///app/index.html' };
 
   send(channel: string, ...args: any[]) {
     if (!this.destroyed) {
@@ -112,6 +125,7 @@ describe('IpcBridge', () => {
   beforeEach(() => {
     mockIpc = new MockIpcMain();
     mockWebContents = new MockWebContents();
+    mockIpc.defaultSenderFrame = mockWebContents.mainFrame;
 
     const ptyEmitter = new EventEmitter();
     mockPtyManager = Object.assign(ptyEmitter, {
@@ -216,6 +230,27 @@ describe('IpcBridge', () => {
 
   afterEach(async () => {
     await bridge.dispose();
+  });
+
+  // Regression test for the H3 finding (code review): registerHandler now
+  // wraps every IPC handler with a check that the calling frame is the
+  // trusted main window frame, as defense-in-depth against a future
+  // regression that lets a second frame or a <webview> reach this
+  // privileged API. Bypasses MockIpcMain.invoke() (which always simulates a
+  // trusted call) to invoke the raw registered handler directly with a
+  // forged senderFrame.
+  describe('IPC sender frame validation (H3)', () => {
+    it('rejects a call whose senderFrame does not match the main window', async () => {
+      const handler = mockIpc.handlers.get(IPC_CHANNELS.SMARTCARD_LOCK_ALL)!;
+      const untrustedEvent = { senderFrame: { url: 'https://evil.example.com' } } as any;
+      await expect(handler(untrustedEvent)).rejects.toThrow(/untrusted frame/i);
+    });
+
+    it('still allows a call whose senderFrame matches the main window', async () => {
+      const handler = mockIpc.handlers.get(IPC_CHANNELS.SMARTCARD_LOCK_ALL)!;
+      const trustedEvent = { senderFrame: mockWebContents.mainFrame } as any;
+      await expect(handler(trustedEvent)).resolves.toBeDefined();
+    });
   });
 
   describe('Terminal IPC Handlers & Events', () => {
@@ -1243,6 +1278,59 @@ describe('IpcBridge', () => {
 
       await mockIpc.invoke(IPC_CHANNELS.PROFILES_DELETE_S3, 's3-1');
       expect(mockProfileStore.deleteS3).toHaveBeenCalledWith('s3-1');
+    });
+  });
+
+  // Regression tests for the H4 finding (code review): these three channels
+  // used to accept an optional caller-supplied path forwarded straight to
+  // fs.readFile/writeFile, bypassing the save/open dialog. The real UI never
+  // passed one, so it was only reachable by a compromised renderer. Both the
+  // preload API and the main-process handler now ignore any extra argument
+  // entirely and always resolve the path themselves.
+  describe('Profile export/import path handling (H4)', () => {
+    it('profilesImportSshConfig ignores a caller-supplied path and only ever reads the real ~/.ssh/config', async () => {
+      // Call with an extra positional arg the way a compromised renderer
+      // would — the preload API no longer even has a parameter to accept
+      // it, but the IPC channel itself could still be invoked directly.
+      const result = await mockIpc.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG, '/etc/passwd');
+      expect(result.filePath).not.toBe('/etc/passwd');
+      expect(result.filePath.endsWith(path.join('.ssh', 'config'))).toBe(true);
+    });
+
+    it('profilesExportJson always resolves the path via the save dialog, ignoring a caller-supplied path', async () => {
+      const { dialog } = await import('electron');
+      const tmpFile = path.join(os.tmpdir(), `sshs3-export-test-${Date.now()}.json`);
+      (dialog.showSaveDialog as any).mockResolvedValueOnce({ canceled: false, filePath: tmpFile });
+
+      const result = await mockIpc.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON, '/etc/should-not-be-used.json');
+
+      expect(dialog.showSaveDialog).toHaveBeenCalled();
+      expect(result?.filePath).toBe(tmpFile);
+      await fsp.unlink(tmpFile).catch(() => {});
+    });
+
+    it('profilesImportJson always resolves the path via the open dialog, ignoring a caller-supplied path', async () => {
+      const { dialog } = await import('electron');
+      const tmpFile = path.join(os.tmpdir(), `sshs3-import-test-${Date.now()}.json`);
+      await fsp.writeFile(tmpFile, JSON.stringify({ ssh: [{ id: 'x', host: 'h' }], s3: [] }), 'utf-8');
+      (dialog.showOpenDialog as any).mockResolvedValueOnce({ canceled: false, filePaths: [tmpFile] });
+
+      const result = await mockIpc.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON, '/etc/should-not-be-used.json');
+
+      expect(dialog.showOpenDialog).toHaveBeenCalled();
+      expect(result.count).toBe(1);
+      await fsp.unlink(tmpFile).catch(() => {});
+    });
+
+    it('preload profilesExportJson/profilesImportJson/profilesImportSshConfig take no arguments and forward none', async () => {
+      await preloadApi.profilesImportSshConfig();
+      expect(mockIpcRenderer.invoke).toHaveBeenLastCalledWith(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG);
+
+      await preloadApi.profilesExportJson();
+      expect(mockIpcRenderer.invoke).toHaveBeenLastCalledWith(IPC_CHANNELS.PROFILES_EXPORT_JSON);
+
+      await preloadApi.profilesImportJson();
+      expect(mockIpcRenderer.invoke).toHaveBeenLastCalledWith(IPC_CHANNELS.PROFILES_IMPORT_JSON);
     });
   });
 

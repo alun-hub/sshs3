@@ -333,14 +333,22 @@ export const api: MultiSSHApi = {
   profilesRenameFolder: (oldName: string, newName: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_RENAME_FOLDER, oldName, newName),
 
-  profilesImportSshConfig: (filePath?: string): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG, filePath),
+  // No filePath argument (H4, code review): these three used to accept an
+  // optional caller-supplied path that went straight to fs.readFile/
+  // writeFile in the main process, bypassing the save/open dialog entirely.
+  // The real UI never passed one — only a compromised renderer could — so
+  // the parameter is removed from this exposed surface rather than merely
+  // left "optional but trusted"; the main process always resolves the path
+  // itself (a fixed default for SSH config, an electronDialog prompt for
+  // JSON export/import).
+  profilesImportSshConfig: (): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG),
 
-  profilesExportJson: (targetFilePath?: string): Promise<{ count: number; filePath: string } | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON, targetFilePath),
+  profilesExportJson: (): Promise<{ count: number; filePath: string } | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON),
 
-  profilesImportJson: (filePath?: string): Promise<{ count: number }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON, filePath),
+  profilesImportJson: (): Promise<{ count: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON),
 
   // Session
   sessionGet: (): Promise<SessionData | null> =>

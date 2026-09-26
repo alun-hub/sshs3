@@ -442,9 +442,9 @@ export interface MultiSSHApi {
   profilesSaveFolder(name: string): Promise<void>;
   profilesDeleteFolder(name: string, deleteProfiles?: boolean): Promise<void>;
   profilesRenameFolder(oldName: string, newName: string): Promise<void>;
-  profilesImportSshConfig(filePath?: string): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }>;
-  profilesExportJson(targetFilePath?: string): Promise<{ count: number; filePath: string } | null>;
-  profilesImportJson(filePath?: string): Promise<{ count: number }>;
+  profilesImportSshConfig(): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }>;
+  profilesExportJson(): Promise<{ count: number; filePath: string } | null>;
+  profilesImportJson(): Promise<{ count: number }>;
 
   // Session
   sessionGet(): Promise<SessionData | null>;

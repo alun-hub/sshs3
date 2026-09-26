@@ -5,6 +5,16 @@ export interface FileEntry {
   path: string;
   size: number;
   isDirectory: boolean;
+  /**
+   * True when this entry is a symbolic link (reported via lstat-like
+   * semantics, not resolved through to the link's target). Populated by
+   * LocalStorageProvider and SFTPStorageProvider; storage types without a
+   * real symlink concept (S3, K8s pod exec) leave it undefined. Transfer's
+   * directory scan skips any entry with this set — see TransferPipeline's
+   * scanDirectory — to avoid following a symlink outside the intended
+   * source tree or into a cycle (see the H6 code-review finding).
+   */
+  isSymlink?: boolean;
   mtime?: string; // ISO 8601 string yyyy-mm-dd HH:mm or ISO
   mtimeMs?: number; // epoch ms, UTC — precise value for diffing, unlike the display-rounded `mtime` above
   mimeType?: string;

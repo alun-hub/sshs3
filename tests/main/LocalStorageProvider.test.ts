@@ -211,6 +211,46 @@ describe('LocalStorageProvider', () => {
       const entries = await provider.list(emptyDir);
       expect(entries).toEqual([]);
     });
+
+    // Regression tests for the H6 finding (code review): TransferPipeline's
+    // directory scan decides whether to recurse using isDirectory, which
+    // comes from a followed stat() — indistinguishable from a real
+    // directory unless isSymlink is also reported. Without it, a symlinked
+    // directory inside a source tree gets recursed into like a real one,
+    // which can escape the intended source tree or spin forever on a cycle.
+    it.skipIf(process.platform === 'win32')(
+      'flags a symlinked directory as isDirectory + isSymlink, not a plain directory',
+      async () => {
+        const realDir = path.join(testDir, 'real-dir');
+        await fs.mkdir(realDir);
+        const linkPath = path.join(testDir, 'link-to-dir');
+        await fs.symlink(realDir, linkPath, 'dir');
+
+        const entries = await provider.list(testDir);
+        const linkEntry = entries.find((e) => e.name === 'link-to-dir');
+
+        expect(linkEntry).toBeDefined();
+        expect(linkEntry?.isDirectory).toBe(true);
+        expect(linkEntry?.isSymlink).toBe(true);
+      }
+    );
+
+    it.skipIf(process.platform === 'win32')(
+      'flags a symlinked file as isSymlink, and a regular file as isSymlink: false',
+      async () => {
+        const realFile = path.join(testDir, 'real-file.txt');
+        await fs.writeFile(realFile, 'content', 'utf-8');
+        const linkPath = path.join(testDir, 'link-to-file.txt');
+        await fs.symlink(realFile, linkPath, 'file');
+
+        const entries = await provider.list(testDir);
+        const linkEntry = entries.find((e) => e.name === 'link-to-file.txt');
+        const realEntry = entries.find((e) => e.name === 'real-file.txt');
+
+        expect(linkEntry?.isSymlink).toBe(true);
+        expect(realEntry?.isSymlink).toBe(false);
+      }
+    );
   });
 
   describe('rename', () => {
@@ -282,6 +322,43 @@ describe('LocalStorageProvider', () => {
       const scopedProvider = new LocalStorageProvider({ basePath: testDir });
       await expect(scopedProvider.delete(testDir, true)).rejects.toThrow(/Cannot delete root directory/);
       await expect(scopedProvider.delete('', true)).rejects.toThrow(/Cannot delete root directory/);
+    });
+  });
+
+  // Regression tests for the H2 finding (code review): resolvePath() used to
+  // honor an absolute path or a "../"-walked relative path unconditionally,
+  // ignoring basePath entirely once resolution completed. Every read/write/
+  // list/delete method goes through resolvePath(), so this is the one place
+  // that must actually enforce basePath as a sandbox boundary, not just a
+  // default prefix for relative input.
+  describe('sandboxing to basePath (H2)', () => {
+    it('rejects a relative path whose ".." segments walk outside basePath', () => {
+      const scoped = new LocalStorageProvider({ basePath: testDir });
+      expect(() => scoped.resolvePath('../../../etc/passwd')).toThrow(/outside the allowed base directory/);
+    });
+
+    it('rejects an absolute path elsewhere on disk when basePath is set', () => {
+      const scoped = new LocalStorageProvider({ basePath: testDir });
+      const elsewhere = path.join(os.tmpdir(), 'definitely-outside');
+      expect(() => scoped.resolvePath(elsewhere)).toThrow(/outside the allowed base directory/);
+    });
+
+    it('still resolves a legitimate relative path inside basePath', () => {
+      const scoped = new LocalStorageProvider({ basePath: testDir });
+      expect(scoped.resolvePath('sub/file.txt')).toBe(path.join(testDir, 'sub', 'file.txt'));
+    });
+
+    it('does not sandbox when no basePath is configured (default "browse this computer" mode)', () => {
+      const unscoped = new LocalStorageProvider();
+      const elsewhere = path.join(os.tmpdir(), 'anywhere-is-fine');
+      expect(unscoped.resolvePath(elsewhere)).toBe(path.normalize(elsewhere));
+    });
+
+    it('propagates the sandbox violation through delete/list/stat, not just resolvePath directly', async () => {
+      const scoped = new LocalStorageProvider({ basePath: testDir });
+      await expect(scoped.delete('../outside.txt', false)).rejects.toThrow(/outside the allowed base directory/);
+      await expect(scoped.list('../')).rejects.toThrow(/outside the allowed base directory/);
+      await expect(scoped.stat('../../etc/passwd')).rejects.toThrow(/outside the allowed base directory/);
     });
   });
 

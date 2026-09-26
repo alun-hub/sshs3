@@ -333,8 +333,36 @@ export class IpcBridge {
     }
   }
 
+  /**
+   * Defense-in-depth (not currently exploitable): window creation and
+   * navigation are already locked down (see setWindowOpenHandler/
+   * will-navigate in src/main/index.ts), so today the main window's own
+   * frame is the only thing that can ever call an IPC handler. But this
+   * privileged API surface — ~90 methods reachable from the renderer,
+   * including local filesystem access, SSH/S3 credentials, and arbitrary
+   * command execution helpers — should not rely on that holding forever. A
+   * future regression that lets a second frame or a <webview> load
+   * untrusted content would otherwise expose the entire API to it with no
+   * additional check. getWebContents() returning null/undefined (as in
+   * tests, where it's often not wired up) skips the check rather than
+   * failing every handler.
+   */
+  private assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
+    const webContents = this.getWebContents();
+    if (!webContents || webContents.isDestroyed()) return;
+    if (event.senderFrame !== webContents.mainFrame) {
+      throw new Error('Rejected IPC call from an untrusted frame');
+    }
+  }
+
   private registerHandler(channel: string, handler: (...args: any[]) => any): void {
-    this.ipcMain.handle(channel, handler);
+    // async, not a plain arrow function: assertTrustedSender's throw must
+    // surface as a rejected promise (what ipcMain.invoke's caller expects)
+    // rather than a synchronous exception out of the handle() dispatch.
+    this.ipcMain.handle(channel, async (event, ...args) => {
+      this.assertTrustedSender(event);
+      return handler(event, ...args);
+    });
     this.handlers.add(channel);
   }
 
@@ -1091,25 +1119,28 @@ export class IpcBridge {
 
     this.registerHandler(
       IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG,
-      async (_event, filePath?: string) => {
-        return await importSshConfigFile(filePath);
+      async () => {
+        // No caller-supplied path (H4, code review): always the real
+        // ~/.ssh/config, never an arbitrary path an untrusted renderer
+        // could name.
+        return await importSshConfigFile();
       }
     );
 
     this.registerHandler(
       IPC_CHANNELS.PROFILES_EXPORT_JSON,
-      async (_event, targetFilePath?: string) => {
-        let exportPath = targetFilePath;
-        if (!exportPath) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          const result = await electronDialog.showSaveDialog({
-            title: 'Export Profiles',
-            defaultPath: `sshs3-profiles-${dateStr}.json`,
-            filters: [{ name: 'JSON Files', extensions: ['json'] }],
-          });
-          if (result.canceled || !result.filePath) return null;
-          exportPath = result.filePath;
-        }
+      async () => {
+        // Always resolved via the save dialog (H4, code review) — never a
+        // caller-supplied path, which would let an untrusted renderer
+        // overwrite an arbitrary file on disk.
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const result = await electronDialog.showSaveDialog({
+          title: 'Export Profiles',
+          defaultPath: `sshs3-profiles-${dateStr}.json`,
+          filters: [{ name: 'JSON Files', extensions: ['json'] }],
+        });
+        if (result.canceled || !result.filePath) return null;
+        const exportPath = result.filePath;
 
         const profiles = await this.profileStore.getProfiles();
         const exportData = {
@@ -1133,17 +1164,17 @@ export class IpcBridge {
 
     this.registerHandler(
       IPC_CHANNELS.PROFILES_IMPORT_JSON,
-      async (_event, filePath?: string) => {
-        let importPath = filePath;
-        if (!importPath) {
-          const result = await electronDialog.showOpenDialog({
-            title: 'Import Profiles JSON',
-            filters: [{ name: 'JSON Files', extensions: ['json'] }],
-            properties: ['openFile'],
-          });
-          if (result.canceled || result.filePaths.length === 0) return { count: 0 };
-          importPath = result.filePaths[0];
-        }
+      async () => {
+        // Always resolved via the open dialog (H4, code review) — never a
+        // caller-supplied path, which would let an untrusted renderer read
+        // an arbitrary file on disk and have it parsed/merged as profiles.
+        const result = await electronDialog.showOpenDialog({
+          title: 'Import Profiles JSON',
+          filters: [{ name: 'JSON Files', extensions: ['json'] }],
+          properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0) return { count: 0 };
+        const importPath = result.filePaths[0];
 
         const content = await fs.readFile(importPath, 'utf-8');
         const parsed = JSON.parse(content);

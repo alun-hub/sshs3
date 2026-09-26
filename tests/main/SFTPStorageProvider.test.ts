@@ -478,6 +478,7 @@ describe('SFTPStorageProvider', () => {
         path: '/remote/data/docs',
         size: 4096,
         isDirectory: true,
+        isSymlink: false,
         mtime: formatDate(date1),
         mtimeMs: date1.getTime(),
         mimeType: undefined,
@@ -488,11 +489,30 @@ describe('SFTPStorageProvider', () => {
         path: '/remote/data/report.pdf',
         size: 1048576,
         isDirectory: false,
+        isSymlink: false,
         mtime: formatDate(date2),
         mtimeMs: date2.getTime(),
         mimeType: 'application/pdf',
         permissions: '644',
       });
+    });
+
+    // Regression test for the H6 finding (code review): a symlinked
+    // directory must be flagged isSymlink so TransferPipeline's scanDirectory
+    // skips it instead of recursing through it (potential scope escape or
+    // infinite loop on a symlink cycle).
+    it('flags a symlink entry (type "l") as isSymlink, not as a directory', async () => {
+      const now = Date.now();
+      mockList.mockResolvedValue([
+        { name: 'link-to-elsewhere', type: 'l', size: 0, modifyTime: now },
+      ]);
+
+      const provider = new SFTPStorageProvider(baseConfig);
+      const entries = await provider.list('/folder');
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0].isSymlink).toBe(true);
+      expect(entries[0].isDirectory).toBe(false);
     });
 
     it('should sort directories first, then files alphabetically', async () => {

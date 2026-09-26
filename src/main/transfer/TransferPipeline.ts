@@ -370,7 +370,22 @@ export async function transferFile(options: TransferOptions): Promise<void> {
   const readStream = await options.sourceProvider.createReadStream(
     options.sourcePath
   );
+  // Attach immediately, before any further `await` — a stream with zero
+  // 'error' listeners crashes the whole main process on an unhandled error
+  // event (Node's default behavior), and the source file/connection can
+  // fail (e.g. deleted between the stat() above and here — TOCTOU) in the
+  // gap before createWriteStream resolves below and pipeline() attaches its
+  // own listener, when nothing else is listening yet. This can't be a bare
+  // no-op, though: if the error fires and is fully consumed before
+  // pipeline() ever attaches, pipeline() would never learn about it and the
+  // transfer would look "successful" despite a broken source stream — so
+  // this records it instead, and it's checked for below before proceeding.
+  let earlyReadError: Error | undefined;
+  readStream.on('error', (err) => {
+    earlyReadError = err;
+  });
   let writeStream: NodeJS.WritableStream | undefined;
+  let earlyWriteError: Error | undefined;
 
   try {
     if (options.signal?.aborted) {
@@ -383,6 +398,14 @@ export async function transferFile(options: TransferOptions): Promise<void> {
       resolvedTargetPath,
       { size: totalBytes }
     );
+    // Same reasoning as readStream above, for the equivalent gap before
+    // pipeline() is called just below.
+    writeStream.on('error', (err) => {
+      earlyWriteError = err;
+    });
+
+    if (earlyReadError) throw earlyReadError;
+    if (earlyWriteError) throw earlyWriteError;
 
     const meter = new ByteMeter({
       jobId: options.jobId,
@@ -458,6 +481,15 @@ async function scanDirectory(
     // Prevent infinite recursion on '.' and '..' and reject path traversal
     const baseName = path.posix.basename(entry.name.replace(/\\/g, '/'));
     if (!baseName || baseName === '.' || baseName === '..') {
+      continue;
+    }
+    // Never follow a symlink during a directory transfer (H6 code-review
+    // finding): entry.isDirectory for a symlinked directory comes from a
+    // followed stat(), so recursing into it can escape the source tree
+    // entirely (a link to "/" or a parent) or spin forever on a symlink
+    // cycle, since no cycle detection exists here. Matches the same
+    // skip-symlinks policy LocalContentSearchService already uses.
+    if (entry.isSymlink) {
       continue;
     }
     const childTargetPath = joinPaths(targetType, currentTargetPath, baseName);

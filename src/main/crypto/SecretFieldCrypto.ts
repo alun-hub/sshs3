@@ -38,18 +38,28 @@ export function encryptSecretValue(value: string): string {
 
 export function decryptSecretValue(value: string): string {
   if (typeof value !== 'string' || !value.startsWith(ENC_PREFIX)) {
+    // Never encrypted in the first place — this is the real plaintext value.
     return value;
   }
-  try {
-    const buf = Buffer.from(value.slice(ENC_PREFIX.length), 'base64');
-    if (isEncryptionAvailable()) {
-      return safeStorage.decryptString(buf);
+  // Encrypted but not decryptable here — either no OS keyring backend is
+  // available, or decryption failed (e.g. the value was moved to another
+  // machine/user without the original OS keyring entry). Returning the
+  // still-encrypted ciphertext here would let it be silently used as-is:
+  // sent as an SSH/S3 password, displayed in an editable field, or re-saved
+  // as if it were plaintext (which would permanently destroy it, since it
+  // can no longer be decrypted back to the original secret). An empty
+  // string makes this behave exactly like "no credential saved", which
+  // every caller already handles by prompting the user to (re-)enter it.
+  if (isEncryptionAvailable()) {
+    try {
+      return safeStorage.decryptString(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'));
+    } catch (err) {
+      console.warn('Failed to decrypt a stored secret field; treating it as unavailable:', err);
+      return '';
     }
-  } catch {
-    // Undecryptable (e.g. moved to a machine/user without the original OS
-    // keyring entry) — fall through and return the raw stored value.
   }
-  return value;
+  console.warn('Stored secret field is encrypted but no OS keyring is available to decrypt it; treating as unavailable.');
+  return '';
 }
 
 export function transformSecretFields<T extends object>(
