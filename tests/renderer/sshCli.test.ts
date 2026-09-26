@@ -49,4 +49,33 @@ describe('buildSshCliCommand', () => {
       'ssh -L 8080:localhost:80 -D 1080 admin@10.0.0.5'
     );
   });
+
+  it('includes SSH_AUTH_SOCK from profile.agentPath or agentSocketPath parameter', () => {
+    const configWithAgentPath: SSHConnectionConfig = {
+      id: '4',
+      name: 'Agent Server',
+      host: 'agent.example.com',
+      username: 'deploy',
+      authType: 'agent',
+      agentPath: '/run/user/1000/custom-agent.sock',
+    };
+    expect(buildSshCliCommand(configWithAgentPath)).toBe(
+      'SSH_AUTH_SOCK=/run/user/1000/custom-agent.sock ssh deploy@agent.example.com'
+    );
+
+    const configWithoutAgentPath: SSHConnectionConfig = {
+      id: '5',
+      name: 'Global Agent Server',
+      host: 'global.example.com',
+      username: 'deploy',
+      authType: 'agent',
+    };
+    expect(buildSshCliCommand(configWithoutAgentPath, '/run/user/1000/ssh-agent.socket')).toBe(
+      'SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket ssh deploy@global.example.com'
+    );
+
+    expect(buildSshCliCommand(configWithoutAgentPath, '/path with spaces/agent.sock')).toBe(
+      'SSH_AUTH_SOCK="/path with spaces/agent.sock" ssh deploy@global.example.com'
+    );
+  });
 });

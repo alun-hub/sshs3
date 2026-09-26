@@ -1,7 +1,15 @@
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 
-export function buildSshCliCommand(profile: SSHConnectionConfig): string {
-  const parts: string[] = ['ssh'];
+export function buildSshCliCommand(profile: SSHConnectionConfig, agentSocketPath?: string): string {
+  const parts: string[] = [];
+
+  const socket = profile.agentPath?.trim() || agentSocketPath?.trim();
+  if (socket) {
+    const escaped = /[\s$`\\"]/.test(socket) ? `"${socket.replace(/"/g, '\\"')}"` : socket;
+    parts.push(`SSH_AUTH_SOCK=${escaped}`);
+  }
+
+  parts.push('ssh');
 
   if (profile.port && profile.port !== 22) {
     parts.push(`-p ${profile.port}`);

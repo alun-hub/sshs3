@@ -218,7 +218,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   // Option A: Copy CLI command
   const handleCopySshCli = async (profile: SSHConnectionConfig) => {
-    const cmd = buildSshCliCommand(profile);
+    let agentSocket = profile.agentPath;
+    if (!agentSocket) {
+      try {
+        const agentStatus = await window.multissh.getSshAgentStatus();
+        if (agentStatus?.isRunning && agentStatus?.socketPath) {
+          agentSocket = agentStatus.socketPath;
+        }
+      } catch {
+        // Safe to proceed without agent status
+      }
+    }
+    const cmd = buildSshCliCommand(profile, agentSocket);
     try {
       await navigator.clipboard.writeText(cmd);
       setCopyFeedbackId(profile.id);
