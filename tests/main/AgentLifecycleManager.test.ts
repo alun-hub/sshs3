@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile as mockedExecFile } from 'node:child_process';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
+import * as AgentRegistry from '../../src/main/ssh/AgentRegistry';
 
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }));
 
@@ -230,6 +231,66 @@ describe('AgentLifecycleManager', () => {
       killSpy.mockRestore();
     }
   );
+
+  describe('AgentRegistry crash-recovery integration', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('registers a spawned private agent and unregisters it on killPrivateAgent', async () => {
+      if (process.platform === 'win32') return;
+      const registerSpy = vi.spyOn(AgentRegistry, 'registerEntry').mockResolvedValue('reg-id-1');
+      const unregisterSpy = vi.spyOn(AgentRegistry, 'unregisterEntry').mockResolvedValue(undefined);
+      vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+
+      mockSpawnedAgent('/tmp/registry-agent.sock', 55501);
+      await AgentLifecycleManager.spawnPrivateAgent();
+
+      expect(registerSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'agent', pid: 55501, ownerPid: process.pid })
+      );
+
+      AgentLifecycleManager.killPrivateAgent(55501);
+      expect(unregisterSpy).toHaveBeenCalledWith('reg-id-1');
+    });
+
+    it('unregisters every tracked agent on killAllPrivateAgents', async () => {
+      if (process.platform === 'win32') return;
+      const registerSpy = vi
+        .spyOn(AgentRegistry, 'registerEntry')
+        .mockResolvedValueOnce('reg-id-a')
+        .mockResolvedValueOnce('reg-id-b');
+      const unregisterSpy = vi.spyOn(AgentRegistry, 'unregisterEntry').mockResolvedValue(undefined);
+      vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+
+      mockSpawnedAgent('/tmp/registry-agent-a.sock', 55502);
+      await AgentLifecycleManager.spawnPrivateAgent();
+      mockSpawnedAgent('/tmp/registry-agent-b.sock', 55503);
+      await AgentLifecycleManager.spawnPrivateAgent();
+
+      AgentLifecycleManager.killAllPrivateAgents();
+
+      expect(registerSpy).toHaveBeenCalledTimes(2);
+      expect(unregisterSpy).toHaveBeenCalledWith('reg-id-a');
+      expect(unregisterSpy).toHaveBeenCalledWith('reg-id-b');
+    });
+
+    it('cleanupOrphanedResources kills orphaned agents that still look like ssh-agent and removes orphaned askpass dirs', async () => {
+      const cleanupSpy = vi.spyOn(AgentRegistry, 'cleanupOrphans').mockImplementation(async (handlers) => {
+        await handlers.onOrphanAgent(process.pid); // not named "ssh-agent" -> must NOT be killed on Linux
+        await handlers.onOrphanAskpass('/tmp/sshs3-askpass-orphan-fixture');
+      });
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+
+      await AgentLifecycleManager.cleanupOrphanedResources();
+
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+      if (process.platform === 'linux') {
+        // process.pid is this test runner, never actually named "ssh-agent".
+        expect(killSpy).not.toHaveBeenCalledWith(process.pid, 'SIGTERM');
+      }
+    });
+  });
 
   it('unloadCard resolves even when the socket/module is unreachable (best-effort)', async () => {
     await expect(

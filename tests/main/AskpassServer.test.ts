@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import net from 'node:net';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { AskpassServer } from '../../src/main/smartcard/AskpassServer';
+import * as AgentRegistry from '../../src/main/ssh/AgentRegistry';
 
 describe('AskpassServer', () => {
   let server: AskpassServer | null = null;
@@ -154,4 +157,34 @@ describe('AskpassServer', () => {
       expect(dirStat.mode & 0o777).toBe(0o700);
     }
   );
+
+  describe('crash-recovery registration', () => {
+    let registryDir: string;
+
+    afterEach(async () => {
+      AgentRegistry._resetRegistryDir();
+      if (registryDir) {
+        await fs.rm(registryDir, { recursive: true, force: true });
+      }
+    });
+
+    it('registers its tempDir on start and removes the record on stop', async () => {
+      registryDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'agent-registry-askpass-test-'));
+      AgentRegistry.configureRegistryDir(registryDir);
+
+      server = new AskpassServer({ promptHandler: vi.fn(), token: 'test-token' });
+      await server.start();
+
+      const files = fsSync.readdirSync(registryDir);
+      expect(files).toHaveLength(1);
+      const entry = JSON.parse(fsSync.readFileSync(path.join(registryDir, files[0]), 'utf-8'));
+      expect(entry.kind).toBe('askpass');
+      expect(entry.ownerPid).toBe(process.pid);
+
+      await server.stop();
+      server = null;
+
+      expect(fsSync.readdirSync(registryDir)).toHaveLength(0);
+    });
+  });
 });

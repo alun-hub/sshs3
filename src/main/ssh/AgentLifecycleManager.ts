@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
 import net from 'node:net';
+import * as AgentRegistry from './AgentRegistry';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,6 +46,7 @@ export class AgentLifecycleManager {
   private static spawnedSocket: string | null = null;
   private static ensuringPromise: Promise<AgentStatus> | null = null;
   private static activePrivateAgents = new Set<number>();
+  private static registryIds = new Map<number, string>();
   private static exitHandlersInstalled = false;
 
   private static installExitHandlers(): void {
@@ -304,6 +306,15 @@ export class AgentLifecycleManager {
     const pid = parseInt(pidMatch[1], 10);
     if (pid > 0) {
       this.activePrivateAgents.add(pid);
+      const registryId = await AgentRegistry.registerEntry({
+        kind: 'agent',
+        ownerPid: process.pid,
+        pid,
+        createdAt: new Date().toISOString(),
+      });
+      if (registryId) {
+        this.registryIds.set(pid, registryId);
+      }
     }
     return { pid, socketPath: sockMatch[1].trim() };
   }
@@ -316,6 +327,9 @@ export class AgentLifecycleManager {
   public static killPrivateAgent(pid: number): void {
     if (pid <= 0) return;
     this.activePrivateAgents.delete(pid);
+    const registryId = this.registryIds.get(pid) ?? null;
+    this.registryIds.delete(pid);
+    void AgentRegistry.unregisterEntry(registryId);
     if (!looksLikeOurAgent(pid)) return;
     try {
       process.kill(pid, 'SIGTERM');
@@ -336,7 +350,10 @@ export class AgentLifecycleManager {
           // Already dead or permission denied
         }
       }
+      const registryId = this.registryIds.get(pid) ?? null;
+      void AgentRegistry.unregisterEntry(registryId);
     }
+    this.registryIds.clear();
     this.activePrivateAgents.clear();
   }
 
@@ -380,6 +397,36 @@ export class AgentLifecycleManager {
         delete process.env.SSH_AUTH_SOCK;
       }
     }
+  }
+
+  /**
+   * Recovers resources left behind by a previous launch of this app that
+   * never got to exit gracefully (SIGKILL, crash, OOM-kill) — its private
+   * ssh-agent processes and their askpass socket directories otherwise leak
+   * forever, since the in-memory tracking that normally drives cleanup dies
+   * with the process. Call once at startup, before spawning anything new.
+   * Safe to call even with other instances of this app running concurrently:
+   * AgentRegistry only acts on entries whose owning process is no longer alive.
+   */
+  public static async cleanupOrphanedResources(): Promise<void> {
+    await AgentRegistry.cleanupOrphans({
+      onOrphanAgent: (pid) => {
+        if (pid > 0 && looksLikeOurAgent(pid)) {
+          try {
+            process.kill(pid, 'SIGTERM');
+          } catch {
+            // Already dead or permission denied
+          }
+        }
+      },
+      onOrphanAskpass: async (tempDir) => {
+        try {
+          await fs.promises.rm(tempDir, { recursive: true, force: true });
+        } catch {
+          // Ignore
+        }
+      },
+    });
   }
 
   /**

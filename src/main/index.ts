@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
 import { SystemTrustStore } from './crypto/SystemTrustStore';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
+import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,7 +124,13 @@ function createWindow(): BrowserWindow {
 }
 
 // Initialize IPC bridge before or when app is ready
-function initializeApp(): void {
+async function initializeApp(): Promise<void> {
+  // Recover ssh-agent processes and askpass socket dirs left behind by a
+  // previous launch that never exited gracefully (crash, SIGKILL, OOM-kill).
+  // Must run before ensureAgent()/anything else spawns new ones below.
+  configureRegistryDir(path.join(app.getPath('userData'), 'runtime-agents'));
+  await AgentLifecycleManager.cleanupOrphanedResources();
+
   if (!isEncryptionAvailable()) {
     // No OS keyring backend (safeStorage) available — SecretFieldCrypto falls
     // back to storing saved SSH/S3 passwords and passphrases in plaintext on

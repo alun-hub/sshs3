@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import * as AgentRegistry from '../ssh/AgentRegistry';
 
 export type AskpassPromptHandler = (prompt: string) => Promise<string> | string;
 
@@ -36,6 +37,7 @@ export class AskpassServer extends EventEmitter {
   private scriptPath: string | null = null;
   private activeSockets: Set<net.Socket> = new Set();
   private running: boolean = false;
+  private registryId: string | null = null;
 
   constructor(options?: AskpassServerOptions) {
     super();
@@ -71,6 +73,12 @@ export class AskpassServer extends EventEmitter {
     // the server starts listening.
     this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-askpass-'));
     await fs.chmod(this.tempDir, 0o700);
+    this.registryId = await AgentRegistry.registerEntry({
+      kind: 'askpass',
+      ownerPid: process.pid,
+      tempDir: this.tempDir,
+      createdAt: new Date().toISOString(),
+    });
 
     const isWindows = process.platform === 'win32';
 
@@ -191,6 +199,9 @@ export class AskpassServer extends EventEmitter {
       this.tempDir = null;
       this.scriptPath = null;
     }
+
+    await AgentRegistry.unregisterEntry(this.registryId);
+    this.registryId = null;
   }
 
   private handleConnection(socket: net.Socket): void {
