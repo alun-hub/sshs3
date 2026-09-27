@@ -1,8 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { Check, FileCode, Loader2, Plus, X } from 'lucide-react';
+import { AlertTriangle, Check, FileCode, Loader2, Plus, X } from 'lucide-react';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import type { FileEntry } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+
+// LOW finding (code review): pooled dotfile content is always stored as
+// plaintext on disk — an intentional tradeoff (these are config files
+// pushed to remote hosts as-is, not secrets our own app ever decrypts for
+// its own use), but a handful of well-known dotfiles exist specifically to
+// hold credentials. Warn rather than silently store those unencrypted too.
+const CREDENTIAL_DOTFILE_BASENAMES = new Set([
+  '.netrc',
+  '.pgpass',
+  '.npmrc',
+  '.git-credentials',
+  'credentials', // e.g. ~/.aws/credentials
+  'config.json', // e.g. ~/.docker/config.json
+]);
+
+function looksLikeCredentialFile(remotePath: string): boolean {
+  const basename = remotePath.split('/').pop() ?? remotePath;
+  return CREDENTIAL_DOTFILE_BASENAMES.has(basename);
+}
 
 interface AddToDotfilePoolModalProps {
   open: boolean;
@@ -154,6 +173,15 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
             <p className="text-[11px] text-txt-muted">
               The path the file is automatically written to when the pool syncs to a connected server.
             </p>
+            {looksLikeCredentialFile(remotePath) && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-2.5 py-2 text-[11px] text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  This looks like a credentials file. Pooled dotfiles are stored unencrypted on this device —
+                  avoid pooling files containing tokens or passwords you wouldn't want readable in plain text here.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

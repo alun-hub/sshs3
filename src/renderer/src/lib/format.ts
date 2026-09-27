@@ -53,13 +53,10 @@ export function classNames(...values: Array<string | false | null | undefined>):
   return values.filter(Boolean).join(' ');
 }
 
-export function formatDateTime(date?: Date | string | number): string {
-  const d = date ? new Date(date) : new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
+// Re-exported rather than duplicated (LOW finding, code review): this file,
+// dateFormat.ts, and a third ad-hoc copy in SyncSettingsPanel.tsx each had
+// their own formatDateTime with different edge-case behavior (no null
+// guard here vs. a "—" guard there). dateFormat.ts's version is the one
+// canonical implementation now; SyncSettingsPanel.tsx wraps it locally for
+// its own "Never" fallback instead of reimplementing the formatting itself.
+export { formatDateTime } from './dateFormat';

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DirSyncSavedProfilesModal } from '../../src/renderer/src/components/FileManager/DirSyncSavedProfilesModal';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { DirectorySyncProfile } from '../../src/shared/types/dirsync';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -45,7 +46,11 @@ describe('DirSyncSavedProfilesModal', () => {
   });
 
   it('renders clearly showing source host, target host and transfer direction', async () => {
-    render(<DirSyncSavedProfilesModal open={true} onClose={() => {}} onRun={() => {}} />);
+    render(
+      <ConfirmProvider>
+        <DirSyncSavedProfilesModal open={true} onClose={() => {}} onRun={() => {}} />
+      </ConfirmProvider>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Web Server to Local Backup')).toBeInTheDocument();
@@ -73,7 +78,11 @@ describe('DirSyncSavedProfilesModal', () => {
   // M12 (code review): this dialog previously only closed via the header X.
   it('calls onClose on Escape and on a backdrop click (M12)', async () => {
     const onClose = vi.fn();
-    const { container } = render(<DirSyncSavedProfilesModal open={true} onClose={onClose} onRun={() => {}} />);
+    const { container } = render(
+      <ConfirmProvider>
+        <DirSyncSavedProfilesModal open={true} onClose={onClose} onRun={() => {}} />
+      </ConfirmProvider>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Web Server to Local Backup')).toBeInTheDocument();
@@ -84,5 +93,35 @@ describe('DirSyncSavedProfilesModal', () => {
 
     fireEvent.click(container.firstElementChild as Element);
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  // LOW finding (code review): deleting a profile used to go through
+  // window.confirm(), trivially dismissed by a stray Enter/Space press.
+  it('asks for in-app confirmation before deleting a profile, and only deletes when confirmed', async () => {
+    render(
+      <ConfirmProvider>
+        <DirSyncSavedProfilesModal open={true} onClose={() => {}} onRun={() => {}} />
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Web Server to Local Backup')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle('Delete profile'));
+
+    const dialog = await screen.findByTestId('confirm-dialog');
+    expect(dialog).toHaveTextContent('Web Server to Local Backup');
+
+    // Cancel does not delete.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(window.multissh.dirSyncProfileDelete).not.toHaveBeenCalled();
+
+    // Confirming does.
+    fireEvent.click(screen.getByTitle('Delete profile'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => {
+      expect(window.multissh.dirSyncProfileDelete).toHaveBeenCalledWith('sync-1');
+    });
   });
 });

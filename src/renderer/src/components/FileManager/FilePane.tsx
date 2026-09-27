@@ -38,6 +38,7 @@ import { joinPath, parentPath } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
 import { useDragDrop } from './DragDropContext';
+import { useConfirm } from '../ConfirmDialog';
 import { ChmodModal } from './ChmodModal';
 import { PropertiesModal } from './PropertiesModal';
 import { TagsModal } from './TagsModal';
@@ -126,6 +127,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     cutFiles,
     clearClipboard,
   } = useDragDrop();
+  const confirm = useConfirm();
   const latestRequestRef = useRef<string>('');
 
   // Navigation history
@@ -284,8 +286,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const handleDelete = useCallback(async () => {
     if (selectedPaths.size === 0) return;
-    if (!window.confirm(`Delete ${selectedPaths.size} item(s)?`)) return;
     const targets = entries.filter((e) => selectedPaths.has(e.path));
+    const message =
+      targets.length === 1 ? (
+        <>
+          Delete <strong className="text-txt-primary">{targets[0].name}</strong>
+          {targets[0].isDirectory ? ' and everything inside it' : ''}?
+        </>
+      ) : (
+        <>
+          Delete <strong className="text-txt-primary">{targets.length} items</strong>? This includes:
+          <ul className="mt-1.5 max-h-24 list-disc space-y-0.5 overflow-y-auto pl-4 text-txt-muted">
+            {targets.slice(0, 8).map((t) => (
+              <li key={t.path} className="truncate">
+                {t.name}
+              </li>
+            ))}
+          </ul>
+          {targets.length > 8 && <span className="text-txt-muted">…and {targets.length - 8} more.</span>}
+        </>
+      );
+    if (!(await confirm({ title: 'Delete items', message, confirmLabel: 'Delete' }))) return;
     setLoading(true);
     setError(null);
     try {
@@ -301,7 +322,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedPaths, entries, source.providerId, load]);
+  }, [selectedPaths, entries, source.providerId, load, confirm]);
 
   const handleDownloadTo = useCallback(async () => {
     if (selectedPaths.size === 0) return;

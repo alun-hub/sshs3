@@ -7,6 +7,7 @@ import { TouchPresenceBanner } from './components/TouchPresenceBanner';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
+import { ConfirmProvider } from './components/ConfirmDialog';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
@@ -653,6 +654,7 @@ export const App: React.FC = () => {
   }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane, handleSelectPane]);
 
   return (
+    <ConfirmProvider>
     <div className="flex h-screen w-screen flex-col overflow-hidden select-none bg-app text-txt-primary">
       {/* Top Bar with Brand, TabBar, and Quick Connect */}
       <header className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface">
@@ -1030,6 +1032,7 @@ export const App: React.FC = () => {
         runProfile={dirSyncRunProfile}
       />
     </div>
+    </ConfirmProvider>
   );
 };
 

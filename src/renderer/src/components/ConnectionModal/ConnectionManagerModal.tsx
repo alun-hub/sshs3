@@ -27,6 +27,7 @@ import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
 import { formatDateTime } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 
 export type Tab = 'ssh' | 's3' | 'k8s';
 
@@ -69,6 +70,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [folders, setFolders] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ type: Tab; config?: SSHConnectionConfig | S3Config } | null>(null);
@@ -160,8 +162,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
-  const handleDeleteSSH = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this profile?')) return;
+  const handleDeleteSSH = async (id: string, name: string) => {
+    if (!(await confirm({ title: 'Delete connection', message: `Delete the SSH connection "${name}"?` }))) return;
     try {
       await window.multissh.profilesDeleteSSH(id);
       await load();
@@ -170,8 +172,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
-  const handleDeleteS3 = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this profile?')) return;
+  const handleDeleteS3 = async (id: string, name: string) => {
+    if (!(await confirm({ title: 'Delete connection', message: `Delete the S3 connection "${name}"?` }))) return;
     try {
       await window.multissh.profilesDeleteS3(id);
       await load();
@@ -241,7 +243,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleDeleteFolder = async (folderName: string) => {
-    if (!window.confirm(`Delete folder "${folderName}"? Profiles inside will be moved to Ungrouped.`)) {
+    if (
+      !(await confirm({
+        title: 'Delete folder',
+        message: `Delete folder "${folderName}"? Profiles inside will be moved to Ungrouped.`,
+      }))
+    ) {
       return;
     }
     try {
@@ -974,7 +981,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                         title="Delete Profile"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          void handleDeleteSSH(profile.id);
+                                          void handleDeleteSSH(profile.id, profile.name);
                                         }}
                                         className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
                                       >
@@ -1218,7 +1225,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                         title="Delete Profile"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          void handleDeleteS3(profile.id);
+                                          void handleDeleteS3(profile.id, profile.name);
                                         }}
                                         className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
                                       >

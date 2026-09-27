@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FileJson, X, Loader2 } from 'lucide-react';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 
 interface BucketPolicyModalProps {
   open: boolean;
@@ -35,6 +36,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +87,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
 
   const handleDelete = async () => {
     const label = tab === 'policy' ? 'Bucket Policy' : 'CORS Rules';
-    if (!window.confirm(`Delete ${label}?`)) return;
+    if (!(await confirm({ title: `Delete ${label}`, message: `Delete the ${label} for "${bucketName}"?` }))) return;
     setSaving(true);
     setError(null);
     try {

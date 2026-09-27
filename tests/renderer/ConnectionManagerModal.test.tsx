@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { ConnectionManagerModal } from '../../src/renderer/src/components/ConnectionModal/ConnectionManagerModal';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
 
@@ -71,18 +72,22 @@ describe('ConnectionManagerModal', () => {
 
   it('does not render when open is false', () => {
     const { container } = render(
-      <ConnectionManagerModal open={false} onClose={vi.fn()} />
+      <ConfirmProvider>
+        <ConnectionManagerModal open={false} onClose={vi.fn()} />
+      </ConfirmProvider>
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('renders profile groups and recently used section for SSH', async () => {
     render(
-      <ConnectionManagerModal
-        open={true}
-        onClose={vi.fn()}
-        onConnectSSH={vi.fn()}
-      />
+      <ConfirmProvider>
+        <ConnectionManagerModal
+          open={true}
+          onClose={vi.fn()}
+          onConnectSSH={vi.fn()}
+        />
+      </ConfirmProvider>
     );
 
     // Verify recent section
@@ -104,11 +109,13 @@ describe('ConnectionManagerModal', () => {
 
   it('filters profiles and groups based on search query', async () => {
     render(
-      <ConnectionManagerModal
-        open={true}
-        onClose={vi.fn()}
-        onConnectSSH={vi.fn()}
-      />
+      <ConfirmProvider>
+        <ConnectionManagerModal
+          open={true}
+          onClose={vi.fn()}
+          onConnectSSH={vi.fn()}
+        />
+      </ConfirmProvider>
     );
 
     await waitFor(() => {
@@ -129,11 +136,13 @@ describe('ConnectionManagerModal', () => {
 
   it('allows collapsing and expanding a group folder', async () => {
     render(
-      <ConnectionManagerModal
-        open={true}
-        onClose={vi.fn()}
-        onConnectSSH={vi.fn()}
-      />
+      <ConfirmProvider>
+        <ConnectionManagerModal
+          open={true}
+          onClose={vi.fn()}
+          onConnectSSH={vi.fn()}
+        />
+      </ConfirmProvider>
     );
 
     await waitFor(() => {
@@ -155,11 +164,13 @@ describe('ConnectionManagerModal', () => {
   it('calls onConnectSSH with updated timestamp when Connect is clicked', async () => {
     const onConnectSSH = vi.fn();
     render(
-      <ConnectionManagerModal
-        open={true}
-        onClose={vi.fn()}
-        onConnectSSH={onConnectSSH}
-      />
+      <ConfirmProvider>
+        <ConnectionManagerModal
+          open={true}
+          onClose={vi.fn()}
+          onConnectSSH={onConnectSSH}
+        />
+      </ConfirmProvider>
     );
 
     await waitFor(() => {
@@ -186,10 +197,12 @@ describe('ConnectionManagerModal', () => {
 
   it('switches to S3 tab and displays S3 profiles and groups', async () => {
     render(
-      <ConnectionManagerModal
-        open={true}
-        onClose={vi.fn()}
-      />
+      <ConfirmProvider>
+        <ConnectionManagerModal
+          open={true}
+          onClose={vi.fn()}
+        />
+      </ConfirmProvider>
     );
 
     await waitFor(() => {
@@ -209,7 +222,11 @@ describe('ConnectionManagerModal', () => {
   // M12 (code review): this dialog previously only closed via the header X.
   it('calls onClose on Escape and on a backdrop click from the list view (M12)', async () => {
     const onClose = vi.fn();
-    const { container } = render(<ConnectionManagerModal open={true} onClose={onClose} />);
+    const { container } = render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={onClose} />
+      </ConfirmProvider>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
@@ -227,7 +244,11 @@ describe('ConnectionManagerModal', () => {
   // unsaved-changes warning here, unlike closing via the form's own Cancel.
   it('does not close on Escape or backdrop click while a profile form is open (M12)', async () => {
     const onClose = vi.fn();
-    const { container } = render(<ConnectionManagerModal open={true} onClose={onClose} />);
+    const { container } = render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={onClose} />
+      </ConfirmProvider>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
@@ -243,5 +264,35 @@ describe('ConnectionManagerModal', () => {
     fireEvent.click(container.firstElementChild as Element);
 
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // LOW finding (code review): deleting a connection profile used to go
+  // through window.confirm(), trivially dismissed by a stray Enter/Space
+  // press. It must now name the profile and only delete once confirmed.
+  it('asks for in-app confirmation before deleting a connection profile', async () => {
+    render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByTitle('Delete Profile');
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]); // Dev Sandbox, per the Connect-button test's ordering
+
+    const dialog = await screen.findByTestId('confirm-dialog');
+    expect(dialog).toHaveTextContent('Dev Sandbox');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(window.multissh.profilesDeleteSSH).not.toHaveBeenCalled();
+
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => {
+      expect(window.multissh.profilesDeleteSSH).toHaveBeenCalledWith('ssh-3');
+    });
   });
 });

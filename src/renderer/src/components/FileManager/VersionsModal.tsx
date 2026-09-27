@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { History, X, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import type { ObjectVersionEntry, S3VersioningStatus } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 
 interface VersionsModalProps {
   open: boolean;
@@ -25,6 +26,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const [status, setStatus] = useState<S3VersioningStatus>('Disabled');
   const [versions, setVersions] = useState<ObjectVersionEntry[]>([]);
@@ -71,7 +73,15 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   const handleRestore = async (versionId: string) => {
-    if (!window.confirm('Restore this version as the current version of the object?')) return;
+    if (
+      !(await confirm({
+        title: 'Restore version',
+        message: 'Restore this version as the current version of the object?',
+        confirmLabel: 'Restore',
+        danger: false,
+      }))
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -86,7 +96,14 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   const handleDeleteVersion = async (versionId: string) => {
-    if (!window.confirm('Permanently delete this specific version? This action cannot be undone.')) return;
+    if (
+      !(await confirm({
+        title: 'Delete version',
+        message: 'Permanently delete this specific version? This action cannot be undone.',
+        confirmLabel: 'Delete permanently',
+      }))
+    )
+      return;
     setBusy(true);
     setError(null);
     try {

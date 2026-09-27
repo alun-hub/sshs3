@@ -18,6 +18,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { formatDateTime } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 
 interface DirSyncSavedProfilesModalProps {
   open: boolean;
@@ -126,6 +127,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
   const [s3Profiles, setS3Profiles] = useState<S3Config[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = () => {
     setLoading(true);
@@ -144,8 +146,8 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
     if (open) load();
   }, [open]);
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this sync profile?')) return;
+  const handleDelete = async (id: string, name: string) => {
+    if (!(await confirm({ title: 'Delete sync profile', message: `Delete the sync profile "${name}"?` }))) return;
     try {
       await window.multissh.dirSyncProfileDelete(id);
       load();
@@ -236,7 +238,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                       </button>
                       <button
                         type="button"
-                        onClick={() => void handleDelete(profile.id)}
+                        onClick={() => void handleDelete(profile.id, profile.name)}
                         title="Delete profile"
                         className="rounded-lg p-1.5 text-txt-muted hover:bg-red-500/10 hover:text-red-400 transition-colors"
                       >

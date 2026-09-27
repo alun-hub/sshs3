@@ -1,5 +1,9 @@
 /**
  * Formats a Date or ISO date string into yyyy-mm-dd HH:mm (24h) format.
+ * Missing/falsy input renders as "—"; wrap this locally if a call site
+ * needs different wording (e.g. "Never") for that case, rather than
+ * reimplementing the date formatting itself (LOW finding, code review —
+ * this used to exist as three near-identical copies).
  */
 export function formatDateTime(input?: string | number | Date | null): string {
   if (!input) return '—';
