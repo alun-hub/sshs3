@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import path from 'node:path';
 import { parseSshConfigContent } from '../../src/main/services/SshConfigImporter';
 
 describe('SshConfigImporter', () => {
@@ -33,7 +34,7 @@ Host db-staging
     expect(web?.username).toBe('ubuntu');
     expect(web?.port).toBe(2222);
     expect(web?.authType).toBe('privateKey');
-    expect(web?.privateKeyPath).toContain('.ssh/id_rsa');
+    expect(web?.privateKeyPath).toContain(path.join('.ssh', 'id_rsa'));
     expect(web?.forwardAgent).toBe(true);
     expect(web?.compression).toBe(true);
     expect(web?.proxyJump).toBe('bastion');
