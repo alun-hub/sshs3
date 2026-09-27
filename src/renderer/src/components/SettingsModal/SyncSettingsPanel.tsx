@@ -838,7 +838,7 @@ export const SyncSettingsPanel: React.FC = () => {
             ? 'Enter your master password to authorize linking your smartcard to remote sync. It will be encrypted with your card certificate and never saved in plaintext.'
             : status?.hasLocalSalts
               ? 'Enter your existing master passwords to unlock sync for this session.'
-              : 'Choose the two master passwords that will encrypt your synced data. They are never sent anywhere or stored on disk.'
+              : 'Choose the master password that will encrypt your synced data. It is never sent anywhere or stored on disk.'
         }
         submitLabel={isLinkingDialog ? 'Link smartcard' : status?.hasLocalSalts ? 'Unlock' : 'Activate sync'}
         submitting={enabling || linkingSmartcard}

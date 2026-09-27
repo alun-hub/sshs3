@@ -124,7 +124,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
             <>
               <p className="text-[11px] text-txt-muted leading-relaxed">
                 Point this machine at the same S3 bucket or SFTP server another machine already syncs to, then
-                enter the two master passwords it was set up with to pull down your profiles, dotfile pools, and
+                enter the master password it was set up with to pull down your profiles, dotfile pools, and
                 settings.
               </p>
               <SyncTargetForm draft={draft} onChange={setDraft} disabled={settingUpTarget} />
@@ -147,7 +147,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
         open={passwordDialogOpen}
         mode="unlock"
         title="Enter master passwords"
-        description="Enter the same two master passwords used when this sync target was first set up."
+        description="Enter the same master password used when this sync target was first set up."
         submitLabel="Import"
         submitting={pulling}
         error={pullError}
