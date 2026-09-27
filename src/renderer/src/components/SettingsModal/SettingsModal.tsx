@@ -108,9 +108,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
-  const [shortcuts, setShortcuts] = useState<Record<string, string>>(
-    currentSettings.shortcuts ?? DEFAULT_SHORTCUTS
-  );
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>(() => ({
+    ...DEFAULT_SHORTCUTS,
+    ...(currentSettings.shortcuts ?? {}),
+  }));
   const [recordingAction, setRecordingAction] = useState<string | null>(null);
   const [shortcutSearch, setShortcutSearch] = useState('');
 
@@ -167,7 +168,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
-      setShortcuts(currentSettings.shortcuts ?? DEFAULT_SHORTCUTS);
+      setShortcuts({
+        ...DEFAULT_SHORTCUTS,
+        ...(currentSettings.shortcuts ?? {}),
+      });
       setRecordingAction(null);
       setShortcutSearch('');
       setEnableOpenShift(currentSettings.enableOpenShift ?? false);
@@ -516,8 +520,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
-                        min={10}
-                        max={24}
+                        min={8}
+                        max={32}
                         step={1}
                         value={fontSize}
                         onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
@@ -525,12 +529,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                       <input
                         type="number"
-                        min={10}
-                        max={24}
+                        min={8}
+                        max={32}
                         value={fontSize}
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10);
-                          if (!Number.isNaN(val) && val >= 10 && val <= 24) {
+                          if (!Number.isNaN(val) && val >= 8 && val <= 32) {
                             setFontSize(val);
                           }
                         }}

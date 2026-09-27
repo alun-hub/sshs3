@@ -30,9 +30,23 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [ended, setEnded] = useState(false);
+
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.fontSize = fontSize;
+      termRef.current.options.fontFamily = fontFamily;
+      try {
+        fitAddonRef.current?.fit();
+      } catch {
+        // Ignore fit calculation error
+      }
+    }
+  }, [fontSize, fontFamily]);
 
   useEffect(() => {
     if (isActive && searchOpen) {
@@ -41,7 +55,8 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
   }, [isActive, searchOpen]);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     let isDisposed = false;
     let unsubData: (() => void) | null = null;
@@ -58,11 +73,13 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       theme: { background: '#0f172a', foreground: '#f8fafc' },
     });
     const fitAddon = new FitAddon();
+    termRef.current = term;
+    fitAddonRef.current = fitAddon;
     const searchAddon = new SearchAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(searchAddon);
     searchAddonRef.current = searchAddon;
-    term.open(containerRef.current);
+    term.open(container);
     try {
       fitAddon.fit();
     } catch {
@@ -113,7 +130,9 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       unsubEnd?.();
       if (sessionId) window.multissh.k8sLogStop(sessionId);
       term.dispose();
-      if (containerRef.current) containerRef.current.innerHTML = '';
+      termRef.current = null;
+      fitAddonRef.current = null;
+      if (container) container.innerHTML = '';
       searchAddonRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -379,6 +379,55 @@ describe('App Component', () => {
     expect(screen.getAllByRole('tab').length).toBe(1);
   });
 
+  it('increases, decreases, and resets terminal font size with Ctrl++, Ctrl+-, and Ctrl+0', async () => {
+    render(<App />);
+
+    // Initial default terminalFontSize is 13.
+    // Press Ctrl++ (e.g. Swedish layout: key '+', code 'Minus')
+    fireEvent.keyDown(window, {
+      key: '+',
+      code: 'Minus',
+      ctrlKey: true,
+    });
+
+    expect(window.multissh.settingsSave).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalFontSize: 14 })
+    );
+
+    // Press Ctrl+= (US layout unshifted: key '=', code 'Equal')
+    fireEvent.keyDown(window, {
+      key: '=',
+      code: 'Equal',
+      ctrlKey: true,
+    });
+
+    expect(window.multissh.settingsSave).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalFontSize: 15 })
+    );
+
+    // Press Ctrl+- (decrease)
+    fireEvent.keyDown(window, {
+      key: '-',
+      code: 'Minus',
+      ctrlKey: true,
+    });
+
+    expect(window.multissh.settingsSave).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalFontSize: 14 })
+    );
+
+    // Press Ctrl+0 (reset to default 13)
+    fireEvent.keyDown(window, {
+      key: '0',
+      code: 'Digit0',
+      ctrlKey: true,
+    });
+
+    expect(window.multissh.settingsSave).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalFontSize: 13 })
+    );
+  });
+
   it('cycles tabs indefinitely with Ctrl+Tab and Ctrl+Shift+Tab without getting stuck', async () => {
     render(<App />);
     await screen.findByTestId('tab-term-1');

@@ -26,6 +26,9 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   // guaranteed. Letters don't have that problem — Shift+N is always reported as 'N'.
   { id: 'nextPane', name: 'Next Split Pane', defaultKeys: 'Ctrl+Shift+N', category: 'Terminal' },
   { id: 'prevPane', name: 'Previous Split Pane', defaultKeys: 'Ctrl+Shift+P', category: 'Terminal' },
+  { id: 'increaseFontSize', name: 'Increase Font Size', defaultKeys: 'Ctrl++', category: 'Terminal' },
+  { id: 'decreaseFontSize', name: 'Decrease Font Size', defaultKeys: 'Ctrl+-', category: 'Terminal' },
+  { id: 'resetFontSize', name: 'Reset Font Size', defaultKeys: 'Ctrl+0', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];
 
