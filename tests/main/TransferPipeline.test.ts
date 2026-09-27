@@ -575,6 +575,59 @@ describe('TransferPipeline', () => {
       expect(mockTarget.folders.has('..')).toBe(false);
     });
 
+    // Regression test for the M9 finding (code review): a single failing
+    // file used to abort the whole directory job immediately, leaving every
+    // remaining file untried even though nothing about their own transfer
+    // was broken.
+    it('continues past a failing file, copies the rest, and reports a failure summary (M9)', async () => {
+      await fs.writeFile(path.join(sourceDir, 'good1.txt'), 'good-1', 'utf-8');
+      await fs.writeFile(path.join(sourceDir, 'bad.txt'), 'bad-content', 'utf-8');
+      await fs.writeFile(path.join(sourceDir, 'good2.txt'), 'good-2', 'utf-8');
+
+      const originalCreateReadStream = sourceLocal.createReadStream.bind(sourceLocal);
+      vi.spyOn(sourceLocal, 'createReadStream').mockImplementation(async (p: string, ...rest: any[]) => {
+        if (p === 'bad.txt') {
+          throw new Error('permission denied');
+        }
+        return (originalCreateReadStream as any)(p, ...rest);
+      });
+
+      await expect(
+        transferDirectory({
+          sourceProvider: sourceLocal,
+          sourcePath: '',
+          targetProvider: targetLocal,
+          targetPath: '',
+        })
+      ).rejects.toThrow(/1 of 3 file\(s\) failed to transfer.*bad\.txt.*permission denied/s);
+
+      expect(await fs.readFile(path.join(targetDir, 'good1.txt'), 'utf-8')).toBe('good-1');
+      expect(await fs.readFile(path.join(targetDir, 'good2.txt'), 'utf-8')).toBe('good-2');
+      await expect(fs.stat(path.join(targetDir, 'bad.txt'))).rejects.toThrow();
+    });
+
+    it('still aborts the whole directory job immediately on cancellation, without treating it as a per-file failure', async () => {
+      await fs.writeFile(path.join(sourceDir, 'a.txt'), 'a', 'utf-8');
+      await fs.writeFile(path.join(sourceDir, 'b.txt'), 'b', 'utf-8');
+
+      const controller = new AbortController();
+      const originalCreateReadStream = sourceLocal.createReadStream.bind(sourceLocal);
+      vi.spyOn(sourceLocal, 'createReadStream').mockImplementation(async (p: string, ...rest: any[]) => {
+        if (p === 'a.txt') controller.abort();
+        return (originalCreateReadStream as any)(p, ...rest);
+      });
+
+      await expect(
+        transferDirectory({
+          sourceProvider: sourceLocal,
+          sourcePath: '',
+          targetProvider: targetLocal,
+          targetPath: '',
+          signal: controller.signal,
+        })
+      ).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
     // Regression tests for the H6 finding (code review): scanDirectory used
     // to decide whether to recurse using isDirectory alone, which for a
     // symlinked directory comes from a followed stat() — indistinguishable
@@ -729,6 +782,89 @@ describe('TransferPipeline', () => {
           targetPath: 'data.txt',
         })
       ).rejects.toThrow('source vanished mid-transfer');
+    });
+
+    // M7 (code review): a failed transfer used to leave a truncated file at
+    // exactly the final destination filename — indistinguishable from a
+    // complete one. It should be removed instead, once some writing began.
+    it('deletes the partial destination file when the transfer fails mid-write (M7)', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('some file content'));
+
+      const memTarget = new MemoryStorageProvider();
+      const deleteSpy = vi.spyOn(memTarget, 'delete');
+      memTarget.writeStreamError = new Error('Disk full write error');
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+        })
+      ).rejects.toThrow('Disk full write error');
+
+      expect(deleteSpy).toHaveBeenCalledWith('data.txt', false);
+    });
+
+    it('does not attempt destination cleanup when createWriteStream itself never succeeded (M7)', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('data'));
+      const memTarget = new MemoryStorageProvider();
+      const deleteSpy = vi.spyOn(memTarget, 'delete');
+      memTarget.createWriteStream = vi.fn().mockRejectedValue(new Error('Target init failure'));
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+        })
+      ).rejects.toThrow('Target init failure');
+
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+
+    // M8 (code review): the transferred byte count was only ever used for
+    // the progress bar, never checked against the source's reported size,
+    // so a stream that silently truncated could still finish as 'completed'.
+    it('fails the transfer when fewer bytes were written than the source reported (M8)', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('short'));
+      const memTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+          totalBytes: 999, // deliberately wrong "expected" size
+        })
+      ).rejects.toThrow(/incomplete/i);
+
+      // The (fully-flushed but size-mismatched) destination file must not
+      // be left behind either (M7 kicking in for this M8-detected failure).
+      expect(memTarget.files.has('data.txt')).toBe(false);
+    });
+
+    it('does not run the integrity check when the source size could not be determined', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('content'));
+      const memTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+          totalBytes: 0,
+        })
+      ).resolves.toBeUndefined();
+
+      expect(memTarget.files.get('data.txt')?.toString()).toBe('content');
     });
   });
 });
