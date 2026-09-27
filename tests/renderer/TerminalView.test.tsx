@@ -104,6 +104,24 @@ describe('TerminalView Component', () => {
     expect(createArgs.config.id).not.toBe(sampleConfig.id);
   });
 
+  // LOW finding (code review): xterm.js renders its own internal DOM into
+  // this container (a canvas layer plus a hidden textarea), none of which
+  // otherwise indicates what a screen reader user has tabbed into.
+  it('labels the terminal container for screen readers, based on the session type', () => {
+    const { rerender } = render(<TerminalView config={sampleConfig} />);
+    expect(screen.getByTestId('terminal-container')).toHaveAttribute('aria-label', 'Terminal: Production Server');
+
+    rerender(<TerminalView local />);
+    expect(screen.getByTestId('terminal-container')).toHaveAttribute('aria-label', 'Terminal: local shell');
+
+    rerender(
+      <TerminalView
+        k8sTarget={{ contextName: 'ctx', namespace: 'default', podName: 'my-pod', containerName: 'app' }}
+      />
+    );
+    expect(screen.getByTestId('terminal-container')).toHaveAttribute('aria-label', 'Terminal: my-pod/app');
+  });
+
   it('synchronizes dimensions to PTY via terminalResize once session creation resolves', async () => {
     render(<TerminalView config={sampleConfig} />);
 

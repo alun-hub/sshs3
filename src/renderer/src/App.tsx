@@ -667,6 +667,11 @@ export const App: React.FC = () => {
 
         {/* TabBar */}
         <div className="flex-1 min-w-0">
+          {/* LOW finding (code review): window.multissh! throws if the preload
+              bridge is somehow missing, unlike the otherwise-consistent
+              window.multissh?.x pattern used everywhere else in this file —
+              the two callbacks below degrade gracefully instead (no cached
+              agents / nothing locked) rather than crashing the tab bar. */}
           <TabBar
             tabs={tabs}
             activeTabId={activeTabId}
@@ -678,8 +683,8 @@ export const App: React.FC = () => {
             onOpenSettings={handleOpenSettings}
             onOpenDirSyncProfiles={() => setDirSyncProfilesOpen(true)}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
-            onLockSmartcard={() => window.multissh!.smartcardLockAll()}
-            onListCachedSmartcards={() => window.multissh!.smartcardListCached()}
+            onLockSmartcard={() => window.multissh?.smartcardLockAll() ?? Promise.resolve({ locked: 0 })}
+            onListCachedSmartcards={() => window.multissh?.smartcardListCached() ?? Promise.resolve([])}
           />
         </div>
       </header>
