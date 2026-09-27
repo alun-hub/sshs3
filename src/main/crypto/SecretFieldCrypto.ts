@@ -26,14 +26,20 @@ export function isEncryptionAvailable(): boolean {
 
 export function encryptSecretValue(value: string): string {
   if (!value) return value;
-  try {
-    if (isEncryptionAvailable()) {
-      return ENC_PREFIX + safeStorage.encryptString(value).toString('base64');
-    }
-  } catch {
-    // Fall through and store as plaintext rather than losing the value.
+  if (!isEncryptionAvailable()) {
+    // Expected, normal fallback: no OS keyring backend on this machine.
+    return value;
   }
-  return value;
+  try {
+    return ENC_PREFIX + safeStorage.encryptString(value).toString('base64');
+  } catch (err) {
+    // Unexpected: the keyring reported itself available but encryption
+    // still threw. Log it so this doesn't look identical to the normal
+    // no-keyring fallback above — falling through to plaintext rather than
+    // losing the value, but a real bug here should be visible.
+    console.warn('Encrypting a secret field failed unexpectedly; storing it as plaintext instead:', err);
+    return value;
+  }
 }
 
 export function decryptSecretValue(value: string): string {

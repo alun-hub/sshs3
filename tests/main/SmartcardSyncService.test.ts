@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
-import { verifyAgentSignature } from '../../src/main/smartcard/SmartcardSyncService';
+import {
+  verifyAgentSignature,
+  wrapMasterPasswords,
+  unwrapMasterPasswords,
+} from '../../src/main/smartcard/SmartcardSyncService';
 
 function sshString(value: Buffer | string): Buffer {
   const buf = typeof value === 'string' ? Buffer.from(value, 'utf-8') : value;
@@ -66,5 +70,46 @@ describe('verifyAgentSignature', () => {
     const sigBlob = Buffer.concat([sshString('not-a-real-algorithm'), sshString(Buffer.from([1, 2, 3]))]);
 
     expect(verifyAgentSignature(keyBlob, challenge, sigBlob)).toBe(false);
+  });
+});
+
+// M1: the AES-256-GCM wrapping key must be derived via HKDF-SHA256 with a
+// domain-separating info string, not raw SHA-256 of the smartcard secret.
+describe('wrapMasterPasswords / unwrapMasterPasswords (M1)', () => {
+  const passwords = { topologyPassword: 'topo-secret', credentialsPassword: 'creds-secret' };
+
+  it('round-trips the wrapped passwords with the correct secret', () => {
+    const secret = crypto.randomBytes(32).toString('hex');
+    const wrapped = wrapMasterPasswords(secret, passwords);
+
+    expect(unwrapMasterPasswords(secret, wrapped)).toEqual(passwords);
+  });
+
+  it('fails to unwrap with an incorrect secret', () => {
+    const secret = crypto.randomBytes(32).toString('hex');
+    const wrongSecret = crypto.randomBytes(32).toString('hex');
+    const wrapped = wrapMasterPasswords(secret, passwords);
+
+    expect(() => unwrapMasterPasswords(wrongSecret, wrapped)).toThrow();
+  });
+
+  it('derives the wrapping key via HKDF-SHA256 with the documented info string, not raw SHA-256', () => {
+    const secret = crypto.randomBytes(32).toString('hex');
+    const rawSha256Key = crypto.createHash('sha256').update(secret).digest();
+    const hkdfKey = Buffer.from(crypto.hkdfSync('sha256', secret, '', 'sshs3-smartcard-wrap-v1', 32));
+
+    expect(hkdfKey.equals(rawSha256Key)).toBe(false);
+
+    // Encrypt with the actual HKDF-derived key so the ciphertext only
+    // decrypts correctly if wrapMasterPasswords used the same derivation.
+    const wrapped = wrapMasterPasswords(secret, passwords);
+    const iv = Buffer.from(wrapped.iv, 'base64');
+    const tag = Buffer.from(wrapped.tag, 'base64');
+    const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', hkdfKey, iv);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
+    expect(JSON.parse(plaintext)).toEqual(passwords);
   });
 });

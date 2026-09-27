@@ -79,3 +79,40 @@ describe('decryptSecretValue', () => {
     expect(result).toBe('');
   });
 });
+
+// M2: encryptSecretValue must fall through to plaintext for both the
+// expected "no OS keyring" case and an unexpected encryptString() failure,
+// but only log a warning for the latter — the two used to be
+// indistinguishable, which could hide a real bug behind the normal
+// no-keyring fallback.
+describe('encryptSecretValue (M2)', () => {
+  beforeEach(() => {
+    mockIsEncryptionAvailable.mockReturnValue(true);
+    mockEncryptString.mockClear();
+    mockDecryptString.mockClear();
+  });
+
+  it('stores as plaintext without warning when no OS keyring is available', () => {
+    mockIsEncryptionAvailable.mockReturnValue(false);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = encryptSecretValue('super-secret');
+
+    expect(result).toBe('super-secret');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('falls through to plaintext AND warns when encryptString throws unexpectedly', () => {
+    mockEncryptString.mockImplementationOnce(() => {
+      throw new Error('keyring locked');
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = encryptSecretValue('super-secret');
+
+    expect(result).toBe('super-secret');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+});

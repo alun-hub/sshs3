@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-sso-oidc';
 import { SSOClient, ListAccountsCommand, ListAccountRolesCommand } from '@aws-sdk/client-sso';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoDevicePrompt, AwsSsoLoginResult } from '../../shared/types/aws';
+import { encryptSecretValue, decryptSecretValue } from '../crypto/SecretFieldCrypto';
 
 export class AwsSsoLoginCancelledError extends Error {
   constructor() {
@@ -250,11 +251,24 @@ export class AwsSsoAuthService extends EventEmitter {
     return entry;
   }
 
+  /**
+   * Unlike ~/.aws/sso/cache/<hash>.json below, this cache is entirely our
+   * own format/location (not read by the AWS CLI or SDK), so there's no
+   * interop reason to keep clientSecret in plaintext here (M5, code
+   * review). encryptSecretValue/decryptSecretValue already handle the
+   * "no OS keyring available" fallback transparently, including reading
+   * back an older plaintext-written cache unchanged.
+   */
   private async readClientCache(): Promise<ClientRegistrationCache> {
     try {
       const raw = await fs.readFile(this.clientCachePath(), 'utf-8');
       const data = JSON.parse(raw);
-      return typeof data === 'object' && data ? data : {};
+      if (typeof data !== 'object' || !data) return {};
+      const cache: ClientRegistrationCache = data;
+      for (const entry of Object.values(cache)) {
+        entry.clientSecret = decryptSecretValue(entry.clientSecret);
+      }
+      return cache;
     } catch {
       return {};
     }
@@ -262,8 +276,12 @@ export class AwsSsoAuthService extends EventEmitter {
 
   private async writeClientCache(cache: ClientRegistrationCache): Promise<void> {
     const filePath = this.clientCachePath();
+    const onDisk: ClientRegistrationCache = {};
+    for (const [key, entry] of Object.entries(cache)) {
+      onDisk[key] = { ...entry, clientSecret: encryptSecretValue(entry.clientSecret) };
+    }
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(cache, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    await fs.writeFile(filePath, JSON.stringify(onDisk, null, 2), { encoding: 'utf-8', mode: 0o600 });
     try {
       await fs.chmod(filePath, 0o600);
     } catch {

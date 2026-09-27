@@ -11,6 +11,7 @@ import { SyncCryptoService, generateSalt, type ScryptParams } from '../../src/ma
 import {
   ProfileSyncService,
   SyncConflictError,
+  SyncInProgressError,
   mergeRecords,
   mergePools,
   getComparisonState,
@@ -459,6 +460,39 @@ describe('ProfileSyncService', () => {
 
     machineA.sync.resetRemoteState();
     await expect(machineA.sync.pushToRemote(otherTarget)).resolves.toBeUndefined();
+  });
+
+  // M4 (code review): the 5 category uploads in a push are sequential, not
+  // an all-or-nothing transaction, so a failure partway through leaves a
+  // mix of new and stale category files. A "push in progress" marker
+  // brackets the upload sequence so a later pull/compare can detect and
+  // refuse to merge that inconsistent state instead of silently trusting it.
+  it('clears the push-in-progress marker once a push completes successfully', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
+
+    await machineA.sync.pushToRemote(provider);
+
+    expect(provider.hasFile('~/.sshs3/.push-in-progress')).toBe(false);
+  });
+
+  it('leaves the push-in-progress marker in place when a push fails partway through, and refuses to pull or compare against it', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider); // Establishes lastKnownRemoteState for every category.
+
+    // A third machine changes settings.enc without machineA knowing, so
+    // machineA's next push conflicts partway through the sequence: topology,
+    // credentials, and dotfile-pools all succeed before the settings check throws.
+    provider.simulateExternalWrite('~/.sshs3/settings.enc', Buffer.from('not a real sync file'));
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'A edited', host: 'h', username: 'u', authType: 'password' });
+
+    await expect(machineA.sync.pushToRemote(provider)).rejects.toThrow(SyncConflictError);
+    expect(provider.hasFile('~/.sshs3/.push-in-progress')).toBe(true);
+
+    const machineB = await harness();
+    await expect(machineB.sync.pullFromRemote(provider)).rejects.toThrow(SyncInProgressError);
+    await expect(machineB.sync.compareWithRemote(provider)).rejects.toThrow(SyncInProgressError);
   });
 
   it('wipeRemote deletes every category file for the "delete all sync data" action', async () => {

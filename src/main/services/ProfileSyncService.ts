@@ -69,12 +69,36 @@ function buildRemoteFiles(remoteBasePath: string): Record<SyncDataCategory, stri
   };
 }
 
+/**
+ * Path of the marker written for the duration of a push (M4, code review).
+ * The 5 category files are uploaded sequentially with no cross-file
+ * transaction, so a crash/network drop partway through leaves a mix of
+ * new and old category versions. This marker is written before the first
+ * upload and removed only after the last one succeeds, so a pull or
+ * compare that finds it present knows the remote data may currently be an
+ * inconsistent partial push rather than a clean, in-sync state.
+ */
+function buildPushMarkerPath(remoteBasePath: string): string {
+  const dir = joinPaths('sftp', remoteBasePath, SYNC_DIR_NAME);
+  return joinPaths('sftp', dir, '.push-in-progress');
+}
+
 export class SyncConflictError extends Error {
   constructor(category: SyncDataCategory) {
     super(
       `Remote "${category}" file changed since it was last read here. Pull the latest changes before pushing again.`
     );
     this.name = 'SyncConflictError';
+  }
+}
+
+export class SyncInProgressError extends Error {
+  constructor() {
+    super(
+      'The remote sync data looks like a partial push (interrupted mid-upload) rather than a consistent snapshot. ' +
+        'Push again from a device with current data to repair it before pulling.'
+    );
+    this.name = 'SyncInProgressError';
   }
 }
 
@@ -627,17 +651,39 @@ export class ProfileSyncService {
     };
     const dotfilePoolsPayload: DotfilePoolsPayload = { pools };
 
-    await this.checkNotChangedRemotely(provider, 'topology', remoteFiles);
-    await this.checkNotChangedRemotely(provider, 'credentials', remoteFiles);
-    await this.checkNotChangedRemotely(provider, 'dotfile-pools', remoteFiles);
-    await this.checkNotChangedRemotely(provider, 'settings', remoteFiles);
-    await this.checkNotChangedRemotely(provider, 'ssh-native', remoteFiles);
+    // M4 (code review): mark the remote as "push in progress" for the
+    // duration of the 5 sequential uploads below, so a crash or network
+    // drop partway through leaves a trace a later pull/compare can detect,
+    // instead of silently treating a mismatched partial set of category
+    // files as a clean, in-sync snapshot. Best-effort: a provider that
+    // can't write it (e.g. read-only mount) still proceeds with the push.
+    const markerPath = buildPushMarkerPath(effectiveBasePath);
+    await this.writeProviderFile(provider, markerPath, Buffer.from(formatTimestamp(), 'utf-8')).catch(() => {});
 
+    // M3 (code review): each category's optimistic-concurrency check is run
+    // immediately before its own upload (rather than all 5 checks up front,
+    // then all 5 uploads) to keep the check-then-write race window as small
+    // as possible instead of spanning the other categories' checks/uploads.
+    await this.checkNotChangedRemotely(provider, 'topology', remoteFiles);
     await this.encryptAndUpload(provider, 'topology', JSON.stringify(topologyPayload), remoteFiles);
+
+    await this.checkNotChangedRemotely(provider, 'credentials', remoteFiles);
     await this.encryptAndUpload(provider, 'credentials', JSON.stringify(credentialsPayload), remoteFiles);
+
+    await this.checkNotChangedRemotely(provider, 'dotfile-pools', remoteFiles);
     await this.encryptAndUpload(provider, 'dotfile-pools', JSON.stringify(dotfilePoolsPayload), remoteFiles);
+
+    await this.checkNotChangedRemotely(provider, 'settings', remoteFiles);
     await this.encryptAndUpload(provider, 'settings', JSON.stringify(settings), remoteFiles);
+
+    await this.checkNotChangedRemotely(provider, 'ssh-native', remoteFiles);
     await this.encryptAndUpload(provider, 'ssh-native', JSON.stringify(sshNativePayload), remoteFiles);
+
+    // All 5 categories now reflect this push; only now is the remote back
+    // to a consistent state, so the marker comes off. If any of the steps
+    // above threw, this line is never reached and the marker is left in
+    // place on purpose.
+    await provider.delete(markerPath, false).catch(() => {});
 
     this.lastComparison = {
       state: 'in_sync',
@@ -663,8 +709,16 @@ export class ProfileSyncService {
     remoteBasePath = '',
     passwords?: { topology?: string; credentials?: string }
   ): Promise<PullResult> {
-    const remoteFiles = buildRemoteFiles(resolveEffectiveBasePath(provider, remoteBasePath));
+    const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
+    const remoteFiles = buildRemoteFiles(effectiveBasePath);
     const changedCategories: SyncDataCategory[] = [];
+
+    // M4 (code review): refuse to merge a remote that a push left in an
+    // inconsistent partial state (see pushToRemote's marker) rather than
+    // silently combining some new-push categories with some stale ones.
+    if ((await this.statOrNull(provider, buildPushMarkerPath(effectiveBasePath))) !== null) {
+      throw new SyncInProgressError();
+    }
 
     const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw] = await Promise.all([
       this.downloadAndDecrypt(provider, 'topology', remoteFiles, passwords?.topology),
@@ -758,6 +812,13 @@ export class ProfileSyncService {
 
     const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
     const remoteFiles = buildRemoteFiles(effectiveBasePath);
+
+    // M4 (code review): a push marker means the remote is currently a
+    // partial, inconsistent snapshot — don't report a (misleading) diff
+    // against it.
+    if ((await this.statOrNull(provider, buildPushMarkerPath(effectiveBasePath))) !== null) {
+      throw new SyncInProgressError();
+    }
 
     const hasTopology = (await this.statOrNull(provider, remoteFiles.topology)) !== null;
 

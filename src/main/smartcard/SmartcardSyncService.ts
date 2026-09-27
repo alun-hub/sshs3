@@ -182,13 +182,23 @@ export function getKeyAlgorithm(keyBlob: Buffer): string {
 }
 
 /**
+ * Derives the AES-256-GCM wrapping key from the smartcard secret via
+ * HKDF-SHA256, with a domain-separating info string, rather than raw
+ * SHA-256 (which has no domain separation and would collide with any
+ * other place that happens to hash the same secret).
+ */
+function deriveWrapKey(smartcardSecret: string): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', smartcardSecret, '', 'sshs3-smartcard-wrap-v1', 32));
+}
+
+/**
  * Encrypts master passwords with a key derived from the smartcard secret.
  */
 export function wrapMasterPasswords(
   smartcardSecret: string,
   passwords: { topologyPassword: string; credentialsPassword: string }
 ): WrappedSyncPasswords {
-  const key = crypto.createHash('sha256').update(smartcardSecret).digest();
+  const key = deriveWrapKey(smartcardSecret);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const plaintext = JSON.stringify(passwords);
@@ -209,7 +219,7 @@ export function unwrapMasterPasswords(
   smartcardSecret: string,
   wrapped: WrappedSyncPasswords
 ): { topologyPassword: string; credentialsPassword: string } {
-  const key = crypto.createHash('sha256').update(smartcardSecret).digest();
+  const key = deriveWrapKey(smartcardSecret);
   const iv = Buffer.from(wrapped.iv, 'base64');
   const tag = Buffer.from(wrapped.tag, 'base64');
   const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
