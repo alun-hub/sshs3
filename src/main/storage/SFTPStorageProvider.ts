@@ -553,6 +553,10 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           path: entryPath,
           size: item.size,
           isDirectory: isDir,
+          // SFTP READDIR attrs reflect lstat, not the link's target, so
+          // type 'l' reliably means "this entry itself is a symlink" (see
+          // the H6 code-review finding).
+          isSymlink: item.type === 'l',
           mtime,
           mtimeMs,
           mimeType: isDir ? undefined : getMimeType(item.name),

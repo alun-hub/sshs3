@@ -132,10 +132,17 @@ export class KnownHostsStore {
   }
 
   /**
-   * Appends a trusted host key entry in plain (non-hashed) OpenSSH format.
-   * Existing (now-stale) entries for the same host, if any, are left in
-   * place rather than rewritten/removed to keep this operation simple and
-   * non-destructive.
+   * Appends a trusted host key entry in plain (non-hashed) OpenSSH format,
+   * after first removing any existing entries for the exact same host
+   * identifier + key algorithm (ssh-keygen -R semantics, scoped to that one
+   * algorithm). Without this, trusting a rotated key on top of an old one
+   * left BOTH accepted: checkHost() treats any matching entry as 'match', so
+   * a later MITM presenting the retired key would be silently accepted
+   * instead of raising the mismatch prompt this store exists to show.
+   * A pattern line covering other hosts too (e.g. "a.com,b.com ...") only
+   * has this identifier's pattern stripped from it, not the whole line;
+   * entries for a *different* key algorithm on the same host (e.g. an RSA
+   * key alongside an ED25519 key) are left untouched.
    */
   public async addHostKey(host: string, port: number, keyBuffer: Buffer): Promise<void> {
     if (!host || typeof host !== 'string' || /[\r\n\s\0]/.test(host)) {
@@ -149,17 +156,54 @@ export class KnownHostsStore {
     if (!keyType || keyType === 'unknown' || /[\r\n\s\0]/.test(keyType)) {
       throw new Error(`Invalid key type for known_hosts: ${keyType}`);
     }
-    const line = `${identifier} ${keyType} ${keyBuffer.toString('base64')}\n`;
+    const newLine = `${identifier} ${keyType} ${keyBuffer.toString('base64')}`;
+
+    let raw = '';
+    try {
+      raw = await fs.readFile(this.filePath, 'utf-8');
+    } catch (err: any) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+
+    // Drop just the one trailing empty element split('\n') produces for a
+    // file ending in a newline (the normal case) — interior blank lines
+    // are legitimate content and must survive the rewrite untouched.
+    const rawLines = raw.split('\n');
+    if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+      rawLines.pop();
+    }
+
+    const keptLines: string[] = [];
+    for (const line of rawLines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('@')) {
+        keptLines.push(line);
+        continue;
+      }
+      const fields = trimmed.split(/\s+/);
+      if (fields.length < 3 || fields[1] !== keyType) {
+        // Different (or unparseable) key algorithm for this host, or an
+        // unrelated line entirely — never touched by rotating this one.
+        keptLines.push(line);
+        continue;
+      }
+      const patterns = fields[0].split(',');
+      const remaining = patterns.filter((p) => !matchesPattern(p, identifier));
+      if (remaining.length === patterns.length) {
+        // No pattern on this line matched — unrelated host, keep as-is.
+        keptLines.push(line);
+      } else if (remaining.length > 0) {
+        // Line covered this host plus others of the same key type — drop
+        // just this host's pattern, keep the rest of the line intact.
+        keptLines.push([remaining.join(','), ...fields.slice(1)].join(' '));
+      }
+      // remaining.length === 0: the whole line was about this host+keyType
+      // being rotated away — drop it entirely.
+    }
+
+    const content = [...keptLines, newLine].join('\n') + '\n';
 
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    try {
-      await fs.appendFile(this.filePath, line, { encoding: 'utf-8', mode: 0o644 });
-    } catch (err: any) {
-      if (err?.code === 'ENOENT') {
-        await fs.writeFile(this.filePath, line, { encoding: 'utf-8', mode: 0o644 });
-      } else {
-        throw err;
-      }
-    }
+    await fs.writeFile(this.filePath, content, { encoding: 'utf-8', mode: 0o644 });
   }
 }

@@ -3,6 +3,13 @@ import fs from 'node:fs';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import type { IDotfileTransport } from './DotfileSyncService';
+import { quoteShellArg } from '../search/shellQuote';
+
+// chmod mode must be a plain octal permission string (e.g. "644", "0750").
+// Dotfile pool entries can arrive from remote profile sync — a compromised
+// sync target, paired device, or leaked master password — so `mode` is
+// untrusted input, not merely interpolated as-is into a remote shell command.
+const VALID_CHMOD_MODE = /^[0-7]{3,4}$/;
 
 export class DotfileCliTransport implements IDotfileTransport {
   private controlSocketReady: boolean | null = null;
@@ -137,14 +144,24 @@ export class DotfileCliTransport implements IDotfileTransport {
   }
 
   public async readRemoteFile(remotePath: string): Promise<Buffer> {
-    const { stdout } = await this.runSshCommand(`cat ${JSON.stringify(remotePath)}`);
+    // quoteShellArg (POSIX single-quoting), not JSON.stringify: a
+    // double-quoted string still lets the remote shell expand $(...),
+    // backticks, and $VAR embedded in remotePath. Single-quoting is inert
+    // against all shell metacharacters except the quote character itself,
+    // which quoteShellArg escapes.
+    const { stdout } = await this.runSshCommand(`cat -- ${quoteShellArg(remotePath)}`);
     return stdout;
   }
 
   public async writeRemoteFile(remotePath: string, content: string, mode?: string): Promise<void> {
+    if (mode !== undefined && !VALID_CHMOD_MODE.test(mode)) {
+      throw new Error(`Refusing to apply invalid chmod mode to remote file: ${JSON.stringify(mode)}`);
+    }
     const tmp = `${remotePath}.sshs3.tmp`;
-    const chmodCmd = mode ? ` && chmod ${mode} ${JSON.stringify(remotePath)}` : '';
-    const script = `dir=$(dirname ${JSON.stringify(remotePath)}); [ "$dir" != "." ] && [ "$dir" != "/" ] && mkdir -p "$dir"; cat > ${JSON.stringify(tmp)} && mv -f ${JSON.stringify(tmp)} ${JSON.stringify(remotePath)}${chmodCmd}`;
+    const quotedPath = quoteShellArg(remotePath);
+    const quotedTmp = quoteShellArg(tmp);
+    const chmodCmd = mode ? ` && chmod ${mode} -- ${quotedPath}` : '';
+    const script = `dir=$(dirname -- ${quotedPath}); [ "$dir" != "." ] && [ "$dir" != "/" ] && mkdir -p -- "$dir"; cat > ${quotedTmp} && mv -f -- ${quotedTmp} ${quotedPath}${chmodCmd}`;
 
     await this.runSshCommand(script, content);
   }

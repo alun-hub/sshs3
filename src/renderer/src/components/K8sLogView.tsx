@@ -219,6 +219,8 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       <div
         ref={containerRef}
         data-testid="k8s-log-container"
+        role="log"
+        aria-label={`Logs: ${target.podName}/${target.containerName}`}
         className="min-h-0 flex-1 p-2"
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {

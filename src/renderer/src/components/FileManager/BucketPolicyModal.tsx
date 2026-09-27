@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FileJson, X, Loader2 } from 'lucide-react';
+import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 import { describeIpcError } from '../../lib/format';
 
 interface BucketPolicyModalProps {
@@ -35,6 +37,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -52,6 +55,8 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       .catch((err) => setError(describeIpcError(err, 'Failed to retrieve bucket configuration')))
       .finally(() => setLoading(false));
   }, [open, providerId, bucketPath]);
+
+  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
 
   if (!open) return null;
 
@@ -83,7 +88,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
 
   const handleDelete = async () => {
     const label = tab === 'policy' ? 'Bucket Policy' : 'CORS Rules';
-    if (!window.confirm(`Delete ${label}?`)) return;
+    if (!(await confirm({ title: `Delete ${label}`, message: `Delete the ${label} for "${bucketName}"?` }))) return;
     setSaving(true);
     setError(null);
     try {
@@ -103,7 +108,10 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DirectorySyncModal } from '../../src/renderer/src/components/FileManager/DirectorySyncModal';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { DirectoryDiffResult, DirectorySyncProfile } from '../../src/shared/types/dirsync';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -80,11 +81,13 @@ describe('DirectorySyncModal', () => {
 
   it('renders diff review with clear flow banner, stat cards, and action badges', async () => {
     render(
-      <DirectorySyncModal
-        open={true}
-        onClose={() => {}}
-        runProfile={mockProfile}
-      />
+      <ConfirmProvider>
+        <DirectorySyncModal
+          open={true}
+          onClose={() => {}}
+          runProfile={mockProfile}
+        />
+      </ConfirmProvider>
     );
 
     // Wait for diff step to load
@@ -128,11 +131,13 @@ describe('DirectorySyncModal', () => {
 
   it('updates actions and counts when toggling mirror mode', async () => {
     render(
-      <DirectorySyncModal
-        open={true}
-        onClose={() => {}}
-        runProfile={mockProfile}
-      />
+      <ConfirmProvider>
+        <DirectorySyncModal
+          open={true}
+          onClose={() => {}}
+          runProfile={mockProfile}
+        />
+      </ConfirmProvider>
     );
 
     await waitFor(() => {

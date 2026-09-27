@@ -53,6 +53,14 @@ export function classNames(...values: Array<string | false | null | undefined>):
   return values.filter(Boolean).join(' ');
 }
 
+// Re-exported rather than duplicated (LOW finding, code review): this file,
+// dateFormat.ts, and a third ad-hoc copy in SyncSettingsPanel.tsx each had
+// their own formatDateTime with different edge-case behavior (no null
+// guard here vs. a "—" guard there). dateFormat.ts's version is the one
+// canonical implementation now; SyncSettingsPanel.tsx wraps it locally for
+// its own "Never" fallback instead of reimplementing the formatting itself.
+export { formatDateTime } from './dateFormat';
+
 // Electron wraps every main-process throw with this prefix, which leaks the
 // internal IPC channel name (e.g. "fs:readFile") into user-facing error text.
 const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
@@ -66,15 +74,4 @@ const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
 export function describeIpcError(err: unknown, fallback: string): string {
   if (!(err instanceof Error) || !err.message) return fallback;
   return err.message.replace(ELECTRON_IPC_PREFIX, '') || fallback;
-}
-
-export function formatDateTime(date?: Date | string | number): string {
-  const d = date ? new Date(date) : new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }

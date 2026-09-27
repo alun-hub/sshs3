@@ -56,12 +56,21 @@ export const TransferConflictModal: React.FC = () => {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      void respond('skip');
-    }
-  };
+  // M11 (code review): a window-level listener catches Escape even while
+  // focus is elsewhere (e.g. a terminal), unlike a handler attached only to
+  // this dialog's own <div>.
+  useEffect(() => {
+    if (!currentPrompt) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void respond('skip');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPrompt]);
 
   if (!currentPrompt) {
     return null;
@@ -73,7 +82,6 @@ export const TransferConflictModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="transfer-conflict-modal-title"
       data-testid="transfer-conflict-modal"
-      onKeyDown={handleKeyDown}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">

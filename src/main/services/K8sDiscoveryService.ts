@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type * as k8s from '@kubernetes/client-node';
 import { loadK8sClient } from './k8sClient';
-import { loadKubeConfigForContext } from './k8sKubeConfig';
+import { loadKubeConfigForContext, getExecAuthUserNames } from './k8sKubeConfig';
 import type {
   K8sClusterNode,
   K8sContainerNode,
@@ -43,6 +43,10 @@ export class K8sDiscoveryService {
   private changeListeners: Set<() => void> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
   private watchingPath?: string;
+  /** Exec-auth users seen on the last load; undefined until the first load completes. */
+  private knownExecAuthUsers: Set<string> | undefined;
+  /** Set when a reload (file changed on disk, not the initial load) introduces a new exec-auth user; consumed once by consumePendingExecAuthWarning(). */
+  private pendingExecAuthWarning: string | null = null;
 
   constructor(kubeConfigPath?: string) {
     this.kubeConfigPath = kubeConfigPath;
@@ -66,7 +70,39 @@ export class K8sDiscoveryService {
       kc.loadFromDefault();
     }
     this.kc = kc;
+    this.checkExecAuthChange(kc);
     return kc;
+  }
+
+  /**
+   * exec-auth (a kubeconfig user with a `command`/`args` credential plugin,
+   * e.g. `aws eks get-token`) is completely normal and not itself flagged —
+   * only a NEW exec entry appearing in a kubeconfig that changed on disk
+   * while the app was already running is, since @kubernetes/client-node
+   * runs that command silently on first use of the context (H8 code-review
+   * finding). The very first load (this.knownExecAuthUsers still undefined)
+   * establishes the baseline instead of warning, so the user's own
+   * long-standing kubeconfig never nags on ordinary app startup.
+   */
+  private checkExecAuthChange(kc: k8s.KubeConfig): void {
+    const current = getExecAuthUserNames(kc);
+    if (this.knownExecAuthUsers) {
+      const added = [...current].filter((name) => !this.knownExecAuthUsers!.has(name));
+      if (added.length > 0) {
+        this.pendingExecAuthWarning =
+          `Your kubeconfig changed on disk and now runs an external command to authenticate ` +
+          `${added.length === 1 ? 'user' : 'users'} "${added.join('", "')}" the next time it's used. ` +
+          `If you didn't make this change yourself, review ${this.getKubeconfigPath()} before continuing.`;
+      }
+    }
+    this.knownExecAuthUsers = current;
+  }
+
+  /** One-shot: returns and clears any exec-auth warning raised by the most recent reload. */
+  public consumePendingExecAuthWarning(): string | null {
+    const warning = this.pendingExecAuthWarning;
+    this.pendingExecAuthWarning = null;
+    return warning;
   }
 
   public getKubeconfigPath(): string {

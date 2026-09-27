@@ -85,6 +85,36 @@ describe('SshNativeFileMerger — ssh config managed block', () => {
     expect(removedLines.length).toBe(6);
   });
 
+  // Regression test for the C3 finding (code review): the blocklist used to
+  // miss directives that silently disable host-key verification or run an
+  // arbitrary command via KnownHostsCommand, so a synced managed block could
+  // plant one of these into the user's real ~/.ssh/config.
+  it('sanitizeSshConfigBody strips KnownHostsCommand/StrictHostKeyChecking/UserKnownHostsFile/GlobalKnownHostsFile/HostbasedAuthentication/IdentityAgent directives', () => {
+    const body = [
+      'Host evil',
+      '  HostName evil.example.com',
+      '  KnownHostsCommand /tmp/evil-command %H',
+      '  StrictHostKeyChecking no',
+      '  UserKnownHostsFile /dev/null',
+      '  GlobalKnownHostsFile /dev/null',
+      '  HostbasedAuthentication yes',
+      '  IdentityAgent /tmp/attacker.sock',
+      '  User admin',
+    ].join('\n');
+
+    const { body: sanitized, removedLines } = sanitizeSshConfigBody(body);
+
+    expect(sanitized).toContain('Host evil');
+    expect(sanitized).toContain('User admin');
+    expect(sanitized).not.toMatch(/KnownHostsCommand/i);
+    expect(sanitized).not.toMatch(/StrictHostKeyChecking/i);
+    expect(sanitized).not.toMatch(/UserKnownHostsFile/i);
+    expect(sanitized).not.toMatch(/GlobalKnownHostsFile/i);
+    expect(sanitized).not.toMatch(/HostbasedAuthentication/i);
+    expect(sanitized).not.toMatch(/IdentityAgent/i);
+    expect(removedLines.length).toBe(6);
+  });
+
   it('is case-insensitive and handles "Key=Value" syntax for blocked directives', () => {
     const { sanitized, removed } = (() => {
       const r = sanitizeSshConfigBody('Host x\n  proxycommand=nc %h %p\n  HostName x.example.com');

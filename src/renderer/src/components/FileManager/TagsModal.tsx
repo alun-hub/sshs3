@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Tag as TagIcon, X, Loader2, Plus, Trash2 } from 'lucide-react';
 import type { S3Tag } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
 
@@ -37,6 +38,8 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       .finally(() => setLoading(false));
   }, [open, providerId, targetPath]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+
   if (!open) return null;
 
   const handleAdd = () => setTags((prev) => [...prev, { key: '', value: '' }]);
@@ -62,7 +65,10 @@ export const TagsModal: React.FC<TagsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">

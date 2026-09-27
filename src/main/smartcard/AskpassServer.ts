@@ -16,6 +16,19 @@ export interface AskpassServerOptions {
 export class AskpassServer extends EventEmitter {
   private server: net.Server | null = null;
   private port: number = 0;
+  /**
+   * Unix domain socket path used on non-Windows platforms (LOW finding, code
+   * review): a loopback TCP port has no OS-level access control of its own —
+   * any local user on a shared multi-user Linux host can connect to it, so
+   * the random token is the only thing standing between them and this
+   * server (not practically exploitable given the 128-bit token and
+   * constant-time comparison, but still a gap a Unix socket closes for
+   * free). The socket file lives inside `tempDir`, created with mode 0700,
+   * so only this OS user can even open() it, before the token is ever
+   * checked. Windows has no equivalent of a mode-restricted Unix socket
+   * file, so it keeps the original TCP loopback behavior.
+   */
+  private socketPath: string | null = null;
   private token: string;
   private promptHandler?: AskpassPromptHandler;
   private onPresence?: (prompt: string) => void;
@@ -53,7 +66,16 @@ export class AskpassServer extends EventEmitter {
       return { port: this.port, scriptPath: this.scriptPath };
     }
 
-    // 1. Start TCP Server on localhost
+    // 1. Create the private (mode 0700) temp directory first — on POSIX the
+    // server's Unix socket file lives inside it, so it must exist before
+    // the server starts listening.
+    this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-askpass-'));
+    await fs.chmod(this.tempDir, 0o700);
+
+    const isWindows = process.platform === 'win32';
+
+    // 2. Start the server: a Unix domain socket on POSIX, TCP loopback on
+    // Windows (which has no equivalent mode-restricted socket file).
     await new Promise<void>((resolve, reject) => {
       const server = net.createServer((socket) => {
         this.handleConnection(socket);
@@ -61,22 +83,32 @@ export class AskpassServer extends EventEmitter {
 
       server.once('error', reject);
 
-      server.listen(0, '127.0.0.1', () => {
-        const address = server.address();
-        if (address && typeof address === 'object') {
-          this.port = address.port;
+      if (isWindows) {
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          if (address && typeof address === 'object') {
+            this.port = address.port;
+            this.server = server;
+            resolve();
+          } else {
+            reject(new Error('Failed to obtain server address'));
+          }
+        });
+      } else {
+        const socketPath = path.join(this.tempDir!, 'askpass.sock');
+        server.listen(socketPath, () => {
+          this.socketPath = socketPath;
           this.server = server;
           resolve();
-        } else {
-          reject(new Error('Failed to obtain server address'));
-        }
-      });
+        });
+      }
     });
 
-    // 2. Create temporary directory and askpass script
-    this.tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-askpass-'));
-    await fs.chmod(this.tempDir, 0o700);
-    this.scriptPath = await this.generateAskpassScript(this.tempDir, this.port, this.token);
+    // 3. Create the askpass script.
+    this.scriptPath = await this.generateAskpassScript(this.tempDir, this.token, {
+      port: this.port,
+      socketPath: this.socketPath,
+    });
     this.running = true;
 
     return { port: this.port, scriptPath: this.scriptPath };
@@ -102,6 +134,14 @@ export class AskpassServer extends EventEmitter {
    */
   public getPort(): number {
     return this.port;
+  }
+
+  /**
+   * Returns the Unix domain socket path in use on non-Windows platforms, or
+   * null on Windows (which uses getPort()/TCP instead).
+   */
+  public getSocketPath(): string | null {
+    return this.socketPath;
   }
 
   /**
@@ -254,18 +294,25 @@ export class AskpassServer extends EventEmitter {
     return '';
   }
 
-  private async generateAskpassScript(dir: string, port: number, token: string): Promise<string> {
+  private async generateAskpassScript(
+    dir: string,
+    token: string,
+    endpoint: { port: number; socketPath: string | null }
+  ): Promise<string> {
     const isWindows = process.platform === 'win32';
     const jsPath = path.join(dir, 'askpass-worker.cjs');
+
+    const connectOptions = endpoint.socketPath
+      ? { path: endpoint.socketPath }
+      : { port: endpoint.port, host: '127.0.0.1' };
 
     const jsContent = `
 const net = require('net');
 const prompt = process.argv[2] || '';
 const promptType = process.env.SSH_ASKPASS_PROMPT || '';
-const port = ${port};
 const token = ${JSON.stringify(token)};
 
-const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
+const client = net.createConnection(${JSON.stringify(connectOptions)}, () => {
   client.write(JSON.stringify({ token, prompt, promptType }) + '\\n');
 });
 

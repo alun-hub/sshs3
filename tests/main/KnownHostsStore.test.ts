@@ -118,6 +118,92 @@ describe('KnownHostsStore', () => {
     expect(raw).toContain('ssh-ed25519');
   });
 
+  // Regression tests for the H5 finding (code review): addHostKey used to
+  // only append, leaving stale entries in place after a key rotation. Since
+  // checkHost() treats ANY matching entry as 'match', a later MITM
+  // presenting the retired (but still-trusted) old key was silently
+  // accepted instead of raising the mismatch prompt.
+  describe('invalidates stale entries on key rotation (H5)', () => {
+    it('no longer matches the old key after trusting a rotated one for the same host+algorithm', async () => {
+      const store = new KnownHostsStore(filePath);
+      const oldKey = fakeKeyBuffer('ssh-ed25519', 'old-key-bytes');
+      const newKey = fakeKeyBuffer('ssh-ed25519', 'new-key-bytes');
+
+      await store.addHostKey('rotate.example.com', 22, oldKey);
+      expect(await store.checkHost('rotate.example.com', 22, oldKey)).toBe('match');
+
+      // User clicks "Trust Anyway" on the rotated key.
+      await store.addHostKey('rotate.example.com', 22, newKey);
+
+      expect(await store.checkHost('rotate.example.com', 22, newKey)).toBe('match');
+      // The old key must now be a MISMATCH (raising the TOFU prompt again),
+      // not a silent match — this is the actual security property.
+      expect(await store.checkHost('rotate.example.com', 22, oldKey)).toBe('mismatch');
+
+      const raw = await fs.readFile(filePath, 'utf-8');
+      expect(raw).not.toContain(oldKey.toString('base64'));
+      expect(raw).toContain(newKey.toString('base64'));
+    });
+
+    it('leaves an entry for a different key algorithm on the same host untouched', async () => {
+      const store = new KnownHostsStore(filePath);
+      const ed25519Key = fakeKeyBuffer('ssh-ed25519', 'ed-key-bytes');
+      const rsaKey = fakeKeyBuffer('ssh-rsa', 'rsa-key-bytes');
+
+      await store.addHostKey('multi-algo.example.com', 22, ed25519Key);
+      await store.addHostKey('multi-algo.example.com', 22, rsaKey);
+
+      // Rotate only the ed25519 key.
+      const newEd25519Key = fakeKeyBuffer('ssh-ed25519', 'new-ed-key-bytes');
+      await store.addHostKey('multi-algo.example.com', 22, newEd25519Key);
+
+      expect(await store.checkHost('multi-algo.example.com', 22, newEd25519Key)).toBe('match');
+      expect(await store.checkHost('multi-algo.example.com', 22, ed25519Key)).toBe('mismatch');
+      // The untouched RSA key for the same host must still be trusted.
+      expect(await store.checkHost('multi-algo.example.com', 22, rsaKey)).toBe('match');
+    });
+
+    it('strips only this host\'s pattern from a multi-host line, keeping the other host trusted', async () => {
+      const key = fakeKeyBuffer('ssh-ed25519', 'shared-key-bytes');
+      await fs.writeFile(
+        filePath,
+        `host-a.example.com,host-b.example.com ssh-ed25519 ${key.toString('base64')}\n`,
+        'utf-8'
+      );
+
+      const store = new KnownHostsStore(filePath);
+      const newKey = fakeKeyBuffer('ssh-ed25519', 'rotated-key-bytes');
+      await store.addHostKey('host-a.example.com', 22, newKey);
+
+      expect(await store.checkHost('host-a.example.com', 22, newKey)).toBe('match');
+      expect(await store.checkHost('host-a.example.com', 22, key)).toBe('mismatch');
+      // host-b was never rotated and must still trust the original key.
+      expect(await store.checkHost('host-b.example.com', 22, key)).toBe('match');
+    });
+
+    it('preserves comments, blank lines and marker lines across a rotation rewrite', async () => {
+      const oldKey = fakeKeyBuffer('ssh-ed25519', 'old-key-bytes');
+      const content = [
+        '# a comment',
+        '',
+        '@cert-authority *.example.com ssh-ed25519 SOMEKEY',
+        `rotate.example.com ssh-ed25519 ${oldKey.toString('base64')}`,
+        '',
+      ].join('\n');
+      await fs.writeFile(filePath, content, 'utf-8');
+
+      const store = new KnownHostsStore(filePath);
+      const newKey = fakeKeyBuffer('ssh-ed25519', 'new-key-bytes');
+      await store.addHostKey('rotate.example.com', 22, newKey);
+
+      const raw = await fs.readFile(filePath, 'utf-8');
+      expect(raw).toContain('# a comment');
+      expect(raw).toContain('@cert-authority *.example.com ssh-ed25519 SOMEKEY');
+      expect(raw).not.toContain(oldKey.toString('base64'));
+      expect(await store.checkHost('rotate.example.com', 22, newKey)).toBe('match');
+    });
+  });
+
   it('rejects injection attempts in host and invalid ports', async () => {
     const store = new KnownHostsStore(filePath);
     const key = fakeKeyBuffer('ssh-ed25519', 'first-key');

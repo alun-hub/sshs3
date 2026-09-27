@@ -1,8 +1,23 @@
+import safeRegex from 'safe-regex2';
 import type { SearchMode } from '../../shared/types/search';
 
 export interface MatchOffsets {
   start: number;
   end: number;
+}
+
+// M10 (code review): a user-supplied regex is compiled directly from
+// search input with no timeout. A single catastrophic-backtracking pattern
+// (e.g. `(a+)+$`) matched against one long line can hang the whole main
+// process synchronously for as long as it takes to fail — freezing all IPC,
+// every other transfer/search, and the UI — since yieldToEventLoop only
+// yields *between* lines, not inside a single regex match. safe-regex2
+// rejects a pattern whose nested-repetition ("star height") shape could
+// cause that exponential blowup, before it's ever compiled/run.
+const MAX_QUERY_LENGTH = 500;
+
+function isSafeRegexQuery(query: string): boolean {
+  return query.length <= MAX_QUERY_LENGTH && safeRegex(query);
 }
 
 /**
@@ -19,7 +34,7 @@ export function buildLineMatcher(
   if (mode === 'regex') {
     let re: RegExp | null;
     try {
-      re = new RegExp(query, caseSensitive ? '' : 'i');
+      re = isSafeRegexQuery(query) ? new RegExp(query, caseSensitive ? '' : 'i') : null;
     } catch {
       re = null;
     }

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { History, X, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import type { ObjectVersionEntry, S3VersioningStatus } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useConfirm } from '../ConfirmDialog';
 import { describeIpcError } from '../../lib/format';
 
 interface VersionsModalProps {
@@ -25,6 +27,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const [status, setStatus] = useState<S3VersioningStatus>('Disabled');
   const [versions, setVersions] = useState<ObjectVersionEntry[]>([]);
@@ -52,6 +55,8 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
     void load();
   }, [open, load]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open && !busy);
+
   if (!open) return null;
 
   const handleToggleVersioning = async () => {
@@ -69,7 +74,15 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   const handleRestore = async (versionId: string) => {
-    if (!window.confirm('Restore this version as the current version of the object?')) return;
+    if (
+      !(await confirm({
+        title: 'Restore version',
+        message: 'Restore this version as the current version of the object?',
+        confirmLabel: 'Restore',
+        danger: false,
+      }))
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -84,7 +97,14 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   const handleDeleteVersion = async (versionId: string) => {
-    if (!window.confirm('Permanently delete this specific version? This action cannot be undone.')) return;
+    if (
+      !(await confirm({
+        title: 'Delete version',
+        message: 'Permanently delete this specific version? This action cannot be undone.',
+        confirmLabel: 'Delete permanently',
+      }))
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -99,7 +119,10 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">

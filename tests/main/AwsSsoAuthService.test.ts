@@ -6,6 +6,26 @@ import crypto from 'node:crypto';
 
 const sendMock = vi.fn();
 
+// A toy reversible "encryption" standing in for the OS keyring (M5, code
+// review), so tests can tell an at-rest-encrypted field apart from a
+// plaintext one without depending on a real OS keyring being present.
+const { mockEncryptString, mockDecryptString, mockIsEncryptionAvailable } = vi.hoisted(() => ({
+  mockEncryptString: vi.fn((value: string) => Buffer.from(`cipher:${value}`, 'utf-8')),
+  mockDecryptString: vi.fn((buf: Buffer) => buf.toString('utf-8').replace(/^cipher:/, '')),
+  mockIsEncryptionAvailable: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('electron', () => {
+  const mockObj = {
+    safeStorage: {
+      isEncryptionAvailable: mockIsEncryptionAvailable,
+      encryptString: mockEncryptString,
+      decryptString: mockDecryptString,
+    },
+  };
+  return { ...mockObj, default: mockObj };
+});
+
 vi.mock('@aws-sdk/client-sso-oidc', () => {
   class SSOOIDCServiceException extends Error {
     constructor(message: string) {
@@ -95,6 +115,7 @@ describe('AwsSsoAuthService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockIsEncryptionAvailable.mockReturnValue(false);
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-aws-sso-test-'));
     clientCacheFilePath = path.join(tempDir, 'aws-sso-clients.json');
     ssoCacheDir = path.join(tempDir, 'sso-cache');
@@ -184,6 +205,37 @@ describe('AwsSsoAuthService', () => {
 
       expect(result.accessToken).toBe('token-b');
       expect(sendMock).toHaveBeenCalledTimes(2); // StartDeviceAuthorization + CreateToken only
+    },
+    8000
+  );
+
+  it(
+    'encrypts clientSecret at rest in its own client cache file when an OS keyring is available (M5)',
+    async () => {
+      mockIsEncryptionAvailable.mockReturnValue(true);
+      const farFuture = Math.floor(Date.now() / 1000) + 999_999;
+
+      sendMock
+        .mockResolvedValueOnce(mockRegisterClient(farFuture))
+        .mockResolvedValueOnce(mockDeviceAuth())
+        .mockResolvedValueOnce({ accessToken: 'token-a', expiresIn: 3600 });
+      await service.login(startUrl, region);
+
+      const onDisk = JSON.parse(await fs.readFile(clientCacheFilePath, 'utf-8'));
+      const entry = Object.values(onDisk)[0] as { clientSecret: string };
+      expect(entry.clientSecret).not.toBe('client-secret-1');
+      expect(entry.clientSecret).toContain('enc:v1:');
+
+      // A subsequent login must still be able to decrypt it back and reuse
+      // the cached registration rather than re-registering.
+      sendMock.mockClear();
+      sendMock
+        .mockResolvedValueOnce(mockDeviceAuth())
+        .mockResolvedValueOnce({ accessToken: 'token-b', expiresIn: 3600 });
+      const result = await service.login(startUrl, region);
+
+      expect(result.accessToken).toBe('token-b');
+      expect(sendMock).toHaveBeenCalledTimes(2); // StartDeviceAuthorization + CreateToken only, no RegisterClient
     },
     8000
   );

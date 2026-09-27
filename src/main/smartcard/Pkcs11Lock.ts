@@ -23,12 +23,48 @@ let queue: Promise<unknown> = Promise.resolve();
  */
 let nextCallId = 1;
 
+/**
+ * Safety-net ceiling for a single queued operation (LOW finding, code
+ * review). Every current caller already bounds its own execFile/worker with
+ * a timeout well under this (the longest is Fido2KeyManager's 120s
+ * ssh-keygen presence-detection wait), so this should never actually fire
+ * today — it exists so a future caller that forgets to add its own timeout
+ * can't silently wedge this app-wide queue forever. It only unblocks the
+ * *queue* for the next caller; it can't cancel `fn()` itself (there's no
+ * generic way to abort an arbitrary in-flight operation), so the original
+ * call may still be running in the background after this fires.
+ */
+const WATCHDOG_TIMEOUT_MS = 180_000;
+
+function withWatchdog<T>(promise: Promise<T>, callId: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      console.error(
+        `[pkcs11-lock] #${callId}: watchdog fired after ${WATCHDOG_TIMEOUT_MS}ms without ` +
+          `resolving — releasing the queue for the next caller; the original operation may ` +
+          `still be running in the background.`
+      );
+      reject(new Error(`PKCS#11 operation timed out after ${WATCHDOG_TIMEOUT_MS}ms`));
+    }, WATCHDOG_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export function withPkcs11Lock<T>(fn: () => Promise<T>): Promise<T> {
   const callId = nextCallId++;
   console.log(`[pkcs11-lock] #${callId}: queued`);
   const run = () => {
     console.log(`[pkcs11-lock] #${callId}: acquired, running`);
-    return fn();
+    return withWatchdog(fn(), callId);
   };
   const result = queue.then(run, run);
   result.then(

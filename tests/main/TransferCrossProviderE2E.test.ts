@@ -245,6 +245,13 @@ describe('End-to-End Cross-Provider Transfer Pipeline (SFTP <-> S3)', () => {
         targetProvider: s3Provider,
         targetPath: 's3://bucket/abort-me.bin',
         signal: controller.signal,
+        // Unthrottled so a 'running' progress event fires after every 1KB
+        // chunk instead of being coalesced into one, letting the abort
+        // below land genuinely mid-stream (with most of the 100 chunks
+        // still unsent) rather than only after everything has already
+        // finished (which M8's now-accurate 'completed' timing no longer
+        // lets a throttled last-chunk-only callback catch in time).
+        throttleIntervalMs: 0,
         onProgress: (progress) => {
           if (progress.transferredBytes > 1024) {
             controller.abort();

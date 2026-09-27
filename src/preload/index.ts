@@ -305,7 +305,16 @@ export const api: MultiSSHApi = {
   },
 
   startDrag: (options: { file: string; icon?: string }): void => {
-    ipcRenderer.send(IPC_CHANNELS.START_DRAG, options);
+    // The main-process handler is registered with ipcMain.handle (via
+    // registerHandler), which only ever answers ipcRenderer.invoke() calls —
+    // a plain .send() has no listener on the other end and is silently
+    // dropped, so native OS drag-and-drop never actually started (LOW
+    // finding, code review). The caller doesn't need the result, so the
+    // promise is intentionally not awaited/returned; a failure is logged
+    // there rather than thrown here.
+    void ipcRenderer.invoke(IPC_CHANNELS.START_DRAG, options).catch((err) => {
+      console.error('Failed to start native drag:', err);
+    });
   },
 
   // Profiles
@@ -333,14 +342,22 @@ export const api: MultiSSHApi = {
   profilesRenameFolder: (oldName: string, newName: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_RENAME_FOLDER, oldName, newName),
 
-  profilesImportSshConfig: (filePath?: string): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG, filePath),
+  // No filePath argument (H4, code review): these three used to accept an
+  // optional caller-supplied path that went straight to fs.readFile/
+  // writeFile in the main process, bypassing the save/open dialog entirely.
+  // The real UI never passed one — only a compromised renderer could — so
+  // the parameter is removed from this exposed surface rather than merely
+  // left "optional but trusted"; the main process always resolves the path
+  // itself (a fixed default for SSH config, an electronDialog prompt for
+  // JSON export/import).
+  profilesImportSshConfig: (): Promise<{ profiles: SSHConnectionConfig[]; filePath: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG),
 
-  profilesExportJson: (targetFilePath?: string): Promise<{ count: number; filePath: string } | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON, targetFilePath),
+  profilesExportJson: (): Promise<{ count: number; filePath: string } | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_EXPORT_JSON),
 
-  profilesImportJson: (filePath?: string): Promise<{ count: number }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON, filePath),
+  profilesImportJson: (): Promise<{ count: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROFILES_IMPORT_JSON),
 
   // Session
   sessionGet: (): Promise<SessionData | null> =>
@@ -586,8 +603,8 @@ export const api: MultiSSHApi = {
   k8sLogin: (options: K8sLoginOptions): Promise<K8sLoginResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_LOGIN, options),
 
-  onK8sConfigChanged: (callback: () => void): (() => void) => {
-    const listener = () => callback();
+  onK8sConfigChanged: (callback: (execAuthWarning?: string | null) => void): (() => void) => {
+    const listener = (_event: unknown, execAuthWarning?: string | null) => callback(execAuthWarning);
     ipcRenderer.on(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.K8S_CONFIG_CHANGED, listener);

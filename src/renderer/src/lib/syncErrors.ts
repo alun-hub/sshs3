@@ -12,7 +12,7 @@
  * otherwise surface as cryptic ssh2/AWS SDK text.
  */
 
-export type SyncErrorKind = 'wrong-password' | 'conflict' | 'locked' | 'smartcard' | 'network' | 'unknown';
+export type SyncErrorKind = 'wrong-password' | 'conflict' | 'in-progress' | 'locked' | 'smartcard' | 'network' | 'unknown';
 
 export interface FormattedSyncError {
   kind: SyncErrorKind;
@@ -20,7 +20,7 @@ export interface FormattedSyncError {
 }
 
 const IPC_WRAPPER_RE = /^Error invoking remote method '[^']*':\s*/;
-const NAMED_ERROR_RE = /^(SyncDecryptionError|SyncConflictError|SyncLockedError):\s*/;
+const NAMED_ERROR_RE = /^(SyncDecryptionError|SyncConflictError|SyncInProgressError|SyncLockedError):\s*/;
 
 export function formatSyncError(err: unknown, fallback = 'Something went wrong.'): FormattedSyncError {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : fallback;
@@ -38,6 +38,9 @@ export function formatSyncError(err: unknown, fallback = 'Something went wrong.'
   }
   if (name === 'SyncConflictError') {
     return { kind: 'conflict', message };
+  }
+  if (name === 'SyncInProgressError') {
+    return { kind: 'in-progress', message };
   }
   if (name === 'SyncLockedError') {
     return { kind: 'locked', message };

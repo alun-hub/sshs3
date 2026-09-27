@@ -30,6 +30,7 @@ import {
 } from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
 import { formatSyncError } from '../../lib/syncErrors';
+import { formatDateTime as formatDateTimeCanonical } from '../../lib/dateFormat';
 
 function formatRelative(iso?: string): string {
   if (!iso) return 'Never';
@@ -45,16 +46,11 @@ function formatRelative(iso?: string): string {
   return `${diffDay}d ago`;
 }
 
+// Thin wrapper for this panel's own "Never" fallback (LOW finding, code
+// review — the actual date formatting now lives in one place, lib/dateFormat.ts).
 function formatDateTime(iso?: string): string {
   if (!iso) return 'Never';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const min = String(date.getMinutes()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  return formatDateTimeCanonical(iso);
 }
 
 function formatTimestampWithRelative(iso?: string): string {
@@ -843,7 +839,7 @@ export const SyncSettingsPanel: React.FC = () => {
             ? 'Enter your master password to authorize linking your smartcard to remote sync. It will be encrypted with your card certificate and never saved in plaintext.'
             : status?.hasLocalSalts
               ? 'Enter your existing master passwords to unlock sync for this session.'
-              : 'Choose the two master passwords that will encrypt your synced data. They are never sent anywhere or stored on disk.'
+              : 'Choose the master password that will encrypt your synced data. It is never sent anywhere or stored on disk.'
         }
         submitLabel={isLinkingDialog ? 'Link smartcard' : status?.hasLocalSalts ? 'Unlock' : 'Activate sync'}
         submitting={enabling || linkingSmartcard}

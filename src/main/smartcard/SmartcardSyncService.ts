@@ -182,13 +182,23 @@ export function getKeyAlgorithm(keyBlob: Buffer): string {
 }
 
 /**
+ * Derives the AES-256-GCM wrapping key from the smartcard secret via
+ * HKDF-SHA256, with a domain-separating info string, rather than raw
+ * SHA-256 (which has no domain separation and would collide with any
+ * other place that happens to hash the same secret).
+ */
+function deriveWrapKey(smartcardSecret: string): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', smartcardSecret, '', 'sshs3-smartcard-wrap-v1', 32));
+}
+
+/**
  * Encrypts master passwords with a key derived from the smartcard secret.
  */
 export function wrapMasterPasswords(
   smartcardSecret: string,
   passwords: { topologyPassword: string; credentialsPassword: string }
 ): WrappedSyncPasswords {
-  const key = crypto.createHash('sha256').update(smartcardSecret).digest();
+  const key = deriveWrapKey(smartcardSecret);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const plaintext = JSON.stringify(passwords);
@@ -209,7 +219,7 @@ export function unwrapMasterPasswords(
   smartcardSecret: string,
   wrapped: WrappedSyncPasswords
 ): { topologyPassword: string; credentialsPassword: string } {
-  const key = crypto.createHash('sha256').update(smartcardSecret).digest();
+  const key = deriveWrapKey(smartcardSecret);
   const iv = Buffer.from(wrapped.iv, 'base64');
   const tag = Buffer.from(wrapped.tag, 'base64');
   const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
@@ -345,8 +355,14 @@ export function verifyAgentSignature(
       return crypto.verify(null, challenge, pubKey, rawSig);
     }
 
-    // Default: signature response from agent was code 14, accept
-    return true;
+    // Unknown/unsupported key algorithm: fail closed. This value gates
+    // whether the app trusts an ssh-agent's signature as proof of smartcard
+    // possession (used to derive/decrypt the Remote Profile Sync master
+    // password) — accepting an unrecognized algorithm without actually
+    // verifying anything would let a malicious SSH_AUTH_SOCK hand over
+    // attacker-controlled bytes as if they were a verified signature.
+    console.warn(`Unsupported key algorithm for signature verification: ${algo}`);
+    return false;
   } catch (err) {
     console.warn('Failed to verify agent signature cryptographically:', err);
     return false;

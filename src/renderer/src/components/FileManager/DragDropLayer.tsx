@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { DRAG_MIME_TYPE, type DragPayload, type PaneSide } from './types';
+import { DRAG_MIME_TYPE, isValidDragPayload, type DragPayload, type PaneSide } from './types';
 import { DragDropContext, type DragDropContextValue, type FileClipboard } from './DragDropContext';
 
 export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -68,7 +68,8 @@ export const DragDropProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const raw = dataTransfer.getData(DRAG_MIME_TYPE);
         if (raw) {
-          return JSON.parse(raw) as DragPayload;
+          const parsed: unknown = JSON.parse(raw);
+          return isValidDragPayload(parsed) ? parsed : null;
         }
       } catch {
         // Fall through to in-memory payload below.

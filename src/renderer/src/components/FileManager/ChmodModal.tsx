@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, X, Loader2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
 
@@ -76,6 +77,8 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
     }
   }, [open, entries]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+
   if (!open) return null;
 
   const handleOctalChange = (val: string) => {
@@ -132,7 +135,10 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">

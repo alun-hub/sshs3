@@ -198,6 +198,16 @@ export class ByteMeter extends Transform {
     }
     callback();
   }
+
+  /**
+   * Emits the 'completed' progress event on demand (M8, code review):
+   * transferFile() suppresses the automatic _flush-time emission above so it
+   * can verify transferredBytes against the source's size first, and only
+   * then report completion — never before that check has passed.
+   */
+  public emitCompletedNow(): void {
+    this.emitProgress('completed');
+  }
 }
 
 export interface TransferOptions {
@@ -370,7 +380,22 @@ export async function transferFile(options: TransferOptions): Promise<void> {
   const readStream = await options.sourceProvider.createReadStream(
     options.sourcePath
   );
+  // Attach immediately, before any further `await` — a stream with zero
+  // 'error' listeners crashes the whole main process on an unhandled error
+  // event (Node's default behavior), and the source file/connection can
+  // fail (e.g. deleted between the stat() above and here — TOCTOU) in the
+  // gap before createWriteStream resolves below and pipeline() attaches its
+  // own listener, when nothing else is listening yet. This can't be a bare
+  // no-op, though: if the error fires and is fully consumed before
+  // pipeline() ever attaches, pipeline() would never learn about it and the
+  // transfer would look "successful" despite a broken source stream — so
+  // this records it instead, and it's checked for below before proceeding.
+  let earlyReadError: Error | undefined;
+  readStream.on('error', (err) => {
+    earlyReadError = err;
+  });
   let writeStream: NodeJS.WritableStream | undefined;
+  let earlyWriteError: Error | undefined;
 
   try {
     if (options.signal?.aborted) {
@@ -383,6 +408,14 @@ export async function transferFile(options: TransferOptions): Promise<void> {
       resolvedTargetPath,
       { size: totalBytes }
     );
+    // Same reasoning as readStream above, for the equivalent gap before
+    // pipeline() is called just below.
+    writeStream.on('error', (err) => {
+      earlyWriteError = err;
+    });
+
+    if (earlyReadError) throw earlyReadError;
+    if (earlyWriteError) throw earlyWriteError;
 
     const meter = new ByteMeter({
       jobId: options.jobId,
@@ -392,10 +425,29 @@ export async function transferFile(options: TransferOptions): Promise<void> {
       signal: options.signal,
       pauseController: options.pauseController,
       onProgress: options.onProgress,
-      emitCompletedOnFlush: options.emitCompleted ?? true,
+      // Always suppressed here (regardless of options.emitCompleted) so the
+      // integrity check below runs, and can still throw, before any
+      // 'completed' progress event ever reaches the caller (M8).
+      emitCompletedOnFlush: false,
     });
 
     await pipeline(readStream, meter, writeStream, { signal: options.signal });
+
+    // M8 (code review): byte count was previously tracked only for the
+    // progress bar and never checked against the source's actual size, so a
+    // stream that silently truncated or corrupted mid-transfer could still
+    // finish as 'completed'. totalBytes of 0 means the size was unknown (the
+    // stat() above failed) or the source is genuinely empty; neither case
+    // has a real reference to verify against.
+    if (totalBytes > 0 && meter.transferredBytes !== totalBytes) {
+      throw new Error(
+        `Transfer of "${fileName}" incomplete: expected ${totalBytes} bytes but transferred ${meter.transferredBytes}`
+      );
+    }
+
+    if (options.emitCompleted ?? true) {
+      meter.emitCompletedNow();
+    }
   } catch (err) {
     if (typeof (readStream as any)?.destroy === 'function') {
       if (typeof (readStream as any)?.on === 'function') {
@@ -408,6 +460,14 @@ export async function transferFile(options: TransferOptions): Promise<void> {
         (writeStream as any).on('error', () => {});
       }
       (writeStream as any).destroy(err as Error);
+    }
+    // M7 (code review): a failed/aborted transfer previously left a
+    // truncated file at the exact final filename, indistinguishable from a
+    // complete one. Only attempted once writeStream exists (some bytes may
+    // already be on disk); best-effort, since some providers/paths may
+    // reject deleting a file that's still open or was never created.
+    if (writeStream) {
+      await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
     }
     throw err;
   }
@@ -458,6 +518,15 @@ async function scanDirectory(
     // Prevent infinite recursion on '.' and '..' and reject path traversal
     const baseName = path.posix.basename(entry.name.replace(/\\/g, '/'));
     if (!baseName || baseName === '.' || baseName === '..') {
+      continue;
+    }
+    // Never follow a symlink during a directory transfer (H6 code-review
+    // finding): entry.isDirectory for a symlinked directory comes from a
+    // followed stat(), so recursing into it can escape the source tree
+    // entirely (a link to "/" or a parent) or spin forever on a symlink
+    // cycle, since no cycle detection exists here. Matches the same
+    // skip-symlinks policy LocalContentSearchService already uses.
+    if (entry.isSymlink) {
       continue;
     }
     const childTargetPath = joinPaths(targetType, currentTargetPath, baseName);
@@ -581,6 +650,14 @@ export async function transferDirectory(
   let overallTransferredBytes = 0;
   const totalDirectoryBytes = scan.totalBytes;
   let fileIndex = 0;
+  // M9 (code review): one failing file used to abort the whole directory
+  // job immediately, leaving every remaining file untried even though
+  // nothing about their transfer was actually broken. Failures are now
+  // collected and the loop continues, so a directory with one bad file
+  // still copies everything else; the job as a whole still ends up
+  // 'failed' (there's no partial-success status), but with a summary that
+  // says which files failed and why instead of a single opaque error.
+  const failedFiles: Array<{ path: string; error: string }> = [];
 
   for (const file of scan.files) {
     fileIndex++;
@@ -592,38 +669,59 @@ export async function transferDirectory(
 
     let lastReportedFileBytes = 0;
 
-    await transferFile({
-      ...options,
-      sourcePath: file.sourcePath,
-      targetPath: file.targetPath,
-      totalBytes: file.size,
-      emitCompleted: false,
-      onProgress: (fp) => {
-        lastReportedFileBytes = fp.transferredBytes;
-        const currentOverall =
-          overallTransferredBytes + lastReportedFileBytes;
-        const percentage =
-          totalDirectoryBytes > 0
-            ? Math.min(
-                100,
-                Math.round((currentOverall / totalDirectoryBytes) * 100)
-              )
-            : 100;
+    try {
+      await transferFile({
+        ...options,
+        sourcePath: file.sourcePath,
+        targetPath: file.targetPath,
+        totalBytes: file.size,
+        emitCompleted: false,
+        onProgress: (fp) => {
+          lastReportedFileBytes = fp.transferredBytes;
+          const currentOverall =
+            overallTransferredBytes + lastReportedFileBytes;
+          const percentage =
+            totalDirectoryBytes > 0
+              ? Math.min(
+                  100,
+                  Math.round((currentOverall / totalDirectoryBytes) * 100)
+                )
+              : 100;
 
-        options.onProgress?.({
-          jobId: options.jobId ?? 'directory-transfer',
-          fileName: path.basename(file.sourcePath),
-          transferredBytes: currentOverall,
-          totalBytes: totalDirectoryBytes,
-          percentage,
-          bytesPerSecond: fp.bytesPerSecond,
-          status: 'running',
-          statusMessage: `File ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
-        });
-      },
-    });
+          options.onProgress?.({
+            jobId: options.jobId ?? 'directory-transfer',
+            fileName: path.basename(file.sourcePath),
+            transferredBytes: currentOverall,
+            totalBytes: totalDirectoryBytes,
+            percentage,
+            bytesPerSecond: fp.bytesPerSecond,
+            status: 'running',
+            statusMessage: `File ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
+          });
+        },
+      });
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError' || options.signal?.aborted) {
+        throw err;
+      }
+      failedFiles.push({
+        path: file.sourcePath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     overallTransferredBytes += file.size;
+  }
+
+  if (failedFiles.length > 0) {
+    const preview = failedFiles
+      .slice(0, 5)
+      .map((f) => `${path.basename(f.path)}: ${f.error}`)
+      .join('; ');
+    const suffix = failedFiles.length > 5 ? `; and ${failedFiles.length - 5} more` : '';
+    throw new Error(
+      `${failedFiles.length} of ${scan.files.length} file(s) failed to transfer: ${preview}${suffix}`
+    );
   }
 
   options.onProgress?.({

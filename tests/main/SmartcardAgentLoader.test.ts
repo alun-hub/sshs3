@@ -125,6 +125,17 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
     }
   });
 
+  /**
+   * Mirrors the connection logic the generated askpass script actually
+   * uses: a Unix domain socket on POSIX (AskpassServer.getSocketPath()),
+   * falling back to the TCP loopback port on Windows, which has no
+   * equivalent mode-restricted socket file.
+   */
+  function connectToAskpass(server: { getPort(): number; getSocketPath(): string | null }): net.Socket {
+    const socketPath = server.getSocketPath();
+    return socketPath ? net.createConnection({ path: socketPath }) : net.createConnection({ port: server.getPort(), host: '127.0.0.1' });
+  }
+
   async function installFakeSshAdd(script: string): Promise<void> {
     fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fake-ssh-add-'));
     const scriptPath = path.join(fakeBinDir, 'ssh-add');
@@ -208,7 +219,7 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
     try {
       expect(socketPath).toBeTruthy();
       // 1. Initial load prompt (from ssh-add)
-      const client1 = net.createConnection({ port: askpassServer!.getPort(), host: '127.0.0.1' });
+      const client1 = connectToAskpass(askpassServer!);
       const pinResponse1 = await new Promise((resolve) => {
         client1.on('connect', () => {
           client1.write(
@@ -227,7 +238,7 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
       expect(promptHandler).toHaveBeenCalledTimes(1);
 
       // 2. Now simulate ssh-agent issuing a subsequent signature PIN prompt
-      const client2 = net.createConnection({ port: askpassServer!.getPort(), host: '127.0.0.1' });
+      const client2 = connectToAskpass(askpassServer!);
       const pinResponse2 = await new Promise((resolve) => {
         client2.on('connect', () => {
           client2.write(
@@ -248,7 +259,7 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
       expect(promptHandler).toHaveBeenCalledTimes(1);
 
       // Simulate a pure presence notification (notify_start from ssh-agent)
-      const presenceClient = net.createConnection({ port: askpassServer!.getPort(), host: '127.0.0.1' });
+      const presenceClient = connectToAskpass(askpassServer!);
       const presenceResponse = await new Promise((resolve) => {
         presenceClient.on('connect', () => {
           presenceClient.write(

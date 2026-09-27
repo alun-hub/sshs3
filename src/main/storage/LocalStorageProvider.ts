@@ -53,8 +53,26 @@ export class LocalStorageProvider extends BaseStorageProvider {
   /**
    * Resolves a path against basePath if relative, or normalizes it if absolute.
    * Supports Linux (/) and Windows (C:\) paths.
+   *
+   * When basePath is set, it's a hard sandbox boundary, not just a base for
+   * relative paths: an absolute remotePath elsewhere on disk, or a relative
+   * one whose "../" segments walk outside it, must never resolve to a path
+   * outside basePath. Every read/write/list/delete method in this class
+   * goes through this one function, so the check lives here once rather
+   * than being (easy to forget to) repeated at every call site.
    */
   public resolvePath(remotePath: string): string {
+    const resolved = this.resolveUnchecked(remotePath);
+    if (this.basePath) {
+      const withSep = this.basePath.endsWith(path.sep) ? this.basePath : this.basePath + path.sep;
+      if (resolved !== this.basePath && !resolved.startsWith(withSep)) {
+        throw new Error(`Path is outside the allowed base directory: ${remotePath}`);
+      }
+    }
+    return resolved;
+  }
+
+  private resolveUnchecked(remotePath: string): string {
     if (!remotePath) {
       return this.basePath ?? process.cwd();
     }
@@ -85,6 +103,11 @@ export class LocalStorageProvider extends BaseStorageProvider {
     for (const entry of entries) {
       const entryFullPath = path.join(fullPath, entry.name);
       const entryRelativePath = path.join(remotePath, entry.name);
+      // Dirent.isSymbolicLink() reflects lstat, not the stat() below (which
+      // follows the link) — this is the only way to know an entry is a
+      // symlink at all, since a followed stat() reports the target's own
+      // type instead (see the H6 code-review finding).
+      const isSymlink = entry.isSymbolicLink();
 
       try {
         const itemStats = await fsp.stat(entryFullPath);
@@ -94,6 +117,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
           path: entryRelativePath,
           size: itemStats.size,
           isDirectory: isDir,
+          isSymlink,
           mtime: formatDate(itemStats.mtime),
           mtimeMs: itemStats.mtime.getTime(),
           mimeType: isDir ? undefined : getMimeType(entry.name),
@@ -107,6 +131,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
           path: entryRelativePath,
           size: 0,
           isDirectory: isDir,
+          isSymlink,
           mimeType: isDir ? undefined : getMimeType(entry.name),
         });
       }

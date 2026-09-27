@@ -274,7 +274,7 @@ describe('SmartcardDetector', () => {
         authType: 'password',
         extraOptions: {
           ServerAliveInterval: '60',
-          StrictHostKeyChecking: 'accept-new',
+          TCPKeepAlive: 'yes',
         },
       };
 
@@ -282,9 +282,52 @@ describe('SmartcardDetector', () => {
 
       expect(args).toContain('-o');
       expect(args).toContain('ServerAliveInterval=60');
-      expect(args).toContain('StrictHostKeyChecking=accept-new');
+      expect(args).toContain('TCPKeepAlive=yes');
       expect(args).toContain('--');
       expect(args).toContain('root@custom.host');
+    });
+
+    // Regression test for the C3 finding (code review): extraOptions can
+    // arrive from a synced/imported profile, so directives that grant
+    // command execution or silently disable host-key verification must
+    // never reach the ssh command line, even via this generic passthrough.
+    it('blocks dangerous extraOptions directives instead of passing them through', () => {
+      const config: SSHConnectionConfig = {
+        id: 'opt-2',
+        name: 'Dangerous Options Host',
+        host: 'custom.host',
+        username: 'root',
+        authType: 'password',
+        extraOptions: {
+          ProxyCommand: 'touch /tmp/pwned',
+          LocalCommand: 'touch /tmp/pwned',
+          RemoteCommand: 'touch /tmp/pwned',
+          KnownHostsCommand: '/tmp/evil',
+          StrictHostKeyChecking: 'no',
+          UserKnownHostsFile: '/dev/null',
+          GlobalKnownHostsFile: '/dev/null',
+          HostbasedAuthentication: 'yes',
+          IdentityAgent: '/tmp/attacker.sock',
+          ServerAliveInterval: '60',
+        },
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+
+      expect(args).toContain('ServerAliveInterval=60');
+      for (const blocked of [
+        'ProxyCommand=touch /tmp/pwned',
+        'LocalCommand=touch /tmp/pwned',
+        'RemoteCommand=touch /tmp/pwned',
+        'KnownHostsCommand=/tmp/evil',
+        'StrictHostKeyChecking=no',
+        'UserKnownHostsFile=/dev/null',
+        'GlobalKnownHostsFile=/dev/null',
+        'HostbasedAuthentication=yes',
+        'IdentityAgent=/tmp/attacker.sock',
+      ]) {
+        expect(args).not.toContain(blocked);
+      }
     });
 
     it('should throw error when host starts with "-" to prevent SSH argument injection', () => {
@@ -557,11 +600,23 @@ describe('AskpassServer', () => {
     }
   });
 
+  // Connects the same way the generated askpass-worker.cjs script does: a
+  // Unix domain socket on POSIX (LOW finding, code review), TCP loopback
+  // on Windows.
+  function connectToServer(s: AskpassServer): net.Socket {
+    const socketPath = s.getSocketPath();
+    return socketPath ? net.createConnection({ path: socketPath }) : net.createConnection({ port: s.getPort(), host: '127.0.0.1' });
+  }
+
   it('should start server, create executable askpass script with restrictive permissions, and return env vars', async () => {
     server = new AskpassServer();
     const { port, scriptPath } = await server.start();
 
-    expect(port).toBeGreaterThan(0);
+    if (process.platform === 'win32') {
+      expect(port).toBeGreaterThan(0);
+    } else {
+      expect(server.getSocketPath()).toBeTruthy();
+    }
     expect(scriptPath).toBeTruthy();
     expect(server.isRunning()).toBe(true);
 
@@ -619,10 +674,10 @@ describe('AskpassServer', () => {
 
   it('should reject unauthorized TCP connection without valid token', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    // Connect raw TCP socket with invalid token
-    const client = net.createConnection({ port, host: '127.0.0.1' });
+    // Connect with an invalid token.
+    const client = connectToServer(server);
     const response = await new Promise<string>((resolve) => {
       client.on('connect', () => {
         client.write(JSON.stringify({ token: 'wrong-token', prompt: 'test' }) + '\n');
@@ -636,12 +691,11 @@ describe('AskpassServer', () => {
 
   it('should handle socket error without crashing server', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    // Connect socket and immediately destroy it with reset to trigger error
-    const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
-      client.destroy(new Error('Simulated socket error'));
-    });
+    // Connect and immediately destroy it with reset to trigger error
+    const client = connectToServer(server);
+    client.on('connect', () => client.destroy(new Error('Simulated socket error')));
 
     await new Promise<void>((resolve) => {
       client.on('error', () => resolve());
@@ -654,9 +708,9 @@ describe('AskpassServer', () => {
 
   it('should disconnect clients exceeding buffer limit', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    const client = net.createConnection({ port, host: '127.0.0.1' });
+    const client = connectToServer(server);
     const closed = await new Promise<boolean>((resolve) => {
       client.on('connect', () => {
         // Send oversized chunk > 64KB without newline

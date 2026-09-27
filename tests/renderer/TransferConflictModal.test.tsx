@@ -117,6 +117,26 @@ describe('TransferConflictModal Component', () => {
     expect(mockRespond).toHaveBeenCalledWith('tc-5', 'skip', false);
   });
 
+  // M11 (code review): Escape must be caught window-wide, not only when
+  // dispatched at (or bubbled up from) the dialog element itself, since
+  // focus is often still elsewhere (e.g. a terminal) when this pops up.
+  it('responds to Escape even when it is dispatched on document.body, not the dialog (M11)', () => {
+    render(<TransferConflictModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'tc-6',
+        sourcePath: '/src/e.txt',
+        targetPath: '/dst/e.txt',
+        fileName: 'e.txt',
+        isDirectory: false,
+      });
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(mockRespond).toHaveBeenCalledWith('tc-6', 'skip', false);
+  });
+
   it('resets the "apply to all" checkbox between prompts', () => {
     render(<TransferConflictModal />);
 

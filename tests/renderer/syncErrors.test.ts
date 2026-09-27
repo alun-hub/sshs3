@@ -18,6 +18,17 @@ describe('formatSyncError', () => {
     expect(result.message).not.toContain('SyncConflictError');
   });
 
+  it('recognizes a partial/interrupted push as its own kind (M4)', () => {
+    const result = formatSyncError(
+      ipcError(
+        'SyncInProgressError: The remote sync data looks like a partial push (interrupted mid-upload) rather than a consistent snapshot. Push again from a device with current data to repair it before pulling.'
+      )
+    );
+    expect(result.kind).toBe('in-progress');
+    expect(result.message).not.toContain('SyncInProgressError');
+    expect(result.message).not.toContain('Error invoking remote method');
+  });
+
   it('recognizes a wrong master password / decryption failure', () => {
     const result = formatSyncError(ipcError('SyncDecryptionError: Wrong master password or corrupted sync file'));
     expect(result.kind).toBe('wrong-password');

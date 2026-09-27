@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ChevronRight, Folder, Loader2, X } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface FolderBrowserModalProps {
   open: boolean;
@@ -68,12 +69,17 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
     };
   }, [open, providerId, currentPath]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open);
+
   if (!open) return null;
 
   const crumbs = splitBreadcrumbs(currentPath);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between border-b border-border-subtle p-3">
           <div className="text-sm font-semibold text-txt-primary">Choose folder — {providerLabel}</div>

@@ -18,6 +18,14 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
+// M13 (code review): a plain NodeList query for the currently-enabled items,
+// re-read on every key press rather than cached, since `items` (and which
+// entries are disabled) can change while the menu is open.
+function getEnabledMenuItems(container: HTMLElement | null): HTMLButtonElement[] {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+}
+
 export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y, visible: false });
@@ -27,7 +35,36 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Arrow-key/Home/End navigation between enabled items (M13, code
+      // review) — previously only Escape and a mouse click outside worked,
+      // so a keyboard/screen-reader user had no way to move between items.
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        const enabledItems = getEnabledMenuItems(ref.current);
+        if (enabledItems.length === 0) return;
+        e.preventDefault();
+
+        if (e.key === 'Home') {
+          enabledItems[0].focus();
+          return;
+        }
+        if (e.key === 'End') {
+          enabledItems[enabledItems.length - 1].focus();
+          return;
+        }
+        const currentIndex = enabledItems.findIndex((el) => el === document.activeElement);
+        const delta = e.key === 'ArrowDown' ? 1 : -1;
+        const nextIndex =
+          currentIndex === -1
+            ? delta === 1
+              ? 0
+              : enabledItems.length - 1
+            : (currentIndex + delta + enabledItems.length) % enabledItems.length;
+        enabledItems[nextIndex].focus();
+      }
     };
     window.addEventListener('mousedown', handlePointerDown, true);
     window.addEventListener('contextmenu', handlePointerDown, true);
@@ -47,6 +84,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     const clampedY = Math.min(y, window.innerHeight - rect.height - 8);
     setPos({ x: Math.max(4, clampedX), y: Math.max(4, clampedY), visible: true });
   }, [x, y]);
+
+  // Move focus into the menu once it's positioned and visible, so arrow-key
+  // navigation and Enter/Space activation work immediately without first
+  // requiring a mouse hover (M13, code review).
+  useEffect(() => {
+    if (!pos.visible) return;
+    getEnabledMenuItems(ref.current)[0]?.focus();
+  }, [pos.visible]);
 
   return (
     <div

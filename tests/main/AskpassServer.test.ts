@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import net from 'node:net';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { AskpassServer } from '../../src/main/smartcard/AskpassServer';
 
 describe('AskpassServer', () => {
@@ -12,12 +14,17 @@ describe('AskpassServer', () => {
     }
   });
 
+  // Connects the same way the generated askpass-worker.cjs script does: a
+  // Unix domain socket on POSIX (LOW finding, code review — closes the
+  // "any local user can reach the loopback TCP port" gap on shared
+  // multi-user Linux hosts), TCP loopback on Windows.
   async function sendClientRequest(
-    port: number,
+    endpoint: { port: number; socketPath: string | null },
     request: Record<string, any>
   ): Promise<Record<string, any>> {
+    const connectOptions = endpoint.socketPath ? { path: endpoint.socketPath } : { port: endpoint.port, host: '127.0.0.1' };
     return new Promise((resolve, reject) => {
-      const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
+      const client = net.createConnection(connectOptions, () => {
         client.write(JSON.stringify(request) + '\n');
       });
 
@@ -44,8 +51,9 @@ describe('AskpassServer', () => {
     const promptHandler = vi.fn().mockResolvedValue('secret-pin-123');
     server = new AskpassServer({ promptHandler, token: 'test-token' });
     const { port } = await server.start();
+    const endpoint = { port, socketPath: server.getSocketPath() };
 
-    const res = await sendClientRequest(port, {
+    const res = await sendClientRequest(endpoint, {
       token: 'test-token',
       prompt: 'Enter PIN for authenticator: ',
     });
@@ -59,6 +67,7 @@ describe('AskpassServer', () => {
     const onPresence = vi.fn();
     server = new AskpassServer({ promptHandler, onPresence, token: 'test-token' });
     const { port } = await server.start();
+    const endpoint = { port, socketPath: server.getSocketPath() };
 
     let presenceEmitted = false;
     server.on('presence', (prompt) => {
@@ -66,7 +75,7 @@ describe('AskpassServer', () => {
       presenceEmitted = true;
     });
 
-    const res = await sendClientRequest(port, {
+    const res = await sendClientRequest(endpoint, {
       token: 'test-token',
       prompt: 'Confirm user presence for key ED25519-SK SHA256:abc',
       promptType: 'none',
@@ -83,8 +92,9 @@ describe('AskpassServer', () => {
     const onPresence = vi.fn();
     server = new AskpassServer({ promptHandler, onPresence, token: 'test-token' });
     const { port } = await server.start();
+    const endpoint = { port, socketPath: server.getSocketPath() };
 
-    const res = await sendClientRequest(port, {
+    const res = await sendClientRequest(endpoint, {
       token: 'test-token',
       prompt: 'Confirm user presence for key ED25519-SK SHA256:xyz',
     });
@@ -99,8 +109,9 @@ describe('AskpassServer', () => {
     const onPresence = vi.fn();
     server = new AskpassServer({ promptHandler, onPresence, token: 'test-token' });
     const { port } = await server.start();
+    const endpoint = { port, socketPath: server.getSocketPath() };
 
-    const res = await sendClientRequest(port, {
+    const res = await sendClientRequest(endpoint, {
       token: 'test-token',
       prompt: 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc: ',
     });
@@ -115,8 +126,9 @@ describe('AskpassServer', () => {
     const promptHandler = vi.fn();
     server = new AskpassServer({ promptHandler, token: 'valid-token' });
     const { port } = await server.start();
+    const endpoint = { port, socketPath: server.getSocketPath() };
 
-    const res = await sendClientRequest(port, {
+    const res = await sendClientRequest(endpoint, {
       token: 'wrong-token',
       prompt: 'Enter PIN:',
     });
@@ -124,4 +136,22 @@ describe('AskpassServer', () => {
     expect(promptHandler).not.toHaveBeenCalled();
     expect(res).toEqual({ error: 'Unauthorized token' });
   });
+
+  // LOW finding (code review): a loopback TCP port has no OS-level access
+  // control of its own — any local user on a shared multi-user Linux host
+  // could connect to it. A Unix domain socket, inside a directory only this
+  // OS user can even open() (mode 0700), closes that gap. Windows keeps TCP.
+  it.skipIf(process.platform === 'win32')(
+    'listens on a Unix domain socket inside a directory only this user can access',
+    async () => {
+      server = new AskpassServer({ promptHandler: vi.fn(), token: 'test-token' });
+      await server.start();
+
+      const socketPath = server.getSocketPath();
+      expect(socketPath).not.toBeNull();
+
+      const dirStat = await fs.stat(path.dirname(socketPath!));
+      expect(dirStat.mode & 0o777).toBe(0o700);
+    }
+  );
 });

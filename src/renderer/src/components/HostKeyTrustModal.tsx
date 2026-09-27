@@ -34,12 +34,23 @@ export const HostKeyTrustModal: React.FC = () => {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      void respond(false);
-    }
-  };
+  // M11 (code review): this modal often appears while focus is still inside
+  // a terminal (xterm's hidden textarea), which never sees a keydown handler
+  // attached only to the dialog's own <div>. A window-level listener (like
+  // FileEditorModal/SearchModal/DirectorySyncModal already use) catches
+  // Escape regardless of where focus currently is.
+  useEffect(() => {
+    if (!currentPrompt) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void respond(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPrompt]);
 
   if (!currentPrompt) {
     return null;
@@ -53,7 +64,6 @@ export const HostKeyTrustModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="hostkey-modal-title"
       data-testid="hostkey-trust-modal"
-      onKeyDown={handleKeyDown}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">

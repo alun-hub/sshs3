@@ -210,6 +210,27 @@ describe('AgentLifecycleManager', () => {
     killSpy.mockRestore();
   });
 
+  // LOW finding (code review): a bare process.kill(pid, 'SIGTERM') on a
+  // tracked pid is a TOCTOU/PID-reuse hazard if the agent already exited and
+  // the OS reused its pid for an unrelated process. On Linux,
+  // /proc/<pid>/comm is checked first; this uses the test runner's own pid
+  // (guaranteed alive, and never actually named "ssh-agent") to simulate
+  // exactly that reused-pid case.
+  it.skipIf(process.platform !== 'linux')(
+    'killPrivateAgent does not signal a live pid that is not actually ssh-agent (Linux PID-reuse guard)',
+    async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+
+      mockSpawnedAgent('/tmp/reused-pid-agent.sock', process.pid);
+      await AgentLifecycleManager.spawnPrivateAgent();
+
+      AgentLifecycleManager.killPrivateAgent(process.pid);
+
+      expect(killSpy).not.toHaveBeenCalledWith(process.pid, 'SIGTERM');
+      killSpy.mockRestore();
+    }
+  );
+
   it('unloadCard resolves even when the socket/module is unreachable (best-effort)', async () => {
     await expect(
       AgentLifecycleManager.unloadCard('\\\\.\\pipe\\definitely-not-a-real-pipe', 'C:\\nope.dll')

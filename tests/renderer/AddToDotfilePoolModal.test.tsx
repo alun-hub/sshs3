@@ -84,4 +84,48 @@ describe('AddToDotfilePoolModal Component', () => {
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  // M12 (code review): this dialog previously only closed via the header X
+  // or the Cancel button, unlike NewFolderModal/FileEditorModal/etc.
+  it('calls onClose on Escape and on a backdrop click (M12)', async () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <AddToDotfilePoolModal open={true} onClose={onClose} sourceProviderId="sftp-1" entry={mockEntry} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Add to Dotfiles Pool')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(container.firstElementChild as Element);
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  // LOW finding (code review): pooled dotfile content is always stored
+  // unencrypted, which is fine for ordinary config files but not for the
+  // handful of well-known dotfiles that exist specifically to hold
+  // credentials.
+  it('warns when the target path looks like a credentials file', async () => {
+    const netrcEntry = { ...mockEntry, name: '.netrc', path: '/home/user/.netrc' };
+    render(<AddToDotfilePoolModal open={true} onClose={vi.fn()} sourceProviderId="sftp-1" entry={netrcEntry} />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('~/.netrc')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/looks like a credentials file/i)).toBeInTheDocument();
+  });
+
+  it('does not warn for an ordinary dotfile', async () => {
+    render(<AddToDotfilePoolModal open={true} onClose={vi.fn()} sourceProviderId="sftp-1" entry={mockEntry} />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('~/.bashrc')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/looks like a credentials file/i)).not.toBeInTheDocument();
+  });
 });

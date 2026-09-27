@@ -610,6 +610,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
   const isBreeze = theme === 'breeze';
 
+  // LOW finding (code review): xterm.js renders its own internal DOM (a
+  // canvas layer plus a hidden textarea for input capture) into this
+  // container, none of which carries any indication of what a screen
+  // reader user has just tabbed into.
+  const terminalAriaLabel = k8sTarget
+    ? `Terminal: ${k8sTarget.podName}/${k8sTarget.containerName}`
+    : local
+      ? 'Terminal: local shell'
+      : config
+        ? `Terminal: ${config.name || config.host}`
+        : 'Terminal';
+
   return (
     <div
       data-testid="terminal-view"
@@ -620,6 +632,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       <div
         ref={containerRef}
         data-testid="terminal-container"
+        role="application"
+        aria-label={terminalAriaLabel}
         className="h-full w-full p-2 focus:outline-none"
       />
 

@@ -240,11 +240,27 @@ export const SmartcardPinModal: React.FC = () => {
     }
   };
 
+  // M11 (code review): a window-level listener catches Escape even while
+  // focus is elsewhere (e.g. a terminal, or before the focus() call above
+  // has had its 50ms delay to run) — unlike relying only on the dialog's
+  // own onKeyDown below, which needs focus already inside it. Enter (submit)
+  // stays on the dialog's onKeyDown: it's only meaningful once the user is
+  // actively typing in the focused PIN input anyway.
+  useEffect(() => {
+    if (!currentPrompt) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPrompt]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      handleCancel();
-    } else if (e.key === 'Enter') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
     }

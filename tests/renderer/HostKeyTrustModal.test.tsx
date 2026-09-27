@@ -124,6 +124,28 @@ describe('HostKeyTrustModal Component', () => {
     expect(mockRespond).toHaveBeenCalledWith('hk-5', false);
   });
 
+  // M11 (code review): this modal often appears while focus is still inside
+  // a terminal (xterm's hidden textarea) rather than inside the dialog, so
+  // Escape must be caught window-wide, not only when dispatched at (or
+  // bubbled up from) the dialog element itself.
+  it('responds to Escape even when it is dispatched on document.body, not the dialog (M11)', () => {
+    render(<HostKeyTrustModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'hk-6',
+        host: 'elsewhere.example.com',
+        port: 22,
+        keyType: 'ssh-ed25519',
+        fingerprint: 'SHA256:pqr678',
+        status: 'unknown',
+      });
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(mockRespond).toHaveBeenCalledWith('hk-6', false);
+  });
+
   it('cleans up host key prompt listener on unmount', () => {
     const { unmount } = render(<HostKeyTrustModal />);
     unmount();
