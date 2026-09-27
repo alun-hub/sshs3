@@ -27,6 +27,7 @@ import type {
   K8sTerminalTarget,
 } from '@shared/types/kubernetes';
 import { formatDateTime } from '../../lib/dateFormat';
+import { describeIpcError } from '../../lib/format';
 
 interface K8sPodDetailModalProps {
   contextName: string;
@@ -69,7 +70,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         setLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeIpcError(err, String(err)));
         setLoading(false);
       });
   };
@@ -105,7 +106,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm animate-in fade-in duration-150"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="flex h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
@@ -120,7 +121,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                 <h2 className="truncate text-sm font-semibold text-txt-primary">{podName}</h2>
                 {pod?.phase && (
                   <span
-                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${phaseColorClass(
+                    className={`rounded border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${phaseColorClass(
                       pod.phase
                     )}`}
                   >
@@ -254,7 +255,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                   {/* Summary grid */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
-                      <div className="text-[11px] font-medium text-txt-muted flex items-center gap-1.5">
+                      <div className="text-xs font-medium text-txt-muted flex items-center gap-1.5">
                         <Clock className="h-3 w-3" /> Started At
                       </div>
                       <div className="mt-1 font-semibold text-txt-primary">
@@ -262,19 +263,19 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                       </div>
                     </div>
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
-                      <div className="text-[11px] font-medium text-txt-muted flex items-center gap-1.5">
+                      <div className="text-xs font-medium text-txt-muted flex items-center gap-1.5">
                         <Network className="h-3 w-3" /> Pod IP
                       </div>
                       <div className="mt-1 font-semibold text-txt-primary">{pod.podIP || '—'}</div>
                     </div>
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
-                      <div className="text-[11px] font-medium text-txt-muted flex items-center gap-1.5">
+                      <div className="text-xs font-medium text-txt-muted flex items-center gap-1.5">
                         <Server className="h-3 w-3" /> Host IP
                       </div>
                       <div className="mt-1 font-semibold text-txt-primary">{pod.hostIP || '—'}</div>
                     </div>
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
-                      <div className="text-[11px] font-medium text-txt-muted flex items-center gap-1.5">
+                      <div className="text-xs font-medium text-txt-muted flex items-center gap-1.5">
                         <Server className="h-3 w-3" /> Node
                       </div>
                       <div className="mt-1 font-semibold text-txt-primary truncate" title={pod.nodeName}>
@@ -291,14 +292,14 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                     <div className="overflow-hidden rounded-lg border border-border-subtle bg-app-surface">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-[11px] font-medium text-txt-muted">
+                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-xs font-medium text-txt-muted">
                             <th className="px-3 py-2">Condition</th>
                             <th className="px-3 py-2">Status</th>
                             <th className="px-3 py-2">Updated</th>
                             <th className="px-3 py-2">Reason / Message</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-subtle text-[11px]">
+                        <tbody className="divide-y divide-border-subtle text-xs">
                           {pod.conditions.map((cond) => {
                             const isTrue = cond.status === 'True';
                             return (
@@ -345,7 +346,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                         {Object.entries(pod.labels).map(([k, v]) => (
                           <span
                             key={k}
-                            className="inline-flex items-center rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-[11px] text-txt-secondary font-mono"
+                            className="inline-flex items-center rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-xs text-txt-secondary font-mono"
                           >
                             <span className="text-sky-400">{k}</span>
                             <span className="mx-1 text-txt-muted">=</span>
@@ -371,12 +372,12 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                           <Cpu className="h-4 w-4 text-indigo-400" />
                           <span className="text-sm font-semibold text-txt-primary">{c.name}</span>
                           {c.isEphemeral && (
-                            <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[10px] text-amber-400 font-medium">
+                            <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-2xs text-amber-400 font-medium">
                               Ephemeral Debug
                             </span>
                           )}
                           <span
-                            className={`rounded border px-2 py-0.5 text-[10px] font-medium capitalize ${
+                            className={`rounded border px-2 py-0.5 text-2xs font-medium capitalize ${
                               c.state === 'running'
                                 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                                 : c.state === 'waiting'
@@ -387,7 +388,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                             {c.state}
                           </span>
                           {c.ready && (
-                            <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                            <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-2xs text-emerald-400">
                               Ready
                             </span>
                           )}
@@ -401,7 +402,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                               onClick={() =>
                                 onPortForward(contextName, namespace, podName, c.ports![0].containerPort)
                               }
-                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                             >
                               <ArrowUpRight className="h-3 w-3 text-sky-400" />
                               Port Forward ({c.ports[0].containerPort})
@@ -419,7 +420,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                                 })
                               }
                               title="Browse container filesystem"
-                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                             >
                               <Folder className="h-3 w-3 text-amber-400" />
                               Files
@@ -436,7 +437,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                                   containerName: c.name,
                                 })
                               }
-                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                             >
                               <ScrollText className="h-3 w-3" />
                               Logs
@@ -453,7 +454,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                                   containerName: c.name,
                                 })
                               }
-                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 transition-colors"
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 transition-colors"
                             >
                               <TerminalSquare className="h-3 w-3" />
                               Exec
@@ -462,7 +463,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-[11px]">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
                         <div>
                           <span className="text-txt-muted">Image: </span>
                           <span className="font-mono text-txt-primary break-all">{c.image}</span>
@@ -507,7 +508,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                           </div>
                         )}
                         {c.stateDetails?.message && (
-                          <div className="sm:col-span-2 rounded bg-app-surface-subtle p-2 text-rose-300 font-mono text-[10px]">
+                          <div className="sm:col-span-2 rounded bg-app-surface-subtle p-2 text-rose-300 font-mono text-2xs">
                             {c.stateDetails.message}
                           </div>
                         )}
@@ -519,7 +520,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                               {c.ports.map((p) => (
                                 <span
                                   key={p.containerPort}
-                                  className="rounded border border-border-subtle bg-app-surface-subtle px-2 py-0.5 text-[10px] font-mono text-sky-400"
+                                  className="rounded border border-border-subtle bg-app-surface-subtle px-2 py-0.5 text-2xs font-mono text-sky-400"
                                 >
                                   {p.containerPort}
                                   {p.protocol ? `/${p.protocol}` : ''}
@@ -547,14 +548,14 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                     <div className="overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-[11px] font-medium text-txt-muted">
+                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-xs font-medium text-txt-muted">
                             <th className="px-3 py-2 w-24">Type</th>
                             <th className="px-3 py-2 w-36">Reason</th>
                             <th className="px-3 py-2">Message</th>
                             <th className="px-3 py-2 w-32 whitespace-nowrap">Last Seen</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-subtle text-[11px]">
+                        <tbody className="divide-y divide-border-subtle text-xs">
                           {pod.events.map((evt, idx) => {
                             const isWarning = evt.type === 'Warning';
                             return (
@@ -566,7 +567,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                               >
                                 <td className="px-3 py-2">
                                   <span
-                                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-semibold ${
                                       isWarning
                                         ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
                                         : 'bg-sky-500/15 border border-sky-500/30 text-sky-400'
@@ -578,7 +579,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                                 <td className="px-3 py-2 font-medium text-txt-primary">
                                   {evt.reason}
                                   {evt.count && evt.count > 1 && (
-                                    <span className="ml-1 text-[10px] text-txt-muted font-normal">
+                                    <span className="ml-1 text-2xs text-txt-muted font-normal">
                                       (x{evt.count})
                                     </span>
                                   )}
@@ -586,7 +587,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                                 <td className="px-3 py-2 text-txt-secondary leading-relaxed">
                                   {evt.message}
                                 </td>
-                                <td className="px-3 py-2 text-txt-muted whitespace-nowrap font-mono text-[10px]">
+                                <td className="px-3 py-2 text-txt-muted whitespace-nowrap font-mono text-2xs">
                                   {formatDateTime(evt.lastTimestamp || evt.firstTimestamp)}
                                 </td>
                               </tr>
@@ -621,7 +622,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                       )}
                     </button>
                   </div>
-                  <pre className="max-h-[500px] overflow-auto rounded-xl border border-border-subtle bg-app-surface-subtle p-4 font-mono text-[11px] leading-relaxed text-txt-secondary">
+                  <pre className="max-h-[500px] overflow-auto rounded-xl border border-border-subtle bg-app-surface-subtle p-4 font-mono text-xs leading-relaxed text-txt-secondary">
                     {pod.yaml}
                   </pre>
                 </div>

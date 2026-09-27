@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
 import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
+import { describeIpcError } from '../../lib/format';
 
 interface S3ProfileFormProps {
   initial?: S3Config;
@@ -83,7 +84,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         setSsoManualEntry(true);
       }
     } catch (err) {
-      setSsoError(err instanceof Error ? err.message : 'AWS SSO login failed');
+      setSsoError(describeIpcError(err, 'AWS SSO login failed'));
     } finally {
       setSsoLoggingIn(false);
     }
@@ -99,7 +100,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
       const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId);
       setSsoRoles(roles);
     } catch (err) {
-      setSsoError(err instanceof Error ? err.message : 'Failed to list roles for this account');
+      setSsoError(describeIpcError(err, 'Failed to list roles for this account'));
     } finally {
       setLoadingRoles(false);
     }
@@ -118,7 +119,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
     } catch (err) {
       setTestResult({
         success: false,
-        message: err instanceof Error ? err.message : 'Failed to test connection',
+        message: describeIpcError(err, 'Failed to test connection'),
       });
     } finally {
       setTesting(false);
@@ -143,8 +144,12 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         e.preventDefault();
         if (isValid) onSave(config);
       }}
-      className="flex flex-col gap-3.5 text-xs text-txt-secondary"
+      className="flex h-full min-h-0 flex-col text-xs text-txt-secondary"
     >
+      {/* Scrollable field area is a separate flex child from the footer below
+          (UX review #11 bugfix) so a `sticky` footer can never render on top
+          of fields revealed by expanding a collapsible section. */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-6 flex flex-col gap-3.5">
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-txt-secondary">
           Profile Name
@@ -550,8 +555,9 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
           </div>
         )}
       </div>
+      </div>
 
-      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
+      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"

@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import type { TransferConflictResolution } from '@shared/types/ipc';
-import { joinPath, parentPath } from '../../lib/format';
+import { joinPath, parentPath, describeIpcError } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
 import { useDragDrop } from './DragDropContext';
@@ -225,7 +225,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return;
           }
         }
-        let msg = err instanceof Error ? err.message : 'Could not read the folder contents';
+        let msg = describeIpcError(err, 'Could not read the folder contents');
         msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
         if (msg.includes('All configured authentication methods failed') || msg.toLowerCase().includes('authentication failed')) {
           msg = 'Authentication failed: The password or key was rejected by the server.';
@@ -264,7 +264,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       try {
         await window.multissh.fileOpenExternal(source.providerId, entry.path);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to open external editor');
+        setError(describeIpcError(err, 'Failed to open external editor'));
       }
     },
     [source.providerId]
@@ -295,7 +295,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setSelectedPaths(new Set());
       await load(true);
     } catch (err) {
-      let msg = err instanceof Error ? err.message : 'Failed to delete item(s)';
+      let msg = describeIpcError(err, 'Failed to delete item(s)');
       msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
       setError(msg);
     } finally {
@@ -323,7 +323,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start download');
+      setError(describeIpcError(err, 'Failed to start download'));
     }
   }, [selectedPaths, entries, source.providerId]);
 
@@ -342,7 +342,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         await window.multissh.storageRename(source.providerId, entry.path, targetPath);
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to rename');
+        setError(describeIpcError(err, 'Failed to rename'));
       }
     },
     [source.providerId, load]
@@ -542,8 +542,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onSelect: () => setChmodOpen(true),
             },
             {
+              // Renamed from "Copy Path" (UX review #14): the old name was
+              // indistinguishable from "Copy File Location" below even
+              // though they copy different things (full path vs. containing
+              // folder only). Distinct icons help tell the three apart too.
               key: 'copy-path',
-              label: 'Copy Path',
+              label: 'Copy Full Path',
               icon: Clipboard,
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].path),
@@ -551,14 +555,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {
               key: 'copy-filename',
               label: 'Copy Filename',
-              icon: Clipboard,
+              icon: FileText,
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(selectedEntries[0].name),
             },
             {
               key: 'copy-location',
-              label: 'Copy File Location',
-              icon: Clipboard,
+              label: 'Copy Folder Path',
+              icon: FolderOpen,
               disabled: selectedEntries.length !== 1,
               onSelect: () => void navigator.clipboard.writeText(parentPath(selectedEntries[0].path)),
             },
@@ -791,7 +795,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </span>
         </div>
         {isActive && (
-          <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] font-semibold text-sky-400 select-none">
+          <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-2xs font-semibold text-sky-400 select-none">
             Active
           </span>
         )}
@@ -804,6 +808,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Back (Alt+Left)"
+            aria-label="Back (Alt+Left)"
             disabled={!canGoBack}
             onClick={handleGoBack}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -813,6 +818,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Forward (Alt+Right)"
+            aria-label="Forward (Alt+Right)"
             disabled={!canGoForward}
             onClick={handleGoForward}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -822,6 +828,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Up one level (Alt+Up)"
+            aria-label="Up one level (Alt+Up)"
             onClick={() => onPathChange(parentPath(currentPath))}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
@@ -840,6 +847,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Refresh"
+            aria-label="Refresh"
             onClick={() => void load(true)}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
@@ -848,6 +856,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="New Folder"
+            aria-label="New Folder"
             onClick={() => void handleNewFolder()}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
@@ -856,6 +865,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="View / Edit File"
+            aria-label="View / Edit File"
             disabled={selectedPaths.size !== 1 || Boolean(selectedEntries[0]?.isDirectory)}
             onClick={() => selectedEntries[0] && setEditorEntry(selectedEntries[0])}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -871,6 +881,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Rename"
+            aria-label="Rename"
             disabled={selectedPaths.size !== 1}
             onClick={handleRenameStart}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -880,6 +891,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Delete"
+            aria-label="Delete"
             disabled={selectedPaths.size === 0}
             onClick={() => void handleDelete()}
             className="rounded-lg p-1 text-red-400 hover:bg-app-surface-hover disabled:opacity-30 transition-colors"
@@ -889,6 +901,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Change Permissions (chmod)"
+            aria-label="Change Permissions (chmod)"
             disabled={selectedPaths.size === 0 || source.sourceType === 's3'}
             onClick={() => setChmodOpen(true)}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -904,6 +917,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title="Search / Filter files (Ctrl+F)"
+            aria-label="Search / Filter files (Ctrl+F)"
             onClick={() => {
               setShowFilter((prev) => {
                 const next = !prev;
@@ -923,6 +937,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <button
             type="button"
             title={source.sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}
+            aria-label={source.sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}
             disabled={source.sourceType === 'k8s'}
             onClick={() => setSearchOpen(true)}
             className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -933,6 +948,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               title="Open Terminal Here"
+              aria-label="Open Terminal Here"
               onClick={() => onOpenTerminal(currentPath)}
               className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
             >
@@ -967,6 +983,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               title="Clear filter"
+              aria-label="Clear filter"
               onClick={() => setFilterText('')}
               className="rounded p-0.5 text-txt-muted hover:text-txt-primary"
             >
@@ -986,7 +1003,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               onClick={() => onSourceTypeRequest('local')}
-              className="ml-2 shrink-0 rounded-md bg-app-surface px-2 py-0.5 text-[11px] font-medium text-txt-primary hover:bg-app-surface-hover"
+              className="ml-2 shrink-0 rounded-md bg-app-surface px-2 py-0.5 text-xs font-medium text-txt-primary hover:bg-app-surface-hover"
             >
               Switch to local disk
             </button>

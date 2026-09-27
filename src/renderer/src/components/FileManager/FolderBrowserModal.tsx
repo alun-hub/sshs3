@@ -133,7 +133,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-border-subtle p-3">
-          <span className="truncate font-mono text-[11px] text-txt-muted">{currentPath}</span>
+          <span className="truncate font-mono text-xs text-txt-muted">{currentPath}</span>
           <div className="flex gap-2 shrink-0">
             <button
               type="button"

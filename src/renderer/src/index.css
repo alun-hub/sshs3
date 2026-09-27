@@ -27,6 +27,16 @@
   --color-terminal-border: #334155;
   --color-terminal-text: #f8fafc;
   --color-terminal-accent: #38bdf8;
+
+  /* Typography scale bump (UX review #1): 10-12px was used pervasively for
+     body/label text, which is too small for sustained reading. `--text-xs`
+     overrides Tailwind's built-in text-xs utility (was 12px) sitewide;
+     `--text-2xs` is a new, smaller utility reserved for badges/kbd/timestamps
+     that used to hardcode text-[10px]/text-[11px]. */
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.8125rem; /* 13px, was 12px */
+  --text-xs--line-height: 1.125rem;
 }
 
 :root {
@@ -43,7 +53,7 @@
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #7c8aa0;
 
   --accent-primary: #0284c7;
   --accent-hover: #0369a1;
@@ -85,7 +95,7 @@
 
   --text-primary: #fcfcfc;
   --text-secondary: #eff0f1;
-  --text-muted: #7f8c8d;
+  --text-muted: #97a3a4;
 
   --accent-primary: #3daee9;
   --accent-hover: #1d9bf3;
@@ -102,6 +112,35 @@ body,
   overflow: hidden;
   background-color: var(--bg-app);
   color: var(--text-primary);
+}
+
+/*
+ * Semantic color rule (UX review #7), applies across all confirmation
+ * dialogs and menus:
+ *   - red    = destructive / irreversible (delete, overwrite, revoke)
+ *   - amber  = warning / needs attention, but not destructive by itself
+ *   - accent (sky) = neutral primary action
+ * Keep confirmation buttons and icons consistent with this rule.
+ */
+
+/* Global focus-visible ring (UX review #2). Applied at the base layer so
+   every button/link/input/tabbable element gets a visible keyboard-focus
+   indicator without having to touch every component's className. */
+@layer base {
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible,
+  [role='menuitem']:focus-visible,
+  [tabindex]:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--bg-app),
+      0 0 0 4px var(--accent-primary);
+  }
 }
 
 /* Custom scrollbar */

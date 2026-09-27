@@ -50,7 +50,7 @@ describe('SyncSettingsPanel', () => {
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'deploy' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'sync-pass' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Sync Target' }));
 
     await waitFor(() => {
       expect(profileSyncSetup).toHaveBeenCalledWith(
@@ -272,7 +272,7 @@ describe('SyncSettingsPanel', () => {
       target: { value: 'bastion.corp.com' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Sync Target' }));
 
     await waitFor(() => {
       expect(profileSyncSetup).toHaveBeenCalledWith(

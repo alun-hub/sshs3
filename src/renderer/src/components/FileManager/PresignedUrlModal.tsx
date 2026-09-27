@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link2, X, Loader2, Copy, Check } from 'lucide-react';
+import { describeIpcError } from '../../lib/format';
+import { Button } from '../ui/Button';
 
 interface PresignedUrlModalProps {
   open: boolean;
@@ -32,7 +34,7 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
           const url = await window.multissh.storageGetPresignedUrl(providerId, entry.path, seconds);
           return { name: entry.name, url };
         } catch (err) {
-          return { name: entry.name, url: '', error: err instanceof Error ? err.message : 'Failed to generate URL' };
+          return { name: entry.name, url: '', error: describeIpcError(err, 'Failed to generate URL') };
         }
       })
     );
@@ -122,7 +124,7 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
                         readOnly
                         value={item.url}
                         onFocus={(e) => e.target.select()}
-                        className="w-full min-w-0 flex-1 truncate rounded-md border border-border-subtle bg-app-input px-2 py-1 font-mono text-[11px] text-txt-primary outline-none"
+                        className="w-full min-w-0 flex-1 truncate rounded-md border border-border-subtle bg-app-input px-2 py-1 font-mono text-xs text-txt-primary outline-none"
                       />
                       <button
                         type="button"
@@ -145,23 +147,14 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
+          <Button type="button" variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </Button>
           {urls.length > 1 && (
-            <button
-              type="button"
-              onClick={() => void copyAll()}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
-            >
+            <Button type="button" variant="primary" onClick={() => void copyAll()} disabled={loading}>
               {copiedAll ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               Copy All
-            </button>
+            </Button>
           )}
         </div>
       </div>

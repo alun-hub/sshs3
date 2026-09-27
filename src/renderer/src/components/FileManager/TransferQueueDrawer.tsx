@@ -62,7 +62,7 @@ export const TransferQueueDrawer: React.FC = () => {
             Transfers {activeCount > 0 ? `(${activeCount} active)` : ''}
           </span>
           {failedCount > 0 && (
-            <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-400">
+            <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-2xs font-semibold text-red-400">
               {failedCount} failed
             </span>
           )}
@@ -72,6 +72,7 @@ export const TransferQueueDrawer: React.FC = () => {
             <button
               type="button"
               title="Clear completed"
+              aria-label="Clear completed"
               onClick={(e) => {
                 e.stopPropagation();
                 void window.multissh.transferClearCompleted().then(() =>
@@ -95,7 +96,7 @@ export const TransferQueueDrawer: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-txt-primary">{job.fileName}</span>
-                  <span className="shrink-0 text-txt-muted text-[11px]">
+                  <span className="shrink-0 text-txt-muted text-xs">
                     {job.totalBytes > 0
                       ? `${formatBytes(job.transferredBytes)} / ${formatBytes(job.totalBytes)}`
                       : job.status === 'running'
@@ -113,7 +114,7 @@ export const TransferQueueDrawer: React.FC = () => {
                     style={job.totalBytes ? { width: `${Math.min(100, Math.max(0, job.percentage))}%` } : undefined}
                   />
                 </div>
-                <div className="mt-0.5 flex items-center justify-between text-[11px] text-txt-muted">
+                <div className="mt-0.5 flex items-center justify-between text-xs text-txt-muted">
                   <span className="flex items-center gap-1.5 truncate">
                     {job.status === 'running' && !job.totalBytes && (
                       <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-400" />
@@ -131,6 +132,7 @@ export const TransferQueueDrawer: React.FC = () => {
                   <button
                     type="button"
                     title="Pause"
+                    aria-label="Pause"
                     onClick={() => void window.multissh.transferPause(job.jobId)}
                     className="rounded p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                   >
@@ -141,6 +143,7 @@ export const TransferQueueDrawer: React.FC = () => {
                   <button
                     type="button"
                     title="Resume"
+                    aria-label="Resume"
                     onClick={() => void window.multissh.transferResume(job.jobId)}
                     className="rounded p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                   >
@@ -151,6 +154,7 @@ export const TransferQueueDrawer: React.FC = () => {
                   <button
                     type="button"
                     title="Cancel"
+                    aria-label="Cancel"
                     onClick={() => void window.multissh.transferCancel(job.jobId)}
                     className="rounded p-1 text-red-400 hover:bg-app-surface-hover transition-colors"
                   >

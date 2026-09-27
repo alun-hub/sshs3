@@ -16,7 +16,7 @@ import {
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime, describeIpcError } from '../../lib/format';
 
 interface DirSyncSavedProfilesModalProps {
   open: boolean;
@@ -135,7 +135,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
         setSshProfiles(connectionData.ssh || []);
         setS3Profiles(connectionData.s3 || []);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(describeIpcError(err, String(err))))
       .finally(() => setLoading(false));
   };
 
@@ -149,14 +149,14 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
       await window.multissh.dirSyncProfileDelete(id);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the profile');
+      setError(describeIpcError(err, 'Could not delete the profile'));
     }
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[72] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 shrink-0">
@@ -188,7 +188,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
             <div className="rounded-xl border border-dashed border-border-subtle p-8 text-center text-txt-muted space-y-1.5">
               <FolderSync className="h-6 w-6 text-txt-muted mx-auto opacity-50" />
               <p className="font-medium text-txt-primary">No saved sync profiles yet</p>
-              <p className="text-[11px] text-txt-muted">
+              <p className="text-xs text-txt-muted">
                 Open Directory Sync from the file manager, select source and target folders, and click &quot;Save as profile&quot;.
               </p>
             </div>
@@ -244,14 +244,14 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                     {/* Source box (Source) */}
                     <div className="flex flex-col gap-1 rounded-md bg-app-surface p-2.5 border border-border-subtle min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+                        <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-2xs font-semibold text-emerald-400 uppercase tracking-wider">
                           Source (From)
                         </span>
                         <EndpointIcon type={sourceInfo.type} />
                       </div>
                       <div className="font-medium text-xs text-txt-primary truncate mt-0.5">{sourceInfo.title}</div>
-                      <div className="text-[11px] text-txt-muted truncate">{sourceInfo.subtitle}</div>
-                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
+                      <div className="text-xs text-txt-muted truncate">{sourceInfo.subtitle}</div>
+                      <div className="flex items-center gap-1.5 font-mono text-xs text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
                         <Folder className="h-3 w-3 shrink-0 text-amber-400" />
                         <span className="truncate">{sourceInfo.path}</span>
                       </div>
@@ -262,7 +262,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                       <div className="flex items-center justify-center w-7 h-7 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
                         <ArrowRight className="h-3.5 w-3.5" />
                       </div>
-                      <span className="text-[10px] font-medium text-txt-muted uppercase tracking-wider whitespace-nowrap">
+                      <span className="text-2xs font-medium text-txt-muted uppercase tracking-wider whitespace-nowrap">
                         Syncs to
                       </span>
                     </div>
@@ -270,14 +270,14 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                     {/* Target box (Target) */}
                     <div className="flex flex-col gap-1 rounded-md bg-app-surface p-2.5 border border-border-subtle min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
+                        <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-2xs font-semibold text-sky-400 uppercase tracking-wider">
                           Target (To)
                         </span>
                         <EndpointIcon type={targetInfo.type} />
                       </div>
                       <div className="font-medium text-xs text-txt-primary truncate mt-0.5">{targetInfo.title}</div>
-                      <div className="text-[11px] text-txt-muted truncate">{targetInfo.subtitle}</div>
-                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
+                      <div className="text-xs text-txt-muted truncate">{targetInfo.subtitle}</div>
+                      <div className="flex items-center gap-1.5 font-mono text-xs text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
                         <Folder className="h-3 w-3 shrink-0 text-amber-400" />
                         <span className="truncate">{targetInfo.path}</span>
                       </div>
@@ -285,7 +285,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                   </div>
 
                   {/* Card Footer: Mirroring info & Timestamps */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-0.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-0.5">
                     {profile.deleteExtraneous ? (
                       <div className="flex items-center gap-1.5 text-amber-400 font-medium">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
