@@ -10,8 +10,8 @@ Only the latest released minor version of sshs3 receives active security updates
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.2.x   | :white_check_mark: |
-| < 0.2.0 | :x:                |
+| >= 0.9  | :white_check_mark: |
+| < 0.9   | :x:                |
 
 ---
 

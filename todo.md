@@ -1,34 +1,34 @@
 # sshs3 — Roadmap / TODO
 
-Status som av 2026-09-18. Bygger på en genomgång av koden i `src/`, inte bara planen i
+Status som av 2026-09-27. Bygger på en genomgång av koden i `src/`, inte bara planen i
 `docs/superpowers/plans/2026-09-14-multissh-implementation.md`.
 
 ## Vad finns idag
 
 - **Terminal**: xterm.js-baserad flikad terminal, OpenSSH-process via `node-pty` (så
-  `~/.ssh/config`, agent och default-nycklar fungerar precis som vanlig `ssh`).
-  Smartcard/PKCS#11-inloggning via en lokal askpass-server + PIN-dialog.
-- **Filhanterare**: dual-pane utforskare (lokal disk, SFTP, S3), drag-and-drop
-  mellan paneler och från OS, breadcrumbs, sortering, multi-select, skapa/döp
-  om/ta bort, överföringskö med progress/paus/avbryt.
+  `~/.ssh/config`, agent och default-nycklar fungerar precis som vanlig `ssh`), rekursiv split-vy (Konsole-stil)
+  med oberoende sessioner, realtidsspårning av värdnamn och kommandon i fliktitlar samt kortkommandon (`Ctrl++`/`Ctrl+-`/`Ctrl+0`) för fontstorlek.
+  Smartcard/PKCS#11-inloggning via en lokal askpass-server + PIN-dialog och FIDO2/YubiKey resident-nycklar med visuell touch-presence banner.
+- **Filhanterare**: dual-pane utforskare (lokal disk, SFTP, S3, K8s poddar), drag-and-drop
+  mellan paneler och från OS, breadcrumbs som droppmål, sortering, multi-select, skapa/döp
+  om/ta bort, överföringskö med progress/paus/avbryt, permissions-editor (`chmod`), inbyggd filredigerare med live Markdown-preview samt live streaming loggvisare (`tail -f`).
+- **Katalogsynkronisering (Diff & Sync)**: komplett mappjämförelse (lokal disk, SFTP och S3) med diff på storlek och ändringstid (`mtime`), interaktiv filjämförelse, selektiv synkning och sparade synkprofiler.
+- **Kubernetes & OpenShift**: automatisk klusterupptäckt via `~/.kube/config`, interaktiva pod exec-terminaler, live loggvisning med text-sökning, pod-filutforskare utan behov av container-agenter samt `kubectl debug` ephemeral containers med verktygsprofiler (Netshoot m.fl.) och `oc login`-stöd.
+- **X11-forwarding**: inbyggd portabel VcXsrv-server på Windows med automatisk brandväggskonfiguration och on-demand/always-on-startlägen.
+- **Fjärrsynkronisering av profiler**: zero-knowledge AES-256-GCM-kryptering till egen S3-hink eller SFTP-server med hårdvaruupplåsning via smartcard/token och automatisk synkning till hanterat block i `~/.ssh/config`.
 - **Lagringsbackender**: Lokal disk, SFTP (`ssh2-sftp-client`, med
-  agent/standardnyckel-fallback), S3 (AWS/MinIO/NetApp, path-style, självsignerat
-  cert).
-- **Anslutningshantering**: spara/redigera/ta bort SSH- och S3-profiler,
-  bläddra-knapp för nyckelfiler via native dialog.
+  agent/standardnyckel-fallback och smartcard-agentstöd), S3 (AWS med AWS SSO OIDC / MinIO / NetApp, path-style, självsignerat cert).
+- **Anslutningshantering**: spara/redigera/ta bort SSH- och S3-profiler, mappar/gruppering, import från `~/.ssh/config` samt JSON backup export/import.
 - **Paketering**: fungerande byggen för Linux (AppImage/deb/rpm) och Windows
-  (NSIS + portabel exe).
+  (NSIS installer med VcXsrv + portabel exe).
 
 ## Kända begränsningar / teknisk skuld
 
-Dessa är inte "features man kan välja bort" — de är luckor som en användare av ett
-konkurrerande verktyg skulle uppfatta som buggar eller dealbreakers.
+Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta som begränsningar:
 
-- **Smartcard-inloggning fungerar bara för terminalen, inte SFTP.** `ssh2`
-  (JS-biblioteket) saknar PKCS#11-stöd helt, så en profil med
-  `authType: smartcard` kan inte användas som SFTP-källa.
 - **Ingen automatisk uppdateringsmekanism** — paketen är i dagsläget manuella
-  engångsbyggen.
+  engångsbyggen (`electron-updater` ej inkopplad).
+- **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
 
@@ -58,16 +58,12 @@ att bygga.
    istället för att tyst skriva över; "byt namn" hittar automatiskt en ledig
    "(n)"-variant. Kan även styras headless via `conflictPolicy` utan att fråga.
 - [x] **6. Filsökning/filter i filhanteraren.** Sök-/filterruta och snabbknapp (Ctrl+F) i `FilePane`/`FileList`, matchningsräknare och specifik tom vy vid nollsök.
-- [ ] **7. Katalogsynkronisering** (spegla lokal ↔ fjärrkatalog, visa diff innan
-   överföring). Kärnfunktion i WinSCP; helt frånvarande här.
+- [x] **7. Katalogsynkronisering (Diff & Sync)** — Komplett katalogsynkronisering implementerad via `DirectorySyncModal`, `DirectorySyncService` och `DirSyncSavedProfilesModal`. Stöder diff och synkning mellan lokal disk, SFTP och S3 med ändringstidsstämpel (`mtime`) och storleksjämförelse, interaktiv filjämförelse ("Compare"), selektiv körning och sparade synkprofiler.
 - [x] **8. Permissions-editor (chmod)** för SFTP och lokal lagring. Rättighetskolumn visas i listan med sortering, och en interaktiv chmod-modal (User/Group/Other kryssrutor, oktal representation och rekursivt val) kan öppnas via knapp i verktygsraden.
 - [x] **9. Standardkatalog/startsökväg per profil.** Stöd för `initialPath` i SSH-, SFTP- och S3-profiler med fält i profilformulären och direkt navigering vid anslutning i filhanteraren.
 - [x] **10. Utgående proxy (HTTP / SOCKS4 / SOCKS5)** för att nå servrar bakom företagsbrandväggar. Stöd för SSH (OpenSSH `ProxyCommand` med `proxyCli.cjs` för autentisering), SFTP (tunneling via `createProxySocket` i `SFTPStorageProvider`) och S3 (`NodeHttpHandler` med proxy-agenter). Profilformulären har expanderbar proxysektion och proxylösenord krypteras säkert via `safeStorage`.
-- [ ] **11. Anslutningstimeout, återförsök och automatisk återanslutning** vid
-   nätverkstapp — idag finns bara paus/återuppta för överföringar, inget för
-   själva sessionen.
-- [ ] **12. Import/export av anslutningsprofiler** (t.ex. från `~/.ssh/config`,
-   PuTTY, eller en enkel JSON-export) så man slipper mata in allt manuellt.
+- [x] **11. Anslutningstimeout, återförsök och automatisk återanslutning** — Stöd för `sessionExitAction` ('reconnect' | 'close' | 'keep') under Inställningar med återanslutningsoverlay i `TerminalView`, automatisk återanvändning av cachad agent vid återanslutning, samt `ServerAliveInterval` för att förhindra tysta nätverkstapp.
+- [x] **12. Import/export av anslutningsprofiler** — Import från `~/.ssh/config` (`importSshConfigFile` / `SshConfigImporter`) med modal för att välja vilka värdar som ska importeras till valfri mapp, samt Export och Import av JSON Backup direkt i `ConnectionManagerModal`.
 - [x] **13. Testa anslutning-knapp.** Implementerad i `SSHProfileForm` och `S3ProfileForm` via backend-anrop (`connection:test-ssh` och `connection:test-s3`) med visuell statusindikator och felrapportering innan profilen sparas.
 - [x] **14. Sessions-/flikpersistens.** Öppna terminal- och filflikar samt senast besökta katalogsökvägar sparas och återställs automatiskt mellan omstarter via `SessionStore` (`session.json`).
 - [ ] **15. Checksumverifiering efter överföring** (t.ex. jämför storlek/hash) för
@@ -94,13 +90,8 @@ att bygga.
    `S3ProfileForm` har fått en Access Keys/AWS SSO-växlare med Konto/Roll-väljare
    (`awsSsoListAccounts`/`awsSsoListRoles`) och en `AwsSsoLoginModal` för kod/väntanläge.
    `S3StorageProvider` använder `fromSSO()` som credentials-provider (auto-uppdateras av
-   AWS SDK) när `authMode: 'sso'`. Ingen lokal `~/.aws/config`-parsning/`AWS_PROFILE`-stöd
-   ännu — det är fortsatt öppet om det behövs senare.
-- [ ] **58. "Tail -f" och lazy loading för gigantiska filer** — dagens `FileEditorModal`
-   (#37) laddar hela filen innan visning, vilket kraschar/fryser appen på t.ex. en 10 GB
-   loggfil. Bygg lazy loading (ladda bara de delar av filen som faktiskt visas) eller en
-   visuell `tail -f`: för SFTP via ett bakgrundskommando i en PTY som strömmar filens
-   slut, för S3 via HTTP Range Requests som bara hämtar de sista megabyten av objektet.
+   AWS SDK) när `authMode: 'sso'`.
+- [x] **58. "Tail -f" och streaming av loggfiler** — `FileTailService` i backend och live loggströmning i `FileEditorModal` med paus/återuppta, automatisk skrollning och textsökning för stora växande loggfiler på SFTP och lokal disk utan att ladda gigantiska filer i minnet.
 
 ### P2 — Det som gör en "Multi"-SSH-klient, inte bara "en SSH-klient" (och vanliga finjusteringar)
 
@@ -123,12 +114,12 @@ att bygga.
    felsökning och revision.
 - [x] **24. Profilorganisation i mappar/grupper** samt "senast använda"-lista i
    `ConnectionManagerModal` med tidsstämplar (`yyyy-mm-dd HH:mm`), expanderbara/kollapsbara mappgrupper med profilräknare och integrerad direkt-anslutning.
-- [ ] **39. PuTTY Terminal-UX: Kopiera-vid-markering (Copy on select) & klistra in med högerklick/mittenklick** — standardarbetsflöde i PuTTY; gör det blixtsnabbt att kopiera text utan Ctrl+Shift+C och klistra in med musklick, valbart via Inställningar.
-- [ ] **40. Sökning i terminalbuffert & scrollback-hantering** — sökfunktion (Ctrl+Shift+F med matchningsmarkering och navigering upp/ned i historiken) samt möjlighet att rensa buffert och sätta valfri buffertstorlek (rader).
-- [ ] **41. SSH Agent Forwarding (`-A`)** — vidarebefordra lokal SSH-agent/Pageant till fjärrsessioner så man kan hoppa vidare utan att kopiera privata nycklar till servern.
+- [x] **39. PuTTY Terminal-UX: Kopiera-vid-markering (Copy on select)** — valbart under Inställningar (`copyOnSelect`), integrerat i `TerminalView` så att markering av text i terminalen automatiskt kopierar den till operativsystemets urklipp.
+- [ ] **40. Sökning i terminalbuffert & scrollback-hantering** — sökfunktion (`Ctrl+Shift+F` med matchningsmarkering och navigering upp/ned i historiken) samt buffertstorleksinställning (`terminalScrollback` finns redan i Settings).
+- [x] **41. SSH Agent Forwarding (`-A`)** — valbart per profil i `SSHProfileForm` (`forwardAgent`), skickas till OpenSSH (`ForwardAgent=yes`) via `SmartcardDetector` och stöder vidarehoppning för både terminal och SFTP-sessioner.
 - [ ] **42. Synkroniserad bläddring (Synchronized browsing)** — WinSCP-funktion: vid navigering i undermappar i vänster panel följer höger panel automatiskt med till samma mappnamn om det existerar.
 - [ ] **43. Beräkna katalogstorlek (Recursive size / `du`)** — visa sammanlagd storlek och antal filer för markerade mappar i SFTP och S3 via kontextmenyn.
-- [ ] **44. Bevara tidsstämplar (mtime) vid filöverföring** — val att behålla filers ursprungliga ändringstidsstämplar vid upp-/nedladdning mellan lokal disk och SFTP.
+- [x] **44. Bevara tidsstämplar (mtime) vid filöverföring** — `setModifiedTime` implementerad i `LocalStorageProvider` och `SFTPStorageProvider`, bevarar källfilens originaldatum vid katalogsynkronisering och överföringar.
 - [ ] **45. Filmasker och exkluderingsfilter vid överföring** — uteslut mönster som `node_modules/`, `.git/`, `*.tmp`, `.DS_Store` vid överföring av mappar och synkning.
 - [ ] **59. "Run script on host" — kör skript direkt från filhanteraren.** Terminalen och
    SFTP-filhanteraren är idag två separata världar trots att de pratar med samma maskin.
@@ -153,21 +144,8 @@ att bygga.
    (Node's inbyggda `X509Certificate` avkodar inte Microsofts UPN-OID). Nytt native
    npm-beroende (`pkcs11js`) — byggs redan idag av electron-builders befintliga
    native-rebuild-steg (samma mekanism som `node-pty`).
-- [ ] **63. FIDO2/WebAuthn-nycklar (`sk-ecdsa-sha2-nistp256@openssh.com` /
-   `sk-ssh-ed25519@openssh.com`) som eget autentiseringsspår.** Tekniskt separat
-   från dagens PKCS#11-smartcardstöd — FIDO2-nycklar går via `libfido2` direkt i
-   OpenSSH, ingen PIV-applet eller certifikatutfärdare inblandad, så askpass-dialogen
-   och PIN-cache-logiken behöver en parallell kodväg, inte en utökning av den
-   befintliga. Användningsfall: (1) utvecklare/mindre team med en YubiKey men utan
-   PIV/CA-infrastruktur — `ssh-keygen -t ed25519-sk` fungerar direkt utan
-   provisionering, (2) resident/discoverable keys — nyckeln lever på tokenet, ingen
-   privat nyckelfil att synka mellan flera maskiner, (3) `verify-required` — fysisk
-   beröring krävs vid *varje* anslutning, striktare policy än dagens
-   Global-PIN-cachning för högkänsliga bastion-hosts, (4) alternativ
-   WebAuthn-baserad upplåsning av Remote profile sync-valvet (#egen sektion ovan)
-   för användare med YubiKey men utan PIV-kort. Breddar målgruppen mot
-   devops/mindre org snarare än att fördjupa nuvarande SITHS/Net iD/PIV-fokus —
-   lägre prioritet än #16, men värt om målgruppen ska breddas.
+- [x] **63. FIDO2/WebAuthn-nycklar (`sk-ecdsa-sha2-nistp256@openssh.com` /
+   `sk-ssh-ed25519@openssh.com`) som eget autentiseringsspår** — Stöd för hårdvarunycklar (YubiKey m.fl.) med resident/discoverable keys discovery via `ykman`/`ssh-keygen`, visuell touch-presence banner i applikationen vid fysisk beröringsbegäran, managed agent lifecycle samt multiplexad dotfiles-synkning över befintliga FIDO2-sessioner utan extra fysiska beröringar.
 - [x] **46. S3 Versionshantering (Versioning)** — `S3StorageProvider` stöder `listObjectVersions`/`deleteObjectVersion`/`restoreObjectVersion` samt `getBucketVersioning`/`setBucketVersioning`. `VersionsModal` i filhanteraren visar tidigare versioner och raderingsmarkörer med återställning/permanent radering för objekt, och aktivera/pausa-knapp för bucket-nivå.
 - [ ] **47. S3 Metadata & HTTP-headers editor** — granska och redigera `Content-Type`, `Cache-Control`, `Content-Disposition` och anpassade användarmetadata (`x-amz-meta-*`) för valda objekt.
 - [x] **48. S3 Bucket Policy & CORS-redigerare** — `BucketPolicyModal` med flikar för JSON-policy och CORS-regler, backat av `getBucketPolicy`/`setBucketPolicy`/`getBucketCors`/`setBucketCors` i `S3StorageProvider`, nås via bucket-kontextmenyn.
@@ -230,9 +208,9 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ### PuTTY (Terminal & Anslutning)
 - **Stöd för `.ppk`-nycklar**: PuTTYs eget nyckelformat (v2 & v3) stöds inte direkt i OpenSSH utan konvertering via `puttygen` -> **#34**
-- **Kopiera-vid-markering (Copy-on-select) & klistra in med högerklick**: Kärnbeteende i PuTTY -> **#39**
-- **Sökning i terminalbuffert & scrollback**: Sök i historik samt rensa skärm/buffert -> **#40**
-- **SSH Agent Forwarding (`-A`) & Pageant**: Vidarebefordran av lokal agent till fjärrsessioner -> **#41**
+- **Kopiera-vid-markering (Copy-on-select) & klistra in med högerklick**: Kärnbeteende i PuTTY -> **#39** ✅
+- **Sökning i terminalbuffert & scrollback**: Sök i historik samt rensa skärm/buffert -> **#40** (scrollback rader ✅, sökning i buffert återstår)
+- **SSH Agent Forwarding (`-A`) & Pageant**: Vidarebefordran av lokal agent till fjärrsessioner -> **#41** ✅
 - **Terminal Bell & aktivitetsnotifiering**: Visuell/auditiv bell och flikindikator vid bakgrundsaktivitet -> **#49**
 - **Sessionsdelning / Multiplexing**: Snabbare anslutningar via återanvänd TCP-anslutning (OpenSSH `ControlMaster`) -> relaterat till **#11, #20**
 - *(Seriell anslutning/COM-port: Finns i PuTTY men lägre prioritet för en ren SSH/S3-klient)*
@@ -243,24 +221,24 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 - **Bokmärken / Favoritsökvägar**: Spara kataloger för snabbnavigering -> **#36**
 - **Synkroniserad bläddring**: Speglad mappnavigering i dubbelpanelen -> **#42**
 - **Kalkylera katalogstorlek**: Rekursiv storleksberäkning (`du`) -> **#43**
-- **Bevara tidsstämplar (mtime)**: Behåll originaldatum vid överföring -> **#44**
+- **Bevara tidsstämplar (mtime)**: Behåll originaldatum vid överföring -> **#44** ✅
 - **Filmasker / exkluderingsfilter**: Uteslut t.ex. `.git/` eller `node_modules/` vid synk/kopiering -> **#45**
 - **Katalogövervakning ("Keep remote directory up to date")**: Auto-upload vid lokala filändringar -> **#50**
 - **Anpassade kommandon**: Kör kommandon (`tar`, `tail`, etc.) på markerade filer via SSH -> **#51**
-- **Katalogsynkronisering (Diff & Sync)**: Jämför kataloger och spegla -> **#7**
+- **Katalogsynkronisering (Diff & Sync)**: Jämför kataloger och spegla -> **#7** ✅
 - **Kör skript direkt på fjärrservern från filhanteraren**: Högerklick på `.sh`/`.py` -> kör i tillhörande SSH-flik -> **#59**
 - **Visuell diff/status för Git-repon på fjärrservern**: Ändrings-/konfliktikoner i filträdet -> **#60**
-- **Streama/visa enorma loggfiler utan att ladda hela filen**: Lazy loading eller `tail -f` -> **#58**
+- **Streama/visa enorma loggfiler utan att ladda hela filen**: Lazy loading eller `tail -f` -> **#58** ✅
 
 ### S3 Browser (Objektlagring & S3-hantering)
 - **Bucket-livscykel: Skapa, radera & tömma**: Skapa nya buckets och tömma icke-tomma buckets rekursivt -> **#38**
 - **Versionshantering**: Visa dolda/raderade versioner, raderingsmarkörer och återställning -> **#46** ✅
 - **Metadata & HTTP-headers**: Redigera `Content-Type`, `Cache-Control`, `x-amz-meta-*` -> **#47**
 - **Bucket Policies & CORS**: Inspektera och redigera JSON-policies och CORS-regler -> **#48** ✅
-- **Lagringsklass & Server-side kryptering (inkl. valbar KMS-nyckel) vid upload**: Välj SSE-S3/SSE-KMS och Standard/IA/Glacier -> **#22**
+- **Lagringsklass & Server-side kryptering (inkl. valbar KMS-nyckel) vid upload**: Välj SSE-S3/SSE-KMS och Standard/IA/Glacier -> **#22** (kryptering ✅, lagringsklass återstår)
 - **Presigned URLs**: Generera tidsbegränsade delningslänkar -> **#32** ✅
 - **"Download/Copy/Move all files to.."**: Massöverföring till valfri mapp direkt från kontextmenyn -> **#56** ✅ (download), kopiera/flytta mellan godtyckliga mål återstår
-- **IAM/SSO-inloggning i stället för statiska nycklar**: `aws sso login`-flöde och lokal AWS-profilläsning -> **#57**
+- **IAM/SSO-inloggning i stället för statiska nycklar**: `aws sso login`-flöde och lokal AWS-profilläsning -> **#57** ✅
 - **Livscykelregler (Lifecycle)**: Automatisera övergång till IA/Glacier eller utgångsdatum -> **#52**
 - **Tagghantering**: Sätta taggar på buckets och objekt -> **#53** ✅
 - **Statisk webbhotellshosting**: Konfigurera S3 website hosting -> **#54**
@@ -269,11 +247,11 @@ Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, oc
 
 ## Föreslagen ordning att ta itu med det i
 
-Då **1, 2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 46, 48, 53, 56, 57, 65, 66, 67** redan är
-färdigställda (samt encryption-halvan av **22**), är de mest värdefulla nästa stegen:
+Då **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 35, 37, 39, 41, 44, 46, 48, 53, 56, 57, 58, 63, 64, 65, 66, 67** redan är färdigställda (samt krypteringshalvan av **22**), är de mest värdefulla nästa stegen:
 
 1. **16. Broadcast / multi-exec** — funktionen som motiverar "multi" i namnet och lyfter terminalupplevelsen över standardverktyg.
-2. **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i `FilePane` för lokal disk, SFTP och S3.
+2. **36. Bokmärken / Favoritsökvägar i filhanteraren** — snabbåtkomstmeny i `FilePane` för snabbhopp på lokal disk, SFTP och S3.
 3. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
 4. **38. S3 Bucket-administration (Skapa, radera & purge)** — hantera hela livscykeln för buckets direkt i UI:t.
-5. **7. Katalogsynkronisering (Diff & Sync)** — den tyngsta efterfrågade funktionen från WinSCP-användare.
+5. **40. Sökning i terminalbuffert (`Ctrl+Shift+F`)** — sökning i aktiv terminalhistorik med highlight och navigering.
+6. **29. Automatiska uppdateringar** — inkoppling av `electron-updater` för smidiga appuppdateringar.
