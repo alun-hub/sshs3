@@ -228,7 +228,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
             </div>
             <div>
               <h2 className="text-sm font-semibold text-txt-primary leading-tight">Dotfile Pools &amp; Master Files</h2>
-              <p className="text-[11px] text-txt-muted">Upload and manage master files for automatic sync to servers</p>
+              <p className="text-xs text-txt-muted">Upload and manage master files for automatic sync to servers</p>
             </div>
           </div>
           <button
@@ -255,7 +255,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : pools.length === 0 ? (
-              <p className="px-1 py-2 text-[11px] text-txt-muted">No pools saved.</p>
+              <p className="px-1 py-2 text-xs text-txt-muted">No pools saved.</p>
             ) : (
               pools.map((pool) => (
                 <button
@@ -269,7 +269,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                   }`}
                 >
                   <span className="truncate">{pool.name || '(unnamed pool)'}</span>
-                  <span className="ml-2 shrink-0 rounded bg-app-surface px-1.5 py-0.5 text-[10px] text-txt-muted font-mono">
+                  <span className="ml-2 shrink-0 rounded bg-app-surface px-1.5 py-0.5 text-2xs text-txt-muted font-mono">
                     {pool.files.length} {pool.files.length === 1 ? 'file' : 'files'}
                   </span>
                 </button>
@@ -318,7 +318,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                   </div>
 
                   {draft.masterDirectory && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-txt-muted bg-app-surface/60 rounded-md px-2.5 py-1 font-mono border border-border-subtle/50">
+                    <div className="flex items-center gap-1.5 text-xs text-txt-muted bg-app-surface/60 rounded-md px-2.5 py-1 font-mono border border-border-subtle/50">
                       <span className="font-semibold text-txt-secondary">Location on disk:</span>
                       <span className="truncate">{draft.masterDirectory}</span>
                     </div>
@@ -328,7 +328,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-txt-primary">Master Files</span>
-                        <span className="text-[11px] text-txt-muted">
+                        <span className="text-xs text-txt-muted">
                           ({draft.files.filter((f) => !f.deletedAt).length})
                         </span>
                       </div>
@@ -360,7 +360,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                       >
                         <Upload className="h-8 w-8 text-sky-400/60 mb-2" />
                         <p className="text-xs font-medium text-txt-primary">Upload or drag &amp; drop dotfiles here</p>
-                        <p className="text-[11px] text-txt-muted mt-1">
+                        <p className="text-xs text-txt-muted mt-1">
                           Files are saved as physical master files and synced out to connected SSH servers.
                         </p>
                       </div>
@@ -373,7 +373,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                             key={file.id}
                             className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-3 transition-colors hover:border-border"
                           >
-                            <div className="flex items-center justify-between text-[11px] text-txt-muted mb-0.5">
+                            <div className="flex items-center justify-between text-xs text-txt-muted mb-0.5">
                               <span className="font-medium text-sky-400 flex items-center gap-1">
                                 <FileCode className="h-3 w-3" />
                                 Master file: {file.masterFileName || file.remotePath.replace(/^~?[/\\]/, '') || 'Unnamed'}

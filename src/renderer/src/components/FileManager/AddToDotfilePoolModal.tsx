@@ -3,6 +3,7 @@ import { AlertTriangle, Check, FileCode, Loader2, Plus, X } from 'lucide-react';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import type { FileEntry } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { describeIpcError } from '../../lib/format';
 
 // LOW finding (code review): pooled dotfile content is always stored as
 // plaintext on disk — an intentional tradeoff (these are config files
@@ -70,7 +71,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
         }
       })
       .catch((err) => {
-        setError(String(err));
+        setError(describeIpcError(err, 'Failed to load dotfile pools'));
       })
       .finally(() => {
         setLoading(false);
@@ -118,7 +119,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       onSuccess?.(`Saved ${entry.name} as a master file in "${poolName}"`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeIpcError(err, String(err)));
     } finally {
       setSaving(false);
     }
@@ -126,7 +127,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
       onClick={handleBackdropClick}
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
@@ -170,7 +171,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               placeholder="e.g. ~/.bashrc"
               className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary outline-none focus:border-sky-500"
             />
-            <p className="text-[11px] text-txt-muted">
+            <p className="text-xs text-txt-muted">
               The path the file is automatically written to when the pool syncs to a connected server.
             </p>
             {looksLikeCredentialFile(remotePath) && (

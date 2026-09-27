@@ -33,7 +33,7 @@ import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModa
 import { FolderBrowserModal } from './FolderBrowserModal';
 import { FileDiffModal } from './FileDiffModal';
 import { DirSyncSavedProfilesModal } from './DirSyncSavedProfilesModal';
-import { classNames, formatBytes, formatDateTime } from '../../lib/format';
+import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 
 /** Last path segment, used to preview the nested sync root under the chosen target parent. */
@@ -294,7 +294,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
           setTarget(resolvedTarget);
           return runDiff(resolvedSource, resolvedTarget);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+        .catch((err) => setError(describeIpcError(err, String(err))))
         .finally(() => setBusy(false));
       return;
     }
@@ -358,7 +358,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
         setTarget(resolvedTarget);
         await runDiff(resolvedSource, resolvedTarget);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeIpcError(err, String(err)));
       } finally {
         setBusy(false);
       }
@@ -375,7 +375,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
     try {
       await runDiff(source, target);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeIpcError(err, String(err)));
     } finally {
       setBusy(false);
     }
@@ -415,7 +415,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
       setTarget({ providerId, sourceType: 'sftp', label: config.name, path: config.initialPath?.trim() || '/' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect to the target server');
+      setError(describeIpcError(err, 'Could not connect to the target server'));
     } finally {
       setBusy(false);
     }
@@ -430,7 +430,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       await window.multissh.connectStorage({ id: providerId, name: config.name, type: 's3', s3Config: config });
       setTarget({ providerId, sourceType: 's3', label: config.name, path: config.initialPath?.trim() || '/' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect to the S3 target');
+      setError(describeIpcError(err, 'Could not connect to the S3 target'));
     } finally {
       setBusy(false);
     }
@@ -480,7 +480,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       setShowSaveProfile(false);
       setSaveProfileName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the profile');
+      setError(describeIpcError(err, 'Could not save the profile'));
     } finally {
       setBusy(false);
     }
@@ -510,7 +510,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       });
       setApplyResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The sync failed');
+      setError(describeIpcError(err, 'The sync failed'));
     } finally {
       unsubscribe?.();
       setBusy(false);
@@ -520,7 +520,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div
         className={classNames(
           'flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden transition-all duration-150',
@@ -571,13 +571,13 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 {source ? (
                   <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+                      <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-2xs font-semibold text-emerald-400 uppercase tracking-wider">
                         Source (From)
                       </span>
                       <EndpointIcon type={source.sourceType} />
                     </div>
                     <div className="font-semibold text-xs text-txt-primary truncate mt-1">{source.label}</div>
-                    <div className="text-[11px] text-txt-muted truncate">
+                    <div className="text-xs text-txt-muted truncate">
                       {getEndpointSubtitle(source, sshProfiles, s3Profiles)}
                     </div>
                     <input
@@ -610,13 +610,13 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 {target ? (
                   <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
+                      <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-2xs font-semibold text-sky-400 uppercase tracking-wider">
                         Target (To)
                       </span>
                       <EndpointIcon type={target.sourceType} />
                     </div>
                     <div className="font-semibold text-xs text-txt-primary truncate mt-1">{target.label}</div>
-                    <div className="text-[11px] text-txt-muted truncate">
+                    <div className="text-xs text-txt-muted truncate">
                       {getEndpointSubtitle(target, sshProfiles, s3Profiles)}
                     </div>
                     <div className="mt-1.5 flex gap-1.5">
@@ -634,7 +634,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                       </button>
                     </div>
                     {source?.path && (
-                      <div className="mt-1.5 text-[11px] text-txt-muted">
+                      <div className="mt-1.5 text-xs text-txt-muted">
                         Will sync to:{' '}
                         <span className="font-mono text-txt-secondary">
                           {target.path.replace(/\/$/, '')}/{baseName(source.path) || '…'}
@@ -677,7 +677,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                   />
                   <span>Mirror mode: Delete extraneous files in target</span>
                 </label>
-                <p className="text-[11px] text-txt-muted ml-6">
+                <p className="text-xs text-txt-muted ml-6">
                   {deleteExtraneous
                     ? 'Files that exist in target but missing from source will be deleted to create an exact mirror.'
                     : 'Safe sync (recommended): Extraneous files existing in target are preserved and never deleted.'}
@@ -698,16 +698,16 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
               {/* Source box */}
               <div className="flex flex-col gap-1 rounded-lg bg-app-card p-2.5 border border-border-subtle/80 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+                  <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-2xs font-semibold text-emerald-400 uppercase tracking-wider">
                     Source (From)
                   </span>
                   <EndpointIcon type={source.sourceType} />
                 </div>
                 <div className="font-semibold text-xs text-txt-primary truncate mt-0.5">{source.label}</div>
-                <div className="text-[11px] text-txt-muted truncate">
+                <div className="text-xs text-txt-muted truncate">
                   {getEndpointSubtitle(source, sshProfiles, s3Profiles)}
                 </div>
-                <div className="flex items-center gap-1.5 font-mono text-[11px] text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
+                <div className="flex items-center gap-1.5 font-mono text-xs text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
                   <Folder className="h-3 w-3 shrink-0 text-amber-400" />
                   <span className="truncate">{source.path}</span>
                 </div>
@@ -718,7 +718,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
                   <ArrowRight className="h-4 w-4" />
                 </div>
-                <span className="text-[10px] font-semibold text-txt-muted uppercase tracking-wider whitespace-nowrap">
+                <span className="text-2xs font-semibold text-txt-muted uppercase tracking-wider whitespace-nowrap">
                   Syncs to
                 </span>
               </div>
@@ -726,16 +726,16 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
               {/* Target box */}
               <div className="flex flex-col gap-1 rounded-lg bg-app-card p-2.5 border border-border-subtle/80 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
+                  <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-2xs font-semibold text-sky-400 uppercase tracking-wider">
                     Target (To)
                   </span>
                   <EndpointIcon type={target.sourceType} />
                 </div>
                 <div className="font-semibold text-xs text-txt-primary truncate mt-0.5">{target.label}</div>
-                <div className="text-[11px] text-txt-muted truncate">
+                <div className="text-xs text-txt-muted truncate">
                   {getEndpointSubtitle(target, sshProfiles, s3Profiles)}
                 </div>
-                <div className="flex items-center gap-1.5 font-mono text-[11px] text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
+                <div className="flex items-center gap-1.5 font-mono text-xs text-txt-primary bg-app-input px-2 py-1 rounded border border-border-subtle/60 mt-1 truncate">
                   <Folder className="h-3 w-3 shrink-0 text-amber-400" />
                   <span className="truncate">{target.path}</span>
                 </div>
@@ -746,7 +746,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
           {step === 'diff' && diff && (
             <>
               {(diff.skippedPaths.source.length > 0 || diff.skippedPaths.target.length > 0) && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-300">
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
                   {diff.skippedPaths.source.length > 0 && (
                     <div>
                       {diff.skippedPaths.source.length} folder(s) in the source could not be read (e.g. permission denied) and were excluded: {diff.skippedPaths.source.slice(0, 5).join(', ')}
@@ -777,7 +777,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                     </div>
                   )}
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer text-txt-secondary hover:text-txt-primary select-none text-[11px]">
+                <label className="flex items-center gap-2 cursor-pointer text-txt-secondary hover:text-txt-primary select-none text-xs">
                   <input
                     type="checkbox"
                     checked={deleteExtraneous}
@@ -793,26 +793,26 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                   <div className="text-lg font-semibold text-emerald-400">{diff.counts.new}</div>
                   <div className="text-xs font-medium text-txt-primary">New on source</div>
-                  <div className="text-[10px] text-txt-muted">Will copy to target</div>
+                  <div className="text-2xs text-txt-muted">Will copy to target</div>
                 </div>
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                   <div className="text-lg font-semibold text-amber-400">{diff.counts.changed}</div>
                   <div className="text-xs font-medium text-txt-primary">Modified</div>
-                  <div className="text-[10px] text-txt-muted">Will overwrite target</div>
+                  <div className="text-2xs text-txt-muted">Will overwrite target</div>
                 </div>
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                   <div className={`text-lg font-semibold ${deleteExtraneous ? 'text-red-400' : 'text-sky-400'}`}>
                     {diff.counts.onlyTarget}
                   </div>
                   <div className="text-xs font-medium text-txt-primary">Only in target</div>
-                  <div className="text-[10px] text-txt-muted">
+                  <div className="text-2xs text-txt-muted">
                     {deleteExtraneous ? 'Deletes if selected' : 'Kept (safe sync)'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
                   <div className="text-lg font-semibold text-txt-muted">{diff.counts.same}</div>
                   <div className="text-xs font-medium text-txt-primary">Identical</div>
-                  <div className="text-[10px] text-txt-muted">Already in sync</div>
+                  <div className="text-2xs text-txt-muted">Already in sync</div>
                 </div>
               </div>
 
@@ -824,7 +824,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="rounded-lg border border-border-subtle bg-app-surface overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-border-subtle text-[11px] text-txt-muted uppercase tracking-wider">
+                      <tr className="border-b border-border-subtle text-xs text-txt-muted uppercase tracking-wider">
                         <th className="p-2 font-semibold w-8" />
                         <th className="p-2 font-semibold">Path</th>
                         <th className="p-2 font-semibold w-44 text-right pr-3">Action</th>
@@ -849,7 +849,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                                     onClick={() =>
                                       setCategoryIncluded(status, !entries.every((e) => included[e.relativePath]))
                                     }
-                                    className={`flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${
+                                    className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${
                                       !canSelectOnlyTarget
                                         ? 'text-txt-muted cursor-default'
                                         : 'text-txt-secondary hover:text-txt-primary'
@@ -879,7 +879,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                                     )}
                                   </button>
                                   {status === 'only-target' && !deleteExtraneous && (
-                                    <span className="text-[10px] text-txt-muted">Enable mirror mode above to delete</span>
+                                    <span className="text-2xs text-txt-muted">Enable mirror mode above to delete</span>
                                   )}
                                 </div>
                               </td>
@@ -905,7 +905,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                                   <td className="px-2 py-1.5 align-top max-w-0">
                                     <div className="font-mono text-txt-primary truncate">{entry.relativePath}</div>
                                     {change && (
-                                      <div className="mt-1 space-y-0.5 text-[11px] leading-snug">
+                                      <div className="mt-1 space-y-0.5 text-xs leading-snug">
                                         <div className="text-txt-muted">
                                           <span className="text-txt-secondary font-medium">Source:</span>{' '}
                                           {change.source}
@@ -930,20 +930,20 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                                   </td>
                                   <td className="px-2 py-1.5 align-top text-right pr-3">
                                     {entry.status === 'new' && (
-                                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-medium text-emerald-400 whitespace-nowrap">
+                                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-xs font-medium text-emerald-400 whitespace-nowrap">
                                         + Copy to target
                                       </span>
                                     )}
                                     {entry.status === 'changed' && (
                                       <div className="flex flex-col items-end gap-1">
-                                        <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[11px] font-medium text-amber-400 whitespace-nowrap">
+                                        <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-medium text-amber-400 whitespace-nowrap">
                                           ↻ Overwrite target
                                         </span>
                                         {entry.sourceEntry?.path && entry.targetEntry?.path && (
                                           <button
                                             type="button"
                                             onClick={() => setCompareEntry(entry)}
-                                            className="flex items-center gap-1 rounded border border-border-subtle px-1.5 py-0.5 text-[10px] font-normal text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                                            className="flex items-center gap-1 rounded border border-border-subtle px-1.5 py-0.5 text-2xs font-normal text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                                           >
                                             <FileDiff className="h-3 w-3" />
                                             Compare
@@ -953,12 +953,12 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                                     )}
                                     {entry.status === 'only-target' && (
                                       deleteExtraneous ? (
-                                        <span className="inline-flex items-center gap-1 rounded bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-[11px] font-medium text-red-400 whitespace-nowrap">
+                                        <span className="inline-flex items-center gap-1 rounded bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-400 whitespace-nowrap">
                                           <Trash2 className="h-3 w-3" />
                                           Delete from target
                                         </span>
                                       ) : (
-                                        <span className="inline-flex items-center gap-1 rounded bg-slate-500/15 border border-border-subtle px-2 py-0.5 text-[11px] font-medium text-txt-muted whitespace-nowrap">
+                                        <span className="inline-flex items-center gap-1 rounded bg-slate-500/15 border border-border-subtle px-2 py-0.5 text-xs font-medium text-txt-muted whitespace-nowrap">
                                           <ShieldCheck className="h-3 w-3 text-emerald-400" />
                                           Kept in target
                                         </span>
@@ -1016,7 +1016,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                           style={{ width: `${applyProgress.percentage}%` }}
                         />
                       </div>
-                      <div className="truncate text-[11px] text-txt-muted">
+                      <div className="truncate text-xs text-txt-muted">
                         {applyProgress.statusMessage || applyProgress.fileName}
                       </div>
                     </div>
@@ -1027,21 +1027,21 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-2">
                       <div className="text-base font-semibold text-emerald-400">{applyResult.copied}</div>
-                      <div className="text-[11px] text-txt-muted">Copied</div>
+                      <div className="text-xs text-txt-muted">Copied</div>
                     </div>
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-2">
                       <div className="text-base font-semibold text-amber-400">{applyResult.deleted}</div>
-                      <div className="text-[11px] text-txt-muted">Deleted</div>
+                      <div className="text-xs text-txt-muted">Deleted</div>
                     </div>
                     <div className="rounded-lg border border-border-subtle bg-app-surface p-2">
                       <div className="text-base font-semibold text-red-400">{applyResult.failed}</div>
-                      <div className="text-[11px] text-txt-muted">Failed</div>
+                      <div className="text-xs text-txt-muted">Failed</div>
                     </div>
                   </div>
                   {applyResult.errors.length > 0 && (
                     <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 space-y-1 max-h-40 overflow-y-auto">
                       {applyResult.errors.map((e, i) => (
-                        <div key={i} className="text-[11px] text-red-300">
+                        <div key={i} className="text-xs text-red-300">
                           <span className="font-mono">{e.path}</span>: {e.error}
                         </div>
                       ))}
@@ -1100,7 +1100,12 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 type="button"
                 onClick={() => void handleRunSync()}
                 disabled={diff?.entries.length === 0 || (toCopyCount === 0 && toDeleteCount === 0) || busy}
-                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
+                // Red, not the neutral sky used elsewhere, whenever this run
+                // will delete files — it's an irreversible action, not a
+                // plain copy (UX review #7 color semantics).
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-medium text-white shadow-sm transition-colors disabled:opacity-40 ${
+                  toDeleteCount > 0 ? 'bg-red-600 hover:bg-red-500' : 'bg-sky-600 hover:bg-sky-500'
+                }`}
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                 Run sync ({toCopyCount} to copy{toDeleteCount > 0 ? `, ${toDeleteCount} to delete` : ''})

@@ -23,6 +23,7 @@ import type {
   Fido2ResidentKey,
 } from '@shared/types/ssh';
 import type { DotfilePool } from '@shared/types/dotfiles';
+import { describeIpcError } from '../../lib/format';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -156,7 +157,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     } catch (err) {
       setTestResult({
         success: false,
-        message: err instanceof Error ? err.message : 'Failed to test connection',
+        message: describeIpcError(err, 'Failed to test connection'),
       });
     } finally {
       setTesting(false);
@@ -175,7 +176,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       const keys = await window.multissh.fido2ListResidentKeys();
       setFido2ResidentKeys(keys);
     } catch (err) {
-      setFido2ScanError(err instanceof Error ? err.message : 'Failed to read the connected security key');
+      setFido2ScanError(describeIpcError(err, 'Failed to read the connected security key'));
     } finally {
       setFido2Scanning(false);
     }
@@ -189,7 +190,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       setFido2ResidentKeys((prev) => (prev ? prev.filter((k) => k.credentialId !== credentialId) : prev));
       setFido2ConfirmDeleteId(null);
     } catch (err) {
-      setFido2DeleteError(err instanceof Error ? err.message : 'Failed to delete the credential');
+      setFido2DeleteError(describeIpcError(err, 'Failed to delete the credential'));
     } finally {
       setFido2DeletingId(null);
     }
@@ -219,7 +220,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         void scanFido2ResidentKeys();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate the key';
+      const message = describeIpcError(err, 'Failed to generate the key');
       // Electron's ipcRenderer.invoke wraps the original thrown message in its own
       // "Error invoking remote method '<channel>': Error: ..." prefix, so the marker is never at
       // the very start of what the renderer actually sees — search for it instead of anchoring.
@@ -265,8 +266,13 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         e.preventDefault();
         if (isValid) onSave(config);
       }}
-      className="flex flex-col gap-3.5 text-xs text-txt-secondary"
+      className="flex h-full min-h-0 flex-col text-xs text-txt-secondary"
     >
+      {/* Scrollable field area is a separate flex child from the footer below
+          (UX review #11 bugfix) so a `sticky` footer can never render on top
+          of fields revealed by expanding a collapsible section — the footer
+          now always has its own permanent, non-overlapping space. */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-6 flex flex-col gap-3.5">
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-txt-secondary">
           Profile Name
@@ -366,7 +372,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             onChange={(e) => update('password', e.target.value)}
             className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
           />
-          <span className="text-[11px] text-txt-muted">
+          <span className="text-xs text-txt-muted">
             Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting.
           </span>
         </label>
@@ -456,7 +462,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             </div>
           ) : smartcardLibs.length > 0 ? (
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-txt-muted">Detected modules on system:</span>
+              <span className="text-xs text-txt-muted">Detected modules on system:</span>
               <div className="flex flex-wrap gap-1.5">
                 {smartcardLibs.map((lib) => (
                   <button
@@ -471,18 +477,18 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                     }
                   >
                     <span className="font-semibold">{lib.name}</span>
-                    <span className="ml-1 text-[10px] text-txt-muted font-mono">{lib.path}</span>
+                    <span className="ml-1 text-2xs text-txt-muted font-mono">{lib.path}</span>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            <span className="text-[11px] text-txt-muted">
+            <span className="text-xs text-txt-muted">
               No PKCS#11 libraries automatically detected. Please enter path or browse manually.
             </span>
           )}
 
-          <p className="text-[11px] text-txt-muted pt-1">
+          <p className="text-xs text-txt-muted pt-1">
             PIN caching behavior is set globally under Settings &gt; Security &amp; Smartcard.
           </p>
         </div>
@@ -505,7 +511,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
 
           {config.fido2Resident ? (
             <div className="flex flex-col gap-2">
-              <p className="text-[11px] text-txt-muted">
+              <p className="text-xs text-txt-muted">
                 No key file needed — the app loads whatever resident credentials are on the connected
                 security key at connect time. It scans automatically below; re-scan any time you swap
                 keys or after generating a new one.
@@ -521,14 +527,14 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               </button>
 
               {fido2ScanError && (
-                <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                <div className="flex items-center gap-1.5 text-xs text-red-300">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>{fido2ScanError}</span>
                 </div>
               )}
               {fido2ResidentKeys && fido2ResidentKeys.length === 0 && (
                 <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-                  <p className="text-[11px] text-amber-200">
+                  <p className="text-xs text-amber-200">
                     No resident credentials found on this device yet — this is expected the first time
                     you use a security key with sshs3. Generate one below to get started.
                   </p>
@@ -544,11 +550,11 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               )}
               {fido2ResidentKeys && fido2ResidentKeys.length > 0 && (
                 <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-emerald-300">
+                  <span className="text-xs text-emerald-300">
                     Found {fido2ResidentKeys.length} resident credential(s):
                   </span>
                   {fido2DeleteError && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-red-300">
+                    <div className="flex items-center gap-1.5 text-xs text-red-300">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                       <span>{fido2DeleteError}</span>
                     </div>
@@ -560,7 +566,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                     return (
                       <div
                         key={id}
-                        className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-[11px] font-mono text-txt-secondary"
+                        className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-xs font-mono text-txt-secondary"
                       >
                         <span className="truncate">
                           <span className="text-txt-primary font-semibold">{k.keyType}</span> {k.fingerprint}{' '}
@@ -628,7 +634,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   </button>
                 </div>
               </label>
-              <p className="text-[11px] text-amber-400/90">
+              <p className="text-xs text-amber-400/90">
                 ⚠ SFTP in the File Manager can't read this key file directly (no libfido2 support in the
                 SFTP library used) — it needs the key already loaded in an ssh-agent. If you'll use this
                 profile for file transfers too, load the key with <code className="font-mono">ssh-add</code>{' '}
@@ -740,12 +746,12 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                       <span>Key generated at {fido2GenResult.privateKeyPath}</span>
                     </div>
-                    <p className="text-[11px] text-txt-muted">
+                    <p className="text-xs text-txt-muted">
                       Copy the public key below into the server's{' '}
                       <code className="font-mono">~/.ssh/authorized_keys</code>:
                     </p>
                     <div className="flex items-start gap-1.5">
-                      <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-[10px] text-txt-secondary">
+                      <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-2xs text-txt-secondary">
                         {fido2GenResult.publicKey}
                       </code>
                       <button
@@ -963,7 +969,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   />
                 </label>
                 {x11ServerStatus && (
-                  <div className="flex items-center gap-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5 text-xs">
                     {x11ServerStatus.running ? (
                       <span className="text-emerald-400">
                         ✓ Local X11 server detected on {x11ServerStatus.display}
@@ -1038,7 +1044,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             className="flex items-center gap-1.5 hover:text-txt-primary transition-colors"
           >
             <span>Port Forwarding & Tunnels</span>
-            <span className="rounded bg-app-surface px-1.5 py-0.5 text-[10px] text-sky-400 font-mono">
+            <span className="rounded bg-app-surface px-1.5 py-0.5 text-2xs text-sky-400 font-mono">
               {(config.tunnels || []).length}
             </span>
             {tunnelsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -1218,8 +1224,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           </div>
         )}
       </div>
+      </div>
 
-      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
+      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"

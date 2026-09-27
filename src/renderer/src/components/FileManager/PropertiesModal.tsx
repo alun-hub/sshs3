@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Info, Loader2, X } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
-import { formatBytes } from '../../lib/format';
+import { formatBytes, describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import type { SourceType } from './types';
+import { Button } from '../ui/Button';
 
 interface PropertiesModalProps {
   open: boolean;
@@ -45,7 +46,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
           setDetail(entry);
           setContentType(entry.mimeType ?? '');
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve file details'))
+        .catch((err) => setError(describeIpcError(err, 'Failed to retrieve file details')))
         .finally(() => setLoading(false));
     }
   }, [open, providerId, entries]);
@@ -83,7 +84,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update metadata');
+      setError(describeIpcError(err, 'Failed to update metadata'));
     } finally {
       setSaving(false);
     }
@@ -119,13 +120,13 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
             <dl className="divide-y divide-border-subtle/50 rounded-lg border border-border-subtle bg-app-surface">
               {rows.map((row) => (
                 <div key={row.label} className="flex items-start gap-3 px-3 py-2">
-                  <dt className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-txt-muted">{row.label}</dt>
+                  <dt className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wider text-txt-muted">{row.label}</dt>
                   <dd className="min-w-0 flex-1 break-all font-mono text-xs text-txt-primary">{row.value}</dd>
                 </div>
               ))}
               {canEditContentType && (
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <dt className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-txt-muted">Content-Type</dt>
+                  <dt className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wider text-txt-muted">Content-Type</dt>
                   <dd className="min-w-0 flex-1">
                     <input
                       type="text"
@@ -142,24 +143,19 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Close
-          </button>
+          </Button>
           {canEditContentType && (
-            <button
+            <Button
               type="button"
+              variant="primary"
               onClick={() => void handleSaveContentType()}
               disabled={saving || contentType.trim() === (single?.mimeType ?? '')}
-              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Save
-            </button>
+            </Button>
           )}
         </div>
       </div>

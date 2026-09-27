@@ -12,6 +12,7 @@ import type { StorageConnectConfig } from '@shared/types/ipc';
 import type { SSHAuthType, SSHConnectionConfig, DetectedSmartcardLib } from '@shared/types/ssh';
 import type { SFTPConfig, S3Config, S3AuthMode, S3SsoConfig } from '@shared/types/storage';
 import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
+import { describeIpcError } from '../../lib/format';
 
 export interface SyncTargetDraft {
   type: 'sftp' | 's3';
@@ -337,7 +338,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
         setSsoManualEntry(true);
       }
     } catch (err) {
-      setSsoError(err instanceof Error ? err.message : 'AWS SSO login failed');
+      setSsoError(describeIpcError(err, 'AWS SSO login failed'));
     } finally {
       setSsoLoggingIn(false);
     }
@@ -353,7 +354,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
       const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId);
       setSsoRoles(roles);
     } catch (err) {
-      setSsoError(err instanceof Error ? err.message : 'Failed to list roles for this account');
+      setSsoError(describeIpcError(err, 'Failed to list roles for this account'));
     } finally {
       setLoadingRoles(false);
     }
@@ -419,7 +420,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
     <div className="space-y-3">
       {hasProfiles && (
         <div className="rounded-lg border border-border-subtle bg-app-bg/60 p-2.5 space-y-1.5">
-          <label className="text-[11px] font-medium text-txt-secondary flex items-center justify-between">
+          <label className="text-xs font-medium text-txt-secondary flex items-center justify-between">
             <span>Autofill from saved profile:</span>
           </label>
           <select
@@ -665,14 +666,14 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                 </div>
               ) : smartcardLibs.length > 0 ? (
                 <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-txt-muted">Detected modules:</span>
+                  <span className="text-xs text-txt-muted">Detected modules:</span>
                   <div className="flex flex-wrap gap-1.5">
                     {smartcardLibs.map((lib) => (
                       <button
                         key={lib.path}
                         type="button"
                         onClick={() => set('pkcs11LibPath', lib.path)}
-                        className="rounded border border-border-subtle bg-app-surface px-2 py-0.5 text-[11px] text-txt-secondary hover:border-sky-500 hover:text-txt-primary transition-colors"
+                        className="rounded border border-border-subtle bg-app-surface px-2 py-0.5 text-xs text-txt-secondary hover:border-sky-500 hover:text-txt-primary transition-colors"
                       >
                         {lib.name}
                       </button>

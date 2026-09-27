@@ -33,6 +33,7 @@ import {
 } from './lib/paneTree';
 import { extractHostnameFromTitle, isSameHost } from './lib/terminalTitle';
 import { comboFromKeyboardEvent } from './lib/shortcuts';
+import { Kbd } from './components/ui/Kbd';
 
 export interface AppTab extends TabItem {
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
@@ -86,15 +87,13 @@ function sanitizeTabForSession(tab: AppTab): AppTab {
 }
 
 export const App: React.FC = () => {
-  const [tabs, setTabs] = useState<AppTab[]>([
-    {
-      id: 'term-1',
-      type: 'terminal',
-      title: 'Terminal 1',
-      paneTree: createLeaf('term-1-root'),
-    },
-  ]);
-  const [activeTabId, setActiveTabId] = useState<string>('term-1');
+  // Starts empty rather than seeded with a default terminal tab so that a
+  // genuinely fresh install (no saved session) falls straight into the same
+  // "all tabs closed" hero view as an existing user who closes their last
+  // tab, instead of a different, less helpful per-pane empty state (UX
+  // review, section 7). Real saved sessions overwrite this once loaded.
+  const [tabs, setTabs] = useState<AppTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string>('');
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
   const [profilesModalTab, setProfilesModalTab] = useState<ConnectionManagerTab>('ssh');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -213,7 +212,7 @@ export const App: React.FC = () => {
       } else {
         for (const t of prev) {
           if (t.type === 'filemanager') {
-            const m = t.title.match(/(?:File Manager|Filhanterare)\s+(\d+)/);
+            const m = t.title.match(/File Manager\s+(\d+)/);
             if (m) usedNums.add(parseInt(m[1], 10));
           }
         }
@@ -577,10 +576,22 @@ export const App: React.FC = () => {
       const rawCombo = comboFromKeyboardEvent(e);
       if (rawCombo === null) return;
       const combo = rawCombo.toLowerCase();
-      const activeShortcuts = settings.shortcuts || DEFAULT_SHORTCUTS;
+      const normalizedCombo = combo.replace(/^cmd\+/, 'ctrl+');
+      const activeShortcuts = { ...DEFAULT_SHORTCUTS, ...(settings.shortcuts || {}) };
 
       for (const [actionId, keyBinding] of Object.entries(activeShortcuts)) {
-        if (combo === keyBinding.toLowerCase()) {
+        const bindingLower = keyBinding.toLowerCase();
+        const isMatch =
+          combo === bindingLower ||
+          normalizedCombo === bindingLower ||
+          (actionId === 'increaseFontSize' &&
+            (bindingLower === 'ctrl++' || bindingLower === 'ctrl+=') &&
+            (normalizedCombo === 'ctrl++' || normalizedCombo === 'ctrl+=' || normalizedCombo === 'ctrl+shift+=')) ||
+          (actionId === 'decreaseFontSize' &&
+            bindingLower === 'ctrl+-' &&
+            (normalizedCombo === 'ctrl+-' || normalizedCombo === 'ctrl+shift+-'));
+
+        if (isMatch) {
           e.preventDefault();
           e.stopPropagation();
           switch (actionId) {
@@ -641,6 +652,38 @@ export const App: React.FC = () => {
                 ?.focus();
               break;
             }
+            case 'increaseFontSize': {
+              setSettings((prev) => {
+                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
+                const next = Math.min(current + 1, 32);
+                if (next === current) return prev;
+                const updated = { ...prev, terminalFontSize: next };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
+              break;
+            }
+            case 'decreaseFontSize': {
+              setSettings((prev) => {
+                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
+                const next = Math.max(current - 1, 8);
+                if (next === current) return prev;
+                const updated = { ...prev, terminalFontSize: next };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
+              break;
+            }
+            case 'resetFontSize': {
+              setSettings((prev) => {
+                const defaultSize = DEFAULT_SETTINGS.terminalFontSize;
+                if (prev.terminalFontSize === defaultSize) return prev;
+                const updated = { ...prev, terminalFontSize: defaultSize };
+                void window.multissh?.settingsSave?.(updated);
+                return updated;
+              });
+              break;
+            }
           }
           break;
         }
@@ -655,9 +698,12 @@ export const App: React.FC = () => {
 
   return (
     <ConfirmProvider>
-    <div className="flex h-screen w-screen flex-col overflow-hidden select-none bg-app text-txt-primary">
-      {/* Top Bar with Brand, TabBar, and Quick Connect */}
-      <header className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-app text-txt-primary">
+      {/* Top Bar with Brand, TabBar, and Quick Connect. select-none here only
+          (not on the whole app, see UX review #5) so tab titles, toolbar
+          icons etc. don't show a text cursor/selection highlight, while
+          file names, hostnames and other content below stays selectable. */}
+      <header className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none">
         <div className="flex items-center gap-2 border-r border-border-subtle px-3.5 font-semibold text-sm">
           <Terminal className="h-4 w-4 text-sky-500" />
           <span className="font-bold tracking-wide text-txt-primary">
@@ -691,7 +737,7 @@ export const App: React.FC = () => {
 
       {/* Main Content Area: non-active tabs stay mounted with display: none */}
       <main className="relative flex flex-1 w-full overflow-hidden bg-app">
-        {tabs.length === 0 ? (
+        {!sessionLoaded ? null : tabs.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-txt-secondary animate-in fade-in duration-200">
             <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-6">
               {/* Brand Header */}
@@ -716,15 +762,13 @@ export const App: React.FC = () => {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
                       <Terminal className="h-5 w-5" />
                     </div>
-                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
-                      Ctrl+Shift+T
-                    </kbd>
+                    <Kbd>Ctrl+Shift+T</Kbd>
                   </div>
                   <div className="mt-3">
                     <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
                       Open New Terminal
                     </div>
-                    <div className="text-[11px] text-txt-muted mt-0.5">
+                    <div className="text-xs text-txt-muted mt-0.5">
                       Launch a local shell, ad-hoc SSH connection or WSL
                     </div>
                   </div>
@@ -739,15 +783,13 @@ export const App: React.FC = () => {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
                       <Folder className="h-5 w-5" />
                     </div>
-                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
-                      Ctrl+Shift+F
-                    </kbd>
+                    <Kbd>Ctrl+Shift+F</Kbd>
                   </div>
                   <div className="mt-3">
                     <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
                       New File Manager
                     </div>
-                    <div className="text-[11px] text-txt-muted mt-0.5">
+                    <div className="text-xs text-txt-muted mt-0.5">
                       Dual-pane explorer for SFTP, S3 and local drives
                     </div>
                   </div>
@@ -762,15 +804,13 @@ export const App: React.FC = () => {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
                       <Server className="h-5 w-5" />
                     </div>
-                    <kbd className="rounded border border-border-subtle bg-app-surface px-1.5 py-0.5 font-mono text-[10px] text-txt-muted">
-                      Ctrl+Shift+P
-                    </kbd>
+                    <Kbd>Ctrl+Shift+P</Kbd>
                   </div>
                   <div className="mt-3">
                     <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
                       Saved Connections
                     </div>
-                    <div className="text-[11px] text-txt-muted mt-0.5">
+                    <div className="text-xs text-txt-muted mt-0.5">
                       Manage profiles, SSH keys and credentials
                     </div>
                   </div>
@@ -785,7 +825,7 @@ export const App: React.FC = () => {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25 group-hover:scale-105 transition-all">
                       <Cloud className="h-5 w-5" />
                     </div>
-                    <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400">
+                    <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-2xs font-medium text-purple-400">
                       Cloud Sync
                     </span>
                   </div>
@@ -793,7 +833,7 @@ export const App: React.FC = () => {
                     <div className="text-xs font-semibold text-txt-primary group-hover:text-purple-400 transition-colors">
                       Import / Cloud Sync
                     </div>
-                    <div className="text-[11px] text-txt-muted mt-0.5">
+                    <div className="text-xs text-txt-muted mt-0.5">
                       Restore configuration and profiles from cloud storage
                     </div>
                   </div>
@@ -801,10 +841,10 @@ export const App: React.FC = () => {
               </div>
 
               {/* Keyboard shortcuts reminder */}
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-txt-muted pt-2 border-t border-border-subtle/50 w-full">
-                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+Tab</kbd> Cycle tabs</span>
-                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+W</kbd> Close tab</span>
-                <span><kbd className="font-mono text-[10px] text-txt-secondary">Ctrl+,</kbd> Settings</span>
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-txt-muted pt-2 border-t border-border-subtle/50 w-full">
+                <span><Kbd variant="plain">Ctrl+Tab</Kbd> Cycle tabs</span>
+                <span><Kbd variant="plain">Ctrl+W</Kbd> Close tab</span>
+                <span><Kbd variant="plain">Ctrl+,</Kbd> Settings</span>
               </div>
             </div>
           </div>
@@ -841,12 +881,12 @@ export const App: React.FC = () => {
                                 (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
                         </span>
                         {totalPanes === 1 && rootLeaf?.config?.username && (
-                          <span className="text-[11px] text-txt-muted">
+                          <span className="text-xs text-txt-muted select-text">
                             ({rootLeaf.config.username}@{rootLeaf.config.host}:{rootLeaf.config.port ?? 22})
                           </span>
                         )}
                         {totalPanes === 1 && (rootLeaf?.k8sTarget || rootLeaf?.k8sLogTarget) && (
-                          <span className="text-[11px] text-txt-muted">
+                          <span className="text-xs text-txt-muted select-text">
                             ({(rootLeaf.k8sTarget || rootLeaf.k8sLogTarget)!.namespace} ·{' '}
                             {(rootLeaf.k8sTarget || rootLeaf.k8sLogTarget)!.contextName})
                           </span>

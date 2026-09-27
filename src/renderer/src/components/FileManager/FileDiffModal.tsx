@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, FileDiff, Loader2, X } from 'lucide-react';
+import { describeIpcError } from '../../lib/format';
 
 interface FileDiffModalProps {
   open: boolean;
@@ -94,7 +95,7 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
         setOps(diffLines(srcLines, tgtLines));
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(describeIpcError(err, String(err)));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -110,7 +111,7 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
   const hasChanges = ops?.some((op) => op.type !== 'same');
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
       <div className="w-[92vw] max-w-[1600px] h-[88vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -154,7 +155,7 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
           )}
           {!loading && !error && ops && hasChanges && (
             <div className="rounded-lg border border-border-subtle bg-app-surface">
-              <pre className="p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+              <pre className="p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
                 {ops.map((op, idx) => (
                   <div
                     key={idx}

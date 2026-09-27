@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, X, Loader2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { describeIpcError } from '../../lib/format';
+import { Button } from '../ui/Button';
 
 interface ChmodModalProps {
   open: boolean;
@@ -126,7 +128,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to change permissions');
+      setError(describeIpcError(err, 'Failed to change permissions'));
     } finally {
       setSaving(false);
     }
@@ -156,7 +158,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
         <div className="p-4 space-y-4 text-xs text-txt-secondary">
           {/* File summary */}
           <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5">
-            <div className="text-[11px] text-txt-muted uppercase tracking-wider font-semibold">Target</div>
+            <div className="text-xs text-txt-muted uppercase tracking-wider font-semibold">Target</div>
             <div className="mt-1 font-mono text-xs text-txt-primary truncate">
               {entries.length === 1 ? entries[0].name : `${entries.length} selected items`}
             </div>
@@ -166,7 +168,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
           <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-border-subtle text-[11px] text-txt-muted uppercase tracking-wider">
+                <tr className="border-b border-border-subtle text-xs text-txt-muted uppercase tracking-wider">
                   <th className="pb-2 font-semibold">Scope</th>
                   <th className="pb-2 text-center font-semibold">Read (r)</th>
                   <th className="pb-2 text-center font-semibold">Write (w)</th>
@@ -292,23 +294,13 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-          >
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 shadow-sm transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { History, X, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import type { ObjectVersionEntry, S3VersioningStatus } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useConfirm } from '../ConfirmDialog';
+import { describeIpcError } from '../../lib/format';
 
 interface VersionsModalProps {
   open: boolean;
@@ -43,7 +44,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
         setVersions(list);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to retrieve version information');
+      setError(describeIpcError(err, 'Failed to retrieve version information'));
     } finally {
       setLoading(false);
     }
@@ -66,7 +67,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to change versioning status');
+      setError(describeIpcError(err, 'Failed to change versioning status'));
     } finally {
       setBusy(false);
     }
@@ -89,7 +90,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to restore version');
+      setError(describeIpcError(err, 'Failed to restore version'));
     } finally {
       setBusy(false);
     }
@@ -111,7 +112,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onSaved?.();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete version');
+      setError(describeIpcError(err, 'Failed to delete version'));
     } finally {
       setBusy(false);
     }
@@ -149,7 +150,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
           {!loading && mode === 'bucket' && (
             <div className="space-y-3">
               <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
-                <div className="text-[11px] uppercase tracking-wider text-txt-muted font-semibold">Current Status</div>
+                <div className="text-xs uppercase tracking-wider text-txt-muted font-semibold">Current Status</div>
                 <div className="mt-1 text-sm font-medium text-txt-primary">
                   {status === 'Enabled' ? 'Enabled' : status === 'Suspended' ? 'Suspended' : 'Disabled'}
                 </div>
@@ -177,7 +178,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
               )}
               {versions.length > 0 && (
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-app-surface-subtle text-[11px] uppercase tracking-wider text-txt-muted border-b border-border-subtle">
+                  <thead className="sticky top-0 bg-app-surface-subtle text-xs uppercase tracking-wider text-txt-muted border-b border-border-subtle">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Version</th>
                       <th className="px-3 py-2 font-semibold">Modified</th>

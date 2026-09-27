@@ -371,7 +371,7 @@ export const SyncSettingsPanel: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <p className="text-[11px] text-txt-muted leading-relaxed">
+        <p className="text-xs text-txt-muted leading-relaxed">
           Back up and sync your connection profiles, dotfile pools, and settings to your own S3 bucket or SFTP
           server. Everything is client-side encrypted before leaving your device using your master password.
         </p>
@@ -394,26 +394,26 @@ export const SyncSettingsPanel: React.FC = () => {
                   setTargetDraft((prev) => ({ ...prev, remoteBasePath: status.remoteBasePath ?? prev.remoteBasePath }));
                 }
               }}
-              className="flex items-center gap-1 text-[11px] text-sky-400 hover:underline"
+              className="flex items-center gap-1 text-xs text-sky-400 hover:underline"
             >
               <Pencil className="h-3 w-3" />
               Change target
             </button>
           </div>
-          {status.remoteBasePath && <div className="font-mono text-[11px] text-txt-muted">{status.remoteBasePath}</div>}
+          {status.remoteBasePath && <div className="font-mono text-xs text-txt-muted">{status.remoteBasePath}</div>}
 
-          <div className="pt-1 text-[11px]">
+          <div className="pt-1 text-xs">
             {status.topologyUnlocked && status.credentialsUnlocked ? (
               <div className="flex items-center gap-1.5 text-emerald-400">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 <span className="font-medium">Sync unlocked</span>
-                <span className="text-[10px] text-txt-muted">(Profiles & credentials ready)</span>
+                <span className="text-2xs text-txt-muted">(Profiles & credentials ready)</span>
               </div>
             ) : !status.topologyUnlocked && !status.credentialsUnlocked ? (
               <div className="flex items-center gap-1.5 text-amber-400">
                 <Lock className="h-3.5 w-3.5" />
                 <span className="font-medium">Sync locked</span>
-                <span className="text-[10px] text-txt-muted">(Profiles & credentials encrypted — unlock below)</span>
+                <span className="text-2xs text-txt-muted">(Profiles & credentials encrypted — unlock below)</span>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -441,7 +441,7 @@ export const SyncSettingsPanel: React.FC = () => {
             )}
           </div>
 
-          <div className="text-[11px] text-txt-muted pt-1 border-t border-border-subtle">
+          <div className="text-xs text-txt-muted pt-1 border-t border-border-subtle">
             Last sync: {formatTimestampWithRelative(status.lastSyncAt)}
           </div>
 
@@ -451,7 +451,7 @@ export const SyncSettingsPanel: React.FC = () => {
                 <RefreshCw className="h-3.5 w-3.5 text-sky-400" />
                 <span>Auto-sync changes</span>
               </div>
-              <p className="text-[10px] text-txt-muted">
+              <p className="text-2xs text-txt-muted">
                 Automatically pushes changes to remote when profiles or dotfiles are modified (when unlocked).
               </p>
             </div>
@@ -474,7 +474,7 @@ export const SyncSettingsPanel: React.FC = () => {
                 <KeyRound className="h-3.5 w-3.5 text-sky-400" />
                 <span>Smartcard / Hardware token</span>
               </div>
-              <p className="text-[10px] text-txt-muted">
+              <p className="text-2xs text-txt-muted">
                 {status.smartcardLinked
                   ? `Linked to smartcard (${status.smartcardLibPath ? status.smartcardLibPath.split('/').pop() : 'PKCS#11'}). You can unlock sync with your card PIN.`
                   : status.smartcardAvailable
@@ -488,7 +488,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   type="button"
                   onClick={handleUnlinkSmartcard}
                   disabled={unlinkingSmartcard}
-                  className="rounded px-2.5 py-1 text-[11px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  className="rounded px-2.5 py-1 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50"
                 >
                   {unlinkingSmartcard ? 'Unlinking...' : 'Unlink card'}
                 </button>
@@ -500,7 +500,7 @@ export const SyncSettingsPanel: React.FC = () => {
                     setPasswordDialogOpen(true);
                   }}
                   disabled={linkingSmartcard}
-                  className="rounded px-2.5 py-1 text-[11px] font-medium text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
+                  className="rounded px-2.5 py-1 text-xs font-medium text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
                 >
                   {linkingSmartcard ? 'Linking...' : 'Link card'}
                 </button>
@@ -520,37 +520,37 @@ export const SyncSettingsPanel: React.FC = () => {
                   ) : comparison ? (
                     <div className="flex items-center gap-2">
                       {comparison.state === 'in_sync' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           In sync with remote
                         </span>
                       )}
                       {comparison.state === 'ahead' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-[11px] font-medium text-sky-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-xs font-medium text-sky-400">
                           <ArrowUpCircle className="h-3.5 w-3.5" />
                           Client ahead ({comparison.aheadCount} unpushed {comparison.aheadCount === 1 ? 'change' : 'changes'})
                         </span>
                       )}
                       {comparison.state === 'behind' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400">
                           <ArrowDownCircle className="h-3.5 w-3.5" />
                           Client behind ({comparison.behindCount} remote {comparison.behindCount === 1 ? 'change' : 'changes'})
                         </span>
                       )}
                       {comparison.state === 'diverged' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 text-[11px] font-medium text-purple-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 text-xs font-medium text-purple-400">
                           <GitCompare className="h-3.5 w-3.5" />
                           Diverged ({comparison.aheadCount} ahead, {comparison.behindCount} behind)
                         </span>
                       )}
                       {comparison.state === 'not_initialized' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[11px] font-medium text-indigo-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-xs font-medium text-indigo-400">
                           <UploadCloud className="h-3.5 w-3.5" />
                           Remote not initialized ({comparison.aheadCount} {comparison.aheadCount === 1 ? 'item' : 'items'} to push)
                         </span>
                       )}
                       {comparison.state === 'error' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-[11px] font-medium text-red-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-xs font-medium text-red-400">
                           <ShieldAlert className="h-3.5 w-3.5" />
                           Sync check failed
                         </span>
@@ -566,7 +566,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   onClick={() => void checkSync()}
                   disabled={checkingSync || pushing || pulling}
                   title="Check status against remote"
-                  className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-txt-muted hover:text-txt-primary hover:bg-app-surface transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-txt-muted hover:text-txt-primary hover:bg-app-surface transition-colors disabled:opacity-50"
                 >
                   <RefreshCw className={`h-3 w-3 ${checkingSync ? 'animate-spin' : ''}`} />
                   <span>Check</span>
@@ -574,7 +574,7 @@ export const SyncSettingsPanel: React.FC = () => {
               </div>
 
               {comparison && comparison.checkedAt && (
-                <div className="flex items-center justify-between text-[10px] text-txt-muted">
+                <div className="flex items-center justify-between text-2xs text-txt-muted">
                   <span>Checked: {formatDateTime(comparison.checkedAt)}</span>
                   {(comparison.aheadCount > 0 || comparison.behindCount > 0) && (
                     <button
@@ -590,7 +590,7 @@ export const SyncSettingsPanel: React.FC = () => {
               )}
 
               {showDetails && comparison && (comparison.aheadCount > 0 || comparison.behindCount > 0) && (
-                <div className="space-y-1.5 pt-1.5 border-t border-border-subtle/50 text-[11px]">
+                <div className="space-y-1.5 pt-1.5 border-t border-border-subtle/50 text-xs">
                   {comparison.categories.map((cat) => {
                     if (cat.state === 'in_sync' && cat.ahead === 0 && cat.behind === 0) return null;
                     return (
@@ -601,7 +601,7 @@ export const SyncSettingsPanel: React.FC = () => {
                           {cat.state === 'behind' && `${cat.behind} to pull`}
                           {cat.state === 'diverged' && `${cat.ahead} to push, ${cat.behind} to pull`}
                           {cat.details && cat.details.length > 0 && (
-                            <span className="block text-[10px] text-txt-muted/80">{cat.details.join(', ')}</span>
+                            <span className="block text-2xs text-txt-muted/80">{cat.details.join(', ')}</span>
                           )}
                         </span>
                       </div>
@@ -610,7 +610,7 @@ export const SyncSettingsPanel: React.FC = () => {
                 </div>
               )}
 
-              {checkError && <p className="text-[11px] text-red-400">{checkError}</p>}
+              {checkError && <p className="text-xs text-red-400">{checkError}</p>}
             </div>
           )}
 
@@ -659,7 +659,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
                   <span>Push</span>
                   {comparison?.aheadCount && comparison.aheadCount > 0 ? (
-                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-sky-300">
+                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.2 text-2xs font-semibold text-sky-300">
                       {comparison.aheadCount}
                     </span>
                   ) : null}
@@ -677,7 +677,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
                   <span>Pull</span>
                   {comparison?.behindCount && comparison.behindCount > 0 ? (
-                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-amber-300">
+                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.2 text-2xs font-semibold text-amber-300">
                       {comparison.behindCount}
                     </span>
                   ) : null}
@@ -686,23 +686,23 @@ export const SyncSettingsPanel: React.FC = () => {
             )}
           </div>
 
-          {actionMessage && <p className="text-[11px] text-emerald-400">{actionMessage}</p>}
-          {actionError && <p className="text-[11px] text-red-400">{actionError}</p>}
+          {actionMessage && <p className="text-xs text-emerald-400">{actionMessage}</p>}
+          {actionError && <p className="text-xs text-red-400">{actionError}</p>}
 
           {conflicts.length > 0 && (
             <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-              <div className="flex items-center gap-1.5 text-amber-300 font-medium text-[11px]">
+              <div className="flex items-center gap-1.5 text-amber-300 font-medium text-xs">
                 <ShieldAlert className="h-3.5 w-3.5" />
                 {conflicts.length} known_hosts conflict{conflicts.length > 1 ? 's' : ''} — not applied automatically
               </div>
               {conflicts.map((c) => (
-                <div key={c.hostPatternField} className="font-mono text-[10px] text-amber-200 leading-relaxed">
+                <div key={c.hostPatternField} className="font-mono text-2xs text-amber-200 leading-relaxed">
                   <div>{c.hostPatternField}</div>
                   <div className="pl-2 text-amber-300/80">local: {c.localFingerprint}</div>
                   <div className="pl-2 text-amber-300/80">remote: {c.remoteFingerprint}</div>
                 </div>
               ))}
-              <p className="text-[10px] text-amber-200/80 leading-relaxed">
+              <p className="text-2xs text-amber-200/80 leading-relaxed">
                 This host has a different key locally than on the remote — a possible sign of a rotated or spoofed
                 key. Review it yourself (e.g. with <code>ssh-keygen -R</code>) before trusting either one; sync will
                 never overwrite a local known_hosts entry automatically.
@@ -718,7 +718,7 @@ export const SyncSettingsPanel: React.FC = () => {
 
             {!confirmingWipe ? (
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] text-txt-muted leading-relaxed">
+                <p className="text-2xs text-txt-muted leading-relaxed">
                   Permanently delete this sync setup and its remote backup.
                 </p>
                 <button
@@ -728,7 +728,7 @@ export const SyncSettingsPanel: React.FC = () => {
                     setWipeError(null);
                     setWipeWarnings([]);
                   }}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete sync data...
@@ -736,7 +736,7 @@ export const SyncSettingsPanel: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2.5">
-                <div className="text-[11px] text-red-200/90 leading-relaxed space-y-1.5">
+                <div className="text-xs text-red-200/90 leading-relaxed space-y-1.5">
                   <p className="font-medium text-red-300">This will:</p>
                   <ul className="list-disc pl-4 space-y-0.5">
                     <li>
@@ -758,7 +758,7 @@ export const SyncSettingsPanel: React.FC = () => {
                     type="button"
                     onClick={() => setConfirmingWipe(false)}
                     disabled={wiping}
-                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
+                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -766,18 +766,18 @@ export const SyncSettingsPanel: React.FC = () => {
                     type="button"
                     onClick={() => void handleWipe()}
                     disabled={wiping}
-                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-red-500 shadow-sm transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 shadow-sm transition-colors disabled:opacity-50"
                   >
                     {wiping && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                     Yes, delete everything
                   </button>
                 </div>
-                {wipeError && <p className="text-[11px] text-red-400">{wipeError}</p>}
+                {wipeError && <p className="text-xs text-red-400">{wipeError}</p>}
               </div>
             )}
 
             {wipeWarnings.length > 0 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[10px] text-amber-200 leading-relaxed">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-2xs text-amber-200 leading-relaxed">
                 Sync configuration was cleared on this device, but some remote files could not be deleted — you may
                 want to remove them manually:
                 <ul className="list-disc pl-4 pt-1 space-y-0.5">
@@ -794,7 +794,7 @@ export const SyncSettingsPanel: React.FC = () => {
       {editingTarget && (
         <div className="space-y-3 rounded-lg border border-border-subtle bg-app-surface p-3.5">
           <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
-          {targetError && <p className="text-[11px] text-red-400">{targetError}</p>}
+          {targetError && <p className="text-xs text-red-400">{targetError}</p>}
           <div className="flex items-center justify-end gap-2">
             {status?.configured && (
               <button
@@ -814,10 +814,11 @@ export const SyncSettingsPanel: React.FC = () => {
               type="button"
               onClick={handleSaveTarget}
               disabled={savingTarget}
-              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors disabled:opacity-50"
+              title="Saves only this sync target — it does not save the rest of Settings"
+              className="flex items-center gap-1.5 rounded-lg border border-sky-600/60 px-3.5 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
             >
               {savingTarget && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Save target
+              Save Sync Target
             </button>
           </div>
         </div>

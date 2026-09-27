@@ -10,6 +10,7 @@ import { FilePane } from './FilePane';
 import { TransferQueueDrawer } from './TransferQueueDrawer';
 import type { PaneSide, PaneSource, SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
+import { describeIpcError } from '../../lib/format';
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
   left: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
@@ -186,7 +187,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       })
       .catch((err) => {
         if (mounted) {
-          setInitError(err instanceof Error ? err.message : 'Could not connect to local disk');
+          setInitError(describeIpcError(err, 'Could not connect to local disk'));
           setReady(true);
         }
       });
@@ -305,7 +306,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         setConnectionRequest(null);
         setPasswordPrompt(null);
       } catch (err) {
-        let msg = err instanceof Error ? err.message : 'Could not connect to the SFTP server';
+        let msg = describeIpcError(err, 'Could not connect to the SFTP server');
         msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
         window.alert(msg);
       } finally {
@@ -350,7 +351,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Could not connect to S3');
+        window.alert(describeIpcError(err, 'Could not connect to S3'));
       } finally {
         setConnecting(false);
       }
@@ -398,7 +399,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Could not connect to Kubernetes pod');
+        window.alert(describeIpcError(err, 'Could not connect to Kubernetes pod'));
       } finally {
         setConnecting(false);
       }
@@ -544,7 +545,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         onBrowseK8sFiles={connecting ? undefined : (target) => void connectPaneToK8s(target)}
       />
       {passwordPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
               <KeyRound className="h-4 w-4" />

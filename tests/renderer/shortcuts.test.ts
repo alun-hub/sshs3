@@ -39,4 +39,38 @@ describe('comboFromKeyboardEvent', () => {
       'Ctrl+Shift+Tab'
     );
   });
+
+  it('builds combo strings for font size shortcuts across keyboard layouts and numpad', () => {
+    // Swedish layout: '+' is unshifted next to 0 (physical code Minus)
+    expect(comboFromKeyboardEvent({ key: '+', code: 'Minus', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl++'
+    );
+    // Swedish layout: '-' is unshifted next to Right Shift (physical code Slash)
+    expect(comboFromKeyboardEvent({ key: '-', code: 'Slash', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+-'
+    );
+    // US layout: '-' is unshifted next to 0 (physical code Minus)
+    expect(comboFromKeyboardEvent({ key: '-', code: 'Minus', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+-'
+    );
+    // US layout: '=' unshifted
+    expect(comboFromKeyboardEvent({ key: '=', code: 'Equal', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+='
+    );
+    // US layout: Shift+'=' produces '+'
+    expect(comboFromKeyboardEvent({ key: '+', code: 'Equal', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+='
+    );
+    // Numpad '+' and '-'
+    expect(comboFromKeyboardEvent({ key: '+', code: 'NumpadAdd', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl++'
+    );
+    expect(comboFromKeyboardEvent({ key: '-', code: 'NumpadSubtract', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+-'
+    );
+    // Reset combo '0'
+    expect(comboFromKeyboardEvent({ key: '0', code: 'Digit0', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+0'
+    );
+  });
 });

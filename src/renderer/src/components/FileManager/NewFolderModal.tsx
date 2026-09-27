@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FolderPlus, X, Loader2 } from 'lucide-react';
 import type { SourceType } from './types';
+import { describeIpcError } from '../../lib/format';
+import { Button } from '../ui/Button';
 
 interface NewFolderModalProps {
   open: boolean;
@@ -59,7 +61,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
       await onCreate(trimmed);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
+      setError(describeIpcError(err, 'Failed to create folder'));
     } finally {
       setSubmitting(false);
     }
@@ -67,7 +69,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
@@ -110,7 +112,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
               className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary placeholder-txt-muted focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
             />
             {currentPath && (
-              <p className="text-[11px] text-txt-muted truncate font-mono">
+              <p className="text-xs text-txt-muted truncate font-mono">
                 Inside: {currentPath}
               </p>
             )}
@@ -123,19 +125,10 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="rounded-lg border border-border-subtle bg-app-surface px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50 transition-colors"
-            >
+            <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="bg-app-surface">
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !name.trim()}
-              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm disabled:opacity-50 transition-colors"
-            >
+            </Button>
+            <Button type="submit" variant="primary" disabled={submitting || !name.trim()}>
               {submitting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -144,7 +137,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
               ) : (
                 'Create'
               )}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

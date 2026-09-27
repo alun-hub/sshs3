@@ -16,6 +16,7 @@ import type {
   K8sPortForwardTarget,
 } from '@shared/types/kubernetes';
 import { formatDateTime } from '../../lib/dateFormat';
+import { describeIpcError } from '../../lib/format';
 
 interface K8sPortForwardModalProps {
   initialTarget?: {
@@ -152,7 +153,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
         return [...filtered, result];
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeIpcError(err, String(err)));
     } finally {
       setStarting(false);
     }
@@ -176,7 +177,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm animate-in fade-in duration-150"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
@@ -220,7 +221,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-txt-muted mb-1">Context</label>
+                <label className="block text-xs font-medium text-txt-muted mb-1">Context</label>
                 <input
                   type="text"
                   required
@@ -232,7 +233,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-txt-muted mb-1">Namespace</label>
+                <label className="block text-xs font-medium text-txt-muted mb-1">Namespace</label>
                 <input
                   type="text"
                   required
@@ -244,7 +245,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-txt-muted mb-1">Pod Name</label>
+                <label className="block text-xs font-medium text-txt-muted mb-1">Pod Name</label>
                 <input
                   type="text"
                   required
@@ -256,7 +257,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-txt-muted mb-1">
+                <label className="block text-xs font-medium text-txt-muted mb-1">
                   Container Port (Target)
                 </label>
                 <input
@@ -277,7 +278,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-primary font-mono focus:border-sky-500/50 focus:outline-none transition-colors"
                 />
                 {discoveredPorts.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-txt-muted">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs text-txt-muted">
                     <span>Pod ports:</span>
                     {discoveredPorts.map((p) => (
                       <button
@@ -301,7 +302,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-txt-muted mb-1">
+                <label className="block text-xs font-medium text-txt-muted mb-1">
                   Local Port (0 = auto-assign)
                 </label>
                 <input
@@ -313,7 +314,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                   placeholder="e.g. 8080 (0 for random)"
                   className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-primary font-mono focus:border-sky-500/50 focus:outline-none transition-colors"
                 />
-                <p className="mt-1 text-[10px] text-txt-muted">
+                <p className="mt-1 text-2xs text-txt-muted">
                   Use 0 for auto-assign. Ports &lt; 1024 require root/admin privileges.
                 </p>
               </div>
@@ -377,18 +378,18 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                           {pf.podName}:{pf.containerPort}
                         </span>
                       </div>
-                      <div className="text-[11px] text-txt-muted flex flex-wrap items-center gap-2">
+                      <div className="text-xs text-txt-muted flex flex-wrap items-center gap-2">
                         <span>{pf.namespace} · {pf.contextName}</span>
                         <span>·</span>
                         <span>Started: {formatDateTime(pf.startedAt)}</span>
                         {pf.activeConnections > 0 && (
-                          <span className="rounded bg-sky-500/15 text-sky-400 px-1.5 py-0.2 text-[10px]">
+                          <span className="rounded bg-sky-500/15 text-sky-400 px-1.5 py-0.2 text-2xs">
                             {pf.activeConnections} active conn{pf.activeConnections > 1 ? 's' : ''}
                           </span>
                         )}
                       </div>
                       {pf.error && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-rose-400 pt-0.5">
+                        <div className="flex items-center gap-1.5 text-xs text-rose-400 pt-0.5">
                           <XCircle className="h-3 w-3 shrink-0" />
                           <span className="break-all">{pf.error}</span>
                         </div>

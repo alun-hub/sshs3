@@ -71,7 +71,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
       <div className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -96,18 +96,18 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="font-medium">Import complete</span>
               </div>
-              <p className="text-[11px] text-txt-muted leading-relaxed">
+              <p className="text-xs text-txt-muted leading-relaxed">
                 {result.changedCategories.length > 0
                   ? `Imported: ${result.changedCategories.join(', ')}.`
                   : 'Nothing new to import — this machine already matched the remote.'}
               </p>
               {result.conflicts.length > 0 && (
                 <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-                  <div className="flex items-center gap-1.5 text-amber-300 font-medium text-[11px]">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-medium text-xs">
                     <ShieldAlert className="h-3.5 w-3.5" />
                     {result.conflicts.length} known_hosts conflict{result.conflicts.length > 1 ? 's' : ''} — review manually
                   </div>
-                  <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                  <p className="text-2xs text-amber-200/80 leading-relaxed">
                     Open Settings → Synchronization for details on each conflicting host key.
                   </p>
                 </div>
@@ -122,13 +122,13 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
             </div>
           ) : (
             <>
-              <p className="text-[11px] text-txt-muted leading-relaxed">
+              <p className="text-xs text-txt-muted leading-relaxed">
                 Point this machine at the same S3 bucket or SFTP server another machine already syncs to, then
                 enter the master password it was set up with to pull down your profiles, dotfile pools, and
                 settings.
               </p>
               <SyncTargetForm draft={draft} onChange={setDraft} disabled={settingUpTarget} />
-              {targetError && <p className="text-[11px] text-red-400">{targetError}</p>}
+              {targetError && <p className="text-xs text-red-400">{targetError}</p>}
               <button
                 type="button"
                 onClick={handleContinue}

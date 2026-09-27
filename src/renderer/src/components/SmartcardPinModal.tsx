@@ -306,7 +306,7 @@ export const SmartcardPinModal: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${visuals.badgeClass}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-2xs font-semibold uppercase tracking-wider ${visuals.badgeClass}`}
                   >
                     {visuals.badge}
                   </span>
@@ -326,7 +326,7 @@ export const SmartcardPinModal: React.FC = () => {
               <div className="mt-4 flex items-center gap-2.5 rounded-lg border border-border-subtle bg-app-surface/60 px-3 py-2 text-xs">
                 <contextInfo.icon className="h-4 w-4 shrink-0 text-txt-muted" />
                 <div className="min-w-0 flex-1">
-                  <span className="text-txt-muted text-[10px] uppercase tracking-wider block font-semibold leading-tight">
+                  <span className="text-txt-muted text-2xs uppercase tracking-wider block font-semibold leading-tight">
                     Target / Purpose
                   </span>
                   <span className="font-mono text-xs text-txt-primary font-medium truncate block">

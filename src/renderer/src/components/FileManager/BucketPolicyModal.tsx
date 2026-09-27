@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { FileJson, X, Loader2 } from 'lucide-react';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useConfirm } from '../ConfirmDialog';
+import { describeIpcError } from '../../lib/format';
 
 interface BucketPolicyModalProps {
   open: boolean;
@@ -51,7 +52,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
         setPolicyText(policy ?? '');
         setCorsText(cors ?? '');
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to retrieve bucket configuration'))
+      .catch((err) => setError(describeIpcError(err, 'Failed to retrieve bucket configuration')))
       .finally(() => setLoading(false));
   }, [open, providerId, bucketPath]);
 
@@ -100,7 +101,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       }
       onSaved?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete');
+      setError(describeIpcError(err, 'Failed to delete'));
     } finally {
       setSaving(false);
     }

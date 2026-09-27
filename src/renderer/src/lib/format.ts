@@ -60,3 +60,18 @@ export function classNames(...values: Array<string | false | null | undefined>):
 // canonical implementation now; SyncSettingsPanel.tsx wraps it locally for
 // its own "Never" fallback instead of reimplementing the formatting itself.
 export { formatDateTime } from './dateFormat';
+
+// Electron wraps every main-process throw with this prefix, which leaks the
+// internal IPC channel name (e.g. "fs:readFile") into user-facing error text.
+const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
+
+/**
+ * Renders a caught error for display to the user, stripping Electron's
+ * internal IPC error prefix so implementation details (IPC channel names)
+ * never leak into the UI (UX review #12). Falls back to `fallback` when the
+ * error has no usable message.
+ */
+export function describeIpcError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error) || !err.message) return fallback;
+  return err.message.replace(ELECTRON_IPC_PREFIX, '') || fallback;
+}

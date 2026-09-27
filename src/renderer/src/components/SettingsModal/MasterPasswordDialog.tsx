@@ -198,7 +198,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
       <div className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -218,17 +218,17 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
 
         <div onKeyDown={handleKeyDown} className="flex flex-col">
           <div className="space-y-4 p-5 text-xs text-txt-secondary max-h-[70vh] overflow-y-auto">
-            {description && <p className="text-[11px] text-txt-muted leading-relaxed">{description}</p>}
+            {description && <p className="text-xs text-txt-muted leading-relaxed">{description}</p>}
 
             {/* Mode toggle / info */}
             <div className="flex items-center justify-between pb-1">
-              <span className="text-[11px] font-medium text-txt-primary">
+              <span className="text-xs font-medium text-txt-primary">
                 {separatePasswords ? 'Separate passwords (Advanced)' : 'Single master password'}
               </span>
               <button
                 type="button"
                 onClick={() => setSeparatePasswords((prev) => !prev)}
-                className="text-[11px] text-sky-400 hover:underline"
+                className="text-xs text-sky-400 hover:underline"
               >
                 {separatePasswords ? 'Switch to single password' : 'Use separate passwords'}
               </button>
@@ -242,7 +242,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                   onChange={setSinglePassword}
                   autoFocus
                 />
-                <p className="text-[10px] text-txt-muted">
+                <p className="text-2xs text-txt-muted">
                   {isSetup
                     ? 'Protects both connection profiles and saved credentials with strong Zero-Knowledge encryption.'
                     : 'Enter your master password to unlock sync for this session.'}
@@ -255,7 +255,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                         style={{ width: `${(singleStrength.score + 1) * 20}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-txt-muted w-16 shrink-0">{singleStrength.label}</span>
+                    <span className="text-2xs text-txt-muted w-16 shrink-0">{singleStrength.label}</span>
                   </div>
                 )}
                 {isSetup && singlePassword && <StrengthTooWeakHint password={singlePassword} strength={singleStrength} />}
@@ -266,14 +266,14 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                     onChange={setSingleConfirm}
                   />
                 )}
-                {singleMismatch && <p className="text-[10px] text-red-400">Passwords don't match.</p>}
+                {singleMismatch && <p className="text-2xs text-red-400">Passwords don't match.</p>}
               </div>
             ) : (
               <>
                 {/* Topology password */}
                 <div className="space-y-2">
                   <PasswordField label="Topology master password" value={topologyPassword} onChange={setTopologyPassword} autoFocus />
-                  <p className="text-[10px] text-txt-muted">
+                  <p className="text-2xs text-txt-muted">
                     Protects server names, hostnames, ports, and configuration structure.
                   </p>
                   {isSetup && topologyPassword && (
@@ -284,7 +284,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                           style={{ width: `${(topologyStrength.score + 1) * 20}%` }}
                         />
                       </div>
-                      <span className="text-[10px] text-txt-muted w-16 shrink-0">{topologyStrength.label}</span>
+                      <span className="text-2xs text-txt-muted w-16 shrink-0">{topologyStrength.label}</span>
                     </div>
                   )}
                   {isSetup && topologyPassword && (
@@ -293,13 +293,13 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                   {isSetup && (
                     <PasswordField label="Confirm topology master password" value={topologyConfirm} onChange={setTopologyConfirm} />
                   )}
-                  {topologyMismatch && <p className="text-[10px] text-red-400">Passwords don't match.</p>}
+                  {topologyMismatch && <p className="text-2xs text-red-400">Passwords don't match.</p>}
                 </div>
 
                 {/* Credentials password */}
                 <div className="space-y-2 pt-2 border-t border-border-subtle">
                   <PasswordField label="Credentials master password" value={credentialsPassword} onChange={setCredentialsPassword} />
-                  <p className="text-[10px] text-txt-muted">
+                  <p className="text-2xs text-txt-muted">
                     Protects usernames, saved passwords, private keys, and API tokens.
                   </p>
                   {isSetup && credentialsPassword && (
@@ -310,7 +310,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                           style={{ width: `${(credentialsStrength.score + 1) * 20}%` }}
                         />
                       </div>
-                      <span className="text-[10px] text-txt-muted w-16 shrink-0">{credentialsStrength.label}</span>
+                      <span className="text-2xs text-txt-muted w-16 shrink-0">{credentialsStrength.label}</span>
                     </div>
                   )}
                   {isSetup && credentialsPassword && (
@@ -323,7 +323,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                       onChange={setCredentialsConfirm}
                     />
                   )}
-                  {credentialsMismatch && <p className="text-[10px] text-red-400">Passwords don't match.</p>}
+                  {credentialsMismatch && <p className="text-2xs text-red-400">Passwords don't match.</p>}
                 </div>
               </>
             )}
@@ -332,7 +332,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
               <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
                 <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-amber-200 leading-relaxed">
+                  <p className="text-xs text-amber-200 leading-relaxed">
                     These passwords are never sent anywhere and never stored. If you lose either one, the data
                     encrypted with it can <strong>never</strong> be recovered — not by you, and not by us.
                   </p>
@@ -343,7 +343,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                       onChange={(e) => setAcknowledged(e.target.checked)}
                       className="h-3.5 w-3.5 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
                     />
-                    <span className="text-[11px] text-amber-200">I've saved these passwords somewhere safe.</span>
+                    <span className="text-xs text-amber-200">I've saved these passwords somewhere safe.</span>
                   </label>
                 </div>
               </div>
@@ -365,7 +365,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
             )}
 
             {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-[11px] text-red-300">{error}</div>
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300">{error}</div>
             )}
           </div>
 

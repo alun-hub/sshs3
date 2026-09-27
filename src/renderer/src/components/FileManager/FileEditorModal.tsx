@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc';
-import { classNames, formatBytes, formatDateTime } from '../../lib/format';
+import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
@@ -120,7 +120,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setTruncated(res.truncated);
       setReadOnly(res.isBinary);
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to load file content');
+      setError(describeIpcError(err, 'Failed to load file content'));
     } finally {
       setLoading(false);
     }
@@ -154,7 +154,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         }
       }, 50);
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to start live log stream');
+      setError(describeIpcError(err, 'Failed to start live log stream'));
       setTailModeActive(false);
     } finally {
       setLoading(false);
@@ -278,7 +278,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setSaveStatus(`Saved at ${timestamp}`);
       onSaved?.();
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to save file');
+      setError(describeIpcError(err, 'Failed to save file'));
     } finally {
       setSaving(false);
     }
@@ -294,7 +294,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setExternalSessionToken(res.sessionToken);
       setExternalStatus('External editor active — auto-uploading on save');
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to open external editor');
+      setError(describeIpcError(err, 'Failed to open external editor'));
     } finally {
       setExternalLaunching(false);
     }
@@ -420,7 +420,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label={`Editing ${entry.name}`}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150"
     >
       <div
         className={classNames(
@@ -440,17 +440,17 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <span className="text-sm font-semibold text-txt-primary truncate">
                 {entry.name}
               </span>
-              <span className="rounded bg-app-surface-subtle px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-txt-muted">
+              <span className="rounded bg-app-surface-subtle px-1.5 py-0.5 text-2xs font-mono uppercase tracking-wider text-txt-muted">
                 {sourceType}
               </span>
               {isDirty ? (
-                <span className="flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                <span className="flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-2xs font-medium text-amber-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
                   Unsaved changes
                 </span>
               ) : (
                 saveStatus && (
-                  <span className="flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                  <span className="flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-2xs font-medium text-emerald-400">
                     <Check className="h-3 w-3" />
                     Saved
                   </span>
@@ -633,7 +633,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         </div>
 
         {/* Path Subheader */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface/60 px-4 py-1 text-[11px] text-txt-muted">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface/60 px-4 py-1 text-xs text-txt-muted">
           <span className="font-mono truncate">{entry.path}</span>
           <span className="shrink-0">{formatBytes(entry.size)}</span>
         </div>
@@ -644,7 +644,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
               <span className="font-semibold">TAIL -F STREAM ACTIVE</span>
-              <span className="text-[11px] opacity-80">
+              <span className="text-xs opacity-80">
                 ({autoScroll ? 'Auto-scrolling' : 'Auto-scroll paused (scroll down to bottom to resume)'})
               </span>
             </div>
@@ -654,7 +654,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 void stopTailSession();
                 void loadFile();
               }}
-              className="rounded bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-800/80"
+              className="rounded bg-emerald-900/60 px-2 py-0.5 text-xs font-medium text-emerald-200 hover:bg-emerald-800/80"
             >
               Stop Stream
             </button>
@@ -673,7 +673,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <button
               type="button"
               onClick={() => void startTailSession()}
-              className="rounded bg-amber-800/50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-700/60 shrink-0"
+              className="rounded bg-amber-800/50 px-2.5 py-0.5 text-xs font-semibold text-amber-200 hover:bg-amber-700/60 shrink-0"
             >
               Switch to Tail -f
             </button>
@@ -707,7 +707,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               className="flex-1 bg-transparent text-xs text-txt-primary placeholder-txt-muted outline-none"
             />
             {searchQuery && (
-              <span className="text-[11px] text-txt-muted px-1">
+              <span className="text-xs text-txt-muted px-1">
                 {searchMatches.length > 0
                   ? `${currentMatchIdx + 1} of ${searchMatches.length}`
                   : 'No matches'}
@@ -771,7 +771,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <button
               type="button"
               onClick={() => void handleOpenExternal()}
-              className="rounded bg-amber-800/40 px-2 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-700/50"
+              className="rounded bg-amber-800/40 px-2 py-0.5 text-xs font-semibold text-amber-200 hover:bg-amber-700/50"
             >
               Open in External App
             </button>
@@ -867,7 +867,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         </div>
 
         {/* Status Bar */}
-        <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-3 py-1.5 text-[11px] text-txt-muted select-none shrink-0 font-mono">
+        <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-muted select-none shrink-0 font-mono">
           <div className="flex items-center gap-3">
             <span>
               Ln {cursorPos.line}, Col {cursorPos.col}
@@ -882,7 +882,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             )}
             <span
               className={classNames(
-                'font-sans uppercase text-[10px] font-semibold px-1.5 py-0.5 rounded',
+                'font-sans uppercase text-2xs font-semibold px-1.5 py-0.5 rounded',
                 tailModeActive
                   ? 'bg-emerald-500/20 text-emerald-400'
                   : readOnly
