@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link2, X, Loader2, Copy, Check } from 'lucide-react';
+import { Link2, X, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface PresignedUrlModalProps {
@@ -93,6 +93,14 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
         </div>
 
         <div className="p-4 space-y-3 text-xs text-txt-secondary">
+          {/* LOW finding (code review): this modal generated/copied links
+              with valid access without ever noting that anyone who gets the
+              link can use it, not just the person it was copied for. */}
+          <div className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>Anyone with this link can access the file — with no further login — until it expires.</span>
+          </div>
+
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-txt-primary">Link expires after</span>
             <select

@@ -429,6 +429,27 @@ describe('S3StorageProvider', () => {
       });
     });
 
+    // LOW finding (code review): an S3 key is an opaque string — nothing
+    // stops an object from actually being named e.g. "some/path/../file.txt"
+    // or "some/path/./file.txt", which would otherwise surface as a virtual
+    // "directory" literally named ".." or ".", looking exactly like a
+    // parent-directory shortcut and confusing navigation/breadcrumb logic.
+    it('filters out virtual ".." / "." directory entries and literal ".."/"." object keys', async () => {
+      clientSendMock.mockImplementationOnce(async (command: any) => {
+        if (command instanceof ListObjectsV2Command) {
+          return {
+            CommonPrefixes: [{ Prefix: 'foo/../' }, { Prefix: 'foo/./' }, { Prefix: 'documents/' }],
+            Contents: [{ Key: '..', Size: 0 }, { Key: '.', Size: 0 }, { Key: 'readme.txt', Size: 10 }],
+          };
+        }
+        throw new Error(`Unexpected command: ${command.constructor.name}`);
+      });
+
+      const entries = await provider.list('/my-bucket');
+
+      expect(entries.map((e) => e.name)).toEqual(['documents', 'readme.txt']);
+    });
+
     it('should list subfolder contents and filter out folder marker object and trailing slash keys', async () => {
       const fileDate = new Date('2026-09-14T14:15:00Z');
       clientSendMock.mockImplementationOnce(async (command: any) => {

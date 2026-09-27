@@ -246,6 +246,17 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         const cpPrefix = cp.Prefix ?? '';
         const stripped = cpPrefix.replace(/\/+$/, '');
         const name = path.posix.basename(stripped);
+        // S3 keys are opaque strings — nothing stops an object from
+        // actually being named e.g. "some/path/../file.txt", which would
+        // surface here as a virtual "directory" literally named ".." (or
+        // "."). No real security boundary is at risk (S3 has no directory
+        // tree for ".." to escape), but showing it would look exactly like
+        // a parent-directory shortcut and confuse navigation/breadcrumb
+        // logic that assumes a directory name is a real path segment (LOW
+        // finding, code review) — so it's left out of the listing.
+        if (name === '..' || name === '.') {
+          continue;
+        }
         results.push({
           name,
           path: `/${bucket}/${stripped}`,
@@ -263,6 +274,9 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           continue;
         }
         const name = path.posix.basename(itemKey);
+        if (name === '..' || name === '.') {
+          continue;
+        }
         results.push({
           name,
           path: `/${bucket}/${itemKey}`,

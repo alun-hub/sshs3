@@ -1,6 +1,57 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, AlertTriangle, Loader2, X } from 'lucide-react';
-import { estimatePasswordStrength } from './passwordStrength';
+import { estimatePasswordStrength, MIN_ACCEPTABLE_SCORE, type PasswordStrength } from './passwordStrength';
+
+const INITIAL_STRENGTH: PasswordStrength = { score: 0, label: 'Very weak', colorClassName: 'bg-red-500' };
+
+/**
+ * Scores `password` via the lazily-loaded zxcvbn-ts (see passwordStrength.ts)
+ * whenever it changes. `loaded` is false until the first real score for the
+ * *current* password has resolved — canSubmit below treats that as "not yet
+ * known" rather than "weak", so a slow/failed dynamic import can only ever
+ * be as permissive as the old length-only check, never block a password
+ * before it's actually been scored.
+ */
+function usePasswordStrength(password: string): PasswordStrength & { loaded: boolean } {
+  const [state, setState] = useState<PasswordStrength & { loaded: boolean }>({ ...INITIAL_STRENGTH, loaded: false });
+
+  useEffect(() => {
+    if (!password) {
+      setState({ ...INITIAL_STRENGTH, loaded: false });
+      return;
+    }
+    let cancelled = false;
+    void estimatePasswordStrength(password).then((result) => {
+      if (!cancelled) setState({ ...result, loaded: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [password]);
+
+  return state;
+}
+
+function meetsStrengthRequirement(password: string, strength: PasswordStrength & { loaded: boolean }): boolean {
+  if (password.length < 8) return false;
+  if (!strength.loaded) return true;
+  return strength.score >= MIN_ACCEPTABLE_SCORE;
+}
+
+function StrengthTooWeakHint({
+  password,
+  strength,
+}: {
+  password: string;
+  strength: PasswordStrength & { loaded: boolean };
+}): React.ReactElement | null {
+  if (password.length < 8 || !strength.loaded || strength.score >= MIN_ACCEPTABLE_SCORE) return null;
+  return (
+    <p className="text-[10px] text-red-400">
+      Too easy to guess (common word, pattern, or reused elsewhere) — try something longer or less predictable.
+    </p>
+  );
+}
 
 export interface MasterPasswordDialogProps {
   open: boolean;
@@ -95,6 +146,12 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
     }
   }, [open, canLinkSmartcard]);
 
+  // Hooks must run on every render regardless of `open` — the early return
+  // below happens after these.
+  const singleStrength = usePasswordStrength(singlePassword);
+  const topologyStrength = usePasswordStrength(topologyPassword);
+  const credentialsStrength = usePasswordStrength(credentialsPassword);
+
   if (!open) return null;
 
   const isSetup = mode === 'setup';
@@ -103,7 +160,8 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
   const singleMismatch = isSetup && singleConfirm.length > 0 && singlePassword !== singleConfirm;
   const singleCanSubmit =
     singlePassword.length > 0 &&
-    (!isSetup || (singlePassword === singleConfirm && acknowledged && singlePassword.length >= 8));
+    (!isSetup ||
+      (singlePassword === singleConfirm && acknowledged && meetsStrengthRequirement(singlePassword, singleStrength)));
 
   // In separate-passwords mode:
   const topologyMismatch = isSetup && topologyConfirm.length > 0 && topologyPassword !== topologyConfirm;
@@ -115,14 +173,10 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
       (topologyPassword === topologyConfirm &&
         credentialsPassword === credentialsConfirm &&
         acknowledged &&
-        topologyPassword.length >= 8 &&
-        credentialsPassword.length >= 8));
+        meetsStrengthRequirement(topologyPassword, topologyStrength) &&
+        meetsStrengthRequirement(credentialsPassword, credentialsStrength)));
 
   const canSubmit = separatePasswords ? separateCanSubmit : singleCanSubmit;
-
-  const singleStrength = estimatePasswordStrength(singlePassword);
-  const topologyStrength = estimatePasswordStrength(topologyPassword);
-  const credentialsStrength = estimatePasswordStrength(credentialsPassword);
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -204,6 +258,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                     <span className="text-[10px] text-txt-muted w-16 shrink-0">{singleStrength.label}</span>
                   </div>
                 )}
+                {isSetup && singlePassword && <StrengthTooWeakHint password={singlePassword} strength={singleStrength} />}
                 {isSetup && (
                   <PasswordField
                     label="Confirm master password"
@@ -232,6 +287,9 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                       <span className="text-[10px] text-txt-muted w-16 shrink-0">{topologyStrength.label}</span>
                     </div>
                   )}
+                  {isSetup && topologyPassword && (
+                    <StrengthTooWeakHint password={topologyPassword} strength={topologyStrength} />
+                  )}
                   {isSetup && (
                     <PasswordField label="Confirm topology master password" value={topologyConfirm} onChange={setTopologyConfirm} />
                   )}
@@ -254,6 +312,9 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                       </div>
                       <span className="text-[10px] text-txt-muted w-16 shrink-0">{credentialsStrength.label}</span>
                     </div>
+                  )}
+                  {isSetup && credentialsPassword && (
+                    <StrengthTooWeakHint password={credentialsPassword} strength={credentialsStrength} />
                   )}
                   {isSetup && (
                     <PasswordField
