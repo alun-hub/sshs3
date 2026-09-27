@@ -13,8 +13,9 @@ import {
   ChevronRight,
   ChevronDown,
   Boxes,
+  Cable,
 } from 'lucide-react';
-import type { CachedSmartcardAgent } from '@shared/types/ssh';
+import type { CachedSmartcardAgent, SSHActiveTunnel } from '@shared/types/ssh';
 import { Kbd } from './ui/Kbd';
 
 export type TabType = 'terminal' | 'filemanager';
@@ -36,6 +37,7 @@ export interface TabBarProps {
   onOpenProfiles?: () => void;
   onOpenSettings?: () => void;
   onOpenDirSyncProfiles?: () => void;
+  onOpenTunnels?: () => void;
   /** Shown only when Settings > Security > Smartcard PIN Caching is set to 'Global (App Lifetime)'. */
   showLockSmartcardButton?: boolean;
   onLockSmartcard?: () => Promise<{ locked: number }>;
@@ -52,6 +54,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onOpenProfiles,
   onOpenSettings,
   onOpenDirSyncProfiles,
+  onOpenTunnels,
   showLockSmartcardButton,
   onLockSmartcard,
   onListCachedSmartcards,
@@ -66,6 +69,23 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [cachedAgents, setCachedAgents] = useState<CachedSmartcardAgent[] | null>(null);
   const [loadingCachedAgents, setLoadingCachedAgents] = useState(false);
   const [expandedFingerprints, setExpandedFingerprints] = useState<Set<string>>(new Set());
+  const [activeTunnels, setActiveTunnels] = useState<SSHActiveTunnel[]>([]);
+
+  useEffect(() => {
+    // Optional chaining (LOW finding pattern already used elsewhere in this file, see the
+    // comment above <TabBar> in App.tsx): degrade to "no tunnel indicator" instead of
+    // crashing the whole tab bar if the preload bridge is somehow missing or incomplete
+    // (e.g. an older/mocked window.multissh in tests).
+    window.multissh
+      ?.sshTunnelList?.()
+      ?.then(setActiveTunnels)
+      ?.catch(() => {});
+    const unsubscribe = window.multissh?.onSshTunnelEvent?.(setActiveTunnels);
+    return () => unsubscribe?.();
+  }, []);
+
+  const liveTunnelCount = activeTunnels.filter((t) => t.status === 'active').length;
+  const erroredTunnelCount = activeTunnels.filter((t) => t.status === 'error').length;
 
   const formatCertDate = (isoLike: string): string => {
     const d = new Date(isoLike);
@@ -390,6 +410,28 @@ export const TabBar: React.FC<TabBarProps> = ({
           className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Server className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          data-testid="quick-tunnels-btn"
+          title={
+            liveTunnelCount > 0
+              ? `SSH Tunnels (${liveTunnelCount} active)`
+              : erroredTunnelCount > 0
+                ? `SSH Tunnels (${erroredTunnelCount} failed)`
+                : 'SSH Tunnels'
+          }
+          aria-label="SSH Tunnels"
+          onClick={onOpenTunnels}
+          className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-app-surface-hover ${
+            erroredTunnelCount > 0
+              ? 'text-rose-400 hover:text-rose-300'
+              : liveTunnelCount > 0
+                ? 'text-emerald-400 hover:text-emerald-300'
+                : 'text-txt-muted hover:text-txt-primary'
+          }`}
+        >
+          <Cable className="h-4 w-4" />
         </button>
         <button
           type="button"

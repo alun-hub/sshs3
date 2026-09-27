@@ -14,6 +14,18 @@ export interface SSHTunnelConfig {
   enabled?: boolean;
 }
 
+/** A currently running standalone tunnel process (started independently of any terminal session). */
+export interface SSHActiveTunnel {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  tunnel: SSHTunnelConfig;
+  status: 'active' | 'error';
+  startedAt: string;
+  error?: string;
+  pid?: number;
+}
+
 export interface SSHConnectionConfig {
   id: string;
   name: string;

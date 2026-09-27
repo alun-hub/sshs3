@@ -16,6 +16,7 @@ import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal'
 import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
+import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
@@ -99,6 +100,7 @@ export const App: React.FC = () => {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
+  const [tunnelsModalOpen, setTunnelsModalOpen] = useState(false);
   const [dirSyncRunProfile, setDirSyncRunProfile] = useState<DirectorySyncProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
@@ -534,6 +536,10 @@ export const App: React.FC = () => {
     setSettingsModalOpen(true);
   };
 
+  const handleOpenTunnels = () => {
+    setTunnelsModalOpen(true);
+  };
+
   const handleSyncBootstrapComplete = () => {
     // Settings may have just been pulled in; profiles/dotfile pools are
     // already re-read fresh from disk whenever their own modals open.
@@ -727,6 +733,7 @@ export const App: React.FC = () => {
             onNewK8sSession={handleNewK8sSession}
             onOpenProfiles={handleOpenProfiles}
             onOpenSettings={handleOpenSettings}
+            onOpenTunnels={handleOpenTunnels}
             onOpenDirSyncProfiles={() => setDirSyncProfilesOpen(true)}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
             onLockSmartcard={() => window.multissh?.smartcardLockAll() ?? Promise.resolve({ locked: 0 })}
@@ -1055,6 +1062,9 @@ export const App: React.FC = () => {
         onSave={handleSaveSettings}
         onClose={() => setSettingsModalOpen(false)}
       />
+
+      {/* SSH Tunnels Modal (global, across all connections) */}
+      <SSHGlobalTunnelsModal open={tunnelsModalOpen} onClose={() => setTunnelsModalOpen(false)} />
 
       <SyncBootstrapModal
         open={syncBootstrapModalOpen}

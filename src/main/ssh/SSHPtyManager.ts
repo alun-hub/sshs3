@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
@@ -297,6 +298,35 @@ export class InternalSSHPtySession implements SSHPtySession {
     if (this.controlPath) {
       try {
         if (fs.existsSync(this.controlPath)) {
+          // ControlPersist keeps the ssh master connection alive as a detached background
+          // process (renamed "ssh: <path> [mux]") after the interactive session ends, so it can
+          // no longer be assumed to be — or even share a pid with — the process `this.pty.kill()`
+          // just targeted above; it may have already forked away into that persisted role by the
+          // time this runs. `-O exit` is the one thing OpenSSH itself provides that identifies
+          // and tears down that master purely by its control socket, regardless of its current
+          // pid, so it's what actually closes the connection instead of leaving it running and
+          // only deleting the now-stale socket file.
+          // Defense in depth: a leading '-' on either argument would be parsed by `ssh` as a flag
+          // rather than a value (argv flag smuggling). `createSession`/`reconnectSession` already
+          // reject a host starting with '-' before a session can exist at all, and `controlPath`
+          // is always our own generated tmp path, never user input — but neither is worth trusting
+          // implicitly here since a future refactor could change either invariant silently.
+          const host = this.config.host;
+          const controlPath = this.controlPath;
+          if (host.startsWith('-') || controlPath.startsWith('-')) {
+            throw new Error('Refusing to run ssh -O exit: host or control path looks like a flag');
+          }
+          await new Promise<void>((resolve) => {
+            const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+            // Bounded: never let a stuck/unresponsive master block session cleanup.
+            execFile(sshBinary, ['-S', controlPath, '-O', 'exit', host], { timeout: 3000 }, () => resolve());
+          });
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+      try {
+        if (fs.existsSync(this.controlPath)) {
           fs.unlinkSync(this.controlPath);
         }
       } catch {
@@ -308,16 +338,78 @@ export class InternalSSHPtySession implements SSHPtySession {
 
 export interface SSHPtyManagerOptions {
   settingsStore?: SettingsStore;
+  /**
+   * Reports whether a given saved tunnel is already running as its own standalone process
+   * (started from the SSH Tunnels UI, independent of any terminal). When it is, that tunnel is
+   * left out of the `-L/-R/-D` flags a new terminal session's own `ssh` process would otherwise
+   * also carry for it — without this, opening a terminal to a host with an already-running
+   * standalone tunnel spawns a second `ssh` process fighting over the same local port, and the
+   * user sees a raw "bind: Address already in use" from the new session for a tunnel that is, in
+   * fact, already up and working.
+   */
+  isTunnelActive?: (connectionId: string, tunnelId: string) => boolean;
 }
 
 export class SSHPtyManager extends EventEmitter {
   private sessions: Map<string, SSHPtySession> = new Map();
   private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
   private settingsStore?: SettingsStore;
+  private isTunnelActive?: (connectionId: string, tunnelId: string) => boolean;
+  /**
+   * Local ports our own already-open sessions have embedded a `-L`/`-D` tunnel for, keyed by the
+   * owning session id. A saved tunnel is auto-embedded into *every* session opened for its
+   * connection (so a plain terminal reconnect keeps a configured tunnel up too) — that's fine for
+   * the first session, but a second terminal to the same host would otherwise spawn its own `ssh`
+   * also trying to bind the identical port, which just fails with "Address already in use" for a
+   * port that's already perfectly reachable via the first session. This is the general form of
+   * the same problem `isTunnelActive` solves for a standalone tunnel: only one process should ever
+   * hold a given local listener at a time.
+   */
+  private boundLocalPorts: Map<number, string> = new Map();
 
   constructor(options?: SSHPtyManagerOptions) {
     super();
     this.settingsStore = options?.settingsStore;
+    this.isTunnelActive = options?.isTunnelActive;
+  }
+
+  /**
+   * Drops any saved tunnel from a config that would collide with a port some other already-live
+   * process (a standalone tunnel, or one of our own other sessions) already holds, before it's
+   * handed to `buildSSHArguments`. `'remote'` tunnels bind on the remote server, not locally, so
+   * they're never a local port conflict here.
+   */
+  private withoutConflictingTunnels(config: SSHConnectionConfig, sessionId: string): SSHConnectionConfig {
+    if (!config.tunnels?.length) return config;
+    const tunnels = config.tunnels.filter((t) => {
+      if (t.enabled === false || t.type === 'remote') return true;
+      const heldBy = this.boundLocalPorts.get(t.localPort);
+      if (heldBy && heldBy !== sessionId) return false;
+      return !this.isTunnelActive?.(config.id, t.id);
+    });
+    return tunnels.length === config.tunnels.length ? config : { ...config, tunnels };
+  }
+
+  /**
+   * Records which local ports `filteredConfig` (the config actually handed to
+   * `buildSSHArguments`, post-filtering) causes this session's `ssh` process to bind, so a later
+   * session to the same or another host can avoid re-requesting the same port. Clears this
+   * session's previous registrations first, since reconnecting can end up with a different set.
+   */
+  private registerBoundPorts(filteredConfig: SSHConnectionConfig, sessionId: string): void {
+    for (const [port, owner] of this.boundLocalPorts) {
+      if (owner === sessionId) this.boundLocalPorts.delete(port);
+    }
+    for (const t of filteredConfig.tunnels || []) {
+      if (t.enabled === false || t.type === 'remote') continue;
+      this.boundLocalPorts.set(t.localPort, sessionId);
+    }
+  }
+
+  private releaseBoundPorts(sessionId: string): void {
+    for (const [port, owner] of this.boundLocalPorts) {
+      if (owner === sessionId) this.boundLocalPorts.delete(port);
+    }
   }
 
   /**
@@ -372,7 +464,8 @@ export class SSHPtyManager extends EventEmitter {
         (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
     }
 
-    const sshArgs = SmartcardDetector.buildSSHArguments(config);
+    const filteredConfig = this.withoutConflictingTunnels(config, session.sessionId);
+    const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
     try {
@@ -384,6 +477,7 @@ export class SSHPtyManager extends EventEmitter {
         env,
       });
 
+      this.registerBoundPorts(filteredConfig, session.sessionId);
       session.bindPty(ptyProcess);
       return true;
     } catch {
@@ -474,7 +568,8 @@ export class SSHPtyManager extends EventEmitter {
         ? path.join(os.tmpdir(), `s3m-${crypto.randomUUID().slice(0, 8)}.sock`)
         : undefined;
 
-    const sshArgs = SmartcardDetector.buildSSHArguments(config, controlPath);
+    const filteredConfig = this.withoutConflictingTunnels(config, sessionId);
+    const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
     let ptyProcess: IPty;
@@ -492,6 +587,8 @@ export class SSHPtyManager extends EventEmitter {
       }
       throw err;
     }
+
+    this.registerBoundPorts(filteredConfig, sessionId);
 
     const session = new InternalSSHPtySession({
       sessionId,
@@ -676,5 +773,6 @@ export class SSHPtyManager extends EventEmitter {
   public removeSessionInternal(sessionId: string): void {
     this.sessions.delete(sessionId);
     this.sessionOptions.delete(sessionId);
+    this.releaseBoundPorts(sessionId);
   }
 }

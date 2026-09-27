@@ -46,6 +46,7 @@ import { K8sDiscoveryService } from './services/K8sDiscoveryService';
 import { loginWithToken } from './services/K8sAuthService';
 import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
+import { SSHTunnelManager } from './services/SSHTunnelManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
@@ -100,6 +101,8 @@ import type {
   GenerateFido2KeyRequest,
   GeneratedFido2Key,
   Fido2ResidentKey,
+  SSHTunnelConfig,
+  SSHActiveTunnel,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -163,6 +166,7 @@ export interface IpcBridgeOptions {
   k8sTerminalManager?: K8sTerminalManager;
   k8sLogManager?: K8sLogManager;
   k8sPortForwardManager?: K8sPortForwardManager;
+  sshTunnelManager?: SSHTunnelManager;
   getWebContents?: () => Electron.WebContents | null | undefined;
 }
 
@@ -190,6 +194,7 @@ export class IpcBridge {
   public readonly k8sTerminalManager: K8sTerminalManager;
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
+  public readonly sshTunnelManager: SSHTunnelManager;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -245,13 +250,22 @@ export class IpcBridge {
   private onK8sLogData?: (event: { sessionId: string; data: string }) => void;
   private onK8sLogEnd?: (event: { sessionId: string }) => void;
   private onK8sPortForwardChange?: (list: K8sActivePortForward[]) => void;
+  private onSshTunnelChange?: (list: SSHActiveTunnel[]) => void;
   private onK8sConfigChanged?: () => void;
   private unsubscribeK8sConfig?: () => void;
 
   constructor(options: IpcBridgeOptions = {}) {
     this.ipcMain = options.ipcMain ?? electronIpcMain;
     this.settingsStore = options.settingsStore ?? new SettingsStore();
-    this.sshPtyManager = options.sshPtyManager ?? new SSHPtyManager({ settingsStore: this.settingsStore });
+    this.sshPtyManager =
+      options.sshPtyManager ??
+      new SSHPtyManager({
+        settingsStore: this.settingsStore,
+        isTunnelActive: (connectionId, tunnelId) =>
+          this.sshTunnelManager
+            .listActive()
+            .some((t) => t.connectionId === connectionId && t.tunnel.id === tunnelId),
+      });
     this.knownHostsStore = options.knownHostsStore ?? new KnownHostsStore();
     this.storageRegistry =
       options.storageRegistry ??
@@ -284,6 +298,7 @@ export class IpcBridge {
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
     this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
+    this.sshTunnelManager = options.sshTunnelManager ?? new SSHTunnelManager();
     this.getWebContents = options.getWebContents ?? (() => null);
   }
 
@@ -3060,6 +3075,45 @@ export class IpcBridge {
         return await this.k8sDebugService.attachEphemeralContainer(target);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.SSH_TUNNEL_START,
+      async (
+        _event,
+        rawConfig: SSHConnectionConfig,
+        tunnel: SSHTunnelConfig
+      ): Promise<SSHActiveTunnel> => {
+        // Same as terminal/SFTP sessions: pre-load a PKCS#11/FIDO2 resident credential
+        // into a private agent so the ssh child just points IdentityAgent at it, rather
+        // than needing an interactive PIN/passphrase for every standalone tunnel.
+        let config = await this.prepareSmartcardConfig(rawConfig);
+        config = await this.prepareFido2Config(config);
+        const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
+        return await this.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {
+          const isPassword = /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
+          const promptText = isPassword
+            ? rawPrompt.trim()
+            : `Enter the passphrase/PIN to connect via SSH to ${hostLabel}:`;
+          return this.promptForPinDirect(
+            promptText,
+            isPassword ? 'password' : 'smartcard',
+            isPassword ? `SSH: ${hostLabel}` : `Smartcard: ${hostLabel}`
+          );
+        });
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_STOP, async (_event, id: string): Promise<boolean> => {
+      return await this.sshTunnelManager.stopTunnel(id);
+    });
+
+    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_LIST, async (): Promise<SSHActiveTunnel[]> => {
+      return this.sshTunnelManager.listActive();
+    });
+
+    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_CHECK_PORT, async (_event, port: number): Promise<boolean> => {
+      return await this.sshTunnelManager.isPortFree(port);
+    });
   }
 
   private registerSearchHandlers(): void {
@@ -3501,6 +3555,14 @@ export class IpcBridge {
     };
     this.k8sPortForwardManager.on('change', this.onK8sPortForwardChange);
 
+    this.onSshTunnelChange = (active) => {
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.SSH_TUNNEL_EVENT, active);
+      }
+    };
+    this.sshTunnelManager.on('change', this.onSshTunnelChange);
+
     this.onK8sConfigChanged = () => {
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
@@ -3553,6 +3615,14 @@ export class IpcBridge {
       this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
     }
     void this.k8sPortForwardManager.stopAll();
+
+    if (this.onSshTunnelChange) {
+      this.sshTunnelManager.off('change', this.onSshTunnelChange);
+    }
+    // Awaited (unlike the other managers' stopAll() calls above): dispose() is itself awaited by
+    // app 'before-quit' before app.quit() runs, so this is what actually guarantees every standalone
+    // tunnel process is signalled before the app exits on a normal quit.
+    await this.sshTunnelManager.stopAll();
 
     if (this.unsubscribeK8sConfig) {
       this.unsubscribeK8sConfig();

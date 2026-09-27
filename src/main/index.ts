@@ -23,6 +23,23 @@ app.on('child-process-gone', (_event, details) => {
   }
 });
 
+// A desktop GUI app doesn't normally receive SIGINT/SIGTERM in everyday use, but it does when
+// killed from the command line (`kill`/`pkill`), by a process manager, or during a session/system
+// shutdown script. Without an explicit handler here, Node's default disposition for an unhandled
+// SIGINT/SIGTERM is immediate termination — bypassing Electron's entire app-quit lifecycle, so
+// `before-quit`/`will-quit` never fire and nothing gets a chance to clean up: standalone SSH
+// tunnels, private ssh-agents, Kubernetes port-forwards, and any other spawned child process are
+// all left running as orphans. Routing the signal through `app.quit()` instead reuses the exact
+// same graceful shutdown path (including the `before-quit` handler's `ipcBridge.dispose()`) a
+// normal window-close or Cmd+Q already goes through.
+if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+  const handleTerminationSignal = (): void => {
+    app.quit();
+  };
+  process.once('SIGINT', handleTerminationSignal);
+  process.once('SIGTERM', handleTerminationSignal);
+}
+
 process.on('uncaughtException', (err) => {
   // Gracefully log undici/HTTP2 stream termination and transient socket aborts
   // instead of crashing Electron with an unexpected error dialog.

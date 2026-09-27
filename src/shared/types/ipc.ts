@@ -8,6 +8,8 @@ import type {
   GenerateFido2KeyRequest,
   GeneratedFido2Key,
   Fido2ResidentKey,
+  SSHTunnelConfig,
+  SSHActiveTunnel,
 } from './ssh';
 import type {
   FileEntry,
@@ -258,6 +260,13 @@ export const IPC_CHANNELS = {
 
   // Kubernetes / OpenShift debug
   K8S_DEBUG_ATTACH: 'k8s:debug-attach',
+
+  // SSH tunnels (standalone port forwarding, independent of terminal sessions)
+  SSH_TUNNEL_START: 'ssh-tunnel:start',
+  SSH_TUNNEL_STOP: 'ssh-tunnel:stop',
+  SSH_TUNNEL_LIST: 'ssh-tunnel:list',
+  SSH_TUNNEL_EVENT: 'ssh-tunnel:event',
+  SSH_TUNNEL_CHECK_PORT: 'ssh-tunnel:check-port',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -557,6 +566,14 @@ export interface MultiSSHApi {
   k8sListPortForwards(): Promise<K8sActivePortForward[]>;
   onK8sPortForwardEvent(callback: (activeForwards: K8sActivePortForward[]) => void): () => void;
   k8sAttachDebugContainer(target: K8sDebugTarget): Promise<{ containerName: string }>;
+
+  sshTunnelStart(config: SSHConnectionConfig, tunnel: SSHTunnelConfig): Promise<SSHActiveTunnel>;
+  sshTunnelStop(id: string): Promise<boolean>;
+  sshTunnelList(): Promise<SSHActiveTunnel[]>;
+  onSshTunnelEvent(callback: (active: SSHActiveTunnel[]) => void): () => void;
+  /** Probes whether a local port is free to bind on 127.0.0.1. Best-effort — a free result can
+   * still lose a race to something else binding the port between the check and the real start. */
+  sshTunnelCheckPort(port: number): Promise<boolean>;
 
   // Window / General
   openExternal(url: string): Promise<void>;

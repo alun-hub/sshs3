@@ -48,6 +48,8 @@ import type {
   GenerateFido2KeyRequest,
   GeneratedFido2Key,
   Fido2ResidentKey,
+  SSHTunnelConfig,
+  SSHActiveTunnel,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -697,6 +699,27 @@ export const api: MultiSSHApi = {
 
   k8sAttachDebugContainer: (target: K8sDebugTarget): Promise<{ containerName: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_DEBUG_ATTACH, target),
+
+  sshTunnelStart: (config: SSHConnectionConfig, tunnel: SSHTunnelConfig): Promise<SSHActiveTunnel> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_TUNNEL_START, config, tunnel),
+
+  sshTunnelStop: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_TUNNEL_STOP, id),
+
+  sshTunnelList: (): Promise<SSHActiveTunnel[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_TUNNEL_LIST),
+
+  onSshTunnelEvent: (callback: (active: SSHActiveTunnel[]) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, active: SSHActiveTunnel[]) =>
+      callback(active);
+    ipcRenderer.on(IPC_CHANNELS.SSH_TUNNEL_EVENT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SSH_TUNNEL_EVENT, listener);
+    };
+  },
+
+  sshTunnelCheckPort: (port: number): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_TUNNEL_CHECK_PORT, port),
 
   // Window / General
   openExternal: (url: string): Promise<void> =>

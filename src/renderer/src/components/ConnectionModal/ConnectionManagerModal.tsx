@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Boxes,
+  Cable,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -25,6 +26,7 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
+import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useConfirm } from '../ConfirmDialog';
@@ -74,6 +76,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ type: Tab; config?: SSHConnectionConfig | S3Config } | null>(null);
+  const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
 
   // Folder creation and rename
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -472,6 +475,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   if (!open) return null;
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
@@ -969,6 +973,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       )}
                                       <button
                                         type="button"
+                                        title="Manage SSH Tunnels"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setTunnelsProfile(profile);
+                                        }}
+                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-indigo-400 transition-colors"
+                                      >
+                                        <Cable className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
                                         title="Duplicate / Clone Profile"
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -1364,6 +1379,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         )}
       </div>
     </div>
+    {tunnelsProfile && (
+      <SSHTunnelsModal
+        connection={tunnelsProfile}
+        open={true}
+        onClose={() => setTunnelsProfile(null)}
+        onProfileUpdated={(updated) => {
+          setSshProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+          setTunnelsProfile(updated);
+        }}
+      />
+    )}
+    </>
   );
 };
 
