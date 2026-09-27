@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config, SFTPConfig } from '@shared/types/storage';
@@ -57,6 +57,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   } | null>(null);
   const [promptPassword, setPromptPassword] = useState('');
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
+  const autoConnectedK8sRef = useRef(false);
+  const autoConnectedSSHRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -408,16 +410,24 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   );
 
   useEffect(() => {
-    if (initialK8sTarget && ready) {
+    if (initialK8sTarget && ready && !autoConnectedK8sRef.current) {
+      autoConnectedK8sRef.current = true;
       void connectPaneToK8s(initialK8sTarget, 'left');
     }
-  }, [initialK8sTarget, ready, connectPaneToK8s]);
+    // Runs once per mount: connectPaneToK8s is recreated whenever connectionRequest
+    // changes (e.g. the user opens the connection modal for the other pane), and
+    // must not re-fire this auto-connect every time that happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialK8sTarget, ready]);
 
   useEffect(() => {
-    if (initialSSHConfig && ready) {
+    if (initialSSHConfig && ready && !autoConnectedSSHRef.current) {
+      autoConnectedSSHRef.current = true;
       void connectPaneToSSH(initialSSHConfig, undefined, 'right');
     }
-  }, [initialSSHConfig, ready, connectPaneToSSH]);
+    // Runs once per mount, for the same reason as the k8s effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSSHConfig, ready]);
 
   const handleOpenTerminal = useCallback(
     async (providerId: string, path: string) => {
