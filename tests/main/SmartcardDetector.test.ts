@@ -600,11 +600,23 @@ describe('AskpassServer', () => {
     }
   });
 
+  // Connects the same way the generated askpass-worker.cjs script does: a
+  // Unix domain socket on POSIX (LOW finding, code review), TCP loopback
+  // on Windows.
+  function connectToServer(s: AskpassServer): net.Socket {
+    const socketPath = s.getSocketPath();
+    return socketPath ? net.createConnection({ path: socketPath }) : net.createConnection({ port: s.getPort(), host: '127.0.0.1' });
+  }
+
   it('should start server, create executable askpass script with restrictive permissions, and return env vars', async () => {
     server = new AskpassServer();
     const { port, scriptPath } = await server.start();
 
-    expect(port).toBeGreaterThan(0);
+    if (process.platform === 'win32') {
+      expect(port).toBeGreaterThan(0);
+    } else {
+      expect(server.getSocketPath()).toBeTruthy();
+    }
     expect(scriptPath).toBeTruthy();
     expect(server.isRunning()).toBe(true);
 
@@ -662,10 +674,10 @@ describe('AskpassServer', () => {
 
   it('should reject unauthorized TCP connection without valid token', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    // Connect raw TCP socket with invalid token
-    const client = net.createConnection({ port, host: '127.0.0.1' });
+    // Connect with an invalid token.
+    const client = connectToServer(server);
     const response = await new Promise<string>((resolve) => {
       client.on('connect', () => {
         client.write(JSON.stringify({ token: 'wrong-token', prompt: 'test' }) + '\n');
@@ -679,12 +691,11 @@ describe('AskpassServer', () => {
 
   it('should handle socket error without crashing server', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    // Connect socket and immediately destroy it with reset to trigger error
-    const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
-      client.destroy(new Error('Simulated socket error'));
-    });
+    // Connect and immediately destroy it with reset to trigger error
+    const client = connectToServer(server);
+    client.on('connect', () => client.destroy(new Error('Simulated socket error')));
 
     await new Promise<void>((resolve) => {
       client.on('error', () => resolve());
@@ -697,9 +708,9 @@ describe('AskpassServer', () => {
 
   it('should disconnect clients exceeding buffer limit', async () => {
     server = new AskpassServer();
-    const { port } = await server.start();
+    await server.start();
 
-    const client = net.createConnection({ port, host: '127.0.0.1' });
+    const client = connectToServer(server);
     const closed = await new Promise<boolean>((resolve) => {
       client.on('connect', () => {
         // Send oversized chunk > 64KB without newline

@@ -5,6 +5,32 @@ import net from 'node:net';
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Best-effort process-identity check before signaling a PID recorded
+ * earlier (LOW finding, code review): the private agent could have already
+ * exited and the OS reused its PID for an unrelated process by the time
+ * killPrivateAgent()/killAllPrivateAgents() get around to it — a bare
+ * `process.kill(pid, 'SIGTERM')` would then hit that unrelated process
+ * instead. On Linux, /proc/<pid>/comm is a synchronous, in-memory read, so
+ * it can verify the PID is still actually an ssh-agent without turning
+ * these otherwise-synchronous kill paths (including process-exit handlers
+ * in index.ts) into an async one. There's no equivalent on macOS (no
+ * /proc), so this is a no-op there — the same exposure as before, just
+ * closed on the platform this app primarily targets.
+ */
+function looksLikeOurAgent(pid: number): boolean {
+  if (process.platform !== 'linux') return true;
+  try {
+    const comm = fs.readFileSync(`/proc/${pid}/comm`, 'utf-8').trim();
+    return comm === 'ssh-agent';
+  } catch {
+    // Already gone, or /proc unavailable — nothing gained by refusing to
+    // kill here; the process.kill() call right after already handles a
+    // truly-dead PID by catching its ESRCH.
+    return true;
+  }
+}
+
 export interface AgentStatus {
   isRunning: boolean;
   socketPath?: string;
@@ -290,6 +316,7 @@ export class AgentLifecycleManager {
   public static killPrivateAgent(pid: number): void {
     if (pid <= 0) return;
     this.activePrivateAgents.delete(pid);
+    if (!looksLikeOurAgent(pid)) return;
     try {
       process.kill(pid, 'SIGTERM');
     } catch {
@@ -302,7 +329,7 @@ export class AgentLifecycleManager {
    */
   public static killAllPrivateAgents(): void {
     for (const pid of this.activePrivateAgents) {
-      if (pid > 0) {
+      if (pid > 0 && looksLikeOurAgent(pid)) {
         try {
           process.kill(pid, 'SIGTERM');
         } catch {

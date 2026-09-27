@@ -88,7 +88,15 @@ function createWindow(): BrowserWindow {
     event.preventDefault();
   });
 
-  mainWindow.webContents.on('will-redirect', (event) => {
+  mainWindow.webContents.on('will-redirect', (event, navigationUrl) => {
+    // Same dev-server carve-out as will-navigate above (LOW finding, code
+    // review) — blocking every redirect unconditionally has no effect today
+    // (nothing in the app currently redirects), but would silently break a
+    // future redirect-based flow (e.g. an in-window OAuth callback) even in
+    // dev, where Vite's own HMR/dev-server traffic should be allowed through.
+    if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
+      return;
+    }
     event.preventDefault();
   });
 

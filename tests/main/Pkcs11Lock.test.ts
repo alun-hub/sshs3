@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { withPkcs11Lock } from '../../src/main/smartcard/Pkcs11Lock';
 
 describe('Pkcs11Lock', () => {
@@ -45,5 +45,37 @@ describe('Pkcs11Lock', () => {
     await expect(failing).rejects.toThrow('boom');
     await expect(succeeding).resolves.toBe('ok');
     expect(maxActive).toBe(1);
+  });
+
+  // LOW finding (code review): every current caller bounds its own
+  // execFile/worker with a timeout, but the queue itself previously had no
+  // ceiling — a hypothetical future caller without one could wedge every
+  // other PKCS#11 operation in the app forever. The built-in watchdog
+  // ensures the queue always eventually moves on regardless.
+  describe('watchdog', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('releases the queue for the next caller if an operation never resolves', async () => {
+      const stuck = withPkcs11Lock(() => new Promise<void>(() => {})); // never settles
+      const stuckExpectation = expect(stuck).rejects.toThrow(/timed out/i);
+
+      const next = withPkcs11Lock(async () => 'unblocked');
+
+      await vi.advanceTimersByTimeAsync(180_000);
+
+      await stuckExpectation;
+      await expect(next).resolves.toBe('unblocked');
+    });
+
+    it('does not fire the watchdog for an operation that resolves well within the timeout', async () => {
+      const result = withPkcs11Lock(
+        () => new Promise((resolve) => setTimeout(() => resolve('done'), 1000))
+      );
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(result).resolves.toBe('done');
+    });
   });
 });
