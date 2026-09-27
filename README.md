@@ -128,7 +128,7 @@
 
 **sshs3** is an Electron desktop app that pairs a full xterm.js terminal with a dual-pane file explorer for SFTP, S3-compatible object storage (AWS, MinIO, NetApp), and Kubernetes container filesystems, plus integrated Kubernetes / OpenShift cluster discovery, container exec terminals, live ephemeral pod debugging (`kubectl debug`), and log streaming. It's built for sysadmins, DevOps, and developers who work across many servers and clusters, connect through jump hosts/bastions, and need hardware security token authentication (FIDO2 resident credentials, YubiKey, and PKCS#11 smartcards).
 
-Under the hood it's a fairly thin, security-conscious shell around a handful of proven building blocks: your system's own `ssh` binary drives the terminal (so `~/.ssh/config`, agents, and aliases just work), `ssh2`/`ssh2-sftp-client` power file transfers, and the AWS SDK talks to any S3-compatible endpoint. See [How it works](#how-it-works) below for the architecture, and [Built on open source](#built-on-open-source) for the full list of libraries this project depends on.
+Under the hood it's a fairly thin, security-conscious shell around a handful of proven building blocks: your system's own `ssh` binary drives the terminal (so `~/.ssh/config`, agents, and aliases just work), `ssh2`/`ssh2-sftp-client` power file transfers, and the AWS SDK talks to any S3-compatible endpoint. See [How it works](#how-it-works) below for the architecture, [Built on open source](#built-on-open-source) for the full list of libraries this project depends on, and the [Product Comparison Guide](docs/COMPARISON.md) for a detailed comparison against PuTTY, MobaXterm, WinSCP, and S3 Browser.
 
 ### Quick Download
 
