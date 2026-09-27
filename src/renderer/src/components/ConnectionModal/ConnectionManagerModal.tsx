@@ -26,6 +26,7 @@ import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
 import { formatDateTime } from '../../lib/format';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 export type Tab = 'ssh' | 's3' | 'k8s';
 
@@ -455,10 +456,19 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       .slice(0, 3);
   }, [s3Profiles]);
 
+  // M12 (code review): only enabled for the list view, not while a form is
+  // being edited (`editing` set to a non-null value) — an accidental Escape
+  // press or stray click while filling in a new SSH/S3 profile should not
+  // silently discard it, since there's no unsaved-changes warning here.
+  const handleBackdropClick = useModalDismiss(onClose, open && !editing);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      onClick={handleBackdropClick}
+    >
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
@@ -622,7 +632,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         onChange={(e) => setNewFolderName(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') void handleCreateFolder();
-                          if (e.key === 'Escape') setNewFolderOpen(false);
+                          if (e.key === 'Escape') {
+                            // Stop this local Escape from also bubbling up to
+                            // the modal's own window-level Escape-to-close
+                            // handler (M12) — it should only cancel the
+                            // rename here, not close the whole dialog.
+                            e.stopPropagation();
+                            setNewFolderOpen(false);
+                          }
                         }}
                         className="flex-1 rounded border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
                       />
@@ -797,7 +814,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onChange={(e) => setRenameFolderValue(e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') void handleCommitRenameFolder(groupName);
-                                    if (e.key === 'Escape') setRenamingFolder(null);
+                                    if (e.key === 'Escape') {
+                                      // Stop this local Escape from also
+                                      // bubbling up to the modal's own
+                                      // window-level Escape-to-close handler
+                                      // (M12) — it should only cancel the
+                                      // rename here, not close the dialog.
+                                      e.stopPropagation();
+                                      setRenamingFolder(null);
+                                    }
                                   }}
                                   className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
                                 />
@@ -1067,7 +1092,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onChange={(e) => setRenameFolderValue(e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') void handleCommitRenameFolder(groupName);
-                                    if (e.key === 'Escape') setRenamingFolder(null);
+                                    if (e.key === 'Escape') {
+                                      // Stop this local Escape from also
+                                      // bubbling up to the modal's own
+                                      // window-level Escape-to-close handler
+                                      // (M12) — it should only cancel the
+                                      // rename here, not close the dialog.
+                                      e.stopPropagation();
+                                      setRenamingFolder(null);
+                                    }
                                   }}
                                   className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
                                 />

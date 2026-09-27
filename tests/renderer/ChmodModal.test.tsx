@@ -169,4 +169,25 @@ describe('ChmodModal', () => {
     fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalled();
   });
+
+  // M12 (code review): this dialog previously only closed via the header X
+  // or the Cancel button, unlike NewFolderModal/FileEditorModal/etc.
+  it('calls onClose on Escape and on a backdrop click (M12)', () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <ChmodModal
+        open={true}
+        providerId="local"
+        entries={[sampleFile]}
+        onClose={onClose}
+        onSaved={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(container.firstElementChild as Element);
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

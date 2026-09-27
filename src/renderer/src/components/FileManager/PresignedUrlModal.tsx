@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link2, X, Loader2, Copy, Check } from 'lucide-react';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface PresignedUrlModalProps {
   open: boolean;
@@ -47,6 +48,8 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open);
+
   if (!open) return null;
 
   const handleExpiryChange = (seconds: number) => {
@@ -68,7 +71,10 @@ export const PresignedUrlModal: React.FC<PresignedUrlModalProps> = ({ open, prov
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">

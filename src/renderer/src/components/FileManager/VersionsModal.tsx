@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { History, X, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import type { ObjectVersionEntry, S3VersioningStatus } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface VersionsModalProps {
   open: boolean;
@@ -51,6 +52,8 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
     void load();
   }, [open, load]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open && !busy);
+
   if (!open) return null;
 
   const handleToggleVersioning = async () => {
@@ -98,7 +101,10 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">

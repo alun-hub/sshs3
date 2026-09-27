@@ -205,4 +205,43 @@ describe('ConnectionManagerModal', () => {
       expect(screen.getAllByText('Backuper').length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  // M12 (code review): this dialog previously only closed via the header X.
+  it('calls onClose on Escape and on a backdrop click from the list view (M12)', async () => {
+    const onClose = vi.fn();
+    const { container } = render(<ConnectionManagerModal open={true} onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(container.firstElementChild as Element);
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  // M12 (code review): an accidental Escape or stray backdrop click while a
+  // profile form is open must not silently discard it — there's no
+  // unsaved-changes warning here, unlike closing via the form's own Cancel.
+  it('does not close on Escape or backdrop click while a profile form is open (M12)', async () => {
+    const onClose = vi.fn();
+    const { container } = render(<ConnectionManagerModal open={true} onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('New Profile'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Dev Sandbox')).not.toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    fireEvent.click(container.firstElementChild as Element);
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

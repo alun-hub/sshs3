@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DirSyncSavedProfilesModal } from '../../src/renderer/src/components/FileManager/DirSyncSavedProfilesModal';
 import type { DirectorySyncProfile } from '../../src/shared/types/dirsync';
@@ -68,5 +68,21 @@ describe('DirSyncSavedProfilesModal', () => {
 
     // Check Mirror warning
     expect(screen.getByText(/Mirror: Files in target missing from source will be deleted/)).toBeInTheDocument();
+  });
+
+  // M12 (code review): this dialog previously only closed via the header X.
+  it('calls onClose on Escape and on a backdrop click (M12)', async () => {
+    const onClose = vi.fn();
+    const { container } = render(<DirSyncSavedProfilesModal open={true} onClose={onClose} onRun={() => {}} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Web Server to Local Backup')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(container.firstElementChild as Element);
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });

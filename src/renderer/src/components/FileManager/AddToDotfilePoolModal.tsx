@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, FileCode, Loader2, Plus, X } from 'lucide-react';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import type { FileEntry } from '@shared/types/storage';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface AddToDotfilePoolModalProps {
   open: boolean;
@@ -57,6 +58,8 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       });
   }, [open, entry]);
 
+  const handleBackdropClick = useModalDismiss(onClose, open && !!entry && !saving);
+
   if (!open || !entry) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,7 +106,10 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">

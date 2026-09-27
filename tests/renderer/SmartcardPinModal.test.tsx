@@ -138,6 +138,25 @@ describe('SmartcardPinModal Component', () => {
     expect(screen.queryByTestId('smartcard-pin-modal')).not.toBeInTheDocument();
   });
 
+  // M11 (code review): this modal can appear while focus is still inside a
+  // terminal (before the input's own delayed focus() call runs, or if focus
+  // moves back out), so Escape must be caught window-wide.
+  it('responds to Escape even when it is dispatched on document.body, not the dialog (M11)', () => {
+    render(<SmartcardPinModal />);
+
+    act(() => {
+      promptCallback!({
+        id: 'askpass-esc-body',
+        prompt: 'Enter PIN 3:',
+      });
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+
+    expect(mockSubmitAskpassPin).toHaveBeenCalledWith('askpass-esc-body', '');
+    expect(screen.queryByTestId('smartcard-pin-modal')).not.toBeInTheDocument();
+  });
+
   it('cleans up askpass listener on unmount', () => {
     const { unmount } = render(<SmartcardPinModal />);
     unmount();

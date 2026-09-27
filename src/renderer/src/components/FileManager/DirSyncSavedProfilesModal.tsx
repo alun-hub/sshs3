@@ -17,6 +17,7 @@ import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { formatDateTime } from '../../lib/format';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface DirSyncSavedProfilesModalProps {
   open: boolean;
@@ -153,10 +154,15 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
     }
   };
 
+  const handleBackdropClick = useModalDismiss(onClose, open);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[72] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[72] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      onClick={handleBackdropClick}
+    >
       <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 shrink-0">
