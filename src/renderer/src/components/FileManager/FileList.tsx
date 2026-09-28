@@ -788,7 +788,7 @@ export const FileList: React.FC<FileListProps> = ({
       {typeaheadText && (
         <div
           data-testid="typeahead-badge"
-          className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-sky-500/40 bg-app-surface/95 px-3 py-1.5 text-xs text-txt-primary shadow-xl backdrop-blur transition-all"
+          className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-sky-500/40 bg-app-surface/95 px-3 py-1.5 text-xs text-txt-primary shadow-xl transition-all"
         >
           <Search className="h-3.5 w-3.5 text-sky-400 shrink-0" />
           <span className="text-txt-muted text-xs">Search:</span>

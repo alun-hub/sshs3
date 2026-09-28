@@ -555,7 +555,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         onBrowseK8sFiles={connecting ? undefined : (target) => void connectPaneToK8s(target)}
       />
       {passwordPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
           <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
               <KeyRound className="h-4 w-4" />

@@ -420,7 +420,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label={`Editing ${entry.name}`}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 sm:p-5 animate-in fade-in duration-150"
     >
       <div
         className={classNames(

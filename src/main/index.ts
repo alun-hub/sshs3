@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, dialog } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
@@ -9,10 +10,16 @@ import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-if (process.platform === 'linux') {
+// Some Linux GPU drivers crash Chromium's GPU process (see the "Linux GPU crash" fix). Rather than
+// disabling hardware acceleration for every Linux user unconditionally — which forces all
+// compositing, including CSS blur/backdrop-filter used throughout the UI, onto the CPU and makes
+// the app noticeably laggy at higher resolutions — we only disable it on machines where a GPU
+// crash has actually been observed, persisted via this marker file so it survives to the next
+// launch (the current session has already fallen back to software rendering on its own).
+const gpuCrashMarkerPath = path.join(app.getPath('userData'), '.gpu-crash-detected');
+
+if (process.platform === 'linux' && fs.existsSync(gpuCrashMarkerPath)) {
   app.disableHardwareAcceleration();
-  app.commandLine.appendSwitch('disable-gpu');
-  app.commandLine.appendSwitch('disable-software-rasterizer');
 }
 
 app.on('child-process-gone', (_event, details) => {
@@ -20,6 +27,13 @@ app.on('child-process-gone', (_event, details) => {
     console.warn(
       `[sshs3] GPU process exited (reason: ${details.reason}, exitCode: ${details.exitCode}). Continuing with software rendering.`
     );
+    if (process.platform === 'linux') {
+      try {
+        fs.writeFileSync(gpuCrashMarkerPath, '');
+      } catch {
+        // Best-effort; worst case the crash simply recurs and we try again next time.
+      }
+    }
   }
 });
 

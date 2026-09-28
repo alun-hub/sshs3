@@ -64,7 +64,7 @@ export const HostKeyTrustModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="hostkey-modal-title"
       data-testid="hostkey-trust-modal"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">

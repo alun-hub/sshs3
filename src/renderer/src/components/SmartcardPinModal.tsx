@@ -294,7 +294,7 @@ export const SmartcardPinModal: React.FC = () => {
         aria-labelledby="smartcard-modal-title"
         data-testid="smartcard-pin-modal"
         onKeyDown={handleKeyDown}
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
       >
         <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card overflow-hidden shadow-2xl">
           <div className={`h-1.5 w-full ${visuals.topBarClass}`} />

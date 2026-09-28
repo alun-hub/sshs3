@@ -59,7 +59,7 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
           aria-labelledby="confirm-dialog-title"
           data-testid="confirm-dialog"
           onClick={handleBackdropClick}
-          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150 p-4"
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
         >
           <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-card p-5 shadow-2xl">
             <div className="flex items-start gap-3">

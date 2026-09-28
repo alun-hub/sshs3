@@ -346,7 +346,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
       {/* max-h instead of a fixed h- (UX review, section 7/8.7): a fixed
           height left sparse categories (General, Files & Storage) with
           ~60% empty space while dense ones needed to scroll. Letting the

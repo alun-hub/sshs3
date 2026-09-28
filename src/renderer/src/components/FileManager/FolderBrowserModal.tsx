@@ -77,7 +77,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4"
       onClick={handleBackdropClick}
     >
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">

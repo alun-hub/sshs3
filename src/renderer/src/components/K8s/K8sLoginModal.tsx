@@ -117,7 +117,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
       <div className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-4">

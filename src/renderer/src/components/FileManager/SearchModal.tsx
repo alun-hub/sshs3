@@ -234,7 +234,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <div
       className={classNames(
-        'fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm animate-in fade-in duration-150',
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/65 animate-in fade-in duration-150',
         isMaximized ? 'p-0' : 'p-2 sm:p-4'
       )}
     >

@@ -111,7 +111,7 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
   const hasChanges = ops?.some((op) => op.type !== 'same');
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
       <div className="w-[92vw] max-w-[1600px] h-[88vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">

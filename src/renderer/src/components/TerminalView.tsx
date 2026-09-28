@@ -640,7 +640,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       {exitEvent && (
         <div
           data-testid="session-exit-overlay"
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/90 dark:bg-slate-800/95 border border-slate-700/80 shadow-2xl backdrop-blur-md text-xs text-slate-200 z-20 animate-fade-in"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/90 dark:bg-slate-800/95 border border-slate-700/80 shadow-2xl text-xs text-slate-200 z-20 animate-fade-in"
         >
           <div className="flex items-center gap-2 pr-2 border-r border-slate-700/70">
             <span
