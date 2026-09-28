@@ -369,6 +369,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
+        e.preventDefault();
         navigator.clipboard
           ?.readText()
           .then((text) => {
