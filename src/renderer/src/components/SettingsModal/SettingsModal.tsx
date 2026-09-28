@@ -85,6 +85,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [sessionExitAction, setSessionExitAction] = useState<SessionExitAction>(
     currentSettings.sessionExitAction ?? 'reconnect'
   );
+  const [confirmBeforeQuit, setConfirmBeforeQuit] = useState<boolean>(
+    currentSettings.confirmBeforeQuit ?? false
+  );
   const [defaultNewTab, setDefaultNewTab] = useState<'terminal' | 'filemanager'>(
     currentSettings.defaultNewTabType
   );
@@ -158,6 +161,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
       setSessionExitAction(currentSettings.sessionExitAction ?? 'reconnect');
+      setConfirmBeforeQuit(currentSettings.confirmBeforeQuit ?? false);
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
@@ -270,6 +274,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       terminalScrollback: scrollback,
       copyOnSelect,
       sessionExitAction,
+      confirmBeforeQuit,
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
       showHiddenFiles,
@@ -712,6 +717,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </span>
                       </label>
                     </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={confirmBeforeQuit}
+                        onChange={(e) => setConfirmBeforeQuit(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">Confirm before quitting the app</span>
+                    </label>
+                    <p className="text-xs text-txt-muted pl-6">
+                      Ask for confirmation when closing the window or quitting, so active SSH
+                      sessions and tunnels aren't closed by accident.
+                    </p>
                   </div>
 
                   {/* Local X11 Server (Windows GUI Forwarding) */}

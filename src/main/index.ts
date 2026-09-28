@@ -72,6 +72,10 @@ process.on('uncaughtException', (err) => {
 let mainWindow: BrowserWindow | null = null;
 let ipcBridge: IpcBridge | null = null;
 let isQuitting = false;
+// Set once the user has cleared any quit confirmation, so a quit that was
+// confirmed via the window's 'close' handler doesn't get asked about again
+// when the resulting app.quit() call reaches 'before-quit' below.
+let quitConfirmed = false;
 
 function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): boolean {
   const activeCount = ipcBridge?.transferQueue.getActiveTransferCount() ?? 0;
@@ -92,6 +96,47 @@ function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): bool
       return false;
     }
   }
+  return true;
+}
+
+/**
+ * Resolves whether it's OK to proceed with quitting: always confirms if
+ * transfers are active, and additionally asks a plain "are you sure?"
+ * question when the user has opted into `confirmBeforeQuit` in settings.
+ * Cached via `quitConfirmed` so the same quit attempt is never asked twice
+ * across the 'close' -> app.quit() -> 'before-quit' chain below.
+ */
+async function confirmQuit(parentWindow?: BrowserWindow | null): Promise<boolean> {
+  if (quitConfirmed) return true;
+
+  if (!confirmQuitIfActiveTransfers(parentWindow)) {
+    return false;
+  }
+
+  try {
+    const settings = await ipcBridge?.settingsStore.getSettings();
+    if (settings?.confirmBeforeQuit) {
+      const options: Electron.MessageBoxSyncOptions = {
+        type: 'question',
+        buttons: ['Cancel', 'Quit'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Quit sshs3?',
+        message: 'Are you sure you want to quit?',
+        detail: 'Any open SSH sessions and tunnels will be closed.',
+      };
+      const choice = parentWindow
+        ? dialog.showMessageBoxSync(parentWindow, options)
+        : dialog.showMessageBoxSync(options);
+      if (choice === 0) {
+        return false;
+      }
+    }
+  } catch {
+    // If settings can't be read, don't block quitting over it.
+  }
+
+  quitConfirmed = true;
   return true;
 }
 
@@ -135,11 +180,16 @@ function createWindow(): BrowserWindow {
 
   mainWindow.on('close', (event) => {
     if (isQuitting) return;
-    if (!confirmQuitIfActiveTransfers(mainWindow)) {
-      event.preventDefault();
-      return;
-    }
-    isQuitting = true;
+    // Always defer to app.quit() (handled by 'before-quit' below) instead of
+    // letting the window close on its own, so a plain window-close ("X" the
+    // window) goes through the same graceful shutdown — ipcBridge.dispose(),
+    // killing SSH tunnels/agents — as Cmd+Q or the app menu, rather than
+    // tearing everything down hard.
+    event.preventDefault();
+    void (async () => {
+      if (!(await confirmQuit(mainWindow))) return;
+      app.quit();
+    })();
   });
 
   mainWindow.on('closed', () => {
@@ -196,26 +246,26 @@ async function initializeApp(): Promise<void> {
 
 app.whenReady().then(initializeApp);
 
-app.on('before-quit', async (event) => {
+app.on('before-quit', (event) => {
   if (!isQuitting) {
-    if (!confirmQuitIfActiveTransfers(mainWindow)) {
-      event.preventDefault();
-      return;
-    }
-    isQuitting = true;
-    if (ipcBridge) {
-      event.preventDefault();
-      try {
-        await ipcBridge.dispose();
-      } catch {
-        // ignore
+    event.preventDefault();
+    void (async () => {
+      if (!(await confirmQuit(mainWindow))) return;
+      isQuitting = true;
+      if (ipcBridge) {
+        try {
+          await ipcBridge.dispose();
+        } catch {
+          // ignore
+        }
+        ipcBridge = null;
+        AgentLifecycleManager.killAllPrivateAgents();
+        app.quit();
+      } else {
+        AgentLifecycleManager.killAllPrivateAgents();
+        app.quit();
       }
-      ipcBridge = null;
-      AgentLifecycleManager.killAllPrivateAgents();
-      app.quit();
-    } else {
-      AgentLifecycleManager.killAllPrivateAgents();
-    }
+    })();
   }
 });
 

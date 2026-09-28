@@ -87,6 +87,8 @@ export interface AppSettings {
   smartcardUnlockAtStartup?: boolean;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
   sessionExitAction?: SessionExitAction;
+  /** Show a confirmation dialog before quitting the app (closing the window or Cmd/Ctrl+Q). Off by default. */
+  confirmBeforeQuit?: boolean;
   /** Windows only: Mode for local X11 server: 'manual' (external), 'auto' (start automatically when X11 session opens), 'always' (start on app launch) */
   x11ServerMode?: 'manual' | 'auto' | 'always';
   /** Windows only: Custom path to X server executable (e.g. C:\Program Files\VcXsrv\vcxsrv.exe). Auto-detects if omitted. */
@@ -116,6 +118,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dotfilesPoolEnabled: false,
   enableOpenShift: false,
   sessionExitAction: 'reconnect',
+  confirmBeforeQuit: false,
   smartcardAuthMode: 'always-prompt',
   smartcardUnlockAtStartup: false,
   x11ServerMode: 'auto',
