@@ -130,6 +130,7 @@ export interface SFTPConfig {
   fido2Resident?: boolean;
   initialPath?: string;
   proxy?: ProxyConfig;
+  proxyJumpProfileId?: string;
   proxyJump?: string;
   group?: string;
   lastUsedAt?: string;

@@ -9,6 +9,7 @@ describe('SSHProfileForm', () => {
   beforeEach(() => {
     window.multissh = {
       dotfilePoolsGet: vi.fn().mockResolvedValue([]),
+      profilesGet: vi.fn().mockResolvedValue({ ssh: [], s3: [] }),
       smartcardDetect: vi.fn().mockResolvedValue([]),
       testSSHConnection: vi.fn().mockResolvedValue({ success: true }),
       selectFile: vi.fn().mockResolvedValue(null),

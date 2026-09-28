@@ -131,7 +131,11 @@ function sshConfigHostAlias(profile: SSHConnectionConfig): string {
  * ssh_config representation and are deliberately left out; native `ssh`
  * will just prompt for them interactively same as it always has.
  */
-function buildSshConfigHostBlock(profile: SSHConnectionConfig, alias: string): string {
+function buildSshConfigHostBlock(
+  profile: SSHConnectionConfig,
+  alias: string,
+  aliasById: Map<string, string>
+): string {
   const lines = [`Host ${alias}`, `    HostName ${profile.host}`];
 
   if (profile.port && profile.port !== 22) {
@@ -146,7 +150,13 @@ function buildSshConfigHostBlock(profile: SSHConnectionConfig, alias: string): s
   if (profile.authType === 'smartcard' && profile.pkcs11LibPath) {
     lines.push(`    PKCS11Provider ${profile.pkcs11LibPath}`);
   }
-  if (profile.proxyJump) {
+  const jumpAlias = profile.proxyJumpProfileId ? aliasById.get(profile.proxyJumpProfileId) : undefined;
+  if (jumpAlias) {
+    // Reference the jump profile's own Host alias rather than resolving to a literal
+    // user@host: this block is generated for every profile in one pass, so the alias is
+    // already stable and native ssh can chain through it exactly like the app does.
+    lines.push(`    ProxyJump ${jumpAlias}`);
+  } else if (profile.proxyJump) {
     lines.push(`    ProxyJump ${profile.proxyJump}`);
   }
   if (profile.forwardAgent) {
@@ -194,18 +204,21 @@ export function buildManagedSshConfigBlockFromProfiles(
   now: string = new Date().toISOString()
 ): ManagedSshConfigBlock {
   const usedAliases = new Set<string>();
-  const blocks = [...profiles]
-    .sort((a, b) => (a.name || a.host).localeCompare(b.name || b.host))
-    .map((profile) => {
-      let alias = sshConfigHostAlias(profile);
-      let suffix = 2;
-      while (usedAliases.has(alias)) {
-        alias = `${sshConfigHostAlias(profile)}-${suffix}`;
-        suffix += 1;
-      }
-      usedAliases.add(alias);
-      return buildSshConfigHostBlock(profile, alias);
-    });
+  const aliasById = new Map<string, string>();
+  const sortedProfiles = [...profiles].sort((a, b) => (a.name || a.host).localeCompare(b.name || b.host));
+  for (const profile of sortedProfiles) {
+    let alias = sshConfigHostAlias(profile);
+    let suffix = 2;
+    while (usedAliases.has(alias)) {
+      alias = `${sshConfigHostAlias(profile)}-${suffix}`;
+      suffix += 1;
+    }
+    usedAliases.add(alias);
+    aliasById.set(profile.id, alias);
+  }
+  const blocks = sortedProfiles.map((profile) =>
+    buildSshConfigHostBlock(profile, aliasById.get(profile.id)!, aliasById)
+  );
 
   const body = blocks.join('\n\n');
   const updatedAt = previousBlock && previousBlock.body === body ? previousBlock.updatedAt : now;

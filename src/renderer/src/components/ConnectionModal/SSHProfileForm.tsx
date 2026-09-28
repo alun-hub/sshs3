@@ -67,6 +67,10 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
+  const [allProfiles, setAllProfiles] = useState<SSHConnectionConfig[]>([]);
+  const [proxyJumpMode, setProxyJumpMode] = useState<'none' | 'profile' | 'custom'>(() =>
+    initial?.proxyJumpProfileId ? 'profile' : initial?.proxyJump ? 'custom' : 'none'
+  );
   const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string; platform?: string } | null>(null);
 
   // FIDO2 / security key state
@@ -87,6 +91,19 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [fido2DeletingId, setFido2DeletingId] = useState<string | null>(null);
   const [fido2DeleteError, setFido2DeleteError] = useState<string | null>(null);
   const [fido2GenNeedsOverwriteConfirm, setFido2GenNeedsOverwriteConfirm] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void window.multissh
+      .profilesGet()
+      .then(({ ssh }) => {
+        if (mounted) setAllProfiles(ssh);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!dotfilesPoolEnabled) return;
@@ -335,12 +352,43 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </label>
         <label className="flex flex-col gap-1 text-txt-secondary">
           Jump Host / ProxyJump (optional)
-          <input
-            value={config.proxyJump ?? ''}
-            onChange={(e) => update('proxyJump', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder="e.g. jumpuser@bastion.example.com:22"
-          />
+          <select
+            value={proxyJumpMode === 'none' ? '' : proxyJumpMode === 'custom' ? '__custom__' : config.proxyJumpProfileId ?? ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === '') {
+                setProxyJumpMode('none');
+                update('proxyJumpProfileId', undefined);
+                update('proxyJump', undefined);
+              } else if (value === '__custom__') {
+                setProxyJumpMode('custom');
+                update('proxyJumpProfileId', undefined);
+              } else {
+                setProxyJumpMode('profile');
+                update('proxyJumpProfileId', value);
+                update('proxyJump', undefined);
+              }
+            }}
+            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+          >
+            <option value="">None</option>
+            {allProfiles
+              .filter((p) => p.id !== config.id && p.proxyJumpProfileId !== config.id)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.host}
+                </option>
+              ))}
+            <option value="__custom__">Custom (enter manually)</option>
+          </select>
+          {proxyJumpMode === 'custom' && (
+            <input
+              value={config.proxyJump ?? ''}
+              onChange={(e) => update('proxyJump', e.target.value)}
+              className="mt-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+              placeholder="e.g. jumpuser@bastion.example.com:22"
+            />
+          )}
         </label>
       </div>
 

@@ -8,6 +8,7 @@ import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialo
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager } from './ssh/SSHPtyManager';
+import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import {
@@ -405,6 +406,7 @@ export class IpcBridge {
 
         let config = options.config;
         if (!options.local && config) {
+          config = await this.resolveProxyJumpConfig(config);
           config = await this.prepareSmartcardConfig(config);
           config = await this.prepareFido2Config(config);
 
@@ -722,7 +724,8 @@ export class IpcBridge {
           }
         }
         if (config.type === 'sftp' && config.sftpConfig && !this.storageRegistry.has(config.id)) {
-          let sftpConfig = await this.prepareSftpSmartcardConfig(config.sftpConfig, config.id);
+          let sftpConfig = await this.resolveProxyJumpConfig(config.sftpConfig);
+          sftpConfig = await this.prepareSftpSmartcardConfig(sftpConfig, config.id);
           sftpConfig = await this.prepareFido2SftpConfig(sftpConfig, config.id);
           resolvedConfig = { ...config, sftpConfig };
         }
@@ -1354,6 +1357,15 @@ export class IpcBridge {
    * discarding the card the moment the session ends — a reconnect still
    * needs a fresh PIN, keeping 'always-prompt's "ask every time" contract.
    */
+  private async resolveProxyJumpConfig<T extends { proxyJumpProfileId?: string; proxyJump?: string }>(
+    config: T
+  ): Promise<T> {
+    if (!config.proxyJumpProfileId) return config;
+    const profiles = await this.profileStore.getProfiles();
+    const byId = new Map(profiles.ssh.map((p) => [p.id, p]));
+    return withResolvedProxyJump(config, (id) => byId.get(id));
+  }
+
   private async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
       return config;
@@ -3120,7 +3132,8 @@ export class IpcBridge {
         // Same as terminal/SFTP sessions: pre-load a PKCS#11/FIDO2 resident credential
         // into a private agent so the ssh child just points IdentityAgent at it, rather
         // than needing an interactive PIN/passphrase for every standalone tunnel.
-        let config = await this.prepareSmartcardConfig(rawConfig);
+        let config = await this.resolveProxyJumpConfig(rawConfig);
+        config = await this.prepareSmartcardConfig(config);
         config = await this.prepareFido2Config(config);
         const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
         return await this.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {

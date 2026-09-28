@@ -71,6 +71,13 @@ export interface SSHConnectionConfig {
   ciphers?: string;
   kexAlgorithms?: string;
   macs?: string;
+  /**
+   * References another saved SSH profile to jump through, taking precedence over `proxyJump`
+   * when both are set (the UI only ever sets one at a time). Falls back to `proxyJump`'s raw
+   * `user@host[:port]` text when the id doesn't resolve to a live profile (e.g. it was deleted).
+   */
+  proxyJumpProfileId?: string;
+  /** Manually-entered ProxyJump target, e.g. "jumpuser@bastion.example.com:22" — for jump hosts not managed as a profile in this app. Ignored when `proxyJumpProfileId` resolves. */
   proxyJump?: string;
   tunnels?: SSHTunnelConfig[];
   /** Dotfiles pool to sync on connect. Unset = feature not opted into for this host. */
