@@ -89,7 +89,7 @@ function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): bool
       message: `There ${activeCount === 1 ? 'is' : 'are'} ${activeCount} file transfer(s) in progress.`,
       detail: 'If you quit now, the transfers will be cancelled and files may be left incomplete.',
     };
-    const choice = parentWindow
+    const choice = parentWindow && !parentWindow.isDestroyed()
       ? dialog.showMessageBoxSync(parentWindow, options)
       : dialog.showMessageBoxSync(options);
     if (choice === 0) {
@@ -125,7 +125,7 @@ async function confirmQuit(parentWindow?: BrowserWindow | null): Promise<boolean
         message: 'Are you sure you want to quit?',
         detail: 'Any open SSH sessions and tunnels will be closed.',
       };
-      const choice = parentWindow
+      const choice = parentWindow && !parentWindow.isDestroyed()
         ? dialog.showMessageBoxSync(parentWindow, options)
         : dialog.showMessageBoxSync(options);
       if (choice === 0) {

@@ -30,7 +30,15 @@ export interface AskpassRegistryEntry {
   createdAt: string;
 }
 
-export type RegistryEntry = AgentRegistryEntry | AskpassRegistryEntry;
+export interface SshMuxRegistryEntry {
+  kind: 'ssh-mux';
+  ownerPid: number;
+  controlPath: string;
+  host: string;
+  createdAt: string;
+}
+
+export type RegistryEntry = AgentRegistryEntry | AskpassRegistryEntry | SshMuxRegistryEntry;
 
 let registryDir: string | null = null;
 
@@ -87,6 +95,7 @@ export async function unregisterEntry(id: string | null): Promise<void> {
 export interface OrphanHandlers {
   onOrphanAgent: (pid: number) => void | Promise<void>;
   onOrphanAskpass: (tempDir: string) => void | Promise<void>;
+  onOrphanSshMux?: (controlPath: string, host: string) => void | Promise<void>;
 }
 
 /**
@@ -122,6 +131,8 @@ export async function cleanupOrphans(handlers: OrphanHandlers): Promise<void> {
         await handlers.onOrphanAgent(entry.pid);
       } else if (entry.kind === 'askpass') {
         await handlers.onOrphanAskpass(entry.tempDir);
+      } else if (entry.kind === 'ssh-mux' && handlers.onOrphanSshMux) {
+        await handlers.onOrphanSshMux(entry.controlPath, entry.host);
       }
 
       await fs.rm(full, { force: true });

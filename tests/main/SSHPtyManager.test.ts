@@ -380,6 +380,24 @@ describe('SSHPtyManager', () => {
       expect(managerExitEvent).toEqual({ sessionId: 'sess-exit', exitCode: 0, signal: undefined });
       expect(manager.getSession(session.sessionId)).toBeUndefined();
     });
+
+    it('shares a single cleanup promise between concurrent dispose and pty exit', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'sess-concurrent-dispose',
+        name: 'Concurrent Dispose Test',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+      };
+
+      const session = await manager.createSession(config);
+      const p1 = session.dispose();
+      const p2 = session.dispose();
+      expect(p1).toBe(p2);
+
+      await Promise.all([p1, p2]);
+      expect(manager.getSession(session.sessionId)).toBeUndefined();
+    });
   });
 
   describe('shell session creation', () => {

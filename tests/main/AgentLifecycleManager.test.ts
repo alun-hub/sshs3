@@ -279,6 +279,9 @@ describe('AgentLifecycleManager', () => {
       const cleanupSpy = vi.spyOn(AgentRegistry, 'cleanupOrphans').mockImplementation(async (handlers) => {
         await handlers.onOrphanAgent(process.pid); // not named "ssh-agent" -> must NOT be killed on Linux
         await handlers.onOrphanAskpass('/tmp/sshs3-askpass-orphan-fixture');
+        if (handlers.onOrphanSshMux) {
+          await handlers.onOrphanSshMux('/tmp/nonexistent-fixture.sock', 'example.com');
+        }
       });
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
 

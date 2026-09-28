@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
+import { registerEntry, unregisterEntry } from './AgentRegistry';
 import { K8sShimManager } from '../services/K8sShimManager';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type {
@@ -75,6 +76,7 @@ export class InternalSSHPtySession implements SSHPtySession {
   public cols: number;
   public rows: number;
   public controlPath?: string;
+  public muxRegistryId?: string | null;
 
   private pty: IPty;
   public askpassServer?: AskpassServer;
@@ -82,6 +84,7 @@ export class InternalSSHPtySession implements SSHPtySession {
   private dataListeners: Set<(data: string) => void> = new Set();
   private exitListeners: Set<(event: SSHPtyExitEvent) => void> = new Set();
   private disposed: boolean = false;
+  private cleanupPromise?: Promise<void>;
   private reconnecting: boolean = false;
   private reconnectAttempts: number = 0;
   private reconnectTimer?: NodeJS.Timeout;
@@ -99,6 +102,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     manager: SSHPtyManager;
     askpassServer?: AskpassServer;
     controlPath?: string;
+    muxRegistryId?: string | null;
   }) {
     this.sessionId = params.sessionId;
     this.config = params.config;
@@ -109,6 +113,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     this.manager = params.manager;
     this.askpassServer = params.askpassServer;
     this.controlPath = params.controlPath;
+    this.muxRegistryId = params.muxRegistryId;
 
     this.bindPty(params.pty);
   }
@@ -259,8 +264,8 @@ export class InternalSSHPtySession implements SSHPtySession {
     };
   }
 
-  public async dispose(): Promise<void> {
-    if (this.disposed) return;
+  public dispose(): Promise<void> {
+    if (this.cleanupPromise) return this.cleanupPromise;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
@@ -271,11 +276,17 @@ export class InternalSSHPtySession implements SSHPtySession {
     } catch {
       // Ignore error if process already terminated
     }
-    await this.cleanup();
+    return this.cleanup();
   }
 
-  private async cleanup(): Promise<void> {
-    if (this.disposed) return;
+  private cleanup(): Promise<void> {
+    if (!this.cleanupPromise) {
+      this.cleanupPromise = this.performCleanup();
+    }
+    return this.cleanupPromise;
+  }
+
+  private async performCleanup(): Promise<void> {
     this.disposed = true;
     this.manager.removeSessionInternal(this.sessionId);
     this.dataListeners.clear();
@@ -295,9 +306,19 @@ export class InternalSSHPtySession implements SSHPtySession {
       this.askpassServer = undefined;
     }
 
-    if (this.controlPath) {
+    if (this.muxRegistryId) {
       try {
-        if (fs.existsSync(this.controlPath)) {
+        await unregisterEntry(this.muxRegistryId);
+      } catch {
+        // Ignore cleanup errors
+      }
+      this.muxRegistryId = undefined;
+    }
+
+    if (this.controlPath) {
+      const controlPath = this.controlPath;
+      try {
+        if (fs.existsSync(controlPath)) {
           // ControlPersist keeps the ssh master connection alive as a detached background
           // process (renamed "ssh: <path> [mux]") after the interactive session ends, so it can
           // no longer be assumed to be — or even share a pid with — the process `this.pty.kill()`
@@ -312,22 +333,21 @@ export class InternalSSHPtySession implements SSHPtySession {
           // is always our own generated tmp path, never user input — but neither is worth trusting
           // implicitly here since a future refactor could change either invariant silently.
           const host = this.config.host;
-          const controlPath = this.controlPath;
           if (host.startsWith('-') || controlPath.startsWith('-')) {
             throw new Error('Refusing to run ssh -O exit: host or control path looks like a flag');
           }
           await new Promise<void>((resolve) => {
             const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
             // Bounded: never let a stuck/unresponsive master block session cleanup.
-            execFile(sshBinary, ['-S', controlPath, '-O', 'exit', host], { timeout: 3000 }, () => resolve());
+            execFile(sshBinary, ['-S', controlPath, '-O', 'exit', '--', host], { timeout: 3000 }, () => resolve());
           });
         }
       } catch {
         // Ignore cleanup errors
       }
       try {
-        if (fs.existsSync(this.controlPath)) {
-          fs.unlinkSync(this.controlPath);
+        if (fs.existsSync(controlPath)) {
+          fs.unlinkSync(controlPath);
         }
       } catch {
         // Ignore cleanup errors
@@ -568,6 +588,21 @@ export class SSHPtyManager extends EventEmitter {
         ? path.join(os.tmpdir(), `s3m-${crypto.randomUUID().slice(0, 8)}.sock`)
         : undefined;
 
+    let muxRegistryId: string | null = null;
+    if (controlPath) {
+      try {
+        muxRegistryId = await registerEntry({
+          kind: 'ssh-mux',
+          ownerPid: process.pid,
+          controlPath,
+          host: config.host,
+          createdAt: new Date().toISOString(),
+        });
+      } catch {
+        // Best-effort
+      }
+    }
+
     const filteredConfig = this.withoutConflictingTunnels(config, sessionId);
     const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
@@ -585,6 +620,9 @@ export class SSHPtyManager extends EventEmitter {
       if (askpassServer) {
         await askpassServer.stop();
       }
+      if (muxRegistryId) {
+        await unregisterEntry(muxRegistryId);
+      }
       throw err;
     }
 
@@ -599,6 +637,7 @@ export class SSHPtyManager extends EventEmitter {
       manager: this,
       askpassServer,
       controlPath,
+      muxRegistryId,
     });
 
     this.sessions.set(sessionId, session);

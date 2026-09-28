@@ -426,6 +426,25 @@ export class AgentLifecycleManager {
           // Ignore
         }
       },
+      onOrphanSshMux: async (controlPath, host) => {
+        try {
+          if (fs.existsSync(controlPath)) {
+            await new Promise<void>((resolve) => {
+              const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+              execFile(sshBinary, ['-S', controlPath, '-O', 'exit', '--', host || 'dummy'], { timeout: 3000 }, () => resolve());
+            });
+          }
+        } catch {
+          // Ignore
+        }
+        try {
+          if (fs.existsSync(controlPath)) {
+            fs.unlinkSync(controlPath);
+          }
+        } catch {
+          // Ignore
+        }
+      },
     });
   }
 

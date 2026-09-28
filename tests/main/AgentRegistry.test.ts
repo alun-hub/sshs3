@@ -115,6 +115,29 @@ describe('AgentRegistry', () => {
     expect(fs.readdirSync(dir)).toHaveLength(0);
   });
 
+  it('cleans up an orphaned ssh-mux socket entry whose owner process has died', async () => {
+    const owner = deadPid();
+    await AgentRegistry.registerEntry({
+      kind: 'ssh-mux',
+      ownerPid: owner,
+      controlPath: '/tmp/s3m-fixture.sock',
+      host: 'example.com',
+      createdAt: new Date().toISOString(),
+    });
+
+    const orphanedMux: { controlPath: string; host: string }[] = [];
+    await AgentRegistry.cleanupOrphans({
+      onOrphanAgent: () => {},
+      onOrphanAskpass: () => {},
+      onOrphanSshMux: (controlPath, host) => {
+        orphanedMux.push({ controlPath, host });
+      },
+    });
+
+    expect(orphanedMux).toEqual([{ controlPath: '/tmp/s3m-fixture.sock', host: 'example.com' }]);
+    expect(fs.readdirSync(dir)).toHaveLength(0);
+  });
+
   it('removes malformed registry files instead of leaving them forever', async () => {
     fs.writeFileSync(path.join(dir, 'garbage.json'), 'not json', 'utf-8');
 
