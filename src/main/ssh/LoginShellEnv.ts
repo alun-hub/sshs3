@@ -33,7 +33,7 @@ let resolvePromise: Promise<Record<string, string>> | undefined;
  * Not applicable on Windows, which has no such launcher/shell env gap.
  */
 export async function resolveLoginShellEnv(): Promise<Record<string, string>> {
-  if (process.platform === 'win32') return {};
+  if (process.platform === 'win32') return (cachedEnv ??= {});
   if (cachedEnv) return cachedEnv;
   if (resolvePromise) return resolvePromise;
 
