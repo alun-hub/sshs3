@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96] - 2026-09-28
+
+### Added
+- **SSH Tunnels management UI**:
+  - New global "SSH Tunnels" toolbar button (icon colored gray/green/red for none/active/error) opening a cross-connection tunnel dashboard, plus a per-connection tunnels modal reachable from the Connection Manager.
+  - Added a guided 3-step wizard (Type → Details → Done) for creating local/remote/dynamic (SOCKS) port-forward tunnels, with plain-language explanations, a live summary sentence, and an in-wizard local-port-in-use check.
+  - Standalone tunnels now run as independent `ssh -N` processes with live status (active/error), start/stop, and in-place editing, decoupled from any open terminal session.
+
+### Fixed
+- **SSH tunnel & terminal port conflicts**: opening a terminal or another tunnel that would collide with an already-bound local port (from a running standalone tunnel or another open terminal session) now silently skips that forward instead of surfacing a raw "Address already in use" error from OpenSSH.
+- **Orphaned processes on shutdown**: standalone tunnel processes and terminal ControlMaster ("mux") connections are now reliably terminated on app quit, including when the process receives an external SIGINT/SIGTERM (e.g. `kill`/`pkill`, a session/system shutdown) — previously this bypassed Electron's quit lifecycle entirely and left `ssh` processes running.
+- Fixed a race where saving an edit to a running tunnel could briefly fail with "Address already in use" before the old process had fully released its port.
+- Fixed a stale "phantom" tunnel entry lingering in the UI after a tunnel failed to start.
+
 ## [0.94] - 2026-09-26
 
 ### Added
