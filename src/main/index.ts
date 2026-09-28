@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { IpcBridge } from './IpcBridge';
 import { SystemTrustStore } from './crypto/SystemTrustStore';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
+import { applyLoginShellEnv } from './ssh/LoginShellEnv';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 
@@ -174,6 +175,10 @@ async function initializeApp(): Promise<void> {
     );
   }
 
+  // GUI/.desktop launches bypass .bashrc/.zshrc/.profile, so shell-exported
+  // trust settings (e.g. a custom CA bundle path) a terminal launch would
+  // have are otherwise invisible to processes we spawn (oc, ssh, ...).
+  await applyLoginShellEnv();
   void SystemTrustStore.init();
   void AgentLifecycleManager.ensureAgent();
   // The app has its own UI for every action (tabs, connections, transfers);
