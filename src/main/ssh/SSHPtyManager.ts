@@ -306,15 +306,6 @@ export class InternalSSHPtySession implements SSHPtySession {
       this.askpassServer = undefined;
     }
 
-    if (this.muxRegistryId) {
-      try {
-        await unregisterEntry(this.muxRegistryId);
-      } catch {
-        // Ignore cleanup errors
-      }
-      this.muxRegistryId = undefined;
-    }
-
     if (this.controlPath) {
       const controlPath = this.controlPath;
       try {
@@ -352,6 +343,19 @@ export class InternalSSHPtySession implements SSHPtySession {
       } catch {
         // Ignore cleanup errors
       }
+    }
+
+    // Only drop the crash-recovery record once the master has actually been
+    // torn down (or we've confirmed there's nothing left to tear down) — if
+    // this process is killed mid-cleanup, the record must still be here so
+    // the next startup's orphan scan can finish the job.
+    if (this.muxRegistryId) {
+      try {
+        await unregisterEntry(this.muxRegistryId);
+      } catch {
+        // Ignore cleanup errors
+      }
+      this.muxRegistryId = undefined;
     }
   }
 }
