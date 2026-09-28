@@ -6,6 +6,8 @@ export type SSHTunnelType = 'local' | 'remote' | 'dynamic';
 
 export interface SSHTunnelConfig {
   id: string;
+  /** User-chosen display label, independent of the underlying SSH profile's name (e.g. "jumpbox", "prod-bastion"). */
+  name: string;
   type: SSHTunnelType;
   localPort: number;
   remoteHost?: string;

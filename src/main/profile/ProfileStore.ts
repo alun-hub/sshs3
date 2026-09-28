@@ -2,9 +2,24 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
-import type { SSHConnectionConfig } from '../../shared/types/ssh';
+import type { SSHConnectionConfig, SSHTunnelConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
+
+/** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
+function defaultTunnelName(tunnel: SSHTunnelConfig): string {
+  if (tunnel.description) return tunnel.description;
+  if (tunnel.type === 'dynamic') return `Dynamic ${tunnel.localPort}`;
+  return `${tunnel.localPort} -> ${tunnel.remoteHost ?? '?'}:${tunnel.remotePort ?? '?'}`;
+}
+
+function normalizeSSHProfiles(ssh: SSHConnectionConfig[]): SSHConnectionConfig[] {
+  return ssh.map((p) =>
+    p.tunnels
+      ? { ...p, tunnels: p.tunnels.map((t) => (t.name ? t : { ...t, name: defaultTunnelName(t) })) }
+      : p
+  );
+}
 
 export interface ProfilesData {
   ssh: SSHConnectionConfig[];
@@ -75,7 +90,7 @@ export class ProfileStore {
       const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
       const folders: string[] = Array.isArray(data.folders) ? data.folders : [];
       return {
-        ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue)),
+        ssh: normalizeSSHProfiles(ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue))),
         s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptSecretValue)),
         folders,
       };
@@ -90,7 +105,7 @@ export class ProfileStore {
             const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
             const folders: string[] = Array.isArray(data.folders) ? data.folders : [];
             const profiles: ProfilesData = {
-              ssh: ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue)),
+              ssh: normalizeSSHProfiles(ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue))),
               s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptSecretValue)),
               folders,
             };

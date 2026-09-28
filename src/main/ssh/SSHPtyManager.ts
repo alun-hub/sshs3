@@ -363,13 +363,9 @@ export class InternalSSHPtySession implements SSHPtySession {
 export interface SSHPtyManagerOptions {
   settingsStore?: SettingsStore;
   /**
-   * Reports whether a given saved tunnel is already running as its own standalone process
-   * (started from the SSH Tunnels UI, independent of any terminal). When it is, that tunnel is
-   * left out of the `-L/-R/-D` flags a new terminal session's own `ssh` process would otherwise
-   * also carry for it — without this, opening a terminal to a host with an already-running
-   * standalone tunnel spawns a second `ssh` process fighting over the same local port, and the
-   * user sees a raw "bind: Address already in use" from the new session for a tunnel that is, in
-   * fact, already up and working.
+   * Unused: terminal sessions no longer auto-embed a profile's saved tunnels into their own `ssh`
+   * process (only the Tunnels panel, via `SSHTunnelManager`, ever starts a tunnel), so there is
+   * nothing left for this to disambiguate. Kept for now so existing callers don't need to change.
    */
   isTunnelActive?: (connectionId: string, tunnelId: string) => boolean;
 }
@@ -378,40 +374,28 @@ export class SSHPtyManager extends EventEmitter {
   private sessions: Map<string, SSHPtySession> = new Map();
   private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
   private settingsStore?: SettingsStore;
-  private isTunnelActive?: (connectionId: string, tunnelId: string) => boolean;
   /**
-   * Local ports our own already-open sessions have embedded a `-L`/`-D` tunnel for, keyed by the
-   * owning session id. A saved tunnel is auto-embedded into *every* session opened for its
-   * connection (so a plain terminal reconnect keeps a configured tunnel up too) — that's fine for
-   * the first session, but a second terminal to the same host would otherwise spawn its own `ssh`
-   * also trying to bind the identical port, which just fails with "Address already in use" for a
-   * port that's already perfectly reachable via the first session. This is the general form of
-   * the same problem `isTunnelActive` solves for a standalone tunnel: only one process should ever
-   * hold a given local listener at a time.
+   * Local ports our own already-open sessions have bound a tunnel for, keyed by the owning
+   * session id. Terminal sessions no longer auto-embed saved tunnels (only the Tunnels panel
+   * starts them, via `SSHTunnelManager`), so this stays empty in practice — kept in place as a
+   * harmless guard in case a caller ever hands a session a config with tunnels again.
    */
   private boundLocalPorts: Map<number, string> = new Map();
 
   constructor(options?: SSHPtyManagerOptions) {
     super();
     this.settingsStore = options?.settingsStore;
-    this.isTunnelActive = options?.isTunnelActive;
   }
 
   /**
-   * Drops any saved tunnel from a config that would collide with a port some other already-live
-   * process (a standalone tunnel, or one of our own other sessions) already holds, before it's
-   * handed to `buildSSHArguments`. `'remote'` tunnels bind on the remote server, not locally, so
-   * they're never a local port conflict here.
+   * Strips any saved tunnels from a config before it's handed to `buildSSHArguments`. Tunnels
+   * are only ever started explicitly from the Tunnels panel (`SSHTunnelManager`) now — a terminal
+   * session must never auto-embed a profile's saved tunnels into its own `ssh` invocation, since
+   * that used to race with the tunnel panel starting the same tunnel independently.
    */
-  private withoutConflictingTunnels(config: SSHConnectionConfig, sessionId: string): SSHConnectionConfig {
+  private withoutConflictingTunnels(config: SSHConnectionConfig, _sessionId: string): SSHConnectionConfig {
     if (!config.tunnels?.length) return config;
-    const tunnels = config.tunnels.filter((t) => {
-      if (t.enabled === false || t.type === 'remote') return true;
-      const heldBy = this.boundLocalPorts.get(t.localPort);
-      if (heldBy && heldBy !== sessionId) return false;
-      return !this.isTunnelActive?.(config.id, t.id);
-    });
-    return tunnels.length === config.tunnels.length ? config : { ...config, tunnels };
+    return { ...config, tunnels: undefined };
   }
 
   /**

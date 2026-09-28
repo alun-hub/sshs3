@@ -21,6 +21,7 @@ function parseForwardDirective(type: 'local' | 'remote' | 'dynamic', value: stri
       if (isNaN(port)) return null;
       return {
         id: crypto.randomUUID(),
+        name: `Dynamic ${port}`,
         type: 'dynamic',
         localPort: port,
         description: `Dynamic ${port}`,
@@ -55,13 +56,15 @@ function parseForwardDirective(type: 'local' | 'remote' | 'dynamic', value: stri
       return null;
     }
 
+    const label = `${type === 'local' ? 'Local' : 'Remote'} ${sourcePort} -> ${targetHost}:${targetPort}`;
     return {
       id: crypto.randomUUID(),
+      name: label,
       type,
       localPort: sourcePort,
       remoteHost: targetHost,
       remotePort: targetPort,
-      description: `${type === 'local' ? 'Local' : 'Remote'} ${sourcePort} -> ${targetHost}:${targetPort}`,
+      description: label,
       enabled: true,
     };
   } catch {

@@ -209,9 +209,10 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                                   }`}
                                 />
                                 {icon}
-                                <span className="font-mono text-xs text-txt-primary">{text}</span>
+                                <span className="text-xs font-semibold text-txt-primary">{tunnel.name}</span>
                               </div>
                               <div className="text-xs text-txt-muted flex flex-wrap items-center gap-2">
+                                <span className="font-mono">{text}</span>
                                 {tunnel.description && <span>{tunnel.description}</span>}
                                 {active && <span>Started: {formatDateTime(active.startedAt)}</span>}
                               </div>

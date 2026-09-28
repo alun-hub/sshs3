@@ -60,6 +60,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
 }) => {
   const isEditing = Boolean(existingTunnel);
   const [step, setStep] = useState(existingTunnel ? 1 : 0);
+  const [name, setName] = useState(existingTunnel?.name ?? '');
   const [type, setType] = useState<SSHTunnelType>(existingTunnel?.type ?? 'local');
   const [localPort, setLocalPort] = useState(String(existingTunnel?.localPort ?? 8080));
   // Skips the local-port auto-suggestion entirely when editing — an existing tunnel's port was
@@ -103,10 +104,11 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
   }, [type, parsedLocalPort]);
 
   const detailsValid = useMemo(() => {
+    if (name.trim().length === 0) return false;
     if (Number.isNaN(parsedLocalPort) || parsedLocalPort <= 0 || parsedLocalPort > 65535) return false;
     if (type === 'dynamic') return true;
     return !Number.isNaN(parsedRemotePort) && parsedRemotePort > 0 && parsedRemotePort <= 65535 && remoteHost.trim().length > 0;
-  }, [type, parsedLocalPort, parsedRemotePort, remoteHost]);
+  }, [name, type, parsedLocalPort, parsedRemotePort, remoteHost]);
 
   const summarySentence = useMemo(() => {
     const host = connection.name || connection.host;
@@ -121,6 +123,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
 
   const buildTunnel = (): SSHTunnelConfig => ({
     id: existingTunnel?.id ?? crypto.randomUUID(),
+    name: name.trim(),
     type,
     localPort: parsedLocalPort,
     remoteHost: type === 'dynamic' ? undefined : remoteHost.trim(),
@@ -219,6 +222,20 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
       {step === 1 && (
         <div className="space-y-3">
           <div>
+            <label className="block text-xs font-medium text-txt-muted mb-1">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. jumpbox, prod-bastion"
+              className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-sm text-txt-primary focus:border-sky-500/50 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-txt-muted">
+              How this tunnel is labeled in the Tunnels panel — independent of the connection's own name.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-xs font-medium text-txt-muted mb-1">
               {type === 'remote' ? 'Port opened on the server' : 'Local port (on your computer)'}
             </label>
@@ -309,7 +326,10 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
         <div className="space-y-3">
           <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-txt-primary flex items-start gap-2">
             <Globe className="h-4 w-4 shrink-0 text-sky-400 mt-0.5" />
-            <span>{summarySentence}</span>
+            <div>
+              <div className="font-semibold">{name || 'Unnamed tunnel'}</div>
+              <span>{summarySentence}</span>
+            </div>
           </div>
           <p className="text-xs text-txt-muted">
             The tunnel is always saved on this connection so you can find it again. You choose whether to start it now or just save it for later.

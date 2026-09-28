@@ -111,7 +111,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
   };
 
   const handleDelete = async (tunnel: SSHTunnelConfig) => {
-    if (!(await confirm({ title: 'Delete tunnel', message: `Delete the saved tunnel "${tunnel.description || tunnelLabel(tunnel).text}"?` })))
+    if (!(await confirm({ title: 'Delete tunnel', message: `Delete the saved tunnel "${tunnel.name}"?` })))
       return;
     const active = findActive(tunnel.id);
     if (active) {
@@ -218,9 +218,10 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                             }`}
                           />
                           {icon}
-                          <span className="font-mono text-xs text-txt-primary">{text}</span>
+                          <span className="text-xs font-semibold text-txt-primary">{tunnel.name}</span>
                         </div>
                         <div className="text-xs text-txt-muted flex flex-wrap items-center gap-2">
+                          <span className="font-mono">{text}</span>
                           {tunnel.description && <span>{tunnel.description}</span>}
                           {active && <span>Started: {formatDateTime(active.startedAt)}</span>}
                         </div>

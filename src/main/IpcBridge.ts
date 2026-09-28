@@ -261,6 +261,9 @@ export class IpcBridge {
       options.sshPtyManager ??
       new SSHPtyManager({
         settingsStore: this.settingsStore,
+        // Dead wiring: SSHPtyManager no longer reads isTunnelActive (terminal sessions don't
+        // auto-start a profile's saved tunnels anymore, only the Tunnels panel does). Left in
+        // place rather than removed — see SSHPtyManagerOptions.isTunnelActive.
         isTunnelActive: (connectionId, tunnelId) =>
           this.sshTunnelManager
             .listActive()

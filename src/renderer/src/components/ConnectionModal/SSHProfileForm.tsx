@@ -8,7 +8,6 @@ import {
   FolderOpen,
   KeyRound,
   Loader2,
-  Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react';
@@ -17,8 +16,6 @@ import type {
   SSHAuthType,
   SSHConnectionConfig,
   DetectedSmartcardLib,
-  SSHTunnelConfig,
-  SSHTunnelType,
   Fido2KeyType,
   Fido2ResidentKey,
 } from '@shared/types/ssh';
@@ -69,7 +66,6 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [tunnelsOpen, setTunnelsOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
   const [x11ServerStatus, setX11ServerStatus] = useState<{ running: boolean; display: string; platform?: string } | null>(null);
 
@@ -1035,195 +1031,6 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         )}
       </div>
 
-      {/* SSH Port Forwarding / Tunnels */}
-      <div className="rounded-lg border border-border-subtle bg-app-surface-subtle">
-        <div className="flex w-full items-center justify-between p-2.5 text-xs font-medium text-txt-secondary">
-          <button
-            type="button"
-            onClick={() => setTunnelsOpen((o) => !o)}
-            className="flex items-center gap-1.5 hover:text-txt-primary transition-colors"
-          >
-            <span>Port Forwarding & Tunnels</span>
-            <span className="rounded bg-app-surface px-1.5 py-0.5 text-2xs text-sky-400 font-mono">
-              {(config.tunnels || []).length}
-            </span>
-            {tunnelsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTunnelsOpen(true);
-              const newTunnel: SSHTunnelConfig = {
-                id: crypto.randomUUID(),
-                type: 'local',
-                localPort: 8080,
-                remoteHost: '127.0.0.1',
-                remotePort: 80,
-                enabled: true,
-              };
-              setConfig((prev) => ({ ...prev, tunnels: [...(prev.tunnels || []), newTunnel] }));
-            }}
-            className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1 text-xs text-sky-400 hover:bg-app-surface-hover transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            <span>Add Tunnel</span>
-          </button>
-        </div>
-
-        {tunnelsOpen && (
-          <div className="border-t border-border-subtle p-3 space-y-2 text-xs">
-            {(config.tunnels || []).length === 0 ? (
-              <p className="py-2 text-center text-txt-muted">No port tunnels configured</p>
-            ) : (
-              (config.tunnels || []).map((tunnel) => (
-                <div
-                  key={tunnel.id}
-                  className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-2.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
-                      <input
-                        type="checkbox"
-                        checked={tunnel.enabled !== false}
-                        onChange={(e) => {
-                          const enabled = e.target.checked;
-                          setConfig((prev) => ({
-                            ...prev,
-                            tunnels: (prev.tunnels || []).map((t) =>
-                              t.id === tunnel.id ? { ...t, enabled } : t
-                            ),
-                          }));
-                        }}
-                        className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-                      />
-                      <span className="font-semibold text-xs">
-                        {tunnel.type === 'local'
-                          ? 'Local Port Forward (-L)'
-                          : tunnel.type === 'remote'
-                          ? 'Remote Port Forward (-R)'
-                          : 'Dynamic SOCKS Proxy (-D)'}
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setConfig((prev) => ({
-                          ...prev,
-                          tunnels: (prev.tunnels || []).filter((t) => t.id !== tunnel.id),
-                        }))
-                      }
-                      className="rounded p-1 text-red-400 hover:bg-app-surface-hover transition-colors"
-                      title="Delete tunnel"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-[130px_1fr] gap-2">
-                    <label className="flex flex-col gap-1 text-txt-secondary">
-                      Type
-                      <select
-                        value={tunnel.type}
-                        onChange={(e) => {
-                          const type = e.target.value as SSHTunnelType;
-                          setConfig((prev) => ({
-                            ...prev,
-                            tunnels: (prev.tunnels || []).map((t) =>
-                              t.id === tunnel.id ? { ...t, type } : t
-                            ),
-                          }));
-                        }}
-                        className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
-                      >
-                        <option value="local">Local (-L)</option>
-                        <option value="remote">Remote (-R)</option>
-                        <option value="dynamic">Dynamic (-D)</option>
-                      </select>
-                    </label>
-
-                    <label className="flex flex-col gap-1 text-txt-secondary">
-                      Local Port
-                      <input
-                        type="number"
-                        value={tunnel.localPort || ''}
-                        onChange={(e) => {
-                          const localPort = parseInt(e.target.value, 10) || 0;
-                          setConfig((prev) => ({
-                            ...prev,
-                            tunnels: (prev.tunnels || []).map((t) =>
-                              t.id === tunnel.id ? { ...t, localPort } : t
-                            ),
-                          }));
-                        }}
-                        placeholder="e.g. 8080 or 1080"
-                        className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                      />
-                    </label>
-                  </div>
-
-                  {tunnel.type !== 'dynamic' && (
-                    <div className="grid grid-cols-[1fr_90px] gap-2">
-                      <label className="flex flex-col gap-1 text-txt-secondary">
-                        Remote Host
-                        <input
-                          value={tunnel.remoteHost ?? '127.0.0.1'}
-                          onChange={(e) => {
-                            const remoteHost = e.target.value;
-                            setConfig((prev) => ({
-                              ...prev,
-                              tunnels: (prev.tunnels || []).map((t) =>
-                                t.id === tunnel.id ? { ...t, remoteHost } : t
-                              ),
-                            }));
-                          }}
-                          placeholder="127.0.0.1 or db.internal"
-                          className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1 text-txt-secondary">
-                        Remote Port
-                        <input
-                          type="number"
-                          value={tunnel.remotePort || ''}
-                          onChange={(e) => {
-                            const remotePort = parseInt(e.target.value, 10) || 0;
-                            setConfig((prev) => ({
-                              ...prev,
-                              tunnels: (prev.tunnels || []).map((t) =>
-                                t.id === tunnel.id ? { ...t, remotePort } : t
-                              ),
-                            }));
-                          }}
-                          placeholder="80"
-                          className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                        />
-                      </label>
-                    </div>
-                  )}
-
-                  <label className="flex flex-col gap-1 text-txt-secondary">
-                    Description (optional)
-                    <input
-                      value={tunnel.description ?? ''}
-                      onChange={(e) => {
-                        const description = e.target.value;
-                        setConfig((prev) => ({
-                          ...prev,
-                          tunnels: (prev.tunnels || []).map((t) =>
-                            t.id === tunnel.id ? { ...t, description } : t
-                          ),
-                        }));
-                      }}
-                      placeholder="e.g. Database tunnel or Web UI"
-                      className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
-                    />
-                  </label>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
       </div>
 
       <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">

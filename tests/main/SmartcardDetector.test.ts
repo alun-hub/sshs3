@@ -548,6 +548,7 @@ describe('SmartcardDetector', () => {
         tunnels: [
           {
             id: 't1',
+            name: 'Local tunnel',
             type: 'local',
             localPort: 8080,
             remoteHost: '127.0.0.1',
@@ -556,6 +557,7 @@ describe('SmartcardDetector', () => {
           },
           {
             id: 't2',
+            name: 'Remote tunnel',
             type: 'remote',
             localPort: 9000,
             remoteHost: '192.168.1.50',
@@ -564,12 +566,14 @@ describe('SmartcardDetector', () => {
           },
           {
             id: 't3',
+            name: 'Dynamic tunnel',
             type: 'dynamic',
             localPort: 1088,
             enabled: true,
           },
           {
             id: 't4',
+            name: 'Disabled tunnel',
             type: 'local',
             localPort: 5432,
             remoteHost: 'localhost',
