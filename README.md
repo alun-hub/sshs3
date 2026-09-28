@@ -291,6 +291,54 @@ main process (src/main) — IpcBridge routes every channel to a dedicated servic
 
 ---
 
+## Jump hosts & tunnels explained
+
+sshs3 has two independent mechanisms for reaching a host behind a bastion, and it's easy to mix them up because both ultimately rely on OpenSSH's jump-host machinery. This section covers every variant.
+
+### 1. ProxyJump — reaching a host directly through a bastion
+
+Use this when you want a **terminal or SFTP session on the destination host itself** (e.g. `web01`, which is only reachable from `jumpbox`) — no separate connection to the bastion is opened or kept around.
+
+Each profile has a **Jump Host / ProxyJump** setting with two variants:
+
+- **Reference a saved profile** *(recommended)* — pick another profile you already have (e.g. your `jumpbox` profile) from the dropdown in the profile editor. sshs3 resolves it to `user@host[:port]` at connect time using that profile's own connection fields, so you never retype credentials and the jump target stays correct if the jumpbox profile is later edited. Internally this is `proxyJumpProfileId`, resolved by `resolveProxyJumpTarget()`/`withResolvedProxyJump()` (`src/main/ssh/resolveProxyJump.ts`).
+- **Custom (enter manually)** — a raw `user@host[:port]` string, for a bastion that isn't itself a saved profile in this app (e.g. a shared/external jump box).
+
+If both are somehow present, the referenced profile always wins over the manual string.
+
+This works for both connection types, through two different underlying mechanisms:
+
+- **Terminal sessions** spawn the real `ssh` binary, so the resolved target is passed straight through as `-J user@host[:port]` (`SmartcardDetector.buildSSHArguments()`), and OpenSSH itself handles the hop.
+- **SFTP sessions** go through the `ssh2` JS library instead of the `ssh` CLI, which has no `-J` flag. `SFTPStorageProvider` instead opens a real SSH connection to the jump host first via `ssh2`, then hands that connection's raw socket to the target `SftpClient` as its `sock` — functionally the same hop, implemented as a manual relay instead of a CLI flag. This applies to every place an `SFTPConfig` is built from a profile (the file manager, directory sync, pane auto-reconnect on startup), all of which forward `proxyJumpProfileId`/`proxyJump` the same way.
+- **Exported `~/.ssh/config`** (via remote profile sync) writes a real `ProxyJump <alias>` pointing at the referenced profile's own exported `Host` alias, not a frozen string — so it keeps working outside sshs3 (plain `ssh web01` in any terminal) and stays in sync if the jumpbox profile's host/port/user changes.
+
+**Known limitation — shared credentials across hops:** OpenSSH's built-in ProxyJump reuses whatever identity/agent (`IdentityAgent`, loaded smartcard, key file) is already active for the outer connection for *both* hops. There's no per-hop credential selection — if `jumpbox` and `web01` genuinely need different keys or a different smartcard, you're relying on your local agent already holding both, the same as you would on the plain `ssh -J` command line.
+
+### 2. SSH Tunnels panel — port forwarding as its own, independent thing
+
+Use this when you want a **standalone forwarded port** — a SOCKS proxy for your browser, or a local port that forwards into an internal service — that exists on its own, independent of whether or when you happen to open a terminal.
+
+Tunnels are managed entirely from the **Tunnels panel** (not the profile editor, which only edits connection fields). Each tunnel has:
+
+- Its **own name** (e.g. `jumpbox-socks`, `prod-db`), independent of the underlying profile's name — set once, shown everywhere the tunnel is listed.
+- A **profile** it uses to establish the underlying SSH connection (can be the same profile you also open terminals to — that's fine, they're unrelated).
+- A **type**:
+  - **Local (`-L`)** — forward a local port to a host/port reachable from the far end (the classic "reach an internal service through a bastion" tunnel).
+  - **Remote (`-R`)** — forward a port on the remote host back to something reachable from your machine.
+  - **Dynamic / SOCKS (`-D`)** — turn the local port into a SOCKS4/5 proxy, routing arbitrary outbound traffic (e.g. a browser configured to use it) through the tunnel's SSH connection.
+
+Tunnels started from this panel run as their own background `ssh -N` process (`SSHTunnelManager`), tracked independently of any terminal.
+
+**Terminals never auto-start a profile's tunnels.** Earlier versions did — opening any terminal against a profile with saved tunnels would silently re-establish them, which is what caused `Address already in use` errors when the Tunnels panel had already started the same port. Now, opening a terminal only ever opens a terminal; starting/stopping a tunnel is always an explicit action in the Tunnels panel.
+
+### Putting it together: reaching `web01` behind `jumpbox`
+
+- **Just need a shell on `web01`?** Create a `web01` profile with `proxyJumpProfileId` pointing at your `jumpbox` profile. Open a terminal on `web01` directly — no separate connection to `jumpbox`, no tunnel involved.
+- **Need a SOCKS proxy or a forwarded port that outlives any one terminal?** Create a tunnel in the Tunnels panel using your `jumpbox` profile as the underlying connection, name it, pick Local/Remote/Dynamic, and start it from the panel. Opening a terminal to `jumpbox` (or `web01`) afterwards won't touch it.
+- **Both at once?** No conflict — a terminal to `web01` (via ProxyJump) and a SOCKS tunnel through `jumpbox` (via the Tunnels panel) are entirely independent connections that can run side by side.
+
+---
+
 ## Built on open source
 
 sshs3 wouldn't exist without these projects:
