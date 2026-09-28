@@ -125,6 +125,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   agentPath: sshProfile.agentPath,
                   initialPath: sshProfile.initialPath,
                   proxy: sshProfile.proxy,
+                  proxyJump: sshProfile.proxyJump,
+                  proxyJumpProfileId: sshProfile.proxyJumpProfileId,
                 };
                 await window.multissh.connectStorage({
                   id: savedPane.providerId,
@@ -292,6 +294,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           pkcs11LibPath: config.pkcs11LibPath,
           initialPath: config.initialPath,
           proxy: config.proxy,
+          proxyJump: config.proxyJump,
+          proxyJumpProfileId: config.proxyJumpProfileId,
         };
         const providerId = `sftp-${config.id}`;
         const session = await window.multissh.sessionGet?.();

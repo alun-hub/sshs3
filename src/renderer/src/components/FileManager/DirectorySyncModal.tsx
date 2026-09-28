@@ -178,6 +178,8 @@ async function resolveProviderRef(ref: string): Promise<EndpointState> {
       pkcs11LibPath: cfg.pkcs11LibPath,
       initialPath: cfg.initialPath,
       proxy: cfg.proxy,
+      proxyJump: cfg.proxyJump,
+      proxyJumpProfileId: cfg.proxyJumpProfileId,
     };
     await window.multissh.connectStorage({ id: ref, name: cfg.name, type: 'sftp', sftpConfig });
     return { providerId: ref, sourceType: 'sftp', label: cfg.name, path: cfg.initialPath?.trim() || '/' };
@@ -411,6 +413,8 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
         pkcs11LibPath: config.pkcs11LibPath,
         initialPath: config.initialPath,
         proxy: config.proxy,
+        proxyJump: config.proxyJump,
+        proxyJumpProfileId: config.proxyJumpProfileId,
       };
       await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
       setTarget({ providerId, sourceType: 'sftp', label: config.name, path: config.initialPath?.trim() || '/' });
