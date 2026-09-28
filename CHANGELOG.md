@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.1] - 2026-09-28
+
+### Added
+- **Named tunnels, managed only from the Tunnels panel**: tunnels now have their own display name, independent of the underlying SSH profile's name; tunnel definitions are created/edited exclusively in the Tunnels panel (removed from the profile editor), and terminal sessions no longer auto-start a profile's saved tunnels — only the Tunnels panel starts them.
+- **ProxyJump can reference a saved profile**: the Jump Host / ProxyJump setting can point at another saved SSH profile instead of only free text, resolved to that profile's host/user/port at connect time (falls back to manual text for external bastions). Applies to terminal sessions, SFTP connections (file manager, directory sync, pane auto-reconnect), and the exported `~/.ssh/config` (writes a real `ProxyJump <alias>` instead of a frozen string).
+- New README section, "Jump hosts & tunnels explained", documenting ProxyJump and the Tunnels panel end to end.
+
+### Fixed
+- **SSH tunnel/terminal port conflicts**, root cause: terminal sessions previously re-started a profile's saved tunnels on every connect, which could collide with the same tunnel already running from the Tunnels panel ("Address already in use"). Terminals no longer auto-start tunnels at all.
+
 ## [0.96] - 2026-09-28
 
 ### Added
