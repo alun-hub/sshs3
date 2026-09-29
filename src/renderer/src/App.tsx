@@ -101,6 +101,18 @@ export const App: React.FC = () => {
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
   const [tunnelsModalOpen, setTunnelsModalOpen] = useState(false);
+  // Design audit Phase 1: Connection Manager, Settings, Tunnels and Dir Sync
+  // are independent toggles that used to be able to open simultaneously
+  // (e.g. Settings opened from the toolbar while Connection Manager was
+  // still open, stacking two full-screen modals). Route every "open" call
+  // for these four through here so opening one always closes the others.
+  const openTopLevelModal = (open: () => void) => {
+    setProfilesModalOpen(false);
+    setSettingsModalOpen(false);
+    setTunnelsModalOpen(false);
+    setDirSyncProfilesOpen(false);
+    open();
+  };
   const [dirSyncRunProfile, setDirSyncRunProfile] = useState<DirectorySyncProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
@@ -524,20 +536,20 @@ export const App: React.FC = () => {
 
   const handleOpenProfiles = () => {
     setProfilesModalTab('ssh');
-    setProfilesModalOpen(true);
+    openTopLevelModal(() => setProfilesModalOpen(true));
   };
 
   const handleNewK8sSession = () => {
     setProfilesModalTab('k8s');
-    setProfilesModalOpen(true);
+    openTopLevelModal(() => setProfilesModalOpen(true));
   };
 
   const handleOpenSettings = () => {
-    setSettingsModalOpen(true);
+    openTopLevelModal(() => setSettingsModalOpen(true));
   };
 
   const handleOpenTunnels = () => {
-    setTunnelsModalOpen(true);
+    openTopLevelModal(() => setTunnelsModalOpen(true));
   };
 
   const handleSyncBootstrapComplete = () => {
@@ -575,7 +587,7 @@ export const App: React.FC = () => {
       // user-rebindable shortcut — see 'searchInFiles' below).
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setProfilesModalOpen(true);
+        openTopLevelModal(() => setProfilesModalOpen(true));
         return;
       }
 
@@ -629,10 +641,10 @@ export const App: React.FC = () => {
               break;
             }
             case 'openProfiles':
-              setProfilesModalOpen(true);
+              openTopLevelModal(() => setProfilesModalOpen(true));
               break;
             case 'openSettings':
-              setSettingsModalOpen(true);
+              openTopLevelModal(() => setSettingsModalOpen(true));
               break;
             case 'splitVertical':
               if (activeTabId) handleSplitPane(activeTabId, 'row');
@@ -734,7 +746,7 @@ export const App: React.FC = () => {
             onOpenProfiles={handleOpenProfiles}
             onOpenSettings={handleOpenSettings}
             onOpenTunnels={handleOpenTunnels}
-            onOpenDirSyncProfiles={() => setDirSyncProfilesOpen(true)}
+            onOpenDirSyncProfiles={() => openTopLevelModal(() => setDirSyncProfilesOpen(true))}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
             onLockSmartcard={() => window.multissh?.smartcardLockAll() ?? Promise.resolve({ locked: 0 })}
             onListCachedSmartcards={() => window.multissh?.smartcardListCached() ?? Promise.resolve([])}

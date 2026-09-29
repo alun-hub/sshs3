@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Settings,
   X,
@@ -38,6 +38,7 @@ import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface SettingsModalProps {
   open: boolean;
@@ -215,6 +216,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [open, currentSettings]);
 
+  // Design audit Phase 1: every other modal in the app dismisses on Escape
+  // and backdrop click via this shared hook; SettingsModal had never been
+  // wired up to it, so Escape silently did nothing here.
+  const handleBackdropClick = useModalDismiss(onClose, open);
+
+  // Design audit Phase 2: several categories (Terminal, Security &
+  // Smartcard, ...) have more content than fits in the modal's max-h.
+  // The custom 6px scrollbar (index.css) is too subtle to register as
+  // "there's more below", so content used to just look cut off mid-
+  // sentence. Track scroll position and fade a gradient in/out at the
+  // bottom edge whenever there's unscrolled content beneath it.
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+  const updateScrollShadow = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    setHasMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+  }, []);
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+    updateScrollShadow();
+  }, [activeCategory, updateScrollShadow]);
+
   if (!open) return null;
 
   const refreshX11Status = async (customPath?: string) => {
@@ -351,7 +375,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
+      onClick={handleBackdropClick}
+    >
       {/* max-h instead of a fixed h- (UX review, section 7/8.7): a fixed
           height left sparse categories (General, Files & Storage) with
           ~60% empty space while dense ones needed to scroll. Letting the
@@ -410,7 +437,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Form Content Area */}
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-w-0 bg-app-card">
-            <div className="flex-1 overflow-y-auto p-5 pb-8 text-xs text-txt-secondary space-y-5">
+            <div className="relative flex-1 min-h-0">
+            <div
+              ref={contentRef}
+              onScroll={updateScrollShadow}
+              className="h-full overflow-y-auto p-5 pb-8 text-xs text-txt-secondary space-y-5"
+            >
               {/* Category: General & Appearance */}
               {activeCategory === 'general' && (
                 <div className="space-y-4">
@@ -1613,6 +1645,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               </div>
+            )}
+            </div>
+            {hasMoreBelow && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-app-card to-transparent"
+              />
             )}
             </div>
 

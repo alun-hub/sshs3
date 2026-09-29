@@ -792,9 +792,21 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                   {/* Grouped SSH Profiles with Drag & Drop */}
                   {filteredSSH.length === 0 && allFolderNames.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-txt-muted">
-                      {query ? 'No profiles matched your search' : 'No SSH profiles yet'}
-                    </p>
+                    <div className="flex flex-col items-center gap-3 py-6 text-center">
+                      <p className="text-sm text-txt-muted">
+                        {query ? 'No profiles matched your search' : 'No SSH profiles yet'}
+                      </p>
+                      {!query && (
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ type: tab })}
+                          className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New Profile
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     groupedSSH.map(([groupName, profiles]) => {
                       const isCollapsed = Boolean(collapsedGroups[`ssh-${groupName}`]);
@@ -1081,9 +1093,21 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                   {/* Grouped S3 Profiles with Drag & Drop */}
                   {filteredS3.length === 0 && allFolderNames.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-txt-muted">
-                      {query ? 'No profiles matched your search' : 'No S3 profiles yet'}
-                    </p>
+                    <div className="flex flex-col items-center gap-3 py-6 text-center">
+                      <p className="text-sm text-txt-muted">
+                        {query ? 'No profiles matched your search' : 'No S3 profiles yet'}
+                      </p>
+                      {!query && (
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ type: tab })}
+                          className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New Profile
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     groupedS3.map(([groupName, profiles]) => {
                       const isCollapsed = Boolean(collapsedGroups[`s3-${groupName}`]);

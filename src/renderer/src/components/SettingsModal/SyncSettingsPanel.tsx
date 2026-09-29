@@ -29,6 +29,7 @@ import {
   type SyncTargetDraft,
 } from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
+import { Button } from '../ui/Button';
 import { formatSyncError } from '../../lib/syncErrors';
 import { formatDateTime as formatDateTimeCanonical } from '../../lib/dateFormat';
 
@@ -810,16 +811,15 @@ export const SyncSettingsPanel: React.FC = () => {
                 Cancel
               </button>
             )}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={handleSaveTarget}
               disabled={savingTarget}
               title="Saves only this sync target — it does not save the rest of Settings"
-              className="flex items-center gap-1.5 rounded-lg border border-sky-600/60 px-3.5 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
             >
               {savingTarget && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Save Sync Target
-            </button>
+            </Button>
           </div>
         </div>
       )}
