@@ -74,6 +74,7 @@ import {
   type PresenceClearEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
+  type QuitConfirmPromptEvent,
   type AwsSsoPromptEvent,
   type DirSyncComputeDiffOptions,
   type DirSyncApplyOptions,
@@ -133,6 +134,10 @@ interface PendingHostKeyPrompt {
 
 interface PendingTransferConflictPrompt {
   callback: (resolution: TransferConflictResolution, applyToAll: boolean) => void;
+}
+
+interface PendingQuitConfirmPrompt {
+  callback: (proceed: boolean) => void;
 }
 
 interface PendingDotfilesSyncPrompt {
@@ -201,6 +206,7 @@ export class IpcBridge {
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
+  private pendingQuitConfirms = new Map<string, PendingQuitConfirmPrompt>();
   private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
   private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
@@ -711,6 +717,29 @@ export class IpcBridge {
     });
   }
 
+  /**
+   * UX audit finding #2: asks the renderer to show its own themed
+   * ConfirmDialog instead of a native `dialog.showMessageBoxSync` box, so
+   * quitting looks and behaves like every other confirmation in the app.
+   * Resolves to `true` (proceed with quitting) if no window is available to
+   * prompt — matches the previous native-dialog fallback behavior.
+   */
+  public promptQuitConfirm(info: Omit<QuitConfirmPromptEvent, 'id'>): Promise<boolean> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve(true);
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      this.pendingQuitConfirms.set(id, { callback: resolve });
+
+      const event: QuitConfirmPromptEvent = { id, ...info };
+      webContents.send(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, event);
+    });
+  }
+
   private registerStorageHandlers(): void {
     this.registerHandler(
       IPC_CHANNELS.STORAGE_CONNECT,
@@ -1035,6 +1064,18 @@ export class IpcBridge {
         }
         this.pendingTransferConflicts.delete(id);
         prompt.callback(resolution, Boolean(applyToAll));
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.QUIT_CONFIRM_RESPOND,
+      async (_event, id: string, proceed: boolean) => {
+        const prompt = this.pendingQuitConfirms.get(id);
+        if (!prompt) {
+          throw new Error(`Quit confirm prompt with id "${id}" not found or expired`);
+        }
+        this.pendingQuitConfirms.delete(id);
+        prompt.callback(Boolean(proceed));
       }
     );
 
@@ -3702,6 +3743,15 @@ export class IpcBridge {
       }
     }
     this.pendingTransferConflicts.clear();
+
+    for (const prompt of this.pendingQuitConfirms.values()) {
+      try {
+        prompt.callback(true);
+      } catch {
+        // Ignore
+      }
+    }
+    this.pendingQuitConfirms.clear();
 
     for (const prompt of this.pendingDotfilesSyncPrompts.values()) {
       try {

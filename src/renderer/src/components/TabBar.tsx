@@ -97,6 +97,12 @@ export const TabBar: React.FC<TabBarProps> = ({
     return line ? line.slice(3) : subject;
   };
 
+  const smartcardLibFriendlyName = (pkcs11LibPath: string): string => {
+    if (!pkcs11LibPath) return 'Security Key';
+    const base = pkcs11LibPath.split('/').pop() || pkcs11LibPath;
+    return base.replace(/\.(so|dll|dylib)(\.\d+)*$/i, '') || pkcs11LibPath;
+  };
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -287,8 +293,15 @@ export const TabBar: React.FC<TabBarProps> = ({
                   <ul className="space-y-2">
                     {cachedAgents.map((agent) => (
                       <li key={agent.pkcs11LibPath}>
-                        <div className="truncate select-text font-mono text-2xs text-txt-muted" title={agent.pkcs11LibPath}>
-                          {agent.pkcs11LibPath}
+                        {/* UX audit finding #13: this used to show the raw PKCS#11 library
+                            path (e.g. "/usr/lib64/p11-kit-proxy.so") as the primary label —
+                            meaningful to someone debugging a smartcard driver, opaque to
+                            everyone else. The friendly name leads; the path is one hover away. */}
+                        <div
+                          className="truncate text-xs font-medium text-txt-primary"
+                          title={agent.pkcs11LibPath || undefined}
+                        >
+                          {smartcardLibFriendlyName(agent.pkcs11LibPath)}
                         </div>
                         {agent.identities.length === 0 ? (
                           <div className="text-xs text-txt-muted">(no identities reported)</div>

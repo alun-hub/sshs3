@@ -328,6 +328,10 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
         <ExecAuthWarningBanner warning={execAuthWarning} onDismiss={() => setExecAuthWarning(null)} />
       )}
       <div className="space-y-2">
+      <p className="text-2xs text-txt-muted">
+        Clusters below are read from your local kubeconfig — unlike the SSH/SFTP and S3 tabs,
+        there's nothing to save or organize into folders here.
+      </p>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-txt-muted pointer-events-none" />

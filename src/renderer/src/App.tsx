@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Cloud, Columns2, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Clock, Cloud, Columns2, Files, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
@@ -7,6 +7,7 @@ import { TouchPresenceBanner } from './components/TouchPresenceBanner';
 import { HostKeyTrustModal } from './components/HostKeyTrustModal';
 import { AwsSsoLoginModal } from './components/AwsSsoLoginModal';
 import { TransferConflictModal } from './components/TransferConflictModal';
+import { QuitConfirmBridge } from './components/QuitConfirmBridge';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
@@ -22,6 +23,7 @@ import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
+import { formatDateTime } from './lib/format';
 import {
   closePane,
   collectLeafIds,
@@ -113,6 +115,19 @@ export const App: React.FC = () => {
     setDirSyncProfilesOpen(false);
     open();
   };
+  // UX audit finding #4: these four full-screen modals render as `fixed`
+  // overlays, but the header behind them (tab bar, "+" new-tab menu, toolbar
+  // icons) stayed in the normal tab/click order — you could open the "+"
+  // dropdown on top of an already-open Connection Manager modal. `inert`
+  // (native DOM, not React-typed pre-19) removes the header from hit-testing
+  // and keyboard focus entirely while any of the four is open.
+  const anyTopLevelModalOpen =
+    profilesModalOpen || settingsModalOpen || tunnelsModalOpen || dirSyncProfilesOpen;
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current as (HTMLElement & { inert?: boolean }) | null;
+    if (el) el.inert = anyTopLevelModalOpen;
+  }, [anyTopLevelModalOpen]);
   const [dirSyncRunProfile, setDirSyncRunProfile] = useState<DirectorySyncProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
@@ -534,6 +549,67 @@ export const App: React.FC = () => {
     setConnectTarget(null);
   }, []);
 
+  // UX audit finding #14: the landing page shown whenever no tabs are open
+  // was a static onboarding screen — four cards explaining what the app can
+  // do — that stayed exactly the same whether you had zero saved profiles or
+  // twenty. Surfacing the same "recently used" list Connection Manager
+  // already tracks turns that dead space into a one-click way back into
+  // whatever you were last connected to.
+  const [recentSSHProfiles, setRecentSSHProfiles] = useState<SSHConnectionConfig[]>([]);
+  useEffect(() => {
+    if (tabs.length !== 0) return;
+    let cancelled = false;
+    void window.multissh?.profilesGet?.()
+      .then((profiles) => {
+        if (!cancelled) setRecentSSHProfiles(profiles.ssh || []);
+      })
+      .catch(() => {
+        // Landing page recents are a nice-to-have; ignore failures
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tabs.length]);
+
+  const recentSSH = [...recentSSHProfiles]
+    .filter((p) => Boolean(p.lastUsedAt))
+    .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
+    .slice(0, 4);
+
+  // UX audit finding #3: clicking this landing-page card used to create an
+  // empty, unconnected leaf — landing on a "No connection selected for this
+  // tab" screen that then needed a second click ("Open Local Terminal") for
+  // what the card itself frames as the single most common action. Open a
+  // local shell immediately instead, same as that second click would have
+  // done. Ctrl+Shift+T and the "+" menu's "New Terminal" keep the original
+  // unconnected-tab behavior (tab-number reuse relies on it being possible
+  // to have a placeholder "Terminal N" tab open).
+  const handleQuickStartTerminal = useCallback(() => {
+    const newId = `term-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'terminal',
+      title: 'Local Shell',
+      paneTree: createLeaf(`${newId}-root`, { local: true, baseHost: localHostname || undefined }),
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, [localHostname]);
+
+  const handleConnectRecentSSH = useCallback((profile: SSHConnectionConfig) => {
+    const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
+    void window.multissh?.profilesSaveSSH?.(updated).catch(() => {});
+    const newId = `term-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'terminal',
+      title: updated.name,
+      paneTree: createLeaf(`${newId}-root`, { config: updated }),
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
   const handleOpenProfiles = () => {
     setProfilesModalTab('ssh');
     openTopLevelModal(() => setProfilesModalOpen(true));
@@ -721,7 +797,10 @@ export const App: React.FC = () => {
           (not on the whole app, see UX review #5) so tab titles, toolbar
           icons etc. don't show a text cursor/selection highlight, while
           file names, hostnames and other content below stays selectable. */}
-      <header className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none">
+      <header
+        ref={headerRef}
+        className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none"
+      >
         <div className="flex items-center gap-2 border-r border-border-subtle px-3.5 font-semibold text-sm">
           <Terminal className="h-4 w-4 text-sky-500" />
           <span className="font-bold tracking-wide text-txt-primary">
@@ -759,105 +838,218 @@ export const App: React.FC = () => {
         {!sessionLoaded ? null : tabs.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-txt-secondary animate-in fade-in duration-200">
             <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-6">
-              {/* Brand Header */}
+              {/* Brand Header — smaller once there's real usage history to
+                  show instead (UX audit finding #14): the onboarding-sized
+                  logo/tagline made sense on a first run, not on the
+                  thousandth time this screen shows up between tabs. */}
               <div className="flex flex-col items-center space-y-2">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 border border-sky-500/25 shadow-lg shadow-sky-500/5 text-sky-400">
-                  <Terminal className="h-7 w-7" />
+                <div
+                  className={
+                    recentSSH.length > 0
+                      ? 'flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 border border-sky-500/25 text-sky-400'
+                      : 'flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 border border-sky-500/25 shadow-lg shadow-sky-500/5 text-sky-400'
+                  }
+                >
+                  <Terminal className={recentSSH.length > 0 ? 'h-5 w-5' : 'h-7 w-7'} />
                 </div>
-                <h1 className="text-xl font-bold tracking-tight text-txt-primary">sshs3</h1>
-                <p className="text-xs text-txt-muted max-w-md">
-                  Multi-session SSH & SFTP client with dual-pane file management, Kubernetes support and cloud sync.
-                </p>
+                <h1
+                  className={
+                    recentSSH.length > 0
+                      ? 'text-sm font-bold tracking-tight text-txt-primary'
+                      : 'text-xl font-bold tracking-tight text-txt-primary'
+                  }
+                >
+                  sshs3
+                </h1>
+                {recentSSH.length === 0 && (
+                  <p className="text-xs text-txt-muted max-w-md">
+                    Multi-session SSH & SFTP client with dual-pane file management, Kubernetes support and cloud sync.
+                  </p>
+                )}
               </div>
 
-              {/* Action Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
-                <button
-                  type="button"
-                  onClick={() => handleNewTab('terminal')}
-                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                >
-                  <div className="flex items-start justify-between w-full">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
-                      <Terminal className="h-5 w-5" />
-                    </div>
-                    <Kbd>Ctrl+Shift+T</Kbd>
+              {/* Recent Connections — reuses the same lastUsedAt tracking
+                  Connection Manager's own "Recently Used" section shows, so
+                  getting back to what you were doing doesn't require opening
+                  that modal first. */}
+              {recentSSH.length > 0 && (
+                <div className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 text-left">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-sky-400">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>Recent Connections</span>
                   </div>
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
-                      Open New Terminal
-                    </div>
-                    <div className="text-xs text-txt-muted mt-0.5">
-                      Launch a local shell, ad-hoc SSH connection or WSL
-                    </div>
+                  <div className="flex flex-col gap-1.5">
+                    {recentSSH.map((profile) => (
+                      <div
+                        key={profile.id}
+                        onDoubleClick={() => handleConnectRecentSSH(profile)}
+                        title="Double-click to connect"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-default transition-colors cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-medium text-txt-primary">{profile.name}</div>
+                          <div className="truncate text-xs text-txt-muted">
+                            {profile.username}@{profile.host}:{profile.port ?? 22}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConnectRecentSSH(profile);
+                            }}
+                            className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
+                          >
+                            Connect
+                          </button>
+                          <button
+                            type="button"
+                            title="Open SFTP in Dual-Pane File Manager"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConnectSFTP(profile);
+                            }}
+                            className="flex items-center gap-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors"
+                          >
+                            <Files className="h-3 w-3" />
+                            SFTP
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </button>
+                </div>
+              )}
 
-                <button
-                  type="button"
-                  onClick={() => handleNewTab('filemanager')}
-                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                >
-                  <div className="flex items-start justify-between w-full">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
-                      <Folder className="h-5 w-5" />
+              {/* Action Cards — demoted to a slim icon row once Recent
+                  Connections above is doing the primary job this screen
+                  needs to do; full-sized only for a first run with no
+                  history yet. */}
+              {recentSSH.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full text-left">
+                  <button
+                    type="button"
+                    onClick={handleQuickStartTerminal}
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all"
+                  >
+                    <Terminal className="h-4 w-4 text-sky-400 shrink-0" />
+                    <span className="truncate text-xs font-medium text-txt-primary">New Terminal</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNewTab('filemanager')}
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all"
+                  >
+                    <Folder className="h-4 w-4 text-amber-400 shrink-0" />
+                    <span className="truncate text-xs font-medium text-txt-primary">File Manager</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenProfiles}
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all"
+                  >
+                    <Server className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span className="truncate text-xs font-medium text-txt-primary">Connections</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSyncBootstrapModalOpen(true)}
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all"
+                  >
+                    <Cloud className="h-4 w-4 text-purple-400 shrink-0" />
+                    <span className="truncate text-xs font-medium text-txt-primary">Cloud Sync</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
+                  <button
+                    type="button"
+                    onClick={handleQuickStartTerminal}
+                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
+                        <Terminal className="h-5 w-5" />
+                      </div>
+                      <Kbd>Ctrl+Shift+T</Kbd>
                     </div>
-                    <Kbd>Ctrl+Shift+F</Kbd>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
-                      New File Manager
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
+                        Open New Terminal
+                      </div>
+                      <div className="text-xs text-txt-muted mt-0.5">
+                        Launch a local shell — pick a saved connection or type user@host for SSH
+                      </div>
                     </div>
-                    <div className="text-xs text-txt-muted mt-0.5">
-                      Dual-pane explorer for SFTP, S3 and local drives
-                    </div>
-                  </div>
-                </button>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleOpenProfiles}
-                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                >
-                  <div className="flex items-start justify-between w-full">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
-                      <Server className="h-5 w-5" />
+                  <button
+                    type="button"
+                    onClick={() => handleNewTab('filemanager')}
+                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
+                        <Folder className="h-5 w-5" />
+                      </div>
+                      <Kbd>Ctrl+Shift+F</Kbd>
                     </div>
-                    <Kbd>Ctrl+Shift+P</Kbd>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
-                      Saved Connections
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
+                        New File Manager
+                      </div>
+                      <div className="text-xs text-txt-muted mt-0.5">
+                        Dual-pane explorer for SFTP, S3 and local drives
+                      </div>
                     </div>
-                    <div className="text-xs text-txt-muted mt-0.5">
-                      Manage profiles, SSH keys and credentials
-                    </div>
-                  </div>
-                </button>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setSyncBootstrapModalOpen(true)}
-                  className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                >
-                  <div className="flex items-start justify-between w-full">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25 group-hover:scale-105 transition-all">
-                      <Cloud className="h-5 w-5" />
+                  <button
+                    type="button"
+                    onClick={handleOpenProfiles}
+                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
+                        <Server className="h-5 w-5" />
+                      </div>
+                      <Kbd>Ctrl+Shift+P</Kbd>
                     </div>
-                    <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-2xs font-medium text-purple-400">
-                      Cloud Sync
-                    </span>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-txt-primary group-hover:text-purple-400 transition-colors">
-                      Import / Cloud Sync
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
+                        Saved Connections
+                      </div>
+                      <div className="text-xs text-txt-muted mt-0.5">
+                        Manage profiles, SSH keys and credentials
+                      </div>
                     </div>
-                    <div className="text-xs text-txt-muted mt-0.5">
-                      Restore configuration and profiles from cloud storage
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSyncBootstrapModalOpen(true)}
+                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25 group-hover:scale-105 transition-all">
+                        <Cloud className="h-5 w-5" />
+                      </div>
+                      <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-2xs font-medium text-purple-400">
+                        Cloud Sync
+                      </span>
                     </div>
-                  </div>
-                </button>
-              </div>
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-txt-primary group-hover:text-purple-400 transition-colors">
+                        Import / Cloud Sync
+                      </div>
+                      <div className="text-xs text-txt-muted mt-0.5">
+                        Restore configuration and profiles from cloud storage
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              )}
 
               {/* Keyboard shortcuts reminder */}
               <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-txt-muted pt-2 border-t border-border-subtle/50 w-full">
@@ -974,6 +1166,7 @@ export const App: React.FC = () => {
                       shortcuts={settings.shortcuts}
                       initialK8sTarget={tab.initialK8sTarget}
                       initialSSHConfig={tab.initialSSHConfig}
+                      showHiddenFiles={settings.showHiddenFiles ?? false}
                     />
                   </div>
                 )}
@@ -997,6 +1190,7 @@ export const App: React.FC = () => {
 
       {/* Global transfer conflict (overwrite/skip/rename) dialog */}
       <TransferConflictModal />
+      <QuitConfirmBridge />
 
       {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
       <DotfilesSyncBanner />
@@ -1010,6 +1204,7 @@ export const App: React.FC = () => {
         initialTab="ssh"
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         enableOpenShift={settings.enableOpenShift ?? false}
+        shareFoldersAcrossTypes={settings.shareFoldersAcrossTypes ?? false}
         onClose={() => setConnectTarget(null)}
         onConnectSSH={(config) => {
           if (connectTarget) handleConnectTerminal(connectTarget, config);
@@ -1027,6 +1222,7 @@ export const App: React.FC = () => {
         initialTab={profilesModalTab}
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         enableOpenShift={settings.enableOpenShift ?? false}
+        shareFoldersAcrossTypes={settings.shareFoldersAcrossTypes ?? false}
         onClose={() => setProfilesModalOpen(false)}
         onConnectSSH={(config) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);

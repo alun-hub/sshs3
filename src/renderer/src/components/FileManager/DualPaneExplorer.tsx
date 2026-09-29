@@ -31,6 +31,8 @@ interface DualPaneExplorerProps {
   initialK8sTarget?: K8sTerminalTarget;
   /** Automatically connect the right pane to this SSH/SFTP profile on mount. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default. */
+  showHiddenFiles?: boolean;
 }
 
 export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
@@ -39,6 +41,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   shortcuts,
   initialK8sTarget,
   initialSSHConfig,
+  showHiddenFiles = false,
 }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
@@ -187,6 +190,14 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         if (mounted) {
           setPanes({ left, right });
           setReady(true);
+          // UX audit finding #7: a brand-new File Manager tab used to default
+          // both panes to Local Disk — two identical, useless mirrors of the
+          // same folder. When there's nothing saved for the right pane and
+          // it isn't being auto-connected to a specific target, prompt for a
+          // remote connection instead of silently leaving it on Local Disk.
+          if (!session?.panes?.right && !initialSSHConfig && !initialK8sTarget) {
+            setConnectionRequest({ side: 'right', type: 'sftp' });
+          }
         }
       })
       .catch((err) => {
@@ -520,6 +531,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             refreshToken={refreshToken}
             otherPane={{ ...panes.right.source, path: panes.right.path }}
             shortcuts={shortcuts}
+            showHiddenFiles={showHiddenFiles}
           />
           <FilePane
             side="right"
@@ -538,6 +550,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             refreshToken={refreshToken}
             otherPane={{ ...panes.left.source, path: panes.left.path }}
             shortcuts={shortcuts}
+            showHiddenFiles={showHiddenFiles}
           />
         </div>
         <TransferQueueDrawer />

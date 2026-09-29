@@ -122,7 +122,7 @@ describe('ConnectionManagerModal', () => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText('Search profiles or folders...');
+    const searchInput = screen.getByPlaceholderText('Search profiles, or type user@host to connect...');
     fireEvent.change(searchInput, { target: { value: 'sandbox' } });
 
     // Sandbox should remain, Prod should be filtered out

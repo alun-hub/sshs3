@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -70,6 +70,8 @@ interface FilePaneProps {
   otherPane?: DirectorySyncModalSource;
   /** Current keyboard shortcut bindings, used to open Search in Files while this pane has focus. */
   shortcuts?: Record<string, string>;
+  /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default — entries whose name starts with "." are filtered out of the list (but still counted/selectable if already selected). */
+  showHiddenFiles?: boolean;
 }
 
 const SOURCE_ICONS: Record<SourceType, React.ComponentType<{ className?: string }>> = {
@@ -92,8 +94,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
   refreshToken,
   otherPane,
   shortcuts,
+  showHiddenFiles = false,
 }) => {
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  // UX audit finding #1: Settings > Files & Storage > "Show hidden files and
+  // dotfiles" existed and persisted, but nothing ever read it back — the
+  // list always showed dotfiles regardless of the toggle. Filtering only the
+  // list view (not the `entries` state itself) keeps drag/select/refresh
+  // logic working against the full listing.
+  const visibleEntries = useMemo(
+    () => (showHiddenFiles ? entries : entries.filter((e) => !e.name.startsWith('.'))),
+    [entries, showHiddenFiles]
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -1039,7 +1051,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         }
       >
         <FileList
-          entries={entries}
+          entries={visibleEntries}
           loading={loading}
           selectedPaths={selectedPaths}
           onSelectionChange={setSelectedPaths}
