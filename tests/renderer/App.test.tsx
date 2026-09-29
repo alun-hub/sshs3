@@ -80,7 +80,8 @@ describe('App Component', () => {
     render(<App />);
     await screen.findByTestId('tab-term-1');
 
-    expect(screen.getByText('sshs3')).toBeInTheDocument();
+    expect(screen.getByText('ssh')).toBeInTheDocument();
+    expect(screen.getByText('S3')).toBeInTheDocument();
     expect(screen.getByTestId('add-tab-btn')).toBeInTheDocument();
 
     // Default terminal tab exists and is active

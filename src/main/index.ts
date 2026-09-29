@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,11 @@ import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { applyLoginShellEnv } from './ssh/LoginShellEnv';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
+
+app.setName('sshs3');
+if (process.platform === 'linux') {
+  app.setDesktopName('sshs3.desktop');
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -127,11 +132,12 @@ function createWindow(): BrowserWindow {
   const iconPath = process.env.VITE_DEV_SERVER_URL
     ? path.join(__dirname, '../../build/icon.png')
     : path.join(__dirname, '../build/icon.png');
+  const appIcon = nativeImage.createFromPath(iconPath);
 
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: iconPath,
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, 'index.cjs'),
       sandbox: true,
@@ -139,6 +145,10 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
     },
   });
+
+  if (!appIcon.isEmpty()) {
+    mainWindow.setIcon(appIcon);
+  }
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 

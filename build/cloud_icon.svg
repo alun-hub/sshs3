@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Warm amber-gold gradient matching the reference image -->
+    <linearGradient id="cloudGoldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FED984"/>
+      <stop offset="45%" stop-color="#F8BD50"/>
+      <stop offset="100%" stop-color="#F09832"/>
+    </linearGradient>
+
+    <!-- Ambient glow filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComponentTransfer in="blur" result="glow">
+        <feFuncA type="linear" slope="0.55"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g id="cloud-terminal-icon" filter="url(#glow)">
+    <!-- Cloud contour (chevron prompt + lobes down to bottom-right) -->
+    <path d="
+      M 191 254
+      L 234 297
+      L 156 373
+      A 72 72 0 1 1 160.3 229.1
+      A 96 96 0 0 1 351.7 229.1
+      A 72 72 0 1 1 356 373
+    " fill="none" stroke="url(#cloudGoldGrad)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Bottom baseline with 45-degree angled air-gap cut (parallel to chevron) -->
+    <polygon points="216,359 360,359 360,387 188,387" fill="url(#cloudGoldGrad)"/>
+
+    <!-- Sharp 90-degree rectangular terminal cursor '_' -->
+    <rect x="268" y="325" width="62" height="22" fill="url(#cloudGoldGrad)"/>
+  </g>
+</svg>

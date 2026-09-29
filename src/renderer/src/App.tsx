@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Clock, Cloud, Columns2, Files, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
+import { BrandLogo } from './components/BrandLogo';
 import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
 import { TouchPresenceBanner } from './components/TouchPresenceBanner';
@@ -801,10 +802,11 @@ export const App: React.FC = () => {
         ref={headerRef}
         className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none"
       >
-        <div className="flex items-center gap-2 border-r border-border-subtle px-3.5 font-semibold text-sm">
-          <Terminal className="h-4 w-4 text-sky-500" />
-          <span className="font-bold tracking-wide text-txt-primary">
-            sshs3
+        <div className="flex items-center gap-2.5 border-r border-border-subtle px-3.5 font-semibold text-sm">
+          <BrandLogo className="h-5 w-auto" />
+          <span className="font-bold tracking-wide">
+            <span className="text-txt-primary">ssh</span>
+            <span className="text-[#EAB308]">S3</span>
           </span>
         </div>
 
@@ -842,24 +844,17 @@ export const App: React.FC = () => {
                   show instead (UX audit finding #14): the onboarding-sized
                   logo/tagline made sense on a first run, not on the
                   thousandth time this screen shows up between tabs. */}
-              <div className="flex flex-col items-center space-y-2">
-                <div
-                  className={
-                    recentSSH.length > 0
-                      ? 'flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 border border-sky-500/25 text-sky-400'
-                      : 'flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 border border-sky-500/25 shadow-lg shadow-sky-500/5 text-sky-400'
-                  }
-                >
-                  <Terminal className={recentSSH.length > 0 ? 'h-5 w-5' : 'h-7 w-7'} />
-                </div>
+              <div className="flex flex-col items-center space-y-3">
+                <BrandLogo className={recentSSH.length > 0 ? 'h-20 w-auto' : 'h-32 w-auto'} />
                 <h1
                   className={
                     recentSSH.length > 0
-                      ? 'text-sm font-bold tracking-tight text-txt-primary'
-                      : 'text-xl font-bold tracking-tight text-txt-primary'
+                      ? 'text-base font-bold tracking-tight'
+                      : 'text-3xl font-extrabold tracking-tight'
                   }
                 >
-                  sshs3
+                  <span className="text-txt-primary">ssh</span>
+                  <span className="text-[#EAB308]">S3</span>
                 </h1>
                 {recentSSH.length === 0 && (
                   <p className="text-xs text-txt-muted max-w-md">

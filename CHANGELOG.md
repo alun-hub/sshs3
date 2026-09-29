@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.2] - 2026-09-29
+
+### Changed
+- **New App Branding & Icon**:
+  - Replaced application icons across all desktop formats (`.svg`, `.ico`, and `.png` in 16x16 through 512x512) with modern dark squircle and yellow cloud terminal mark (`> _`).
+  - Added solid color cloud terminal icon assets (`cloud_icon_yellow`, `cloud_icon_red`, `cloud_icon_blue`, `cloud_icon_orange`).
+  - Integrated `BrandLogo` component in header and hero empty state with `sshS3` color-matched styling.
+  - Configured Linux desktop file binding (`setDesktopName`) and native image window icon in Electron main process for desktop environments.
+
 ## [0.96.1] - 2026-09-28
 
 ### Added
