@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,24 +77,20 @@ let isQuitting = false;
 // when the resulting app.quit() call reaches 'before-quit' below.
 let quitConfirmed = false;
 
-function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): boolean {
+// UX audit finding #2: both confirmations below used to be native
+// `dialog.showMessageBoxSync` boxes — the one part of the app that didn't
+// look or behave like the rest of it (no default-focused Cancel, no themed
+// styling). They now go through `ipcBridge.promptQuitConfirm`, which asks
+// the renderer to show the same `ConfirmDialog` used everywhere else in the
+// app and awaits its result over IPC.
+async function confirmQuitIfActiveTransfers(): Promise<boolean> {
   const activeCount = ipcBridge?.transferQueue.getActiveTransferCount() ?? 0;
-  if (activeCount > 0) {
-    const options: Electron.MessageBoxSyncOptions = {
-      type: 'warning',
-      buttons: ['Cancel', 'Quit Anyway'],
-      defaultId: 0,
-      cancelId: 0,
-      title: 'Transfers in progress',
-      message: `There ${activeCount === 1 ? 'is' : 'are'} ${activeCount} file transfer(s) in progress.`,
-      detail: 'If you quit now, the transfers will be cancelled and files may be left incomplete.',
-    };
-    const choice = parentWindow && !parentWindow.isDestroyed()
-      ? dialog.showMessageBoxSync(parentWindow, options)
-      : dialog.showMessageBoxSync(options);
-    if (choice === 0) {
-      return false;
-    }
+  if (activeCount > 0 && ipcBridge) {
+    const proceed = await ipcBridge.promptQuitConfirm({
+      kind: 'active-transfers',
+      activeTransferCount: activeCount,
+    });
+    if (!proceed) return false;
   }
   return true;
 }
@@ -106,31 +102,18 @@ function confirmQuitIfActiveTransfers(parentWindow?: BrowserWindow | null): bool
  * Cached via `quitConfirmed` so the same quit attempt is never asked twice
  * across the 'close' -> app.quit() -> 'before-quit' chain below.
  */
-async function confirmQuit(parentWindow?: BrowserWindow | null): Promise<boolean> {
+async function confirmQuit(): Promise<boolean> {
   if (quitConfirmed) return true;
 
-  if (!confirmQuitIfActiveTransfers(parentWindow)) {
+  if (!(await confirmQuitIfActiveTransfers())) {
     return false;
   }
 
   try {
     const settings = await ipcBridge?.settingsStore.getSettings();
-    if (settings?.confirmBeforeQuit) {
-      const options: Electron.MessageBoxSyncOptions = {
-        type: 'question',
-        buttons: ['Cancel', 'Quit'],
-        defaultId: 0,
-        cancelId: 0,
-        title: 'Quit sshs3?',
-        message: 'Are you sure you want to quit?',
-        detail: 'Any open SSH sessions and tunnels will be closed.',
-      };
-      const choice = parentWindow && !parentWindow.isDestroyed()
-        ? dialog.showMessageBoxSync(parentWindow, options)
-        : dialog.showMessageBoxSync(options);
-      if (choice === 0) {
-        return false;
-      }
+    if (settings?.confirmBeforeQuit && ipcBridge) {
+      const proceed = await ipcBridge.promptQuitConfirm({ kind: 'confirm-before-quit' });
+      if (!proceed) return false;
     }
   } catch {
     // If settings can't be read, don't block quitting over it.
@@ -187,7 +170,7 @@ function createWindow(): BrowserWindow {
     // tearing everything down hard.
     event.preventDefault();
     void (async () => {
-      if (!(await confirmQuit(mainWindow))) return;
+      if (!(await confirmQuit())) return;
       app.quit();
     })();
   });
@@ -250,7 +233,7 @@ app.on('before-quit', (event) => {
   if (!isQuitting) {
     event.preventDefault();
     void (async () => {
-      if (!(await confirmQuit(mainWindow))) return;
+      if (!(await confirmQuit())) return;
       isQuitting = true;
       if (ipcBridge) {
         try {

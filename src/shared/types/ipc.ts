@@ -120,6 +120,10 @@ export const IPC_CHANNELS = {
   TRANSFER_CONFLICT_RESPOND: 'transfer:conflict-respond',
   START_DRAG: 'drag:start',
 
+  // Quit confirmation (renders the app's own themed dialog instead of a native OS message box)
+  QUIT_CONFIRM_PROMPT: 'app:quit-confirm-prompt',
+  QUIT_CONFIRM_RESPOND: 'app:quit-confirm-respond',
+
   // Profiles
   PROFILES_GET: 'profiles:get',
   PROFILES_SAVE_SSH: 'profiles:save-ssh',
@@ -327,6 +331,19 @@ export interface TransferConflictPromptEvent {
   isDirectory: boolean;
 }
 
+/**
+ * UX audit finding #2: quitting used to show a native `dialog.showMessageBoxSync`
+ * box, which looks and behaves nothing like the rest of the app's themed
+ * `ConfirmDialog` (default-focused button, danger styling, etc.). The main
+ * process now asks the renderer to show its own dialog and awaits the
+ * result over this same request/response IPC pattern as transfer conflicts.
+ */
+export interface QuitConfirmPromptEvent {
+  id: string;
+  kind: 'active-transfers' | 'confirm-before-quit';
+  activeTransferCount?: number;
+}
+
 export interface DirSyncComputeDiffOptions {
   sourceProviderId: string;
   sourcePath: string;
@@ -401,6 +418,10 @@ export interface MultiSSHApi {
   // Transfer conflict resolution
   onTransferConflictPrompt(callback: (event: TransferConflictPromptEvent) => void): () => void;
   respondTransferConflict(id: string, resolution: TransferConflictResolution, applyToAll: boolean): Promise<void>;
+
+  // Quit confirmation (see QuitConfirmPromptEvent)
+  onQuitConfirmPrompt(callback: (event: QuitConfirmPromptEvent) => void): () => void;
+  respondQuitConfirm(id: string, proceed: boolean): Promise<void>;
 
   // Storage
   connectStorage(config: StorageConnectConfig): Promise<{ id: string }>;

@@ -99,6 +99,15 @@ export interface AppSettings {
   updatedAt?: string;
   /** Master switch for OpenShift support and tools (e.g. oc login, oc CLI shim). Off by default. */
   enableOpenShift?: boolean;
+  /**
+   * SSH/SFTP and S3 profiles share one flat folder namespace on disk. Off by
+   * default, the Connection Manager hides a folder from a tab unless it holds
+   * at least one profile of that tab's type, so an "S3" folder created while
+   * organizing buckets doesn't show up empty under SSH/SFTP. Turning this on
+   * shows every folder in every tab regardless of what it currently contains,
+   * for people who deliberately want one shared folder tree across types.
+   */
+  shareFoldersAcrossTypes?: boolean;
   /** Ephemeral debug container images used for Kubernetes / OpenShift pod debugging. */
   k8sDebugImages?: K8sDebugImage[];
 }
@@ -117,6 +126,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
   enableOpenShift: false,
+  shareFoldersAcrossTypes: false,
   sessionExitAction: 'reconnect',
   confirmBeforeQuit: false,
   smartcardAuthMode: 'always-prompt',

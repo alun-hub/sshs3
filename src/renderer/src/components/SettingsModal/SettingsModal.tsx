@@ -98,6 +98,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showHiddenFiles, setShowHiddenFiles] = useState<boolean>(
     currentSettings.showHiddenFiles ?? false
   );
+  const [shareFoldersAcrossTypes, setShareFoldersAcrossTypes] = useState<boolean>(
+    currentSettings.shareFoldersAcrossTypes ?? false
+  );
   const [confirmBeforeDelete, setConfirmBeforeDelete] = useState<boolean>(
     currentSettings.confirmBeforeDelete ?? true
   );
@@ -166,6 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
+      setShareFoldersAcrossTypes(currentSettings.shareFoldersAcrossTypes ?? false);
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
       setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
@@ -302,6 +306,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
       showHiddenFiles,
+      shareFoldersAcrossTypes,
       confirmBeforeDelete,
       dotfilesPoolEnabled,
       smartcardAuthMode,
@@ -542,6 +547,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </label>
                     </div>
                   </div>
+
+                  {/* App Behavior */}
+                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                    <label className="text-xs font-medium text-txt-primary">App Behavior</label>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={confirmBeforeQuit}
+                        onChange={(e) => setConfirmBeforeQuit(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">Confirm before quitting the app</span>
+                    </label>
+                    <p className="text-xs text-txt-muted pl-6">
+                      Ask for confirmation when closing the window or quitting, so active SSH
+                      sessions and tunnels aren't closed by accident.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -749,22 +772,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </span>
                       </label>
                     </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={confirmBeforeQuit}
-                        onChange={(e) => setConfirmBeforeQuit(e.target.checked)}
-                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
-                      />
-                      <span className="text-xs text-txt-primary">Confirm before quitting the app</span>
-                    </label>
-                    <p className="text-xs text-txt-muted pl-6">
-                      Ask for confirmation when closing the window or quitting, so active SSH
-                      sessions and tunnels aren't closed by accident.
-                    </p>
                   </div>
 
                   {/* Local X11 Server (Windows GUI Forwarding) */}
@@ -1166,6 +1173,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                       <span className="text-xs text-txt-primary">Confirm before deleting files and folders</span>
                     </label>
+                  </div>
+
+                  {/* Folder organization */}
+                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shareFoldersAcrossTypes}
+                        onChange={(e) => setShareFoldersAcrossTypes(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">
+                        Share folders between SSH/SFTP and S3 in Connection Manager
+                      </span>
+                    </label>
+                    <p className="pl-6 text-xs text-txt-muted leading-relaxed">
+                      Off by default: each tab in Connection Manager only shows folders that
+                      actually contain a profile of that type, so an "S3" folder doesn't sit
+                      empty under SSH/SFTP. Turn this on to use one shared folder tree across
+                      both connection types instead.
+                    </p>
                   </div>
 
                   {/* Dotfiles Pool (opt-in) */}
@@ -1657,19 +1685,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-5 py-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-              >
-                Save Settings
-              </button>
+              {activeCategory === 'sync' ? (
+                <>
+                  <p className="mr-auto text-xs text-txt-muted">
+                    Synchronization changes save immediately — nothing to save here.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                  >
+                    Close
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                  >
+                    Save Settings
+                  </button>
+                </>
+              )}
             </div>
           </form>
         </div>

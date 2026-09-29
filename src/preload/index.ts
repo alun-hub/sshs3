@@ -9,6 +9,7 @@ import {
   type AskpassPromptEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
+  type QuitConfirmPromptEvent,
   type SshAgentStatus,
   type FileReadResult,
   type ExternalFileStatusEvent,
@@ -197,6 +198,17 @@ export const api: MultiSSHApi = {
 
   respondTransferConflict: (id: string, resolution: TransferConflictResolution, applyToAll: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, id, resolution, applyToAll),
+
+  onQuitConfirmPrompt: (callback: (event: QuitConfirmPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: QuitConfirmPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, listener);
+    };
+  },
+
+  respondQuitConfirm: (id: string, proceed: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUIT_CONFIRM_RESPOND, id, proceed),
 
   // Storage
   connectStorage: (config: StorageConnectConfig): Promise<{ id: string }> =>

@@ -51,6 +51,8 @@ interface ConnectionManagerModalProps {
   dotfilesPoolEnabled?: boolean;
   /** Master switch from Settings > Kubernetes & Debug. Off by default; enables OpenShift login and tools. */
   enableOpenShift?: boolean;
+  /** Master switch from Settings > Files & Storage. Off by default; when off, a tab only shows folders that hold a profile of its own type (or no profiles anywhere yet). */
+  shareFoldersAcrossTypes?: boolean;
 }
 
 export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
@@ -65,6 +67,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onBrowseK8sFiles,
   dotfilesPoolEnabled = false,
   enableOpenShift = false,
+  shareFoldersAcrossTypes = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [sshProfiles, setSshProfiles] = useState<SSHConnectionConfig[]>([]);
@@ -133,6 +136,43 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       // Safe to proceed even if touch fails
     }
     onConnectSSH?.(updated);
+  };
+
+  // UX audit finding #3: the quickstart card promised "a local shell, ad-hoc
+  // SSH connection or WSL" but there was never actually a way to connect to
+  // an SSH host without first saving it as a profile — "New Profile"'s only
+  // action was "Save Profile". Typing "user@host" (or "user@host:port") into
+  // the same search box used for filtering saved profiles now offers a
+  // one-off connection, unsaved by default, with "Save as profile" alongside
+  // it for anyone who decides afterwards that they want to keep it.
+  const buildAdHocConfig = (): SSHConnectionConfig | null => {
+    if (!adHocTarget) return null;
+    return {
+      id: crypto.randomUUID(),
+      name: adHocTarget.username ? `${adHocTarget.username}@${adHocTarget.host}` : adHocTarget.host,
+      host: adHocTarget.host,
+      port: adHocTarget.port,
+      username: adHocTarget.username || '',
+      authType: 'password',
+    };
+  };
+
+  const handleConnectAdHoc = () => {
+    const config = buildAdHocConfig();
+    if (!config) return;
+    onConnectSSH?.(config);
+  };
+
+  const handleConnectAdHocSFTP = () => {
+    const config = buildAdHocConfig();
+    if (!config) return;
+    onConnectSFTP?.(config);
+  };
+
+  const handleSaveAdHocAsProfile = () => {
+    const config = buildAdHocConfig();
+    if (!config) return;
+    setEditing({ type: 'ssh', config });
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
@@ -357,6 +397,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   const query = searchQuery.trim().toLowerCase();
 
+  // "user@host" or "user@host:port" typed into the search box, on the
+  // SSH/SFTP tab, reads as ad-hoc quick-connect intent rather than a filter.
+  const adHocTarget = useMemo(() => {
+    if (tab !== 'ssh') return null;
+    const m = searchQuery.trim().match(/^([^\s@]+)@([^\s:@]+)(?::(\d{1,5}))?$/);
+    if (!m) return null;
+    return { username: m[1], host: m[2], port: m[3] ? parseInt(m[3], 10) : undefined };
+  }, [tab, searchQuery]);
+
   const filteredSSH = useMemo(() => {
     if (!query) return sshProfiles;
     return sshProfiles.filter(
@@ -391,11 +440,54 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [folders, sshProfiles, s3Profiles]);
 
+  // Folders are one flat, shared list on disk (SSH and S3 profiles both
+  // reference the same `folders` string array) — so a folder created while
+  // organizing S3 buckets shows up, empty, under SSH/SFTP too, and vice
+  // versa. Unless the user opts into sharing (Settings > Files & Storage),
+  // scope each tab to folders that actually hold a profile of its own type;
+  // a brand-new folder with no profiles anywhere yet still shows in both,
+  // since we can't know which type it's "for" until something lands in it.
+  const folderTypeCounts = useMemo(() => {
+    const counts = new Map<string, { ssh: number; s3: number }>();
+    for (const name of allFolderNames) counts.set(name, { ssh: 0, s3: 0 });
+    for (const p of sshProfiles) {
+      const g = p.group?.trim();
+      if (!g) continue;
+      const c = counts.get(g) ?? { ssh: 0, s3: 0 };
+      c.ssh += 1;
+      counts.set(g, c);
+    }
+    for (const p of s3Profiles) {
+      const g = p.group?.trim();
+      if (!g) continue;
+      const c = counts.get(g) ?? { ssh: 0, s3: 0 };
+      c.s3 += 1;
+      counts.set(g, c);
+    }
+    return counts;
+  }, [allFolderNames, sshProfiles, s3Profiles]);
+
+  const sshFolderNames = useMemo(() => {
+    if (shareFoldersAcrossTypes) return allFolderNames;
+    return allFolderNames.filter((name) => {
+      const c = folderTypeCounts.get(name);
+      return !c || c.ssh > 0 || c.s3 === 0;
+    });
+  }, [allFolderNames, folderTypeCounts, shareFoldersAcrossTypes]);
+
+  const s3FolderNames = useMemo(() => {
+    if (shareFoldersAcrossTypes) return allFolderNames;
+    return allFolderNames.filter((name) => {
+      const c = folderTypeCounts.get(name);
+      return !c || c.s3 > 0 || c.ssh === 0;
+    });
+  }, [allFolderNames, folderTypeCounts, shareFoldersAcrossTypes]);
+
   const groupedSSH = useMemo(() => {
     const groups: Record<string, SSHConnectionConfig[]> = {};
     const ungroupedKey = 'Ungrouped';
 
-    for (const f of allFolderNames) {
+    for (const f of sshFolderNames) {
       if (!query || f.toLowerCase().includes(query)) {
         groups[f] = [];
       }
@@ -419,13 +511,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         if (b === ungroupedKey) return -1;
         return a.localeCompare(b);
       });
-  }, [filteredSSH, allFolderNames, query]);
+  }, [filteredSSH, sshFolderNames, query]);
 
   const groupedS3 = useMemo(() => {
     const groups: Record<string, S3Config[]> = {};
     const ungroupedKey = 'Ungrouped';
 
-    for (const f of allFolderNames) {
+    for (const f of s3FolderNames) {
       if (!query || f.toLowerCase().includes(query)) {
         groups[f] = [];
       }
@@ -449,7 +541,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         if (b === ungroupedKey) return -1;
         return a.localeCompare(b);
       });
-  }, [filteredS3, allFolderNames, query]);
+  }, [filteredS3, s3FolderNames, query]);
 
   // Top 3 recently used
   const recentSSH = useMemo(() => {
@@ -572,7 +664,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search profiles or folders..."
+                        placeholder={
+                          tab === 'ssh'
+                            ? 'Search profiles, or type user@host to connect...'
+                            : 'Search profiles or folders...'
+                        }
                         className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                       />
                     </div>
@@ -722,6 +818,53 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
               {!loading && tab === 'ssh' && (
                 <div className="space-y-4">
+                  {/* Ad-hoc quick connect: "user@host" typed into search */}
+                  {adHocTarget && (
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-medium text-txt-primary">
+                            Connect to {adHocTarget.username}@{adHocTarget.host}
+                            {adHocTarget.port ? `:${adHocTarget.port}` : ''}
+                          </div>
+                          <div className="text-xs text-txt-muted">
+                            One-off connection — nothing is saved unless you choose to
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {onConnectSSH && (
+                            <button
+                              type="button"
+                              onClick={handleConnectAdHoc}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
+                            >
+                              Connect
+                            </button>
+                          )}
+                          {onConnectSFTP && (
+                            <button
+                              type="button"
+                              title="Open SFTP in Dual-Pane File Manager"
+                              onClick={handleConnectAdHocSFTP}
+                              className="flex items-center gap-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors"
+                            >
+                              <Files className="h-3 w-3" />
+                              SFTP
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title="Save as a profile instead of connecting once"
+                            onClick={handleSaveAdHocAsProfile}
+                            className="rounded-lg border border-border-subtle px-2 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                          >
+                            Save as profile
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Recently Used SSH Profiles */}
                   {!query && recentSSH.length > 0 && (
                     <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
@@ -746,7 +889,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   </span>
                                 )}
                                 {profile.group && (
-                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
+                                  <span
+                                    title={`In folder "${profile.group}"`}
+                                    className="inline-flex items-center gap-1 rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted"
+                                  >
+                                    <Folder className="h-2.5 w-2.5" />
                                     {profile.group}
                                   </span>
                                 )}
@@ -783,6 +930,54 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   SFTP
                                 </button>
                               )}
+                              {/* UX audit finding #11: this row used to stop at Connect/SFTP
+                                  while the identical profile, shown again below in its folder,
+                                  also had Tunnels/Duplicate/Edit/Delete — same entity, two
+                                  different action sets depending on where you saw it. */}
+                              <button
+                                type="button"
+                                title="Manage SSH Tunnels"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTunnelsProfile(profile);
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-indigo-400 transition-colors"
+                              >
+                                <Cable className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Duplicate / Clone Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleCloneSSH(profile);
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Edit Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditing({ type: 'ssh', config: profile });
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Delete Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteSSH(profile.id, profile.name);
+                                }}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -791,7 +986,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   )}
 
                   {/* Grouped SSH Profiles with Drag & Drop */}
-                  {filteredSSH.length === 0 && allFolderNames.length === 0 ? (
+                  {filteredSSH.length === 0 && sshFolderNames.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 py-6 text-center">
                       <p className="text-sm text-txt-muted">
                         {query ? 'No profiles matched your search' : 'No SSH profiles yet'}
@@ -1061,7 +1256,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
                                 {profile.group && (
-                                  <span className="rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
+                                  <span
+                                    title={`In folder "${profile.group}"`}
+                                    className="inline-flex items-center gap-1 rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted"
+                                  >
+                                    <Folder className="h-2.5 w-2.5" />
                                     {profile.group}
                                   </span>
                                 )}
@@ -1071,7 +1270,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                 {profile.lastUsedAt}
                               </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-1">
+                            <div className="flex shrink-0 items-center gap-1.5">
                               {onConnectS3 && (
                                 <button
                                   type="button"
@@ -1084,6 +1283,41 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   Connect
                                 </button>
                               )}
+                              {/* UX audit finding #11: match the action set this profile gets
+                                  further down in its folder listing. */}
+                              <button
+                                type="button"
+                                title="Duplicate / Clone Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleCloneS3(profile);
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Edit Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditing({ type: 's3', config: profile });
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Delete Profile"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteS3(profile.id, profile.name);
+                                }}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -1092,7 +1326,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   )}
 
                   {/* Grouped S3 Profiles with Drag & Drop */}
-                  {filteredS3.length === 0 && allFolderNames.length === 0 ? (
+                  {filteredS3.length === 0 && s3FolderNames.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 py-6 text-center">
                       <p className="text-sm text-txt-muted">
                         {query ? 'No profiles matched your search' : 'No S3 profiles yet'}
