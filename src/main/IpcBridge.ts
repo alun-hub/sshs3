@@ -1162,6 +1162,8 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_SAVE_SSH,
       async (_event, config: SSHConnectionConfig) => {
         await this.profileStore.saveSSH(config);
+        // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
+        await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
         this.scheduleAutoSync();
       }
     );
@@ -1170,6 +1172,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_DELETE_SSH,
       async (_event, id: string) => {
         await this.profileStore.deleteSSH(id);
+        await this.storageRegistry.disconnect?.(`sftp-${id}`);
         this.scheduleAutoSync();
       }
     );
@@ -1178,6 +1181,8 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_SAVE_S3,
       async (_event, config: S3Config) => {
         await this.profileStore.saveS3(config);
+        // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
+        await this.storageRegistry.disconnect?.(`s3-${config.id}`);
         this.scheduleAutoSync();
       }
     );
@@ -1186,6 +1191,7 @@ export class IpcBridge {
       IPC_CHANNELS.PROFILES_DELETE_S3,
       async (_event, id: string) => {
         await this.profileStore.deleteS3(id);
+        await this.storageRegistry.disconnect?.(`s3-${id}`);
         this.scheduleAutoSync();
       }
     );
