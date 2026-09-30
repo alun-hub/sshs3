@@ -804,13 +804,19 @@ export const App: React.FC = () => {
         ref={headerRef}
         className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none"
       >
-        <div className="flex items-center gap-2.5 border-r border-border-subtle px-3.5 font-semibold text-sm">
+        {/* Clicking the brand shows the landing page again; tabs stay open and mounted (no tab is active). */}
+        <button
+          type="button"
+          title="Home"
+          onClick={() => setActiveTabId('')}
+          className="flex items-center gap-2.5 border-r border-border-subtle px-3.5 font-semibold text-sm hover:bg-app-surface-hover transition-colors"
+        >
           <BrandLogo className="h-5 w-auto" />
           <span className="font-bold tracking-wide">
             <span className="text-txt-primary">ssh</span>
             <span className="text-[#EAB308]">S3</span>
           </span>
-        </div>
+        </button>
 
         {/* TabBar */}
         <div className="flex-1 min-w-0">
@@ -839,7 +845,9 @@ export const App: React.FC = () => {
 
       {/* Main Content Area: non-active tabs stay mounted with display: none */}
       <main className="relative flex flex-1 w-full overflow-hidden bg-app">
-        {!sessionLoaded ? null : tabs.length === 0 ? (
+        {!sessionLoaded ? null : (
+          <>
+        {(tabs.length === 0 || activeTabId === '') && (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-txt-secondary animate-in fade-in duration-200">
             <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-6">
               {/* Brand Header — smaller once there's real usage history to
@@ -1045,8 +1053,8 @@ export const App: React.FC = () => {
               </div>
             </div>
           </div>
-        ) : (
-          tabs.map((tab) => {
+        )}
+        {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const totalPanes = tab.type === 'terminal' && tab.paneTree ? countLeaves(tab.paneTree) : 1;
             const rootLeaf =
@@ -1158,7 +1166,8 @@ export const App: React.FC = () => {
                 )}
               </div>
             );
-          })
+          })}
+          </>
         )}
       </main>
 
