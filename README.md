@@ -19,10 +19,6 @@
   <summary><b>🖥️ Terminal & Split Views</b> (SSH, Local Shell)</summary>
   <br>
   <p align="center">
-    <img src="docs/screenshots/landing.png" alt="sshS3 start screen" width="850" />
-    <br><em>Start screen with quick access to terminals, the file manager, saved connections and cloud sync</em>
-  </p>
-  <p align="center">
     <img src="docs/screenshots/split.png" alt="Three split panes: remote SSH, local shell and a second SSH session" width="850" />
     <br><em>Konsole-style recursive split panes (horizontal & vertical) with independent sessions</em>
   </p>
@@ -45,8 +41,12 @@
   <summary><b>📁 Dual-Pane File Manager & S3 Object Storage</b> (SFTP, S3, Directory Sync)</summary>
   <br>
   <p align="center">
-    <img src="docs/screenshots/filemanager.png" alt="Dual-pane file manager with an S3 bucket and local disk, showing the context menu" width="850" />
-    <br><em>Dual-pane file explorer for local disk, SFTP servers, and S3 buckets</em>
+    <img src="docs/screenshots/filemanager.png" alt="Connection Manager S3 tab over the dual-pane file manager" width="850" />
+    <br><em>Dual-pane file explorer for local disk, SFTP servers, and S3 buckets, with the Connection Manager</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/file-options.png" alt="Dual-pane file manager with an S3 bucket and local disk, showing the context menu" width="850" />
+    <br><em>File operations from the context menu: copy, rename, permissions, properties and more</em>
   </p>
   <p align="center">
     <img src="docs/screenshots/markdown.png" alt="Built-in editor showing a rendered Markdown preview" width="850" />
