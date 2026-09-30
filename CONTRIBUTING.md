@@ -8,7 +8,7 @@ Please take a moment to review this document to ensure a smooth collaboration.
 
 ## Code of Conduct
 
-All contributors and maintainers are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md). Please report any unacceptable behavior to [alun@alun.se](mailto:alun@alun.se).
+All contributors and maintainers are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md). Please report any unacceptable behavior to [info@sshs3.com](mailto:info@sshs3.com).
 
 ---
 

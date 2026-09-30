@@ -37,7 +37,7 @@ Instead, please report security issues through one of the following channels:
    Navigate to the [Security Advisories](https://github.com/alun-hub/sshs3/security/advisories) tab of this repository and click **"Report a vulnerability"**.
 
 2. **Email**:
-   Send an email to [alun@alun.se](mailto:alun@alun.se) with the subject line `[SECURITY] Potential vulnerability in sshs3`.
+   Send an email to [info@sshs3.com](mailto:info@sshs3.com) with the subject line `[SECURITY] Potential vulnerability in sshs3`.
 
 ### What to Include in Your Report
 
