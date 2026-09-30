@@ -26,7 +26,16 @@ export class DirectorySyncProfileStore {
     return this.filePath;
   }
 
+  /** Live (not deleted) profiles — what the rest of the app sees. */
   public async list(): Promise<DirectorySyncProfile[]> {
+    return (await this.listIncludingTombstones()).filter((p) => !p.deletedAt);
+  }
+
+  /**
+   * Also returns soft-deleted (tombstoned) profiles. Used by remote profile sync, which has to
+   * see and propagate deletions; every other caller should use list().
+   */
+  public async listIncludingTombstones(): Promise<DirectorySyncProfile[]> {
     try {
       const raw = await fs.readFile(this.filePath, 'utf-8');
       const data = JSON.parse(raw);
@@ -51,11 +60,12 @@ export class DirectorySyncProfileStore {
     }
 
     return this.queueMutation(async () => {
-      const profiles = await this.list();
+      const profiles = await this.listIncludingTombstones();
       const now = new Date().toISOString();
       const index = profiles.findIndex((p) => p.id === profile.id);
+      const { deletedAt: _revived, ...live } = profile;
       const stamped: DirectorySyncProfile = {
-        ...profile,
+        ...live,
         createdAt: index >= 0 ? profiles[index].createdAt : (profile.createdAt ?? now),
         updatedAt: now,
       };
@@ -72,12 +82,18 @@ export class DirectorySyncProfileStore {
   public async delete(id: string): Promise<void> {
     if (!id) return;
     return this.queueMutation(async () => {
-      const profiles = await this.list();
-      const filtered = profiles.filter((p) => p.id !== id);
-      if (filtered.length !== profiles.length) {
-        await this.persist(filtered);
-      }
+      const profiles = await this.listIncludingTombstones();
+      const index = profiles.findIndex((p) => p.id === id);
+      if (index < 0 || profiles[index].deletedAt) return;
+      const now = new Date().toISOString();
+      profiles[index] = { ...profiles[index], updatedAt: now, deletedAt: now };
+      await this.persist(profiles);
     });
+  }
+
+  /** Replaces the whole set (tombstones included) verbatim — used when remote sync applies a merge. */
+  public async replaceAll(profiles: DirectorySyncProfile[]): Promise<void> {
+    return this.queueMutation(() => this.persist(profiles));
   }
 
   private async persist(profiles: DirectorySyncProfile[]): Promise<void> {

@@ -7,6 +7,7 @@ import type { IStorageProvider, FileEntry, StorageType, WriteStreamOptions } fro
 import { ProfileStore } from '../../src/main/profile/ProfileStore';
 import { DotfilePoolStore } from '../../src/main/dotfiles/DotfilePoolStore';
 import { SettingsStore } from '../../src/main/settings/SettingsStore';
+import { DirectorySyncProfileStore } from '../../src/main/dirsync/DirectorySyncProfileStore';
 import { SyncCryptoService, generateSalt, type ScryptParams } from '../../src/main/services/SyncCryptoService';
 import {
   ProfileSyncService,
@@ -122,6 +123,7 @@ interface Harness {
   profileStore: ProfileStore;
   dotfilePoolStore: DotfilePoolStore;
   settingsStore: SettingsStore;
+  dirSyncStore: DirectorySyncProfileStore;
   sync: ProfileSyncService;
   dir: string;
   sshConfigPath: string;
@@ -135,11 +137,13 @@ async function makeHarness(topologySalt: Buffer, credentialsSalt: Buffer): Promi
   const profileStore = new ProfileStore(path.join(dir, 'profiles.json'));
   const dotfilePoolStore = new DotfilePoolStore(path.join(dir, 'dotfile-pools.json'));
   const settingsStore = new SettingsStore(path.join(dir, 'settings.json'));
+  const dirSyncStore = new DirectorySyncProfileStore(path.join(dir, 'directory-sync-profiles.json'));
   const sync = new ProfileSyncService(profileStore, dotfilePoolStore, settingsStore, makeCrypto(topologySalt, credentialsSalt), {
     sshConfigPath,
     knownHostsPath,
+    directorySyncProfileStore: dirSyncStore,
   });
-  return { profileStore, dotfilePoolStore, settingsStore, sync, dir, sshConfigPath, knownHostsPath };
+  return { profileStore, dotfilePoolStore, settingsStore, dirSyncStore, sync, dir, sshConfigPath, knownHostsPath };
 }
 
 describe('ProfileSyncService', () => {
@@ -171,6 +175,71 @@ describe('ProfileSyncService', () => {
     dirs.push(h.dir);
     return h;
   }
+
+  const dirSyncProfile = (id: string, name: string) => ({
+    id,
+    name,
+    source: { providerConfigRef: 'local', path: '/data' },
+    target: { providerConfigRef: 'sftp-ssh-1', path: '/backup' },
+    deleteExtraneous: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('round-trips saved directory-sync profiles between two machines', async () => {
+    const machineA = await harness();
+    await machineA.dirSyncStore.save(dirSyncProfile('ds-1', 'Nightly backup'));
+    await machineA.sync.pushToRemote(provider);
+    expect(provider.getRawBuffer('~/.sshs3/dirsync-profiles.enc')).toBeDefined();
+
+    const machineB = await harness();
+    const result = await machineB.sync.pullFromRemote(provider);
+
+    expect(result.changedCategories).toContain('dirsync-profiles');
+    const profiles = await machineB.dirSyncStore.list();
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({ id: 'ds-1', name: 'Nightly backup', target: { providerConfigRef: 'sftp-ssh-1', path: '/backup' } });
+  });
+
+  it('propagates the deletion of a directory-sync profile', async () => {
+    const machineA = await harness();
+    await machineA.dirSyncStore.save(dirSyncProfile('ds-1', 'Nightly backup'));
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    expect(await machineB.dirSyncStore.list()).toHaveLength(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await machineA.dirSyncStore.delete('ds-1');
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+
+    expect(await machineB.dirSyncStore.list()).toHaveLength(0);
+  });
+
+  it('reports directory-sync profile differences in compareWithRemote', async () => {
+    const machineA = await harness();
+    await machineA.sync.pushToRemote(provider);
+    await machineA.dirSyncStore.save(dirSyncProfile('ds-1', 'Nightly backup'));
+
+    const comparison = await machineA.sync.compareWithRemote(provider);
+    const category = comparison.categories.find((c) => c.category === 'dirsync-profiles');
+    expect(category).toMatchObject({ state: 'ahead', ahead: 1, behind: 0 });
+  });
+
+  it('pulls fine from a remote pushed before directory-sync profiles were synced', async () => {
+    const machineA = await harness();
+    await machineA.sync.pushToRemote(provider);
+    await provider.delete('~/.sshs3/dirsync-profiles.enc');
+
+    const machineB = await harness();
+    await machineB.dirSyncStore.save(dirSyncProfile('ds-local', 'Local only'));
+    const result = await machineB.sync.pullFromRemote(provider);
+
+    expect(result.changedCategories).not.toContain('dirsync-profiles');
+    expect(await machineB.dirSyncStore.list()).toHaveLength(1);
+  });
 
   it('round-trips an SSH profile between two machines, splitting secrets into credentials.enc', async () => {
     const machineA = await harness();
@@ -505,8 +574,15 @@ describe('ProfileSyncService', () => {
     const result = await machineA.sync.wipeRemote(provider);
 
     expect(result.errors).toEqual([]);
-    expect(result.deletedCount).toBe(5);
-    for (const file of ['topology.enc', 'credentials.enc', 'dotfile-pools.enc', 'settings.enc', 'ssh-native.enc']) {
+    expect(result.deletedCount).toBe(6);
+    for (const file of [
+      'topology.enc',
+      'credentials.enc',
+      'dotfile-pools.enc',
+      'settings.enc',
+      'ssh-native.enc',
+      'dirsync-profiles.enc',
+    ]) {
       expect(provider.hasFile(`~/.sshs3/${file}`)).toBe(false);
     }
   });

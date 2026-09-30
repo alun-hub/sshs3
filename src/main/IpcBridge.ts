@@ -305,7 +305,9 @@ export class IpcBridge {
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
     this.profileSyncService =
       options.profileSyncService ??
-      new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService);
+      new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
+        directorySyncProfileStore: this.directorySyncProfileStore,
+      });
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();

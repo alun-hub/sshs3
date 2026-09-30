@@ -9,6 +9,8 @@ import type { DotfilePool, DotfilePoolFile } from '../../shared/types/dotfiles';
 import type { AppSettings } from '../../shared/types/settings';
 import { ProfileStore, type ProfilesData } from '../profile/ProfileStore';
 import { DotfilePoolStore } from '../dotfiles/DotfilePoolStore';
+import type { DirectorySyncProfileStore } from '../dirsync/DirectorySyncProfileStore';
+import type { DirectorySyncProfile } from '../../shared/types/dirsync';
 import { SettingsStore } from '../settings/SettingsStore';
 import { SyncCryptoService, SyncLockedError, type SyncDataCategory } from './SyncCryptoService';
 import { joinPaths } from '../transfer/TransferPipeline';
@@ -66,6 +68,7 @@ function buildRemoteFiles(remoteBasePath: string): Record<SyncDataCategory, stri
     'dotfile-pools': joinPaths('sftp', dir, 'dotfile-pools.enc'),
     settings: joinPaths('sftp', dir, 'settings.enc'),
     'ssh-native': joinPaths('sftp', dir, 'ssh-native.enc'),
+    'dirsync-profiles': joinPaths('sftp', dir, 'dirsync-profiles.enc'),
   };
 }
 
@@ -305,6 +308,9 @@ interface CredentialsPayload {
 interface DotfilePoolsPayload {
   pools: DotfilePool[];
 }
+interface DirSyncProfilesPayload {
+  profiles: DirectorySyncProfile[];
+}
 interface SshNativePayload {
   sshConfigBlock: { updatedAt: string; body: string } | null;
   knownHostsContent: string;
@@ -319,6 +325,8 @@ import type {
 export type PullResult = ProfileSyncPullResult;
 
 export interface ProfileSyncServiceOptions {
+  /** Saved directory-sync pairs to include in the sync; omitted = that category is skipped. */
+  directorySyncProfileStore?: DirectorySyncProfileStore;
   sshConfigPath?: string;
   knownHostsPath?: string;
 }
@@ -544,6 +552,8 @@ export class ProfileSyncService {
     this.lastComparison = null;
   }
 
+  private readonly dirSyncProfileStore?: DirectorySyncProfileStore;
+
   constructor(
     private readonly profileStore: ProfileStore,
     private readonly dotfilePoolStore: DotfilePoolStore,
@@ -551,6 +561,7 @@ export class ProfileSyncService {
     private readonly cryptoService: SyncCryptoService,
     options: ProfileSyncServiceOptions = {}
   ) {
+    this.dirSyncProfileStore = options.directorySyncProfileStore;
     this.sshConfigPath = options.sshConfigPath ?? path.join(os.homedir(), '.ssh', 'config');
     this.knownHostsPath = options.knownHostsPath ?? path.join(os.homedir(), '.ssh', 'known_hosts');
   }
@@ -627,11 +638,12 @@ export class ProfileSyncService {
       await provider.chmod(syncDir, 0o700).catch(() => {});
     }
 
-    const [profiles, pools, settings, sshNativePayload] = await Promise.all([
+    const [profiles, pools, settings, sshNativePayload, dirSyncProfiles] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
       this.settingsStore.getSettings(),
       this.buildLocalSshNativePayload(),
+      this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve(null),
     ]);
 
     if (sshNativePayload.sshConfigBlock) {
@@ -679,6 +691,12 @@ export class ProfileSyncService {
     await this.checkNotChangedRemotely(provider, 'ssh-native', remoteFiles);
     await this.encryptAndUpload(provider, 'ssh-native', JSON.stringify(sshNativePayload), remoteFiles);
 
+    if (dirSyncProfiles) {
+      const dirSyncPayload: DirSyncProfilesPayload = { profiles: dirSyncProfiles };
+      await this.checkNotChangedRemotely(provider, 'dirsync-profiles', remoteFiles);
+      await this.encryptAndUpload(provider, 'dirsync-profiles', JSON.stringify(dirSyncPayload), remoteFiles);
+    }
+
     // All 5 categories now reflect this push; only now is the remote back
     // to a consistent state, so the marker comes off. If any of the steps
     // above threw, this line is never reached and the marker is left in
@@ -695,6 +713,7 @@ export class ProfileSyncService {
         { category: 'dotfile-pools', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'dirsync-profiles', state: 'in_sync', ahead: 0, behind: 0 },
       ],
       checkedAt: formatTimestamp(),
     };
@@ -720,12 +739,13 @@ export class ProfileSyncService {
       throw new SyncInProgressError();
     }
 
-    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw] = await Promise.all([
+    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw] = await Promise.all([
       this.downloadAndDecrypt(provider, 'topology', remoteFiles, passwords?.topology),
       this.downloadAndDecrypt(provider, 'credentials', remoteFiles, passwords?.credentials),
       this.downloadAndDecrypt(provider, 'dotfile-pools', remoteFiles, passwords?.credentials),
       this.downloadAndDecrypt(provider, 'settings', remoteFiles, passwords?.topology),
       this.downloadAndDecrypt(provider, 'ssh-native', remoteFiles, passwords?.credentials),
+      this.downloadAndDecrypt(provider, 'dirsync-profiles', remoteFiles, passwords?.topology),
     ]);
 
     if (topologyRaw !== null || credentialsRaw !== null) {
@@ -771,6 +791,17 @@ export class ProfileSyncService {
       }
     }
 
+    // Remotes pushed by an older version have no dirsync-profiles file (null) — nothing to merge then.
+    if (dirSyncRaw !== null && this.dirSyncProfileStore) {
+      const remotePayload: DirSyncProfilesPayload = JSON.parse(dirSyncRaw);
+      const local = await this.dirSyncProfileStore.listIncludingTombstones();
+      const { merged, changed } = mergeRecords(local, remotePayload.profiles ?? []);
+      if (changed) {
+        await this.dirSyncProfileStore.replaceAll(merged);
+        changedCategories.push('dirsync-profiles');
+      }
+    }
+
     let sshNativeConflicts: KnownHostsConflict[] = [];
     if (sshNativeRaw !== null) {
       const remotePayload: SshNativePayload = JSON.parse(sshNativeRaw);
@@ -791,6 +822,7 @@ export class ProfileSyncService {
         { category: 'dotfile-pools', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'dirsync-profiles', state: 'in_sync', ahead: 0, behind: 0 },
       ],
       checkedAt: formatTimestamp(),
     };
@@ -822,18 +854,20 @@ export class ProfileSyncService {
 
     const hasTopology = (await this.statOrNull(provider, remoteFiles.topology)) !== null;
 
-    const [localProfiles, localPools, localSettings, localSshNative] = await Promise.all([
+    const [localProfiles, localPools, localSettings, localSshNative, localDirSync] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
       this.settingsStore.getSettings(),
       this.buildLocalSshNativePayload(),
+      this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve([] as DirectorySyncProfile[]),
     ]);
 
     if (!hasTopology) {
       const activeSsh = localProfiles.ssh.filter((p) => !p.deletedAt).length;
       const activeS3 = localProfiles.s3.filter((p) => !p.deletedAt).length;
       const activePools = localPools.filter((p) => !p.deletedAt).length;
-      const totalAhead = activeSsh + activeS3 + activePools + (localSettings ? 1 : 0);
+      const activeDirSync = localDirSync.filter((p) => !p.deletedAt).length;
+      const totalAhead = activeSsh + activeS3 + activePools + activeDirSync + (localSettings ? 1 : 0);
 
       const result: SyncComparisonResult = {
         state: 'not_initialized',
@@ -871,6 +905,12 @@ export class ProfileSyncService {
             ahead: 0,
             behind: 0,
           },
+          {
+            category: 'dirsync-profiles',
+            state: activeDirSync > 0 ? 'ahead' : 'in_sync',
+            ahead: activeDirSync,
+            behind: 0,
+          },
         ],
         checkedAt: formatTimestamp(),
       };
@@ -878,12 +918,13 @@ export class ProfileSyncService {
       return result;
     }
 
-    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw] = await Promise.all([
+    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw] = await Promise.all([
       this.downloadAndDecrypt(provider, 'topology', remoteFiles),
       this.downloadAndDecrypt(provider, 'credentials', remoteFiles),
       this.downloadAndDecrypt(provider, 'dotfile-pools', remoteFiles),
       this.downloadAndDecrypt(provider, 'settings', remoteFiles),
       this.downloadAndDecrypt(provider, 'ssh-native', remoteFiles),
+      this.downloadAndDecrypt(provider, 'dirsync-profiles', remoteFiles),
     ]);
 
     const categories: CategoryComparison[] = [];
@@ -999,8 +1040,21 @@ export class ProfileSyncService {
       details: sshNativeDetails,
     });
 
-    const totalAhead = profilesAhead + poolsComp.ahead + settingsAhead + sshNativeAhead;
-    const totalBehind = profilesBehind + poolsComp.behind + settingsBehind + sshNativeBehind;
+    // 5. Saved directory-sync profiles
+    const remoteDirSync: DirectorySyncProfile[] = dirSyncRaw ? JSON.parse(dirSyncRaw).profiles ?? [] : [];
+    const dirSyncComp = this.dirSyncProfileStore
+      ? compareRecords(localDirSync, remoteDirSync, 'Directory sync profile')
+      : { ahead: 0, behind: 0, details: [] as string[] };
+    categories.push({
+      category: 'dirsync-profiles',
+      state: getComparisonState(dirSyncComp.ahead, dirSyncComp.behind),
+      ahead: dirSyncComp.ahead,
+      behind: dirSyncComp.behind,
+      details: dirSyncComp.details,
+    });
+
+    const totalAhead = profilesAhead + poolsComp.ahead + settingsAhead + sshNativeAhead + dirSyncComp.ahead;
+    const totalBehind = profilesBehind + poolsComp.behind + settingsBehind + sshNativeBehind + dirSyncComp.behind;
 
     const result: SyncComparisonResult = {
       state: getComparisonState(totalAhead, totalBehind),

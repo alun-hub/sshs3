@@ -25,6 +25,8 @@ export interface DirectorySyncProfile {
   createdAt: string;
   updatedAt: string;
   lastRunAt?: string;
+  /** Set when the profile is deleted; kept as a tombstone so remote profile sync can propagate the deletion. */
+  deletedAt?: string;
 }
 
 export interface DirectorySyncApplyResult {

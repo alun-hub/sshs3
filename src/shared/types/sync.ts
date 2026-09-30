@@ -6,15 +6,22 @@
  */
 
 /**
- * The five kinds of data remote profile sync can upload/download. Each
+ * The kinds of data remote profile sync can upload/download. Each
  * category is bound as AES-GCM AAD when encrypting, so a file encrypted as
  * one category can never be decrypted as another — even with the correct
  * password — preventing the files from being swapped for one another.
  */
-export type SyncDataCategory = 'topology' | 'credentials' | 'dotfile-pools' | 'settings' | 'ssh-native';
+export type SyncDataCategory =
+  | 'topology'
+  | 'credentials'
+  | 'dotfile-pools'
+  | 'settings'
+  | 'ssh-native'
+  | 'dirsync-profiles';
 
 /**
- * The two independent key groups. `topology`/`settings` share the
+ * The two independent key groups. `topology`/`settings`/`dirsync-profiles` (saved
+ * directory-sync pairs: provider references and paths only) share the
  * "topology" master password so that data can be shared with a team in the
  * future without also exposing private credentials; `credentials`,
  * `dotfile-pools` (file contents may embed arbitrary secrets) and
