@@ -40,7 +40,11 @@ function quoteSpacedPathValue(line: string): string {
   const [, indent, key, sep, value] = match;
   if (!PATH_DIRECTIVES.has(key.toLowerCase())) return line;
   if (value.startsWith('"') || !/\s/.test(value)) return line;
-  return `${indent}${key}${sep}"${value.replace(/\\/g, '/')}"`;
+  // A trailing " # comment" is not part of the path — don't swallow it into the quotes.
+  if (/\s#/.test(value)) return line;
+  // Backslashes only mean "path separator" for a Windows drive path (C:\...); leave anything else byte-for-byte.
+  const normalized = /^[A-Za-z]:[\\/]/.test(value) ? value.replace(/\\/g, '/') : value;
+  return `${indent}${key}${sep}"${normalized}"`;
 }
 
 export interface SanitizeSshConfigBodyResult {

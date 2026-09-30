@@ -1443,7 +1443,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <CheckCircle2
                                       className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-sky-400' : 'text-emerald-400'}`}
                                     />
-                                    <span>{isAuto ? lib.name : pkcs11LibDisplayName(lib.path)}</span>
+                                    <span>{isAuto || !IS_WINDOWS ? lib.name : pkcs11LibDisplayName(lib.path)}</span>
                                   </div>
                                   <div
                                     className="truncate font-mono text-2xs text-txt-muted"

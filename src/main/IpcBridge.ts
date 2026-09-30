@@ -2784,8 +2784,10 @@ export class IpcBridge {
     let socketPath: string;
     let privateAgentPid: number | undefined;
 
+    // Windows only: there several PKCS#11 modules for one card (opensc-pkcs11 / onepin-opensc-pkcs11 /
+    // libykcs11) share the single system agent; other platforms keep the plain per-library cache lookup.
     const sameCardSocket =
-      this.globalSmartcardAgents.has(libPath) || mode !== 'agent-global'
+      process.platform !== 'win32' || this.globalSmartcardAgents.has(libPath) || mode !== 'agent-global'
         ? undefined
         : await this.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
 

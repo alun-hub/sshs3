@@ -100,11 +100,12 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   const smartcardLibFriendlyName = pkcs11LibDisplayName;
 
-  // ssh-add labels a PKCS#11 key with the module's file path, which is noise in this list: lead with the
-  // certificate's name when we have one, otherwise the driver's friendly name, and keep any real label.
+  // On Windows ssh-add labels a PKCS#11 key with the module's file path, which is noise in this list: for
+  // those (and only those) lead with the certificate's name when we have one, otherwise the driver's friendly
+  // name. A real label (what Linux shows) is left exactly as it was.
   const identityLabel = (id: { comment: string; certificate?: { subject: string } | null }): string => {
-    if (id.certificate) return certSubjectCN(id.certificate.subject);
-    return looksLikeLibraryPath(id.comment) ? pkcs11LibDisplayName(id.comment) : id.comment;
+    if (!looksLikeLibraryPath(id.comment)) return id.comment;
+    return id.certificate ? certSubjectCN(id.certificate.subject) : pkcs11LibDisplayName(id.comment);
   };
 
   useEffect(() => {

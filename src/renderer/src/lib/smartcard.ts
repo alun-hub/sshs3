@@ -1,3 +1,5 @@
+import { IS_WINDOWS } from './platform';
+
 /**
  * Display helpers for PKCS#11 modules. Raw library paths ("C:\Program Files\OpenSC Project\...\opensc-pkcs11.dll",
  * "/usr/lib64/p11-kit-proxy.so") are meaningful to someone debugging a driver but opaque to everyone else, so
@@ -21,6 +23,8 @@ function baseName(p: string): string {
 export function pkcs11LibDisplayName(pkcs11LibPath: string): string {
   if (!pkcs11LibPath) return 'Security Key';
   const stem = baseName(pkcs11LibPath).replace(/\.(so|dll|dylib)(\.\d+)*$/i, '');
+  // The friendly-name table is Windows-only; other platforms keep showing the bare library name as before.
+  if (!IS_WINDOWS) return stem || pkcs11LibPath;
   return KNOWN_LIBRARIES.find((k) => k.match.test(stem))?.name ?? (stem || pkcs11LibPath);
 }
 

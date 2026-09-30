@@ -354,3 +354,20 @@ describe('sanitizeSshConfigBody path quoting', () => {
     expect(sanitizeSshConfigBody(line).body).toBe(line);
   });
 });
+
+describe('sanitizeSshConfigBody path quoting (non-Windows safety)', () => {
+  it('leaves a Linux path with spaces but no drive letter byte-for-byte apart from the quotes', () => {
+    const { body } = sanitizeSshConfigBody('    IdentityFile ~/My Keys/id_ed25519');
+    expect(body).toBe('    IdentityFile "~/My Keys/id_ed25519"');
+  });
+
+  it('does not touch a line with a trailing comment', () => {
+    const line = '    IdentityFile ~/.ssh/id_ed25519 # work key';
+    expect(sanitizeSshConfigBody(line).body).toBe(line);
+  });
+
+  it('leaves ordinary lines (no spaces in the value) untouched', () => {
+    const line = '    IdentityFile ~/.ssh/id_ed25519';
+    expect(sanitizeSshConfigBody(line).body).toBe(line);
+  });
+});
