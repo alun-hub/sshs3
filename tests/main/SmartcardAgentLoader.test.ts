@@ -257,6 +257,8 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
       expect(pinResponse2).toEqual({ pin: 'cached-pin-999' });
       // promptHandler was NOT called a second time because the PIN was reused from cache
       expect(promptHandler).toHaveBeenCalledTimes(1);
+      // onPresenceRequested was called because the prompt asked to confirm user presence
+      expect(onPresenceRequested).toHaveBeenCalledTimes(1);
 
       // Simulate a pure presence notification (notify_start from ssh-agent)
       const presenceClient = connectToAskpass(askpassServer!);
@@ -277,7 +279,7 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
       });
 
       expect(presenceResponse).toEqual({ pin: '' });
-      expect(onPresenceRequested).toHaveBeenCalled();
+      expect(onPresenceRequested).toHaveBeenCalledTimes(2);
       expect(promptHandler).toHaveBeenCalledTimes(1);
     } finally {
       await askpassServer?.stop();

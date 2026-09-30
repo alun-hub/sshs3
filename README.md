@@ -165,6 +165,9 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 - **Port Forwarding** — Forward ports from remote pods or services to localhost with background lifecycle management and status tracking.
 - **Zero startup impact** — The `@kubernetes/client-node` engine is lazy-loaded on first actual use, preserving instant desktop application startup.
 
+> [!TIP]
+> For a comprehensive walkthrough of Kubernetes features, file access mechanics, and technical constraints in ephemeral containers, see the **[Kubernetes & OpenShift Guide](docs/KUBERNETES.md)**.
+
 ### X11 & GUI forwarding (Windows & Linux)
 - **Seamless X11 Forwarding (`-Y`)** — Run remote Linux GUI applications (e.g. `xclock`, `gedit`, `firefox`, IDEs) through SSH directly to your local desktop with trusted X11 forwarding (`ForwardX11Trusted=yes`).
 - **Built-in / Bundled X Server for Windows (MobaXterm-style)** — Windows installer packages a fully portable VcXsrv X server. Automatically managed in multiwindow rootless mode (`:0 -multiwindow -clipboard -wgl`) so remote Linux windows appear seamlessly on your Windows taskbar with Alt+Tab and clipboard synchronization. Access control is deliberately left **on** (no `-ac`): only clients presenting the `MIT-MAGIC-COOKIE` that `ssh -X`/`-Y` already negotiates can connect, so the port being reachable on your LAN (for the firewall rule below) doesn't mean anyone on it can hijack forwarded windows.
@@ -275,8 +278,7 @@ main process (src/main) — IpcBridge routes every channel to a dedicated servic
 - **`IpcBridge`** (`src/main/IpcBridge.ts`) is the single entry point for all `ipcMain.handle` registrations. It doesn't implement logic itself — it wires typed IPC channels (defined once in `src/shared/types/ipc.ts`, shared between main, preload, and renderer) to the services below, and also drives a few main→renderer "prompt" flows (host-key trust, transfer conflicts, dotfiles sync) where the main process needs an answer from the user before it can continue.
 - **Terminal sessions** (`SSHPtyManager`, on top of `node-pty`) spawn the real `ssh` binary as a pseudo-terminal process rather than reimplementing the SSH protocol, which is what makes existing `~/.ssh/config` files, agents, and CLI muscle memory work unmodified. Local shell tabs use the same manager to spawn `$SHELL`/`cmd`/PowerShell instead.
 - **File transfers** go through a separate path built on `ssh2`/`ssh2-sftp-client` for SFTP and `@aws-sdk/client-s3` for S3, behind a common `IStorageProvider` interface (`src/main/storage/`) implemented by `LocalStorageProvider`, `SFTPStorageProvider`, and `S3StorageProvider`. This abstraction is what lets the dual-pane file manager copy transparently between local disk, SFTP, and S3 without caring which side is which. Transfers themselves run through a `TransferPipeline`/`TransferQueue` pair that streams data with pause/resume support and progress events, rather than buffering whole files in memory.
-- **Host key trust** (`KnownHostsStore`, `HostKeyVerifier`) implements TOFU (trust-on-first-use) verification independent of the OS's own `known_hosts`, since the SFTP path goes through the `ssh2` library rather than the system `ssh` client.
-- **Smartcard auth** (`SmartcardDetector`, `AskpassServer`) detects installed PKCS#11 modules on disk and, when a smartcard profile connects, starts a loopback TCP server that OpenSSH's askpass mechanism talks to for the PIN prompt, relayed to an in-app dialog.
+- **Smartcard auth** (`SmartcardDetector`, `AskpassServer`) detects installed PKCS#11 modules on disk and, when a smartcard profile connects, starts an isolated IPC askpass server (a mode 0700 Unix domain socket on POSIX, a token-authenticated 127.0.0.1 TCP server on Windows) that OpenSSH's askpass mechanism talks to for the PIN prompt, relayed to an in-app dialog.
 - **Smartcard PIN caching** (`SmartcardAgentLoader`, plus agent bookkeeping in `IpcBridge`) implements the three caching modes described above. `loadSmartcardIntoPrivateAgent` spawns an agent via `AgentLifecycleManager.spawnPrivateAgent()` — on Linux/macOS a fresh, private `ssh-agent` (deliberately never the inherited `SSH_AUTH_SOCK`); on Windows the shared "OpenSSH Authentication Agent" service pipe, since Win32-OpenSSH has no private-agent equivalent — loads the card into it via `ssh-add -s`, and retries the mechanical load (not the PIN prompt, which is cached after the first ask) a few times on failure to absorb transient PKCS#11 reader contention. `IpcBridge` then either scopes that agent to one PTY session (evicted in the `SSHPtyManager`/`IpcBridge` exit handlers), or caches it in a `pkcs11LibPath`-keyed map for the app's lifetime ('agent-global' mode, cleared on quit or via the top-bar lock action). The interactive terminal authenticates through the cached agent instead of a second direct `-I` login — on Linux/macOS via OpenSSH's `IdentityAgent` option, on Windows via the `SSH_AUTH_SOCK` environment variable instead, since Win32-OpenSSH 9.5p2's `IdentityAgent` config value cannot resolve a raw named-pipe path (confirmed directly: it fails with `ssh_get_authentication_socket: No such file or directory` even though the identical pipe works via the env var). The same caching resolution runs for the file manager's own SFTP connections (`STORAGE_CONNECT`) and for the dotfiles-sync connection, so a smartcard SFTP profile reuses the cached agent instead of opening a second, independent PKCS#11 session against the same reader — which most PIV/CAC readers reject with "agent refused operation" since they only allow one transaction at a time. It falls back to loading its own short-lived agent only when no cached one is available (e.g. 'always-prompt' mode).
 - **`AgentLifecycleManager`** probes for a running `ssh-agent` (or the Windows OpenSSH Authentication Agent service) via `ensureAgent()` and spawns/manages one itself (`ssh-agent -s`) if none is found, caching the result so key-based auth works even if the user hasn't started an agent manually. Concurrent callers (e.g. the app's own startup call racing a session-restored local shell tab creating its PTY immediately) all await the same in-flight attempt rather than each getting an independent, possibly-stale status — a caller that raced the first invocation and got a premature snapshot would otherwise silently end up with no agent at all, since a PTY's environment is fixed at spawn time and can't be corrected after the fact. It also exposes `spawnPrivateAgent()`/`killPrivateAgent()`/`unloadCard()`, used exclusively by the smartcard PIN caching above — `unloadCard()` (`ssh-add -e`) is how a caller evicts just its own card from an agent it doesn't own outright, such as the Windows service pipe. `IpcBridge`'s `TERMINAL_CREATE` handler sets a local shell's `SSH_AUTH_SOCK` explicitly (never just inherited) — a cached 'agent-global' smartcard agent's socket if one exists (checked first, so an already-unlocked card is immediately usable from a plain shell), otherwise `ensureAgent()`'s own managed/ensured socket.
 - **`AwsSsoAuthService`** drives the AWS SSO OIDC device-authorization flow (client registration → device code → browser approval → token polling), caching the client registration and issued token the same way the AWS CLI does under `~/.aws/sso/cache`, then uses `@aws-sdk/client-sso` to list accounts/roles and mint short-lived credentials for an S3 profile.
@@ -288,6 +290,33 @@ main process (src/main) — IpcBridge routes every channel to a dedicated servic
 - **`SystemTrustStore`** reads the OS's CA bundle (via `win-ca` on Windows, or the known Linux distro bundle paths) at startup so S3/TLS connections to internally-issued certificates succeed without manual CA configuration.
 - **Persistence** (`ProfileStore`, `SettingsStore`, `SessionStore`, `DotfilePoolStore`, `KnownHostsStore`, `SyncConfigStore`) is all flat JSON under Electron's per-OS `userData` directory, written through a serialized mutation queue to avoid concurrent-write corruption, with secret fields passed through `safeStorage` before hitting disk.
 - **Dotfiles sync** (`DotfileSyncService`) opens its own short-lived SFTP connection — separate from the interactive PTY session — to diff and, on approval, atomically write (`temp file + rename`) pool files to a host.
+
+---
+
+## Security & Privacy: Private Keys, PINs & Credentials
+
+sshs3 is engineered around strict zero-knowledge principles and the principle of least privilege. When managing production infrastructure, bastion jump hosts, cloud buckets, and cryptographic hardware, you need absolute clarity and confidence in how your credentials and authentication secrets are handled.
+
+### 1. Hardware Security Keys & Private Keys (Zero Extraction)
+- **Hardware tokens (YubiKey, PKCS#11, SITHS, Net iD, FIDO2 / WebAuthn):** Your private keys reside exclusively inside the secure cryptographic chip (Secure Element) of the physical token. **Private keys never leave the hardware device.** They cannot be extracted, exported, or read by sshs3, the operating system, or malicious software. All cryptographic operations (such as SSH challenge signatures) are executed directly on the physical token hardware.
+- **Disk-based SSH keys (`~/.ssh/id_*`):** sshs3 delegates authentication directly to your system's native OpenSSH client (`node-pty`) or your active `ssh-agent`. sshs3 does not copy, duplicate, inspect, or upload your private key files.
+- **No telemetry / No tracking:** sshs3 does not track you. It transmits zero analytics, zero crash telemetry, and zero credentials to any external servers.
+
+### 2. PIN Codes & Passphrases (Ephemeral & Never Stored)
+When unlocking a smartcard, YubiKey, or passphrase-protected SSH key, OpenSSH communicates with sshs3's in-app askpass mechanism:
+- **Zero Filesystem Storage:** PIN codes, passphrases, and unlock passwords are **never written to the filesystem, configuration files, cache directories, or temporary files**.
+- **Zero Memory Caching:** The user's PIN is transferred from the in-app modal directly into the active prompt callback, piped to the OpenSSH child process via standard input, and immediately discarded and garbage-collected. The application process does not retain PIN strings in memory once the authentication step has completed.
+- **Strictly Redacted Logging:** Diagnostic logging strictly redacts all sensitive content: only the prompt metadata and string length are logged (e.g., `resolved prompt "Enter PIN" -> 6 char(s)`), ensuring that plaintext PINs or passphrases never appear in stdout, stderr, or debug logs.
+- **Isolated Inter-Process Communication:**
+  - **Linux & macOS:** The askpass server uses an isolated Unix domain socket located in a private directory created with strict POSIX mode `0700` (accessible exclusively by your own operating system user account).
+  - **Windows:** The askpass server binds to `127.0.0.1` protected by a cryptographically random 128-bit authentication token verified using constant-time comparison (`crypto.timingSafeEqual`) to protect against timing side-channel attacks.
+
+### 3. Stored Credentials & Secrets Encryption at Rest
+- **Operating System Keyring Encryption:** When you choose to save passwords or S3 secret keys in a connection profile, sshs3 encrypts those secret fields before writing to disk using Electron's `safeStorage` API:
+  - **Linux:** Encrypted via `libsecret` (GNOME Keyring / KWallet).
+  - **Windows:** Encrypted via DPAPI (Data Protection API, hardware- and user-bound).
+  - **macOS:** Encrypted via Apple Keychain.
+- **Zero-Knowledge Profile Sync:** If you opt in to sync your connection profiles to your own S3 bucket or SFTP server, profiles are split and client-side encrypted using **AES-256-GCM** with keys derived via `scrypt` from your master password (or hardware token). The remote storage server only ever receives encrypted ciphertext.
 
 ---
 
@@ -497,6 +526,15 @@ npm run package:linux
 
 # Windows (requires a Windows build environment)
 npm run package:win
+```
+
+### Release & Deployment
+An automated deployment script handles patch version bumping, staging, committing, git tagging, and pushing to trigger the GitHub Actions release workflow:
+```bash
+# Bump patch version, commit all code, tag (e.g. v0.96.3), and push to GitHub
+npm run deploy
+# or with a custom commit message:
+./deploy.sh "feat: describe your change"
 ```
 
 ---

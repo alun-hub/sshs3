@@ -1,38 +1,18 @@
 # YubiKey / FIDO2 – implementationsplan
 
-Status: draft, ej påbörjad.
-Utgångsläge (verifierat i kodbasen 2026-09-25):
-
-- YubiKey hanteras idag **enbart som PIV-smartcard via PKCS#11**
-  (`src/main/smartcard/SmartcardDetector.ts` → `SmartcardAgentLoader.ts` →
-  privat `ssh-agent` per profil, PIN via `AskpassServer.ts` +
-  `SmartcardPinModal.tsx`).
-- `SmartcardDetector`s biblioteks-lista innehåller OpenSC, Net iD och p11-kit —
-  **inte** Yubicos eget `libykcs11`.
-- `SSHAuthType` (`src/shared/types/ssh.ts:3`) har fyra värden:
-  `'password' | 'privateKey' | 'smartcard' | 'agent'`. Inget FIDO2/`sk`-läge.
-- `SFTPStorageProvider.ts` (ssh2) hanterar `smartcard`/`agent` genom att
-  koppla upp mot en `SSH_AUTH_SOCK`; ssh2 självt kan inte prata PKCS#11 eller
-  FIDO2 direkt, allt går via extern `ssh-agent`/`ssh-add`.
-- `SmartcardSyncService.ts` låser upp synk-valvet med PKCS#11-nycklar
-  (RSA/Ed25519 via kort). Inget WebAuthn/FIDO2-stöd.
-- Ingen kod refererar `ed25519-sk`, `ecdsa-sk`, `ssh-keygen -K` eller `ykman`.
-
-Detta dokument är den gemensamma planen; varje avsnitt är tänkt att bli en
-egen PR i ordningen nedan (1 → 5), eftersom senare punkter bygger vidare på
-mönster (askpass/agent-loader) som punkt 1–2 sätter.
+Status: Delvis implementerad (Fas 1, 2 och 3 slutförda och mergade i v0.94). Fas 4 och 5 kvarstår på roadmapen.
 
 ---
 
 ## Prioritetsordning
 
-| # | Uppslag | Nytta | Insats | Beroenden |
-|---|---------|-------|--------|-----------|
-| 1 | `libykcs11` i detektorns bibliotekslista | Hög | Låg | Inga |
-| 2 | Visuell "Tryck på YubiKey"-prompt | Hög | Låg–Medel | Återanvänder AskpassServer |
-| 3 | FIDO2 `ed25519-sk`/`ecdsa-sk`: generera + koppla profil | Hög | Medel–Hög | 1, 2 (touch-UX) |
-| 4 | Enhetsdetektering & statusindikator (ykman/HID) | Medel | Medel | Ingen (kan gå parallellt) |
-| 5 | Vault-upplåsning via WebAuthn PRF/hmac-secret | Medel | Hög | 4 (för enhetsval), separat spike |
+| # | Uppslag | Status | Nytta | Insats | Beroenden |
+|---|---------|--------|-------|--------|-----------|
+| 1 | `libykcs11` i detektorns bibliotekslista | ✅ Klar (v0.94) | Hög | Låg | Inga |
+| 2 | Visuell "Tryck på YubiKey"-prompt | ✅ Klar (v0.94) | Hög | Låg–Medel | Återanvänder AskpassServer |
+| 3 | FIDO2 `ed25519-sk`/`ecdsa-sk`: generera + koppla profil | ✅ Klar (v0.94) | Hög | Medel–Hög | 1, 2 (touch-UX) |
+| 4 | Enhetsdetektering & statusindikator (ykman/HID) | ⬜ Kvar | Medel | Medel | Ingen (kan gå parallellt) |
+| 5 | Vault-upplåsning via WebAuthn PRF/hmac-secret | ⬜ Kvar | Medel | Hög | 4 (för enhetsval), separat spike |
 
 Ordningen 1 → 2 → 3 rekommenderas eftersom touch-prompten (2) är en
 förutsättning för att FIDO2-flödet (3) inte ska kännas som att appen hänger.

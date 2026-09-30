@@ -300,7 +300,8 @@ describe('IpcBridge', () => {
         'fido2-conn-1',
         expect.stringContaining('Confirm user presence for key ED25519-SK SHA256:abc123'),
         'fido2',
-        'connecting to gnarg fido2'
+        'connecting to gnarg fido2',
+        undefined
       );
 
       loadSpy.mockRestore();
@@ -407,6 +408,19 @@ describe('IpcBridge', () => {
       expect(mockWebContents.events).toContainEqual({
         channel: IPC_CHANNELS.TERMINAL_EXIT,
         args: ['session-123', { exitCode: 0, signal: undefined }],
+      });
+    });
+
+    it('forwards pty presence events to webContents as PRESENCE_PROMPT', () => {
+      mockPtyManager.emit('presence', { sessionId: 'session-123', prompt: 'Confirm user presence for key ED25519-SK' });
+      expect(mockWebContents.events).toContainEqual({
+        channel: IPC_CHANNELS.PRESENCE_PROMPT,
+        args: [
+          expect.objectContaining({
+            sessionId: 'session-123',
+            message: 'Touch your security key to confirm',
+          }),
+        ],
       });
     });
 

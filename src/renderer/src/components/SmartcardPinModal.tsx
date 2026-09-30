@@ -123,11 +123,15 @@ function resolvePromptContext(
 }
 
 function promptNeedsTouch(prompt: string): boolean {
-  return /presence/i.test(prompt);
+  return /presence|touch/i.test(prompt);
 }
 
 function isPurePresencePrompt(prompt: string): boolean {
-  return /confirm user presence/i.test(prompt) && !/pin|password|passphrase/i.test(prompt);
+  return (
+    (/confirm user presence|touch (your|the) (security key|authenticator|yubikey)/i.test(prompt) ||
+      /^user presence/i.test(prompt)) &&
+    !/pin|password|passphrase/i.test(prompt)
+  );
 }
 
 const AWAITING_TOUCH_TIMEOUT_MS = 4000;
@@ -298,7 +302,7 @@ export const SmartcardPinModal: React.FC = () => {
     return awaitingTouchBanner || null;
   }
 
-  const visuals = currentPrompt.kind ? KIND_VISUALS[currentPrompt.kind] : DEFAULT_VISUALS;
+  const visuals = (currentPrompt.kind && KIND_VISUALS[currentPrompt.kind]) || DEFAULT_VISUALS;
   const contextInfo = resolvePromptContext(currentPrompt);
 
   return (

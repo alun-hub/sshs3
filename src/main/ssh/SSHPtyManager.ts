@@ -61,6 +61,7 @@ export interface SSHPtyManagerEvents {
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
   reconnecting: (event: { sessionId: string; attempt: number; maxAttempts: number }) => void;
   reconnected: (event: { sessionId: string }) => void;
+  presence: (event: { sessionId: string; prompt: string }) => void;
   askpass: (event: {
     sessionId: string;
     prompt: string;
@@ -522,7 +523,10 @@ export class SSHPtyManager extends EventEmitter {
 
     if (needsAskpass) {
       askpassServer = new AskpassServer({
-        promptHandler: async (rawPrompt: string) => {
+        onPresence: (prompt: string) => {
+          this.emit('presence', { sessionId, prompt });
+        },
+        promptHandler: async (rawPrompt: string, retry?: AskpassPromptRetryContext) => {
           if (config.authType === 'password' && config.password) {
             return config.password;
           }
@@ -531,16 +535,31 @@ export class SSHPtyManager extends EventEmitter {
           }
           if (this.listenerCount('askpass') > 0) {
             const isPassword = /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
+            const isFido2 =
+              config.authType === 'fido2' ||
+              /authenticator|security key|yubikey|fido|sk-/i.test(rawPrompt);
+            const isPassphrase = !isPassword && !isFido2 && /passphrase/i.test(rawPrompt);
+            const kind: AskpassPromptKind | undefined = isPassword
+              ? 'password'
+              : isFido2
+                ? 'fido2'
+                : isPassphrase
+                  ? undefined
+                  : 'smartcard';
+
             const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
             const promptText = isPassword
               ? rawPrompt.trim()
-              : `Enter your smartcard PIN to connect via SSH to ${hostLabel}:`;
+              : isFido2
+                ? rawPrompt.trim() || `Enter PIN for security key to connect via SSH to ${hostLabel}:`
+                : `Enter your smartcard PIN to connect via SSH to ${hostLabel}:`;
             return new Promise<string>((resolve) => {
               this.emit('askpass', {
                 sessionId,
                 prompt: promptText,
-                kind: isPassword ? 'password' : 'smartcard',
-                context: isPassword ? `SSH: ${hostLabel}` : `Smartcard: ${hostLabel}`,
+                kind,
+                context: isPassword ? `SSH: ${hostLabel}` : isFido2 ? `FIDO2: ${hostLabel}` : `Smartcard: ${hostLabel}`,
+                retry,
                 callback: (resolvedPin: string) => resolve(resolvedPin),
               });
             });

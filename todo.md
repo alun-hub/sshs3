@@ -100,8 +100,8 @@ att bygga.
    produktnamnet — funktionen finns i ClusterSSH, MobaXterm och Termius, men
    inte här. Naturlig utökning av befintlig `TabBar`/`TerminalView`.
 - [x] **17. Delad/grupperad vy** (flera terminaler sida vid sida i en flik, t.ex. 2 kolumner, 2 rader och 2x2-grid). Integrerat i `App.tsx` med verktygsfält för layoutbyte, oberoende terminalpaneler med anslutningsväljare och full sessionspersistens.
-- [x] **18. SSH-porttunnling** (lokal `-L`, fjärr `-R` och dynamisk SOCKS-proxy `-D`). Konfigureras per profil i `SSHProfileForm`, skickas säkert till OpenSSH i `SmartcardDetector.buildSSHArguments()` och sparas persistent.
-- [x] **19. Jump host / ProxyJump-stöd i UI:t.** Stöd i `SSHProfileForm` och `SmartcardDetector` (`-J`), samt fullt stöd för SFTP via stream-forwarding (`ssh2.forwardOut`) i `SFTPStorageProvider`.
+- [x] **18. SSH-porttunnling** (lokal `-L`, fjärr `-R` och dynamisk SOCKS-proxy `-D`). Hanteras som fristående bakgrundsprocesser (`ssh -N`) via en dedikerad SSH Tunnels-panel i verktygsraden med live status, namngivna tunnlar, in-place editering och automatisk portkollisionskontroll.
+- [x] **19. Jump host / ProxyJump-stöd i UI:t.** Stöd för att antingen peka på en annan sparad profil (`proxyJumpProfileId`) eller manuell bastion-sträng. Stöds fullt ut i terminaler (`-J`), SFTP (stream relay i `SFTPStorageProvider`), samt exporterat till `ProxyJump <alias>` i `~/.ssh/config`.
 - [x] **20. SSH-anslutningsalternativ i formuläret**: kompression (`Compression`), keep-alive (`ServerAliveInterval`), samt valbara ciphers, KEX och MAC-algoritmer för både terminal och SFTP-anslutningar.
 - [ ] **21. Teckenkodning/charset-inställning** för filnamn — relevant mot äldre
    SFTP-servrar som inte pratar UTF-8.

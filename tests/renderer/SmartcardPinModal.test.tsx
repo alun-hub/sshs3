@@ -338,7 +338,7 @@ describe('SmartcardPinModal Component', () => {
       expect(screen.getByTestId('smartcard-awaiting-touch-banner')).toBeInTheDocument();
 
       act(() => {
-        promptCallback!({ id: 'askpass-next', prompt: 'Enter PIN for authenticator: ' });
+        promptCallback!({ id: 'askpass-next', prompt: 'Enter PIN for PKCS#11 token: ', kind: 'smartcard' });
       });
 
       expect(screen.queryByTestId('smartcard-awaiting-touch-banner')).not.toBeInTheDocument();

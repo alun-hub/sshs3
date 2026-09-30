@@ -252,6 +252,7 @@ export class IpcBridge {
     retry?: AskpassPromptRetryContext;
     callback: (pin: string) => void;
   }) => void;
+  private onPtyPresence?: (event: { sessionId: string; prompt: string }) => void;
   private onTransferProgress?: (progress: TransferProgress) => void;
   private onK8sTerminalData?: (event: { sessionId: string; data: string }) => void;
   private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
@@ -1540,10 +1541,10 @@ export class IpcBridge {
       'Touch your security key to connect'
     );
     try {
-      const promptPin = (rawPrompt: string) =>
+      const promptPin = (rawPrompt: string, retry?: AskpassPromptRetryContext) =>
         pinPromptKind === 'direct'
-          ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel)
-          : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel);
+          ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel, retry)
+          : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel, retry);
 
       const { pid, socketPath, askpassServer } = await loadFido2ResidentKeysIntoPrivateAgent(
         promptPin,
@@ -3660,6 +3661,20 @@ export class IpcBridge {
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);
 
+    this.onPtyPresence = ({ sessionId, prompt }) => {
+      const id = crypto.randomUUID();
+      if (sessionId) {
+        this.activePresenceSessions.add(sessionId);
+      }
+      const webContents = this.getWebContents();
+      if (webContents && !webContents.isDestroyed?.()) {
+        const message = /touch/i.test(prompt) ? prompt : 'Touch your security key to confirm';
+        const event: PresencePromptEvent = { id, sessionId, message };
+        webContents.send(IPC_CHANNELS.PRESENCE_PROMPT, event);
+      }
+    };
+    this.sshPtyManager.on('presence', this.onPtyPresence);
+
     this.sshPtyManager.on('reconnecting', ({ sessionId, attempt, maxAttempts }) => {
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
@@ -3749,6 +3764,9 @@ export class IpcBridge {
     }
     if (this.onPtyAskpass) {
       this.sshPtyManager.off('askpass', this.onPtyAskpass);
+    }
+    if (this.onPtyPresence) {
+      this.sshPtyManager.off('presence', this.onPtyPresence);
     }
     if (this.onTransferProgress) {
       this.transferQueue.off('progress', this.onTransferProgress);

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.3] - 2026-09-30
+
+### Added
+- **Automated Deploy Script**: added `scripts/deploy.sh` and `npm run deploy` to automatically run pre-flight checks, bump patch versions, stage all changes, commit, create annotated tags, and push to GitHub to trigger GitHub Actions release builds.
+
+### Fixed
+- **Smartcard PIN Error Surfacing & Retry**:
+  - Added a retry loop (up to 3 attempts) in the smartcard PIN modal with the actual error reason shown inline instead of failing silently after one attempt.
+  - Added a non-intrusive status notification banner for background startup-unlock failures.
+  - Prevented empty PIN submissions directly in the modal to avoid burning retry attempts.
+  - Reclassified smartcard error strings to distinguish between retryable wrong PIN attempts and permanent CTAP2/PIV lockouts.
+- **Dependency Security Updates**: resolved all GitHub Dependabot security alerts by updating `brace-expansion` (1.1.21, 2.1.7, 5.0.12) and `fast-uri` (3.1.8).
+- **FIDO2 User Presence & PIN Prompts**:
+  - Prevented false-positive touch prompt notices during startup PIN entry (`ssh-add -K`).
+  - Fixed touch presence banner not displaying when connecting to FIDO2 hosts that require user presence verification while reusing cached PIN.
+  - Forwarded askpass presence events through SSHPtyManager and IPC to display the user touch prompt.
+
 ## [0.96.2] - 2026-09-29
 
 ### Changed

@@ -105,6 +105,21 @@ npm run lint
 npm run test
 ```
 
+### Conventions & Standards
+
+- **Release Versioning**: When releasing new versions, use only a single segment after the dot (e.g. `0.2`, `0.3`, `0.96.1` instead of `0.2.19`) to ensure correct sorting in GitHub Releases.
+- **Date Formatting**: Always format timestamps across UI and logs as `yyyy-mm-dd HH:mm` (24h).
+- **Security & Ephemeral Secrets**: Never log or store PINs, passphrases, or private keys on disk or in persistent memory.
+
+### Automated Releases
+
+Releases can be deployed automatically via:
+```bash
+npm run deploy
+# or
+./deploy.sh "chore: release notes"
+```
+
 ---
 
 ## Pull Request Process

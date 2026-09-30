@@ -246,6 +246,46 @@ describe('SSHPtyManager', () => {
       await session.dispose();
     });
 
+    it('should configure Askpass and forward presence and FIDO2 prompts when authType is fido2', async () => {
+      const config: SSHConnectionConfig = {
+        id: 'session-fido2',
+        name: 'FIDO2 Host',
+        host: 'fido.domain.com',
+        username: 'fidouser',
+        authType: 'fido2',
+      };
+
+      const askpassListener = vi.fn(({ callback }) => callback('654321'));
+      const presenceListener = vi.fn();
+      manager.on('askpass', askpassListener);
+      manager.on('presence', presenceListener);
+
+      const session = await manager.createSession(config);
+      const askpassServer = (session as any).askpassServer;
+      expect(askpassServer).toBeDefined();
+
+      // Trigger promptHandler with authenticator PIN prompt
+      const promptHandler = (askpassServer as any).promptHandler;
+      const res = await promptHandler('Enter PIN for authenticator: ');
+      expect(res).toBe('654321');
+      expect(askpassListener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'session-fido2',
+          kind: 'fido2',
+          prompt: 'Enter PIN for authenticator:',
+        })
+      );
+
+      // Trigger presence callback on askpassServer
+      (askpassServer as any).onPresence?.('Confirm user presence for key ED25519-SK');
+      expect(presenceListener).toHaveBeenCalledWith({
+        sessionId: 'session-fido2',
+        prompt: 'Confirm user presence for key ED25519-SK',
+      });
+
+      await session.dispose();
+    });
+
     it('should clean up AskpassServer when pty.spawn throws an error', async () => {
       const ptyMod = await import('node-pty');
       const spawnSpy = vi.spyOn(ptyMod, 'spawn').mockImplementationOnce(() => {

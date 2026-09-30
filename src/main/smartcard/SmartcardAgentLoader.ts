@@ -253,6 +253,9 @@ async function runAddIntoPrivateAgent(
     const isAccountPasswordPrompt = /password/i.test(prompt) && !/pin|passphrase/i.test(prompt);
     if (!isAccountPasswordPrompt && cachedPin !== undefined) {
       console.log(`${logPrefix}: reusing already-entered PIN for a retry (prompt: "${prompt}")`);
+      if (/presence|touch/i.test(prompt)) {
+        options?.onPresenceRequested?.();
+      }
       return cachedPin;
     }
     if (inFlightPrompt) {
@@ -267,6 +270,9 @@ async function runAddIntoPrivateAgent(
         const pin = await promptHandler(prompt, retryContext);
         if (!isAccountPasswordPrompt) {
           cachedPin = pin;
+        }
+        if (/presence|touch/i.test(prompt)) {
+          options?.onPresenceRequested?.();
         }
         return pin;
       } finally {

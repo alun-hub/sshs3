@@ -15,6 +15,18 @@ Only the latest released minor version of sshs3 receives active security updates
 
 ---
 
+## Core Security Principles & Cryptographic Hygiene
+
+sshs3 is built on zero-knowledge and defense-in-depth principles:
+- **Ephemeral PINs and Passphrases**: Smartcard PINs, FIDO2 user verification, and key passphrases are strictly ephemeral. They are passed directly to the OpenSSH child process via standard input and immediately discarded and garbage-collected. **They are never saved to the filesystem, cached in memory, or logged in plaintext.**
+- **Private Key Isolation**: Private keys on hardware security keys (YubiKey, PKCS#11, FIDO2/WebAuthn, SITHS, Net iD) **never leave the physical cryptographic hardware**. Challenge signatures are computed on-chip. Disk keys are accessed exclusively through your system's OpenSSH client or `ssh-agent`.
+- **Operating System Keyring**: Any stored passwords or S3 secret keys in connection profiles are encrypted using the host OS keyring (`safeStorage`: libsecret on Linux, DPAPI on Windows, Keychain on macOS).
+- **Protected Local IPC**: The internal askpass mechanism uses a mode `0700` private Unix domain socket on Linux/macOS and a 128-bit cryptographically tokenized loopback interface on Windows.
+
+For full architectural details, see [Security & Privacy in README.md](README.md#security--privacy-private-keys-pins--credentials).
+
+---
+
 ## Reporting a Vulnerability
 
 **Please do NOT report security vulnerabilities via public GitHub issues, discussions, or pull requests.**

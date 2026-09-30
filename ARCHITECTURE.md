@@ -40,41 +40,55 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ## 2. Directory Structure & Key Modules
 
 ```
-sshs3/
+├── docs/                           # Architecture, comparison, and subsystem guides
+│   ├── COMPARISON.md               # Detailed comparison vs PuTTY, MobaXterm, WinSCP, S3 Browser
+│   └── KUBERNETES.md               # Kubernetes architecture, file access & ephemeral container limits
+├── scripts/                        # Automated deploy and release scripts (deploy.sh)
 ├── src/
 │   ├── main/                       # Electron main process (Node.js)
 │   │   ├── index.ts                # Application lifecycle, window creation, quit hooks
 │   │   ├── IpcBridge.ts            # Central IPC handler registration & event dispatching
-│   │   ├── crypto/                 # System CA certificate trust store (SystemTrustStore)
+│   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
+│   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
+│   │   ├── dirsync/                # Directory diff and synchronization engine
 │   │   ├── dotfiles/               # Dotfiles pool store and SFTP sync service
+│   │   ├── editor/                 # Temporary external file editor service
 │   │   ├── profile/                # OS keychain encrypted profile store (safeStorage)
 │   │   ├── proxy/                  # HTTP/SOCKS socket creation & proxyCli helper
+│   │   ├── search/                 # Local/remote regex search & live log tailing (tail -f)
+│   │   ├── services/               # K8s discovery, debug containers, port forward & OpenShift
 │   │   ├── session/                # Window tab & layout persistence (SessionStore)
 │   │   ├── settings/               # App configuration & default settings (SettingsStore)
-│   │   ├── smartcard/              # PKCS#11 detection & AskpassServer for PIN prompt
-│   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, KnownHostsStore
-│   │   ├── storage/                # Local, SFTP, and S3 Storage Providers & Registry
-│   │   └── transfer/               # Streaming TransferPipeline, ByteMeter & TransferQueue
+│   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
+│   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, SSHTunnelManager, AgentLifecycle
+│   │   ├── storage/                # Local, SFTP, S3, and K8s Pod Storage Providers & Registry
+│   │   ├── terminal/               # K8s container exec PTY & live log streaming managers
+│   │   ├── transfer/               # Streaming TransferPipeline, ByteMeter & TransferQueue
+│   │   └── x11/                    # X11 server lifecycle manager (VcXsrv integration)
 │   ├── preload/                    # Electron preload script exposing window.multissh
 │   ├── renderer/                   # React frontend
 │   │   └── src/
 │   │       ├── App.tsx             # Root component, keyboard shortcuts, tab views
 │   │       ├── components/
-│   │       │   ├── ConnectionModal/# Profile management for SSH and S3
+│   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes
 │   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane, ContextMenu
+│   │       │   ├── K8s/            # Pod inspector, port forward modal, debug container UI
 │   │       │   ├── SettingsModal/  # Preferences & shortcut configuration
 │   │       │   ├── TabBar.tsx      # Draggable/closable tab bar
-│   │       │   └── TerminalView.tsx# xterm.js terminal instance & FitAddon
+│   │       │   ├── TerminalView.tsx# xterm.js terminal instance & FitAddon
+│   │       │   └── Tunnels/        # Independent SSH port-forwarding management dashboard
 │   │       └── lib/
 │   │           └── format.ts       # Byte/speed formatting, date formatters, path utils
 │   └── shared/                     # Types shared between main and renderer
 │       └── types/
 │           ├── dotfiles.ts         # Dotfiles sync pool contracts
 │           ├── ipc.ts              # IPC_CHANNELS and MultiSSHApi interface
+│           ├── k8s.ts              # Kubernetes cluster, pod, and container exec types
 │           ├── session.ts          # Tab, pane, and split layout types
 │           ├── settings.ts         # AppSettings and keyboard shortcut definitions
 │           ├── ssh.ts              # SSHConnectionConfig, PtyOptions, Smartcard
-│           └── storage.ts          # IStorageProvider, FileEntry, S3Config, SFTPConfig
+│           ├── storage.ts          # IStorageProvider, FileEntry, S3Config, SFTPConfig
+│           └── tunnel.ts           # Standalone tunnel configs & lifecycle events
 └── tests/                          # Unit and integration tests (Vitest)
     ├── e2e/                        # End-to-end workflow tests
     ├── main/                       # Main process tests (providers, stores, transfers)
@@ -134,6 +148,8 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
 ## 5. Coding & Formatting Conventions
 
 - **Date Format**: Always display and persist timestamps in `yyyy-mm-dd HH:mm` (24-hour) format. Use `formatDateTime()` from [`src/renderer/src/lib/format.ts`](file:///home/alun/sshs3/src/renderer/src/lib/format.ts) or `formatDate()` from [`src/main/storage/StorageProvider.ts`](file:///home/alun/sshs3/src/main/storage/StorageProvider.ts).
+- **Release Versioning**: Always use a single segment after the dot for release versions (e.g. `0.2`, `0.3`, `0.96.1` instead of `0.2.19`) to maintain clean ordering in GitHub Releases.
+- **Security & Ephemeral Secrets**: Private keys must never leave hardware tokens. PINs and passphrases are strictly ephemeral and must never be stored on the filesystem, cached in memory, or logged in plaintext.
 - **Fast Refresh Cleanliness**: React component files should only export React components. Helper functions belong in `types.ts` or utility files, and hooks belong in dedicated files or contexts.
 - **Fail Closed for Security**: Host key verification (TOFU) and smartcard askpass operations must default to rejecting/aborting if the UI is unmounted or unavailable.
 - **Async Write Safety**: All stores (`ProfileStore`, `SessionStore`, `SettingsStore`, `DotfilePoolStore`) use `queueMutation` promises to ensure sequential, atomic writes to disk.
@@ -148,4 +164,5 @@ npm run typecheck   # Static typecheck with TypeScript
 npm run lint        # ESLint verification (must be 0 errors, 0 warnings)
 npm run test        # Unit & integration tests via Vitest
 npm run build       # Verify Vite & electron-builder bundle compilation
+npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions
 ```
