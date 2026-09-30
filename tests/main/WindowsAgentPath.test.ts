@@ -15,6 +15,6 @@ describe('isDirOnPath', () => {
   });
 
   it('ignores empty entries', () => {
-    expect(isDirOnPath('', 'C:\a;;C:\b')).toBe(false);
+    expect(isDirOnPath('', 'C:\\a;;C:\\b')).toBe(false);
   });
 });

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.5] - 2026-09-30
+
+### Added
+- **Windows support fixes**: installer sets the OpenSSH Authentication Agent service to Automatic; Settings gets a "Fix Windows ssh-agent" button (adds a PKCS#11 driver's folder to PATH); global default PKCS#11 driver setting; friendlier driver/certificate names; OpenSC preferred over libykcs11 in detection; new "Windows vs. Linux" README section.
+
+### Fixed
+- **FIDO2 on Windows**: resident credentials are disabled in the UI (unavailable there), `ssh-add -K` uses `SSH_SK_PROVIDER=internal`, and a non-empty shared agent no longer hides a failed load.
+- **`~/.ssh/config`**: paths containing spaces are quoted in the managed block.
+- **SFTP for FIDO2 profiles**: the SFTP button is greyed out with an explanation on all platforms — the file manager's `ssh2` library cannot use security-key (`-sk`) keys, so it could never authenticate.
+
 ## [0.96.3] - 2026-09-30
 
 ### Added
