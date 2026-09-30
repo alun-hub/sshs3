@@ -16,27 +16,15 @@
 ## Screenshots & Interface Tour
 
 <details open>
-  <summary><b>🖥️ Terminal & Split Views</b> (SSH, Local Shell, Windows)</summary>
+  <summary><b>🖥️ Terminal & Split Views</b> (SSH, Local Shell)</summary>
   <br>
   <p align="center">
     <img src="docs/screenshots/landing.png" alt="sshS3 start screen" width="850" />
     <br><em>Start screen with quick access to terminals, the file manager, saved connections and cloud sync</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/ssh.png" alt="SSH terminal session" width="850" />
-    <br><em>Full OpenSSH terminal session with remote host tracking and tab management</em>
-  </p>
-  <p align="center">
     <img src="docs/screenshots/split.png" alt="Three split panes: remote SSH, local shell and a second SSH session" width="850" />
     <br><em>Konsole-style recursive split panes (horizontal & vertical) with independent sessions</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/localshell.png" alt="Local shell" width="850" />
-    <br><em>Local shell sessions (Linux / macOS) with automatic SSH_AUTH_SOCK smartcard wiring</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/windows.png" alt="Windows session" width="850" />
-    <br><em>Native Windows shell terminals (PowerShell, cmd, WSL)</em>
   </p>
 </details>
 
@@ -48,20 +36,8 @@
     <br><em>Lazy-loading Kubernetes & OpenShift cluster tree from ~/.kube/config</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/k8s-filemanager.png" alt="Kubernetes Pod File Explorer" width="850" />
-    <br><em>Dual-pane file explorer inside running Kubernetes & OpenShift containers</em>
-  </p>
-  <p align="center">
     <img src="docs/screenshots/k8s-debug.png" alt="Attach Debug Container dialog with Netshoot preset" width="850" />
     <br><em>Live ephemeral pod debugging (kubectl debug) with preset tools and process namespace sharing</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/sshs3-logs.png" alt="Live log streaming" width="850" />
-    <br><em>Live container and file log streaming with real-time text search</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/k8s-debug-settings.png" alt="Kubernetes debug image presets settings" width="850" />
-    <br><em>Configurable Kubernetes debug image presets under Settings</em>
   </p>
 </details>
 
@@ -77,14 +53,6 @@
     <br><em>In-app editor with live Markdown preview</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/sftp-options.png" alt="SFTP options and permissions" width="850" />
-    <br><em>SFTP options, directory synchronization, and permissions editor (chmod)</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/connection-s3.png" alt="S3 Connection profile" width="850" />
-    <br><em>S3 connection setup (AWS, MinIO, NetApp) with AWS SSO support</em>
-  </p>
-  <p align="center">
     <img src="docs/screenshots/s3-options.png" alt="S3 bucket next to a Kubernetes pod filesystem, with bucket policy, CORS and versioning in the context menu" width="850" />
     <br><em>Bucket management: policies, CORS configuration, tagging, and object versioning</em>
   </p>
@@ -98,46 +66,6 @@
     <br><em>Saved port forwards (-L / -R / -D) per connection</em>
   </p>
 </details>
-
-<details>
-  <summary><b>🔐 Hardware Security Keys & Smartcards</b> (FIDO2, YubiKey, PKCS#11, SITHS, Net iD, Askpass)</summary>
-  <br>
-  <p align="center">
-    <img src="docs/screenshots/smarcard.png" alt="Smartcard identities and PIN modal" width="850" />
-    <br><em>Cached smartcard identities, certificate details popover, and in-app PIN dialog</em>
-  </p>
-</details>
-
-<details>
-  <summary><b>⚙️ Connection Manager & Settings</b> (Profiles, Sync, Themes, Dotfiles, Shortcuts)</summary>
-  <br>
-  <p align="center">
-    <img src="docs/screenshots/connection-manager.png" alt="Connection manager" width="850" />
-    <br><em>Saved connections manager with folders, filtering, and quick connect</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/settings2.png" alt="Terminal settings and themes" width="850" />
-    <br><em>Terminal appearance, fonts, cursor styles, and color themes (Dark, Light, Breeze)</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/settings3.png" alt="Security and smartcard settings" width="850" />
-    <br><em>Smartcard PIN caching modes (Always Prompt, Once Per Terminal, App Lifetime)</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/settings4.png" alt="Remote profile synchronization" width="850" />
-    <br><em>Zero-knowledge client-side encrypted remote profile sync (S3/SFTP) with hardware unlock</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/settings5.png" alt="Dotfile pools" width="850" />
-    <br><em>Dotfiles pool management for syncing .bashrc, .vimrc, etc. to remote hosts</em>
-  </p>
-  <p align="center">
-    <img src="docs/screenshots/settings6.png" alt="Keyboard shortcuts" width="850" />
-    <br><em>Fully rebindable keyboard shortcuts with interactive key capture</em>
-  </p>
-</details>
-
-<sub>Prefer an automated walkthrough? See the animated [Demo GIF](docs/sshs3-demo.gif).</sub>
 
 ---
 
