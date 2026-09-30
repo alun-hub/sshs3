@@ -1514,7 +1514,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
         {/* SSH Config Import Candidates Preview Modal */}
         {importCandidates && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 p-4 animate-in fade-in duration-100">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 animate-in fade-in duration-100">
             <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-app-surface p-4 shadow-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-border-subtle pb-2">
                 <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
