@@ -52,18 +52,6 @@ export class ProfileStore {
     return this.filePath;
   }
 
-  private getLegacyFilePath(): string | null {
-    try {
-      const configDir = path.dirname(this.filePath);
-      const parent = path.dirname(configDir);
-      const legacyConfig = path.join(parent, 'multissh', 'profiles.json');
-      const legacyHome = path.join(os.homedir(), '.multissh', 'profiles.json');
-      return legacyConfig !== this.filePath ? legacyConfig : legacyHome;
-    } catch {
-      return null;
-    }
-  }
-
   public async getProfiles(): Promise<ProfilesData> {
     const profiles = await this.getProfilesIncludingTombstones();
     const result: ProfilesData = {
@@ -96,30 +84,6 @@ export class ProfileStore {
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
-        const legacyPath = this.getLegacyFilePath();
-        if (legacyPath) {
-          try {
-            const raw = await fs.readFile(legacyPath, 'utf-8');
-            const data = JSON.parse(raw);
-            const ssh: SSHConnectionConfig[] = Array.isArray(data.ssh) ? data.ssh : [];
-            const s3: S3Config[] = Array.isArray(data.s3) ? data.s3 : [];
-            const folders: string[] = Array.isArray(data.folders) ? data.folders : [];
-            const profiles: ProfilesData = {
-              ssh: normalizeSSHProfiles(ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, decryptSecretValue))),
-              s3: s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, decryptSecretValue)),
-              folders,
-            };
-            if (ssh.length > 0 || s3.length > 0 || folders.length > 0) {
-              void this.queueMutation(async () => {
-                await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-                await fs.copyFile(legacyPath, this.filePath);
-              }).catch(() => {});
-            }
-            return profiles;
-          } catch {
-            // Ignore legacy read errors
-          }
-        }
         return { ssh: [], s3: [] };
       }
       // If file is corrupted or cannot be parsed, default to empty
