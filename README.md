@@ -19,11 +19,15 @@
   <summary><b>🖥️ Terminal & Split Views</b> (SSH, Local Shell, Windows)</summary>
   <br>
   <p align="center">
+    <img src="docs/screenshots/landing.png" alt="sshS3 start screen" width="850" />
+    <br><em>Start screen with quick access to terminals, the file manager, saved connections and cloud sync</em>
+  </p>
+  <p align="center">
     <img src="docs/screenshots/ssh.png" alt="SSH terminal session" width="850" />
     <br><em>Full OpenSSH terminal session with remote host tracking and tab management</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/split.png" alt="Split terminal panes" width="850" />
+    <img src="docs/screenshots/split.png" alt="Three split panes: remote SSH, local shell and a second SSH session" width="850" />
     <br><em>Konsole-style recursive split panes (horizontal & vertical) with independent sessions</em>
   </p>
   <p align="center">
@@ -40,7 +44,7 @@
   <summary><b>☸️ Kubernetes & OpenShift</b> (Cluster Tree, Pods, Exec, Logs, File Explorer & Live Debugging)</summary>
   <br>
   <p align="center">
-    <img src="docs/screenshots/conn-k8s.png" alt="Kubernetes connection tree" width="850" />
+    <img src="docs/screenshots/conn-k8s.png" alt="Connection Manager Kubernetes tab" width="850" />
     <br><em>Lazy-loading Kubernetes & OpenShift cluster tree from ~/.kube/config</em>
   </p>
   <p align="center">
@@ -48,7 +52,7 @@
     <br><em>Dual-pane file explorer inside running Kubernetes & OpenShift containers</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/k8s-debug.png" alt="Kubernetes ephemeral pod debugging" width="850" />
+    <img src="docs/screenshots/k8s-debug.png" alt="Attach Debug Container dialog with Netshoot preset" width="850" />
     <br><em>Live ephemeral pod debugging (kubectl debug) with preset tools and process namespace sharing</em>
   </p>
   <p align="center">
@@ -65,8 +69,12 @@
   <summary><b>📁 Dual-Pane File Manager & S3 Object Storage</b> (SFTP, S3, Directory Sync)</summary>
   <br>
   <p align="center">
-    <img src="docs/screenshots/filemanager.png" alt="Dual-pane file manager" width="850" />
+    <img src="docs/screenshots/filemanager.png" alt="Dual-pane file manager with an S3 bucket and local disk, showing the context menu" width="850" />
     <br><em>Dual-pane file explorer for local disk, SFTP servers, and S3 buckets</em>
+  </p>
+  <p align="center">
+    <img src="docs/screenshots/markdown.png" alt="Built-in editor showing a rendered Markdown preview" width="850" />
+    <br><em>In-app editor with live Markdown preview</em>
   </p>
   <p align="center">
     <img src="docs/screenshots/sftp-options.png" alt="SFTP options and permissions" width="850" />
@@ -77,8 +85,17 @@
     <br><em>S3 connection setup (AWS, MinIO, NetApp) with AWS SSO support</em>
   </p>
   <p align="center">
-    <img src="docs/screenshots/s3-options.png" alt="S3 bucket options" width="850" />
+    <img src="docs/screenshots/s3-options.png" alt="S3 bucket next to a Kubernetes pod filesystem, with bucket policy, CORS and versioning in the context menu" width="850" />
     <br><em>Bucket management: policies, CORS configuration, tagging, and object versioning</em>
+  </p>
+</details>
+
+<details>
+  <summary><b>🔀 SSH Tunnels</b> (Local, Remote, SOCKS)</summary>
+  <br>
+  <p align="center">
+    <img src="docs/screenshots/ssh-tunnels.png" alt="SSH Tunnels dialog listing saved forwards per connection" width="850" />
+    <br><em>Saved port forwards (-L / -R / -D) per connection</em>
   </p>
 </details>
 
@@ -549,7 +566,7 @@ sshs3 is one codebase, but the Windows build can't do everything the Linux build
 |---|---|---|
 | FIDO2 **resident** (discoverable) keys | Supported (`ssh-add -K`, `ykman`) | **Not available** — use a key file instead |
 | FIDO2 key file (`id_ed25519_sk`) in the **terminal** | Supported | Supported (PIN + touch on every connection) |
-| FIDO2 in the **SFTP file manager** | Needs the key loaded in an `ssh-agent` | **Not available** (SFTP button is disabled) |
+| FIDO2 in the **SFTP file manager** | **Not available** (SFTP button is disabled) | **Not available** (SFTP button is disabled) |
 | FIDO2 PIN caching / global agent / startup unlock | Supported | **Not applicable** |
 | Listing / deleting resident credentials | Via `ykman` | Not available (`ykman` needs Administrator) |
 | Smartcard (PKCS#11) PIN caching | Private `ssh-agent` per app/terminal | Shared Windows **ssh-agent service** (see below) |
@@ -564,7 +581,7 @@ sshs3 is one codebase, but the Windows build can't do everything the Linux build
 - **Use a key file instead.** In the profile, leave *resident* unticked and use **Generate a new key on this security key** (or pick an existing `id_ed25519_sk` / `id_ecdsa_sk`). Windows signs through its own WebAuthn support, which needs no Administrator rights. Add the new public key to the server's `authorized_keys`.
   - If generation fails with `A resident key scoped to 'ssh:…' already exists … Overwrite key in token (y/n)?`, the device already holds a resident credential with that name from an earlier attempt. Untick *resident* (recommended on Windows), or use a different output file name.
 - **A touch is required on every connection.** A FIDO2 key created with *Require PIN + touch* needs a physical touch for every signature, so there is nothing to cache — the global agent, *Once per terminal* and *Always prompt* modes only affect smartcards (PKCS#11) on Windows. The Settings page says so.
-- **No SFTP file manager for FIDO2 profiles.** The file manager's embedded SSH library can't use security-key (`-sk`) keys, even when the key is loaded in an `ssh-agent`. On Windows the **SFTP** buttons are greyed out for FIDO2 profiles (with an explanation on hover), and opening one anyway explains why instead of failing after a PIN/touch prompt. The terminal works normally. For file transfers, create a **separate profile** with a regular SSH key or a smartcard.
+- **No SFTP file manager for FIDO2 profiles.** The file manager's embedded SSH library can't use security-key (`-sk`) keys, even when the key is loaded in an `ssh-agent`. On every platform the **SFTP** buttons are greyed out for FIDO2 profiles (with an explanation on hover), and opening one anyway explains why instead of failing after a PIN/touch prompt. The terminal works normally. For file transfers, create a **separate profile** with a regular SSH key or a smartcard.
 - **Be careful with repeated PIN attempts.** A FIDO2 key counts failed/rapid PIN verifications and temporarily blocks PIN entry until it's unplugged and reconnected. Unplug/replug it if you see that message (the wording of that hint was verified on Linux; on Windows a similar-looking `failure -1` is usually the resident-key limitation above).
 
 ### Smartcards / PKCS#11
