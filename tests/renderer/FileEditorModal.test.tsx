@@ -334,4 +334,85 @@ describe('FileEditorModal', () => {
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('highlights search hits and scrolls in markdown view mode and edit mode', async () => {
+    const markdownEntry: FileEntry = {
+      name: 'README.md',
+      path: '/docs/README.md',
+      size: 100,
+      isDirectory: false,
+      mtime: '2026-09-18 08:00',
+    };
+
+    mockFileRead.mockResolvedValueOnce({
+      content: '# Hello world\n\nThis is a test of searching world in markdown.',
+      size: 58,
+      isBinary: false,
+      truncated: false,
+    });
+
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={markdownEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    // In markdown mode, it opens in preview mode by default
+    await waitFor(() => {
+      expect(screen.getByText(/Hello world/)).toBeInTheDocument();
+    });
+
+    // Toggle search
+    const searchBtn = screen.getByTitle('Search (Ctrl+F)');
+    fireEvent.click(searchBtn);
+
+    const searchInput = screen.getByPlaceholderText(/Find in file/i);
+    fireEvent.change(searchInput, { target: { value: 'world' } });
+
+    // In View mode, it highlights matches in the preview
+    await waitFor(() => {
+      const marks = document.querySelectorAll('mark.md-search-hit');
+      expect(marks.length).toBe(2);
+      expect(screen.getByText('1 of 2')).toBeInTheDocument();
+      // First match should be active (sky-500)
+      expect(marks[0]).toHaveClass('bg-sky-500');
+      expect(marks[1]).toHaveClass('bg-amber-400/35');
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+    });
+
+    // Click Next
+    const nextBtn = screen.getByRole('button', { name: 'Next' });
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      const marks = document.querySelectorAll('mark.md-search-hit');
+      expect(screen.getByText('2 of 2')).toBeInTheDocument();
+      expect(marks[0]).toHaveClass('bg-amber-400/35');
+      expect(marks[1]).toHaveClass('bg-sky-500');
+    });
+
+    // Switch to Edit mode
+    const editBtn = screen.getByTitle('Switch to Source (Edit)');
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      const textarea = document.querySelector('textarea');
+      expect(textarea).toBeInTheDocument();
+      // In edit mode, search backdrop renders the marks
+      const backdropMarks = document.querySelectorAll('mark[data-match-idx]');
+      expect(backdropMarks.length).toBe(2);
+      expect(screen.getByText('2 of 2')).toBeInTheDocument();
+    });
+
+    // Close search
+    fireEvent.keyDown(searchInput, { key: 'Escape' });
+    expect(screen.queryByPlaceholderText(/Find in file/i)).not.toBeInTheDocument();
+  });
 });

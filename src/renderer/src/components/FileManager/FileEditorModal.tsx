@@ -78,6 +78,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
+  const [previewMatchesCount, setPreviewMatchesCount] = useState(0);
 
   // Cursor position
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -89,6 +90,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isDirty = useMemo(
@@ -246,6 +248,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       if (lineNumbersRef.current) {
         lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
       }
+      if (backdropRef.current) {
+        backdropRef.current.scrollTop = textareaRef.current.scrollTop;
+        backdropRef.current.scrollLeft = textareaRef.current.scrollLeft;
+      }
       if (tailModeActive) {
         const el = textareaRef.current;
         const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -382,31 +388,106 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     return matches;
   }, [content, searchQuery]);
 
+  const totalMatches = isMarkdown && markdownPreview ? previewMatchesCount : searchMatches.length;
+  const safeCurrentMatchIdx = totalMatches > 0 ? Math.min(currentMatchIdx, totalMatches - 1) : 0;
+
   const handleSearchNext = useCallback(() => {
-    if (searchMatches.length === 0) return;
-    const nextIdx = (currentMatchIdx + 1) % searchMatches.length;
-    setCurrentMatchIdx(nextIdx);
-    const matchPos = searchMatches[nextIdx];
-    const el = textareaRef.current;
-    if (el) {
-      el.focus();
-      el.setSelectionRange(matchPos, matchPos + searchQuery.length);
-      updateCursorPosition();
-    }
-  }, [searchMatches, currentMatchIdx, searchQuery, updateCursorPosition]);
+    if (totalMatches === 0) return;
+    setCurrentMatchIdx((prev) => (prev + 1) % totalMatches);
+  }, [totalMatches]);
 
   const handleSearchPrev = useCallback(() => {
-    if (searchMatches.length === 0) return;
-    const prevIdx = (currentMatchIdx - 1 + searchMatches.length) % searchMatches.length;
-    setCurrentMatchIdx(prevIdx);
-    const matchPos = searchMatches[prevIdx];
-    const el = textareaRef.current;
-    if (el) {
-      el.focus();
-      el.setSelectionRange(matchPos, matchPos + searchQuery.length);
-      updateCursorPosition();
+    if (totalMatches === 0) return;
+    setCurrentMatchIdx((prev) => (prev - 1 + totalMatches) % totalMatches);
+  }, [totalMatches]);
+
+  // Scroll to current match in Edit mode
+  const scrollToCurrentEditMatch = useCallback(() => {
+    if (searchMatches.length === 0 || safeCurrentMatchIdx >= searchMatches.length) return;
+    const matchPos = searchMatches[safeCurrentMatchIdx];
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Update selection range
+    textarea.setSelectionRange(matchPos, matchPos + searchQuery.length);
+    updateCursorPosition();
+
+    // Scroll textarea to the match
+    const activeMark = backdropRef.current?.querySelector('[data-active="true"]') as HTMLElement | null;
+    if (activeMark) {
+      const targetTop = Math.max(0, activeMark.offsetTop - textarea.clientHeight / 2 + activeMark.clientHeight / 2);
+      textarea.scrollTop = targetTop;
+      if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = targetTop;
+      if (backdropRef.current) backdropRef.current.scrollTop = targetTop;
+
+      if (!wordWrap) {
+        const targetLeft = Math.max(0, activeMark.offsetLeft - textarea.clientWidth / 2);
+        textarea.scrollLeft = targetLeft;
+        if (backdropRef.current) backdropRef.current.scrollLeft = targetLeft;
+      }
+    } else {
+      const linesBefore = content.slice(0, matchPos).split('\n');
+      const lineIndex = linesBefore.length - 1;
+      const lineHeight = 20; // 20px per line
+      const targetTop = Math.max(0, lineIndex * lineHeight - textarea.clientHeight / 2 + lineHeight / 2);
+      textarea.scrollTop = targetTop;
+      if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = targetTop;
+      if (backdropRef.current) backdropRef.current.scrollTop = targetTop;
     }
-  }, [searchMatches, currentMatchIdx, searchQuery, updateCursorPosition]);
+  }, [searchMatches, safeCurrentMatchIdx, searchQuery.length, updateCursorPosition, wordWrap, content]);
+
+  useEffect(() => {
+    if (!showSearch || !searchQuery.trim() || searchMatches.length === 0) return;
+    if (isMarkdown && markdownPreview) return;
+
+    scrollToCurrentEditMatch();
+  }, [showSearch, searchQuery, safeCurrentMatchIdx, searchMatches, isMarkdown, markdownPreview, scrollToCurrentEditMatch]);
+
+  // Render search highlight backdrop in Edit mode
+  const renderBackdrop = useCallback(() => {
+    if (!showSearch || !searchQuery.trim() || searchMatches.length === 0) return null;
+
+    const elements: React.ReactNode[] = [];
+    let lastIdx = 0;
+    const matchLen = searchQuery.length;
+    const maxMatches = Math.min(searchMatches.length, 1000);
+
+    for (let i = 0; i < maxMatches; i++) {
+      const matchPos = searchMatches[i];
+      if (matchPos > lastIdx) {
+        elements.push(
+          <span key={`text-${lastIdx}`} className="text-transparent">
+            {content.slice(lastIdx, matchPos)}
+          </span>
+        );
+      }
+      const isCurrent = i === safeCurrentMatchIdx;
+      elements.push(
+        <mark
+          key={`mark-${matchPos}`}
+          data-match-idx={i}
+          data-active={isCurrent ? 'true' : undefined}
+          className={classNames(
+            'text-transparent rounded-xs',
+            isCurrent ? 'bg-sky-500/60 ring-1 ring-sky-400' : 'bg-amber-400/35'
+          )}
+        >
+          {content.slice(matchPos, matchPos + matchLen)}
+        </mark>
+      );
+      lastIdx = matchPos + matchLen;
+    }
+
+    if (lastIdx < content.length) {
+      elements.push(
+        <span key="text-tail" className="text-transparent">
+          {content.slice(lastIdx)}
+        </span>
+      );
+    }
+
+    return elements;
+  }, [showSearch, searchQuery, searchMatches, content, safeCurrentMatchIdx]);
 
   // Line count
   const lineCount = useMemo(() => {
@@ -708,15 +789,15 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             />
             {searchQuery && (
               <span className="text-xs text-txt-muted px-1">
-                {searchMatches.length > 0
-                  ? `${currentMatchIdx + 1} of ${searchMatches.length}`
+                {totalMatches > 0
+                  ? `${safeCurrentMatchIdx + 1} of ${totalMatches}`
                   : 'No matches'}
               </span>
             )}
             <button
               type="button"
               onClick={handleSearchPrev}
-              disabled={searchMatches.length === 0}
+              disabled={totalMatches === 0}
               className="rounded px-1.5 py-0.5 text-xs text-txt-secondary hover:bg-app-surface-hover disabled:opacity-40"
             >
               Prev
@@ -724,7 +805,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <button
               type="button"
               onClick={handleSearchNext}
-              disabled={searchMatches.length === 0}
+              disabled={totalMatches === 0}
               className="rounded px-1.5 py-0.5 text-xs text-txt-secondary hover:bg-app-surface-hover disabled:opacity-40"
             >
               Next
@@ -821,7 +902,12 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                     </div>
                   }
                 >
-                  <MarkdownPreview content={content} />
+                  <MarkdownPreview
+                    content={content}
+                    searchQuery={showSearch ? searchQuery : ''}
+                    currentMatchIdx={safeCurrentMatchIdx}
+                    onMatchesCountChange={setPreviewMatchesCount}
+                  />
                 </Suspense>
               </div>
             </div>
@@ -840,28 +926,45 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 ))}
               </div>
 
-              {/* Text Area */}
-              <textarea
-                ref={textareaRef}
-                value={content}
-                readOnly={readOnly || saving || tailModeActive}
-                spellCheck={false}
-                wrap={wordWrap ? 'soft' : 'off'}
-                onChange={(e) => {
-                  setContent(e.target.value);
-                  updateCursorPosition();
-                }}
-                onScroll={handleScroll}
-                onClick={updateCursorPosition}
-                onKeyUp={updateCursorPosition}
-                onSelect={updateCursorPosition}
-                onKeyDown={handleKeyDown}
-                className={classNames(
-                  'flex-1 h-full w-full bg-transparent p-2.5 font-mono text-xs leading-5 text-txt-primary outline-none resize-none overflow-auto border-none select-text',
-                  (readOnly || tailModeActive) && 'opacity-90'
+              {/* Text Area Container */}
+              <div className="relative flex-1 h-full min-w-0 overflow-hidden">
+                {/* Search Highlight Backdrop */}
+                {showSearch && searchQuery.trim() && searchMatches.length > 0 && (
+                  <div
+                    ref={backdropRef}
+                    aria-hidden="true"
+                    className={classNames(
+                      'absolute inset-0 pointer-events-none p-2.5 font-mono text-xs leading-5 overflow-hidden select-none z-0',
+                      wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+                    )}
+                  >
+                    {renderBackdrop()}
+                  </div>
                 )}
-                placeholder="Empty file"
-              />
+
+                {/* Text Area */}
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  readOnly={readOnly || saving || tailModeActive}
+                  spellCheck={false}
+                  wrap={wordWrap ? 'soft' : 'off'}
+                  onChange={(e) => {
+                    setContent(e.target.value);
+                    updateCursorPosition();
+                  }}
+                  onScroll={handleScroll}
+                  onClick={updateCursorPosition}
+                  onKeyUp={updateCursorPosition}
+                  onSelect={updateCursorPosition}
+                  onKeyDown={handleKeyDown}
+                  className={classNames(
+                    'relative z-10 flex-1 h-full w-full bg-transparent p-2.5 font-mono text-xs leading-5 text-txt-primary outline-none resize-none overflow-auto border-none select-text',
+                    (readOnly || tailModeActive) && 'opacity-90'
+                  )}
+                  placeholder="Empty file"
+                />
+              </div>
             </>
           )}
         </div>
