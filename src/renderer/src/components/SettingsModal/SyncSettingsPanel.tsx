@@ -20,6 +20,7 @@ import {
   Lock,
 } from 'lucide-react';
 import type { ProfileSyncStatus, SyncComparisonResult, KnownHostsConflict } from '@shared/types/sync';
+import type { DetectedSmartcardLib } from '@shared/types/ssh';
 import {
   SyncTargetForm,
   emptySyncTargetDraft,
@@ -90,6 +91,24 @@ export const SyncSettingsPanel: React.FC = () => {
   const [linkingSmartcard, setLinkingSmartcard] = useState(false);
   const [unlinkingSmartcard, setUnlinkingSmartcard] = useState(false);
   const [isLinkingDialog, setIsLinkingDialog] = useState(false);
+  const [detectedLibs, setDetectedLibs] = useState<DetectedSmartcardLib[]>([]);
+  const [selectedLibPath, setSelectedLibPath] = useState('');
+
+  // Which PKCS#11 module to link is the user's call when several are installed (e.g. OpenSC and
+  // Yubico's libykcs11) — the first detected one is not necessarily the card they actually use.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([window.multissh?.smartcardDetect?.(), window.multissh?.settingsGet?.()]).then(([libs, settings]) => {
+      if (cancelled || !libs) return;
+      setDetectedLibs(libs);
+      // Prefer the driver chosen under Settings > Security (if it's still installed) over the first detected one.
+      const preferred = libs.find((l) => l.path === settings?.smartcardLibPath)?.path;
+      setSelectedLibPath((prev) => prev || preferred || libs[0]?.path || '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [confirmingWipe, setConfirmingWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
@@ -217,7 +236,7 @@ export const SyncSettingsPanel: React.FC = () => {
     setActionError(null);
     setActionMessage(null);
     try {
-      let libPath = status?.smartcardLibPath;
+      let libPath = selectedLibPath || status?.smartcardLibPath;
       if (!libPath) {
         const detected = await window.multissh?.smartcardDetect?.();
         libPath = detected?.[0]?.path;
@@ -477,13 +496,29 @@ export const SyncSettingsPanel: React.FC = () => {
               </div>
               <p className="text-2xs text-txt-muted">
                 {status.smartcardLinked
-                  ? `Linked to smartcard (${status.smartcardLibPath ? status.smartcardLibPath.split('/').pop() : 'PKCS#11'}). You can unlock sync with your card PIN.`
+                  ? `Linked to smartcard (${status.smartcardLibPath ? status.smartcardLibPath.split(/[\\/]/).pop() : 'PKCS#11'}). You can unlock sync with your card PIN.`
                   : status.smartcardAvailable
                     ? 'Card reader detected. Link your smartcard to unlock sync without typing master passwords.'
                     : 'No smartcard PKCS#11 module detected.'}
               </p>
             </div>
-            <div>
+            <div className="flex items-center gap-2">
+              {!status.smartcardLinked && detectedLibs.length > 1 && (
+                <select
+                  value={selectedLibPath}
+                  onChange={(e) => setSelectedLibPath(e.target.value)}
+                  disabled={linkingSmartcard}
+                  title={selectedLibPath}
+                  aria-label="Smartcard PKCS#11 library"
+                  className="max-w-[180px] rounded border border-border-subtle bg-app-bg px-1.5 py-1 text-2xs text-txt-primary"
+                >
+                  {detectedLibs.map((lib) => (
+                    <option key={lib.path} value={lib.path}>
+                      {lib.name} — {lib.path.split(/[\\/]/).pop()}
+                    </option>
+                  ))}
+                </select>
+              )}
               {status.smartcardLinked ? (
                 <button
                   type="button"

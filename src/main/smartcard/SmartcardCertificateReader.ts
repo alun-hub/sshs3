@@ -1,10 +1,13 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { parseCertificateDer, type SmartcardCertificateDetails } from './CertificateParser';
 import { withPkcs11Lock } from './Pkcs11Lock';
 
 const log = (...args: unknown[]) => console.warn('[smartcard-cert]', ...args);
+const execFileAsync = promisify(execFile);
 
 /** Same resolution `proxyCli.cjs` uses (see SmartcardDetector's proxy handling): `__dirname` is
  * either this source file's own directory (`src/main/smartcard`, dev/unbundled — `certWorker.cjs`
@@ -50,31 +53,37 @@ export async function readSmartcardCertificates(
 ): Promise<Map<string, SmartcardCertificateDetails>> {
   const results = new Map<string, SmartcardCertificateDetails>();
 
-  let stdout: string;
+  let certsBase64: string[] | undefined;
   try {
     // See Pkcs11Lock's doc comment: this must never race a concurrent `ssh-add -s` (or another
     // cert read) against the same physical token.
-    stdout = await withPkcs11Lock(() => runCertWorker(pkcs11LibPath));
+    const stdout = await withPkcs11Lock(() => runCertWorker(pkcs11LibPath));
+    const line = stdout.trim().split('\n').pop() ?? '';
+    const parsed: { certs?: string[]; error?: string } = JSON.parse(line);
+    if (parsed.error) {
+      log(`certWorker reported an error for ${pkcs11LibPath}:`, parsed.error);
+    } else {
+      certsBase64 = parsed.certs ?? [];
+    }
   } catch (err) {
     log(`certWorker failed for ${pkcs11LibPath}:`, err);
-    return results;
   }
 
-  const line = stdout.trim().split('\n').pop() ?? '';
-  let parsed: { certs?: string[]; error?: string };
-  try {
-    parsed = JSON.parse(line);
-  } catch (err) {
-    log(`certWorker produced unparseable output for ${pkcs11LibPath}:`, err, line);
-    return results;
+  if (certsBase64 === undefined && process.platform === 'win32') {
+    // The native `pkcs11js` addon needs a compiler toolchain (Python + MSVC) to build, so it is
+    // frequently missing on Windows. OpenSC ships `pkcs11-tool.exe` next to its PKCS#11 module, which
+    // reads the same public certificate objects without a PIN — use it when it's there.
+    try {
+      certsBase64 = await withPkcs11Lock(() => readCertsViaPkcs11Tool(pkcs11LibPath));
+      log(`${pkcs11LibPath}: read ${certsBase64.length} certificate(s) via pkcs11-tool fallback`);
+    } catch (err) {
+      log(`pkcs11-tool fallback failed for ${pkcs11LibPath}:`, err);
+    }
   }
 
-  if (parsed.error) {
-    log(`certWorker reported an error for ${pkcs11LibPath}:`, parsed.error);
-    return results;
-  }
+  if (certsBase64 === undefined) return results;
 
-  for (const derBase64 of parsed.certs ?? []) {
+  for (const derBase64 of certsBase64) {
     try {
       const details = parseCertificateDer(Buffer.from(derBase64, 'base64'));
       if (details) {
@@ -89,6 +98,47 @@ export async function readSmartcardCertificates(
 
   log(`${pkcs11LibPath}: resolved ${results.size} certificate(s) with a usable fingerprint`);
   return results;
+}
+
+/** Finds OpenSC's `pkcs11-tool.exe` for a module path like `...\OpenSC\pkcs11\opensc-pkcs11.dll`
+ * (the tool lives in the sibling `tools` directory), or undefined when this isn't an OpenSC install. */
+function findPkcs11Tool(pkcs11LibPath: string): string | undefined {
+  const candidates = [
+    path.resolve(path.dirname(pkcs11LibPath), '..', 'tools', 'pkcs11-tool.exe'),
+    'C:\\Program Files\\OpenSC Project\\OpenSC\\tools\\pkcs11-tool.exe',
+    'C:\\Program Files (x86)\\OpenSC Project\\OpenSC\\tools\\pkcs11-tool.exe',
+  ];
+  return candidates.find((c) => existsSync(c));
+}
+
+/** Reads every X.509 certificate object off the token with `pkcs11-tool` (no PIN needed) and
+ * returns each one's DER, base64-encoded, matching what certWorker.cjs reports. */
+async function readCertsViaPkcs11Tool(pkcs11LibPath: string): Promise<string[]> {
+  const tool = findPkcs11Tool(pkcs11LibPath);
+  if (!tool) throw new Error('pkcs11-tool.exe not found next to the PKCS#11 module');
+
+  const { stdout: listing } = await execFileAsync(tool, ['--module', pkcs11LibPath, '-O', '--type', 'cert'], {
+    timeout: 15000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  // The object ID is printed like "ID:         1 (0x01)" — prefer the hex in parentheses.
+  const ids = [...listing.matchAll(/^\s*ID:\s+(?:\S+\s+\(0x([0-9a-fA-F]+)\)|([0-9a-fA-F]+))/gm)].map(
+    (m) => m[1] ?? m[2]
+  );
+
+  const certs: string[] = [];
+  for (const id of new Set(ids)) {
+    const { stdout } = await execFileAsync(
+      tool,
+      ['--module', pkcs11LibPath, '--read-object', '--type', 'cert', '--id', id],
+      { timeout: 15000, maxBuffer: 4 * 1024 * 1024, encoding: 'buffer' }
+    );
+    // A DER certificate is an ASN.1 SEQUENCE (0x30); anything else is diagnostic noise, not a cert.
+    if (stdout.length > 0 && stdout[0] === 0x30) {
+      certs.push(stdout.toString('base64'));
+    }
+  }
+  return certs;
 }
 
 function runCertWorker(pkcs11LibPath: string): Promise<string> {

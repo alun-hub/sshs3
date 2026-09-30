@@ -85,6 +85,12 @@ export interface AppSettings {
    * several candidates there's no single card to guess at unlocking.
    */
   smartcardUnlockAtStartup?: boolean;
+  /**
+   * The PKCS#11 driver to use for smartcard features that aren't tied to one profile — the startup
+   * unlock and linking/unlocking Remote Profile Sync. Empty/undefined = auto-detect (first detected
+   * module, or p11-kit when present). Profiles still use their own library path.
+   */
+  smartcardLibPath?: string;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */
   sessionExitAction?: SessionExitAction;
   /** Show a confirmation dialog before quitting the app (closing the window or Cmd/Ctrl+Q). Off by default. */

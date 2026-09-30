@@ -11,6 +11,7 @@ import { TransferQueueDrawer } from './TransferQueueDrawer';
 import type { PaneSide, PaneSource, SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import { describeIpcError } from '../../lib/format';
+import { sftpUnavailableReason } from '../../lib/platform';
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
   left: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
@@ -279,6 +280,13 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       if (!side) return;
 
       const passwordToUse = overridePassword !== undefined ? overridePassword : config.password;
+
+      const unavailableReason = sftpUnavailableReason(config.authType);
+      if (unavailableReason) {
+        window.alert(unavailableReason);
+        setConnectionRequest(null);
+        return;
+      }
 
       // If the profile uses password authentication but has no password configured, prompt for it
       if (config.authType === 'password' && !passwordToUse) {

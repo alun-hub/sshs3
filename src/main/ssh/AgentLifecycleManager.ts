@@ -166,7 +166,7 @@ export class AgentLifecycleManager {
         isManaged: false,
         platform,
         instructions:
-          'Windows OpenSSH Authentication Agent service is not running. To enable it, run in Administrator PowerShell: Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent',
+          'Windows OpenSSH Authentication Agent service is not running. To enable it, run in Administrator PowerShell: Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent',
       };
     }
 
@@ -288,7 +288,7 @@ export class AgentLifecycleManager {
       }
       throw new Error(
         'Windows OpenSSH Authentication Agent service is not running. Enable it in an Administrator ' +
-          'PowerShell: Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent'
+          'PowerShell: Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent'
       );
     }
 

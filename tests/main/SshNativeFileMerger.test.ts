@@ -337,3 +337,20 @@ describe('SshNativeFileMerger — known_hosts', () => {
     expect(result.addedCount).toBe(1);
   });
 });
+
+describe('sanitizeSshConfigBody path quoting', () => {
+  it('quotes unquoted PKCS11Provider/IdentityFile paths containing spaces', () => {
+    const { body } = sanitizeSshConfigBody(
+      String.raw`Host x
+    PKCS11Provider C:\Program Files\OpenSC Project\pkcs11\opensc-pkcs11.dll
+    IdentityFile ~/.ssh/id_ed25519`
+    );
+    expect(body).toContain('    PKCS11Provider "C:/Program Files/OpenSC Project/pkcs11/opensc-pkcs11.dll"');
+    expect(body).toContain('    IdentityFile ~/.ssh/id_ed25519');
+  });
+
+  it('leaves already-quoted values alone', () => {
+    const line = '    PKCS11Provider "C:/Program Files/x/y.dll"';
+    expect(sanitizeSshConfigBody(line).body).toBe(line);
+  });
+});

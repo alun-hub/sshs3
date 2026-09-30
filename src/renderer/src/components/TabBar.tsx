@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { pkcs11LibDisplayName, looksLikeLibraryPath } from '../lib/smartcard';
 import {
   Terminal,
   Folder,
@@ -97,10 +98,13 @@ export const TabBar: React.FC<TabBarProps> = ({
     return line ? line.slice(3) : subject;
   };
 
-  const smartcardLibFriendlyName = (pkcs11LibPath: string): string => {
-    if (!pkcs11LibPath) return 'Security Key';
-    const base = pkcs11LibPath.split('/').pop() || pkcs11LibPath;
-    return base.replace(/\.(so|dll|dylib)(\.\d+)*$/i, '') || pkcs11LibPath;
+  const smartcardLibFriendlyName = pkcs11LibDisplayName;
+
+  // ssh-add labels a PKCS#11 key with the module's file path, which is noise in this list: lead with the
+  // certificate's name when we have one, otherwise the driver's friendly name, and keep any real label.
+  const identityLabel = (id: { comment: string; certificate?: { subject: string } | null }): string => {
+    if (id.certificate) return certSubjectCN(id.certificate.subject);
+    return looksLikeLibraryPath(id.comment) ? pkcs11LibDisplayName(id.comment) : id.comment;
   };
 
   useEffect(() => {
@@ -338,7 +342,9 @@ export const TabBar: React.FC<TabBarProps> = ({
                                     ) : (
                                       <span className="w-3 shrink-0" />
                                     )}
-                                    <span className="truncate">{id.comment}</span>
+                                    <span className="truncate" title={id.comment}>
+                                      {identityLabel(id)}
+                                    </span>
                                     <span className="shrink-0 font-mono text-2xs text-txt-muted">
                                       ({id.keyType})
                                     </span>

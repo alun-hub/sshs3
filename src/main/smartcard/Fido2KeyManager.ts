@@ -148,13 +148,22 @@ export async function listFido2ResidentKeys(
 ): Promise<Fido2ResidentKey[]> {
   if (await isYkmanAvailable()) {
     const pin = await promptHandler("Enter your security key's PIN:");
-    const creds = await listYkmanFidoCredentials(pin);
-    return creds.map((c) => ({
-      fingerprint: c.credentialId,
-      comment: c.userDisplayName || c.userName || c.rpId,
-      keyType: c.rpId,
-      credentialId: c.credentialId,
-    }));
+    try {
+      const creds = await listYkmanFidoCredentials(pin);
+      return creds.map((c) => ({
+        fingerprint: c.credentialId,
+        comment: c.userDisplayName || c.userName || c.rpId,
+        keyType: c.rpId,
+        credentialId: c.credentialId,
+      }));
+    } catch (err) {
+      // On Windows ykman talks to the FIDO device over raw HID, which only an elevated process
+      // may do ("FIDO access on Windows requires running as Administrator"). Win32-OpenSSH goes
+      // through the OS WebAuthn API instead, which needs no admin, so list via ssh-add -K below
+      // (informational only — no credentialId, so individual deletion isn't offered).
+      const message = err instanceof Error ? err.message : String(err);
+      if (process.platform !== 'win32' || !/administrator/i.test(message)) throw err;
+    }
   }
 
   const { pid, socketPath } = await loadFido2ResidentKeysIntoPrivateAgent(promptHandler, options);

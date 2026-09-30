@@ -300,11 +300,17 @@ async function runAddIntoPrivateAgent(
 
   try {
     const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
-    const env = {
+    const env: NodeJS.ProcessEnv = {
       ...process.env,
       SSH_AUTH_SOCK: socketPath,
       ...askpassServer.getEnv(),
     };
+    // Microsoft's Win32-OpenSSH build has no default security-key provider, so a bare
+    // `ssh-add -K` fails with "Cannot download keys without provider" — it must be told to use
+    // the built-in one. (Verified: with this set, ssh-add proceeds to the PIN/touch step.)
+    if (process.platform === 'win32' && addArgs[0] === '-K' && !env.SSH_SK_PROVIDER) {
+      env.SSH_SK_PROVIDER = 'internal';
+    }
 
     let lastErr: unknown;
     for (let attempt = 0; attempt <= retries + maxPinAttempts; attempt++) {
@@ -328,7 +334,13 @@ async function runAddIntoPrivateAgent(
       // (observed exiting 0 despite reporting "agent refused operation"), so
       // verify directly against the agent rather than trusting it.
       const listRes = await execFileAsync(sshAddBin, ['-l'], { env }).catch(() => ({ stdout: '' }));
-      if (listRes.stdout && !listRes.stdout.toLowerCase().includes('no identities')) {
+      // On Windows the "private" agent is really the single shared ssh-agent service, which can
+      // already hold unrelated identities (e.g. a PIV key loaded earlier) — so a non-empty `-l`
+      // proves nothing about *this* `-K` call, and would hide a real failure (observed: "Provider
+      // internal returned failure -1" reported as loaded OK while the agent held only the PIV key).
+      const sharedAgentMaskingFailure =
+        process.platform === 'win32' && addArgs[0] === '-K' && lastErr !== undefined && !isTextlessExitFailure(lastErr);
+      if (!sharedAgentMaskingFailure && listRes.stdout && !listRes.stdout.toLowerCase().includes('no identities')) {
         lastErr = undefined;
         break;
       }

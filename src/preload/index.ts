@@ -134,6 +134,14 @@ export const api: MultiSSHApi = {
   smartcardValidate: (path: string): Promise<{ valid: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_VALIDATE, path),
 
+  smartcardAgentPathStatus: (
+    pkcs11LibPath: string
+  ): Promise<{ applicable: boolean; needsFix: boolean; libDir?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_AGENT_PATH_STATUS, pkcs11LibPath),
+
+  smartcardAgentPathFix: (pkcs11LibPath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_AGENT_PATH_FIX, pkcs11LibPath),
+
   smartcardLockAll: (): Promise<{ locked: number }> => ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL),
 
   smartcardListCached: (): Promise<CachedSmartcardAgent[]> =>

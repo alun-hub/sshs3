@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Clock, Cloud, Columns2, Files, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
+import { Clock, Cloud, Columns2, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
+import { SftpButton } from './components/SftpButton';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { BrandLogo } from './components/BrandLogo';
 import { PaneTreeView } from './components/PaneTree';
@@ -899,18 +900,7 @@ export const App: React.FC = () => {
                           >
                             Connect
                           </button>
-                          <button
-                            type="button"
-                            title="Open SFTP in Dual-Pane File Manager"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleConnectSFTP(profile);
-                            }}
-                            className="flex items-center gap-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors"
-                          >
-                            <Files className="h-3 w-3" />
-                            SFTP
-                          </button>
+                          <SftpButton authType={profile.authType} onOpen={() => handleConnectSFTP(profile)} />
                         </div>
                       </div>
                     ))}

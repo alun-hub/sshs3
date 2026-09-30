@@ -233,7 +233,7 @@ describe('SFTPStorageProvider', () => {
       }
     });
 
-    it('should connect with agent authentication on Windows using Pageant pipe when no path given', async () => {
+    it('should connect with agent authentication on Windows using the OpenSSH agent pipe first, then Pageant, when no path given', async () => {
       const origPlatform = process.platform;
       const origSock = process.env.SSH_AUTH_SOCK;
 
@@ -254,7 +254,7 @@ describe('SFTPStorageProvider', () => {
             host: 'sftp.example.com',
             port: 2222,
             username: 'testuser',
-            agent: '\\\\.\\pipe\\pageant',
+            agent: '\\\\.\\pipe\\openssh-ssh-agent',
           }),
         );
       } finally {
@@ -340,6 +340,9 @@ describe('SFTPStorageProvider', () => {
 
     it('tries the next fallback candidate when the first one fails to authenticate', async () => {
       const origSock = process.env.SSH_AUTH_SOCK;
+      const origPlatform = process.platform;
+      // Pin to a single-agent platform: on Windows several agent pipes are tried before identity files.
+      Object.defineProperty(process, 'platform', { value: 'linux' });
       process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
       const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
 
@@ -360,6 +363,7 @@ describe('SFTPStorageProvider', () => {
         );
         expect(mockConnect.mock.calls[1][0].privateKey.toString()).toBe('DEFAULT_ED25519_KEY');
       } finally {
+        Object.defineProperty(process, 'platform', { value: origPlatform });
         homedirSpy.mockRestore();
         if (origSock !== undefined) {
           process.env.SSH_AUTH_SOCK = origSock;

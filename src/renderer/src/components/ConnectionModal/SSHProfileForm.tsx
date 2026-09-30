@@ -21,6 +21,7 @@ import type {
 } from '@shared/types/ssh';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import { describeIpcError } from '../../lib/format';
+import { IS_WINDOWS } from '../../lib/platform';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -79,7 +80,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [fido2ScanError, setFido2ScanError] = useState<string | null>(null);
   const [fido2GenOpen, setFido2GenOpen] = useState(false);
   const [fido2GenKeyType, setFido2GenKeyType] = useState<Fido2KeyType>('ed25519-sk');
-  const [fido2GenResident, setFido2GenResident] = useState(true);
+  const [fido2GenResident, setFido2GenResident] = useState(!IS_WINDOWS);
   const [fido2GenVerifyRequired, setFido2GenVerifyRequired] = useState(true);
   const [fido2GenPath, setFido2GenPath] = useState('');
   const [fido2Generating, setFido2Generating] = useState(false);
@@ -216,16 +217,17 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     setFido2GenResult(null);
     try {
       const outPath = fido2GenPath.trim() || `~/.ssh/id_${fido2GenKeyType.replace('-sk', '')}_sk`;
+      const resident = fido2GenResident && !IS_WINDOWS;
       const result = await window.multissh.fido2GenerateKey({
         outPath,
         keyType: fido2GenKeyType,
-        resident: fido2GenResident,
+        resident,
         verifyRequired: fido2GenVerifyRequired,
         overwrite,
       });
       setFido2GenResult({ publicKey: result.publicKey, privateKeyPath: result.privateKeyPath });
-      update('fido2Resident', fido2GenResident);
-      if (!fido2GenResident) {
+      update('fido2Resident', resident);
+      if (!resident) {
         update('privateKeyPath', result.privateKeyPath);
       } else {
         // Confirms the freshly generated resident credential is actually discoverable now,
@@ -262,7 +264,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   // asks for the device's PIN each time and re-running it on every unrelated re-render would be
   // an annoying, repeated PIN prompt.
   useEffect(() => {
-    if (config.authType !== 'fido2' || !config.fido2Resident) {
+    // Never on Windows: its OpenSSH build can't enumerate resident credentials, so a scan would
+    // only ask for the PIN and then fail.
+    if (IS_WINDOWS || config.authType !== 'fido2' || !config.fido2Resident) {
       hasAutoScannedFido2Ref.current = false;
       return;
     }
@@ -544,16 +548,25 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             <input
               type="checkbox"
               checked={config.fido2Resident ?? false}
+              disabled={IS_WINDOWS && !config.fido2Resident}
               onChange={(e) => {
                 update('fido2Resident', e.target.checked);
                 if (e.target.checked) update('privateKeyPath', undefined);
               }}
-              className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+              className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
             />
             <span>Use a resident (discoverable) credential stored on the device</span>
           </label>
 
-          {config.fido2Resident ? (
+          {IS_WINDOWS && (
+            <p className="text-xs text-txt-muted">
+              {config.fido2Resident
+                ? 'Resident credentials cannot be read back on Windows (its OpenSSH build has no working resident-key support). Untick this and use a key file instead — generate one below.'
+                : 'On Windows, use a key file: the key is signed through Windows’ built-in security key support, so you are asked for PIN and touch on each login. Resident credentials are not available here — generate a key file below, or pick an existing one.'}
+            </p>
+          )}
+
+          {config.fido2Resident && !IS_WINDOWS ? (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-txt-muted">
                 No key file needed — the app loads whatever resident credentials are on the connected
@@ -678,12 +691,21 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   </button>
                 </div>
               </label>
-              <p className="text-xs text-amber-400/90">
-                ⚠ SFTP in the File Manager can't read this key file directly (no libfido2 support in the
-                SFTP library used) — it needs the key already loaded in an ssh-agent. If you'll use this
-                profile for file transfers too, load the key with <code className="font-mono">ssh-add</code>{' '}
-                in your own agent and use the &quot;SSH Agent&quot; auth type instead for that purpose.
-              </p>
+              {IS_WINDOWS ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-300">
+                  <span className="font-semibold">Terminal only.</span> SFTP / the file manager can't use FIDO2
+                  security keys on Windows (its SSH library can't handle them, even through an ssh-agent), so the
+                  SFTP button is disabled for this profile. For file transfers, create a separate profile with a
+                  regular SSH key or a smartcard.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-400/90">
+                  ⚠ SFTP in the File Manager can't read this key file directly (no libfido2 support in the
+                  SFTP library used) — it needs the key already loaded in an ssh-agent. If you'll use this
+                  profile for file transfers too, load the key with <code className="font-mono">ssh-add</code>{' '}
+                  in your own agent and use the &quot;SSH Agent&quot; auth type instead for that purpose.
+                </p>
+              )}
             </>
           )}
 
@@ -732,11 +754,15 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
                     <input
                       type="checkbox"
-                      checked={fido2GenResident}
+                      checked={fido2GenResident && !IS_WINDOWS}
+                      disabled={IS_WINDOWS}
                       onChange={(e) => setFido2GenResident(e.target.checked)}
-                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
                     />
-                    <span>Resident (discoverable) — no file needed to authenticate later</span>
+                    <span>
+                      Resident (discoverable) — no file needed to authenticate later
+                      {IS_WINDOWS && <span className="text-txt-muted"> (not available on Windows)</span>}
+                    </span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
                     <input

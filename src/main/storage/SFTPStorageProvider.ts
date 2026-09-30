@@ -240,12 +240,17 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
     const candidates: Record<string, any>[] = [];
 
-    const agent =
-      this.config.agentPath ??
-      (process.platform === 'win32'
-        ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
-        : process.env.SSH_AUTH_SOCK);
-    if (agent) {
+    // On Windows the stock OpenSSH client's agent (the "OpenSSH Authentication Agent" service,
+    // where `ssh-add` puts keys) listens on \\.\pipe\openssh-ssh-agent — not Pageant's pipe — so
+    // try it first, then Pageant, instead of only ever trying Pageant (which fails with "Failed
+    // to connect to agent" when just the OpenSSH service is running).
+    const agents =
+      this.config.agentPath !== undefined
+        ? [this.config.agentPath]
+        : process.platform === 'win32'
+          ? [process.env.SSH_AUTH_SOCK, '\\\\.\\pipe\\openssh-ssh-agent', '\\\\.\\pipe\\pageant']
+          : [process.env.SSH_AUTH_SOCK];
+    for (const agent of new Set(agents.filter((a): a is string => Boolean(a)))) {
       candidates.push({ ...base, agent });
     }
 
@@ -349,7 +354,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
                 const agent =
                   this.config.agentPath ??
                   (process.platform === 'win32'
-                    ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\pageant'
+                    ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\openssh-ssh-agent'
                     : process.env.SSH_AUTH_SOCK);
                 if (agent) {
                   jumpOpts.agent = agent;
@@ -419,7 +424,13 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
             this.isConnected = true;
             return;
           } catch (err) {
-            lastErr = err;
+            // Keep the first real failure: a later fallback candidate that merely couldn't reach its
+            // agent socket (e.g. the Pageant pipe on a machine that only runs the OpenSSH agent)
+            // says nothing about why the preferred candidate was rejected, and would mask it.
+            const isAgentUnreachable = err instanceof Error && err.message.includes('Failed to connect to agent');
+            if (!(isAgentUnreachable && lastErr !== undefined)) {
+              lastErr = err;
+            }
             if (sock) {
               try { sock.destroy(); } catch { /* ignore */ }
             }
@@ -433,6 +444,11 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         if (lastErr) {
           const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
           if (msg.includes('All configured authentication methods failed')) {
+            if (this.config.authType === 'fido2') {
+              throw new Error(
+                "SFTP can't log in with a FIDO2 security key: the file manager's SSH library cannot use security-key (-sk) keys, even when they are loaded in an ssh-agent. Use the terminal for this profile, or a separate profile with an SSH key or smartcard for file transfers."
+              );
+            }
             if (this.config.authType === 'agent') {
               throw new Error(
                 'SSH agent authentication failed: The server rejected the agent key, or the agent has no identities loaded (run "ssh-add").'

@@ -70,6 +70,8 @@ export const IPC_CHANNELS = {
   // Smartcard
   SMARTCARD_DETECT: 'smartcard:detect',
   SMARTCARD_VALIDATE: 'smartcard:validate',
+  SMARTCARD_AGENT_PATH_STATUS: 'smartcard:agent-path-status',
+  SMARTCARD_AGENT_PATH_FIX: 'smartcard:agent-path-fix',
   SMARTCARD_LOCK_ALL: 'smartcard:lock-all',
   SMARTCARD_LIST_CACHED: 'smartcard:list-cached',
   SMARTCARD_UNLOCK_AT_STARTUP: 'smartcard:unlock-at-startup',
@@ -407,6 +409,10 @@ export interface MultiSSHApi {
   // Smartcard
   smartcardDetect(): Promise<DetectedSmartcardLib[]>;
   smartcardValidate(path: string): Promise<{ valid: boolean; error?: string }>;
+  /** Windows only: can the ssh-agent service load this PKCS#11 module with the machine PATH? */
+  smartcardAgentPathStatus(pkcs11LibPath: string): Promise<{ applicable: boolean; needsFix: boolean; libDir?: string }>;
+  /** Windows only: adds the module's folder to the machine PATH (UAC prompt) and restarts ssh-agent. */
+  smartcardAgentPathFix(pkcs11LibPath: string): Promise<void>;
   smartcardLockAll(): Promise<{ locked: number }>;
   smartcardListCached(): Promise<CachedSmartcardAgent[]>;
   /** Called once on renderer startup; a no-op unless 'agent-global' PIN caching + the startup-unlock setting are both on and exactly one PKCS#11 library is detected. */

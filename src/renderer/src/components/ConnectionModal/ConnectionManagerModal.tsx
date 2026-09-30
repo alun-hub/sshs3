@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import { SftpButton } from '../SftpButton';
 import {
   Boxes,
   Cable,
@@ -917,19 +918,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                 </button>
                               )}
                               {onConnectSFTP && (
-                                <button
-                                  type="button"
-                                  title="Open SFTP in Dual-Pane File Manager"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onConnectSFTP(profile);
-                                  }}
-                                  className="flex items-center gap-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors"
-                                >
-                                  <Files className="h-3 w-3" />
-                                  SFTP
-                                </button>
-                              )}
+<SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
+)}
                               {/* UX audit finding #11: this row used to stop at Connect/SFTP
                                   while the identical profile, shown again below in its folder,
                                   also had Tunnels/Duplicate/Edit/Delete — same entity, two
@@ -1165,19 +1155,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                         </button>
                                       )}
                                       {onConnectSFTP && (
-                                        <button
-                                          type="button"
-                                          title="Open SFTP in Dual-Pane File Manager"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onConnectSFTP(profile);
-                                          }}
-                                          className="flex items-center gap-1 rounded-lg bg-sky-700/80 hover:bg-sky-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors"
-                                        >
-                                          <Files className="h-3 w-3" />
-                                          SFTP
-                                        </button>
-                                      )}
+<SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
+)}
                                       <button
                                         type="button"
                                         title="Manage SSH Tunnels"

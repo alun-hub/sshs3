@@ -39,6 +39,9 @@ import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { IS_WINDOWS } from '../../lib/platform';
+import { pkcs11LibDisplayName } from '../../lib/smartcard';
+import { WindowsAgentPathNotice } from './WindowsAgentPathNotice';
 
 interface SettingsModalProps {
   open: boolean;
@@ -113,6 +116,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [smartcardUnlockAtStartup, setSmartcardUnlockAtStartup] = useState<boolean>(
     currentSettings.smartcardUnlockAtStartup ?? false
   );
+  const [smartcardLibPath, setSmartcardLibPath] = useState<string>(currentSettings.smartcardLibPath ?? '');
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(() => ({
@@ -174,6 +178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
       setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
       setSmartcardUnlockAtStartup(currentSettings.smartcardUnlockAtStartup ?? false);
+      setSmartcardLibPath(currentSettings.smartcardLibPath ?? '');
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
@@ -311,6 +316,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       dotfilesPoolEnabled,
       smartcardAuthMode,
       smartcardUnlockAtStartup,
+      smartcardLibPath: smartcardLibPath || undefined,
       x11ServerMode,
       x11ServerPath,
       x11ServerArgs,
@@ -1265,9 +1271,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Smartcard PIN caching */}
                   <div className="space-y-2">
                     <div>
-                      <label className="text-xs font-medium text-txt-primary">Smartcard & Security Key PIN Caching</label>
+                      <label className="text-xs font-medium text-txt-primary">
+                        {IS_WINDOWS ? 'Smartcard PIN Caching' : 'Smartcard & Security Key PIN Caching'}
+                      </label>
                       <p className="text-xs text-txt-muted">
-                        Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.
+                        {IS_WINDOWS
+                          ? 'Applies to every Smartcard (PKCS#11) profile. FIDO2 security keys are not cached on Windows — they use a key file and ask for PIN and touch on every connection. Cached and per-terminal modes need the Windows OpenSSH Authentication Agent service to be running.'
+                          : 'Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.'}
                       </p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1290,7 +1300,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>Always Prompt (Default)</span>
                         </div>
                         <span className="text-xs text-txt-muted leading-tight">
-                          No caching. Every connection that needs the card or security key (terminal, dotfiles sync) prompts for its
+                          No caching. Every connection that needs the {IS_WINDOWS ? 'card' : 'card or security key'} (terminal, dotfiles sync) prompts for its
                           own PIN. Use this if your organization requires re-authentication on every login.
                         </span>
                       </label>
@@ -1314,9 +1324,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>Once Per Terminal Connection</span>
                         </div>
                         <span className="text-xs text-txt-muted leading-tight">
-                          Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and
-                          its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even
-                          in the same app run) asks for the PIN again.
+                          {IS_WINDOWS
+                            ? 'Enter the PIN once; the card is loaded into the Windows ssh-agent service for that terminal tab and its dotfiles sync. It is removed again as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'
+                            : 'Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'}
                         </span>
                       </label>
 
@@ -1339,9 +1349,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>Global (App Lifetime)</span>
                         </div>
                         <span className="text-xs text-txt-muted leading-tight">
-                          Enter the PIN once per card or key, shared by every terminal and profile using it, for as long as
-                          the app runs. Most convenient, least strict — anything in the app can use the card/key until
-                          you quit or lock it manually below.
+                          Enter the PIN once per {IS_WINDOWS ? 'card' : 'card or key'}, shared by every terminal and profile using it, for as long as
+                          the app runs. Most convenient, least strict — anything in the app can use the {IS_WINDOWS ? 'card' : 'card/key'} until
+                          you quit or lock it manually below.{IS_WINDOWS ? ' On Windows the card is held by the shared ssh-agent service, so other programs using that agent can use it too.' : ''}
                         </span>
                       </label>
                     </div>
@@ -1349,7 +1359,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {smartcardAuthMode === 'agent-global' && (
                       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">
                         <p className="text-xs text-amber-300/90 leading-tight">
-                          Cached smartcard and security key agents stay unlocked until the app quits. Use the lock icon in the top bar
+                          {IS_WINDOWS ? 'Cached smartcards stay' : 'Cached smartcard and security key agents stay'} unlocked until the app quits. Use the lock icon in the top bar
                           to lock them on demand without quitting.
                         </p>
                         <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary border-t border-amber-500/20 pt-2.5">
@@ -1363,8 +1373,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </label>
                         <p className="text-xs text-txt-muted leading-tight pl-6">
                           Prompts for the PIN as soon as the app opens instead of waiting for the first connection
-                          that needs it, so it's already unlocked once you get to a terminal. Only takes effect when
-                          exactly one PKCS#11 library is detected below.
+                          that needs it, so it's already unlocked once you get to a terminal. Uses the driver chosen
+                          below; with Auto-detect it only takes effect when exactly one PKCS#11 library is detected
+                          (or p11-kit is present).
                         </p>
                       </div>
                     )}
@@ -1402,23 +1413,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {smartcardLibs.map((lib) => (
-                          <div
-                            key={lib.path}
-                            className="flex items-center justify-between rounded-lg border border-border-subtle bg-app-surface p-2.5 text-xs"
-                          >
-                            <div className="min-w-0 pr-2">
-                              <div className="flex items-center gap-1.5 font-medium text-txt-primary">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                                <span>{lib.name}</span>
-                              </div>
-                              <div className="truncate font-mono text-2xs text-txt-muted">{lib.path}</div>
-                            </div>
-                            <span className="rounded bg-sky-500/10 px-2 py-0.5 text-2xs font-medium text-sky-400 shrink-0">
-                              Available
-                            </span>
-                          </div>
-                        ))}
+                        <p className="text-xs text-txt-muted">
+                          Pick the driver used for the startup unlock and for linking Remote Profile Sync to your
+                          card. Profiles keep their own driver setting.
+                        </p>
+                        <WindowsAgentPathNotice libPath={smartcardLibPath} />
+                        {[{ path: '', name: 'Auto-detect', hint: 'Use p11-kit if present, otherwise the only detected module' }, ...smartcardLibs].map(
+                          (lib) => {
+                            const selected = smartcardLibPath === lib.path;
+                            const isAuto = lib.path === '';
+                            return (
+                              <label
+                                key={lib.path || 'auto'}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-xs transition-colors ${
+                                  selected
+                                    ? 'border-sky-500 bg-sky-500/15'
+                                    : 'border-border-subtle bg-app-surface hover:bg-app-surface-hover'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="smartcardLibPath"
+                                  checked={selected}
+                                  onChange={() => setSmartcardLibPath(lib.path)}
+                                  className="hidden"
+                                />
+                                <div className="min-w-0 pr-2">
+                                  <div className="flex items-center gap-1.5 font-medium text-txt-primary">
+                                    <CheckCircle2
+                                      className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-sky-400' : 'text-emerald-400'}`}
+                                    />
+                                    <span>{isAuto ? lib.name : pkcs11LibDisplayName(lib.path)}</span>
+                                  </div>
+                                  <div
+                                    className="truncate font-mono text-2xs text-txt-muted"
+                                    title={isAuto ? undefined : lib.path}
+                                  >
+                                    {isAuto ? (lib as { hint?: string }).hint : lib.path}
+                                  </div>
+                                </div>
+                                <span
+                                  className={`rounded px-2 py-0.5 text-2xs font-medium shrink-0 ${
+                                    selected ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-500/10 text-sky-400'
+                                  }`}
+                                >
+                                  {selected ? 'Default' : isAuto ? 'Automatic' : 'Available'}
+                                </span>
+                              </label>
+                            );
+                          }
+                        )}
                       </div>
                     )}
                   </div>

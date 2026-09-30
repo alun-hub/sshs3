@@ -194,7 +194,7 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
   - **Global (App Lifetime)** — the PIN is entered once per physical card and shared by every terminal and profile using it, for as long as the app keeps running — including local shell tabs opened afterwards (see **SSH agent lifecycle management** above), not just SSH profile connections. Most convenient, least strict: the card stays usable by anything in the app until you quit or lock it manually. A **card icon in the top bar** (shown only while this mode is active) opens a popover listing exactly what's currently cached — each unlocked PKCS#11 library and the certificate label(s)/key type it's holding, queried live from the agent — with a **Lock All Now** button to clear it on demand. Each identity can be expanded to show its certificate's Subject, UPN (Microsoft's `otherName` SAN, common on PIV/CAC/SITHS cards), and validity period, read directly from the PKCS#11 module rather than a vendor-specific CLI tool — so it works the same regardless of which PKCS#11 provider (OpenSC, Net iD, libykcs11, p11-kit) is behind the card. Certificate details are cached once at agent load to avoid repeated PKCS#11 reader polling that can race live sessions and crash sensitive tokens (e.g. Net iD).
     - **Unlock smartcard at app startup** *(opt-in, only shown/effective in this mode)* — prompts for the PIN as soon as the app opens instead of waiting for the first connection that needs it, so the card is already unlocked by the time you open your first terminal — including a local shell tab, which otherwise wouldn't trigger any smartcard prompt on its own. Prefers **p11-kit** whenever it's among the detected libraries (it proxies every other registered PKCS#11 module, so e.g. `p11-kit-proxy.so` and `opensc-pkcs11.so` coexisting is one physical card reachable two ways, not two cards to pick between); otherwise only acts when exactly one non-p11-kit library is detected, doing nothing rather than guess when there are several unrelated candidates.
   - On Linux/macOS, every mode spawns its own private `ssh-agent`, never the process's inherited `SSH_AUTH_SOCK` — loading a smartcard into the desktop's own agent (GNOME Keyring, KWallet, …) was found to make the OS prompt for the PIN independently, outside sshs3's own dialog, and to leave the card usable by other applications. Loading the card is retried a few times with a short backoff without re-prompting, since most PIV/CAC readers only support one active transaction at a time and a stray concurrent PKCS#11 session can transiently collide with it; the user is only ever asked for the PIN once per agent load.
-  - On **Windows**, there's no equivalent of a caller-spawned private agent: Win32-OpenSSH's `ssh-agent.exe` only runs as the single system-wide "OpenSSH Authentication Agent" service, bound to the fixed pipe `\\.\pipe\openssh-ssh-agent`, and refuses to start a second independent instance. All three modes there — including **Always Prompt** — load the card into that shared service pipe via `ssh-add -s` instead of a direct `-I` login (requires the service to be enabled: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`, once, as Administrator), and evict just that card afterwards via `ssh-add -e` rather than killing a process they don't own. This isn't optional on Windows: Win32-OpenSSH's `ssh-pkcs11-helper` subprocess doesn't reliably route a smartcard PIN prompt through sshs3's askpass server the way it does for a plain account password, so a direct `-I` login there silently falls through to a Windows account password prompt instead of ever asking for the card's PIN.
+  - On **Windows**, there's no equivalent of a caller-spawned private agent: Win32-OpenSSH's `ssh-agent.exe` only runs as the single system-wide "OpenSSH Authentication Agent" service, bound to the fixed pipe `\\.\pipe\openssh-ssh-agent`, and refuses to start a second independent instance. All three modes there — including **Always Prompt** — load the card into that shared service pipe via `ssh-add -s` instead of a direct `-I` login (requires the service to be enabled: `Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent`, once, as Administrator — the installer offers to do this; see [Windows vs. Linux](#windows-vs-linux-differences-limitations--workarounds)), and evict just that card afterwards via `ssh-add -e` rather than killing a process they don't own. This isn't optional on Windows: Win32-OpenSSH's `ssh-pkcs11-helper` subprocess doesn't reliably route a smartcard PIN prompt through sshs3's askpass server the way it does for a plain account password, so a direct `-I` login there silently falls through to a Windows account password prompt instead of ever asking for the card's PIN.
 
 ### Dual-pane file manager
 - Two independent panes, each pointed at local disk, SFTP, S3, or Kubernetes container filesystems, with drag-and-drop between panes and to/from the OS file manager.
@@ -449,7 +449,7 @@ If connecting with FIDO2 security keys, SITHS, YubiKey, PIV/CAC, or Net iD cards
 - **PKCS#11 Library / Driver**:
   - **Linux**: `p11-kit` (providing `/usr/lib64/p11-kit-proxy.so` or `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so`, recommended as it proxies all registered system tokens), `opensc` (`opensc-pkcs11.so`), `libykcs11` (Yubico PIV tool / YubiKey Manager), or Net iD (`libiidp11.so`).
   - **Windows**: OpenSC (`opensc-pkcs11.dll`), YubiKey PIV (`libykcs11.dll`), or Net iD Client (`iidp11.dll`).
-- **Windows only, for "Once Per Terminal Connection" / "Global" PIN caching**: the built-in **OpenSSH Authentication Agent** service, disabled by default. The Windows installer enables and starts it automatically; if you're on the portable build or it didn't take (e.g. no admin rights during install), enable it once yourself, as Administrator: `Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent`. Not needed for "Always Prompt" mode, which logs into the card directly per connection.
+- **Windows only, for "Once Per Terminal Connection" / "Global" PIN caching**: the built-in **OpenSSH Authentication Agent** service, disabled by default. The Windows installer asks for administrator approval (UAC) near the end of setup to set it to start automatically and start it; if you decline, use the portable build, or run a silent install/auto-update (which skips the prompt), enable it once yourself, as Administrator: `Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent`. Not needed for "Always Prompt" mode, which logs into the card directly per connection.
 
 ### Bundled Features (No Extra Software Required)
 - **S3 & AWS SSO**: Object storage transfers, bucket operations, and AWS IAM Identity Center (SSO) browser-based logins run entirely on the bundled AWS SDK v3. No AWS CLI or Python installation required.
@@ -536,6 +536,73 @@ npm run deploy
 # or with a custom commit message:
 ./deploy.sh "feat: describe your change"
 ```
+
+---
+
+## Windows vs. Linux: differences, limitations & workarounds
+
+sshs3 is one codebase, but the Windows build can't do everything the Linux build does. Most gaps come from Microsoft's build of OpenSSH and from how Windows runs `ssh-agent`, not from sshs3 itself. Where the app can compensate, it does (and says so in the UI); where it can't, this section lists what's different so you aren't surprised.
+
+**At a glance**
+
+| Area | Linux | Windows |
+|---|---|---|
+| FIDO2 **resident** (discoverable) keys | Supported (`ssh-add -K`, `ykman`) | **Not available** — use a key file instead |
+| FIDO2 key file (`id_ed25519_sk`) in the **terminal** | Supported | Supported (PIN + touch on every connection) |
+| FIDO2 in the **SFTP file manager** | Needs the key loaded in an `ssh-agent` | **Not available** (SFTP button is disabled) |
+| FIDO2 PIN caching / global agent / startup unlock | Supported | **Not applicable** |
+| Listing / deleting resident credentials | Via `ykman` | Not available (`ykman` needs Administrator) |
+| Smartcard (PKCS#11) PIN caching | Private `ssh-agent` per app/terminal | Shared Windows **ssh-agent service** (see below) |
+| Needs an `ssh-agent` service set up first | No — the app spawns its own | **Yes** — "OpenSSH Authentication Agent" service |
+| `libykcs11` (Yubico) through the agent | Works | Needs one extra setup step (system `PATH`) |
+| `p11-kit` | Supported (recommended) | Not available |
+| Certificate details in the cached-cards popover | Always | Depends on the build; OpenSC is needed for the fallback |
+
+### FIDO2 / security keys
+
+- **Resident (discoverable) credentials don't work on Windows.** They can only be read back from the device with `ssh-add -K`, `ssh-keygen -K` or `ykman`. On Windows, `ssh-add -K` fails (`Provider "internal" returned failure -1` / `device not found` — even when run as Administrator) and `ykman fido credentials list` refuses to run without Administrator rights. So on Windows the profile form disables the *resident* option, the key generator defaults to (and only offers) a key **file**, the automatic scan never runs, and the FIDO2 step of "Unlock at startup" is skipped so you aren't asked for a PIN just to get an error. If an existing Windows profile is still set to resident, the form tells you to switch it.
+- **Use a key file instead.** In the profile, leave *resident* unticked and use **Generate a new key on this security key** (or pick an existing `id_ed25519_sk` / `id_ecdsa_sk`). Windows signs through its own WebAuthn support, which needs no Administrator rights. Add the new public key to the server's `authorized_keys`.
+  - If generation fails with `A resident key scoped to 'ssh:…' already exists … Overwrite key in token (y/n)?`, the device already holds a resident credential with that name from an earlier attempt. Untick *resident* (recommended on Windows), or use a different output file name.
+- **A touch is required on every connection.** A FIDO2 key created with *Require PIN + touch* needs a physical touch for every signature, so there is nothing to cache — the global agent, *Once per terminal* and *Always prompt* modes only affect smartcards (PKCS#11) on Windows. The Settings page says so.
+- **No SFTP file manager for FIDO2 profiles.** The file manager's embedded SSH library can't use security-key (`-sk`) keys, even when the key is loaded in an `ssh-agent`. On Windows the **SFTP** buttons are greyed out for FIDO2 profiles (with an explanation on hover), and opening one anyway explains why instead of failing after a PIN/touch prompt. The terminal works normally. For file transfers, create a **separate profile** with a regular SSH key or a smartcard.
+- **Be careful with repeated PIN attempts.** A FIDO2 key counts failed/rapid PIN verifications and temporarily blocks PIN entry until it's unplugged and reconnected. Unplug/replug it if you see that message (the wording of that hint was verified on Linux; on Windows a similar-looking `failure -1` is usually the resident-key limitation above).
+
+### Smartcards / PKCS#11
+
+- **A shared system agent instead of a private one.** On Linux every PIN-caching mode spawns its own private `ssh-agent`. Windows' `ssh-agent.exe` only runs as the single system service (pipe `\\.\pipe\openssh-ssh-agent`) and refuses a second instance, so all modes — including *Always prompt* — load the card into **that shared service**. Consequences:
+  - Any other program that talks to the Windows OpenSSH agent can use the card while it's loaded (Global mode: until you quit the app or use **Lock All Now**).
+  - The top-bar card popover lists *everything* in that agent, including keys you added yourself with `ssh-add` — not only what sshs3 loaded.
+  - Restarting the service clears every key in it.
+- **The "OpenSSH Authentication Agent" service must be running.** It's disabled by default on Windows, and the *OpenSSH Client* optional feature must be installed. The **installer** asks for administrator approval (UAC) near the end of setup and sets the service to *Automatic* and starts it. It does **not** do this for silent installs/auto-updates (to avoid a UAC prompt on every update), for the **portable** build, or if you decline the prompt — then run once, as Administrator:
+
+  ```powershell
+  Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent
+  ```
+
+  Without it you'll see *"Startup unlock failed … Windows OpenSSH Authentication Agent service is not running"*.
+- **Pick the right PKCS#11 driver.** Windows detects Net iD, OpenSC and Yubico's `libykcs11`; there is no `p11-kit`. **OpenSC (`opensc-pkcs11.dll`) is listed first and is the most reliable choice**, including for a YubiKey's PIV applet. The *Smartcard* settings let you choose a **default driver** (used by startup unlock and when linking Remote Profile Sync); individual profiles keep their own.
+- **`libykcs11.dll` (Yubico) needs its folder on the system `PATH`.** It depends on DLLs (`libcrypto-3-x64.dll`, `libykpiv.dll`, `zlib1.dll`) that sit next to it, and the agent service only searches the *machine* `PATH`. Without that, `ssh-add -s` fails with just `agent refused operation` — before any PIN reaches the card — so sshs3's "wrong PIN" retry message is misleading in that case (your PIN retry counter is untouched; check with `ykman piv info`). When you choose `libykcs11` as the default driver and this applies, Settings shows a **Fix Windows ssh-agent** button: it adds the driver's folder to the **system-wide** `PATH` and restarts the agent, after a UAC prompt. That change is visible to *every* program (the DLLs have generic names), which is why it's an explicit button and not something the installer does silently. Manual equivalent, as Administrator:
+
+  ```powershell
+  $p = 'C:\Program Files\Yubico\Yubico PIV Tool\bin'
+  [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + $p, 'Machine')
+  Restart-Service ssh-agent
+  ```
+
+- **Certificate details in the cached-cards popover** (subject, UPN, validity) are read through the optional native `pkcs11js` addon, which needs a compiler toolchain (Python + Visual C++ build tools) to build and may be missing in a given Windows build. When it isn't there, sshs3 falls back to OpenSC's `pkcs11-tool.exe` (shipped with OpenSC). Without either (for example a Net iD–only setup on a build without the addon) the identity shows its key type but "No certificate details found on the card".
+- **SFTP with a smartcard is expected to work** (the agent exposes the PIV key as a normal RSA/ECDSA key), but like every PKCS#11 operation it needs the PIN once per the caching mode.
+- **Two drivers for one card don't share a cache.** The global cache is keyed by library path, so the same physical card loaded through `opensc-pkcs11.dll` and through `libykcs11.dll` counts as two entries and asks for the PIN twice. Remote Profile Sync reuses an already-unlocked agent that holds the linked key, but profiles don't — keep profiles and the default driver on the same library.
+
+### `~/.ssh/config` managed block & paths
+
+- Remote Profile Sync can write a managed block into your real `~/.ssh/config`, generated from your profiles. Windows paths contain spaces (`C:\Program Files\…`), which OpenSSH splits into separate arguments (`line N: keyword pkcs11provider extra arguments at end of line` — breaking *every* `ssh` call, not just sshs3). sshs3 now quotes `PKCS11Provider` / `IdentityFile` / `CertificateFile` values containing spaces and uses forward slashes when it writes the block.
+- The block is written as a whole ("newest wins"), and library/key paths are machine-specific, so a block generated on Windows isn't meaningful on a Linux machine (and vice versa). Treat the managed block as per-machine.
+
+### Building & developing on Windows
+
+- `node-pty` and `pkcs11js` are native modules. A full rebuild needs **Python** and the **Visual C++ build tools**; without them `electron-builder` stops at `Could not find any Python installation to use`. `node-pty` ships prebuilt Windows binaries, so packaging with `npx electron-builder --win --config.npmRebuild=false` works — but `pkcs11js` is then *not* built (see the certificate-details note above).
+- Installing with `npm install --ignore-scripts` skips these builds too.
+- One unit test (`LocalStorageProvider › delete › broken symlink`) fails on Windows unless symlinks are allowed (Developer Mode or an elevated shell): `EPERM: operation not permitted, symlink`. It is unrelated to app behaviour.
 
 ---
 

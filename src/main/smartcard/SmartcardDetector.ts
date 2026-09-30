@@ -76,15 +76,20 @@ export class SmartcardDetector {
     // Net iD
     { name: 'Net iD', path: 'C:\\Program Files\\Net iD\\iidp11.dll', platform: 'win32' },
     { name: 'Net iD', path: 'C:\\Program Files (x86)\\Net iD\\iidp11.dll', platform: 'win32' },
-    // Yubico PIV Tool / YubiKey Manager (libykcs11) — official Yubico PKCS#11
-    // module, works out of the box for YubiKey PIV without installing OpenSC.
-    { name: 'YubiKey (libykcs11)', path: 'C:\\Program Files\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll', platform: 'win32' },
+    // OpenSC — listed before Yubico's module on purpose: the first detected library is what
+    // auto-detect and Remote Profile Sync linking pick, and Windows' ssh-agent refuses to load
+    // libykcs11 (`ssh-add -s` fails with "agent refused operation" before any PIN reaches the card),
+    // while OpenSC drives the same YubiKey PIV applet fine.
     {
-      name: 'YubiKey (libykcs11)',
-      path: 'C:\\Program Files (x86)\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll',
+      name: 'OpenSC',
+      path: 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll',
       platform: 'win32',
     },
-    // OpenSC
+    {
+      name: 'OpenSC',
+      path: 'C:\\Program Files (x86)\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll',
+      platform: 'win32',
+    },
     {
       name: 'OpenSC',
       path: 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\onepin-opensc-pkcs11.dll',
@@ -95,14 +100,12 @@ export class SmartcardDetector {
       path: 'C:\\Program Files (x86)\\OpenSC Project\\OpenSC\\pkcs11\\onepin-opensc-pkcs11.dll',
       platform: 'win32',
     },
+    // Yubico PIV Tool / YubiKey Manager (libykcs11) — official Yubico PKCS#11 module. Usable
+    // directly with ssh -I, but not through Windows' ssh-agent (see above).
+    { name: 'YubiKey (libykcs11)', path: 'C:\\Program Files\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll', platform: 'win32' },
     {
-      name: 'OpenSC',
-      path: 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll',
-      platform: 'win32',
-    },
-    {
-      name: 'OpenSC',
-      path: 'C:\\Program Files (x86)\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll',
+      name: 'YubiKey (libykcs11)',
+      path: 'C:\\Program Files (x86)\\Yubico\\Yubico PIV Tool\\bin\\libykcs11.dll',
       platform: 'win32',
     },
   ];

@@ -11,6 +11,7 @@ import { SSHPtyManager } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
+import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard/WindowsAgentPath';
 import {
   loadSmartcardIntoPrivateAgent,
   loadFido2ResidentKeysIntoPrivateAgent,
@@ -504,6 +505,29 @@ export class IpcBridge {
   private registerSmartcardHandlers(): void {
     this.registerHandler(IPC_CHANNELS.SMARTCARD_DETECT, async () => {
       return await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+    });
+
+    // Only modules the app itself detected may be acted on: the fix edits the *system* PATH, so an
+    // arbitrary renderer-supplied path must never reach it.
+    const requireDetectedLib = async (libPath: string): Promise<string> => {
+      const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+      const match = detected.find((l) => l.path.toLowerCase() === String(libPath).toLowerCase());
+      if (!match) throw new Error('Not a detected smartcard library.');
+      return match.path;
+    };
+
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_AGENT_PATH_STATUS, async (_event, libPath: string) => {
+      if (process.platform !== 'win32') return { applicable: false, needsFix: false };
+      try {
+        return await getWindowsAgentPathStatus(await requireDetectedLib(libPath));
+      } catch {
+        return { applicable: false, needsFix: false };
+      }
+    });
+
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_AGENT_PATH_FIX, async (_event, libPath: string) => {
+      const libDir = path.dirname(await requireDetectedLib(libPath));
+      await applyWindowsAgentPathFix(libDir);
     });
 
     this.registerHandler(
@@ -1838,7 +1862,9 @@ export class IpcBridge {
     }
 
     const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
-    const chosen = libs.find((lib) => lib.name === 'p11-kit') ?? (libs.length === 1 ? libs[0] : undefined);
+    const preferred = settings.smartcardLibPath ? libs.find((lib) => lib.path === settings.smartcardLibPath) : undefined;
+    const chosen =
+      preferred ?? libs.find((lib) => lib.name === 'p11-kit') ?? (libs.length === 1 ? libs[0] : undefined);
 
     let hasFido2 = false;
     let hasSmartcard = Boolean(chosen);
@@ -1873,6 +1899,15 @@ export class IpcBridge {
       // Ignore session read errors on startup
     }
 
+    // A driver the user explicitly picked in Settings wins over the per-profile library paths:
+    // otherwise an existing profile's own path (e.g. OpenSC) would silently override the choice and
+    // unlock the wrong driver. Profiles using a different driver are still unlocked on demand.
+    if (preferred) {
+      targetSmartcardPaths.clear();
+      targetSmartcardPaths.add(preferred.path);
+      hasSmartcard = true;
+    }
+
     // Fall back to detected library if smartcard is used but no specific library was saved in profiles
     if (targetSmartcardPaths.size === 0 && chosen) {
       targetSmartcardPaths.add(chosen.path);
@@ -1890,6 +1925,11 @@ export class IpcBridge {
     const pathsNeedingUnlock = validPathsToUnlock.filter(
       (p) => !this.globalSmartcardAgents.has(p) && !this.globalSmartcardAgentLoads.has(p)
     );
+
+    // Windows' OpenSSH can't load resident FIDO2 keys (`ssh-add -K` always fails there), and its
+    // FIDO2 profiles use a key file signed via WebAuthn instead — nothing to unlock at startup, so
+    // don't ask for a PIN just to show an error.
+    if (process.platform === 'win32') hasFido2 = false;
 
     if (!hasFido2 && (!hasSmartcard || validPathsToUnlock.length === 0)) {
       return { started: false };
@@ -2213,6 +2253,13 @@ export class IpcBridge {
   private describeFido2StartupError(err: unknown): string {
     const message = err instanceof Error ? err.message : String(err);
     if (/provider "internal" returned failure -1/i.test(message) && /invalid format/i.test(message)) {
+      if (process.platform === 'win32') {
+        // The Linux-verified PIN_AUTH_BLOCKED cause above was not confirmed on Windows: the same
+        // message persisted after unplugging/reconnecting and entering the PIN once. Windows also
+        // blocks direct HID access to FIDO devices for non-elevated processes, which the built-in
+        // provider needs to enumerate resident keys — so don't claim a cause we haven't proven.
+        return 'Windows could not read the resident keys from the security key (ssh-add -K failed with "Provider internal returned failure -1"). If you already unplugged and reconnected the key and entered the PIN once, this is likely because reading resident credentials needs direct access to the device, which Windows only allows for an elevated (Administrator) process. Resident-key login may need sshs3 started as Administrator, or a key file instead.';
+      }
       return 'This security key has temporarily blocked PIN verification (likely after a few failed or rapid attempts) and needs to be unplugged and reconnected before it will accept a PIN again. This is not a wrong PIN.';
     }
     return message;
@@ -2666,6 +2713,29 @@ export class IpcBridge {
   }
 
   /**
+   * The global agent cache is keyed by PKCS#11 library path, but one physical card is often
+   * reachable through several modules (e.g. OpenSC's opensc-pkcs11.dll and onepin-opensc-pkcs11.dll
+   * on Windows) — so a sync link made against one module would otherwise miss the cache filled by
+   * another and ask for the PIN a second time. Returns the socket of any already-cached global
+   * PKCS#11 agent that holds the given key, so the caller can reuse it instead.
+   */
+  private async findCachedGlobalAgentHoldingKey(keyBlobBase64: string | undefined): Promise<string | undefined> {
+    if (!keyBlobBase64) return undefined;
+    for (const [key, { socketPath }] of this.globalSmartcardAgents.entries()) {
+      if (key === '__fido2__') continue;
+      try {
+        const identities = await getAgentIdentities(socketPath);
+        if (identities.some((id) => id.keyBlob.toString('base64') === keyBlobBase64)) {
+          return socketPath;
+        }
+      } catch {
+        // Agent gone or unreachable — try the next cached one.
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Unlocks sync via a linked hardware smartcard: loads the card into a
    * private agent, has it sign a challenge to prove possession, then derives
    * or unwraps the master passwords from that signature and unlocks through
@@ -2684,6 +2754,12 @@ export class IpcBridge {
     }
 
     let libPath = options?.pkcs11LibPath || config.smartcardSync?.pkcs11LibPath;
+    if (!libPath) {
+      const preferredLib = (await this.settingsStore.getSettings()).smartcardLibPath;
+      if (preferredLib && (await SmartcardDetector.validateLibraryPath(preferredLib))) {
+        libPath = preferredLib;
+      }
+    }
     if (!libPath) {
       const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
       if (detected.length === 0) {
@@ -2708,8 +2784,15 @@ export class IpcBridge {
     let socketPath: string;
     let privateAgentPid: number | undefined;
 
+    const sameCardSocket =
+      this.globalSmartcardAgents.has(libPath) || mode !== 'agent-global'
+        ? undefined
+        : await this.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
+
     if (this.globalSmartcardAgents.has(libPath)) {
       socketPath = this.globalSmartcardAgents.get(libPath)!.socketPath;
+    } else if (sameCardSocket) {
+      socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
       socketPath = await this.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
     } else {

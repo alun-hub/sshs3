@@ -25,6 +25,24 @@ export interface ManagedSshConfigBlock {
   body: string;
 }
 
+const PATH_DIRECTIVES = new Set(['pkcs11provider', 'identityfile', 'certificatefile']);
+
+/**
+ * ssh_config splits unquoted values on whitespace, so a path like
+ * `C:\Program Files\OpenSC Project\...` (typical on Windows) makes ssh abort with "extra arguments
+ * at end of line" for every connection, not just inside sshs3. Quotes such a value (and uses
+ * forward slashes, which Win32-OpenSSH accepts and which survive ssh_config's backslash handling
+ * inside quotes) so a synced block is always parseable. Already-quoted values are left alone.
+ */
+function quoteSpacedPathValue(line: string): string {
+  const match = /^(\s*)(\S+?)(\s*=\s*|\s+)(.+?)\s*$/.exec(line);
+  if (!match) return line;
+  const [, indent, key, sep, value] = match;
+  if (!PATH_DIRECTIVES.has(key.toLowerCase())) return line;
+  if (value.startsWith('"') || !/\s/.test(value)) return line;
+  return `${indent}${key}${sep}"${value.replace(/\\/g, '/')}"`;
+}
+
 export interface SanitizeSshConfigBodyResult {
   body: string;
   removedLines: string[];
@@ -54,7 +72,7 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
       removedLines.push(line);
       continue;
     }
-    keptLines.push(line);
+    keptLines.push(quoteSpacedPathValue(line));
   }
 
   return { body: keptLines.join('\n'), removedLines };
