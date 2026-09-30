@@ -73,6 +73,7 @@ export const IPC_CHANNELS = {
   SMARTCARD_LOCK_ALL: 'smartcard:lock-all',
   SMARTCARD_LIST_CACHED: 'smartcard:list-cached',
   SMARTCARD_UNLOCK_AT_STARTUP: 'smartcard:unlock-at-startup',
+  SMARTCARD_STARTUP_UNLOCK_STATUS: 'smartcard:startup-unlock-status',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
   PRESENCE_PROMPT: 'presence:prompt',
@@ -305,6 +306,18 @@ export interface AskpassPromptEvent {
   sessionId?: string;
   kind?: AskpassPromptKind;
   context?: string;
+  /** Set when this prompt is re-asking after a wrong PIN — the modal shows this inline instead of failing silently. */
+  error?: string;
+  /** 1-based attempt number this prompt represents, paired with `maxAttempts`. */
+  attempt?: number;
+  maxAttempts?: number;
+}
+
+export interface SmartcardStartupUnlockStatusEvent {
+  kind: 'smartcard' | 'fido2';
+  status: 'unlocked' | 'error';
+  libPath?: string;
+  error?: string;
 }
 
 export interface HostKeyPromptEvent {
@@ -398,6 +411,8 @@ export interface MultiSSHApi {
   smartcardListCached(): Promise<CachedSmartcardAgent[]>;
   /** Called once on renderer startup; a no-op unless 'agent-global' PIN caching + the startup-unlock setting are both on and exactly one PKCS#11 library is detected. */
   smartcardUnlockAtStartup(): Promise<{ started: boolean }>;
+  /** Fired asynchronously once the startup unlock kicked off by smartcardUnlockAtStartup finishes, reporting whether the PIN was accepted. */
+  onSmartcardStartupUnlockStatus(callback: (event: SmartcardStartupUnlockStatusEvent) => void): () => void;
   onAskpassPrompt(callback: (event: AskpassPromptEvent) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
   /** Fired when a smartcard/FIDO2 operation is blocked waiting for a physical touch. Informational only. */

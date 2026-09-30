@@ -55,6 +55,7 @@ function getSpawn(): typeof nodePty.spawn {
 }
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
+import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
@@ -65,6 +66,7 @@ export interface SSHPtyManagerEvents {
     prompt: string;
     kind?: AskpassPromptKind;
     context?: string;
+    retry?: AskpassPromptRetryContext;
     callback: (pin: string) => void;
   }) => void;
 }
@@ -430,13 +432,14 @@ export class SSHPtyManager extends EventEmitter {
     sessionId: string,
     prompt: string,
     kind?: AskpassPromptKind,
-    context?: string
+    context?: string,
+    retry?: AskpassPromptRetryContext
   ): Promise<string> {
     if (this.listenerCount('askpass') === 0) {
       return '';
     }
     return new Promise<string>((resolve) => {
-      this.emit('askpass', { sessionId, prompt, kind, context, callback: (pin: string) => resolve(pin) });
+      this.emit('askpass', { sessionId, prompt, kind, context, retry, callback: (pin: string) => resolve(pin) });
     });
   }
 

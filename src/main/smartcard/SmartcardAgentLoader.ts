@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
-import { AskpassServer, type AskpassPromptHandler } from './AskpassServer';
+import { AskpassServer, type AskpassPromptHandler, type AskpassPromptRetryContext } from './AskpassServer';
 import { withPkcs11Lock } from './Pkcs11Lock';
 
 const execFileAsync = promisify(execFile);
@@ -169,6 +169,8 @@ export async function listAgentIdentities(socketPath: string): Promise<AgentIden
 export interface LoadIntoPrivateAgentOptions {
   retries?: number;
   retryDelayMs?: number;
+  /** How many wrong-PIN entries to allow (with an inline "Incorrect PIN, try again" re-prompt) before giving up. Default 3. */
+  maxPinAttempts?: number;
   /** Called (possibly more than once, across retries) when the card/key appears to be waiting for a physical touch. */
   onPresenceRequested?: () => void;
   /** Called once the attempt that triggered `onPresenceRequested` has finished, successfully or not. */
@@ -242,6 +244,9 @@ async function runAddIntoPrivateAgent(
   // silently replaying whatever was typed at load time.
   let cachedPin: string | undefined;
   let inFlightPrompt: Promise<string> | undefined;
+  // Set by the retry loop below just before re-entering it after a wrong PIN, and consumed (cleared)
+  // by the very next prompt this handler issues, so it only ever decorates that one re-prompt.
+  let pendingRetryContext: AskpassPromptRetryContext | undefined;
   const cachingPromptHandler: AskpassPromptHandler = async (prompt) => {
     // Only reuse cached key PIN if the prompt is for the authenticator, key, or smartcard passphrase/PIN.
     // If OpenSSH is asking for a server/account password (e.g. "user@host's password:"), never supply the key PIN.
@@ -255,9 +260,11 @@ async function runAddIntoPrivateAgent(
       return inFlightPrompt;
     }
     console.log(`${logPrefix}: asking for a fresh PIN (prompt: "${prompt}")`);
+    const retryContext = pendingRetryContext;
+    pendingRetryContext = undefined;
     inFlightPrompt = (async () => {
       try {
-        const pin = await promptHandler(prompt);
+        const pin = await promptHandler(prompt, retryContext);
         if (!isAccountPasswordPrompt) {
           cachedPin = pin;
         }
@@ -280,6 +287,10 @@ async function runAddIntoPrivateAgent(
 
   const retries = options?.retries ?? 3;
   const retryDelayMs = options?.retryDelayMs ?? 1200;
+  // A wrong PIN gets its own budget, separate from `retries` (which is for mechanical
+  // card-busy collisions): the user gets up to this many PIN entries before giving up.
+  const maxPinAttempts = options?.maxPinAttempts ?? 3;
+  let pinAttempts = 0;
 
   try {
     const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
@@ -290,8 +301,8 @@ async function runAddIntoPrivateAgent(
     };
 
     let lastErr: unknown;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      console.log(`${logPrefix}: attempt ${attempt + 1}/${retries + 1}`);
+    for (let attempt = 0; attempt <= retries + maxPinAttempts; attempt++) {
+      console.log(`${logPrefix}: attempt ${attempt + 1}`);
       try {
         // See Pkcs11Lock's doc comment: this is the one moment this process actually opens a
         // PKCS#11/FIDO2 session against the token, so it must never race a concurrent load for
@@ -328,23 +339,54 @@ async function runAddIntoPrivateAgent(
         lastErr = new Error(`ssh-add ${addArgs.join(' ')} reported success but no identity was loaded`);
       }
 
+      if (cachedPin === '') {
+        console.log(`${logPrefix}: giving up (user cancelled)`);
+        break;
+      }
+
       const errMsg = lastErr instanceof Error ? lastErr.message.toLowerCase() : '';
-      const isFatalCardOrPinError =
-        errMsg.includes('agent refused operation') ||
+      const isWrongPinError =
         errMsg.includes('incorrect passphrase') ||
         errMsg.includes('bad passphrase') ||
         errMsg.includes('pin incorrect') ||
-        errMsg.includes('pin blocked');
+        // ssh-agent's response to a failed `ssh-add -s` (PIV/PKCS#11) add is always this one
+        // generic string, regardless of whether the underlying cause was a wrong PIN, a locked
+        // card, or something else — verified with `ssh-add -v -s <lib>` against a real card: a
+        // wrong PIN produces exactly "agent refused operation" and nothing more specific. There is
+        // no way to distinguish "wrong PIN, retries remain" from "card locked" from this string
+        // alone, so treat it as retryable (the common case by far) rather than failing after one
+        // attempt; a genuinely locked card just exhausts the retry budget below with the same
+        // message shown each time, which is no worse than before.
+        errMsg.includes('agent refused operation');
+      // "invalid format" turned out NOT to reliably mean a wrong PIN — it reproduced even with a
+      // confirmed-correct PIN (6 chars entered, still failed), so treating it as retryable just
+      // told the user "Incorrect PIN" when that wasn't actually established. Until the real cause
+      // is root-caused, surface it as-is (fatal, no PIN re-prompt) rather than guessing.
+      const isFatalNonRetryableError = errMsg.includes('pin blocked') || errMsg.includes('invalid format');
 
-      if (isFatalCardOrPinError) {
+      if (isWrongPinError) {
+        pinAttempts++;
+        if (pinAttempts >= maxPinAttempts) {
+          console.warn(`${logPrefix}: giving up after ${pinAttempts} wrong PIN attempts`);
+          break;
+        }
+        console.warn(`${logPrefix}: wrong PIN (attempt ${pinAttempts}/${maxPinAttempts}), re-prompting`);
+        cachedPin = undefined;
+        pendingRetryContext = {
+          error: 'Incorrect PIN. Please try again.',
+          attempt: pinAttempts + 1,
+          maxAttempts: maxPinAttempts,
+        };
+        continue;
+      }
+
+      if (isFatalNonRetryableError) {
         console.warn(`${logPrefix}: non-retryable error encountered: ${errMsg}`);
         break;
       }
 
-      if (cachedPin === '' || attempt >= retries) {
-        console.log(
-          `${logPrefix}: giving up (${cachedPin === '' ? 'user cancelled' : 'out of retries'})`
-        );
+      if (attempt >= retries) {
+        console.log(`${logPrefix}: giving up (out of retries)`);
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));

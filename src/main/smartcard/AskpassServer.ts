@@ -6,7 +6,17 @@ import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import * as AgentRegistry from '../ssh/AgentRegistry';
 
-export type AskpassPromptHandler = (prompt: string) => Promise<string> | string;
+/** Carried on a re-prompt after a wrong PIN, so the UI can show "Incorrect PIN, 2 attempts left" inline instead of failing silently. */
+export interface AskpassPromptRetryContext {
+  error: string;
+  attempt: number;
+  maxAttempts: number;
+}
+
+export type AskpassPromptHandler = (
+  prompt: string,
+  retry?: AskpassPromptRetryContext
+) => Promise<string> | string;
 
 export interface AskpassServerOptions {
   promptHandler?: AskpassPromptHandler;

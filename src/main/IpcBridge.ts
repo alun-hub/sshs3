@@ -17,7 +17,7 @@ import {
   listAgentIdentities,
 } from './smartcard/SmartcardAgentLoader';
 import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
-import type { AskpassPromptHandler, AskpassServer } from './smartcard/AskpassServer';
+import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './smartcard/AskpassServer';
 import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
@@ -249,6 +249,7 @@ export class IpcBridge {
     prompt: string;
     kind?: AskpassPromptKind;
     context?: string;
+    retry?: AskpassPromptRetryContext;
     callback: (pin: string) => void;
   }) => void;
   private onTransferProgress?: (progress: TransferProgress) => void;
@@ -621,7 +622,8 @@ export class IpcBridge {
   public promptForPinDirect(
     prompt = 'Enter smartcard PIN:',
     kind?: AskpassPromptKind,
-    context?: string
+    context?: string,
+    retry?: AskpassPromptRetryContext
   ): Promise<string> {
     return new Promise((resolve) => {
       const webContents = this.getWebContents();
@@ -632,7 +634,15 @@ export class IpcBridge {
 
       const id = crypto.randomUUID();
       this.pendingAskpass.set(id, { callback: resolve });
-      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, kind, context });
+      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
+        id,
+        prompt,
+        kind,
+        context,
+        error: retry?.error,
+        attempt: retry?.attempt,
+        maxAttempts: retry?.maxAttempts,
+      });
     });
   }
 
@@ -1582,10 +1592,10 @@ export class IpcBridge {
       'Touch your security key to connect'
     );
 
-    const promptPin = (rawPrompt: string) =>
+    const promptPin = (rawPrompt: string, retry?: AskpassPromptRetryContext) =>
       pinPromptKind === 'direct'
-        ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel)
-        : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel);
+        ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel, retry)
+        : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel, retry);
 
     const loadPromise = loadFido2ResidentKeysIntoPrivateAgent(
       promptPin,
@@ -1673,7 +1683,7 @@ export class IpcBridge {
    */
   private async getOrLoadGlobalSmartcardAgent(
     pkcs11LibPath: string,
-    sessionIdOrPinPrompt: string | (() => Promise<string>),
+    sessionIdOrPinPrompt: string | AskpassPromptHandler,
     promptLabel?: string
   ): Promise<string> {
     const cached = this.globalSmartcardAgents.get(pkcs11LibPath);
@@ -1699,12 +1709,13 @@ export class IpcBridge {
     const pinHandler =
       typeof sessionIdOrPinPrompt === 'function'
         ? sessionIdOrPinPrompt
-        : () =>
+        : (_prompt: string, retry?: AskpassPromptRetryContext) =>
             this.sshPtyManager.promptForPin(
               sessionIdOrPinPrompt,
               `Enter your smartcard PIN to ${promptLabel}:`,
               'smartcard',
-              promptLabel
+              promptLabel,
+              retry
             );
 
     const loadPromise = (async () => {
@@ -1895,8 +1906,14 @@ export class IpcBridge {
         try {
           console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
           await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
+          this.sendSmartcardStartupUnlockStatus({ kind: 'fido2', status: 'unlocked' });
         } catch (err) {
           console.warn('[fido2] Startup unlock failed or cancelled:', err);
+          this.sendSmartcardStartupUnlockStatus({
+            kind: 'fido2',
+            status: 'error',
+            error: this.describeFido2StartupError(err),
+          });
         }
       }
 
@@ -1907,14 +1924,15 @@ export class IpcBridge {
             `[smartcard] Startup unlock: loading Smartcard into global agent for ${pathsNeedingUnlock.join(', ')}...`
           );
           let transientPin: string | null = null;
-          const startupPinPrompt = async () => {
-            if (transientPin !== null) {
+          const startupPinPrompt = async (_prompt: string, retry?: AskpassPromptRetryContext) => {
+            if (!retry && transientPin !== null) {
               return transientPin;
             }
             transientPin = await this.promptForPinDirect(
               'Enter your smartcard PIN to unlock it for this app session:',
               'smartcard',
-              'Startup: Global Agent Cache'
+              'Startup: Global Agent Cache',
+              retry
             );
             return transientPin;
           };
@@ -1923,8 +1941,15 @@ export class IpcBridge {
             for (const libPath of pathsNeedingUnlock) {
               try {
                 await this.getOrLoadGlobalSmartcardAgent(libPath, startupPinPrompt);
+                this.sendSmartcardStartupUnlockStatus({ kind: 'smartcard', status: 'unlocked', libPath });
               } catch (err) {
                 console.warn(`[smartcard] Startup unlock failed for ${libPath}:`, err);
+                this.sendSmartcardStartupUnlockStatus({
+                  kind: 'smartcard',
+                  status: 'error',
+                  libPath,
+                  error: err instanceof Error ? err.message : String(err),
+                });
               }
             }
           } finally {
@@ -2170,6 +2195,37 @@ export class IpcBridge {
     const webContents = this.getWebContents();
     if (webContents && !webContents.isDestroyed?.()) {
       webContents.send(IPC_CHANNELS.DOTFILES_SYNC_STATUS, event);
+    }
+  }
+
+  /**
+   * `ssh-add -K` (load FIDO2 *resident/discoverable* credentials) reports "Provider \"internal\"
+   * returned failure -1" / "Unable to load resident keys: invalid format" whenever the
+   * authenticator's own CTAP2 stack returns FIDO_ERR_PIN_AUTH_BLOCKED — verified directly with
+   * `ssh-add -v -K`, which prints that exact libfido2 error code for this failure. That's a
+   * device-side safety lockout (CTAP2 blocks further PIN verification until the key is unplugged
+   * and reconnected, after a few failed/rapid PIN submissions in the current power cycle) — it is
+   * NOT the persistent PIN-retry counter (`ykman fido info` still showed all attempts remaining
+   * while this reproduced), so it is unrelated to whether the PIN typed was actually correct, and
+   * unplugging/reconnecting the key is the only way to clear it — retrying in-app cannot help.
+   */
+  private describeFido2StartupError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/provider "internal" returned failure -1/i.test(message) && /invalid format/i.test(message)) {
+      return 'This security key has temporarily blocked PIN verification (likely after a few failed or rapid attempts) and needs to be unplugged and reconnected before it will accept a PIN again. This is not a wrong PIN.';
+    }
+    return message;
+  }
+
+  private sendSmartcardStartupUnlockStatus(event: {
+    kind: 'smartcard' | 'fido2';
+    status: 'unlocked' | 'error';
+    libPath?: string;
+    error?: string;
+  }): void {
+    const webContents = this.getWebContents();
+    if (webContents && !webContents.isDestroyed?.()) {
+      webContents.send(IPC_CHANNELS.SMARTCARD_STARTUP_UNLOCK_STATUS, event);
     }
   }
 
@@ -2475,11 +2531,13 @@ export class IpcBridge {
           passwords?: { topologyPassword: string; credentialsPassword: string };
         }
       ): Promise<ProfileSyncStatus> => {
-        const pinHandler = async () => {
-          if (options.pin) return options.pin;
+        const pinHandler = async (_prompt: string, retry?: AskpassPromptRetryContext) => {
+          if (options.pin && !retry) return options.pin;
           return await this.promptForPinDirect(
             'Enter your smartcard PIN to link this card to Remote Profile Sync:',
-            'smartcard'
+            'smartcard',
+            undefined,
+            retry
           );
         };
 
@@ -2633,9 +2691,14 @@ export class IpcBridge {
       libPath = detected[0].path;
     }
 
-    const pinHandler = async () => {
-      if (options?.pin) return options.pin;
-      return await this.promptForPinDirect('Enter your smartcard PIN to unlock Remote Profile Sync:', 'smartcard');
+    const pinHandler = async (_prompt: string, retry?: AskpassPromptRetryContext) => {
+      if (options?.pin && !retry) return options.pin;
+      return await this.promptForPinDirect(
+        'Enter your smartcard PIN to unlock Remote Profile Sync:',
+        'smartcard',
+        undefined,
+        retry
+      );
     };
 
     const settings = await this.settingsStore.getSettings();
@@ -3574,7 +3637,7 @@ export class IpcBridge {
     };
     this.sshPtyManager.on('exit', this.onPtyExit);
 
-    this.onPtyAskpass = ({ sessionId, prompt, kind, context, callback }) => {
+    this.onPtyAskpass = ({ sessionId, prompt, kind, context, retry, callback }) => {
       const id = crypto.randomUUID();
       this.pendingAskpass.set(id, { sessionId, callback });
       if (sessionId) {
@@ -3583,7 +3646,16 @@ export class IpcBridge {
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, { id, prompt, sessionId, kind, context });
+        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
+          id,
+          prompt,
+          sessionId,
+          kind,
+          context,
+          error: retry?.error,
+          attempt: retry?.attempt,
+          maxAttempts: retry?.maxAttempts,
+        });
       }
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);

@@ -12,6 +12,7 @@ import { QuitConfirmBridge } from './components/QuitConfirmBridge';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
 import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
+import { SmartcardStartupUnlockBanner } from './components/SmartcardStartupUnlockBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSavedProfilesModal';
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
@@ -1192,6 +1193,9 @@ export const App: React.FC = () => {
 
       {/* Warns if saved credentials can't be OS-keyring-encrypted and are falling back to plaintext */}
       <CredentialEncryptionWarningBanner />
+
+      {/* Surfaces a wrong/missing PIN from smartcardUnlockAtStartup, which otherwise fails silently */}
+      <SmartcardStartupUnlockBanner />
 
       {/* Per-tab or per-pane: pick an SSH profile to connect */}
       <ConnectionManagerModal

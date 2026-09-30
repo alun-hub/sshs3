@@ -7,6 +7,7 @@ import {
   type PresencePromptEvent,
   type PresenceClearEvent,
   type AskpassPromptEvent,
+  type SmartcardStartupUnlockStatusEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type QuitConfirmPromptEvent,
@@ -140,6 +141,17 @@ export const api: MultiSSHApi = {
 
   smartcardUnlockAtStartup: (): Promise<{ started: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP),
+
+  onSmartcardStartupUnlockStatus: (
+    callback: (event: SmartcardStartupUnlockStatusEvent) => void
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: SmartcardStartupUnlockStatusEvent) =>
+      callback(event);
+    ipcRenderer.on(IPC_CHANNELS.SMARTCARD_STARTUP_UNLOCK_STATUS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SMARTCARD_STARTUP_UNLOCK_STATUS, listener);
+    };
+  },
 
   onAskpassPrompt: (callback: (event: AskpassPromptEvent) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: AskpassPromptEvent) => callback(event);

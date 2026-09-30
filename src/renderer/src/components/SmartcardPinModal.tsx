@@ -8,6 +8,9 @@ export interface AskpassPromptItem {
   sessionId?: string;
   kind?: AskpassPromptKind;
   context?: string;
+  error?: string;
+  attempt?: number;
+  maxAttempts?: number;
 }
 
 interface KindVisuals {
@@ -132,6 +135,7 @@ const AWAITING_TOUCH_TIMEOUT_MS = 4000;
 export const SmartcardPinModal: React.FC = () => {
   const [prompts, setPrompts] = useState<AskpassPromptItem[]>([]);
   const [pin, setPin] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
   const [awaitingTouch, setAwaitingTouch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const awaitingTouchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,6 +183,7 @@ export const SmartcardPinModal: React.FC = () => {
   useEffect(() => {
     if (currentPrompt) {
       setPin('');
+      setLocalError(null);
       if (!promptNeedsTouch(currentPrompt.prompt)) {
         clearAwaitingTouchTimer();
         setAwaitingTouch(false);
@@ -197,10 +202,21 @@ export const SmartcardPinModal: React.FC = () => {
     const submittedPin = pin;
     const promptId = currentPrompt.id;
     const needsTouch = promptNeedsTouch(currentPrompt.prompt);
+    const isPresencePrompt = isPurePresencePrompt(currentPrompt.prompt);
+
+    // An empty PIN isn't a real attempt — ssh-add/the card would just read it as "cancelled" and
+    // fail once, silently eating one of the 3 retries without the user ever seeing why. Catch it
+    // here instead: nothing is sent, the prompt stays open, and the attempt budget is untouched.
+    if (!isPresencePrompt && submittedPin.trim() === '') {
+      setLocalError('Enter your PIN to continue.');
+      return;
+    }
+
     lastSubmittedSessionIdRef.current = currentPrompt.sessionId;
 
     setPrompts((prev) => prev.slice(1));
     setPin('');
+    setLocalError(null);
 
     if (needsTouch) {
       clearAwaitingTouchTimer();
@@ -360,12 +376,30 @@ export const SmartcardPinModal: React.FC = () => {
                   )}
 
                   <form onSubmit={handleSubmit} className="mt-4">
+                    {(localError || currentPrompt.error) && (
+                      <div
+                        role="alert"
+                        data-testid="smartcard-pin-error"
+                        className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300"
+                      >
+                        {localError || currentPrompt.error}
+                        {!localError && currentPrompt.attempt && currentPrompt.maxAttempts && (
+                          <span className="text-red-300/70">
+                            {' '}
+                            (attempt {currentPrompt.attempt} of {currentPrompt.maxAttempts})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="relative">
                       <input
                         ref={inputRef}
                         type="password"
                         value={pin}
-                        onChange={(e) => setPin(e.target.value)}
+                        onChange={(e) => {
+                          setPin(e.target.value);
+                          if (localError) setLocalError(null);
+                        }}
                         placeholder={visuals.inputPlaceholder}
                         data-testid="smartcard-pin-input"
                         autoComplete="off"
