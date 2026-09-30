@@ -444,7 +444,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         if (lastErr) {
           const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
           if (msg.includes('All configured authentication methods failed')) {
-            if (process.platform === 'win32' && this.config.authType === 'fido2') {
+            if (this.config.authType === 'fido2') {
               throw new Error(
                 "SFTP can't log in with a FIDO2 security key: the file manager's SSH library cannot use security-key (-sk) keys, even when they are loaded in an ssh-agent. Use the terminal for this profile, or a separate profile with an SSH key or smartcard for file transfers."
               );
