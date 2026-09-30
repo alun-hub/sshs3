@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.6] - 2026-09-30
+
+### Added
+- **Directory-sync profiles in Remote Profile Sync**: saved directory-sync pairs are now backed up and synced to your S3/SFTP target (new `dirsync-profiles.enc`, per-record merge with tombstones). Deleting a profile is now a soft delete so the deletion propagates; remotes pushed by older versions still pull fine.
+- **Home button**: clicking the sshS3 logo in the header shows the landing page again; open tabs stay mounted.
+
+### Fixed
+- **Edited S3/SFTP profiles were ignored** until restart: the file manager's cached connection is now dropped when a profile is saved or deleted.
+- **"Import Hosts from ~/.ssh/config" dialog** was clipped inside a short Connection Manager.
+- **Clean start showed old tabs/profiles**: removed the legacy `multissh` config migration.
+
+### Changed
+- README: new screenshot set and a corrected note that FIDO2 profiles have no SFTP on any platform.
+
 ## [0.96.5] - 2026-09-30
 
 ### Added
