@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'dist-electron', 'node_modules', 'coverage', '*.config.js', '*.config.ts'],
+    ignores: ['dist', 'dist-electron', 'node_modules', 'coverage', '*.config.js', '*.config.ts', '.claude/**', '.superpowers/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
