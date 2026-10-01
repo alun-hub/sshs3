@@ -113,14 +113,15 @@ describe('SystemTrustStore', () => {
     expect(process.env.NODE_EXTRA_CA_CERTS).toBe('/custom/ca-bundle.pem');
   });
 
-  it('handles Linux bundle reading when no candidate file exists', async () => {
+  // The Linux bundle/loader paths aren't exercised on Windows (it loads the Windows certificate store instead)
+  it.skipIf(process.platform === 'win32')('handles Linux bundle reading when no candidate file exists', async () => {
     vi.spyOn(SystemTrustStore, 'findLinuxBundlePath').mockReturnValue(undefined);
     await SystemTrustStore.init();
     expect(SystemTrustStore.getBundlePath()).toBeUndefined();
     expect(SystemTrustStore.getCAs()).toEqual([]);
   });
 
-  it('handles error in init() gracefully without throwing', async () => {
+  it.skipIf(process.platform === 'win32')('handles error in init() gracefully without throwing', async () => {
     vi.spyOn(SystemTrustStore as any, 'loadLinuxCertificates').mockRejectedValue(new Error('disk failure'));
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -131,7 +132,7 @@ describe('SystemTrustStore', () => {
     );
   });
 
-  it('handles error in initSync() gracefully without throwing', () => {
+  it.skipIf(process.platform === 'win32')('handles error in initSync() gracefully without throwing', () => {
     vi.spyOn(SystemTrustStore as any, 'loadLinuxCertificatesSync').mockImplementation(() => {
       throw new Error('sync failure');
     });

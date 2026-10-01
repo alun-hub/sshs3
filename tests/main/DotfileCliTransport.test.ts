@@ -146,7 +146,8 @@ describe('DotfileCliTransport', () => {
   });
 
   // ControlPath multiplexing & fallback
-  it('uses control socket when controlPath exists', async () => {
+  // ControlPath multiplexing is POSIX-only (the transport uses plain ssh.exe without a control socket on Windows)
+  it.skipIf(process.platform === 'win32')('uses control socket when controlPath exists', async () => {
     mockExistsSync.mockReturnValue(true);
     const transport = new DotfileCliTransport(CONFIG, '/tmp/master.sock');
 
@@ -171,7 +172,7 @@ describe('DotfileCliTransport', () => {
     expect(args).not.toContain('undefined@example.com');
   });
 
-  it('waits for controlPath if not immediately present and uses it once created', async () => {
+  it.skipIf(process.platform === 'win32')('waits for controlPath if not immediately present and uses it once created', async () => {
     let checkedCount = 0;
     mockExistsSync.mockImplementation(() => {
       checkedCount++;

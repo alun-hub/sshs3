@@ -262,7 +262,8 @@ describe('verifyAgentSignature', () => {
   });
 });
 
-describe('sendAgentMessage, getAgentIdentities, signChallengeWithAgent', () => {
+// These tests talk to a unix-domain socket in the temp dir; Windows agents use named pipes instead.
+describe.skipIf(process.platform === 'win32')('sendAgentMessage, getAgentIdentities, signChallengeWithAgent', () => {
   function getTmpSocketPath(): string {
     return path.join(os.tmpdir(), `test-agent-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
   }

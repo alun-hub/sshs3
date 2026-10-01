@@ -70,7 +70,7 @@ describe('OpenSshSftpProcess', () => {
         port: 22,
         username: 'alice',
         authType: 'password',
-        password: 'secretpassword',
+        password: 'secretpassword', // pragma: allowlist secret
       },
     });
 

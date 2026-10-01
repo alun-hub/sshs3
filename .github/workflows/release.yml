@@ -83,7 +83,7 @@ jobs:
       - name: Build application bundles
         run: |
           npm run build
-          npx electron-builder --${{ matrix.platform.target }}
+          npx electron-builder --${{ matrix.platform.target }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

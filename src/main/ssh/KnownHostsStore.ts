@@ -50,6 +50,8 @@ function matchesHashedPattern(pattern: string, identifier: string): boolean {
   try {
     const salt = Buffer.from(parts[2], 'base64');
     const expected = Buffer.from(parts[3], 'base64');
+    // HMAC-SHA1 is mandated by OpenSSH's hashed known_hosts format (HashKnownHosts, "|1|salt|hash");
+    // it only matches an existing entry's hostname hash, it is not used to protect any secret.
     const actual = crypto.createHmac('sha1', salt).update(identifier).digest();
     return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
   } catch {
