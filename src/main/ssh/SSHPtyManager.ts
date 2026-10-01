@@ -479,6 +479,7 @@ export class SSHPtyManager extends EventEmitter {
     const filteredConfig = this.withoutConflictingTunnels(config, session.sessionId);
     const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+    console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
 
     try {
       const spawn = getSpawn();
@@ -616,6 +617,7 @@ export class SSHPtyManager extends EventEmitter {
     const filteredConfig = this.withoutConflictingTunnels(config, sessionId);
     const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+    console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
 
     let ptyProcess: IPty;
     try {

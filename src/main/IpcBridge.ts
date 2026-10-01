@@ -1507,6 +1507,11 @@ export class IpcBridge {
     if (!config.proxyJumpProfileId) return config;
     const profiles = await this.profileStore.getProfiles();
     const byId = new Map(profiles.ssh.map((p) => [p.id, p]));
+    if (!byId.has(config.proxyJumpProfileId)) {
+      console.warn(
+        `[ssh] ProxyJump profile ${config.proxyJumpProfileId} not found; connecting ${config.proxyJump ? 'via the manual proxyJump string' : 'WITHOUT a jump host'}`
+      );
+    }
     return withResolvedProxyJump(config, (id) => byId.get(id));
   }
 
