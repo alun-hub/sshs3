@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
+import security from 'eslint-plugin-security';
 
 export default tseslint.config(
   {
@@ -32,6 +33,18 @@ export default tseslint.config(
     files: ['src/main/**/*.{ts,cjs}', 'src/preload/**/*.ts', 'src/shared/**/*.ts'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    // Security lint for the privileged (main/preload) processes. Non-literal fs paths
+    // and object-injection are noisy by design in a file manager, so they stay off;
+    // everything else (eval, child_process, unsafe regex, buffer asserts, ...) is an error.
+    files: ['src/main/**/*.{ts,cjs}', 'src/preload/**/*.ts'],
+    plugins: { security },
+    rules: {
+      ...security.configs.recommended.rules,
+      'security/detect-non-literal-fs-filename': 'off',
+      'security/detect-object-injection': 'off',
     },
   },
   {

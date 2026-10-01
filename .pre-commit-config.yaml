@@ -1,0 +1,77 @@
+# Run `pre-commit install` once, and `pre-commit run --all-files` before pushing.
+# CI runs the same hooks (see .github/workflows/security.yml).
+exclude: ^(node_modules|dist|dist-electron|release|coverage)/
+
+repos:
+  # --- Secrets & credentials ---
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package-lock\.json$
+
+  - repo: local
+    hooks:
+      # --- TypeScript / lint / tests ---
+      - id: typecheck
+        name: tsc --noEmit
+        language: system
+        entry: npm run typecheck
+        pass_filenames: false
+        files: \.(ts|tsx)$
+
+      - id: eslint
+        name: eslint (incl. eslint-plugin-security)
+        language: system
+        entry: npm run lint
+        pass_filenames: false
+        files: \.(ts|tsx|cjs|js)$
+
+      - id: vitest
+        name: vitest
+        language: system
+        entry: npm test
+        pass_filenames: false
+        files: ^(src|tests)/.*\.(ts|tsx)$
+
+      # --- SAST ---
+      # Rules are VENDORED under .semgrep/rules/ so the scan is offline and never uploads
+      # code. Refresh with:
+      #   for p in javascript nodejs react; do curl -sfL https://semgrep.dev/c/p/$p \
+      #     -o .semgrep/rules/$p.yml; done
+      # Suppress a confirmed false positive with `// nosemgrep: <rule-id> -- <reason>`.
+      - id: semgrep
+        name: semgrep (JS/TS SAST)
+        language: system
+        entry: semgrep scan --config .semgrep/rules/ --error --quiet --metrics=off --disable-version-check src scripts
+        pass_filenames: false
+        files: ^(src|scripts)/
+
+      # --- Dependencies ---
+      - id: npm-audit
+        name: npm audit (high+)
+        language: system
+        entry: npm audit --audit-level=high
+        pass_filenames: false
+        files: package(-lock)?\.json$
+
+      - id: trivy
+        name: trivy fs (HIGH/CRITICAL, incl. dev deps)
+        language: system
+        entry: trivy fs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --include-dev-deps --skip-dirs node_modules,dist,dist-electron,release .
+        pass_filenames: false
+        files: (package(-lock)?\.json|\.ya?ml)$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        args: ['--allow-multiple-documents']
+      - id: check-json
+        exclude: tsconfig.*\.json$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]

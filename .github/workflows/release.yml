@@ -12,7 +12,7 @@ on:
         default: 'v0.1.0'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -67,6 +67,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'build-resources/vcxsrv'
           Write-Host "Downloading VcXsrv 21.1.16.1 installer..."
           Invoke-WebRequest -Uri "https://github.com/marchaesen/vcxsrv/releases/download/21.1.16.1/vcxsrv-64.21.1.16.1.installer.exe" -OutFile "vcxsrv-installer.exe"
+          # Pin the bundled third-party installer: fail the build if it changes upstream.
+          $expected = "df7fed8f49665d0592528ab6be9d07111ea73c6848283d128b77690e05b8f90b"
+          $actual = (Get-FileHash -Algorithm SHA256 "vcxsrv-installer.exe").Hash.ToLower()
+          if ($actual -ne $expected) { throw "VcXsrv installer checksum mismatch: $actual" }
           Write-Host "Extracting VcXsrv with 7z..."
           7z x vcxsrv-installer.exe -o"build-resources/vcxsrv" -y
           if (Test-Path 'build-resources/vcxsrv/$PLUGINSDIR') {
@@ -101,6 +105,10 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -118,12 +126,36 @@ jobs:
 
       - name: Determine Release Tag
         id: get_tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Generate SHA256SUMS
+        working-directory: dist-artifacts
+        run: sha256sum *.AppImage *.deb *.rpm *.exe > SHA256SUMS
+
+      - name: Setup Node.js (for SBOM)
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Generate SBOM (CycloneDX)
+        run: npm ci --ignore-scripts && npx --yes @cyclonedx/cyclonedx-npm@4 --omit dev --ignore-npm-errors --output-file dist-artifacts/sbom.cdx.json
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist-artifacts/*.AppImage
+            dist-artifacts/*.deb
+            dist-artifacts/*.rpm
+            dist-artifacts/*.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -140,5 +172,7 @@ jobs:
             dist-artifacts/*.exe
             dist-artifacts/*.blockmap
             dist-artifacts/latest*.yml
+            dist-artifacts/SHA256SUMS
+            dist-artifacts/sbom.cdx.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
