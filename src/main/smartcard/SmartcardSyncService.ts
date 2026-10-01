@@ -238,7 +238,8 @@ function derEncodeInteger(buf: Buffer): Buffer {
   if (buf[0] & 0x80) {
     buf = Buffer.concat([Buffer.from([0x00]), buf]);
   }
-  return Buffer.concat([Buffer.from([0x02, buf.length]), buf]);
+  const lenBuf = buf.length < 128 ? Buffer.from([buf.length]) : Buffer.from([0x81, buf.length]);
+  return Buffer.concat([Buffer.from([0x02]), lenBuf, buf]);
 }
 
 function sshEcdsaSigToDer(sigBlob: Buffer): Buffer {
@@ -256,7 +257,8 @@ function sshEcdsaSigToDer(sigBlob: Buffer): Buffer {
   const derR = derEncodeInteger(r);
   const derS = derEncodeInteger(s);
   const seqLen = derR.length + derS.length;
-  return Buffer.concat([Buffer.from([0x30, seqLen]), derR, derS]);
+  const seqLenBuf = seqLen < 128 ? Buffer.from([seqLen]) : Buffer.from([0x81, seqLen]);
+  return Buffer.concat([Buffer.from([0x30]), seqLenBuf, derR, derS]);
 }
 
 /**

@@ -8,6 +8,7 @@ release/
 # AI Assistants & LLM tooling
 .gemini/
 .claude/
+.agents/
 CLAUDE.md
 GEMINI.md
 *.gemini*
