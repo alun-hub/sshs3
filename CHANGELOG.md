@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.9] - 2026-10-01
+
+### Fixed
+- stop electron-builder publishing from the build job, skip POSIX-only tests on Windows
+
+### Changed
+- bump lucide-react from 1.47.0 to 1.48.0 (#29)
+- bump jsdom from 30.1.0 to 30.1.1 (#27)
+
 ## [0.96.8] - 2026-10-01
 
 ### Changed
