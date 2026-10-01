@@ -2,13 +2,17 @@ import { LocalStorageProvider } from './LocalStorageProvider';
 import { SFTPStorageProvider } from './SFTPStorageProvider';
 import { S3StorageProvider } from './S3StorageProvider';
 import { K8sPodStorageProvider } from './K8sPodStorageProvider';
-import type { IStorageProvider } from '../../shared/types/storage';
+import type { IStorageProvider, SFTPConfig } from '../../shared/types/storage';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SshHostVerifierFn } from '../ssh/HostKeyVerifier';
 
 export interface StorageRegistryOptions {
   /** Builds the SFTP host-key verifier used for a given host/port, e.g. wired to a TOFU prompt. */
   sftpHostVerifierFactory?: (host: string, port: number) => SshHostVerifierFn;
+  /** Builds the PIN/passphrase prompt handler (renderer modal) for an SFTP connection. */
+  /** Touch-your-key banner hooks for an SFTP connection. */
+  sftpPresenceFactory?: (config: SFTPConfig) => { onPresence: () => void; onPresenceCleared: () => void };
+  sftpPinPromptHandlerFactory?: (config: SFTPConfig) => (prompt: string) => Promise<string> | string;
 }
 
 export class StorageRegistry {
@@ -56,7 +60,9 @@ export class StorageRegistry {
             name: config.name || config.sftpConfig.name,
           },
           undefined,
-          hostVerifier
+          hostVerifier,
+          this.options.sftpPinPromptHandlerFactory?.(config.sftpConfig),
+          this.options.sftpPresenceFactory?.(config.sftpConfig)
         );
         break;
       }

@@ -93,7 +93,9 @@ export class RemoteSearchService {
 
     await provider.ensureConnected();
     const rawSshClient = (provider as any).client?.client;
-    if (!rawSshClient || typeof rawSshClient.exec !== 'function') {
+    const hasCreateExec = typeof (provider as any).client?.createExecStream === 'function';
+    const hasRawExec = rawSshClient && typeof rawSshClient.exec === 'function';
+    if (!hasCreateExec && !hasRawExec) {
       throw new Error('This SFTP connection does not support running remote commands');
     }
 
@@ -147,12 +149,7 @@ export class RemoteSearchService {
     };
 
     await new Promise<void>((resolve, reject) => {
-      rawSshClient.exec(cmd, (err: any, stream: any) => {
-        if (err || !stream) {
-          reject(err || new Error('Failed to start remote search'));
-          return;
-        }
-
+      const attachListeners = (stream: any) => {
         stream.on('data', (data: Buffer) => {
           if (finished) return;
           lineBuffer += data.toString('utf-8');
@@ -219,7 +216,24 @@ export class RemoteSearchService {
         };
 
         resolve();
-      });
+      };
+
+      if (hasCreateExec) {
+        try {
+          const stream = (provider as any).client.createExecStream(cmd);
+          attachListeners(stream);
+        } catch (err) {
+          reject(err);
+        }
+      } else {
+        rawSshClient.exec(cmd, (err: any, stream: any) => {
+          if (err || !stream) {
+            reject(err || new Error('Failed to start remote search'));
+            return;
+          }
+          attachListeners(stream);
+        });
+      }
     });
 
     timeoutHandle = setTimeout(() => {
@@ -266,10 +280,6 @@ export class RemoteSearchService {
     }
 
     await provider.ensureConnected();
-    const rawSshClient = (provider as any).client?.client;
-    if (!rawSshClient || typeof rawSshClient.exec !== 'function') {
-      throw new Error('This SFTP connection does not support running remote commands');
-    }
 
     const resolvedPath = await provider.resolveRemotePath(remotePath);
     // lineNumber/contextLines cross the IPC boundary as untyped JSON, so a malicious or
@@ -282,22 +292,10 @@ export class RemoteSearchService {
     const endLine = safeLine + safeContext;
     const cmd = `sed -n '${startLine},${endLine}p' ${quoteShellArg(resolvedPath)}`;
 
-    const content = await new Promise<string>((resolve, reject) => {
-      rawSshClient.exec(cmd, (err: any, stream: any) => {
-        if (err || !stream) {
-          reject(err || new Error('Failed to read file preview'));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        stream.on('data', (data: Buffer) => chunks.push(data));
-        stream.stderr?.on('data', () => {
-          // Non-fatal for preview purposes (e.g. permission edge cases); the empty
-          // result below surfaces as "no preview available" in the UI.
-        });
-        stream.on('close', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-        stream.on('error', (streamErr: any) => reject(streamErr));
-      });
-    });
+    // stderr is non-fatal for preview purposes (e.g. permission edge cases); an empty
+    // result surfaces as "no preview available" in the UI.
+    const { stdout } = await provider.exec(cmd);
+    const content = stdout.toString('utf-8');
 
     return { content, startLine };
   }

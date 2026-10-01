@@ -441,6 +441,12 @@ describe('LocalStorageProvider', () => {
     });
   });
 
+  describe('getHomeDir', () => {
+    it('returns os.homedir()', async () => {
+      expect(await provider.getHomeDir()).toBe(os.homedir());
+    });
+  });
+
   describe('disconnect', () => {
     it('should gracefully resolve disconnect', async () => {
       await expect(provider.disconnect()).resolves.toBeUndefined();

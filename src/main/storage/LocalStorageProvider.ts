@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import {
   BaseStorageProvider,
   formatDate,
@@ -271,6 +272,10 @@ export class LocalStorageProvider extends BaseStorageProvider {
       stream.on('error', reject);
       stream.on('end', () => resolve(hash.digest('hex')));
     });
+  }
+
+  async getHomeDir(): Promise<string> {
+    return os.homedir();
   }
 
   async disconnect(): Promise<void> {

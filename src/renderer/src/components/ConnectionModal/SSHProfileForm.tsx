@@ -691,21 +691,10 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   </button>
                 </div>
               </label>
-              {IS_WINDOWS ? (
-                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-300">
-                  <span className="font-semibold">Terminal only.</span> SFTP / the file manager can't use FIDO2
-                  security keys on Windows (its SSH library can't handle them, even through an ssh-agent), so the
-                  SFTP button is disabled for this profile. For file transfers, create a separate profile with a
-                  regular SSH key or a smartcard.
-                </p>
-              ) : (
-                <p className="text-xs text-amber-400/90">
-                  ⚠ SFTP in the File Manager can't read this key file directly (no libfido2 support in the
-                  SFTP library used) — it needs the key already loaded in an ssh-agent. If you'll use this
-                  profile for file transfers too, load the key with <code className="font-mono">ssh-add</code>{' '}
-                  in your own agent and use the &quot;SSH Agent&quot; auth type instead for that purpose.
-                </p>
-              )}
+              <p className="text-xs text-txt-secondary">
+                The file manager (SFTP) uses the system OpenSSH client, so this security key also works for file
+                transfers. You may be asked to touch the key and enter its PIN when connecting.
+              </p>
             </>
           )}
 

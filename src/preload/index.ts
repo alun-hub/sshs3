@@ -296,6 +296,9 @@ export const api: MultiSSHApi = {
   storageGetPresignedUrl: (providerId: string, remotePath: string, expiresInSeconds: number): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_PRESIGNED_URL, providerId, remotePath, expiresInSeconds),
 
+  storageGetHomeDir: (providerId: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_HOMEDIR, providerId),
+
   // Transfer
   transferAdd: (options: {
     sourceProviderId: string;

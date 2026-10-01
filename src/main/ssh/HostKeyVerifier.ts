@@ -9,7 +9,15 @@ export interface HostKeyPromptInfo {
   status: 'unknown' | 'mismatch';
 }
 
-export type SshHostVerifierFn = (key: Buffer, verify: (matches: boolean) => void) => void;
+export type SshHostVerifierFn = ((key: Buffer, verify: (matches: boolean) => void) => void) & {
+  /**
+   * Trust prompt for transports where OpenSSH does the key exchange itself (SFTP via `ssh -s sftp`)
+   * and only hands us the fingerprint from its own confirmation prompt.
+   */
+  hostKeyPrompt?: (info: HostKeyPromptInfo) => Promise<boolean>;
+  host?: string;
+  port?: number;
+};
 
 export interface CreateHostVerifierOptions {
   host: string;
@@ -20,7 +28,7 @@ export interface CreateHostVerifierOptions {
 }
 
 /**
- * Builds an ssh2 `hostVerifier` callback that checks a presented host key
+ * Builds a `hostVerifier` callback that checks a presented host key
  * against known_hosts, auto-accepting an exact match and asking the caller
  * to prompt the user (trust-on-first-use) for an unknown or changed key.
  * Accepted new/changed keys are persisted to known_hosts so future
@@ -29,7 +37,7 @@ export interface CreateHostVerifierOptions {
 export function createHostVerifier(options: CreateHostVerifierOptions): SshHostVerifierFn {
   const { host, port, knownHosts, onUnknownOrChanged } = options;
 
-  return (key: Buffer, verify: (matches: boolean) => void) => {
+  const verifier: SshHostVerifierFn = (key: Buffer, verify: (matches: boolean) => void) => {
     void (async () => {
       try {
         const status = await knownHosts.checkHost(host, port, key);
@@ -62,4 +70,8 @@ export function createHostVerifier(options: CreateHostVerifierOptions): SshHostV
       }
     })();
   };
+  verifier.hostKeyPrompt = onUnknownOrChanged;
+  verifier.host = host;
+  verifier.port = port;
+  return verifier;
 }

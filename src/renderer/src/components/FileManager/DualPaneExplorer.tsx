@@ -127,6 +127,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   privateKeyPath: sshProfile.privateKeyPath,
                   passphrase: sshProfile.passphrase,
                   agentPath: sshProfile.agentPath,
+                  pkcs11LibPath: sshProfile.pkcs11LibPath,
+                  fido2Resident: sshProfile.fido2Resident,
                   initialPath: sshProfile.initialPath,
                   proxy: sshProfile.proxy,
                   proxyJump: sshProfile.proxyJump,
@@ -138,9 +140,21 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   type: 'sftp',
                   sftpConfig,
                 });
+                const defaultHome = sshProfile.username === 'root' ? '/root' : `/home/${sshProfile.username || 'user'}`;
+                let path = savedPane.path || session?.lastPaths?.[savedPane.providerId];
+                if (!path || path === '/') {
+                  try {
+                    path = await window.multissh.storageGetHomeDir(savedPane.providerId);
+                  } catch {
+                    path = sshProfile.initialPath || defaultHome;
+                  }
+                  if (!path || path === '/') {
+                    path = sshProfile.initialPath || defaultHome;
+                  }
+                }
                 return {
                   source: { providerId: savedPane.providerId, sourceType: 'sftp', label: sshProfile.name },
-                  path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
+                  path: path || defaultHome,
                 };
               } catch (err) {
                 console.warn('Could not auto-reconnect SFTP pane on startup:', err);
@@ -311,15 +325,26 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           passphrase: config.passphrase,
           agentPath: config.agentPath,
           pkcs11LibPath: config.pkcs11LibPath,
+          fido2Resident: config.fido2Resident,
           initialPath: config.initialPath,
           proxy: config.proxy,
           proxyJump: config.proxyJump,
           proxyJumpProfileId: config.proxyJumpProfileId,
         };
         const providerId = `sftp-${config.id}`;
-        const session = await window.multissh.sessionGet?.();
-        const initialPath = config.initialPath?.trim() || session?.lastPaths?.[providerId] || '/';
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
+        const defaultHome = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
+        let initialPath = config.initialPath?.trim();
+        if (!initialPath) {
+          try {
+            initialPath = await window.multissh.storageGetHomeDir(providerId);
+          } catch {
+            initialPath = defaultHome;
+          }
+          if (!initialPath || initialPath === '/') {
+            initialPath = defaultHome;
+          }
+        }
         setPanes((prev) => {
           const next = {
             ...prev,

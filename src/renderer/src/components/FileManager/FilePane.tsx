@@ -19,6 +19,7 @@ import {
   FolderSync,
   HardDrive,
   History,
+  Home,
   Info,
   Link2,
   Pencil,
@@ -194,6 +195,33 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   }, [navHistory, onPathChange]);
 
+  const handleGoHome = useCallback(async () => {
+    try {
+      if (source.sourceType === 'sftp') {
+        let home: string | undefined;
+        try {
+          home = await window.multissh.storageGetHomeDir(source.providerId);
+        } catch {
+          // ignore
+        }
+        if (!home || home === '/') {
+          home = '/home/user';
+        }
+        onPathChange(home);
+      } else if (source.sourceType === 'local') {
+        const home = await window.multissh.getHomeDir?.();
+        if (home) {
+          onPathChange(home);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not navigate to home directory:', err);
+      if (source.sourceType === 'sftp') {
+        onPathChange('/home/user');
+      }
+    }
+  }, [onPathChange, source.providerId, source.sourceType]);
+
   // Clipboard operations
   const handleCopy = useCallback(() => {
     if (selectedPaths.size === 0) return;
@@ -237,6 +265,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
           if (home && currentPath !== home) {
             onPathChange(home);
             return;
+          }
+        } else if (source.sourceType === 'sftp') {
+          try {
+            const home = await window.multissh.storageGetHomeDir(source.providerId);
+            if (home && currentPath !== home) {
+              onPathChange(home);
+              return;
+            }
+          } catch {
+            // ignore fallback error and report main error below
           }
         }
         let msg = describeIpcError(err, 'Could not read the folder contents');
@@ -867,6 +905,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
           >
             <ArrowUp className="h-4 w-4" />
           </button>
+          {source.sourceType !== 's3' && source.sourceType !== 'k8s' && (
+            <button
+              type="button"
+              title="Home"
+              aria-label="Home"
+              onClick={() => void handleGoHome()}
+              className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              <Home className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />

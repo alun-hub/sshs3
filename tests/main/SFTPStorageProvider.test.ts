@@ -7,7 +7,7 @@ import type { SFTPConfig } from '../../src/shared/types/storage';
 import { formatDate } from '../../src/main/storage/StorageProvider';
 import { SFTPStorageProvider } from '../../src/main/storage/SFTPStorageProvider';
 
-// Mock state for ssh2-sftp-client using vi.hoisted
+// Mock state for the OpenSSH SFTP client adapter using vi.hoisted
 const {
   mockConnect,
   mockList,
@@ -20,6 +20,7 @@ const {
   mockCreateReadStream,
   mockCreateWriteStream,
   mockChmod,
+  mockRealPath,
   mockEnd,
   getEventHandlers,
   resetEventHandlers,
@@ -37,6 +38,7 @@ const {
     mockCreateReadStream: vi.fn(),
     mockCreateWriteStream: vi.fn(),
     mockChmod: vi.fn().mockResolvedValue(undefined),
+    mockRealPath: vi.fn(),
     mockEnd: vi.fn(),
     getEventHandlers: () => handlers,
     resetEventHandlers: () => {
@@ -52,8 +54,8 @@ function emitClientEvent(event: string, ...args: any[]) {
   }
 }
 
-vi.mock('ssh2-sftp-client', () => {
-  class MockSftpClient {
+vi.mock('../../src/main/storage/sftp/OpenSshSftpClientAdapter', () => {
+  class MockOpenSshSftpClientAdapter {
     public connect = mockConnect;
     public list = mockList;
     public stat = mockStat;
@@ -65,6 +67,7 @@ vi.mock('ssh2-sftp-client', () => {
     public createReadStream = mockCreateReadStream;
     public createWriteStream = mockCreateWriteStream;
     public chmod = mockChmod;
+    public realPath = mockRealPath;
     public end = mockEnd;
     public on = vi.fn((event: string, handler: (...args: any[]) => void) => {
       const handlers = getEventHandlers();
@@ -84,7 +87,7 @@ vi.mock('ssh2-sftp-client', () => {
   }
 
   return {
-    default: MockSftpClient,
+    OpenSshSftpClientAdapter: MockOpenSshSftpClientAdapter,
   };
 });
 
@@ -137,35 +140,6 @@ describe('SFTPStorageProvider', () => {
   });
 
   describe('authentication types', () => {
-    it('should connect with password authentication and enable tryKeyboard', async () => {
-      const provider = new SFTPStorageProvider({
-        ...baseConfig,
-        authType: 'password',
-        password: 'mypassword123',
-      });
-
-      await provider.ensureConnected();
-
-      expect(mockConnect).toHaveBeenCalledTimes(1);
-      expect(mockConnect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          host: 'sftp.example.com',
-          port: 2222,
-          username: 'testuser',
-          password: 'mypassword123',
-          tryKeyboard: true,
-        }),
-      );
-
-      // Verify keyboard-interactive listener responds with password
-      const handlers = getEventHandlers()['keyboard-interactive'];
-      expect(handlers).toBeDefined();
-      expect(handlers.length).toBeGreaterThan(0);
-      const finishFn = vi.fn();
-      handlers[0]('name', 'instructions', 'lang', [{ prompt: 'Password:', echo: false }], finishFn);
-      expect(finishFn).toHaveBeenCalledWith(['mypassword123']);
-    });
-
     it('should throw a friendly error when all authentication methods fail', async () => {
       mockConnect.mockRejectedValueOnce(new Error('getConnection: All configured authentication methods failed'));
       const provider = new SFTPStorageProvider({
@@ -179,231 +153,29 @@ describe('SFTPStorageProvider', () => {
       );
     });
 
-    it('should connect with privateKey authentication reading key file', async () => {
-      const provider = new SFTPStorageProvider({
-        ...baseConfig,
-        authType: 'privateKey',
-        privateKeyPath: testKeyPath,
-        passphrase: 'key-passphrase',
-      });
+    it('delegates authentication to OpenSSH: connect() takes no ssh2 options', async () => {
+      const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'fido2' });
 
       await provider.ensureConnected();
 
       expect(mockConnect).toHaveBeenCalledTimes(1);
-      const callArg = mockConnect.mock.calls[0][0];
-      expect(callArg.host).toBe('sftp.example.com');
-      expect(callArg.port).toBe(2222);
-      expect(callArg.username).toBe('testuser');
-      expect(callArg.privateKey).toBeDefined();
-      expect(callArg.privateKey.toString()).toBe('FAKE_RSA_PRIVATE_KEY');
-      expect(callArg.passphrase).toBe('key-passphrase');
+      expect(mockConnect).toHaveBeenCalledWith();
     });
 
-    it('should connect with agent authentication on Linux using process.env.SSH_AUTH_SOCK', async () => {
-      const origPlatform = process.platform;
-      const origSock = process.env.SSH_AUTH_SOCK;
-
-      try {
-        Object.defineProperty(process, 'platform', { value: 'linux' });
-        process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
-
-        const provider = new SFTPStorageProvider({
-          ...baseConfig,
-          authType: 'agent',
-        });
-
-        await provider.ensureConnected();
-
-        expect(mockConnect).toHaveBeenCalledTimes(1);
-        expect(mockConnect).toHaveBeenCalledWith(
-          expect.objectContaining({
-            host: 'sftp.example.com',
-            port: 2222,
-            username: 'testuser',
-            agent: '/run/user/1000/keyring/ssh',
-          }),
-        );
-      } finally {
-        Object.defineProperty(process, 'platform', { value: origPlatform });
-        if (origSock !== undefined) {
-          process.env.SSH_AUTH_SOCK = origSock;
-        } else {
-          delete process.env.SSH_AUTH_SOCK;
-        }
-      }
-    });
-
-    it('should connect with agent authentication on Windows using the OpenSSH agent pipe first, then Pageant, when no path given', async () => {
-      const origPlatform = process.platform;
-      const origSock = process.env.SSH_AUTH_SOCK;
-
-      try {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        delete process.env.SSH_AUTH_SOCK;
-
-        const provider = new SFTPStorageProvider({
-          ...baseConfig,
-          authType: 'agent',
-        });
-
-        await provider.ensureConnected();
-
-        expect(mockConnect).toHaveBeenCalledTimes(1);
-        expect(mockConnect).toHaveBeenCalledWith(
-          expect.objectContaining({
-            host: 'sftp.example.com',
-            port: 2222,
-            username: 'testuser',
-            agent: '\\\\.\\pipe\\openssh-ssh-agent',
-          }),
-        );
-      } finally {
-        Object.defineProperty(process, 'platform', { value: origPlatform });
-        if (origSock !== undefined) {
-          process.env.SSH_AUTH_SOCK = origSock;
-        } else {
-          delete process.env.SSH_AUTH_SOCK;
-        }
-      }
-    });
-
-    it('should use custom agentPath if specified in config', async () => {
-      const provider = new SFTPStorageProvider({
-        ...baseConfig,
-        authType: 'agent',
-        agentPath: '/custom/ssh/agent.sock',
-      });
-
-      await provider.ensureConnected();
-
-      expect(mockConnect).toHaveBeenCalledTimes(1);
-      expect(mockConnect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agent: '/custom/ssh/agent.sock',
-        }),
+    it('maps OpenSSH "Permission denied" to a friendly authentication error', async () => {
+      mockConnect.mockRejectedValueOnce(
+        new Error('OpenSSH process terminated: bob@host: Permission denied (publickey,password).')
       );
-    });
-
-    it('falls back to ssh-agent when authType is password but no password was configured', async () => {
-      // e.g. a saved profile where the user relies on their own ssh-agent /
-      // ~/.ssh/config for the real terminal session and just never filled in
-      // a password - matches what the terminal's OpenSSH client already does.
-      const origSock = process.env.SSH_AUTH_SOCK;
-      process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
-
-      try {
-        const provider = new SFTPStorageProvider({
-          ...baseConfig,
-          authType: 'password',
-          password: undefined,
-        });
-
-        await provider.ensureConnected();
-
-        expect(mockConnect).toHaveBeenCalledTimes(1);
-        expect(mockConnect).toHaveBeenCalledWith(
-          expect.objectContaining({ agent: '/run/user/1000/keyring/ssh' }),
-        );
-      } finally {
-        if (origSock !== undefined) {
-          process.env.SSH_AUTH_SOCK = origSock;
-        } else {
-          delete process.env.SSH_AUTH_SOCK;
-        }
-      }
-    });
-
-    it.skipIf(process.platform === 'win32')('falls back to a default identity file when no agent socket is available', async () => {
-      const origSock = process.env.SSH_AUTH_SOCK;
-      delete process.env.SSH_AUTH_SOCK;
-      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
-
-      try {
-        await fs.mkdir(path.join(tempDir, '.ssh'), { recursive: true });
-        await fs.writeFile(path.join(tempDir, '.ssh', 'id_ed25519'), 'DEFAULT_ED25519_KEY', 'utf8');
-
-        const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'agent' });
-        await provider.ensureConnected();
-
-        expect(mockConnect).toHaveBeenCalledTimes(1);
-        const callArg = mockConnect.mock.calls[0][0];
-        expect(callArg.privateKey.toString()).toBe('DEFAULT_ED25519_KEY');
-      } finally {
-        homedirSpy.mockRestore();
-        if (origSock !== undefined) {
-          process.env.SSH_AUTH_SOCK = origSock;
-        } else {
-          delete process.env.SSH_AUTH_SOCK;
-        }
-      }
-    });
-
-    it('tries the next fallback candidate when the first one fails to authenticate', async () => {
-      const origSock = process.env.SSH_AUTH_SOCK;
-      const origPlatform = process.platform;
-      // Pin to a single-agent platform: on Windows several agent pipes are tried before identity files.
-      Object.defineProperty(process, 'platform', { value: 'linux' });
-      process.env.SSH_AUTH_SOCK = '/run/user/1000/keyring/ssh';
-      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempDir);
-
-      try {
-        await fs.mkdir(path.join(tempDir, '.ssh'), { recursive: true });
-        await fs.writeFile(path.join(tempDir, '.ssh', 'id_ed25519'), 'DEFAULT_ED25519_KEY', 'utf8');
-
-        mockConnect
-          .mockRejectedValueOnce(new Error('agent auth rejected'))
-          .mockResolvedValueOnce(undefined);
-
-        const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'agent' });
-        await provider.ensureConnected();
-
-        expect(mockConnect).toHaveBeenCalledTimes(2);
-        expect(mockConnect.mock.calls[0][0]).toEqual(
-          expect.objectContaining({ agent: '/run/user/1000/keyring/ssh' }),
-        );
-        expect(mockConnect.mock.calls[1][0].privateKey.toString()).toBe('DEFAULT_ED25519_KEY');
-      } finally {
-        Object.defineProperty(process, 'platform', { value: origPlatform });
-        homedirSpy.mockRestore();
-        if (origSock !== undefined) {
-          process.env.SSH_AUTH_SOCK = origSock;
-        } else {
-          delete process.env.SSH_AUTH_SOCK;
-        }
-      }
-    });
-
-    it('should default port to 22 if not specified', async () => {
-      const configWithoutPort = { ...baseConfig };
-      delete (configWithoutPort as any).port;
-
-      const provider = new SFTPStorageProvider(configWithoutPort);
-      await provider.ensureConnected();
-
-      expect(mockConnect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          port: 22,
-        }),
-      );
-    });
-
-    it('passes the provided hostVerifier through to the ssh2 connect options', async () => {
-      const hostVerifier = vi.fn();
-      const provider = new SFTPStorageProvider(baseConfig, undefined, hostVerifier);
-
-      await provider.ensureConnected();
-
-      expect(mockConnect).toHaveBeenCalledWith(
-        expect.objectContaining({ hostVerifier }),
-      );
-    });
-
-    it('omits hostVerifier from connect options when none is provided', async () => {
       const provider = new SFTPStorageProvider(baseConfig);
-      await provider.ensureConnected();
 
-      const callArg = mockConnect.mock.calls[0][0];
-      expect(callArg.hostVerifier).toBeUndefined();
+      await expect(provider.ensureConnected()).rejects.toThrow(/Authentication failed/);
+    });
+
+    it('maps OpenSSH "Permission denied" to an agent-specific error for agent profiles', async () => {
+      mockConnect.mockRejectedValueOnce(new Error('OpenSSH process terminated: Permission denied (publickey).'));
+      const provider = new SFTPStorageProvider({ ...baseConfig, authType: 'agent' });
+
+      await expect(provider.ensureConnected()).rejects.toThrow(/SSH agent authentication failed/);
     });
   });
 
@@ -657,6 +429,7 @@ describe('SFTPStorageProvider', () => {
         path: '/data/file.txt',
         size: 54321,
         isDirectory: false,
+        isSymlink: false,
         mtime: formatDate(mtimeDate),
         mtimeMs: mtimeDate.getTime(),
         mimeType: 'text/plain',
@@ -683,6 +456,7 @@ describe('SFTPStorageProvider', () => {
         path: '/var/log',
         size: 4096,
         isDirectory: true,
+        isSymlink: false,
         mtime: formatDate(mtimeDate),
         mtimeMs: mtimeDate.getTime(),
         mimeType: undefined,
@@ -968,29 +742,6 @@ describe('SFTPStorageProvider', () => {
       await provider.list('/dir2');
       expect(mockConnect).toHaveBeenCalledTimes(2);
     });
-
-    it('should retry connecting and succeed after synchronous privateKey read failure', async () => {
-      const missingKeyPath = path.join(tempDir, 'non-existent-key');
-      const keyConfig: SFTPConfig = {
-        ...baseConfig,
-        authType: 'privateKey',
-        privateKeyPath: missingKeyPath,
-      };
-      mockList.mockResolvedValue([]);
-
-      const provider = new SFTPStorageProvider(keyConfig);
-
-      // First call: synchronous readFileSync throws ENOENT
-      await expect(provider.list('/test')).rejects.toThrow(/ENOENT/);
-
-      // Fix key path for retry
-      await fs.writeFile(missingKeyPath, 'VALID_KEY', 'utf8');
-
-      // Second call should retry connection without promise lockup
-      const entries = await provider.list('/test');
-      expect(mockConnect).toHaveBeenCalledTimes(1);
-      expect(entries).toEqual([]);
-    });
   });
 
   describe('chmod', () => {
@@ -1013,6 +764,44 @@ describe('SFTPStorageProvider', () => {
     it('should throw for invalid mode string', async () => {
       const provider = new SFTPStorageProvider(baseConfig);
       await expect(provider.chmod('/test/dir', 'invalid')).rejects.toThrow(/Invalid chmod mode/);
+    });
+  });
+
+  describe('getHomeDir', () => {
+    it('returns remote realPath when available', async () => {
+      mockRealPath.mockResolvedValue('/home/customuser');
+      const provider = new SFTPStorageProvider(baseConfig);
+      const home = await provider.getHomeDir();
+      expect(home).toBe('/home/customuser');
+      expect(mockRealPath).toHaveBeenCalledWith('.');
+    });
+
+    it('falls back to /home/<username> when realPath fails', async () => {
+      mockRealPath.mockRejectedValue(new Error('realPath not supported'));
+      const provider = new SFTPStorageProvider(baseConfig);
+      const home = await provider.getHomeDir();
+      expect(home).toBe('/home/testuser');
+    });
+
+    it('falls back to /root when username is root and realPath fails', async () => {
+      mockRealPath.mockRejectedValue(new Error('realPath not supported'));
+      const provider = new SFTPStorageProvider({ ...baseConfig, username: 'root' });
+      const home = await provider.getHomeDir();
+      expect(home).toBe('/root');
+    });
+
+    it('falls back to /home/user when username is empty and realPath fails', async () => {
+      mockRealPath.mockRejectedValue(new Error('realPath not supported'));
+      const provider = new SFTPStorageProvider({ ...baseConfig, username: '' });
+      const home = await provider.getHomeDir();
+      expect(home).toBe('/home/user');
+    });
+
+    it('falls back to /home/<username> when realPath returns "/" for non-root', async () => {
+      mockRealPath.mockResolvedValue('/');
+      const provider = new SFTPStorageProvider(baseConfig);
+      const home = await provider.getHomeDir();
+      expect(home).toBe('/home/testuser');
     });
   });
 });

@@ -88,6 +88,7 @@ export interface IStorageProvider {
    * Returns hex string or undefined if not supported by the provider.
    */
   getChecksum?(remotePath: string, algorithm?: 'sha256' | 'md5'): Promise<string | undefined>;
+  getHomeDir?(): Promise<string>;
   disconnect?(): Promise<void>;
   // S3-specific administration (buckets & objects)
   getTags?(remotePath: string): Promise<S3Tag[]>;
@@ -104,8 +105,8 @@ export interface IStorageProvider {
   getPresignedUrl?(remotePath: string, expiresInSeconds: number): Promise<string>;
 }
 
-// 'fido2' behaves like 'smartcard'/'agent' here: ssh2 has no libfido2 support of its own, so it
-// only ever works via an already-loaded ssh-agent (see SFTPStorageProvider.buildConnectCandidates).
+// SFTP runs over the system OpenSSH client (`ssh -s sftp`), so all auth types — including 'fido2'
+// (libfido2 / resident keys via a private ssh-agent) — are handled by OpenSSH itself.
 export type SFTPAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent' | 'fido2';
 
 export type ProxyType = 'http' | 'socks5' | 'socks4';

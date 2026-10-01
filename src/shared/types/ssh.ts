@@ -46,9 +46,7 @@ export interface SSHConnectionConfig {
    * straight off the connected security key (no privateKeyPath); false/unset
    * = a regular `id_*_sk` key file referenced by privateKeyPath, same as a
    * plain 'privateKey' profile. Resident mode requires an ssh-agent (the app
-   * loads one privately per session) — SFTP (ssh2) can't use either FIDO2
-   * mode directly, since ssh2 has no libfido2/PKCS#11 support; both need an
-   * agent already holding the key.
+   * loads one privately per session); SFTP uses the same OpenSSH path as the terminal.
    */
   fido2Resident?: boolean;
   extraOptions?: Record<string, string>;

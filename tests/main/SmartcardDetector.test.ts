@@ -174,6 +174,20 @@ describe('SmartcardDetector', () => {
   });
 
   describe('buildSSHArguments', () => {
+    it('disables pubkey auth for password profiles so a touch/PIN-protected agent key cannot block login', () => {
+      const args = SmartcardDetector.buildSSHArguments({
+        id: 'pw-1',
+        name: 'Password Host',
+        host: 'example.com',
+        username: 'alice',
+        authType: 'password',
+      });
+
+      expect(args).toContain('PubkeyAuthentication=no');
+      expect(args).toContain('PreferredAuthentications=password,keyboard-interactive');
+      expect(args.slice(-2)).toEqual(['--', 'alice@example.com']);
+    });
+
     it('should include -I <pkcs11LibPath> when authType is smartcard', () => {
       const config: SSHConnectionConfig = {
         id: 'sc-1',

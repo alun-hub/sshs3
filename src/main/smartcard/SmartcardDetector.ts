@@ -309,6 +309,14 @@ export class SmartcardDetector {
       args.push('-i', config.privateKeyPath);
     }
 
+    // Password profiles: don't offer keys from the user's default agent / ~/.ssh. An agent holding a
+    // touch- or PIN-protected key (FIDO2, PIV) would otherwise block the login before the
+    // password is ever tried.
+    if (config.authType === 'password') {
+      args.push('-o', 'PubkeyAuthentication=no');
+      args.push('-o', 'PreferredAuthentications=password,keyboard-interactive');
+    }
+
     // SSH Agent forwarding (-o ForwardAgent=yes/no)
     if (config.forwardAgent !== undefined) {
       args.push('-o', `ForwardAgent=${config.forwardAgent ? 'yes' : 'no'}`);

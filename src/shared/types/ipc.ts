@@ -110,6 +110,7 @@ export const IPC_CHANNELS = {
   STORAGE_DELETE_OBJECT_VERSION: 'storage:delete-object-version',
   STORAGE_RESTORE_OBJECT_VERSION: 'storage:restore-object-version',
   STORAGE_GET_PRESIGNED_URL: 'storage:get-presigned-url',
+  STORAGE_GET_HOMEDIR: 'storage:get-homedir',
 
   // Transfer
   TRANSFER_ADD: 'transfer:add',
@@ -466,6 +467,7 @@ export interface MultiSSHApi {
   storageDeleteObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
   storageRestoreObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
   storageGetPresignedUrl(providerId: string, remotePath: string, expiresInSeconds: number): Promise<string>;
+  storageGetHomeDir(providerId: string): Promise<string>;
 
   // Transfer
   transferAdd(options: {

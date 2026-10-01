@@ -1,16 +1,13 @@
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import SftpClient from 'ssh2-sftp-client';
-import { Client as SSH2Client } from 'ssh2';
-import { createProxySocket } from '../proxy/proxySocket';
-import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
-import { loadSmartcardIntoPrivateAgent } from '../smartcard/SmartcardAgentLoader';
 import {
   BaseStorageProvider,
   formatDate,
   getMimeType,
 } from './StorageProvider';
+import {
+  OpenSshSftpClientAdapter,
+  type ISftpBackendClient,
+} from './sftp/OpenSshSftpClientAdapter';
 import type {
   FileEntry,
   IStorageProvider,
@@ -108,76 +105,52 @@ function parseModifyTimeMs(stats: any): number | undefined {
   return undefined;
 }
 
-// Mirrors the OpenSSH client's own default identity file lookup order, since
-// that is what terminal sessions (spawned via the real `ssh` binary) already
-// rely on - an SFTP profile with no explicit password/key should fail no more
-// often than a terminal session to the same host does.
-const DEFAULT_IDENTITY_FILES = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
-
-function parseJumpHost(jumpStr: string, defaultUser: string): { username: string; host: string; port: number } {
-  let username = defaultUser;
-  let hostAndPort = jumpStr.trim();
-  if (hostAndPort.includes('@')) {
-    const parts = hostAndPort.split('@');
-    username = parts[0];
-    hostAndPort = parts[1];
-  }
-  let host = hostAndPort;
-  let port = 22;
-  if (hostAndPort.includes(':')) {
-    const parts = hostAndPort.split(':');
-    host = parts[0];
-    port = parseInt(parts[1], 10) || 22;
-  }
-  return { username, host, port };
-}
-
 export class SFTPStorageProvider extends BaseStorageProvider implements IStorageProvider {
   readonly id: string;
   readonly name: string;
   readonly type: StorageType = 'sftp';
 
   private config: SFTPConfig;
-  private client: SftpClient;
-  private jumpClient?: SSH2Client;
+  private client: ISftpBackendClient;
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
-  private hostVerifier?: SshHostVerifierFn;
   private cachedHomeDir?: string;
-  private privateAgentPid?: number;
   private pinPromptHandler?: (prompt: string) => Promise<string> | string;
 
   constructor(
     config: SFTPConfig,
-    client?: SftpClient,
+    client?: ISftpBackendClient | any,
     hostVerifier?: SshHostVerifierFn,
-    pinPromptHandler?: (prompt: string) => Promise<string> | string
+    pinPromptHandler?: (prompt: string) => Promise<string> | string,
+    presence?: { onPresence?: (prompt: string) => void; onPresenceCleared?: () => void }
   ) {
     super();
     this.config = { ...config };
     const port = config.port ?? 22;
     this.id = config.id ?? `${config.username}@${config.host}:${port}`;
     this.name = config.name ?? `${config.username}@${config.host}`;
-    this.client = client ?? new SftpClient();
-    this.hostVerifier = hostVerifier;
     this.pinPromptHandler = pinPromptHandler;
+    this.client = client ?? new OpenSshSftpClientAdapter(
+        this.config,
+        this.pinPromptHandler,
+        presence?.onPresence,
+        hostVerifier?.hostKeyPrompt,
+        presence?.onPresenceCleared
+      );
     this.attachLifecycleListeners(this.client);
   }
 
   private onLifecycleCleanup = (): void => {
     this.isConnected = false;
-    if (this.jumpClient) {
-      try { this.jumpClient.end(); } catch { /* ignore */ }
-      this.jumpClient = undefined;
-    }
   };
 
-  private attachLifecycleListeners(client: SftpClient): void {
-    if (typeof (client as any).setMaxListeners === 'function') {
-      (client as any).setMaxListeners(100);
+  private attachLifecycleListeners(client: any): void {
+    if (!client || typeof client.on !== 'function') return;
+    if (typeof client.setMaxListeners === 'function') {
+      client.setMaxListeners(100);
     }
-    if ((client as any).client && typeof (client as any).client.setMaxListeners === 'function') {
-      (client as any).client.setMaxListeners(100);
+    if (client.client && typeof client.client.setMaxListeners === 'function') {
+      client.client.setMaxListeners(100);
     }
     try {
       client.removeListener('close', this.onLifecycleCleanup);
@@ -189,114 +162,6 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     client.on('close', this.onLifecycleCleanup);
     client.on('end', this.onLifecycleCleanup);
     client.on('error', this.onLifecycleCleanup);
-  }
-
-  /**
-   * Builds one or more candidate connect option sets, tried in order until one
-   * succeeds. An explicit password or private key is used as-is (single
-   * candidate). Otherwise - no credential configured, or authType 'agent' /
-   * 'smartcard' / 'fido2' (ssh2 has no PKCS#11 or libfido2 support of its
-   * own) - falls back to ssh-agent and then the user's default identity
-   * files, same as a bare `ssh host` would. A 'fido2' profile pointing at a
-   * key *file* (privateKeyPath, non-resident) is NOT read directly here even
-   * though privateKeyPath is set - ssh2 can't parse the `-sk` key format, so
-   * it must go through the agent fallback below too, same as resident mode.
-   */
-  private buildConnectCandidates(): Record<string, any>[] {
-    const base: Record<string, any> = {
-      host: this.config.host,
-      port: this.config.port ?? 22,
-      username: this.config.username,
-    };
-    if (this.hostVerifier) {
-      base.hostVerifier = this.hostVerifier;
-    }
-    if (this.config.serverAliveInterval) {
-      base.keepaliveInterval = this.config.serverAliveInterval * 1000;
-    }
-    const algorithms: Record<string, string[]> = {};
-    if (this.config.ciphers) algorithms.cipher = this.config.ciphers.split(',').map((s) => s.trim());
-    if (this.config.kexAlgorithms) algorithms.kex = this.config.kexAlgorithms.split(',').map((s) => s.trim());
-    if (this.config.macs) algorithms.hmac = this.config.macs.split(',').map((s) => s.trim());
-    if (Object.keys(algorithms).length > 0) {
-      base.algorithms = algorithms;
-    }
-
-    if (this.config.authType === 'password' && this.config.password) {
-      return [{ ...base, password: this.config.password }];
-    }
-
-    if (this.config.authType === 'privateKey' && this.config.privateKeyPath) {
-      const candidate: Record<string, any> = {
-        ...base,
-        privateKey: fs.readFileSync(this.config.privateKeyPath),
-      };
-      if (this.config.passphrase) {
-        candidate.passphrase = this.config.passphrase;
-      }
-      return [candidate];
-    }
-
-
-    const candidates: Record<string, any>[] = [];
-
-    // On Windows the stock OpenSSH client's agent (the "OpenSSH Authentication Agent" service,
-    // where `ssh-add` puts keys) listens on \\.\pipe\openssh-ssh-agent — not Pageant's pipe — so
-    // try it first, then Pageant, instead of only ever trying Pageant (which fails with "Failed
-    // to connect to agent" when just the OpenSSH service is running).
-    const agents =
-      this.config.agentPath !== undefined
-        ? [this.config.agentPath]
-        : process.platform === 'win32'
-          ? [process.env.SSH_AUTH_SOCK, '\\\\.\\pipe\\openssh-ssh-agent', '\\\\.\\pipe\\pageant']
-          : [process.env.SSH_AUTH_SOCK];
-    for (const agent of new Set(agents.filter((a): a is string => Boolean(a)))) {
-      candidates.push({ ...base, agent });
-    }
-
-    for (const file of DEFAULT_IDENTITY_FILES) {
-      const resolved = path.join(os.homedir(), '.ssh', file);
-      if (fs.existsSync(resolved)) {
-        candidates.push({ ...base, privateKey: fs.readFileSync(resolved) });
-      }
-    }
-
-    if (this.config.password) {
-      candidates.push({ ...base, password: this.config.password });
-    }
-
-    return candidates.length > 0 ? candidates : [base];
-  }
-
-  /**
-   * Attempts to ensure the PKCS#11 smartcard provider is loaded into the user's ssh-agent.
-   */
-  /**
-   * Ensures the configured PKCS#11 module's key is available to an
-   * ssh-agent that this.buildConnectCandidates() can authenticate through
-   * (ssh2 has no native PKCS#11 support).
-   *
-   * If config.agentPath is already set, an agent has already been prepared
-   * by the caller (e.g. IpcBridge's 'agent-per-session' smartcard mode) and
-   * is trusted to already hold the key — nothing to do here. Otherwise a
-   * private, ephemeral agent is spawned and loaded just for this one
-   * connection, and torn down again in disconnect(). This never touches the
-   * process's inherited SSH_AUTH_SOCK (the desktop's own agent/wallet),
-   * which would otherwise register the card there and cause the OS to
-   * prompt for its PIN independently of sshs3's own UI.
-   */
-  private async loadSmartcardIntoAgent(): Promise<void> {
-    const libPath = this.config.pkcs11LibPath;
-    if (!libPath || this.config.agentPath) return;
-
-    console.log(`[smartcard] SFTPStorageProvider(${this.id}): no agentPath provided, loading its own ephemeral agent`);
-    const staticPin = (this.config as any).pin || this.config.passphrase;
-    const promptHandler = this.pinPromptHandler ?? (() => staticPin ?? '');
-
-    const { pid, socketPath } = await loadSmartcardIntoPrivateAgent(libPath, promptHandler);
-    console.log(`[smartcard] SFTPStorageProvider(${this.id}): ephemeral agent loaded OK, pid=${pid}, socket=${socketPath}`);
-    this.privateAgentPid = pid;
-    this.config.agentPath = socketPath;
   }
 
   /**
@@ -318,161 +183,38 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
     const doConnect = async () => {
       try {
-        if (this.config.authType === 'smartcard' && this.config.pkcs11LibPath) {
-          await this.loadSmartcardIntoAgent();
-        }
-        const candidates = this.buildConnectCandidates();
-        let lastErr: unknown;
-        for (const options of candidates) {
-          // A fresh client per candidate: retrying .connect() on the same
-          // ssh2-sftp-client instance after a failed attempt leaves its
-          // underlying ssh2 connection in a broken state and the next
-          // connect() call hangs indefinitely instead of failing or
-          // succeeding cleanly.
-          const client = new SftpClient();
-          if (typeof (client as any).setMaxListeners === 'function') {
-            (client as any).setMaxListeners(100);
-          }
-          if ((client as any).client && typeof (client as any).client.setMaxListeners === 'function') {
-            (client as any).client.setMaxListeners(100);
-          }
-          let sock: any = undefined;
-          try {
-            const connectOpts = { ...options };
-            if (this.config.proxyJump && this.config.proxyJump.trim()) {
-              const jumpTarget = parseJumpHost(this.config.proxyJump, this.config.username);
-              const jumpClient = new SSH2Client();
-              await new Promise<void>((resolve, reject) => {
-                jumpClient.on('ready', () => resolve());
-                jumpClient.on('error', (err) => reject(err));
-                const jumpOpts: any = {
-                  host: jumpTarget.host,
-                  port: jumpTarget.port,
-                  username: jumpTarget.username,
-                  readyTimeout: 15000,
-                };
-                const agent =
-                  this.config.agentPath ??
-                  (process.platform === 'win32'
-                    ? process.env.SSH_AUTH_SOCK || '\\\\.\\pipe\\openssh-ssh-agent'
-                    : process.env.SSH_AUTH_SOCK);
-                if (agent) {
-                  jumpOpts.agent = agent;
-                }
-                if (this.config.password) {
-                  jumpOpts.password = this.config.password;
-                  jumpOpts.tryKeyboard = true;
-                  (jumpClient as any).on(
-                    'keyboard-interactive',
-                    (
-                      _name: string,
-                      _instructions: string,
-                      _instructionsLang: string,
-                      prompts: Array<{ prompt: string; echo: boolean }>,
-                      finish: (responses: string[]) => void
-                    ) => {
-                      finish(prompts.map(() => this.config.password || ''));
-                    }
-                  );
-                }
-                if (this.config.privateKeyPath && fs.existsSync(this.config.privateKeyPath)) {
-                  jumpOpts.privateKey = fs.readFileSync(this.config.privateKeyPath);
-                  if (this.config.passphrase) jumpOpts.passphrase = this.config.passphrase;
-                }
-                jumpClient.connect(jumpOpts);
-              });
-              this.jumpClient = jumpClient;
-              sock = await new Promise<any>((resolve, reject) => {
-                jumpClient.forwardOut('127.0.0.1', 0, this.config.host, this.config.port ?? 22, (err, stream) => {
-                  if (err) return reject(err);
-                  resolve(stream);
-                });
-              });
-              connectOpts.sock = sock;
-            } else if (this.config.proxy?.enabled && this.config.proxy.host) {
-              sock = await createProxySocket(this.config.proxy, {
-                host: this.config.host,
-                port: this.config.port ?? 22,
-              });
-              connectOpts.sock = sock;
-            }
-            if (connectOpts.password) {
-              connectOpts.tryKeyboard = true;
-              client.on(
-                'keyboard-interactive',
-                (
-                  _name: string,
-                  _instructions: string,
-                  _instructionsLang: string,
-                  prompts: Array<{ prompt: string; echo: boolean }>,
-                  finish: (responses: string[]) => void
-                ) => {
-                  finish(prompts.map(() => connectOpts.password));
-                }
-              );
-            }
-            await client.connect(connectOpts as any);
-            if (this.client && this.client !== client) {
-              try {
-                this.client.removeListener('close', this.onLifecycleCleanup);
-                this.client.removeListener('end', this.onLifecycleCleanup);
-                this.client.removeListener('error', this.onLifecycleCleanup);
-              } catch { /* ignore */ }
-            }
-            this.client = client;
-            this.attachLifecycleListeners(client);
-            this.isConnected = true;
-            return;
-          } catch (err) {
-            // Keep the first real failure: a later fallback candidate that merely couldn't reach its
-            // agent socket (e.g. the Pageant pipe on a machine that only runs the OpenSSH agent)
-            // says nothing about why the preferred candidate was rejected, and would mask it.
-            const isAgentUnreachable = err instanceof Error && err.message.includes('Failed to connect to agent');
-            if (!(isAgentUnreachable && lastErr !== undefined)) {
-              lastErr = err;
-            }
-            if (sock) {
-              try { sock.destroy(); } catch { /* ignore */ }
-            }
-            if (this.jumpClient) {
-              try { this.jumpClient.end(); } catch { /* ignore */ }
-              this.jumpClient = undefined;
-            }
-            await client.end().catch(() => {});
-          }
-        }
-        if (lastErr) {
-          const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-          if (msg.includes('All configured authentication methods failed')) {
-            if (this.config.authType === 'fido2') {
-              throw new Error(
-                "SFTP can't log in with a FIDO2 security key: the file manager's SSH library cannot use security-key (-sk) keys, even when they are loaded in an ssh-agent. Use the terminal for this profile, or a separate profile with an SSH key or smartcard for file transfers."
-              );
-            }
-            if (this.config.authType === 'agent') {
-              throw new Error(
-                'SSH agent authentication failed: The server rejected the agent key, or the agent has no identities loaded (run "ssh-add").'
-              );
-            }
-            throw new Error(
-              'Authentication failed: The server rejected the login. Check that the password is correct, or use an SSH key.'
-            );
-          }
-          if (msg.includes('read ECONNRESET')) {
-            throw new Error(
-              'Connection reset by remote server (read ECONNRESET). The SSH server may have closed the connection or dropped it due to authentication failures.'
-            );
-          }
-          if (msg.includes('getConnection')) {
-            const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
-            throw new Error(
-              `Could not connect to SFTP: ${clean || 'Connection failed'}`
-            );
-          }
-        }
-        throw lastErr;
-      } catch (err) {
+        // OpenSSH handles auth and host key trust itself (host key prompts reach
+        // hostVerifier.hostKeyPrompt via askpass; absent => rejected).
+        await this.client.connect();
+        this.isConnected = true;
+      } catch (err: any) {
         this.isConnected = false;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes('All configured authentication methods failed') ||
+          /Permission denied \(/.test(msg)
+        ) {
+          if (this.config.authType === 'agent') {
+            throw new Error(
+              'SSH agent authentication failed: The server rejected the agent key, or the agent has no identities loaded (run "ssh-add").',
+              { cause: err }
+            );
+          }
+          throw new Error(
+            'Authentication failed: The server rejected the login. Check that the password is correct, or use an SSH key.',
+            { cause: err }
+          );
+        }
+        if (msg.includes('read ECONNRESET')) {
+          throw new Error(
+            'Connection reset by remote server (read ECONNRESET). The SSH server may have closed the connection or dropped it due to authentication failures.',
+            { cause: err }
+          );
+        }
+        if (msg.includes('getConnection')) {
+          const clean = msg.replace(/^getConnection:?\s*/i, '').trim();
+          throw new Error(`Could not connect to SFTP: ${clean || 'Connection failed'}`, { cause: err });
+        }
         throw err;
       }
     };
@@ -522,7 +264,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     try {
       if (typeof (this.client as any).realPath === 'function') {
         const real = await (this.client as any).realPath('.');
-        if (real && real.startsWith('/')) {
+        if (real && real.startsWith('/') && (real !== '/' || this.config.username === 'root')) {
           this.cachedHomeDir = real;
           return real;
         }
@@ -569,10 +311,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
           path: entryPath,
           size: item.size,
           isDirectory: isDir,
-          // SFTP READDIR attrs reflect lstat, not the link's target, so
-          // type 'l' reliably means "this entry itself is a symlink" (see
-          // the H6 code-review finding).
-          isSymlink: item.type === 'l',
+          isSymlink: item.type === 'l' || (item as any).isSymlink === true,
           mtime,
           mtimeMs,
           mimeType: isDir ? undefined : getMimeType(item.name),
@@ -605,6 +344,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         path: resolved,
         size: stats.size,
         isDirectory: isDir,
+        isSymlink: stats.isSymlink === true,
         mtime,
         mtimeMs,
         mimeType: isDir ? undefined : getMimeType(name),
@@ -674,7 +414,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   async createReadStream(
     remotePath: string,
     start?: number,
-    end?: number,
+    end?: number
   ): Promise<NodeJS.ReadableStream> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
@@ -690,7 +430,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
   async createWriteStream(
     remotePath: string,
-    options?: WriteStreamOptions,
+    options?: WriteStreamOptions
   ): Promise<NodeJS.WritableStream> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
@@ -706,21 +446,41 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   async writeFile(
     remotePath: string,
     data: Buffer | Uint8Array,
-    options?: WriteStreamOptions,
+    options?: WriteStreamOptions
   ): Promise<void> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-      await this.client.put(Buffer.isBuffer(data) ? data : Buffer.from(data), resolved, {
-        mode: options?.mode,
-      } as any);
+      if (typeof (this.client as any).put === 'function') {
+        await (this.client as any).put(
+          Buffer.isBuffer(data) ? data : Buffer.from(data),
+          resolved,
+          { mode: options?.mode }
+        );
+      } else {
+        const stream = await this.createWriteStream(remotePath, options);
+        await new Promise<void>((resolve, reject) => {
+          stream.on('finish', resolve);
+          stream.on('error', reject);
+          (stream as any).end(Buffer.isBuffer(data) ? data : Buffer.from(data));
+        });
+      }
     });
   }
 
   async readFile(remotePath: string): Promise<Buffer> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-      const res = await this.client.get(resolved);
-      return Buffer.isBuffer(res) ? res : Buffer.from(res as any);
+      if (typeof (this.client as any).get === 'function') {
+        const res = await (this.client as any).get(resolved);
+        return Buffer.isBuffer(res) ? res : Buffer.from(res as any);
+      }
+      const stream = await this.createReadStream(remotePath);
+      const chunks: Buffer[] = [];
+      return new Promise<Buffer>((resolve, reject) => {
+        stream.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+        stream.on('error', reject);
+      });
     });
   }
 
@@ -738,18 +498,68 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   async setModifiedTime(remotePath: string, mtimeMs: number): Promise<void> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-      const rawSftp = (this.client as any).sftp;
-      if (!rawSftp || typeof rawSftp.setstat !== 'function') {
-        throw new Error('setModifiedTime is not supported by this SFTP connection');
-      }
       const epochSeconds = Math.floor(mtimeMs / 1000);
-      await new Promise<void>((resolve, reject) => {
-        rawSftp.setstat(resolved, { atime: epochSeconds, mtime: epochSeconds }, (err: Error | undefined) => {
-          if (err) reject(err);
-          else resolve();
+
+      // Support OpenSshSftpClientAdapter directly
+      if (typeof (this.client as any).setstat === 'function') {
+        await (this.client as any).setstat(resolved, {
+          atime: epochSeconds,
+          mtime: epochSeconds,
+        });
+        return;
+      }
+
+      // Backward compatibility with rawSftp
+      const rawSftp = (this.client as any).sftp;
+      if (rawSftp && typeof rawSftp.setstat === 'function') {
+        await new Promise<void>((resolve, reject) => {
+          rawSftp.setstat(
+            resolved,
+            { atime: epochSeconds, mtime: epochSeconds },
+            (err: Error | undefined) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+        return;
+      }
+
+      throw new Error('setModifiedTime is not supported by this SFTP connection');
+    });
+  }
+
+  public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
+    await this.ensureConnected();
+    if (typeof (this.client as any).exec === 'function') {
+      return await (this.client as any).exec(cmd);
+    }
+    const rawSsh = (this.client as any).client;
+    if (rawSsh && typeof rawSsh.exec === 'function') {
+      return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
+        rawSsh.exec(cmd, (err: any, stream: any) => {
+          if (err) return reject(err);
+          const outChunks: Buffer[] = [];
+          const errChunks: Buffer[] = [];
+          stream.on('data', (d: Buffer) => outChunks.push(d));
+          stream.stderr?.on('data', (d: Buffer) => errChunks.push(d));
+          stream.on('close', () => {
+            resolve({
+              stdout: Buffer.concat(outChunks),
+              stderr: Buffer.concat(errChunks).toString('utf-8'),
+            });
+          });
         });
       });
-    });
+    }
+    throw new Error('This SFTP connection does not support running remote commands');
+  }
+
+  public createExecStream(cmd: string): NodeJS.ReadableStream {
+    if (typeof (this.client as any).createExecStream === 'function') {
+      return (this.client as any).createExecStream(cmd);
+    }
+    throw new Error('createExecStream is not supported by this SFTP connection');
   }
 
   async disconnect(): Promise<void> {
@@ -763,19 +573,6 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     try {
       await this.client.end();
     } finally {
-      if (this.jumpClient) {
-        try { this.jumpClient.end(); } catch { /* ignore */ }
-        this.jumpClient = undefined;
-      }
-      if (this.privateAgentPid !== undefined) {
-        // Evict just this card first — killPrivateAgent() is a no-op on Windows
-        // (the socket is the shared system agent service, not a process we own).
-        if (this.config.agentPath && this.config.pkcs11LibPath) {
-          void AgentLifecycleManager.unloadCard(this.config.agentPath, this.config.pkcs11LibPath);
-        }
-        AgentLifecycleManager.killPrivateAgent(this.privateAgentPid);
-        this.privateAgentPid = undefined;
-      }
       this.isConnected = false;
     }
   }

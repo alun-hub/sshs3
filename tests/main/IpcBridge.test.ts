@@ -149,6 +149,7 @@ describe('IpcBridge', () => {
       chmod: vi.fn().mockResolvedValue(undefined),
       createReadStream: vi.fn(),
       createWriteStream: vi.fn(),
+      getHomeDir: vi.fn().mockResolvedValue('/home/testuser'),
       disconnect: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -903,7 +904,17 @@ describe('IpcBridge', () => {
       expect(provider.rename).toHaveBeenCalledWith('/file.txt', '/renamed.txt');
     });
 
+    it('handles storage getHomeDir', async () => {
+      const home = await mockIpc.invoke(IPC_CHANNELS.STORAGE_GET_HOMEDIR, 'test-storage');
+      expect(home).toBe('/home/testuser');
+      const provider = mockStorageRegistry.get('test-storage');
+      expect(provider.getHomeDir).toHaveBeenCalled();
+    });
+
     it('throws error when storage provider is not found', async () => {
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_GET_HOMEDIR, 'unknown-id')).rejects.toThrow(
+        'Storage provider not found: unknown-id'
+      );
       await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_LIST, 'unknown-id', '/')).rejects.toThrow(
         'Storage provider not found: unknown-id'
       );
@@ -1503,6 +1514,9 @@ describe('IpcBridge', () => {
 
       await preloadApi.storageRename('loc', '/old', '/new');
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_RENAME, 'loc', '/old', '/new');
+
+      await preloadApi.storageGetHomeDir('loc');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_GET_HOMEDIR, 'loc');
     });
 
     it('transfer methods invoke correct channels and handle subscription', async () => {

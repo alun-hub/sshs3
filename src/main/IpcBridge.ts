@@ -290,6 +290,16 @@ export class IpcBridge {
             knownHosts: this.knownHostsStore,
             onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
           }),
+        sftpPresenceFactory: (cfg) => {
+          const n = this.makePresenceNotifier(undefined, `Touch your security key to connect to ${cfg.name || cfg.host}`);
+          return { onPresence: n.onPresenceRequested, onPresenceCleared: n.onPresenceCleared };
+        },
+        sftpPinPromptHandlerFactory: (cfg) => (prompt) =>
+          this.promptForPinDirect(
+            prompt.trim(),
+            cfg.authType === 'fido2' ? 'fido2' : cfg.authType === 'smartcard' ? 'smartcard' : undefined,
+            `SFTP: ${cfg.name || cfg.host}`
+          ),
       });
     this.transferQueue = options.transferQueue ?? new TransferQueue();
     this.profileStore = options.profileStore ?? new ProfileStore();
@@ -417,6 +427,7 @@ export class IpcBridge {
 
         let config = options.config;
         if (!options.local && config) {
+          config = await this.restoreSavedSecrets(config);
           config = await this.resolveProxyJumpConfig(config);
           config = await this.prepareSmartcardConfig(config);
           config = await this.prepareFido2Config(config);
@@ -986,6 +997,23 @@ export class IpcBridge {
         return await provider.getPresignedUrl!(remotePath, expiresInSeconds);
       }
     );
+
+    this.registerHandler(
+      IPC_CHANNELS.STORAGE_GET_HOMEDIR,
+      async (_event, providerId: string): Promise<string> => {
+        const provider = this.storageRegistry.get(providerId);
+        if (!provider) {
+          throw new Error(`Storage provider not found: ${providerId}`);
+        }
+        if (typeof provider.getHomeDir === 'function') {
+          return await provider.getHomeDir();
+        }
+        if (provider.type === 'local') {
+          return os.homedir();
+        }
+        return '/';
+      }
+    );
   }
 
   private requireS3Capability<K extends keyof import('../shared/types/storage').IStorageProvider>(
@@ -1450,6 +1478,29 @@ export class IpcBridge {
    * discarding the card the moment the session ends — a reconnect still
    * needs a fresh PIN, keeping 'always-prompt's "ask every time" contract.
    */
+  /**
+   * Restored tabs have their password/passphrase stripped from the persisted session state
+   * (see sanitizePaneNode in the renderer) and get a fresh id per terminal, so a saved
+   * credential is looked up again here by connection identity. Secrets never leave main.
+   */
+  private async restoreSavedSecrets(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    const needsPassword = config.authType === 'password' && !config.password;
+    const needsPassphrase = config.authType === 'privateKey' && !config.passphrase && !!config.privateKeyPath;
+    if (!needsPassword && !needsPassphrase) return config;
+
+    const { ssh } = await this.profileStore.getProfiles();
+    const match = ssh.find(
+      (p) =>
+        p.host === config.host &&
+        (p.port ?? 22) === (config.port ?? 22) &&
+        p.username === config.username &&
+        p.authType === config.authType &&
+        (needsPassword ? !!p.password : p.privateKeyPath === config.privateKeyPath && !!p.passphrase)
+    );
+    if (!match) return config;
+    return needsPassword ? { ...config, password: match.password } : { ...config, passphrase: match.passphrase };
+  }
+
   private async resolveProxyJumpConfig<T extends { proxyJumpProfileId?: string; proxyJump?: string }>(
     config: T
   ): Promise<T> {
