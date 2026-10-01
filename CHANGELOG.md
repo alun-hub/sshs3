@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.7] - 2026-10-01
+
+### Added
+- **Post-transfer integrity & checksum verification (P1 #15)**: automatic SHA-256 / MD5 digest verification on completed file transfers with auto-removal of corrupted destinations and a configurable settings toggle.
+- **Headless CI smoke test**: automated Playwright/CDP smoke test in CI verifying rapid app launch, DOM mounting, and UI rendering under 1 second.
+- **Directory transfer worker pool**: concurrent worker pool for recursive directory transfers with aggregate real-time progress reporting.
+- **Automatic retry on transient transfer failures**: resilient retry logic for socket drops (`ECONNRESET`, `ETIMEDOUT`, `Connection lost`).
+- **Security hardening & fuses**: enabled Electron fuses at build time, pinned proxy CLI execution through the signed main executable, and added comprehensive security tests with strict coverage floors.
+
+### Changed
+- **Startup time & bundle optimization**: externalized `@kubernetes/client-node` from main process bundle, cutting 4.6 MB and speeding up build time by 88%; non-blocking background initialization of login shell env, trust store, and orphan cleanup.
+- **Terminal performance & memory bounds**: added configurable terminal scrollback buffer limit (default 5000 lines) and debounced resize synchronization to prevent IPC message flooding.
+- **SFTP stream buffer sizing**: increased read and write stream buffer chunk sizes to 128 KB for 4x fewer roundtrips.
+
+### Fixed
+- **Host key verification & argument escaping**: hardened remote file names and argument inputs.
+- **AES-GCM crypto**: pinned AES-GCM auth tag length strictly to 16 bytes on decryption.
+
 ## [0.96.6] - 2026-09-30
 
 ### Added
