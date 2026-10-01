@@ -49,16 +49,4 @@ jobs:
         run: |
           git ls-files -z | grep -zv 'package-lock.json' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
 
-  codeql:
-    name: CodeQL (JavaScript/TypeScript)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-          queries: security-extended
-      - uses: github/codeql-action/analyze@v4
+  # CodeQL runs via the repository's GitHub "default setup" (an advanced workflow can't coexist with it).
