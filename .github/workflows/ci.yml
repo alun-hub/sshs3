@@ -47,7 +47,12 @@ jobs:
         run: npm run lint
 
       - name: Run Tests
+        if: runner.os != 'Linux'
         run: npm run test
+
+      - name: Run Tests with coverage thresholds
+        if: runner.os == 'Linux'
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build

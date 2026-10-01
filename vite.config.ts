@@ -124,5 +124,24 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     passWithNoTests: true,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx,cjs}'],
+      exclude: ['src/**/*.d.ts'],
+      reporter: ['text-summary', 'lcov'],
+      // Ratchet: set just under the measured values so coverage can't silently drop.
+      // Raise these when tests are added; never lower them to make a build pass.
+      thresholds: {
+        lines: 60,
+        statements: 59,
+        functions: 48,
+        branches: 48,
+        // Security-sensitive areas get their own floor.
+        'src/main/crypto/**': { lines: 50 },
+        'src/main/smartcard/**': { lines: 65 },
+        'src/main/proxy/**': { lines: 45 },
+        'src/main/IpcBridge.ts': { lines: 58 },
+      },
+    },
   },
 })
