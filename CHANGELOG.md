@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.8] - 2026-10-01
+
+### Changed
+- **SFTP now runs over the system OpenSSH client (`ssh -s sftp`)** instead of the `ssh2` / `ssh2-sftp-client` JavaScript libraries, with a built-in SFTP v3 protocol engine. The file manager now honours `~/.ssh/config`, ProxyJump (`-J`), FIDO2 security keys and PKCS#11 smartcards exactly like the terminal. `ssh2` and `ssh2-sftp-client` are removed.
+- **FIDO2 profiles can use the SFTP file manager** (the buttons are no longer disabled). PIN prompts use the app's PIN dialog and the touch banner is shown. Resident keys remain Linux-only; on Windows use a key file.
+- **Host keys for SFTP** are verified by OpenSSH against `~/.ssh/known_hosts`; unknown keys open the trust dialog (rejected if it can't be shown), changed keys are refused.
+- Remote tail and search previews run through OpenSSH (`exec`) instead of the old SSH channel.
+
+### Fixed
+- Password profiles no longer hang in the terminal/SFTP when the default ssh-agent holds a touch/PIN-protected key (pubkey auth is disabled for password profiles).
+- Restored terminal tabs reuse the profile's saved password/passphrase instead of prompting again.
+- The SFTP multiplexing socket now lives in a private (0700) temp directory with an unguessable name.
+
 ## [0.96.7] - 2026-10-01
 
 ### Added

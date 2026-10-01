@@ -24,7 +24,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ┌──────────────────────────────▼──────────────────────────────┐
 │                         Main Process                        │
 │  src/main/index.ts · src/main/IpcBridge.ts                  │
-│  Node.js environment: node-pty, ssh2, AWS S3 SDK, fs, net   │
+│  Node.js environment: node-pty, AWS S3 SDK, fs, net, ssh CLI │
 │  StorageRegistry · TransferQueue · ProfileStore (safeStorage)│
 │  SSHPtyManager · AskpassServer · AgentLifecycleManager       │
 └─────────────────────────────────────────────────────────────┘
@@ -62,6 +62,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
 │   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, SSHTunnelManager, AgentLifecycle
 │   │   ├── storage/                # Local, SFTP, S3, and K8s Pod Storage Providers & Registry
+│   │   │   └── sftp/               # OpenSSH-based SFTP engine (protocol, streams, process, adapter)
 │   │   ├── terminal/               # K8s container exec PTY & live log streaming managers
 │   │   ├── transfer/               # Streaming TransferPipeline, ByteMeter & TransferQueue
 │   │   └── x11/                    # X11 server lifecycle manager (VcXsrv integration)
@@ -118,6 +119,18 @@ export interface IStorageProvider {
   disconnect?(): Promise<void>;
 }
 ```
+
+### SFTP engine (`src/main/storage/sftp/`)
+
+`SFTPStorageProvider` no longer uses a JavaScript SSH library. It drives the system OpenSSH client:
+
+- `OpenSshSftpProcess` spawns `ssh <args from SmartcardDetector.buildSSHArguments> -o BatchMode=no -s -- [user@]host sftp` and watches stderr for touch-presence prompts. The `-s` flag makes the trailing word a *subsystem name*, so it must come after the destination. Authentication, ProxyJump, `~/.ssh/config`, FIDO2 and PKCS#11 are therefore handled by OpenSSH exactly as in the terminal.
+- `AskpassServer` supplies passwords/PINs/passphrases (`SSH_ASKPASS`) and routes PIN prompts to the renderer PIN modal. OpenSSH's "continue connecting" host-key question is answered through the TOFU dialog (`hostVerifier.hostKeyPrompt`) and rejected if no handler exists (fail closed).
+- `SftpPacketProtocol` implements SFTP v3 framing and request/response routing; `SftpStreams` provides `SftpReadStream`/`SftpWriteStream` with Node backpressure.
+- `OpenSshSftpClientAdapter` exposes the `ssh2-sftp-client`-style surface that `SFTPStorageProvider` consumes, and provides `exec()`/`createExecStream()` for tail and remote search (multiplexed over the `ControlPath` socket, kept in a private 0700 temp directory).
+- Password profiles pass `PubkeyAuthentication=no` (in `buildSSHArguments`) so a touch/PIN-protected agent key can't block the password login.
+
+See `docs/openssh-sftp-migration-plan.md` for the design and deviations.
 
 ### In-Memory Streaming Pipeline
 Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Local -> SFTP) stream directly in-memory via Node.js streams through [`TransferPipeline.ts`](file:///home/alun/sshs3/src/main/transfer/TransferPipeline.ts):

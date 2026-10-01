@@ -139,6 +139,9 @@ fido2Resident?: boolean;     // true = hämtas direkt från nyckeln via ssh-add 
     nyckeln direkt i UI med en "Kopiera"-knapp så användaren kan klistra in i
     serverns `authorized_keys` utan att lämna appen.
 
+> **Uppdatering:** SFTP-begränsningen nedan (ssh2 saknar `-sk`/libfido2) är historisk. SFTP kör nu över systemets
+> OpenSSH (`ssh -s sftp`, se `docs/openssh-sftp-migration-plan.md`), så FIDO2 fungerar i filhanteraren på samma sätt som i terminalen.
+
 **Anslutningsflödet (`SSHPtyManager.ts`, `SFTPStorageProvider.ts`):**
 - `authType === 'fido2'` med `fido2Resident: true` → samma mönster som
   smartcard idag: säkerställ en agent (privat eller delad

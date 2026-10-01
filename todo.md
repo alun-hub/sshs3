@@ -16,8 +16,7 @@ Status som av 2026-09-27. Bygger på en genomgång av koden i `src/`, inte bara 
 - **Kubernetes & OpenShift**: automatisk klusterupptäckt via `~/.kube/config`, interaktiva pod exec-terminaler, live loggvisning med text-sökning, pod-filutforskare utan behov av container-agenter samt `kubectl debug` ephemeral containers med verktygsprofiler (Netshoot m.fl.) och `oc login`-stöd.
 - **X11-forwarding**: inbyggd portabel VcXsrv-server på Windows med automatisk brandväggskonfiguration och on-demand/always-on-startlägen.
 - **Fjärrsynkronisering av profiler**: zero-knowledge AES-256-GCM-kryptering till egen S3-hink eller SFTP-server med hårdvaruupplåsning via smartcard/token och automatisk synkning till hanterat block i `~/.ssh/config`.
-- **Lagringsbackender**: Lokal disk, SFTP (`ssh2-sftp-client`, med
-  agent/standardnyckel-fallback och smartcard-agentstöd), S3 (AWS med AWS SSO OIDC / MinIO / NetApp, path-style, självsignerat cert).
+- **Lagringsbackender**: Lokal disk, SFTP (OpenSSH-baserad motor, `ssh -s sftp`, med FIDO2, smartcard och `~/.ssh/config`), S3 (AWS med AWS SSO OIDC / MinIO / NetApp, path-style, självsignerat cert).
 - **Anslutningshantering**: spara/redigera/ta bort SSH- och S3-profiler, mappar/gruppering, import från `~/.ssh/config` samt JSON backup export/import.
 - **Paketering**: fungerande byggen för Linux (AppImage/deb/rpm) och Windows
   (NSIS installer med VcXsrv + portabel exe).
@@ -42,11 +41,10 @@ att bygga.
    token krypteras nu med Electrons `safeStorage` (libsecret/Keychain/DPAPI) innan
    `profiles.json` skrivs till disk. Faller tillbaka till klartext med varning om
    ingen OS-nyckelring finns tillgänglig, och läser fortfarande gamla klartextfiler.
-- [x] **2. Host key-verifiering för SFTP.** `ssh2`s `hostVerifier` jämförs nu mot
-   `~/.ssh/known_hosts` (samma fil som OpenSSH, inkl. hashade poster och wildcards).
-   Okänd eller ändrad värdnyckel visar en TOFU-dialog i UI:t ("värdnyckeln har
-   ändrats, lita på den ändå?") istället för att tyst acceptera allt; accepterade
-   nycklar sparas till known_hosts.
+- [x] **2. Host key-verifiering för SFTP.** SFTP körs över systemets OpenSSH-klient, som jämför mot
+   `~/.ssh/known_hosts` (inkl. hashade poster och wildcards). Okänd värdnyckel visar en TOFU-dialog i UI:t
+   (via askpass-frågan "continue connecting"), avvisas om inget fönster finns (fail closed); en ändrad
+   nyckel vägras av OpenSSH. Accepterade nycklar sparas till known_hosts.
 - [x] **3. Bekräftelse innan appen stängs med pågående överföringar.** Varnar via native dialog vid fönsterstängning och appavslut om aktiva eller väntande filöverföringar finns, med möjlighet att avbryta eller avsluta ändå.
 
 ### P1 — Kärnfunktioner man förväntar sig av vilken SFTP/SSH-klient som helst
@@ -61,7 +59,7 @@ att bygga.
 - [x] **7. Katalogsynkronisering (Diff & Sync)** — Komplett katalogsynkronisering implementerad via `DirectorySyncModal`, `DirectorySyncService` och `DirSyncSavedProfilesModal`. Stöder diff och synkning mellan lokal disk, SFTP och S3 med ändringstidsstämpel (`mtime`) och storleksjämförelse, interaktiv filjämförelse ("Compare"), selektiv körning och sparade synkprofiler.
 - [x] **8. Permissions-editor (chmod)** för SFTP och lokal lagring. Rättighetskolumn visas i listan med sortering, och en interaktiv chmod-modal (User/Group/Other kryssrutor, oktal representation och rekursivt val) kan öppnas via knapp i verktygsraden.
 - [x] **9. Standardkatalog/startsökväg per profil.** Stöd för `initialPath` i SSH-, SFTP- och S3-profiler med fält i profilformulären och direkt navigering vid anslutning i filhanteraren.
-- [x] **10. Utgående proxy (HTTP / SOCKS4 / SOCKS5)** för att nå servrar bakom företagsbrandväggar. Stöd för SSH (OpenSSH `ProxyCommand` med `proxyCli.cjs` för autentisering), SFTP (tunneling via `createProxySocket` i `SFTPStorageProvider`) och S3 (`NodeHttpHandler` med proxy-agenter). Profilformulären har expanderbar proxysektion och proxylösenord krypteras säkert via `safeStorage`.
+- [x] **10. Utgående proxy (HTTP / SOCKS4 / SOCKS5)** för att nå servrar bakom företagsbrandväggar. Stöd för SSH (OpenSSH `ProxyCommand` med `proxyCli.cjs` för autentisering), SFTP (OpenSSH `ProxyCommand` via `proxyCli.cjs`, samma som terminalen) och S3 (`NodeHttpHandler` med proxy-agenter). Profilformulären har expanderbar proxysektion och proxylösenord krypteras säkert via `safeStorage`.
 - [x] **11. Anslutningstimeout, återförsök och automatisk återanslutning** — Stöd för `sessionExitAction` ('reconnect' | 'close' | 'keep') under Inställningar med återanslutningsoverlay i `TerminalView`, automatisk återanvändning av cachad agent vid återanslutning, samt `ServerAliveInterval` för att förhindra tysta nätverkstapp.
 - [x] **12. Import/export av anslutningsprofiler** — Import från `~/.ssh/config` (`importSshConfigFile` / `SshConfigImporter`) med modal för att välja vilka värdar som ska importeras till valfri mapp, samt Export och Import av JSON Backup direkt i `ConnectionManagerModal`.
 - [x] **13. Testa anslutning-knapp.** Implementerad i `SSHProfileForm` och `S3ProfileForm` via backend-anrop (`connection:test-ssh` och `connection:test-s3`) med visuell statusindikator och felrapportering innan profilen sparas.
@@ -100,7 +98,7 @@ att bygga.
    inte här. Naturlig utökning av befintlig `TabBar`/`TerminalView`.
 - [x] **17. Delad/grupperad vy** (flera terminaler sida vid sida i en flik, t.ex. 2 kolumner, 2 rader och 2x2-grid). Integrerat i `App.tsx` med verktygsfält för layoutbyte, oberoende terminalpaneler med anslutningsväljare och full sessionspersistens.
 - [x] **18. SSH-porttunnling** (lokal `-L`, fjärr `-R` och dynamisk SOCKS-proxy `-D`). Hanteras som fristående bakgrundsprocesser (`ssh -N`) via en dedikerad SSH Tunnels-panel i verktygsraden med live status, namngivna tunnlar, in-place editering och automatisk portkollisionskontroll.
-- [x] **19. Jump host / ProxyJump-stöd i UI:t.** Stöd för att antingen peka på en annan sparad profil (`proxyJumpProfileId`) eller manuell bastion-sträng. Stöds fullt ut i terminaler (`-J`), SFTP (stream relay i `SFTPStorageProvider`), samt exporterat till `ProxyJump <alias>` i `~/.ssh/config`.
+- [x] **19. Jump host / ProxyJump-stöd i UI:t.** Stöd för att antingen peka på en annan sparad profil (`proxyJumpProfileId`) eller manuell bastion-sträng. Stöds fullt ut i terminaler (`-J`), SFTP (`-J`, hanteras av OpenSSH), samt exporterat till `ProxyJump <alias>` i `~/.ssh/config`.
 - [x] **20. SSH-anslutningsalternativ i formuläret**: kompression (`Compression`), keep-alive (`ServerAliveInterval`), samt valbara ciphers, KEX och MAC-algoritmer för både terminal och SFTP-anslutningar.
 - [ ] **21. Teckenkodning/charset-inställning** för filnamn — relevant mot äldre
    SFTP-servrar som inte pratar UTF-8.
