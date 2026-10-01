@@ -269,6 +269,8 @@ export interface TransferOptions {
   verifyIntegrity?: boolean;
   verifyChecksum?: boolean | 'sha256' | 'md5';
   expectedChecksum?: string;
+  maxRetries?: number;
+  concurrency?: number;
 }
 
 /**
@@ -389,9 +391,53 @@ export async function isDirectoryPath(
 }
 
 /**
- * Transfer a single file directly between storage providers via Node.js memory streams.
+ * Detects whether an error thrown during a file transfer is transient
+ * and safe to retry (e.g. temporary network drops, reset connections).
+ */
+export function isRetryableTransferError(err: any): boolean {
+  if (!err) return false;
+  if (err.name === 'AbortError') return false;
+  const msg = (err.message || String(err)).toLowerCase();
+  if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('incomplete')) {
+    return false;
+  }
+  const code = err.code || '';
+  return (
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'EPIPE' ||
+    code === 'ECONNABORTED' ||
+    code === 'EHOSTUNREACH' ||
+    msg.includes('connection lost') ||
+    msg.includes('channel closed') ||
+    msg.includes('connection reset') ||
+    msg.includes('socket hung up') ||
+    msg.includes('closed by remote')
+  );
+}
+
+/**
+ * Transfer a single file directly between storage providers via Node.js memory streams,
+ * with automatic retries for transient connection errors.
  */
 export async function transferFile(options: TransferOptions): Promise<void> {
+  const maxRetries = options.maxRetries ?? 2;
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    try {
+      return await executeTransferFile(options);
+    } catch (err: any) {
+      if (attempt <= maxRetries && isRetryableTransferError(err) && !options.signal?.aborted) {
+        await new Promise((r) => setTimeout(r, 200 * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function executeTransferFile(options: TransferOptions): Promise<void> {
   if (options.signal?.aborted) {
     const err = new Error('Transfer aborted');
     err.name = 'AbortError';
@@ -737,71 +783,75 @@ export async function transferDirectory(
     return;
   }
 
-  let overallTransferredBytes = 0;
   const totalDirectoryBytes = scan.totalBytes;
-  let fileIndex = 0;
-  // M9 (code review): one failing file used to abort the whole directory
-  // job immediately, leaving every remaining file untried even though
-  // nothing about their transfer was actually broken. Failures are now
-  // collected and the loop continues, so a directory with one bad file
-  // still copies everything else; the job as a whole still ends up
-  // 'failed' (there's no partial-success status), but with a summary that
-  // says which files failed and why instead of a single opaque error.
+  const concurrency = Math.min(options.concurrency ?? 3, Math.max(1, scan.files.length));
+  const fileTransferredMap = new Map<string, number>();
   const failedFiles: Array<{ path: string; error: string }> = [];
+  let completedCount = 0;
+  let nextFileIndex = 0;
 
-  for (const file of scan.files) {
-    fileIndex++;
-    if (options.signal?.aborted) {
-      const err = new Error('Transfer aborted');
-      err.name = 'AbortError';
-      throw err;
+  const emitDirectoryProgress = (currentFileName: string, bytesPerSecond = 0) => {
+    let currentOverall = 0;
+    for (const b of fileTransferredMap.values()) {
+      currentOverall += b;
     }
+    const percentage =
+      totalDirectoryBytes > 0
+        ? Math.min(100, Math.round((currentOverall / totalDirectoryBytes) * 100))
+        : 100;
 
-    let lastReportedFileBytes = 0;
+    options.onProgress?.({
+      jobId: options.jobId ?? 'directory-transfer',
+      fileName: rootName,
+      transferredBytes: currentOverall,
+      totalBytes: totalDirectoryBytes,
+      percentage,
+      bytesPerSecond,
+      status: 'running',
+      statusMessage: `File ${completedCount}/${scan.files.length}: ${currentFileName}`,
+    });
+  };
 
-    try {
-      await transferFile({
-        ...options,
-        sourcePath: file.sourcePath,
-        targetPath: file.targetPath,
-        totalBytes: file.size,
-        emitCompleted: false,
-        onProgress: (fp) => {
-          lastReportedFileBytes = fp.transferredBytes;
-          const currentOverall =
-            overallTransferredBytes + lastReportedFileBytes;
-          const percentage =
-            totalDirectoryBytes > 0
-              ? Math.min(
-                  100,
-                  Math.round((currentOverall / totalDirectoryBytes) * 100)
-                )
-              : 100;
-
-          options.onProgress?.({
-            jobId: options.jobId ?? 'directory-transfer',
-            fileName: path.basename(file.sourcePath),
-            transferredBytes: currentOverall,
-            totalBytes: totalDirectoryBytes,
-            percentage,
-            bytesPerSecond: fp.bytesPerSecond,
-            status: 'running',
-            statusMessage: `File ${fileIndex}/${scan.files.length}: ${path.basename(file.sourcePath)}`,
-          });
-        },
-      });
-    } catch (err) {
-      if ((err as { name?: string })?.name === 'AbortError' || options.signal?.aborted) {
+  const runWorker = async () => {
+    while (nextFileIndex < scan.files.length) {
+      if (options.signal?.aborted) {
+        const err = new Error('Transfer aborted');
+        err.name = 'AbortError';
         throw err;
       }
-      failedFiles.push({
-        path: file.sourcePath,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+      const currentIndex = nextFileIndex++;
+      const file = scan.files[currentIndex];
 
-    overallTransferredBytes += file.size;
-  }
+      try {
+        await transferFile({
+          ...options,
+          sourcePath: file.sourcePath,
+          targetPath: file.targetPath,
+          totalBytes: file.size,
+          emitCompleted: false,
+          onProgress: (fp) => {
+            fileTransferredMap.set(file.sourcePath, fp.transferredBytes);
+            emitDirectoryProgress(path.basename(file.sourcePath), fp.bytesPerSecond);
+          },
+        });
+        fileTransferredMap.set(file.sourcePath, file.size);
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || options.signal?.aborted) {
+          throw err;
+        }
+        failedFiles.push({
+          path: file.sourcePath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        completedCount++;
+        emitDirectoryProgress(path.basename(file.sourcePath));
+      }
+    }
+  };
+
+  const workers = Array.from({ length: concurrency }, () => runWorker());
+  await Promise.all(workers);
 
   if (failedFiles.length > 0) {
     const preview = failedFiles

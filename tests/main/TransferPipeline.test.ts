@@ -9,6 +9,7 @@ import {
   TransferPipeline,
   transferFile,
   transferDirectory,
+  isRetryableTransferError,
   ByteMeter,
   PauseController,
   getBaseName,
@@ -1443,5 +1444,82 @@ describe('TransferQueue', () => {
     expect(targetProvider.files.has(expectedFilePath) || targetProvider.files.has('folder/file.txt')).toBe(true);
     const doubleNestedFolder = joinPaths(targetProvider.type, 'folder', 'folder');
     expect(targetProvider.folders.has(doubleNestedFolder) || targetProvider.folders.has('folder/folder')).toBe(false);
+  });
+
+  describe('Transient error detection and retry resilience', () => {
+    it('correctly classifies retryable vs non-retryable errors', () => {
+      expect(isRetryableTransferError(new Error('Connection lost'))).toBe(true);
+      expect(isRetryableTransferError({ code: 'ECONNRESET', message: 'read ECONNRESET' })).toBe(true);
+      expect(isRetryableTransferError({ code: 'ETIMEDOUT', message: 'connection timed out' })).toBe(true);
+      expect(isRetryableTransferError(new Error('socket hung up'))).toBe(true);
+      expect(isRetryableTransferError(new Error('Channel closed'))).toBe(true);
+
+      const abortErr = new Error('Transfer aborted');
+      abortErr.name = 'AbortError';
+      expect(isRetryableTransferError(abortErr)).toBe(false);
+      expect(isRetryableTransferError(new Error('Transfer cancelled'))).toBe(false);
+      expect(isRetryableTransferError(new Error('Incomplete transfer'))).toBe(false);
+      expect(isRetryableTransferError(new Error('ENOENT: no such file or directory'))).toBe(false);
+      expect(isRetryableTransferError(null)).toBe(false);
+    });
+
+    it('retries transient failures and succeeds on subsequent attempt', async () => {
+      sourceProvider.files.set('transient.txt', Buffer.from('hello retry'));
+      let readAttempts = 0;
+      const originalReadStream = sourceProvider.createReadStream.bind(sourceProvider);
+
+      vi.spyOn(sourceProvider, 'createReadStream').mockImplementation(async (filePath: string) => {
+        readAttempts++;
+        if (readAttempts === 1) {
+          const errStream = new PassThrough();
+          process.nextTick(() => {
+            const err = new Error('read ECONNRESET');
+            (err as any).code = 'ECONNRESET';
+            errStream.emit('error', err);
+          });
+          return errStream;
+        }
+        return originalReadStream(filePath);
+      });
+
+      await transferFile({
+        sourceProvider,
+        targetProvider,
+        sourcePath: 'transient.txt',
+        targetPath: 'transient_out.txt',
+        maxRetries: 2,
+      });
+
+      expect(readAttempts).toBe(2);
+      expect(targetProvider.files.get('transient_out.txt')?.toString()).toBe('hello retry');
+    });
+  });
+
+  describe('transferDirectory concurrency', () => {
+    it('transfers all files across concurrent workers with progress', async () => {
+      await sourceProvider.createFolder('srcdir');
+      for (let i = 1; i <= 6; i++) {
+        sourceProvider.files.set(`srcdir/file${i}.txt`, Buffer.from(`content-${i}`));
+      }
+
+      const progressUpdates: any[] = [];
+      await transferDirectory({
+        sourceProvider,
+        targetProvider,
+        sourcePath: 'srcdir',
+        targetPath: 'dstdir',
+        concurrency: 3,
+        onProgress: (p) => {
+          progressUpdates.push(p);
+        },
+      });
+
+      for (let i = 1; i <= 6; i++) {
+        expect(targetProvider.files.get(`dstdir/file${i}.txt`)?.toString()).toBe(`content-${i}`);
+      }
+      expect(progressUpdates.length).toBeGreaterThan(0);
+      const lastProgress = progressUpdates[progressUpdates.length - 1];
+      expect(lastProgress.percentage).toBe(100);
+    });
   });
 });

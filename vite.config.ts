@@ -69,6 +69,7 @@ export default defineConfig({
                 'ssh2-sftp-client',
                 '@aws-sdk/client-s3',
                 '@aws-sdk/lib-storage',
+                '@kubernetes/client-node',
               ],
             },
           },

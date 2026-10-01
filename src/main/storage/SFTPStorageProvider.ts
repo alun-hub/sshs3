@@ -678,15 +678,13 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.ReadableStream> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-
-      if (typeof start === 'number' || typeof end === 'number') {
-        const options: { start?: number; end?: number } = {};
-        if (typeof start === 'number') options.start = start;
-        if (typeof end === 'number') options.end = end;
-        return this.client.createReadStream(resolved, options);
-      }
-
-      return this.client.createReadStream(resolved);
+      const streamOptions: { chunkSize: number; autoClose: boolean; start?: number; end?: number } = {
+        chunkSize: 128 * 1024,
+        autoClose: true,
+      };
+      if (typeof start === 'number') streamOptions.start = start;
+      if (typeof end === 'number') streamOptions.end = end;
+      return this.client.createReadStream(resolved, streamOptions);
     });
   }
 
@@ -696,11 +694,12 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<NodeJS.WritableStream> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-
-      if (options) {
-        return this.client.createWriteStream(resolved, options as any);
-      }
-      return this.client.createWriteStream(resolved);
+      const streamOptions = {
+        chunkSize: 128 * 1024,
+        autoClose: true,
+        ...(options as any),
+      };
+      return this.client.createWriteStream(resolved, streamOptions);
     });
   }
 

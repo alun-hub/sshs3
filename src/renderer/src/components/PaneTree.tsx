@@ -302,6 +302,7 @@ const PaneLeafContent: React.FC<{
         fontSize={settings.terminalFontSize}
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
+        scrollback={settings.terminalScrollback}
         initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
@@ -317,6 +318,7 @@ const PaneLeafContent: React.FC<{
         fontSize={settings.terminalFontSize}
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
+        scrollback={settings.terminalScrollback}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
@@ -342,6 +344,7 @@ const PaneLeafContent: React.FC<{
         fontSize={settings.terminalFontSize}
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
+        scrollback={settings.terminalScrollback}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}

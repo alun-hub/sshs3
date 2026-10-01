@@ -200,41 +200,40 @@ function createWindow(): BrowserWindow {
 
 // Initialize IPC bridge before or when app is ready
 async function initializeApp(): Promise<void> {
-  // Recover ssh-agent processes and askpass socket dirs left behind by a
-  // previous launch that never exited gracefully (crash, SIGKILL, OOM-kill).
-  // Must run before ensureAgent()/anything else spawns new ones below.
+  // Set registry directory for ssh-agents
   configureRegistryDir(path.join(app.getPath('userData'), 'runtime-agents'));
-  await AgentLifecycleManager.cleanupOrphanedResources();
 
-  if (!isEncryptionAvailable()) {
-    // No OS keyring backend (safeStorage) available — SecretFieldCrypto falls
-    // back to storing saved SSH/S3 passwords and passphrases in plaintext on
-    // disk rather than silently losing them. Surfaced to the renderer via
-    // APP_GET_SECURITY_STATUS so the UI can warn the user; logged here too
-    // since this is otherwise invisible.
-    console.warn(
-      '[sshs3] No OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
-        'saved credentials will be stored in PLAINTEXT on disk instead of encrypted.'
-    );
-  }
-
-  // GUI/.desktop launches bypass .bashrc/.zshrc/.profile, so shell-exported
-  // trust settings (e.g. a custom CA bundle path) a terminal launch would
-  // have are otherwise invisible to processes we spawn (oc, ssh, ...).
-  await applyLoginShellEnv();
-  void SystemTrustStore.init();
-  void AgentLifecycleManager.ensureAgent();
-  // The app has its own UI for every action (tabs, connections, transfers);
-  // Electron's default File/Edit/View/Window/Help menu bar has no wiring to
-  // any of it, so it just sits there as dead chrome. Remove it.
+  // Remove default dead application menu
   Menu.setApplicationMenu(null);
 
+  // Initialize and register IPC bridge
   ipcBridge = new IpcBridge({
     getWebContents: () => mainWindow?.webContents,
   });
   ipcBridge.register();
 
+  // Create the main window immediately so the UI starts loading without waiting for subshells
   createWindow();
+
+  // Run background tasks (orphan cleanup, login shell environment, trust store)
+  // in parallel with window loading so startup time is not penalized
+  void Promise.all([
+    AgentLifecycleManager.cleanupOrphanedResources(),
+    applyLoginShellEnv().then(() => {
+      void SystemTrustStore.init();
+    }),
+  ]).catch((err) => {
+    console.warn('[sshs3] Background initialization error:', err);
+  });
+
+  void AgentLifecycleManager.ensureAgent();
+
+  if (!isEncryptionAvailable()) {
+    console.warn(
+      '[sshs3] No OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
+        'saved credentials will be stored in PLAINTEXT on disk instead of encrypted.'
+    );
+  }
 }
 
 app.whenReady().then(initializeApp);

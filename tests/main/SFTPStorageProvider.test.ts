@@ -802,7 +802,10 @@ describe('SFTPStorageProvider', () => {
       const provider = new SFTPStorageProvider(baseConfig);
       const stream = await provider.createReadStream('/remote/large.dat');
 
-      expect(mockCreateReadStream).toHaveBeenCalledWith('/remote/large.dat');
+      expect(mockCreateReadStream).toHaveBeenCalledWith('/remote/large.dat', {
+        chunkSize: 128 * 1024,
+        autoClose: true,
+      });
       expect(stream).toBe(mockStream);
     });
 
@@ -814,6 +817,8 @@ describe('SFTPStorageProvider', () => {
       const stream = await provider.createReadStream('/remote/large.dat', 100, 500);
 
       expect(mockCreateReadStream).toHaveBeenCalledWith('/remote/large.dat', {
+        chunkSize: 128 * 1024,
+        autoClose: true,
         start: 100,
         end: 500,
       });
@@ -829,7 +834,10 @@ describe('SFTPStorageProvider', () => {
       const provider = new SFTPStorageProvider(baseConfig);
       const stream = await provider.createWriteStream('/remote/upload.bin');
 
-      expect(mockCreateWriteStream).toHaveBeenCalledWith('/remote/upload.bin');
+      expect(mockCreateWriteStream).toHaveBeenCalledWith('/remote/upload.bin', {
+        chunkSize: 128 * 1024,
+        autoClose: true,
+      });
       expect(stream).toBe(mockStream);
     });
 
@@ -843,6 +851,8 @@ describe('SFTPStorageProvider', () => {
       });
 
       expect(mockCreateWriteStream).toHaveBeenCalledWith('/remote/upload.bin', {
+        chunkSize: 128 * 1024,
+        autoClose: true,
         size: 1024,
       });
       expect(stream).toBe(mockStream);

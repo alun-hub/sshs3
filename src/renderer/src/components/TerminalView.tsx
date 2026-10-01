@@ -27,6 +27,8 @@ export interface TerminalViewProps {
   theme?: 'dark' | 'light' | 'breeze' | 'system';
   /** Remote directory to `cd` into once the shell prompt appears (sent once, after first PTY output). */
   initialCwd?: string;
+  /** Terminal scrollback buffer limit (default 5000). */
+  scrollback?: number;
   /** Action on session exit: 'reconnect' (default), 'close' (auto-close tab on clean exit), or 'keep' (passive). */
   sessionExitAction?: SessionExitAction;
   /** Mirror text selections into the system clipboard, not just the X11 PRIMARY selection. */
@@ -136,6 +138,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontFamily = 'Menlo, Monaco, "Courier New", monospace, Consolas',
   theme = 'dark',
   initialCwd,
+  scrollback = 5000,
   sessionExitAction = 'reconnect',
   copyOnSelect = false,
   onCloseTab,
@@ -161,12 +164,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   fontFamilyRef.current = fontFamily;
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  const scrollbackRef = useRef(scrollback);
+  scrollbackRef.current = scrollback;
 
   const connectionKey = useMemo(() => {
     if (local) return `local:${shellType || ''}:${wslDistro || ''}`;
     if (k8sTarget) return `k8s:${k8sTarget.contextName}:${k8sTarget.namespace}:${k8sTarget.podName}:${k8sTarget.containerName}`;
     if (config) return `ssh:${config.id || ''}:${config.host}:${config.port ?? 22}:${config.username}`;
     return '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- config properties are checked individually to avoid re-running on new object references
   }, [local, shellType, wslDistro, k8sTarget, config?.id, config?.host, config?.port, config?.username]);
 
   const sessionExitActionRef = useRef(sessionExitAction);
@@ -250,42 +256,27 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
 
       // When activating a tab that was in the background (display: none),
-      // the DOM layout pass and font metrics measurement need frames/ticks to settle.
-      // Repeatedly sync dimensions across requestAnimationFrame and short intervals
-      // to ensure the PTY receives the true cols/rows immediately on activation.
-      const raf1 = requestAnimationFrame(() => {
-        if (!isCancelled) syncPtySize(true);
+      // allow a frame and a short delay for DOM layout / font metrics to settle.
+      // Call syncPtySize() without force so IPC is only dispatched if dimensions actually changed.
+      const raf = requestAnimationFrame(() => {
+        if (!isCancelled) syncPtySize();
       });
-      const raf2 = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!isCancelled) syncPtySize(true);
-        });
-      });
-      const t1 = setTimeout(() => {
-        if (!isCancelled) syncPtySize(true);
-      }, 50);
-      const t2 = setTimeout(() => {
-        if (!isCancelled) syncPtySize(true);
-      }, 150);
-      const t3 = setTimeout(() => {
-        if (!isCancelled) syncPtySize(true);
-      }, 300);
+      const timer = setTimeout(() => {
+        if (!isCancelled) syncPtySize();
+      }, 80);
 
       if (document.fonts) {
         document.fonts.ready.then(() => {
           if (!isCancelled) {
-            syncPtySize(true);
+            syncPtySize();
           }
         });
       }
 
       return () => {
         isCancelled = true;
-        cancelAnimationFrame(raf1);
-        cancelAnimationFrame(raf2);
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
       };
     }
     return undefined;
@@ -297,6 +288,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       termRef.current.options.fontSize = fontSize;
       termRef.current.options.fontFamily = fontFamily;
       termRef.current.options.theme = getXTermTheme(theme);
+      if (scrollback !== undefined) {
+        termRef.current.options.scrollback = scrollback;
+      }
       syncPtySize();
       if (document.fonts) {
         document.fonts.ready.then(() => {
@@ -304,7 +298,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         });
       }
     }
-  }, [fontSize, fontFamily, theme, syncPtySize]);
+  }, [fontSize, fontFamily, theme, scrollback, syncPtySize]);
 
   // Main lifecycle: spawns and manages the PTY session.
   // Style properties are intentionally managed by the separate effect above to avoid session resets.
@@ -329,6 +323,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fontSize: fontSizeRef.current,
       fontFamily: fontFamilyRef.current,
       theme: getXTermTheme(currentTheme),
+      scrollback: scrollbackRef.current ?? 5000,
       allowProposedApi: true,
     });
     termRef.current = term;
@@ -602,6 +597,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fitAddonRef.current = null;
       sessionIdRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- target & shell types are encapsulated into connectionKey
   }, [connectionKey, sessionKey, syncPtySize, hasEverBeenActive]);
 
   const isLight =
