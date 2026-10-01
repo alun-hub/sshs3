@@ -39,6 +39,7 @@ export function fingerprintKey(keyBuffer: Buffer): string {
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  // eslint-disable-next-line security/detect-non-literal-regexp -- pattern metacharacters are escaped above; only * and ? become wildcards
   return new RegExp(`^${escaped}$`, 'i');
 }
 

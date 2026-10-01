@@ -4,6 +4,7 @@ export function globToRegExp(glob: string): RegExp {
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
     .replace(/\?/g, '.');
+  // eslint-disable-next-line security/detect-non-literal-regexp -- glob metacharacters are escaped above; only * and ? become wildcards
   return new RegExp(`^${escaped}$`, 'i');
 }
 

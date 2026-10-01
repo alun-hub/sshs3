@@ -93,6 +93,14 @@ describe('wrapMasterPasswords / unwrapMasterPasswords (M1)', () => {
     expect(() => unwrapMasterPasswords(wrongSecret, wrapped)).toThrow();
   });
 
+  it('rejects a truncated GCM auth tag (tag length is pinned to 16 bytes)', () => {
+    const secret = crypto.randomBytes(32).toString('hex');
+    const wrapped = wrapMasterPasswords(secret, passwords);
+    const shortTag = Buffer.from(wrapped.tag, 'base64').subarray(0, 4).toString('base64');
+
+    expect(() => unwrapMasterPasswords(secret, { ...wrapped, tag: shortTag })).toThrow();
+  });
+
   it('derives the wrapping key via HKDF-SHA256 with the documented info string, not raw SHA-256', () => {
     const secret = crypto.randomBytes(32).toString('hex');
     const rawSha256Key = crypto.createHash('sha256').update(secret).digest();

@@ -34,6 +34,7 @@ export function buildLineMatcher(
   if (mode === 'regex') {
     let re: RegExp | null;
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- user-entered search regex, gated by isSafeRegexQuery
       re = isSafeRegexQuery(query) ? new RegExp(query, caseSensitive ? '' : 'i') : null;
     } catch {
       re = null;

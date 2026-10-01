@@ -224,7 +224,7 @@ export function unwrapMasterPasswords(
   const tag = Buffer.from(wrapped.tag, 'base64');
   const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
 
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
 

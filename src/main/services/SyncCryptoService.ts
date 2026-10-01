@@ -171,7 +171,7 @@ export class SyncCryptoService {
     }
 
     try {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
       decipher.setAAD(Buffer.from(category, 'utf8'));
       decipher.setAuthTag(authTag);
       const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);

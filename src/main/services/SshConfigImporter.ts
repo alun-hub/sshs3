@@ -90,6 +90,7 @@ export function parseSshConfigContent(content: string): SSHConnectionConfig[] {
     }
 
     // Directives can be "Directive Value" or "Directive = Value"
+    // eslint-disable-next-line security/detect-unsafe-regex -- runs only on the user's own ssh config lines; no nested quantifiers
     const match = trimmed.match(/^([A-Za-z0-9_]+)(?:[\s=]+(.*))?$/);
     if (!match) continue;
 
