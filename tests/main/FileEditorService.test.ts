@@ -3,7 +3,7 @@ import { Readable, Writable, PassThrough } from 'node:stream';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { FileEditorService } from '../../src/main/editor/FileEditorService';
+import { FileEditorService, toSafeLocalFileName, isBlockedExecutableType } from '../../src/main/editor/FileEditorService';
 import { StorageRegistry } from '../../src/main/storage/StorageRegistry';
 import { LocalStorageProvider } from '../../src/main/storage/LocalStorageProvider';
 
@@ -217,6 +217,38 @@ describe('FileEditorService', () => {
 
       await service.dispose();
       expect(service.getActiveSessions().length).toBe(0);
+    });
+  });
+
+  describe('remote file name hardening', () => {
+    it('reduces hostile remote names to a single safe file name', () => {
+      expect(toSafeLocalFileName('/srv/x/..\\..\\Startup\\evil.bat')).toBe('evil.bat');
+      expect(toSafeLocalFileName('/a/b/..')).toBe('file.txt');
+      expect(toSafeLocalFileName('/a/b/')).toBe('file.txt');
+      expect(toSafeLocalFileName('/a/CON.txt')).toBe('_CON.txt');
+      expect(toSafeLocalFileName('/a/rep:ort?.txt')).toBe('rep_ort_.txt');
+      expect(toSafeLocalFileName('/a/name. . ')).toBe('name');
+    });
+
+    it('flags executable types, with script types blocked on Windows only', () => {
+      expect(isBlockedExecutableType('setup.EXE', 'linux')).toBe(true);
+      expect(isBlockedExecutableType('run.bat', 'win32')).toBe(true);
+      expect(isBlockedExecutableType('run.bat', 'linux')).toBe(false);
+      expect(isBlockedExecutableType('notes.txt', 'win32')).toBe(false);
+    });
+
+    it('refuses to open a downloaded remote executable and leaves no temp dir behind', async () => {
+      storageRegistry.register({
+        id: 'sftp-exe',
+        name: 'SFTP',
+        type: 'sftp' as const,
+        createReadStream: vi.fn(),
+      } as any);
+
+      await expect(
+        service.openInExternalEditor(storageRegistry, 'sftp-exe', '/tmp/payload.exe')
+      ).rejects.toThrow(/Refusing to open/);
+      expect(mockShell.openPath).not.toHaveBeenCalled();
     });
   });
 });

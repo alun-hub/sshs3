@@ -19,6 +19,33 @@ export interface ExternalEditorSession {
   debounceTimer?: NodeJS.Timeout;
 }
 
+const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+// Types the OS would *run* rather than open for editing when handed to shell.openPath.
+const ALWAYS_BLOCKED_EXTENSIONS = new Set(['.exe', '.com', '.msi', '.msp', '.scr', '.lnk', '.hta', '.jar', '.desktop', '.app']);
+const WINDOWS_BLOCKED_EXTENSIONS = new Set([
+  '.bat', '.cmd', '.ps1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.reg', '.cpl', '.pif', '.msc',
+]);
+
+/**
+ * Reduces a remote-controlled path to a single, safe local file name. Remote file names are
+ * attacker-influenced (a hostile SFTP server or S3 key): on Windows a name like
+ * `..\\..\\Startup\\x.bat` survives `path.posix.basename` and would walk out of the temp dir
+ * via `path.join`.
+ */
+export function toSafeLocalFileName(remotePath: string): string {
+  const last = remotePath.split(/[\\/]/).pop() ?? '';
+  // eslint-disable-next-line no-control-regex
+  let name = last.replace(/[\u0000-\u001f<>:"|?*]/g, '_').replace(/[. ]+$/, '');
+  if (!name || name === '.' || name === '..') name = 'file.txt';
+  if (WINDOWS_RESERVED_NAMES.test(name)) name = `_${name}`;
+  return name;
+}
+
+export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platform = process.platform): boolean {
+  const ext = path.extname(fileName).toLowerCase();
+  return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
+}
+
 export interface ShellOpener {
   openPath(path: string): Promise<string> | any;
 }
@@ -180,6 +207,17 @@ export class FileEditorService {
     // Remote storage: download to temporary file and watch
     const sessionToken = crypto.randomUUID();
     const tempDir = path.join(this.baseTempDir, sessionToken);
+    const baseName = toSafeLocalFileName(remotePath);
+    const tempFilePath = path.join(tempDir, baseName);
+    if (path.dirname(tempFilePath) !== tempDir) {
+      throw new Error(`Refusing to write outside the temp directory: ${remotePath}`);
+    }
+    if (isBlockedExecutableType(baseName)) {
+      throw new Error(
+        `Refusing to open "${baseName}" with the OS default handler: this file type would be executed. Use the built-in editor instead.`
+      );
+    }
+
     // mode: 0o700 restricts this to the owning user. On a shared/multi-user
     // machine, the default (umask-derived, typically 0o755) would let any
     // other local user list this directory — defeating the random UUID as a
@@ -193,9 +231,6 @@ export class FileEditorService {
       await fsp.chmod(this.baseTempDir, 0o700).catch(() => {});
       await fsp.chmod(tempDir, 0o700).catch(() => {});
     }
-
-    const baseName = path.posix.basename(remotePath) || 'file.txt';
-    const tempFilePath = path.join(tempDir, baseName);
 
     const readStream = await provider.createReadStream(remotePath);
     // mode: 0o600 keeps the downloaded content itself owner-only, matching

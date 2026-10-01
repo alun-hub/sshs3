@@ -24,6 +24,16 @@ function isSafeHostToken(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 255 && /^[A-Za-z0-9.\-_[\]:]+$/.test(value);
 }
 
+// One ProxyJump hop: [user@]host[:port]. ssh turns -J into a shell-run ProxyCommand, so older
+// OpenSSH versions can be tricked by shell metacharacters in the user/host parts.
+const PROXY_JUMP_HOP = /^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.\-_[\]:]+$/;
+// Algorithm lists (Ciphers/KexAlgorithms/MACs): names plus the ssh_config list prefixes ^ + -.
+const ALGORITHM_LIST = /^[A-Za-z0-9@.,+^\-_]+$/;
+
+function isValidTunnelPort(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
 const PROXY_TYPES = new Set(['http', 'socks4', 'socks5']);
 
 export class SmartcardDetector {
@@ -217,7 +227,11 @@ export class SmartcardDetector {
 
     // Jump host / ProxyJump (-J <proxyJump>)
     if (config.proxyJump && config.proxyJump.trim()) {
-      args.push('-J', config.proxyJump.trim());
+      const hops = config.proxyJump.trim().split(',').map((h) => h.trim());
+      if (hops.some((h) => h.startsWith('-') || !PROXY_JUMP_HOP.test(h))) {
+        throw new Error('Invalid ProxyJump: expected comma-separated [user@]host[:port] entries');
+      }
+      args.push('-J', hops.join(','));
     }
 
     // Smartcard authentication
@@ -300,16 +314,25 @@ export class SmartcardDetector {
 
     // Ciphers (-o Ciphers=...)
     if (config.ciphers?.trim()) {
+      if (!ALGORITHM_LIST.test(config.ciphers.trim())) {
+        throw new Error('Invalid Ciphers: contains characters not allowed in an algorithm list');
+      }
       args.push('-o', `Ciphers=${config.ciphers.trim()}`);
     }
 
     // KexAlgorithms (-o KexAlgorithms=...)
     if (config.kexAlgorithms?.trim()) {
+      if (!ALGORITHM_LIST.test(config.kexAlgorithms.trim())) {
+        throw new Error('Invalid KexAlgorithms: contains characters not allowed in an algorithm list');
+      }
       args.push('-o', `KexAlgorithms=${config.kexAlgorithms.trim()}`);
     }
 
     // MACs (-o MACs=...)
     if (config.macs?.trim()) {
+      if (!ALGORITHM_LIST.test(config.macs.trim())) {
+        throw new Error('Invalid MACs: contains characters not allowed in an algorithm list');
+      }
       args.push('-o', `MACs=${config.macs.trim()}`);
     }
 
@@ -317,6 +340,17 @@ export class SmartcardDetector {
     if (config.tunnels && config.tunnels.length > 0) {
       for (const tunnel of config.tunnels) {
         if (tunnel.enabled === false) continue;
+        if (!isValidTunnelPort(tunnel.localPort)) {
+          throw new Error(`Invalid tunnel local port: ${String(tunnel.localPort)}`);
+        }
+        if (tunnel.type !== 'dynamic') {
+          if (tunnel.remoteHost && !isSafeHostToken(tunnel.remoteHost)) {
+            throw new Error('Invalid tunnel remote host: contains characters not allowed in a hostname');
+          }
+          if (tunnel.remotePort !== undefined && !isValidTunnelPort(tunnel.remotePort)) {
+            throw new Error(`Invalid tunnel remote port: ${String(tunnel.remotePort)}`);
+          }
+        }
         if (tunnel.type === 'local') {
           args.push('-L', `${tunnel.localPort}:${tunnel.remoteHost || 'localhost'}:${tunnel.remotePort || 80}`);
         } else if (tunnel.type === 'remote') {

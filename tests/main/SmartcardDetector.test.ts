@@ -473,6 +473,42 @@ describe('SmartcardDetector', () => {
       );
     });
 
+    describe('rejects option/shell injection via free-text fields', () => {
+      const base: SSHConnectionConfig = {
+        id: 'inj',
+        name: 'Injection',
+        host: 'example.com',
+        username: 'user',
+        authType: 'password',
+      };
+
+      it.each([
+        ['proxyJump starting with a dash', { proxyJump: '-oProxyCommand=touch /tmp/x' }, /Invalid ProxyJump/],
+        ['proxyJump with shell metacharacters', { proxyJump: 'a;touch /tmp/x@host' }, /Invalid ProxyJump/],
+        ['proxyJump with command substitution', { proxyJump: '$(id)@host' }, /Invalid ProxyJump/],
+        ['ciphers with a newline-injected directive', { ciphers: 'aes128-ctr\nProxyCommand=x' }, /Invalid Ciphers/],
+        ['kexAlgorithms with spaces', { kexAlgorithms: 'a b' }, /Invalid KexAlgorithms/],
+        ['macs with shell characters', { macs: 'hmac;id' }, /Invalid MACs/],
+        [
+          'tunnel with a non-numeric local port',
+          { tunnels: [{ id: 't', name: 't', type: 'local', localPort: '0.0.0.0:80' as unknown as number }] },
+          /Invalid tunnel local port/,
+        ],
+        [
+          'tunnel with an unsafe remote host',
+          { tunnels: [{ id: 't', name: 't', type: 'local', localPort: 8080, remoteHost: 'h;id', remotePort: 80 }] },
+          /Invalid tunnel remote host/,
+        ],
+      ])('%s', (_label, override, message) => {
+        expect(() => SmartcardDetector.buildSSHArguments({ ...base, ...override } as SSHConnectionConfig)).toThrow(message);
+      });
+
+      it('accepts a multi-hop proxyJump with user@host:port entries', () => {
+        const args = SmartcardDetector.buildSSHArguments({ ...base, proxyJump: 'bob@jump1.example.com:2222, jump2' });
+        expect(args).toContain('bob@jump1.example.com:2222,jump2');
+      });
+    });
+
     it('should add proxyJump and advanced options (compression, keepalive, ciphers, kex, macs)', () => {
       const config: SSHConnectionConfig = {
         id: 'adv-ssh',
