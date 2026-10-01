@@ -60,7 +60,7 @@ export interface WindowsAgentPathStatus {
 export async function getWindowsAgentPathStatus(pkcs11LibPath: string): Promise<WindowsAgentPathStatus> {
   if (process.platform !== 'win32' || !pkcs11LibPath) return { applicable: false, needsFix: false };
 
-  const libDir = path.dirname(pkcs11LibPath);
+  const libDir = path.win32.dirname(pkcs11LibPath);
   let machinePath: string;
   try {
     machinePath = await getMachinePath();
@@ -69,7 +69,7 @@ export async function getWindowsAgentPathStatus(pkcs11LibPath: string): Promise<
   }
   if (isDirOnPath(libDir, machinePath)) return { applicable: true, needsFix: false, libDir };
 
-  const sshKeygen = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'OpenSSH', 'ssh-keygen.exe');
+  const sshKeygen = path.win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'OpenSSH', 'ssh-keygen.exe');
   try {
     // Same lock as every other PKCS#11 access: never race a concurrent ssh-add/cert read on the token.
     await withPkcs11Lock(() =>
