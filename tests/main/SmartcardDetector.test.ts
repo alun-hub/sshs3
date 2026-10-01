@@ -439,6 +439,24 @@ describe('SmartcardDetector', () => {
       expect(env.SSHS3_PROXY_PASSWORD).toBe('secret');
     });
 
+    it.skipIf(process.platform === 'win32')(
+      "launches proxyCli through the app's own binary in Node mode instead of a PATH `node`",
+      () => {
+        const config: SSHConnectionConfig = {
+          id: 'proxy-launcher',
+          name: 'Proxy Launcher',
+          host: 'example.com',
+          username: 'user',
+          authType: 'password',
+          proxy: { enabled: true, type: 'http', host: '127.0.0.1', port: 8080 },
+        };
+        const proxyOpt = SmartcardDetector.buildSSHArguments(config).find((a) => a.startsWith('ProxyCommand='));
+        expect(proxyOpt).toMatch(new RegExp(`^ProxyCommand="${process.execPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" "`));
+        expect(proxyOpt).not.toMatch(/^ProxyCommand=node /);
+        expect(SmartcardDetector.buildProxyEnv(config).ELECTRON_RUN_AS_NODE).toBe('1');
+      }
+    );
+
     it('should reject shell metacharacters in the destination host (ProxyCommand %h injection)', () => {
       const config: SSHConnectionConfig = {
         id: 'inject-host',

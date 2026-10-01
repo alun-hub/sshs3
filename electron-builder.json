@@ -31,7 +31,9 @@
       {
         "from": "build-resources/vcxsrv",
         "to": "vcxsrv",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   },
@@ -45,5 +47,11 @@
     "provider": "github",
     "owner": "alun-hub",
     "repo": "sshs3"
+  },
+  "electronFuses": {
+    "runAsNode": true,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "onlyLoadAppFromAsar": true
   }
 }

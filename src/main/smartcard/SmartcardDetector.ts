@@ -34,6 +34,23 @@ function isValidTunnelPort(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
 }
 
+/**
+ * Command prefix that runs proxyCli.cjs. On POSIX it is this app's own binary in Node mode
+ * (ELECTRON_RUN_AS_NODE=1 comes from buildProxyEnv, so no shell env-assignment syntax is needed),
+ * which works without a system Node.js and can't be hijacked through PATH. Windows keeps the
+ * PATH `node`: its ProxyCommand goes through cmd.exe, whose handling of several quoted
+ * tokens is unverified here.
+ */
+function proxyCliLauncher(): string {
+  if (process.platform === 'win32') return 'node ';
+  // The path is embedded inside double quotes in a shell string; refuse anything the shell
+  // would interpret rather than trying to escape it.
+  if (/["$`\\\n\r%]/.test(process.execPath)) {
+    throw new Error('Cannot build ProxyCommand: application path contains shell-special characters');
+  }
+  return `"${process.execPath}" `;
+}
+
 const PROXY_TYPES = new Set(['http', 'socks4', 'socks5']);
 
 export class SmartcardDetector {
@@ -416,7 +433,7 @@ export class SmartcardDetector {
       const devPath = path.resolve(currentDir, '../proxy/proxyCli.cjs');
       const distPath = path.resolve(currentDir, 'proxyCli.cjs');
       const cliPath = fsSync.existsSync(distPath) ? distPath : devPath;
-      args.push('-o', `ProxyCommand=node "${cliPath}" ${p.type} ${p.host} ${port} %h %p`);
+      args.push('-o', `ProxyCommand=${proxyCliLauncher()}"${cliPath}" ${p.type} ${p.host} ${port} %h %p`);
     }
 
     // Destination target (username@host or host), preceded by '--' to prevent flag injection
@@ -440,6 +457,8 @@ export class SmartcardDetector {
       return {};
     }
     const env: Record<string, string> = {};
+    // proxyCli.cjs is launched through this app's own binary in Node mode (see proxyCliLauncher).
+    if (process.platform !== 'win32') env.ELECTRON_RUN_AS_NODE = '1';
     if (config.proxy.username) env.SSHS3_PROXY_USERNAME = config.proxy.username;
     if (config.proxy.password) env.SSHS3_PROXY_PASSWORD = config.proxy.password;
     return env;
