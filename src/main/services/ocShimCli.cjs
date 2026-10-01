@@ -443,7 +443,22 @@ async function main() {
   process.exit(1);
 }
 
-main().catch((err) => {
-  process.stderr.write('error: ' + (err.message || String(err)) + '\n');
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write('error: ' + (err.message || String(err)) + '\n');
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  requestJson,
+  getKubeConfigPath,
+  loadKubeConfigDoc,
+  saveKubeConfigDoc,
+  findExternalOc,
+  handleLogin,
+  handleWhoAmI,
+  handleProject,
+  main,
+};

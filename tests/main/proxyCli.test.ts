@@ -131,7 +131,7 @@ describe('proxyCli.cjs', () => {
 
     const socket = runProxyCli(
       ['http', '127.0.0.1', String(port), 'target.domain', '2222'],
-      { SSHS3_PROXY_USERNAME: 'testuser', SSHS3_PROXY_PASSWORD: 'secretpassword' },
+      { SSHS3_PROXY_USERNAME: 'testuser', SSHS3_PROXY_PASSWORD: 'secretpassword' }, // pragma: allowlist secret
       { stdin, stdout, stderr, exit: vi.fn() }
     );
 
@@ -275,7 +275,7 @@ describe('proxyCli.cjs', () => {
 
     const socket = runProxyCli(
       ['socks5', '127.0.0.1', String(port), 'target.internal', '22'],
-      { SSHS3_PROXY_USERNAME: 'socksuser', SSHS3_PROXY_PASSWORD: 'sockspass' },
+      { SSHS3_PROXY_USERNAME: 'socksuser', SSHS3_PROXY_PASSWORD: 'sockspass' }, // pragma: allowlist secret
       { stdin, stdout, stderr: { write: vi.fn() }, exit: (c: number) => { exitCode = c; } }
     );
 
@@ -381,7 +381,7 @@ describe('proxyCli.cjs', () => {
 
     const sock3 = runProxyCli(
       ['socks5', '127.0.0.1', String(authFailPort), 'target.internal', '22'],
-      { SSHS3_PROXY_USERNAME: 'user', SSHS3_PROXY_PASSWORD: 'wrongpassword' },
+      { SSHS3_PROXY_USERNAME: 'user', SSHS3_PROXY_PASSWORD: 'wrongpassword' }, // pragma: allowlist secret
       {
         stderr: { write: (s: string) => { stderrChunks.push(s); return true; } },
         exit: (c: number) => { exitCode = c; },

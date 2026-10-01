@@ -54,21 +54,21 @@ function readCertificatesFromSlot(pkcs11, slot, derList) {
   }
 }
 
-async function main() {
-  const pkcs11LibPath = process.argv[2];
+async function runCertWorker(argv = process.argv.slice(2), stdout = process.stdout, Pkcs11Class = pkcs11js.PKCS11) {
+  const pkcs11LibPath = argv[0];
   const derList = [];
 
   if (!pkcs11LibPath) {
-    process.stdout.write(JSON.stringify({ error: 'missing pkcs11LibPath argument' }) + '\n');
+    stdout.write(JSON.stringify({ error: 'missing pkcs11LibPath argument' }) + '\n');
     return;
   }
 
-  const pkcs11 = new pkcs11js.PKCS11();
+  const pkcs11 = new Pkcs11Class();
   try {
     pkcs11.load(pkcs11LibPath);
     pkcs11.C_Initialize();
   } catch (err) {
-    process.stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
+    stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
     return;
   }
 
@@ -76,7 +76,7 @@ async function main() {
   try {
     slots = pkcs11.C_GetSlotList(true);
   } catch (err) {
-    process.stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
+    stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
     return;
   }
 
@@ -94,7 +94,7 @@ async function main() {
   // must reach the parent process over the stdout pipe first. If Finalize then crashes the
   // worker, that's fine — the parent only reads this one line and doesn't care how the worker's
   // process itself ends.
-  process.stdout.write(JSON.stringify({ certs: derList }) + '\n');
+  stdout.write(JSON.stringify({ certs: derList }) + '\n');
 
   try {
     pkcs11.C_Finalize();
@@ -103,10 +103,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  try {
-    process.stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
-  } catch {
-    // stdout unavailable — nothing more we can do.
-  }
-});
+if (require.main === module) {
+  runCertWorker().catch((err) => {
+    try {
+      process.stdout.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n');
+    } catch {
+      // stdout unavailable — nothing more we can do.
+    }
+  });
+}
+
+module.exports = { runCertWorker, readCertificatesFromSlot };

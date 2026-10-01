@@ -132,14 +132,15 @@ export default defineConfig({
       // Ratchet: set just under the measured values so coverage can't silently drop.
       // Raise these when tests are added; never lower them to make a build pass.
       thresholds: {
-        lines: 62,
-        statements: 60,
-        functions: 49,
-        branches: 49,
+        lines: 64,
+        statements: 62,
+        functions: 50,
+        branches: 50,
         // Security-sensitive areas get their own floor.
         'src/main/crypto/**': { lines: 90 },
-        'src/main/smartcard/**': { lines: 80 },
+        'src/main/smartcard/**': { lines: 85 },
         'src/main/proxy/**': { lines: 80 },
+        'src/main/services/**': { lines: 80 },
         'src/main/IpcBridge.ts': { lines: 58 },
       },
     },
