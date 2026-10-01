@@ -148,7 +148,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
 ## 5. Coding & Formatting Conventions
 
 - **Date Format**: Always display and persist timestamps in `yyyy-mm-dd HH:mm` (24-hour) format. Use `formatDateTime()` from [`src/renderer/src/lib/format.ts`](file:///home/alun/sshs3/src/renderer/src/lib/format.ts) or `formatDate()` from [`src/main/storage/StorageProvider.ts`](file:///home/alun/sshs3/src/main/storage/StorageProvider.ts).
-- **Release Versioning**: Always use a single segment after the dot for release versions (e.g. `0.2`, `0.3`, `0.96.1` instead of `0.2.19`) to maintain clean ordering in GitHub Releases.
+- **Release Versioning**: Bump the patch segment by default (`0.96.6` → `0.96.7`); bump minor only for real milestones. Tag as `vX.Y.Z` and add a `CHANGELOG.md` entry in every release.
 - **Security & Ephemeral Secrets**: Private keys must never leave hardware tokens. PINs and passphrases are strictly ephemeral and must never be stored on the filesystem, cached in memory, or logged in plaintext.
 - **Fast Refresh Cleanliness**: React component files should only export React components. Helper functions belong in `types.ts` or utility files, and hooks belong in dedicated files or contexts.
 - **Fail Closed for Security**: Host key verification (TOFU) and smartcard askpass operations must default to rejecting/aborting if the UI is unmounted or unavailable.
@@ -164,5 +164,5 @@ npm run typecheck   # Static typecheck with TypeScript
 npm run lint        # ESLint verification (must be 0 errors, 0 warnings)
 npm run test        # Unit & integration tests via Vitest
 npm run build       # Verify Vite & electron-builder bundle compilation
-npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions
+npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions (scripts/deploy.sh)
 ```

@@ -2,7 +2,8 @@
 #
 # deploy.sh
 #
-# Bumps the patch version (e.g. 0.96.2 -> 0.96.3), commits all code changes,
+# Bumps the patch version (e.g. 0.96.2 -> 0.96.3), drafts a CHANGELOG entry
+# (unless one already exists), commits all code changes,
 # creates an annotated git tag (e.g. v0.96.3), and pushes both the branch
 # and tag to GitHub to trigger the release workflow in GitHub Actions.
 #
@@ -59,10 +60,10 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo -e "${BOLD}Usage:${RESET} ./deploy.sh [options] [commit_message]"
       echo ""
-      echo "Bumps the patch version, commits all changes, tags, and pushes to trigger release.yml."
+      echo "Bumps the patch version, drafts a CHANGELOG entry, commits all changes, tags, and pushes to trigger release.yml."
       echo ""
       echo -e "${BOLD}Options:${RESET}"
-      echo "  -m, --message <msg>   Custom commit message (defaults to 'chore: release <version>')"
+      echo "  -m, --message <msg>   Custom commit message (defaults to 'chore: release v<version>')"
       echo "  --skip-checks         Skip typecheck, lint, and test before deploying"
       echo "  --dry-run             Simulate version bump and commit without pushing or writing git state"
       echo "  --minor               Bump minor version instead of patch"
@@ -143,6 +144,7 @@ echo -e "\n${CYAN}Current version:${RESET} ${BOLD}${OLD_VERSION}${RESET}"
 # Create temporary backups of package files in case of abort or dry run
 cp package.json package.json.bak
 cp package-lock.json package-lock.json.bak
+cp CHANGELOG.md CHANGELOG.md.bak
 
 restore_backups() {
   if [[ -f package.json.bak ]]; then
@@ -151,10 +153,13 @@ restore_backups() {
   if [[ -f package-lock.json.bak ]]; then
     mv -f package-lock.json.bak package-lock.json
   fi
+  if [[ -f CHANGELOG.md.bak ]]; then
+    mv -f CHANGELOG.md.bak CHANGELOG.md
+  fi
 }
 
 cleanup_backups() {
-  rm -f package.json.bak package-lock.json.bak
+  rm -f package.json.bak package-lock.json.bak CHANGELOG.md.bak
 }
 
 # Bump version using npm without git tag/commit yet
@@ -171,9 +176,40 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
   exit 1
 fi
 
+# 4b. Add a CHANGELOG entry (skipped if one for this version already exists,
+# e.g. written by hand beforehand). Drafted from commit subjects since the last tag.
+if grep -q "^## \\[${NEW_VERSION}\\]" CHANGELOG.md; then
+  echo -e "${CYAN}CHANGELOG.md already has an entry for ${NEW_VERSION}; leaving it untouched.${RESET}"
+else
+  LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+  RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
+  NEW_VERSION="$NEW_VERSION" RANGE="$RANGE" node -e '
+    const { execSync } = require("child_process");
+    const fs = require("fs");
+    const subjects = execSync(`git log ${process.env.RANGE} --no-merges --pretty=%s`, { encoding: "utf8" })
+      .split("\n").filter((l) => l && !/^chore: release/.test(l));
+    const groups = { Added: [], Fixed: [], Changed: [] };
+    for (const subj of subjects) {
+      const m = subj.match(/^(\w+)(?:\([^)]*\))?!?:\s*(.*)$/);
+      const [type, text] = m ? [m[1], m[2]] : ["", subj];
+      (type === "feat" ? groups.Added : type === "fix" ? groups.Fixed : groups.Changed).push(text);
+    }
+    const date = new Date().toISOString().slice(0, 10);
+    let entry = `## [${process.env.NEW_VERSION}] - ${date}\n\n`;
+    for (const [name, items] of Object.entries(groups)) {
+      if (items.length) entry += `### ${name}\n${items.map((i) => `- ${i}`).join("\n")}\n\n`;
+    }
+    if (!subjects.length) entry += "### Changed\n- Maintenance release.\n\n";
+    const log = fs.readFileSync("CHANGELOG.md", "utf8");
+    const i = log.search(/^## \[/m);
+    fs.writeFileSync("CHANGELOG.md", i < 0 ? log.trimEnd() + "\n\n" + entry : log.slice(0, i) + entry + log.slice(i));
+  '
+  echo -e "${GREEN}✓ Drafted CHANGELOG.md entry for ${NEW_VERSION} (edit it before the next release if needed).${RESET}"
+fi
+
 # 5. Format commit message
 if [[ -z "$COMMIT_MSG" ]]; then
-  FINAL_COMMIT_MSG="chore: release ${NEW_VERSION}"
+  FINAL_COMMIT_MSG="chore: release ${TAG}"
 else
   FINAL_COMMIT_MSG="${COMMIT_MSG}"
 fi
