@@ -21,6 +21,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:smoke": "node scripts/smoke-test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "package": "npm run build && electron-builder",

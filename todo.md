@@ -66,8 +66,7 @@ att bygga.
 - [x] **12. Import/export av anslutningsprofiler** — Import från `~/.ssh/config` (`importSshConfigFile` / `SshConfigImporter`) med modal för att välja vilka värdar som ska importeras till valfri mapp, samt Export och Import av JSON Backup direkt i `ConnectionManagerModal`.
 - [x] **13. Testa anslutning-knapp.** Implementerad i `SSHProfileForm` och `S3ProfileForm` via backend-anrop (`connection:test-ssh` och `connection:test-s3`) med visuell statusindikator och felrapportering innan profilen sparas.
 - [x] **14. Sessions-/flikpersistens.** Öppna terminal- och filflikar samt senast besökta katalogsökvägar sparas och återställs automatiskt mellan omstarter via `SessionStore` (`session.json`).
-- [ ] **15. Checksumverifiering efter överföring** (t.ex. jämför storlek/hash) för
-   att upptäcka trunkerade/korrupta filer.
+- [x] **15. Checksumverifiering efter överföring** (jämför storlek och hash) för att upptäcka trunkerade/korrupta filer — `ByteMeter` beräknar rullande SHA-256 och MD5 under strömning, och `TransferPipeline` verifierar målstorlek och kryptografiska kontrollsummor post-transfer med automatisk radering vid avvikelse samt inställning i `SettingsModal`.
 - [ ] **34. Stöd för PuTTY Private Key (.ppk-filer)** — automatisk konvertering/parsnig
    av `.ppk` (PuTTY v2 och v3) till OpenSSH-format så att befintliga PuTTY-nycklar kan
    användas utan manuell omvandling via PuTTYgen.

@@ -72,6 +72,8 @@ export interface AppSettings {
   confirmBeforeDelete?: boolean;
   showHiddenFiles?: boolean;
   defaultConflictPolicy?: 'ask' | 'overwrite' | 'skip' | 'rename';
+  /** Verify target file size and cryptographic checksum after file transfers. Default true. */
+  verifyTransferIntegrity?: boolean;
   shortcuts?: Record<string, string>;
   /** Master switch for the dotfiles pool feature. Off by default — an opt-in feature, not a default-on behavior. */
   dotfilesPoolEnabled?: boolean;
@@ -129,6 +131,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   confirmBeforeDelete: true,
   showHiddenFiles: false,
   defaultConflictPolicy: 'ask',
+  verifyTransferIntegrity: true,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
   enableOpenShift: false,

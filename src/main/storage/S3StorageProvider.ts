@@ -342,6 +342,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
           mtime: head.LastModified ? formatDate(head.LastModified) : undefined,
           mtimeMs: head.LastModified ? head.LastModified.getTime() : undefined,
           mimeType: head.ContentType || getMimeType(name),
+          etag: head.ETag ? head.ETag.replace(/["']/g, '') : undefined,
         };
       } catch {
         // Fall through to directory checks
@@ -1013,6 +1014,31 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       })
     );
     this.clearCache();
+  }
+
+  /**
+   * Retrieves an S3 object's checksum or ETag (MD5 for single-part objects).
+   */
+  async getChecksum(remotePath: string, algorithm: 'sha256' | 'md5' = 'sha256'): Promise<string | undefined> {
+    const { bucket, key } = parseS3Path(remotePath);
+    if (!bucket || !key) return undefined;
+    try {
+      const head = await this.client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: key.replace(/\/+$/, '') })
+      );
+      if (algorithm === 'sha256' && head.ChecksumSHA256) {
+        return Buffer.from(head.ChecksumSHA256, 'base64').toString('hex');
+      }
+      if (head.ETag) {
+        const clean = head.ETag.replace(/["']/g, '');
+        if (algorithm === 'md5' && /^[0-9a-f]{32}$/i.test(clean)) {
+          return clean;
+        }
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async disconnect(): Promise<void> {

@@ -21,6 +21,9 @@ export interface TransferJobOptions {
   targetPath: string;
   isDirectory?: boolean;
   totalBytes?: number;
+  verifyIntegrity?: boolean;
+  verifyChecksum?: boolean | 'sha256' | 'md5';
+  expectedChecksum?: string;
 }
 
 export interface TransferJob {
@@ -35,6 +38,9 @@ export interface TransferJob {
   startedAt?: Date;
   completedAt?: Date;
   error?: string;
+  verifyIntegrity?: boolean;
+  verifyChecksum?: boolean | 'sha256' | 'md5';
+  expectedChecksum?: string;
 }
 
 export interface TransferQueueOptions {
@@ -143,6 +149,9 @@ export class TransferQueue extends EventEmitter {
       targetProvider: options.targetProvider,
       targetPath: options.targetPath,
       isDirectory: options.isDirectory ?? false,
+      verifyIntegrity: options.verifyIntegrity,
+      verifyChecksum: options.verifyChecksum,
+      expectedChecksum: options.expectedChecksum,
       progress,
       createdAt: new Date(),
     };
@@ -382,6 +391,9 @@ export class TransferQueue extends EventEmitter {
         signal: abortController.signal,
         pauseController,
         emitCompleted: false,
+        verifyIntegrity: job.verifyIntegrity,
+        verifyChecksum: job.verifyChecksum,
+        expectedChecksum: job.expectedChecksum,
         onProgress: (p) => {
           if (
             job.progress.status !== 'cancelled' &&

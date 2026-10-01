@@ -57,7 +57,7 @@ describe('SSHTunnelManager', () => {
     port: 22,
     username: 'admin',
     authType: 'password',
-    password: 'secretpassword',
+    password: 'secretpassword', // pragma: allowlist secret
   };
 
   const mockTunnel: SSHTunnelConfig = {

@@ -1013,6 +1013,9 @@ export class IpcBridge {
           targetProviderId: string;
           targetPath: string;
           conflictPolicy?: TransferConflictResolution;
+          verifyIntegrity?: boolean;
+          verifyChecksum?: boolean | 'sha256' | 'md5';
+          expectedChecksum?: string;
         }
       ): Promise<{
         jobId: string | null;
@@ -1079,6 +1082,9 @@ export class IpcBridge {
           // 'overwrite' proceeds with resolvedTargetPath unchanged.
         }
 
+        const settings = await this.settingsStore.getSettings();
+        const verifyIntegrity = options.verifyIntegrity ?? settings.verifyTransferIntegrity ?? true;
+
         const job = this.transferQueue.addJob({
           sourceProvider,
           sourcePath: options.sourcePath,
@@ -1086,6 +1092,9 @@ export class IpcBridge {
           targetPath: resolvedTargetPath,
           isDirectory,
           totalBytes,
+          verifyIntegrity,
+          verifyChecksum: options.verifyChecksum,
+          expectedChecksum: options.expectedChecksum,
         });
 
         return { jobId: job.id, resolvedPolicy, appliedToAll };

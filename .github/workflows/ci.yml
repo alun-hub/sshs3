@@ -56,3 +56,7 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Headless Smoke Test
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run test:smoke

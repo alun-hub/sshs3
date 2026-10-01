@@ -101,6 +101,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showHiddenFiles, setShowHiddenFiles] = useState<boolean>(
     currentSettings.showHiddenFiles ?? false
   );
+  const [verifyTransferIntegrity, setVerifyTransferIntegrity] = useState<boolean>(
+    currentSettings.verifyTransferIntegrity ?? true
+  );
   const [shareFoldersAcrossTypes, setShareFoldersAcrossTypes] = useState<boolean>(
     currentSettings.shareFoldersAcrossTypes ?? false
   );
@@ -173,6 +176,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
+      setVerifyTransferIntegrity(currentSettings.verifyTransferIntegrity ?? true);
       setShareFoldersAcrossTypes(currentSettings.shareFoldersAcrossTypes ?? false);
       setConfirmBeforeDelete(currentSettings.confirmBeforeDelete ?? true);
       setDotfilesPoolEnabled(currentSettings.dotfilesPoolEnabled ?? false);
@@ -311,6 +315,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
       showHiddenFiles,
+      verifyTransferIntegrity,
       shareFoldersAcrossTypes,
       confirmBeforeDelete,
       dotfilesPoolEnabled,
@@ -1178,6 +1183,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
                       />
                       <span className="text-xs text-txt-primary">Confirm before deleting files and folders</span>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={verifyTransferIntegrity}
+                        onChange={(e) => setVerifyTransferIntegrity(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">Verify file integrity and size after transfer</span>
                     </label>
                   </div>
 

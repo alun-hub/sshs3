@@ -1,7 +1,9 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { Transform, type TransformCallback } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type {
+  FileEntry,
   IStorageProvider,
   StorageType,
   TransferProgress,
@@ -56,6 +58,7 @@ export interface ByteMeterOptions {
   pauseController?: PauseController;
   onProgress?: (progress: TransferProgress) => void;
   emitCompletedOnFlush?: boolean;
+  computeChecksum?: boolean;
 }
 
 /**
@@ -72,6 +75,11 @@ export class ByteMeter extends Transform {
   private readonly pauseController?: PauseController;
   private readonly onProgress?: (progress: TransferProgress) => void;
   private readonly emitCompletedOnFlush: boolean;
+  private readonly computeChecksum: boolean;
+  private hasher?: crypto.Hash;
+  private md5Hasher?: crypto.Hash;
+  private _sha256?: string;
+  private _md5?: string;
   private startTime = 0;
   private lastEmitTime = 0;
   private lastEmittedBytes = 0;
@@ -86,6 +94,11 @@ export class ByteMeter extends Transform {
     this.pauseController = options.pauseController;
     this.onProgress = options.onProgress;
     this.emitCompletedOnFlush = options.emitCompletedOnFlush ?? true;
+    this.computeChecksum = options.computeChecksum ?? true;
+    if (this.computeChecksum) {
+      this.hasher = crypto.createHash('sha256');
+      this.md5Hasher = crypto.createHash('md5');
+    }
   }
 
   private calculateSpeed(now: number): number {
@@ -170,6 +183,11 @@ export class ByteMeter extends Transform {
         : Buffer.byteLength(chunk);
       this.transferredBytes += chunkSize;
 
+      if (this.hasher) {
+        this.hasher.update(chunk);
+        this.md5Hasher?.update(chunk);
+      }
+
       if (this.throttleIntervalMs === 0) {
         this.emitProgress('running');
         this.lastEmitTime = now;
@@ -193,10 +211,36 @@ export class ByteMeter extends Transform {
     if (this.startTime === 0) {
       this.startTime = Date.now();
     }
+    if (this.hasher && !this._sha256) {
+      this._sha256 = this.hasher.digest('hex');
+      this._md5 = this.md5Hasher?.digest('hex');
+    }
     if (this.emitCompletedOnFlush) {
       this.emitProgress('completed');
     }
     callback();
+  }
+
+  /**
+   * Returns the computed SHA-256 digest of the transferred bytes in hex.
+   */
+  get sha256(): string | undefined {
+    if (this.hasher && !this._sha256) {
+      this._sha256 = this.hasher.digest('hex');
+      this._md5 = this.md5Hasher?.digest('hex');
+    }
+    return this._sha256;
+  }
+
+  /**
+   * Returns the computed MD5 digest of the transferred bytes in hex.
+   */
+  get md5(): string | undefined {
+    if (this.md5Hasher && !this._md5) {
+      this._sha256 = this.hasher?.digest('hex');
+      this._md5 = this.md5Hasher.digest('hex');
+    }
+    return this._md5;
   }
 
   /**
@@ -222,6 +266,9 @@ export interface TransferOptions {
   onProgress?: (progress: TransferProgress) => void;
   throttleIntervalMs?: number;
   emitCompleted?: boolean;
+  verifyIntegrity?: boolean;
+  verifyChecksum?: boolean | 'sha256' | 'md5';
+  expectedChecksum?: string;
 }
 
 /**
@@ -443,6 +490,49 @@ export async function transferFile(options: TransferOptions): Promise<void> {
       throw new Error(
         `Transfer of "${fileName}" incomplete: expected ${totalBytes} bytes but transferred ${meter.transferredBytes}`
       );
+    }
+
+    // P1 #15: Post-transfer integrity & checksum verification on target
+    if (options.verifyIntegrity !== false) {
+      let targetStat: FileEntry | undefined;
+      try {
+        targetStat = await options.targetProvider.stat(resolvedTargetPath);
+      } catch (statErr: any) {
+        throw new Error(
+          `Transfer integrity verification failed: could not stat target file "${fileName}": ${statErr?.message || statErr}`,
+          { cause: statErr }
+        );
+      }
+
+      if (totalBytes > 0 && targetStat.size !== totalBytes) {
+        throw new Error(
+          `Transfer integrity verification failed for "${fileName}": expected ${totalBytes} bytes on target, found ${targetStat.size}`
+        );
+      }
+
+      // Check caller's expected checksum if provided
+      if (options.expectedChecksum) {
+        const actualChecksum = meter.sha256;
+        if (actualChecksum && actualChecksum.toLowerCase() !== options.expectedChecksum.toLowerCase()) {
+          throw new Error(
+            `Checksum verification failed for "${fileName}": expected ${options.expectedChecksum} but computed ${actualChecksum}`
+          );
+        }
+      }
+
+      // Check target provider's checksum if requested
+      if (options.verifyChecksum) {
+        const algo = typeof options.verifyChecksum === 'string' ? options.verifyChecksum : 'sha256';
+        if (typeof options.targetProvider.getChecksum === 'function') {
+          const targetChecksum = await options.targetProvider.getChecksum(resolvedTargetPath, algo);
+          const sourceChecksum = algo === 'md5' ? meter.md5 : meter.sha256;
+          if (targetChecksum && sourceChecksum && targetChecksum.toLowerCase() !== sourceChecksum.toLowerCase()) {
+            throw new Error(
+              `Checksum verification failed for "${fileName}": source ${algo} (${sourceChecksum}) does not match target ${algo} (${targetChecksum})`
+            );
+          }
+        }
+      }
     }
 
     if (options.emitCompleted ?? true) {

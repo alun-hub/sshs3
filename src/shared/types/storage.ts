@@ -19,6 +19,7 @@ export interface FileEntry {
   mtimeMs?: number; // epoch ms, UTC — precise value for diffing, unlike the display-rounded `mtime` above
   mimeType?: string;
   permissions?: string;
+  etag?: string;
 }
 
 export interface TransferProgress {
@@ -82,6 +83,11 @@ export interface IStorageProvider {
    * supported by all providers (e.g. S3's LastModified is server-controlled).
    */
   setModifiedTime?(remotePath: string, mtimeMs: number): Promise<void>;
+  /**
+   * Computes or retrieves a cryptographic checksum (e.g. 'sha256' or 'md5') for a file.
+   * Returns hex string or undefined if not supported by the provider.
+   */
+  getChecksum?(remotePath: string, algorithm?: 'sha256' | 'md5'): Promise<string | undefined>;
   disconnect?(): Promise<void>;
   // S3-specific administration (buckets & objects)
   getTags?(remotePath: string): Promise<S3Tag[]>;

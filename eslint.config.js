@@ -30,7 +30,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/main/**/*.{ts,cjs}', 'src/preload/**/*.ts', 'src/shared/**/*.ts'],
+    files: ['src/main/**/*.{ts,cjs}', 'src/preload/**/*.ts', 'src/shared/**/*.ts', 'scripts/**/*.{mjs,js}'],
     languageOptions: {
       globals: { ...globals.node },
     },

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {
   BaseStorageProvider,
   formatDate,
@@ -256,6 +257,20 @@ export class LocalStorageProvider extends BaseStorageProvider {
     const fullPath = this.resolvePath(remotePath);
     const mtime = new Date(mtimeMs);
     await fsp.utimes(fullPath, mtime, mtime);
+  }
+
+  /**
+   * Computes a cryptographic checksum for a file on local storage.
+   */
+  async getChecksum(remotePath: string, algorithm: 'sha256' | 'md5' = 'sha256'): Promise<string> {
+    const fullPath = this.resolvePath(remotePath);
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash(algorithm);
+      const stream = fs.createReadStream(fullPath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('error', reject);
+      stream.on('end', () => resolve(hash.digest('hex')));
+    });
   }
 
   async disconnect(): Promise<void> {

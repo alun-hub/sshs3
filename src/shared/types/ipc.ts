@@ -474,6 +474,9 @@ export interface MultiSSHApi {
     targetProviderId: string;
     targetPath: string;
     conflictPolicy?: TransferConflictResolution;
+    verifyIntegrity?: boolean;
+    verifyChecksum?: boolean | 'sha256' | 'md5';
+    expectedChecksum?: string;
   }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean }>;
   transferPause(jobId: string): Promise<void>;
   transferResume(jobId: string): Promise<void>;

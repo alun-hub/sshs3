@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { Readable, Writable, PassThrough } from 'node:stream';
@@ -97,6 +98,12 @@ class MemoryStorageProvider implements IStorageProvider {
       };
     }
     throw new Error(`File not found: ${remotePath}`);
+  }
+
+  async getChecksum(remotePath: string, algorithm: 'sha256' | 'md5' = 'sha256'): Promise<string> {
+    const content = this.files.get(remotePath);
+    if (!content) throw new Error(`File not found: ${remotePath}`);
+    return crypto.createHash(algorithm).update(content).digest('hex');
   }
 
   async createFolder(remotePath: string): Promise<void> {
@@ -865,6 +872,183 @@ describe('TransferPipeline', () => {
       ).resolves.toBeUndefined();
 
       expect(memTarget.files.get('data.txt')?.toString()).toBe('content');
+    });
+  });
+
+  describe('Post-transfer integrity and checksum verification (P1 #15)', () => {
+    it('computes rolling sha256 and md5 digests in ByteMeter', async () => {
+      const payload = Buffer.from('hello world verification payload');
+      const expectedSha256 = crypto.createHash('sha256').update(payload).digest('hex');
+      const expectedMd5 = crypto.createHash('md5').update(payload).digest('hex');
+
+      const meter = new ByteMeter();
+      const input = Readable.from([payload]);
+      const output = new PassThrough();
+
+      input.pipe(meter).pipe(output);
+      await new Promise<void>((resolve, reject) => {
+        output.on('finish', () => resolve());
+        output.on('error', reject);
+      });
+
+      expect(meter.sha256).toBe(expectedSha256);
+      expect(meter.md5).toBe(expectedMd5);
+    });
+
+    it('detects and cleans up when target file size does not match expected size', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('sample.dat', Buffer.from('1234567890'));
+      const memTarget = new MemoryStorageProvider();
+
+      // Force target stat to return a truncated size
+      const origStat = memTarget.stat.bind(memTarget);
+      memTarget.stat = async (p: string) => {
+        const res = await origStat(p);
+        return { ...res, size: 5 }; // truncated to 5 bytes
+      };
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'sample.dat',
+          targetProvider: memTarget,
+          targetPath: 'sample.dat',
+          totalBytes: 10,
+        })
+      ).rejects.toThrow(/Transfer integrity verification failed/i);
+
+      expect(memTarget.files.has('sample.dat')).toBe(false);
+    });
+
+    it('verifies expectedChecksum when provided and matches', async () => {
+      const data = Buffer.from('exact content to verify');
+      const hash = crypto.createHash('sha256').update(data).digest('hex');
+
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('good.txt', data);
+      const memTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'good.txt',
+          targetProvider: memTarget,
+          targetPath: 'good.txt',
+          totalBytes: data.length,
+          expectedChecksum: hash,
+        })
+      ).resolves.toBeUndefined();
+
+      expect(memTarget.files.has('good.txt')).toBe(true);
+    });
+
+    it('fails and removes target file when expectedChecksum mismatches', async () => {
+      const data = Buffer.from('exact content to verify');
+
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('corrupt.txt', data);
+      const memTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'corrupt.txt',
+          targetProvider: memTarget,
+          targetPath: 'corrupt.txt',
+          totalBytes: data.length,
+          expectedChecksum: '0000000000000000000000000000000000000000000000000000000000000000',
+        })
+      ).rejects.toThrow(/Checksum verification failed/i);
+
+      expect(memTarget.files.has('corrupt.txt')).toBe(false);
+    });
+
+    it('verifies target checksum against source using verifyChecksum: "sha256"', async () => {
+      const data = Buffer.from('verified via target provider');
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('verified.txt', data);
+      const memTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'verified.txt',
+          targetProvider: memTarget,
+          targetPath: 'verified.txt',
+          totalBytes: data.length,
+          verifyChecksum: 'sha256',
+        })
+      ).resolves.toBeUndefined();
+
+      expect(memTarget.files.has('verified.txt')).toBe(true);
+    });
+
+    it('fails transfer if target provider reports mismatched checksum', async () => {
+      const data = Buffer.from('tampered content');
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('tampered.txt', data);
+      const memTarget = new MemoryStorageProvider();
+
+      memTarget.getChecksum = async () => 'badchecksumffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'tampered.txt',
+          targetProvider: memTarget,
+          targetPath: 'tampered.txt',
+          totalBytes: data.length,
+          verifyChecksum: 'sha256',
+        })
+      ).rejects.toThrow(/Checksum verification failed/i);
+
+      expect(memTarget.files.has('tampered.txt')).toBe(false);
+    });
+
+    it('allows skipping integrity checks when verifyIntegrity: false', async () => {
+      const data = Buffer.from('data');
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', data);
+      const memTarget = new MemoryStorageProvider();
+
+      // Corrupt target stat size
+      memTarget.stat = async (p: string) => ({
+        name: p,
+        path: p,
+        size: 99999,
+        isDirectory: false,
+      });
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+          totalBytes: data.length,
+          verifyIntegrity: false,
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it('LocalStorageProvider.getChecksum computes sha256 and md5 on real filesystem', async () => {
+      const tmpFile = path.join(sourceDir, 'checksum-test.txt');
+      await fs.writeFile(tmpFile, 'local filesystem hash test content');
+      const expectedSha256 = crypto
+        .createHash('sha256')
+        .update('local filesystem hash test content')
+        .digest('hex');
+      const expectedMd5 = crypto
+        .createHash('md5')
+        .update('local filesystem hash test content')
+        .digest('hex');
+
+      const localProvider = new LocalStorageProvider({ basePath: sourceDir });
+      const sha256 = await localProvider.getChecksum('checksum-test.txt', 'sha256');
+      const md5 = await localProvider.getChecksum('checksum-test.txt', 'md5');
+
+      expect(sha256).toBe(expectedSha256);
+      expect(md5).toBe(expectedMd5);
     });
   });
 });

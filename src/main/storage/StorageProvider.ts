@@ -95,6 +95,7 @@ export abstract class BaseStorageProvider implements IStorageProvider {
   abstract rename(oldPath: string, newPath: string): Promise<void>;
   abstract createReadStream(remotePath: string, start?: number, end?: number): Promise<NodeJS.ReadableStream>;
   abstract createWriteStream(remotePath: string, options?: WriteStreamOptions): Promise<NodeJS.WritableStream>;
+  getChecksum?(remotePath: string, algorithm?: 'sha256' | 'md5'): Promise<string | undefined>;
   abstract disconnect?(): Promise<void>;
 }
 
