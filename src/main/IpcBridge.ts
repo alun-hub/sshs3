@@ -1610,6 +1610,33 @@ export class IpcBridge {
     return agentPath ? { ...config, agentPath } : config;
   }
 
+  /**
+   * Opens (or reuses) the remote-profile-sync storage provider. Unlike the file manager's
+   * STORAGE_CONNECT, the sync target used to be created straight from its saved config, so a
+   * smartcard/FIDO2 target ignored the already-unlocked agent and opened its own PKCS#11 session
+   * (often via a different library than the one the card was unlocked with) — surfacing a second
+   * PIN prompt whose answer then fell through to a password prompt and failed.
+   */
+  private async getSyncProvider(target: StorageConnectConfig): ReturnType<StorageRegistry["getOrCreate"]> {
+    // Windows-only: Linux keeps creating the sync provider straight from its saved config.
+    if (process.platform !== 'win32' || target.type !== 'sftp' || !target.sftpConfig || this.storageRegistry.has(target.id)) {
+      return await this.storageRegistry.getOrCreate(target);
+    }
+    let sftpConfig = await this.resolveProxyJumpConfig(target.sftpConfig);
+    if (sftpConfig.authType === 'smartcard' && !sftpConfig.agentPath) {
+      // Same physical card as an already-unlocked terminal/startup agent: reuse it rather than
+      // opening a second PKCS#11 session (the card's PIV keys are the same whichever library
+      // loaded them).
+      const unlocked = Array.from(this.globalSmartcardAgents.entries()).find(([key]) => key !== '__fido2__');
+      if (unlocked) {
+        sftpConfig = { ...sftpConfig, agentPath: unlocked[1].socketPath };
+      }
+    }
+    sftpConfig = await this.prepareSftpSmartcardConfig(sftpConfig, target.id);
+    sftpConfig = await this.prepareFido2SftpConfig(sftpConfig, target.id);
+    return await this.storageRegistry.getOrCreate({ ...target, sftpConfig });
+  }
+
   /** Same rationale as prepareFido2Config, applied to an SFTP connection (see prepareSftpSmartcardConfig). */
   private async prepareFido2SftpConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
     if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
@@ -2412,7 +2439,7 @@ export class IpcBridge {
         if (!(await this.ensureSyncUnlockedForAutoSync(config))) {
           return;
         }
-        const provider = await this.storageRegistry.getOrCreate(config.target);
+        const provider = await this.getSyncProvider(config.target);
         await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
         await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
         await this.pushSyncStatusToRenderer();
@@ -2454,7 +2481,7 @@ export class IpcBridge {
       if (!(await this.ensureSyncUnlockedForAutoSync(config))) {
         return;
       }
-      const provider = await this.storageRegistry.getOrCreate(config.target);
+      const provider = await this.getSyncProvider(config.target);
       const result = await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
       await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
       if (result.sshNativeConflicts.length > 0) {
@@ -2583,7 +2610,7 @@ export class IpcBridge {
       if (!config.target) {
         throw new Error('Configure a sync target first (profile-sync:setup)');
       }
-      const provider = await this.storageRegistry.getOrCreate(config.target);
+      const provider = await this.getSyncProvider(config.target);
       await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
       await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
       return await this.buildSyncStatus();
@@ -2599,7 +2626,7 @@ export class IpcBridge {
         if (!config.target) {
           throw new Error('Configure a sync target first (profile-sync:setup)');
         }
-        const provider = await this.storageRegistry.getOrCreate(config.target);
+        const provider = await this.getSyncProvider(config.target);
 
         const result = await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '', {
           topology: passwords?.topologyPassword,
@@ -2636,7 +2663,7 @@ export class IpcBridge {
         if (!config.target) {
           throw new Error('Configure a sync target first (profile-sync:setup)');
         }
-        const provider = await this.storageRegistry.getOrCreate(config.target);
+        const provider = await this.getSyncProvider(config.target);
         return await this.profileSyncService.compareWithRemote(provider, config.remoteBasePath ?? '');
       }
     );
@@ -2780,7 +2807,7 @@ export class IpcBridge {
 
         if (config.target) {
           try {
-            const provider = await this.storageRegistry.getOrCreate(config.target);
+            const provider = await this.getSyncProvider(config.target);
             const result = await this.profileSyncService.wipeRemote(provider, config.remoteBasePath ?? '');
             remoteWipeErrors.push(...result.errors);
           } catch (err: any) {
@@ -2985,7 +3012,7 @@ export class IpcBridge {
     if (!config.target) {
       throw new Error('Configure a sync target first (profile-sync:setup)');
     }
-    const provider = await this.storageRegistry.getOrCreate(config.target);
+    const provider = await this.getSyncProvider(config.target);
 
     if (config.topologySaltBase64 && config.credentialsSaltBase64) {
       this.syncCryptoService.unlock(
