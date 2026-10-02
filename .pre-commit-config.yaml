@@ -52,9 +52,9 @@ repos:
       - id: npm-audit
         name: npm audit (high+)
         language: system
-        entry: npm audit --audit-level=high
+        entry: node scripts/npm-audit-gate.mjs
         pass_filenames: false
-        files: package(-lock)?\.json$
+        files: ^(package(-lock)?\.json|scripts/npm-audit-gate\.mjs)$
 
       - id: trivy
         name: trivy fs (HIGH/CRITICAL, incl. dev deps)
