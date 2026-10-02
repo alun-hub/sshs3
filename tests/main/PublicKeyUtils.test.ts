@@ -121,7 +121,7 @@ describe('isPrivateKeyEncrypted', () => {
     const len = Buffer.alloc(4);
     len.writeUInt32BE(cipher.length);
     const body = Buffer.concat([magic, len, Buffer.from(cipher), Buffer.alloc(16)]).toString('base64');
-    return `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`;
+    return `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`; // pragma: allowlist secret
   }
 
   it('detects unencrypted and encrypted OpenSSH keys', () => {
@@ -130,8 +130,8 @@ describe('isPrivateKeyEncrypted', () => {
   });
 
   it('detects encrypted PEM and treats unknown formats as encrypted', () => {
-    expect(isPrivateKeyEncrypted('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n')).toBe(true);
-    expect(isPrivateKeyEncrypted('-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----')).toBe(false);
+    expect(isPrivateKeyEncrypted('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n')).toBe(true); // pragma: allowlist secret
+    expect(isPrivateKeyEncrypted('-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----')).toBe(false); // pragma: allowlist secret
     expect(isPrivateKeyEncrypted('whatever')).toBe(true);
   });
 });

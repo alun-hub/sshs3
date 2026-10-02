@@ -116,7 +116,7 @@ export function parseInstallOutput(stdout: string): Map<number, InstallLineStatu
  * PEM (`ENCRYPTED`). Okänt format räknas som krypterat så att vi aldrig försöker verifiera i onödan.
  */
 export function isPrivateKeyEncrypted(text: string): boolean {
-  const m = /-----BEGIN OPENSSH PRIVATE KEY-----([\s\S]+?)-----END OPENSSH PRIVATE KEY-----/.exec(text);
+  const m = /-----BEGIN OPENSSH PRIVATE KEY-----([\s\S]+?)-----END OPENSSH PRIVATE KEY-----/.exec(text); // pragma: allowlist secret
   if (m) {
     const buf = Buffer.from(m[1].replace(/\s+/g, ''), 'base64');
     const magic = 'openssh-key-v1\0';

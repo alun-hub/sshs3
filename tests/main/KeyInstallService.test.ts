@@ -24,7 +24,16 @@ vi.mock('../../src/main/smartcard/AskpassServer', () => {
   return { AskpassServer: MockAskpassServer };
 });
 
-import { installPublicKeys, buildKeyInstallArgs, probeHost, testLogin } from '../../src/main/ssh/KeyInstallService';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  installPublicKeys,
+  buildKeyInstallArgs,
+  probeHost,
+  testLogin,
+  verifyKeyLogin,
+} from '../../src/main/ssh/KeyInstallService';
 import { REMOTE_INSTALL_COMMAND } from '../../src/main/ssh/PublicKeyUtils';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -468,5 +477,121 @@ describe('installPublicKeys: switched from PIV to FIDO2 (the card is still in th
     const argv = (mockSpawn.mock.calls[0] as any[])[1] as string[];
     expect(argv).not.toContain('-I');
     expect(argv).not.toContain('PubkeyAuthentication=no');
+  });
+});
+
+describe('verifyKeyLogin', () => {
+  let dir: string;
+
+  function opensshKey(cipher: string): string {
+    const magic = Buffer.from('openssh-key-v1\0', 'latin1');
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(cipher.length);
+    const body = Buffer.concat([magic, len, Buffer.from(cipher), Buffer.alloc(16)]).toString('base64');
+    return `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`; // pragma: allowlist secret
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.queue = [];
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 's3m-verify-'));
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  function closeWith(code: number | 'error') {
+    const c = makeChild();
+    state.queue = [c];
+    const before = mockSpawn.mock.calls.length;
+    // The key file is read asynchronously before ssh is spawned; only react once spawn has happened.
+    const tick = () => {
+      if (mockSpawn.mock.calls.length <= before) return void setImmediate(tick);
+      if (code === 'error') c.emit('error', new Error('spawn ssh ENOENT'));
+      else c.emit('close', code);
+    };
+    setImmediate(tick);
+  }
+
+  it('proves key login with only that key: no password, no agent, batch mode', async () => {
+    const key = path.join(dir, 'id');
+    fs.writeFileSync(key, opensshKey('none'));
+    closeWith(0);
+
+    expect(await verifyKeyLogin(baseConfig, key, 'ssh-ed25519')).toBe(true);
+    const argv = (mockSpawn.mock.calls[0] as any[])[1] as string[];
+    expect(argv).toEqual(expect.arrayContaining(['-i', key, 'BatchMode=yes', 'PasswordAuthentication=no', 'IdentityAgent=none']));
+    expect(argv).toContain('-J');
+    expect(argv[argv.length - 1]).toBe('true');
+  });
+
+  it('reports a rejected key as false, and a spawn failure as false', async () => {
+    const key = path.join(dir, 'id');
+    fs.writeFileSync(key, opensshKey('none'));
+    closeWith(255);
+    expect(await verifyKeyLogin(baseConfig, key, 'ssh-ed25519')).toBe(false);
+    closeWith('error');
+    expect(await verifyKeyLogin(baseConfig, key, 'ssh-ed25519')).toBe(false);
+  });
+
+  it('cannot judge keys that need interaction: FIDO2, passphrase-protected, unreadable', async () => {
+    const plain = path.join(dir, 'plain');
+    const locked = path.join(dir, 'locked');
+    fs.writeFileSync(plain, opensshKey('none'));
+    fs.writeFileSync(locked, opensshKey('aes256-ctr'));
+
+    expect(await verifyKeyLogin(baseConfig, plain, 'sk-ssh-ed25519@openssh.com')).toBeUndefined();
+    expect(await verifyKeyLogin(baseConfig, locked, 'ssh-ed25519')).toBeUndefined();
+    expect(await verifyKeyLogin(baseConfig, path.join(dir, 'missing'), 'ssh-ed25519')).toBeUndefined();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('error paths', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.queue = [];
+  });
+
+  it('installPublicKeys reports a spawn failure instead of throwing', async () => {
+    const c = makeChild();
+    state.queue = [c];
+    const p = installPublicKeys({ config: baseConfig, publicKeys: [KEY_A] });
+    while (state.queue.includes(c)) await new Promise((r) => setImmediate(r));
+    c.emit('error', new Error('spawn ssh ENOENT'));
+    const out = await p;
+    expect(out.success).toBe(false);
+    expect(out.error).toContain('ENOENT');
+  });
+
+  it('probeHost and testLogin report a spawn failure instead of throwing', async () => {
+    for (const run of [(): Promise<any> => probeHost(baseConfig), (): Promise<any> => testLogin(baseConfig)]) {
+      const c = makeChild();
+      state.queue = [c];
+      const p = run();
+      while (state.queue.includes(c)) await new Promise((r) => setImmediate(r));
+      c.emit('error', new Error('spawn ssh ENOENT'));
+      const res = await p;
+      expect(res.success ?? res.reachable).toBe(false);
+      expect(res.error).toContain('ENOENT');
+    }
+  });
+
+  it('answers a stored passphrase for key passphrase prompts, and presence hints reach the callback', async () => {
+    const onPresence = vi.fn();
+    const c = makeChild();
+    state.queue = [c];
+    const p = installPublicKeys({
+      config: { ...baseConfig, authType: 'privateKey', privateKeyPath: '/k', password: undefined, passphrase: 'pp' }, // pragma: allowlist secret
+      publicKeys: [KEY_A],
+      onPresence,
+    });
+    while (state.queue.includes(c)) await new Promise((r) => setImmediate(r));
+    expect(await state.askpassHandler!('Enter passphrase for key /k: ')).toBe('pp');
+    c.stderr.write('Confirm user presence for key ED25519-SK SHA256:abc\n');
+    await new Promise((r) => setImmediate(r));
+    c.stdout.write('S3M:1:installed\n');
+    setImmediate(() => c.emit('close', 0));
+    expect(await p).toMatchObject({ success: true });
+    expect(onPresence).toHaveBeenCalledWith(expect.stringContaining('Confirm user presence'));
   });
 });

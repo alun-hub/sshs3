@@ -36,7 +36,7 @@ export function chooseLoginOrder(opts: LoginOrderInput): InstallLoginStep[] {
 }
 
 export const LOGIN_STEP_LABELS: Record<InstallLoginStep, string> = {
-  password: 'Password',
+  password: 'Password', // pragma: allowlist secret
   profile: "This profile's key",
   smartcard: 'Smartcard (PKCS#11)',
   agent: 'Already-unlocked keys (ssh-agent)',

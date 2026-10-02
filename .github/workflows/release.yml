@@ -23,7 +23,7 @@ jobs:
       matrix:
         platform:
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-24.04
             target: linux
           - name: Windows
             os: windows-latest
@@ -104,7 +104,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       id-token: write

@@ -18,7 +18,7 @@ jobs:
       matrix:
         platform:
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - name: Windows
             os: windows-latest
     steps:
