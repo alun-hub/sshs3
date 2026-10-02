@@ -310,6 +310,13 @@ export class SmartcardDetector {
       args.push('-i', config.privateKeyPath);
     }
 
+    // Windows only: the OS has a single shared ssh-agent, which may already hold an unlocked PIV key.
+    // ssh offers agent identities before -i, so a FIDO2 key-file profile would silently authenticate
+    // with that PIV key instead of the security key. IdentitiesOnly makes it use just this key file.
+    if (process.platform === 'win32' && config.authType === 'fido2' && config.privateKeyPath) {
+      args.push('-o', 'IdentitiesOnly=yes');
+    }
+
     // Password profiles: don't offer keys from the user's default agent / ~/.ssh. An agent holding a
     // touch- or PIN-protected key (FIDO2, PIV) would otherwise block the login before the
     // password is ever tried.
