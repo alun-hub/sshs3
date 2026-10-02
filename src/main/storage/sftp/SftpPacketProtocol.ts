@@ -52,6 +52,10 @@ export class SftpPacketProtocol extends EventEmitter {
   private handleFatalError(err: Error): void {
     if (this.isClosed) return;
     this.isClosed = true;
+    // Stop buffering: after a fatal error (e.g. an oversized packet length) no further data
+    // may accumulate, and the peer is cut off so it cannot keep feeding us.
+    this.incomingBuffer = Buffer.alloc(0);
+    (this.readable as { destroy?: () => void }).destroy?.();
     if (this.versionReject) {
       this.versionReject(err);
       this.versionReject = null;
@@ -81,6 +85,7 @@ export class SftpPacketProtocol extends EventEmitter {
   }
 
   private onData(chunk: Buffer): void {
+    if (this.isClosed) return;
     this.incomingBuffer = Buffer.concat([this.incomingBuffer, chunk]);
 
     while (this.incomingBuffer.length >= 4) {

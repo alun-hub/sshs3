@@ -15,6 +15,22 @@ describe('SftpPacketProtocol', () => {
     protocol = new SftpPacketProtocol(clientIn, clientOut);
   });
 
+  it('closes and stops buffering after an oversized packet length', () => {
+    const errors: Error[] = [];
+    protocol.on('error', (e: Error) => errors.push(e));
+    const header = Buffer.alloc(4);
+    header.writeUInt32BE(17 * 1024 * 1024, 0);
+    clientIn.write(header);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/exceeds safe maximum/);
+    expect(clientIn.destroyed).toBe(true);
+    expect((protocol as unknown as { incomingBuffer: Buffer }).incomingBuffer.length).toBe(0);
+    // Later data is ignored instead of re-triggering the error or growing the buffer.
+    (protocol as unknown as { onData: (c: Buffer) => void }).onData(Buffer.alloc(1024));
+    expect((protocol as unknown as { incomingBuffer: Buffer }).incomingBuffer.length).toBe(0);
+    expect(errors).toHaveLength(1);
+  });
+
   it('performs init handshake and receives version packet', async () => {
     // Listen for client init packet
     const clientPromise = protocol.init();

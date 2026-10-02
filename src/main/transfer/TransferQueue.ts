@@ -271,6 +271,9 @@ export class TransferQueue extends EventEmitter {
   async waitForJob(jobId: string): Promise<TransferJob> {
     const context = this.contexts.get(jobId);
     if (!context) {
+      // The context is released when a job finishes; a finished job is still in `jobs`.
+      const finished = this.jobs.find((j) => j.id === jobId);
+      if (finished) return finished;
       throw new Error(`Job not found: ${jobId}`);
     }
     return context.waitPromise;

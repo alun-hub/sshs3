@@ -8,12 +8,14 @@ import {
   Plus,
   Shuffle,
   Square,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react';
 import type { SSHActiveTunnel, SSHConnectionConfig, SSHTunnelConfig } from '@shared/types/ssh';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { SSHTunnelWizard } from './SSHTunnelWizard';
+import { useConfirm } from '../ConfirmDialog';
 
 interface SSHGlobalTunnelsModalProps {
   open: boolean;
@@ -44,6 +46,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
   const [error, setError] = useState<string | null>(null);
   const [newTunnelConnectionId, setNewTunnelConnectionId] = useState('');
   const [wizardTarget, setWizardTarget] = useState<{ connectionId: string; tunnelId?: string } | null>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +89,29 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
       setActiveTunnels((prev) => prev.filter((t) => t.id !== activeId));
     } catch (err) {
       setError(describeIpcError(err, 'Failed to stop the tunnel'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (connection: SSHConnectionConfig, tunnel: SSHTunnelConfig) => {
+    if (!(await confirm({ title: 'Delete tunnel', message: `Delete the saved tunnel "${tunnel.name}"?` }))) return;
+    setBusyId(tunnel.id);
+    setError(null);
+    try {
+      const active = findActive(tunnel.id);
+      if (active) {
+        await window.multissh.sshTunnelStop(active.id).catch(() => {});
+        setActiveTunnels((prev) => prev.filter((t) => t.id !== active.id));
+      }
+      const updated: SSHConnectionConfig = {
+        ...connection,
+        tunnels: (connection.tunnels || []).filter((t) => t.id !== tunnel.id),
+      };
+      await window.multissh.profilesSaveSSH(updated);
+      setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to delete the tunnel'));
     } finally {
       setBusyId(null);
     }
@@ -231,6 +257,16 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                                 className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Delete tunnel"
+                                aria-label={`Delete tunnel ${tunnel.name}`}
+                                disabled={isBusy}
+                                onClick={() => handleDelete(profile, tunnel)}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-rose-950/40 hover:text-rose-300 transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
                               </button>
                               {active ? (
                                 <button

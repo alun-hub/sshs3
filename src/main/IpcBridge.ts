@@ -122,6 +122,8 @@ import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
 
+const DISPOSE_STEP_TIMEOUT_MS = 5000;
+
 const execFileAsync = promisify(execFile);
 
 interface PendingAskpassPrompt {
@@ -3916,6 +3918,29 @@ export class IpcBridge {
     this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);
   }
 
+  /**
+   * Runs one awaited cleanup step of dispose() so a rejection or a hang in one manager
+   * can neither skip the remaining cleanup nor block app quit.
+   */
+  private async disposeStep(label: string, step: () => Promise<void> | void): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve().then(step),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            console.warn(`IpcBridge.dispose: ${label} did not finish within ${DISPOSE_STEP_TIMEOUT_MS} ms`);
+            resolve();
+          }, DISPOSE_STEP_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (err) {
+      console.warn(`IpcBridge.dispose: ${label} failed:`, err instanceof Error ? err.message : err);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   public async dispose(): Promise<void> {
     for (const channel of this.handlers) {
       this.ipcMain.removeHandler(channel);
@@ -3945,7 +3970,7 @@ export class IpcBridge {
     if (this.onK8sTerminalExit) {
       this.k8sTerminalManager.off('exit', this.onK8sTerminalExit);
     }
-    await this.k8sTerminalManager.killAll();
+    await this.disposeStep('k8sTerminalManager.killAll', () => this.k8sTerminalManager.killAll());
 
     if (this.onK8sLogData) {
       this.k8sLogManager.off('data', this.onK8sLogData);
@@ -3953,12 +3978,12 @@ export class IpcBridge {
     if (this.onK8sLogEnd) {
       this.k8sLogManager.off('end', this.onK8sLogEnd);
     }
-    await this.k8sLogManager.stopAll();
+    await this.disposeStep('k8sLogManager.stopAll', () => this.k8sLogManager.stopAll());
 
     if (this.onK8sPortForwardChange) {
       this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
     }
-    await this.k8sPortForwardManager.stopAll();
+    await this.disposeStep('k8sPortForwardManager.stopAll', () => this.k8sPortForwardManager.stopAll());
 
     if (this.onSshTunnelChange) {
       this.sshTunnelManager.off('change', this.onSshTunnelChange);
@@ -3966,7 +3991,7 @@ export class IpcBridge {
     // Awaited (unlike the other managers' stopAll() calls above): dispose() is itself awaited by
     // app 'before-quit' before app.quit() runs, so this is what actually guarantees every standalone
     // tunnel process is signalled before the app exits on a normal quit.
-    await this.sshTunnelManager.stopAll();
+    await this.disposeStep('sshTunnelManager.stopAll', () => this.sshTunnelManager.stopAll());
 
     if (this.unsubscribeK8sConfig) {
       this.unsubscribeK8sConfig();

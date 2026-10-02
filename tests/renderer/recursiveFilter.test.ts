@@ -84,3 +84,11 @@ describe('makeNameMatcher', () => {
     expect(makeNameMatcher('a.b*')('aXb1')).toBe(false);
   });
 });
+
+describe('makeNameMatcher backtracking', () => {
+  it('collapses repeated * so pathological globs stay fast', () => {
+    const start = Date.now();
+    expect(makeNameMatcher('*a*a*a*a*a*a*a*a*a*b')('a'.repeat(5000))).toBe(false);
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+});

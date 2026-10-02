@@ -1380,6 +1380,22 @@ describe('IpcBridge', () => {
   });
 
   describe('Disposal', () => {
+    it('disposeStep swallows a rejecting step and never blocks on a hanging one', async () => {
+      vi.useFakeTimers();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const step = (bridge as any).disposeStep.bind(bridge);
+        await expect(step('failing', () => Promise.reject(new Error('boom')))).resolves.toBeUndefined();
+        const hang = step('hanging', () => new Promise<void>(() => {}));
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(hang).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(2);
+      } finally {
+        warn.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
     it('cleans up handlers and calls killAll / disconnectAll', async () => {
       await bridge.dispose();
       expect(mockIpc.handlers.size).toBe(0);

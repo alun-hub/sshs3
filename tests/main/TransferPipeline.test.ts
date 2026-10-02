@@ -1098,6 +1098,20 @@ describe('TransferQueue', () => {
     expect(targetProvider.files.get('file1.txt')?.toString()).toBe('content 1');
   });
 
+  it('waitForJob resolves with the finished job after its context has been released', async () => {
+    sourceProvider.files.set('file1.txt', Buffer.from('content 1'));
+    const queue = new TransferQueue();
+    const job = queue.addJob({
+      sourceProvider,
+      sourcePath: 'file1.txt',
+      targetProvider,
+      targetPath: 'file1.txt',
+    });
+    await queue.waitForJob(job.id);
+    await expect(queue.waitForJob(job.id)).resolves.toBe(job);
+    await expect(queue.waitForJob('missing')).rejects.toThrow(/Job not found/);
+  });
+
   it('should reject duplicate job IDs in addJob', () => {
     const queue = new TransferQueue();
     queue.addJob({

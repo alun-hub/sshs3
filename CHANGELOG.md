@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.10] - 2026-10-02
+
+### Added
+- **Recursive file-name search in the file manager.** The Ctrl+F filter has a new "Recursive" checkbox that searches names in the current folder and all subfolders (works for SFTP, local, S3 and K8s). Hits show their relative path and open/copy/transfer like normal entries. Capped at 1000 hits / 3000 folders; symlinked folders are never followed, and hidden folders are skipped unless "show hidden files" is on. Rename is disabled while recursive hits are shown, and the filter survives a refresh (it only resets when you change folder).
+- **Delete button for saved SSH tunnels** in the global SSH Tunnels menu (asks for confirmation, stops a running tunnel first).
+- **Wildcards `*` and `?` in the file filter**, both normal and recursive (e.g. `*.log`, `app-?.txt`). Without wildcards it stays a substring match.
+
+### Fixed
+- Proxy passwords are stripped from SSH and S3 profiles in JSON export.
+- SFTP stream hardening: guard against overlapping reads, unhandled rejection after protocol init, stderr drain and child cleanup in `createExecStream`, and a 16 MB packet-length limit.
+- Memory leak in `TransferQueue` job contexts, async k8s cleanup in `IpcBridge.dispose`, and transfer-progress refresh debounced by 300 ms.
+- Security CI: detect-secrets baseline refreshed, and `npm audit` now runs through `scripts/npm-audit-gate.mjs` with a reviewed allowlist for node-forge GHSA-86w9-cpqp-85rv (only reachable via `win-ca`, signature verification unused, no patched release).
+
+### Changed
+- bump vitest 5.0.1 → 5.0.2, vite 8.3.0 → 8.3.1 and the aws-sdk group (5 packages).
+
 ## [0.96.9] - 2026-10-01
 
 ### Fixed

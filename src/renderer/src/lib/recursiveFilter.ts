@@ -22,11 +22,6 @@ export interface RecursiveFilterSummary {
   skippedDirs: number;
 }
 
-function baseName(entry: FileEntry): string {
-  const normalized = entry.name.replace(/\\/g, '/');
-  return normalized.slice(normalized.lastIndexOf('/') + 1) || entry.name;
-}
-
 /**
  * Walks `rootPath` breadth-first via storageList and collects every entry (file or
  * folder) whose own name contains `query` (case-insensitive). Results get `name` set to
@@ -61,10 +56,10 @@ export async function recursiveFilterFiles(options: RecursiveFilterOptions): Pro
       active += 1;
       try {
         const children = await list(providerId, dir.path);
-        if (signal.aborted) return;
+        if (signal.aborted || truncated) return;
         let added = false;
         for (const child of children) {
-          const name = baseName(child);
+          const name = child.name;
           if (!name || name === '.' || name === '..') continue;
           if (!showHidden && name.startsWith('.')) continue;
           const rel = dir.rel ? `${dir.rel}/${name}` : name;

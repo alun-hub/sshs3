@@ -307,9 +307,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => {
     setSelectedPaths(new Set());
-    setFilterText('');
     void load(true);
   }, [load, refreshToken, currentPath]);
+
+  // Only navigation resets the filter; a refresh (e.g. after a finished transfer) keeps it.
+  useEffect(() => {
+    setFilterText('');
+  }, [source.providerId, currentPath]);
 
   useEffect(() => {
     setRecursiveEntries([]);
@@ -446,9 +450,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [selectedPaths, activeEntries, source.providerId]);
 
   const handleRenameStart = useCallback(() => {
-    if (selectedPaths.size !== 1) return;
+    // Recursive hits carry a relative path as name, which rename would mistake for a new path.
+    if (selectedPaths.size !== 1 || recursiveActive) return;
     setRenamingPath([...selectedPaths][0]);
-  }, [selectedPaths]);
+  }, [selectedPaths, recursiveActive]);
 
   const handleRenameCommit = useCallback(
     async (entry: FileEntry, newName: string) => {
