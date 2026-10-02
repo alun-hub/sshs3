@@ -19,6 +19,7 @@ export interface ExternalEditorSession {
   debounceTimer?: NodeJS.Timeout;
 }
 
+// eslint-disable-next-line security/detect-unsafe-regex -- anchored non-backtracking pattern matching windows reserved device names
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 // Types the OS would *run* rather than open for editing when handed to shell.openPath.
 const ALWAYS_BLOCKED_EXTENSIONS = new Set(['.exe', '.com', '.msi', '.msp', '.scr', '.lnk', '.hta', '.jar', '.desktop', '.app']);

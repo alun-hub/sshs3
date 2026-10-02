@@ -15,6 +15,7 @@ export class SftpReadStream extends Readable {
   private endOffset: number | null = null;
   private chunkSize: number;
   private isOpening = false;
+  private isReading = false;
   private isClosed = false;
 
   constructor(
@@ -29,7 +30,8 @@ export class SftpReadStream extends Readable {
   }
 
   public override _read(size: number): void {
-    if (this.isClosed) return;
+    if (this.isClosed || this.isReading) return;
+    this.isReading = true;
 
     void (async () => {
       try {
@@ -61,12 +63,11 @@ export class SftpReadStream extends Readable {
         }
 
         this.currentOffset += data.length;
-        if (!this.push(data)) {
-          // Downstream backpressure - pause reading until next _read
-          return;
-        }
+        this.push(data);
       } catch (err: any) {
         this.destroy(err);
+      } finally {
+        this.isReading = false;
       }
     })();
   }

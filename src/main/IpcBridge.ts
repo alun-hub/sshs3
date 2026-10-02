@@ -1291,10 +1291,18 @@ export class IpcBridge {
           folders: profiles.folders || [],
           ssh: profiles.ssh.map((p) => {
             const { password: _pw, passphrase: _pp, ...rest } = p;
+            if (rest.proxy && 'password' in rest.proxy) {
+              const { password: _proxyPw, ...proxyRest } = rest.proxy;
+              return { ...rest, proxy: proxyRest };
+            }
             return rest;
           }),
           s3: profiles.s3.map((p) => {
             const { secretAccessKey: _sec, sessionToken: _tok, ...rest } = p;
+            if (rest.proxy && 'password' in rest.proxy) {
+              const { password: _proxyPw, ...proxyRest } = rest.proxy;
+              return { ...rest, proxy: proxyRest };
+            }
             return rest;
           }),
         };
@@ -3937,7 +3945,7 @@ export class IpcBridge {
     if (this.onK8sTerminalExit) {
       this.k8sTerminalManager.off('exit', this.onK8sTerminalExit);
     }
-    void this.k8sTerminalManager.killAll();
+    await this.k8sTerminalManager.killAll();
 
     if (this.onK8sLogData) {
       this.k8sLogManager.off('data', this.onK8sLogData);
@@ -3945,12 +3953,12 @@ export class IpcBridge {
     if (this.onK8sLogEnd) {
       this.k8sLogManager.off('end', this.onK8sLogEnd);
     }
-    void this.k8sLogManager.stopAll();
+    await this.k8sLogManager.stopAll();
 
     if (this.onK8sPortForwardChange) {
       this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
     }
-    void this.k8sPortForwardManager.stopAll();
+    await this.k8sPortForwardManager.stopAll();
 
     if (this.onSshTunnelChange) {
       this.sshTunnelManager.off('change', this.onSshTunnelChange);

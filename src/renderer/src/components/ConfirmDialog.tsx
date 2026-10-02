@@ -110,6 +110,7 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- companion hook for context provider in same file
 export function useConfirm(): (options: ConfirmOptions) => Promise<boolean> {
   const ctx = useContext(ConfirmContext);
   if (!ctx) {

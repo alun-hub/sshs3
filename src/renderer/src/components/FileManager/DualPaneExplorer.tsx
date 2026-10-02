@@ -224,15 +224,23 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only on initial mount to restore saved panes
   }, []);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
     const unsub = window.multissh.onTransferProgress((progress) => {
       if (progress.status === 'completed') {
-        setRefreshToken((t) => t + 1);
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          setRefreshToken((t) => t + 1);
+        }, 300);
       }
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   const persistPaneState = (updatedPanes: Record<PaneSide, PaneState>) => {

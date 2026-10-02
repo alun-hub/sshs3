@@ -45,6 +45,7 @@ export interface SyncTargetDraft {
   remoteBasePath: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper used by companion sync modals
 export function emptySyncTargetDraft(): SyncTargetDraft {
   return {
     type: 'sftp',
@@ -62,6 +63,7 @@ export function emptySyncTargetDraft(): SyncTargetDraft {
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper used by companion sync modals
 export function draftFromTargetConfig(
   target?: { type: 'sftp' | 's3'; sftpConfig?: SFTPConfig; s3Config?: S3Config },
   remoteBasePath = ''
@@ -100,6 +102,7 @@ export function draftFromTargetConfig(
 
 const SYNC_TARGET_ID = 'sshs3-remote-profile-sync';
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper used by companion sync modals
 export function buildSyncTarget(draft: SyncTargetDraft): StorageConnectConfig {
   if (draft.type === 'sftp') {
     return {
@@ -140,6 +143,7 @@ export function buildSyncTarget(draft: SyncTargetDraft): StorageConnectConfig {
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper used by companion sync modals
 export function validateSyncTargetDraft(draft: SyncTargetDraft): string | null {
   if (draft.type === 'sftp') {
     if (!draft.host.trim()) return 'Host is required';

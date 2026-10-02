@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { makeNameMatcher } from '../../lib/nameFilter';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { File, FileArchive, FileCode, FileImage, FileText, Folder, Loader2, Search } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
@@ -111,9 +112,10 @@ export const FileList: React.FC<FileListProps> = ({
   }, []);
 
   const filtered = useMemo(() => {
-    const trimmed = (filterText ?? '').trim().toLowerCase();
-    if (!trimmed) return entries;
-    return entries.filter((e) => e.name.toLowerCase().includes(trimmed));
+    if (!(filterText ?? '').trim()) return entries;
+    const matches = makeNameMatcher(filterText ?? '');
+    // Recursive-filter hits carry a relative path as name; match on the file's own name.
+    return entries.filter((e) => matches(e.name.slice(e.name.lastIndexOf('/') + 1)));
   }, [entries, filterText]);
 
   const sorted = useMemo(() => {

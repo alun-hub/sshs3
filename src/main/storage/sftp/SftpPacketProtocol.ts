@@ -85,6 +85,10 @@ export class SftpPacketProtocol extends EventEmitter {
 
     while (this.incomingBuffer.length >= 4) {
       const packetLength = this.incomingBuffer.readUInt32BE(0);
+      if (packetLength > 16 * 1024 * 1024) {
+        this.handleFatalError(new Error(`SFTP packet length ${packetLength} exceeds safe maximum of 16MB`));
+        return;
+      }
       if (this.incomingBuffer.length < 4 + packetLength) {
         break; // Wait for full packet
       }

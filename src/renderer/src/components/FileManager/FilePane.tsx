@@ -13,6 +13,7 @@ import {
   FileCode,
   FileJson,
   FileSearch,
+  Loader2,
   FileText,
   FolderOpen,
   FolderPlus,
@@ -52,6 +53,7 @@ import { FileEditorModal } from './FileEditorModal';
 import { DirectorySyncModal, type DirectorySyncModalSource } from './DirectorySyncModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { SearchModal } from './SearchModal';
+import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursiveFilter';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { DEFAULT_SHORTCUTS } from '@shared/types/settings';
@@ -103,9 +105,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // list always showed dotfiles regardless of the toggle. Filtering only the
   // list view (not the `entries` state itself) keeps drag/select/refresh
   // logic working against the full listing.
+  const [recursiveFilter, setRecursiveFilter] = useState(false);
+  const [recursiveEntries, setRecursiveEntries] = useState<FileEntry[]>([]);
+  const [recursiveScanning, setRecursiveScanning] = useState(false);
+  const [recursiveNote, setRecursiveNote] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState('');
+  const recursiveActive = recursiveFilter && filterText.trim().length > 0;
+  // While a recursive filter is active the list shows the walk's hits (names are
+  // relative paths, `path` is the real full path) instead of the current folder.
+  const activeEntries = recursiveActive ? recursiveEntries : entries;
   const visibleEntries = useMemo(
-    () => (showHiddenFiles ? entries : entries.filter((e) => !e.name.startsWith('.'))),
-    [entries, showHiddenFiles]
+    () =>
+      showHiddenFiles || recursiveActive ? activeEntries : activeEntries.filter((e) => !e.name.startsWith('.')),
+    [activeEntries, showHiddenFiles, recursiveActive]
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +136,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
   const [editorTailMode, setEditorTailMode] = useState(false);
   const [dotfilesFeedback, setDotfilesFeedback] = useState<string | null>(null);
-  const [filterText, setFilterText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -300,6 +311,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
     void load(true);
   }, [load, refreshToken, currentPath]);
 
+  useEffect(() => {
+    setRecursiveEntries([]);
+    setRecursiveNote(null);
+    if (!recursiveActive) {
+      setRecursiveScanning(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setRecursiveScanning(true);
+      recursiveFilterFiles({
+        providerId: source.providerId,
+        rootPath: currentPath,
+        query: filterText,
+        showHidden: showHiddenFiles,
+        signal: controller.signal,
+        list: (providerId, path) => window.multissh.storageList(providerId, path),
+        onResults: setRecursiveEntries,
+      })
+        .then((summary) => {
+          if (controller.signal.aborted) return;
+          const notes: string[] = [];
+          if (summary.truncated) notes.push(`limit reached (${RECURSIVE_MAX_RESULTS} hits / folder cap) — narrow the filter`);
+          if (summary.skippedDirs > 0) notes.push(`${summary.skippedDirs} folder(s) unreadable`);
+          setRecursiveNote(notes.length > 0 ? notes.join(' · ') : null);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setRecursiveScanning(false);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [recursiveActive, filterText, source.providerId, currentPath, showHiddenFiles, refreshToken]);
+
   const handleOpen = useCallback(
     (entry: FileEntry) => {
       if (entry.isDirectory) {
@@ -336,7 +383,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const handleDelete = useCallback(async () => {
     if (selectedPaths.size === 0) return;
-    const targets = entries.filter((e) => selectedPaths.has(e.path));
+    const targets = activeEntries.filter((e) => selectedPaths.has(e.path));
     const message =
       targets.length === 1 ? (
         <>
@@ -372,13 +419,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedPaths, entries, source.providerId, load, confirm]);
+  }, [selectedPaths, activeEntries, source.providerId, load, confirm]);
 
   const handleDownloadTo = useCallback(async () => {
     if (selectedPaths.size === 0) return;
     const targetFolder = await window.multissh.dialogOpenFolder({ title: 'Download to...' });
     if (!targetFolder) return;
-    const targets = entries.filter((e) => selectedPaths.has(e.path));
+    const targets = activeEntries.filter((e) => selectedPaths.has(e.path));
     try {
       let batchPolicy: TransferConflictResolution | undefined;
       for (const target of targets) {
@@ -396,7 +443,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } catch (err) {
       setError(describeIpcError(err, 'Failed to start download'));
     }
-  }, [selectedPaths, entries, source.providerId]);
+  }, [selectedPaths, activeEntries, source.providerId]);
 
   const handleRenameStart = useCallback(() => {
     if (selectedPaths.size !== 1) return;
@@ -521,7 +568,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   const supportsChmod = source.sourceType !== 's3';
-  const selectedEntries = entries.filter((e) => selectedPaths.has(e.path));
+  const selectedEntries = activeEntries.filter((e) => selectedPaths.has(e.path));
 
   const isAtBucketRoot = source.sourceType === 's3' && (currentPath === '' || currentPath === '/');
   const isBucketEntry =
@@ -1047,7 +1094,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <input
             ref={filterInputRef}
             type="text"
-            placeholder="Filter files in current folder... (Esc to close)"
+            placeholder={
+              recursiveFilter ? 'Search file names in this folder and subfolders... (Esc to close)' : 'Filter files in current folder... (Esc to close)'
+            }
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             onKeyDown={(e) => {
@@ -1061,6 +1110,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
             }}
             className="flex-1 bg-transparent text-xs text-txt-primary placeholder-txt-muted outline-none"
           />
+          {recursiveScanning && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
+          <label
+            className="flex shrink-0 cursor-pointer select-none items-center gap-1 text-2xs text-txt-secondary"
+            title="Also search in all subfolders"
+          >
+            <input
+              type="checkbox"
+              checked={recursiveFilter}
+              onChange={(e) => setRecursiveFilter(e.target.checked)}
+              className="rounded border-border-subtle text-sky-500 focus:ring-0"
+            />
+            Recursive
+          </label>
           {filterText && (
             <button
               type="button"
@@ -1073,6 +1135,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             </button>
           )}
         </div>
+      )}
+
+      {showFilter && recursiveActive && recursiveNote && (
+        <div className="border-b border-amber-900/60 bg-amber-950/30 px-2.5 py-1 text-xs text-amber-300">{recursiveNote}</div>
       )}
 
       {error && (
@@ -1108,7 +1174,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           filterText={filterText}
           onDraggableStart={(entry, e) => {
             const items = selectedPaths.has(entry.path)
-              ? entries.filter((it) => selectedPaths.has(it.path))
+              ? activeEntries.filter((it) => selectedPaths.has(it.path))
               : [entry];
             beginDrag(buildDragPayload(side, source.providerId, currentPath, items), e.dataTransfer);
           }}

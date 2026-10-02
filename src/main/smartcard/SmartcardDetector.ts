@@ -26,6 +26,7 @@ function isSafeHostToken(value: unknown): value is string {
 
 // One ProxyJump hop: [user@]host[:port]. ssh turns -J into a shell-run ProxyCommand, so older
 // OpenSSH versions can be tricked by shell metacharacters in the user/host parts.
+// eslint-disable-next-line security/detect-unsafe-regex -- bounded username followed by @ delimiter prevents backtracking
 const PROXY_JUMP_HOP = /^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.\-_[\]:]+$/;
 // Algorithm lists (Ciphers/KexAlgorithms/MACs): names plus the ssh_config list prefixes ^ + -.
 const ALGORITHM_LIST = /^[A-Za-z0-9@.,+^\-_]+$/;

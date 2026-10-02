@@ -444,6 +444,7 @@ export class TransferQueue extends EventEmitter {
       }
     } finally {
       this.activeJobIds.delete(job.id);
+      this.contexts.delete(job.id);
       this.processQueue();
       this.checkDrain();
     }

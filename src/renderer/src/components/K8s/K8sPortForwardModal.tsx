@@ -29,7 +29,7 @@ interface K8sPortForwardModalProps {
   onClose: () => void;
 }
 
-export function suggestLocalPort(containerPort: number): number {
+function suggestLocalPort(containerPort: number): number {
   if (containerPort >= 1024) return containerPort;
   if (containerPort === 80) return 8080;
   if (containerPort === 443) return 8443;
@@ -99,6 +99,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     } else {
       setDiscoveredPorts([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-discover container ports when target pod changes, not on manual port input
   }, [contextName, namespace, podName]);
 
   // Load and subscribe to active port forwards

@@ -164,6 +164,7 @@ export const SyncSettingsPanel: React.FC = () => {
     return () => {
       unsub?.();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only on initial mount to load sync configuration
   }, []);
 
   const handleToggleAutoSync = async (enabled: boolean) => {

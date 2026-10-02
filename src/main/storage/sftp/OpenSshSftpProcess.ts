@@ -176,6 +176,7 @@ export class OpenSshSftpProcess {
     // Race between protocol handshake and early process death
     try {
       await Promise.race([protocol.init(), exitPromise]);
+      exitPromise.catch(() => {});
       console.log('[sftp] SFTP subsystem ready (protocol version negotiated)');
       onPresenceCleared?.();
     } catch (err: any) {
@@ -259,7 +260,19 @@ export class OpenSshSftpProcess {
       return errStream;
     }
 
-    return childProc.stdout!;
+    childProc.stderr?.resume();
+    const stdout = childProc.stdout!;
+    stdout.on('close', () => {
+      try {
+        if (!childProc.killed) {
+          childProc.kill('SIGTERM');
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    return stdout;
   }
 
   public async close(): Promise<void> {

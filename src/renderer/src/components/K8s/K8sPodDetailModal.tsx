@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -60,7 +60,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
   const [pod, setPod] = useState<K8sPodDescription | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const fetchPod = () => {
+  const fetchPod = useCallback(() => {
     setLoading(true);
     setError(null);
     window.multissh
@@ -73,11 +73,11 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         setError(describeIpcError(err, String(err)));
         setLoading(false);
       });
-  };
+  }, [contextName, namespace, podName]);
 
   useEffect(() => {
     fetchPod();
-  }, [contextName, namespace, podName]);
+  }, [fetchPod]);
 
   const handleCopyYaml = () => {
     if (!pod?.yaml) return;
