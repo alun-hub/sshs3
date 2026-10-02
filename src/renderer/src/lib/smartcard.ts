@@ -32,3 +32,15 @@ export function pkcs11LibDisplayName(pkcs11LibPath: string): string {
 export function looksLikeLibraryPath(text: string): boolean {
   return /[\\/]/.test(text) && /\.(so|dll|dylib)(\.\d+)*$/i.test(text.trim());
 }
+
+/** Default PKCS#11 module when a smartcard profile has none yet: p11-kit (it fronts every registered module), else the first one found. */
+export function pickDefaultPkcs11Lib(libs: Array<{ name?: string; path: string }>): string | undefined {
+  const p11kit = libs.find((l) => /p11-kit/i.test(l.name ?? '') || /p11-kit-proxy/i.test(l.path));
+  return (p11kit ?? libs[0])?.path;
+}
+
+/** Example path for an empty PKCS#11 field: the detected default, else a typical one for the platform. */
+export function pkcs11PlaceholderPath(detectedDefault?: string): string {
+  if (detectedDefault) return detectedDefault;
+  return IS_WINDOWS ? 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll' : '/usr/lib64/p11-kit-proxy.so';
+}

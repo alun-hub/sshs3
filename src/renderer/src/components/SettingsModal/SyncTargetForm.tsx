@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { pkcs11PlaceholderPath } from '../../lib/smartcard';
 import {
   Server,
   Cloud,
@@ -647,7 +648,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                       disabled={disabled}
                       value={draft.pkcs11LibPath ?? ''}
                       onChange={(e) => set('pkcs11LibPath', e.target.value)}
-                      placeholder="/usr/lib/libiidp11.so"
+                      placeholder={pkcs11PlaceholderPath()}
                       className={`${inputClass} font-mono`}
                     />
                     <button

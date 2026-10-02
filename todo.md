@@ -147,6 +147,18 @@ att bygga.
 - [ ] **47. S3 Metadata & HTTP-headers editor** — granska och redigera `Content-Type`, `Cache-Control`, `Content-Disposition` och anpassade användarmetadata (`x-amz-meta-*`) för valda objekt.
 - [x] **48. S3 Bucket Policy & CORS-redigerare** — `BucketPolicyModal` med flikar för JSON-policy och CORS-regler, backat av `getBucketPolicy`/`setBucketPolicy`/`getBucketCors`/`setBucketCors` i `S3StorageProvider`, nås via bucket-kontextmenyn.
 
+- [x] **68. Installera publik nyckel i `authorized_keys` (ssh-copy-id).** `KeyInstallService` kör ett fast,
+   idempotent POSIX-skript över OpenSSH (jump host/proxy från profilen, askpass för lösen/PIN/touch/hostkey-TOFU,
+   OpenSSH faller själv tillbaka till lösen om profilens nyckel inte accepteras). Flera nycklar (fil, agent,
+   FIDO2, PIV, inklistrad) väljs i `InstallKeyModal` och går på stdin i en enda anslutning. Verifierar
+   nyckelinloggning för oskyddade nyckelfiler, och ger en kopierbar one-liner när hosten inte nås från appen.
+   Knapp i profillistan och avsnittet **Access** i profilformuläret, som kör en synlig kedja på den osparade
+   profilen (Reach host → Host key → Login methods → Key installed → Login works) via en tyst probe
+   (`PreferredAuthentications=none`, inga PIN/touch) och ett riktigt inloggningstest. Inloggning för installationen
+   följer regeln "logga aldrig in med nyckeln du installerar" (`chooseLoginOrder`). Mjuk påminnelse vid Spara av ny,
+   overifierad nyckelprofil. Ej med: full wizard, statusprick i profillistan, hint vid Permission denied i
+   terminalen, installation via öppen terminalsession (ControlMaster), Windows-hosts.
+
 ### P3 — Polering och plattformskänsla
 
 - [x] **25. Riktig inställningsskärm** bakom kugghjulet i `TabBar`. Stöd för tema (mörkt, ljust, system med live respons), typsnitt/storlek för terminalen med interaktiv förhandsgranskning samt standardbeteende för nya flikar vid appstart. Sparas persistent via `SettingsStore`.

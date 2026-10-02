@@ -153,6 +153,49 @@ describe('App Component', () => {
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
   });
 
+  describe('welcome screen "New Profile" shortcut', () => {
+    const recentProfile = {
+      id: 'r1',
+      name: 'gnarg-fido2',
+      host: 'gnarg',
+      username: 'alun',
+      authType: 'password',
+      lastUsedAt: '2026-10-02 10:00',
+    };
+
+    beforeEach(() => {
+      // No open tabs => the welcome screen is shown.
+      window.multissh.sessionGet = vi.fn().mockResolvedValue({ tabs: [], activeTabId: '' });
+    });
+
+    it('first run (no recent connections): opens the connection manager straight into the empty new-profile form', async () => {
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: 'New Profile' }));
+
+      expect(await screen.findByLabelText(/Profile Name/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save Profile' })).toBeInTheDocument();
+    });
+
+    it('with recent connections: the slim action row has the same shortcut', async () => {
+      window.multissh.profilesGet = vi.fn().mockResolvedValue({ ssh: [recentProfile], s3: [] });
+      render(<App />);
+
+      expect(await screen.findByText('Recent Connections')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'New Profile' }));
+      expect(await screen.findByLabelText(/Profile Name/i)).toBeInTheDocument();
+    });
+
+    it('the plain Connections button still opens the profile list, not the form', async () => {
+      window.multissh.profilesGet = vi.fn().mockResolvedValue({ ssh: [recentProfile], s3: [] });
+      render(<App />);
+      await screen.findByText('Recent Connections');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+      expect(await screen.findByText('Connection Manager')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Profile Name/i)).not.toBeInTheDocument();
+    });
+  });
+
   it('opens settings modal when settings gear button is clicked', async () => {
     render(<App />);
 

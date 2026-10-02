@@ -198,4 +198,180 @@ describe('SSHProfileForm', () => {
       expect(fido2GenerateKey).toHaveBeenLastCalledWith(expect.objectContaining({ overwrite: true }));
     });
   });
+
+  describe('smartcard library default', () => {
+    const libs = [
+      { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.2', exists: true },
+      { name: 'p11-kit', path: '/usr/lib64/p11-kit-proxy.so', exists: true },
+      { name: 'OpenSC', path: '/usr/lib64/pkcs11/opensc-pkcs11.so', exists: true },
+      { name: 'Net iD', path: '/usr/lib64/libiidp11.so', exists: false },
+    ];
+
+    it('starts on p11-kit when a smartcard profile has no library yet, and never on a module that is not installed', async () => {
+      window.multissh.smartcardDetect = vi.fn().mockResolvedValue(libs) as any;
+      render(<SSHProfileForm onSave={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText(/Authentication/i), { target: { value: 'smartcard' } });
+
+      const input = await screen.findByPlaceholderText('/usr/lib64/p11-kit-proxy.so');
+      await waitFor(() => expect(input).toHaveValue('/usr/lib64/p11-kit-proxy.so'));
+      expect(screen.queryByPlaceholderText(/libiidp11/)).not.toBeInTheDocument();
+    });
+
+    it('falls back to the first detected module when p11-kit is not installed', async () => {
+      window.multissh.smartcardDetect = vi.fn().mockResolvedValue(libs.filter((l) => l.name !== 'p11-kit')) as any;
+      render(<SSHProfileForm onSave={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText(/Authentication/i), { target: { value: 'smartcard' } });
+      await waitFor(() => expect(screen.getByPlaceholderText('/usr/lib64/libykcs11.so.2')).toHaveValue('/usr/lib64/libykcs11.so.2'));
+    });
+
+    it('does not override a library the profile already has', async () => {
+      window.multissh.smartcardDetect = vi.fn().mockResolvedValue(libs) as any;
+      render(
+        <SSHProfileForm
+          initial={{ id: 'x', name: 'n', host: 'h', username: 'u', authType: 'smartcard', pkcs11LibPath: '/opt/custom.so' }}
+          onSave={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      );
+      await waitFor(() => expect(window.multissh.smartcardDetect).toHaveBeenCalled());
+      await screen.findByText('Detected modules on system:');
+      expect(screen.getByDisplayValue('/opt/custom.so')).toBeInTheDocument();
+    });
+
+    it('Install key stays blocked until a library is chosen when nothing was detected', async () => {
+      window.multissh.smartcardDetect = vi.fn().mockResolvedValue([]) as any;
+      render(<SSHProfileForm onSave={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText(/Profile Name/i), { target: { value: 'n' } });
+      fireEvent.change(screen.getByLabelText(/^Host/i), { target: { value: 'h' } });
+      fireEvent.change(screen.getByLabelText(/Username/i), { target: { value: 'u' } });
+      fireEvent.change(screen.getByLabelText(/Authentication/i), { target: { value: 'smartcard' } });
+
+      expect(screen.getByRole('button', { name: /Install key/ })).toBeDisabled();
+      expect(screen.getByText('Choose a PKCS#11 library first.')).toBeInTheDocument();
+
+      fireEvent.change(screen.getByPlaceholderText('/usr/lib64/p11-kit-proxy.so'), { target: { value: '/opt/lib.so' } });
+      expect(screen.getByRole('button', { name: /Install key/ })).toBeEnabled();
+    });
+  });
+
+  describe('save reminder for unverified key profiles', () => {
+    const fill = (authTypeLabel?: string) => {
+      fireEvent.change(screen.getByLabelText(/Profile Name/i), { target: { value: 'New host' } });
+      fireEvent.change(screen.getByLabelText(/^Host/i), { target: { value: 'db.internal' } });
+      fireEvent.change(screen.getByLabelText(/Username/i), { target: { value: 'alice' } });
+      if (authTypeLabel) fireEvent.change(screen.getByLabelText(/Authentication/i), { target: { value: authTypeLabel } });
+    };
+
+    it('asks before saving a NEW key-based profile that was never verified, and lets the user save anyway', async () => {
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill('agent');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(await screen.findByTestId('save-reminder-dialog')).toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save anyway' }));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+    });
+
+    it('"Set up access" closes the reminder and opens the install dialog without saving', async () => {
+      window.multissh.listPublicKeys = vi.fn().mockResolvedValue([]) as any;
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill('agent');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Set up access' }));
+
+      expect(await screen.findByTestId('install-key-modal')).toBeInTheDocument();
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('saves directly once the login has been verified', async () => {
+      window.multissh.sshProbeHost = vi.fn().mockResolvedValue({ reachable: true, hostKey: 'trusted', methods: ['publickey'] }) as any;
+      window.multissh.sshTestLogin = vi.fn().mockResolvedValue({ success: true }) as any;
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill('agent');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+      await waitFor(() => expect(screen.getByTestId('access-step-verified')).toHaveAttribute('data-status', 'ok'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not nag after a key was successfully installed from the Access panel (the reported bug)', async () => {
+      window.multissh.listPublicKeys = vi.fn().mockResolvedValue([
+        { id: 'SHA256:k', line: 'ssh-ed25519 AAAA me', type: 'ssh-ed25519', fingerprint: 'SHA256:k', comment: 'me', source: 'file', label: 'id.pub' },
+      ]) as any;
+      window.multissh.installPublicKeys = vi.fn().mockResolvedValue({
+        success: true,
+        loginMethod: 'password',
+        results: [{ fingerprint: 'SHA256:k', status: 'installed' }],
+      }) as any;
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill('agent');
+
+      fireEvent.click(screen.getByRole('button', { name: /Install key/ }));
+      fireEvent.click(await screen.findByLabelText('Select id.pub'));
+      fireEvent.click(screen.getByRole('button', { name: /Install 1 key/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
+      // Timeline step and footer status.
+      expect(await screen.findAllByText('Key installed')).toHaveLength(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks again if the host/credentials change after a successful install', async () => {
+      window.multissh.listPublicKeys = vi.fn().mockResolvedValue([
+        { id: 'SHA256:k', line: 'ssh-ed25519 AAAA me', type: 'ssh-ed25519', fingerprint: 'SHA256:k', comment: 'me', source: 'file', label: 'id.pub' },
+      ]) as any;
+      window.multissh.installPublicKeys = vi.fn().mockResolvedValue({
+        success: true,
+        results: [{ fingerprint: 'SHA256:k', status: 'installed' }],
+      }) as any;
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill('agent');
+      fireEvent.click(screen.getByRole('button', { name: /Install key/ }));
+      fireEvent.click(await screen.findByLabelText('Select id.pub'));
+      fireEvent.click(screen.getByRole('button', { name: /Install 1 key/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
+
+      fireEvent.change(screen.getByLabelText(/^Host/i), { target: { value: 'another.host' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(await screen.findByTestId('save-reminder-dialog')).toBeInTheDocument();
+    });
+
+    it('never nags for password profiles', () => {
+      const onSave = vi.fn();
+      render(<SSHProfileForm onSave={onSave} onCancel={vi.fn()} />);
+      fill();
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('never nags when editing an existing profile', () => {
+      const onSave = vi.fn();
+      render(
+        <SSHProfileForm
+          initial={{ id: 'x', name: 'Old', host: 'h', username: 'u', authType: 'agent' }}
+          onSave={onSave}
+          onCancel={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+      expect(screen.queryByTestId('save-reminder-dialog')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+  });
 });

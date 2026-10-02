@@ -54,6 +54,14 @@ vi.mock('electron', () => {
   };
 });
 
+vi.mock('../../src/main/ssh/KeyInstallService', () => ({
+  installPublicKeys: vi.fn(),
+  verifyKeyLogin: vi.fn(),
+  probeHost: vi.fn(),
+  testLogin: vi.fn(),
+}));
+
+import { installPublicKeys, probeHost, testLogin } from '../../src/main/ssh/KeyInstallService';
 import { IpcBridge } from '../../src/main/IpcBridge';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
@@ -1588,6 +1596,31 @@ describe('IpcBridge', () => {
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.PROFILES_DELETE_S3, 's3');
     });
 
+    it('key install methods invoke correct channels', async () => {
+      const cfg = { id: 'p1', name: 'P', host: 'h', username: 'u', authType: 'password' as const };
+      await preloadApi.listPublicKeys({ config: cfg, includeHardware: true });
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SSH_LIST_PUBLIC_KEYS, {
+        config: cfg,
+        includeHardware: true,
+      });
+
+      await preloadApi.installPublicKeys({ config: cfg, publicKeys: ['k'], loginMethod: 'password' });
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS, {
+        config: cfg,
+        publicKeys: ['k'],
+        loginMethod: 'password',
+      });
+
+      await preloadApi.sshProbeHost(cfg);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SSH_PROBE_HOST, cfg);
+
+      await preloadApi.sshTestLogin(cfg);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SSH_TEST_LOGIN, cfg);
+
+      await preloadApi.buildInstallCommand(['k']);
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, ['k']);
+    });
+
     it('connection test methods invoke correct channels', async () => {
       const ssh = { id: 's1', name: 'S1', host: 'h', username: 'u', authType: 'password' as const };
       await preloadApi.testSSHConnection(ssh);
@@ -1736,6 +1769,102 @@ describe('IpcBridge', () => {
       const res = await mockIpc.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, { region: '', accessKeyId: 'k', secretAccessKey: 's' });
       expect(res.success).toBe(false);
       expect(res.error).toContain('Region');
+    });
+  });
+
+  describe('Key Install Handlers', () => {
+    const profile = { id: 'p1', name: 'Prod', host: 'db.internal', username: 'alice', authType: 'password' as const };
+    const KEY = `ssh-ed25519 ${Buffer.concat([
+      Buffer.from([0, 0, 0, 11]),
+      Buffer.from('ssh-ed25519'),
+      Buffer.from([0, 0, 0, 32]),
+      Buffer.alloc(32, 7),
+    ]).toString('base64')} a@b`;
+
+    beforeEach(() => {
+      vi.mocked(installPublicKeys).mockReset();
+      mockProfileStore.getProfiles.mockResolvedValue({ ssh: [profile], s3: [] });
+    });
+
+    it('rejects an invalid config without touching ssh', async () => {
+      for (const bad of [
+        undefined,
+        { ...profile, host: '' },
+        { ...profile, username: ' ' },
+        { ...profile, authType: 'telepathy' },
+        { ...profile, port: 70000 },
+        { ...profile, port: 22.5 },
+        { ...profile, authType: 'smartcard' },
+        { ...profile, authType: 'smartcard', pkcs11LibPath: ' ' },
+        { ...profile, authType: 'fido2' },
+      ]) {
+        await expect(
+          mockIpc.invoke(IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS, { config: bad, publicKeys: [KEY] })
+        ).rejects.toThrow();
+        await expect(mockIpc.invoke(IPC_CHANNELS.SSH_PROBE_HOST, bad)).rejects.toThrow();
+        await expect(mockIpc.invoke(IPC_CHANNELS.SSH_TEST_LOGIN, bad)).rejects.toThrow();
+      }
+      expect(installPublicKeys).not.toHaveBeenCalled();
+      expect(probeHost).not.toHaveBeenCalled();
+      expect(testLogin).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed requests', async () => {
+      for (const bad of [
+        undefined,
+        { config: profile },
+        { config: profile, publicKeys: [] },
+        { config: profile, publicKeys: [42] },
+        { config: profile, publicKeys: Array(51).fill(KEY) },
+        { config: profile, publicKeys: [KEY], loginMethod: 'telepathy' },
+        { config: profile, publicKeys: [KEY], serverMethods: [1] },
+      ]) {
+        await expect(mockIpc.invoke(IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS, bad)).rejects.toThrow();
+      }
+      expect(installPublicKeys).not.toHaveBeenCalled();
+    });
+
+    it('passes the draft config through but never trusts a renderer-supplied agent socket', async () => {
+      vi.mocked(installPublicKeys).mockResolvedValue({
+        success: true,
+        results: [{ fingerprint: 'SHA256:x', status: 'installed' }],
+        loginMethod: 'password',
+      });
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS, {
+        config: { ...profile, agentPath: '/tmp/evil-agent.sock' },
+        publicKeys: [KEY],
+        loginMethod: 'password',
+        installsOwnKeyOnly: true,
+        serverMethods: ['publickey', 'password'],
+      });
+
+      expect(res.success).toBe(true);
+      const call = vi.mocked(installPublicKeys).mock.calls[0][0];
+      expect(call.config.host).toBe('db.internal');
+      expect(call.config.agentPath).toBeUndefined();
+      expect(call).toMatchObject({
+        publicKeys: [KEY],
+        loginMethod: 'password',
+        installsOwnKeyOnly: true,
+        serverMethods: ['publickey', 'password'],
+      });
+    });
+
+    it('delegates probe and login test to the service', async () => {
+      vi.mocked(probeHost).mockResolvedValue({ reachable: true, hostKey: 'trusted', methods: ['password'] });
+      vi.mocked(testLogin).mockResolvedValue({ success: true });
+
+      expect(await mockIpc.invoke(IPC_CHANNELS.SSH_PROBE_HOST, profile)).toMatchObject({ methods: ['password'] });
+      expect(await mockIpc.invoke(IPC_CHANNELS.SSH_TEST_LOGIN, profile)).toEqual({ success: true });
+      expect(vi.mocked(probeHost).mock.calls[0][0].host).toBe('db.internal');
+    });
+
+    it('builds the manual fallback command and rejects invalid keys', async () => {
+      const cmd = await mockIpc.invoke(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, [KEY]);
+      expect(cmd).toContain(KEY);
+      await expect(mockIpc.invoke(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, ['garbage'])).rejects.toThrow();
+      await expect(mockIpc.invoke(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, [])).rejects.toThrow();
     });
   });
 

@@ -12,6 +12,7 @@ import {
   Files,
   Folder,
   FolderPlus,
+  KeyRound,
   Loader2,
   Pencil,
   Plus,
@@ -28,6 +29,7 @@ import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
+import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useConfirm } from '../ConfirmDialog';
@@ -38,6 +40,8 @@ interface ConnectionManagerModalProps {
   open: boolean;
   onClose: () => void;
   initialTab?: Tab;
+  /** Opens straight into the empty "new profile" form for `initialTab` (e.g. from the welcome screen). */
+  startNewProfile?: boolean;
   /** When set, shows a "Connect" action per profile and invokes this instead of only managing profiles. */
   onConnectSSH?: (config: SSHConnectionConfig) => void;
   /** When set, opens SFTP dual-pane file manager for the given SSH profile. */
@@ -60,6 +64,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   open,
   onClose,
   initialTab = 'ssh',
+  startNewProfile = false,
   onConnectSSH,
   onConnectSFTP,
   onConnectS3,
@@ -81,6 +86,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ type: Tab; config?: SSHConnectionConfig | S3Config } | null>(null);
   const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
+  const [installKeyProfile, setInstallKeyProfile] = useState<SSHConnectionConfig | null>(null);
 
   // Folder creation and rename
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -115,7 +121,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   useEffect(() => {
     if (open) {
       setTab(initialTab);
-      setEditing(null);
+      setEditing(startNewProfile ? { type: initialTab } : null);
       setSearchQuery('');
       setNewFolderOpen(false);
       setRenamingFolder(null);
@@ -123,7 +129,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setImportCandidates(null);
       void load();
     }
-  }, [open, initialTab, load]);
+  }, [open, initialTab, startNewProfile, load]);
 
   const toggleGroup = (groupKey: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
@@ -573,7 +579,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
+      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
@@ -926,6 +932,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   different action sets depending on where you saw it. */}
                               <button
                                 type="button"
+                                title="Install public key (ssh-copy-id)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInstallKeyProfile(profile);
+                                }}
+                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-sky-400 transition-colors"
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 title="Manage SSH Tunnels"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1157,6 +1174,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       {onConnectSFTP && (
 <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
 )}
+                                      <button
+                                        type="button"
+                                        title="Install public key (ssh-copy-id)"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setInstallKeyProfile(profile);
+                                        }}
+                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-sky-400 transition-colors"
+                                      >
+                                        <KeyRound className="h-3.5 w-3.5" />
+                                      </button>
                                       <button
                                         type="button"
                                         title="Manage SSH Tunnels"
@@ -1616,6 +1644,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         )}
       </div>
     </div>
+    {installKeyProfile && (
+      <InstallKeyModal connection={installKeyProfile} onClose={() => setInstallKeyProfile(null)} />
+    )}
     {tunnelsProfile && (
       <SSHTunnelsModal
         connection={tunnelsProfile}

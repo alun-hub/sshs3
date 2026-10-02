@@ -21,6 +21,8 @@ import type {
 } from '@shared/types/ssh';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import { describeIpcError } from '../../lib/format';
+import { AccessSetupPanel, type AccessState } from '../SSH/AccessSetupPanel';
+import { pickDefaultPkcs11Lib, pkcs11PlaceholderPath } from '../../lib/smartcard';
 import { IS_WINDOWS } from '../../lib/platform';
 
 interface SSHProfileFormProps {
@@ -64,8 +66,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
   const [detecting, setDetecting] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [accessState, setAccessState] = useState<AccessState>('unknown');
+  const [saveReminderOpen, setSaveReminderOpen] = useState(false);
+  const [openInstallSignal, setOpenInstallSignal] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
   const [allProfiles, setAllProfiles] = useState<SSHConnectionConfig[]>([]);
@@ -143,7 +146,17 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     void window.multissh
       .smartcardDetect()
       .then((libs) => {
-        if (mounted) setSmartcardLibs(libs.filter((l) => l.exists));
+        if (!mounted) return;
+        const found = libs.filter((l) => l.exists);
+        setSmartcardLibs(found);
+        // A smartcard profile with no library yet starts on p11-kit (or the first module found),
+        // never on an empty field or a vendor module that is not installed.
+        const fallback = pickDefaultPkcs11Lib(found);
+        if (fallback) {
+          setConfig((prev) =>
+            prev.authType === 'smartcard' && !prev.pkcs11LibPath?.trim() ? { ...prev, pkcs11LibPath: fallback } : prev
+          );
+        }
       })
       .finally(() => {
         if (mounted) setDetecting(false);
@@ -155,27 +168,6 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
 
   const update = <K extends keyof SSHConnectionConfig>(key: K, value: SSHConnectionConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
-    if (testResult) setTestResult(null);
-  };
-
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await window.multissh.testSSHConnection(config);
-      if (res.success) {
-        setTestResult({ success: true, message: 'Connection succeeded!' });
-      } else {
-        setTestResult({ success: false, message: res.error || 'Connection failed' });
-      }
-    } catch (err) {
-      setTestResult({
-        success: false,
-        message: describeIpcError(err, 'Failed to test connection'),
-      });
-    } finally {
-      setTesting(false);
-    }
   };
 
   const browseFor = async (key: 'privateKeyPath' | 'pkcs11LibPath' | 'agentPath') => {
@@ -277,11 +269,31 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
 
   const isValid = config.name.trim() && config.host.trim() && config.username.trim();
 
+  // A saved result no longer applies once anything the chain depends on changes.
+  const accessResetKey = [
+    config.host,
+    config.port ?? 22,
+    config.username,
+    config.authType,
+    config.privateKeyPath ?? '',
+    config.pkcs11LibPath ?? '',
+    config.fido2Resident ? 1 : 0,
+    config.proxyJump ?? '',
+    config.proxyJumpProfileId ?? '',
+    config.password?.length ?? 0,
+  ].join('|');
+
+  // Soft reminder only: a brand-new key-based profile that was never verified on the host. Never blocks saving.
+  const needsAccessReminder =
+    !initial && config.authType !== 'password' && (accessState === 'unknown' || accessState === 'failed');
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (isValid) onSave(config);
+        if (!isValid) return;
+        if (needsAccessReminder) setSaveReminderOpen(true);
+        else onSave(config);
       }}
       className="flex h-full min-h-0 flex-col text-xs text-txt-secondary"
     >
@@ -490,7 +502,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 value={config.pkcs11LibPath ?? ''}
                 onChange={(e) => update('pkcs11LibPath', e.target.value)}
                 className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                placeholder="/usr/lib/libiidp11.so"
+                placeholder={pkcs11PlaceholderPath(pickDefaultPkcs11Lib(smartcardLibs))}
               />
               <button
                 type="button"
@@ -1094,34 +1106,19 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         )}
       </div>
 
+      <AccessSetupPanel
+        config={config}
+        resetKey={accessResetKey}
+        onStateChange={setAccessState}
+        openInstallSignal={openInstallSignal}
+      />
+
       </div>
 
       <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            disabled={!config.host.trim() || !config.username.trim() || testing}
-            onClick={() => void handleTestConnection()}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-          >
-            {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {testing ? 'Testing...' : 'Test Connection'}
-          </button>
-
-          {testResult && (
-            <div
-              className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs ${
-                testResult.success ? 'text-emerald-300' : 'text-red-300'
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-              ) : (
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />
-              )}
-              <span className="truncate">{testResult.message}</span>
-            </div>
-          )}
+        <div className="min-w-0 text-xs text-txt-muted">
+          {accessState === 'verified' && <span className="text-emerald-300">Login verified</span>}
+          {accessState === 'installed' && <span className="text-emerald-300">Key installed</span>}
         </div>
 
         <div className="flex shrink-0 gap-2">
@@ -1141,6 +1138,47 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           </button>
         </div>
       </div>
+      {saveReminderOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="save-reminder-title"
+          data-testid="save-reminder-dialog"
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 p-4"
+        >
+          <div className="w-full max-w-sm space-y-3 rounded-xl border border-border-subtle bg-app-card p-5 shadow-2xl">
+            <h2 id="save-reminder-title" className="text-sm font-semibold text-txt-primary">
+              Not verified on the host yet
+            </h2>
+            <p className="text-xs text-txt-secondary">
+              This profile uses key-based login, and nothing has confirmed that the host accepts it. You can install your
+              key now, or save the profile and do it later from the profile list.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveReminderOpen(false);
+                  onSave(config);
+                }}
+                className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+              >
+                Save anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveReminderOpen(false);
+                  setOpenInstallSignal((n) => n + 1);
+                }}
+                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
+              >
+                Set up access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 };

@@ -10,6 +10,12 @@ import type {
   Fido2ResidentKey,
   SSHTunnelConfig,
   SSHActiveTunnel,
+  LocalPublicKey,
+  ListPublicKeysRequest,
+  InstallPublicKeysRequest,
+  InstallPublicKeysResult,
+  ProbeHostResult,
+  TestLoginResult,
 } from './ssh';
 import type {
   FileEntry,
@@ -167,6 +173,13 @@ export const IPC_CHANNELS = {
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
+
+  // Install public keys in a host's authorized_keys (ssh-copy-id)
+  SSH_LIST_PUBLIC_KEYS: 'ssh:list-public-keys',
+  SSH_INSTALL_PUBLIC_KEYS: 'ssh:install-public-keys',
+  SSH_PROBE_HOST: 'ssh:probe-host',
+  SSH_TEST_LOGIN: 'ssh:test-login',
+  SSH_BUILD_INSTALL_COMMAND: 'ssh:build-install-command',
   CONNECTION_TEST_S3: 'connection:test-s3',
 
   // AWS SSO login (device-authorization flow)
@@ -534,6 +547,13 @@ export interface MultiSSHApi {
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;
+
+  // Install public keys in a host's authorized_keys (ssh-copy-id)
+  listPublicKeys(request: ListPublicKeysRequest): Promise<LocalPublicKey[]>;
+  installPublicKeys(request: InstallPublicKeysRequest): Promise<InstallPublicKeysResult>;
+  buildInstallCommand(publicKeys: string[]): Promise<string>;
+  sshProbeHost(config: SSHConnectionConfig): Promise<ProbeHostResult>;
+  sshTestLogin(config: SSHConnectionConfig): Promise<TestLoginResult>;
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
   // AWS SSO login (device-authorization flow)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Clock, Cloud, Columns2, Folder, Rows2, Server, Square, Terminal } from 'lucide-react';
+import { Clock, Cloud, Columns2, Folder, Plus, Rows2, Server, Square, Terminal } from 'lucide-react';
 import { SftpButton } from './components/SftpButton';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { BrandLogo } from './components/BrandLogo';
@@ -102,6 +102,8 @@ export const App: React.FC = () => {
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [profilesModalOpen, setProfilesModalOpen] = useState(false);
   const [profilesModalTab, setProfilesModalTab] = useState<ConnectionManagerTab>('ssh');
+  /** Opens the profile manager straight into the empty "new SSH profile" form (welcome screen shortcut). */
+  const [profilesModalNew, setProfilesModalNew] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
@@ -618,6 +620,12 @@ export const App: React.FC = () => {
     openTopLevelModal(() => setProfilesModalOpen(true));
   };
 
+  const handleNewProfile = () => {
+    setProfilesModalTab('ssh');
+    setProfilesModalNew(true);
+    openTopLevelModal(() => setProfilesModalOpen(true));
+  };
+
   const handleNewK8sSession = () => {
     setProfilesModalTab('k8s');
     openTopLevelModal(() => setProfilesModalOpen(true));
@@ -921,7 +929,7 @@ export const App: React.FC = () => {
                   needs to do; full-sized only for a first run with no
                   history yet. */}
               {recentSSH.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full text-left">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full text-left">
                   <button
                     type="button"
                     onClick={handleQuickStartTerminal}
@@ -953,6 +961,14 @@ export const App: React.FC = () => {
                   >
                     <Cloud className="h-4 w-4 text-purple-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">Cloud Sync</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNewProfile}
+                    className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 hover:bg-sky-500/20 transition-all"
+                  >
+                    <Plus className="h-4 w-4 text-sky-400 shrink-0" />
+                    <span className="truncate text-xs font-medium text-txt-primary">New Profile</span>
                   </button>
                 </div>
               ) : (
@@ -1041,6 +1057,15 @@ export const App: React.FC = () => {
                         Restore configuration and profiles from cloud storage
                       </div>
                     </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNewProfile}
+                    className="sm:col-span-2 flex items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-2.5 text-xs font-semibold text-txt-primary hover:bg-sky-500/20 transition-all"
+                  >
+                    <Plus className="h-4 w-4 text-sky-400" />
+                    New Profile
                   </button>
                 </div>
               )}
@@ -1218,10 +1243,14 @@ export const App: React.FC = () => {
       <ConnectionManagerModal
         open={profilesModalOpen}
         initialTab={profilesModalTab}
+        startNewProfile={profilesModalNew}
         dotfilesPoolEnabled={settings.dotfilesPoolEnabled ?? false}
         enableOpenShift={settings.enableOpenShift ?? false}
         shareFoldersAcrossTypes={settings.shareFoldersAcrossTypes ?? false}
-        onClose={() => setProfilesModalOpen(false)}
+        onClose={() => {
+          setProfilesModalOpen(false);
+          setProfilesModalNew(false);
+        }}
         onConnectSSH={(config) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);
           if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {

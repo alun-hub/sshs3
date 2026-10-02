@@ -269,6 +269,46 @@ describe('ConnectionManagerModal', () => {
   // LOW finding (code review): deleting a connection profile used to go
   // through window.confirm(), trivially dismissed by a stray Enter/Space
   // press. It must now name the profile and only delete once confirmed.
+  it('opens the install-public-key dialog for the clicked profile', async () => {
+    (window.multissh as any).listPublicKeys = vi.fn().mockResolvedValue([]);
+    render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} onConnectSSH={vi.fn()} />
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => expect(screen.getByText('Prod DB 01')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByTitle('Install public key (ssh-copy-id)')[0]);
+
+    expect(await screen.findByTestId('install-key-modal')).toBeInTheDocument();
+    expect((window.multissh as any).listPublicKeys).toHaveBeenCalledWith(
+      expect.objectContaining({ config: expect.objectContaining({ host: expect.any(String) }) })
+    );
+  });
+
+  it('opens straight into the empty new-profile form when startNewProfile is set, and only for that open', async () => {
+    const { rerender } = render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} startNewProfile onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+    expect(await screen.findByLabelText(/Profile Name/i)).toHaveValue('');
+
+    // Closed and re-opened without the flag: back to the plain list.
+    rerender(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={false} onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+    rerender(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+    await waitFor(() => expect(screen.getByText('Prod DB 01')).toBeInTheDocument());
+    expect(screen.queryByLabelText(/Profile Name/i)).not.toBeInTheDocument();
+  });
+
   it('asks for in-app confirmation before deleting a connection profile', async () => {
     render(
       <ConfirmProvider>

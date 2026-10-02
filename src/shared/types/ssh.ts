@@ -210,3 +210,87 @@ export interface XServerStatus {
   display: string;
   platform?: string;
 }
+
+/** Varifrån en publik nyckel kommer. */
+export type PublicKeySource = 'file' | 'agent' | 'fido2' | 'smartcard' | 'manual';
+
+/** En publik nyckel som kan installeras i `authorized_keys` på en host. */
+export interface LocalPublicKey {
+  /** Fingeravtryck (`SHA256:...`), unikt per nyckel. */
+  id: string;
+  /** Hela raden som skrivs till authorized_keys (`<typ> <base64>[ <kommentar>]`). */
+  line: string;
+  type: string;
+  fingerprint: string;
+  comment: string;
+  source: PublicKeySource;
+  /** Visningsnamn, t.ex. filnamn eller agentens kommentar. */
+  label: string;
+  /** Privat nyckelfil bredvid .pub-filen, om den finns. Används för att verifiera inloggning efteråt. */
+  privateKeyPath?: string;
+}
+
+export interface ListPublicKeysRequest {
+  /** Profilen (sparad eller osparad); ger nyckelfilen och (med includeHardware) kortet/säkerhetsnyckeln. */
+  config: SSHConnectionConfig;
+  /** Läs även nycklar från smartcard/FIDO2 (kräver PIN/touch). */
+  includeHardware?: boolean;
+}
+
+/** Hur vi loggar in på hosten för att kunna installera nycklarna. */
+export type InstallLoginStep = 'password' | 'profile' | 'smartcard' | 'agent';
+export type InstallLoginMethod = 'auto' | InstallLoginStep;
+
+export interface InstallPublicKeysRequest {
+  config: SSHConnectionConfig;
+  publicKeys: string[];
+  /** Default 'auto': se `chooseLoginOrder`. */
+  loginMethod?: InstallLoginMethod;
+  /** true när de valda nycklarna bara är profilens egen inloggningsnyckel (då är det poänglöst att logga in med den). */
+  installsOwnKeyOnly?: boolean;
+  /** Auth-metoder som servern annonserade vid senaste probe, om kända. */
+  serverMethods?: string[];
+}
+
+export type ProbeErrorKind =
+  | 'dns'
+  | 'timeout'
+  | 'refused'
+  | 'unreachable'
+  | 'closed'
+  | 'hostkey-rejected'
+  | 'hostkey-changed'
+  | 'unknown';
+
+/** Resultat av en tyst probe (inga lösen/PIN/touch): nåbarhet, värdnyckel och tillåtna auth-metoder. */
+export interface ProbeHostResult {
+  reachable: boolean;
+  /** 'accepted' = användaren litade på en ny värdnyckel nu. */
+  hostKey: 'trusted' | 'accepted' | 'rejected' | 'changed';
+  /** Auth-metoder servern tillåter, t.ex. ['publickey', 'password']. */
+  methods: string[];
+  errorKind?: ProbeErrorKind;
+  error?: string;
+}
+
+export interface TestLoginResult {
+  success: boolean;
+  error?: string;
+}
+
+export type InstallKeyStatus = 'installed' | 'present' | 'invalid' | 'unknown';
+
+export interface InstallKeyResult {
+  fingerprint: string;
+  status: InstallKeyStatus;
+  /** Inloggning med bara den nya nyckeln: true = fungerar, false = misslyckades, undefined = kunde inte verifieras. */
+  verified?: boolean;
+}
+
+export interface InstallPublicKeysResult {
+  success: boolean;
+  error?: string;
+  results: InstallKeyResult[];
+  /** Vilken inloggning som slutligen användes. */
+  loginMethod?: InstallLoginStep;
+}

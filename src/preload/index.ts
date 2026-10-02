@@ -52,6 +52,12 @@ import type {
   Fido2ResidentKey,
   SSHTunnelConfig,
   SSHActiveTunnel,
+  LocalPublicKey,
+  ListPublicKeysRequest,
+  InstallPublicKeysRequest,
+  InstallPublicKeysResult,
+  ProbeHostResult,
+  TestLoginResult,
 } from '../shared/types/ssh';
 import type {
   FileEntry,
@@ -451,6 +457,22 @@ export const api: MultiSSHApi = {
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_SSH, config),
+
+  // Install public keys in a host's authorized_keys (ssh-copy-id)
+  listPublicKeys: (request: ListPublicKeysRequest): Promise<LocalPublicKey[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_LIST_PUBLIC_KEYS, request),
+
+  installPublicKeys: (request: InstallPublicKeysRequest): Promise<InstallPublicKeysResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS, request),
+
+  buildInstallCommand: (publicKeys: string[]): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, publicKeys),
+
+  sshProbeHost: (config: SSHConnectionConfig): Promise<ProbeHostResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_PROBE_HOST, config),
+
+  sshTestLogin: (config: SSHConnectionConfig): Promise<TestLoginResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_TEST_LOGIN, config),
 
   testS3Connection: (config: S3Config): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
