@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.11] - 2026-10-02
+
+### Added
+- **Install public key (ssh-copy-id).** New key icon on every SSH profile row, and an **Access** section in the profile form that works on a profile you have not saved yet. Pick one or more keys (key files, keys already loaded in your ssh-agent, smartcard/FIDO2 keys, or paste one) and they are added to `~/.ssh/authorized_keys` on the host in a single connection, so you enter one password/PIN/touch. Idempotent (reports "installed" / "already present" per key), goes through the profile's jump host/proxy, and verifies key login afterwards when the private key file is unprotected. **Copy command** gives a short, readable script to paste on hosts the app cannot reach, and updates as you change the selection.
+- **Access check in the profile form.** A timeline shows where the chain breaks: reach host → host key → login methods → key installed → login works. The first three come from one silent probe that needs no PIN or touch and shows which methods the server allows. It replaces the old Test Connection button, which only validated settings for smartcard/FIDO2. Saving a new key-based profile that was never verified asks first (never blocks).
+- **Smart login for the install.** The app never logs in with the key it is installing: installing only a profile's own key uses the password (or a smartcard still configured in the profile, tried first, e.g. after switching PIV to FIDO2) and skips needless PIN prompts. "Log in with" lets you force Password, the profile's key, the smartcard or already-unlocked ssh-agent keys, and the automatic order is shown.
+- **New Profile** shortcut on the welcome screen.
+
+### Changed
+- **p11-kit is now the default PKCS#11 library** for new smartcard profiles (else the first module found), and the example path is no longer a Net iD library. Install key and Test connection stay disabled until the profile has the library (or key file) it needs.
+- Keys already unlocked in the app (global PIN cache) or an open session are read without a PIN or touch.
+
 ## [0.96.10] - 2026-10-02
 
 ### Added
