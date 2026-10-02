@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.13] - 2026-10-03
+
+### Added
+- **Update notifications.** The app checks GitHub Releases 30 seconds after start and every 6 hours and shows a banner when a new version exists. Nothing is downloaded or installed until you click *Download* and then *Restart and install*, and the restart goes through the normal quit confirmation (active transfers, confirm before quit). Works for the AppImage and the DEB/RPM packages (DEB/RPM ask for administrator rights). *Settings → App Behavior* has the on/off switch, the current version and a *Check now* button.
+- **Air-gap switch.** `SSHS3_DISABLE_UPDATES=1` turns the feature off completely: no network requests, and the setting is locked.
+
+### Changed
+- Updates are off on Windows until the installer is code-signed; download new versions from the releases page.
+
 ## [0.96.12] - 2026-10-02
 
 ### Fixed
