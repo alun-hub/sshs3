@@ -12,6 +12,7 @@ import { TransferConflictModal } from './components/TransferConflictModal';
 import { QuitConfirmBridge } from './components/QuitConfirmBridge';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { DotfilesSyncBanner } from './components/DotfilesSyncBanner';
+import { UpdateBanner } from './components/UpdateBanner';
 import { CredentialEncryptionWarningBanner } from './components/CredentialEncryptionWarningBanner';
 import { SmartcardStartupUnlockBanner } from './components/SmartcardStartupUnlockBanner';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
@@ -1214,6 +1215,9 @@ export const App: React.FC = () => {
 
       {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
       <DotfilesSyncBanner />
+
+      {/* New-version notice (poll against GitHub Releases, user-driven download/install) */}
+      <UpdateBanner />
 
       {/* Warns if saved credentials can't be OS-keyring-encrypted and are falling back to plaintext */}
       <CredentialEncryptionWarningBanner />

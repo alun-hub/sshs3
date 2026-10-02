@@ -1,3 +1,4 @@
+import type { UpdateState } from './update';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -226,6 +227,11 @@ export const IPC_CHANNELS = {
   // General
   APP_OPEN_EXTERNAL: 'app:open-external',
   APP_GET_VERSION: 'app:get-version',
+  UPDATE_GET_STATE: 'update:get-state',
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_STATE: 'update:state',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
   APP_GET_HOSTNAME: 'app:get-hostname',
@@ -645,6 +651,11 @@ export interface MultiSSHApi {
   // Window / General
   openExternal(url: string): Promise<void>;
   getVersion(): Promise<string>;
+  getUpdateState(): Promise<UpdateState>;
+  checkForUpdates(): Promise<UpdateState>;
+  downloadUpdate(): Promise<UpdateState>;
+  installUpdate(): Promise<void>;
+  onUpdateState(callback: (state: UpdateState) => void): () => void;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;
   getHostname(): Promise<string>;

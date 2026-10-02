@@ -1,3 +1,4 @@
+import type { UpdateState } from '../shared/types/update';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   IPC_CHANNELS,
@@ -784,6 +785,22 @@ export const api: MultiSSHApi = {
 
   getVersion: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
+
+  getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATE),
+
+  checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+
+  downloadUpdate: (): Promise<UpdateState> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+
+  installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+
+  onUpdateState: (callback: (state: UpdateState) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state);
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_STATE, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_STATE, listener);
+    };
+  },
 
   getHomeDir: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_HOMEDIR),

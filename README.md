@@ -89,6 +89,8 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 | **Windows** | Setup Installer (with bundled VcXsrv) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`Setup-*.exe`) |
 | **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.exe`) |
 
+**Updates:** the app checks GitHub Releases for a new version shortly after start and every 6 hours (switch off under *Settings → App Behavior*). Nothing is downloaded or installed until you click *Download* and then *Restart and install*. This works for the AppImage and the DEB/RPM packages (DEB/RPM ask for administrator rights). Windows builds are not code-signed yet, so on Windows the app does not update itself: download new versions from the releases page. The only network request is to GitHub Releases. On air-gapped machines, untick the setting, or set the environment variable `SSHS3_DISABLE_UPDATES=1` to switch the feature off completely (the setting is then locked and no update traffic is made). Release assets carry `SHA256SUMS` and a build-provenance attestation if you prefer to verify manually.
+
 ---
 
 ## Features

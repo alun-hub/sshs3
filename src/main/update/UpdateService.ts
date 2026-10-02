@@ -1,0 +1,212 @@
+import { app } from 'electron';
+import electronUpdater from 'electron-updater';
+import type { UpdateState, UpdateUnsupportedReason } from '../../shared/types/update';
+
+const INITIAL_CHECK_DELAY_MS = 30_000;
+const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MAX_ERROR_LENGTH = 200;
+
+interface UpdateInfoLike {
+  version: string;
+}
+
+interface ProgressLike {
+  percent: number;
+}
+
+/** The subset of electron-updater's AppUpdater used here (also what tests mock). */
+export interface UpdaterLike {
+  autoDownload: boolean;
+  autoInstallOnAppQuit: boolean;
+  allowPrerelease: boolean;
+  allowDowngrade: boolean;
+  on(event: 'checking-for-update', cb: () => void): unknown;
+  on(event: 'update-available', cb: (info: UpdateInfoLike) => void): unknown;
+  on(event: 'update-not-available', cb: () => void): unknown;
+  on(event: 'download-progress', cb: (progress: ProgressLike) => void): unknown;
+  on(event: 'update-downloaded', cb: (info: UpdateInfoLike) => void): unknown;
+  on(event: 'error', cb: (err: Error) => void): unknown;
+  checkForUpdates(): Promise<unknown>;
+  downloadUpdate(): Promise<unknown>;
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+}
+
+export interface UpdateServiceOptions {
+  /** Defaults to electron-updater's autoUpdater. */
+  updater?: UpdaterLike;
+  currentVersion?: string;
+  isPackaged?: boolean;
+  /** Defaults to process.platform. Windows is unsupported until the installer is code-signed. */
+  platform?: NodeJS.Platform;
+  /** Administrator switch (SSHS3_DISABLE_UPDATES=1): no update traffic at all. */
+  disabled?: boolean;
+  /** Whether periodic background checks are enabled (user setting). */
+  getAutoCheck: () => Promise<boolean> | boolean;
+  /**
+   * Runs the app's quit confirmation (active transfers, confirm-before-quit)
+   * before the installer is started; resolves false if the user cancelled.
+   */
+  confirmQuit?: () => Promise<boolean>;
+  send: (state: UpdateState) => void;
+  initialDelayMs?: number;
+  pollIntervalMs?: number;
+}
+
+/** Reduces an updater error to one short line; never forwards stacks or raw payloads. */
+export function sanitizeUpdateError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const firstLine = raw.split('\n')[0]?.trim() ?? '';
+  return (firstLine || 'Update failed').slice(0, MAX_ERROR_LENGTH);
+}
+
+/**
+ * Polls GitHub Releases via electron-updater. Nothing is downloaded or
+ * installed without an explicit user action (autoDownload is off), and a
+ * restart only happens through the normal quit flow so active transfers and
+ * the quit confirmation are still honoured.
+ */
+export class UpdateService {
+  private readonly updater: UpdaterLike | null;
+  private readonly unsupportedReason: UpdateUnsupportedReason | null;
+  private readonly options: UpdateServiceOptions;
+  private state: UpdateState;
+  private initialTimer: NodeJS.Timeout | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private installing = false;
+
+  constructor(options: UpdateServiceOptions) {
+    this.options = options;
+    const isPackaged = options.isPackaged ?? app.isPackaged;
+    this.unsupportedReason = options.disabled
+      ? 'disabled'
+      : !isPackaged
+        ? 'dev'
+        : (options.platform ?? process.platform) === 'win32'
+          ? 'windows-unsigned'
+          : null;
+    this.state = {
+      status: this.unsupportedReason ? 'unsupported' : 'idle',
+      currentVersion: options.currentVersion ?? app.getVersion(),
+      ...(this.unsupportedReason ? { unsupportedReason: this.unsupportedReason } : {}),
+    };
+
+    if (this.unsupportedReason) {
+      this.updater = null;
+      return;
+    }
+    const updater = options.updater ?? (electronUpdater.autoUpdater as unknown as UpdaterLike);
+    updater.autoDownload = false;
+    updater.autoInstallOnAppQuit = true;
+    updater.allowPrerelease = false;
+    updater.allowDowngrade = false;
+    this.attach(updater);
+    this.updater = updater;
+  }
+
+  public getState(): UpdateState {
+    return { ...this.state };
+  }
+
+  /** Schedules the first check shortly after launch and then a periodic poll. */
+  public start(): void {
+    if (!this.updater || this.initialTimer || this.pollTimer) return;
+    const initialDelay = this.options.initialDelayMs ?? INITIAL_CHECK_DELAY_MS;
+    const interval = this.options.pollIntervalMs ?? POLL_INTERVAL_MS;
+    this.initialTimer = setTimeout(() => void this.backgroundCheck(), initialDelay);
+    this.initialTimer.unref?.();
+    this.pollTimer = setInterval(() => void this.backgroundCheck(), interval);
+    this.pollTimer.unref?.();
+  }
+
+  public dispose(): void {
+    if (this.initialTimer) clearTimeout(this.initialTimer);
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.initialTimer = null;
+    this.pollTimer = null;
+  }
+
+  /** User-initiated check ("Check now"). */
+  public async check(): Promise<UpdateState> {
+    if (!this.updater || this.isBusy() || this.state.status === 'available') return this.getState();
+    try {
+      await this.updater.checkForUpdates();
+      // An inactive updater (e.g. missing app-update.yml) resolves without emitting any event.
+      if (this.getState().status === 'idle') {
+        this.setState({ status: 'error', error: 'Update check is not available for this installation' });
+      }
+    } catch (err) {
+      this.setState({ status: 'error', error: sanitizeUpdateError(err), progress: undefined });
+    }
+    return this.getState();
+  }
+
+  public async download(): Promise<UpdateState> {
+    if (!this.updater || this.state.status !== 'available') return this.getState();
+    this.setState({ status: 'downloading', progress: 0, error: undefined });
+    try {
+      await this.updater.downloadUpdate();
+      if (this.getState().status === 'downloading') {
+        this.setState({ status: 'available', error: 'Download did not complete', progress: undefined });
+      }
+    } catch (err) {
+      // Keep the offered version so the user can simply retry the download.
+      this.setState({ status: 'available', error: sanitizeUpdateError(err), progress: undefined });
+    }
+    return this.getState();
+  }
+
+  /**
+   * Restarts into the new version. The quit confirmation runs first because
+   * quitAndInstall() starts the installer before app.quit(), so a cancel
+   * afterwards would be too late.
+   */
+  public async install(): Promise<void> {
+    if (!this.updater || this.state.status !== 'ready' || this.installing) return;
+    this.installing = true;
+    try {
+      if (this.options.confirmQuit && !(await this.options.confirmQuit())) return;
+      this.updater.quitAndInstall(false, true);
+    } finally {
+      this.installing = false;
+    }
+  }
+
+  private isBusy(): boolean {
+    const { status } = this.state;
+    return status === 'checking' || status === 'downloading' || status === 'ready';
+  }
+
+  private async backgroundCheck(): Promise<void> {
+    try {
+      if (!(await this.options.getAutoCheck())) return;
+    } catch {
+      return;
+    }
+    if (this.state.status === 'available') return;
+    await this.check();
+  }
+
+  private attach(updater: UpdaterLike): void {
+    updater.on('checking-for-update', () => this.setState({ status: 'checking', error: undefined }));
+    updater.on('update-available', (info) =>
+      this.setState({ status: 'available', version: info.version, progress: undefined })
+    );
+    updater.on('update-not-available', () =>
+      this.setState({ status: 'up-to-date', version: undefined, progress: undefined })
+    );
+    updater.on('download-progress', (progress) =>
+      this.setState({ status: 'downloading', progress: Math.round(progress.percent) })
+    );
+    updater.on('update-downloaded', (info) =>
+      this.setState({ status: 'ready', version: info.version, progress: undefined })
+    );
+    updater.on('error', (err) =>
+      this.setState({ status: 'error', error: sanitizeUpdateError(err), progress: undefined })
+    );
+  }
+
+  private setState(patch: Partial<UpdateState>): void {
+    this.state = { ...this.state, ...patch };
+    this.options.send(this.getState());
+  }
+}

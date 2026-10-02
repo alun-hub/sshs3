@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useUpdateState } from '../../lib/useUpdateState';
 import {
   Settings,
   X,
@@ -89,6 +90,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [sessionExitAction, setSessionExitAction] = useState<SessionExitAction>(
     currentSettings.sessionExitAction ?? 'reconnect'
   );
+  const updateState = useUpdateState();
+  const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(currentSettings.autoCheckUpdates ?? true);
   const [confirmBeforeQuit, setConfirmBeforeQuit] = useState<boolean>(
     currentSettings.confirmBeforeQuit ?? false
   );
@@ -173,6 +176,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
       setSessionExitAction(currentSettings.sessionExitAction ?? 'reconnect');
       setConfirmBeforeQuit(currentSettings.confirmBeforeQuit ?? false);
+      setAutoCheckUpdates(currentSettings.autoCheckUpdates ?? true);
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
       setShowHiddenFiles(currentSettings.showHiddenFiles ?? false);
@@ -312,6 +316,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       copyOnSelect,
       sessionExitAction,
       confirmBeforeQuit,
+      autoCheckUpdates,
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
       showHiddenFiles,
@@ -575,6 +580,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       Ask for confirmation when closing the window or quitting, so active SSH
                       sessions and tunnels aren't closed by accident.
                     </p>
+                    <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={autoCheckUpdates && updateState?.unsupportedReason !== 'disabled'}
+                        disabled={updateState?.unsupportedReason === 'disabled'}
+                        onChange={(e) => setAutoCheckUpdates(e.target.checked)}
+                        className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-xs text-txt-primary">Check for updates automatically</span>
+                    </label>
+                    <div className="flex items-center gap-2 pl-6 text-xs text-txt-muted">
+                      <span data-testid="update-status">
+                        Version {updateState?.currentVersion ?? '…'}
+                        {updateState?.status === 'checking' && ' · checking…'}
+                        {updateState?.status === 'up-to-date' && ' · up to date'}
+                        {updateState?.status === 'error' && ` · ${updateState.error ?? 'update check failed'}`}
+                        {updateState?.status === 'available' && ` · ${updateState.version ?? ''} available`}
+                        {updateState?.status === 'downloading' &&
+                          ` · downloading ${updateState.version ?? ''} (${updateState.progress ?? 0}%)`}
+                        {updateState?.status === 'ready' &&
+                          ` · ${updateState.version ?? ''} downloaded, restart to install`}
+                        {updateState?.status === 'unsupported' &&
+                          (updateState.unsupportedReason === 'windows-unsigned'
+                            ? ' · download new versions manually (Windows builds are not code-signed yet)'
+                            : updateState.unsupportedReason === 'disabled'
+                              ? ' · updates are disabled by the administrator'
+                              : ' · updates are disabled in development')}
+                      </span>
+                      {updateState?.status === 'unsupported' && updateState.unsupportedReason === 'windows-unsigned' && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void window.multissh?.openExternal('https://github.com/alun-hub/sshs3/releases/latest')
+                          }
+                          className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50"
+                        >
+                          Open releases
+                        </button>
+                      )}
+                      {updateState?.status === 'available' && (
+                        <button type="button" onClick={() => void window.multissh?.downloadUpdate()} className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50">
+                          Download
+                        </button>
+                      )}
+                      {updateState?.status === 'ready' && (
+                        <button type="button" onClick={() => void window.multissh?.installUpdate()} className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50">
+                          Restart and install
+                        </button>
+                      )}
+                      {updateState &&
+                        updateState.status !== 'unsupported' &&
+                        updateState.status !== 'available' &&
+                        updateState.status !== 'ready' && (
+                          <button
+                            type="button"
+                            disabled={updateState.status === 'checking' || updateState.status === 'downloading'}
+                            onClick={() => void window.multissh?.checkForUpdates()}
+                            className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50"
+                          >
+                            Check now
+                          </button>
+                        )}
+                    </div>
                   </div>
                 </div>
               )}

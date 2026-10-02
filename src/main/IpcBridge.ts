@@ -35,6 +35,7 @@ import {
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
 import { SettingsStore } from './settings/SettingsStore';
+import { UpdateService } from './update/UpdateService';
 import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { installPublicKeys, probeHost, testLogin, verifyKeyLogin } from './ssh/KeyInstallService';
@@ -186,6 +187,8 @@ export interface IpcBridgeOptions {
   k8sPortForwardManager?: K8sPortForwardManager;
   sshTunnelManager?: SSHTunnelManager;
   getWebContents?: () => Electron.WebContents | null | undefined;
+  /** Quit confirmation (transfers, confirm-before-quit) run before an update restart. */
+  confirmQuit?: () => Promise<boolean>;
 }
 
 export class IpcBridge {
@@ -213,6 +216,8 @@ export class IpcBridge {
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
   public readonly sshTunnelManager: SSHTunnelManager;
+  private updateService: UpdateService | null = null;
+  private confirmQuit: (() => Promise<boolean>) | undefined;
   private getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
@@ -336,6 +341,7 @@ export class IpcBridge {
     this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
     this.sshTunnelManager = options.sshTunnelManager ?? new SSHTunnelManager();
     this.getWebContents = options.getWebContents ?? (() => null);
+    this.confirmQuit = options.confirmQuit;
   }
 
   public setWebContentsGetter(getter: () => Electron.WebContents | null | undefined): void {
@@ -3732,6 +3738,28 @@ export class IpcBridge {
     );
   }
 
+  private getUpdateService(): UpdateService {
+    if (!this.updateService) {
+      this.updateService = new UpdateService({
+        disabled: process.env.SSHS3_DISABLE_UPDATES === '1',
+        confirmQuit: this.confirmQuit,
+        getAutoCheck: async () => (await this.settingsStore.getSettings()).autoCheckUpdates !== false,
+        send: (state) => {
+          const webContents = this.getWebContents();
+          if (webContents && !webContents.isDestroyed?.()) {
+            webContents.send(IPC_CHANNELS.UPDATE_STATE, state);
+          }
+        },
+      });
+    }
+    return this.updateService;
+  }
+
+  /** Starts the periodic update poll; called once the main window exists. */
+  public startUpdateChecks(): void {
+    this.getUpdateService().start();
+  }
+
   private registerGeneralHandlers(): void {
     this.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
       try {
@@ -3739,6 +3767,13 @@ export class IpcBridge {
       } catch {
         return '0.1.0';
       }
+    });
+
+    this.registerHandler(IPC_CHANNELS.UPDATE_GET_STATE, async () => this.getUpdateService().getState());
+    this.registerHandler(IPC_CHANNELS.UPDATE_CHECK, async () => this.getUpdateService().check());
+    this.registerHandler(IPC_CHANNELS.UPDATE_DOWNLOAD, async () => this.getUpdateService().download());
+    this.registerHandler(IPC_CHANNELS.UPDATE_INSTALL, async () => {
+      await this.getUpdateService().install();
     });
 
     this.registerHandler(IPC_CHANNELS.APP_OPEN_EXTERNAL, async (_event, url: string) => {
@@ -4182,6 +4217,7 @@ export class IpcBridge {
   }
 
   public async dispose(): Promise<void> {
+    this.updateService?.dispose();
     for (const channel of this.handlers) {
       this.ipcMain.removeHandler(channel);
     }

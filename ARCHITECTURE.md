@@ -59,6 +59,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── services/               # K8s discovery, debug containers, port forward & OpenShift
 │   │   ├── session/                # Window tab & layout persistence (SessionStore)
 │   │   ├── settings/               # App configuration & default settings (SettingsStore)
+│   │   ├── update/                 # Auto-update polling & state machine (UpdateService, electron-updater)
 │   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
 │   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, SSHTunnelManager, AgentLifecycle
 │   │   ├── storage/                # Local, SFTP, S3, and K8s Pod Storage Providers & Registry

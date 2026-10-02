@@ -97,6 +97,8 @@ export interface AppSettings {
   sessionExitAction?: SessionExitAction;
   /** Show a confirmation dialog before quitting the app (closing the window or Cmd/Ctrl+Q). Off by default. */
   confirmBeforeQuit?: boolean;
+  /** Periodically check GitHub Releases for a new version (nothing is downloaded without a click). On by default. */
+  autoCheckUpdates?: boolean;
   /** Windows only: Mode for local X11 server: 'manual' (external), 'auto' (start automatically when X11 session opens), 'always' (start on app launch) */
   x11ServerMode?: 'manual' | 'auto' | 'always';
   /** Windows only: Custom path to X server executable (e.g. C:\Program Files\VcXsrv\vcxsrv.exe). Auto-detects if omitted. */
@@ -138,6 +140,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shareFoldersAcrossTypes: false,
   sessionExitAction: 'reconnect',
   confirmBeforeQuit: false,
+  autoCheckUpdates: true,
   smartcardAuthMode: 'always-prompt',
   smartcardUnlockAtStartup: false,
   x11ServerMode: 'auto',

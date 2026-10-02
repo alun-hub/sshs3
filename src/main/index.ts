@@ -209,11 +209,13 @@ async function initializeApp(): Promise<void> {
   // Initialize and register IPC bridge
   ipcBridge = new IpcBridge({
     getWebContents: () => mainWindow?.webContents,
+    confirmQuit,
   });
   ipcBridge.register();
 
   // Create the main window immediately so the UI starts loading without waiting for subshells
   createWindow();
+  ipcBridge.startUpdateChecks();
 
   // Run background tasks (orphan cleanup, login shell environment, trust store)
   // in parallel with window loading so startup time is not penalized

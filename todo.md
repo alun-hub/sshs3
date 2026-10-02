@@ -25,8 +25,9 @@ Status som av 2026-09-27. Bygger på en genomgång av koden i `src/`, inte bara 
 
 Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta som begränsningar:
 
-- **Ingen automatisk uppdateringsmekanism** — paketen är i dagsläget manuella
-  engångsbyggen (`electron-updater` ej inkopplad).
+- **Automatiska uppdateringar är avstängda på Windows** — `electron-updater` är
+  inkopplad (se #29), men Windows-bygget är osignerat så updatern kan inte verifiera
+  utgivaren (`win.publisherName`), bara sha512 från `latest.yml`.
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
@@ -165,9 +166,17 @@ att bygga.
 - [x] **26. Ljust tema / systemtema-följning.** Integrerat via inställningsskärmen med dynamisk CSS `.light`-klass och synkroniserat xterm-färgtema.
 - [x] **27. Anpassningsbara tangentbordsgenvägar.** Ny flik i `SettingsModal` för interaktiv inspelning av snabbkommandon (globala tangentbordslyssnare i `App.tsx` för flikhantering, inställningar, profiler och terminalsplit) samt återställningsfunktion.
 - [x] **28. Appikon + `desktopName`** för Linux. Genererade PNG-ikoner i alla standardstorlekar (16x16 till 512x512) i `build/icons/`, `desktopName: sshs3` i `electron-builder.json` samt fönsterikon konfigurerad i `src/main/index.ts`.
-- [ ] **29. Automatiska uppdateringar** (`electron-updater` eller motsvarande) —
-   ingen uppdateringsmekanism finns alls just nu; paketen i Task 11 är
-   engångsbyggen.
+- [x] **29. Automatiska uppdateringar** — `electron-updater` mot GitHub Releases
+   (`src/main/update/UpdateService.ts`). Kollar 30 s efter start och var 6:e timme
+   (av/på under Inställningar → App Behavior), bannern `UpdateBanner` ber om klick för
+   nedladdning och omstart; inget laddas ned eller installeras tyst. AppImage och
+   deb/rpm stöds (deb/rpm ber om pkexec/sudo). **Windows är avstängt** (`windows-unsigned`)
+   tills bygget är signerat; där, i dev och med `SSHS3_DISABLE_UPDATES=1` (air-gap,
+   låser inställningen och gör ingen nätverkstrafik) visas bara "ladda ned manuellt".
+   **Kvar:** Windows-signering och sedan slå på updatern där: SignPath Foundation
+   (villkor kartlagda: code signing policy på hemsidan, integritetstext, MFA, bygget
+   delas upp så sha512 i `latest.yml` räknas om efter signering) eller Azure Trusted
+   Signing; sätt `win.publisherName`.
 - [ ] **30. Bandbreddsbegränsning** för överföringar.
 - [ ] **31. Arkivstöd** (packa upp/zippa filer på fjärrsystemet utan att ladda ner
    dem först).
@@ -209,6 +218,11 @@ att bygga.
    pågående drag med `Escape`.
 - [x] **66. K8s Pod File Explorer** — integrerad filhantering mot körande Kubernetes/OpenShift-containrar via `K8sPodStorageProvider`. Utvecklare och administratörer kan bläddra i containerfilsystem, redigera konfigurations- och miljöfiler direkt i `FileEditorModal` och externa editorer med autosparning tillbaka till podden, ladda upp/ner filer via drag & drop samt starta interaktiv terminal i aktuell containerkatalog via "Open in Terminal".
 - [x] **67. K8s Live Pod Debugging (`kubectl debug`)** — koppla på temporära felsökningscontainrar (ephemeral containers) i körande poddar utan omstart via `K8sDebugService` (`/ephemeralcontainers`). Stöd för process/PID-delning (`targetContainerName`), fördefinierade felsökningsimages (Netshoot, RHEL Support Tools, BusyBox, Curl, Ubuntu) samt konfigurerbara custom images under Inställningar -> Kubernetes & Debug. Startar automatiskt interaktiv terminal session i felsökningscontainern.
+- [ ] **68. Statusindikator på terminalflikar** — färgmarkera flikar efter terminalens tillstånd: ansluter/återansluter (gul), strömmar data (blå), idle/prompt-redo (grön), avslutad ok (grå), avslutad med fel (röd), program väntar på input (t.ex. `[y/N]`, `password:`; gul/orange). Bakgrundsflikar kan pulsera vid ny utdata eller när de börjar vänta på input.
+   - **Underlag finns:** `onTerminalData`/`onK8sTerminalData` och `term.onData` i `TerminalView`, `onExit` med `exitCode`, samt `reconnecting`/`reconnected` från `SSHPtyManager`. `TabBar` ritar redan indikatorer (tunnelstatus).
+   - **"Väntar på input"** är det svåra (PTY vet inte om skalet är på prompten). Steg 1: tystnadsheuristik (1–2 s) + mönster på sista raden. Steg 2 (valfritt): shell-integration via OSC 133 för exakt prompt/kommando-status, kräver snutt i fjärrskalets rc-fil.
+   - **Genomförande:** ren statusmaskin i utility-fil (data/exit/reconnect → status, med timers), `TerminalView` rapporterar uppåt via callback likt `onExit`, prick/kant i `TabBar`. Inställning för av/på, färgblindsäkert (ikon/form utöver färg), enhetstester för statusmaskinen.
+   - **Öppna frågor:** ska grönt betyda prompt-redo eller ska "program frågar" ha egen färg? Prick eller färgad kant på hela fliken?
 
 
 ## Funktionsanalys: PuTTY, WinSCP & S3 Browser
@@ -263,4 +277,4 @@ Då **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 24, 25, 26,
 3. **34. Stöd för PuTTY-nycklar (.ppk)** — undanröjer ett av de vanligaste hindren för Windows- och PuTTY-användare som byter till sshs3.
 4. **38. S3 Bucket-administration (Skapa, radera & purge)** — hantera hela livscykeln för buckets direkt i UI:t.
 5. **40. Sökning i terminalbuffert (`Ctrl+Shift+F`)** — sökning i aktiv terminalhistorik med highlight och navigering.
-6. **29. Automatiska uppdateringar** — inkoppling av `electron-updater` för smidiga appuppdateringar.
+6. ~~**29. Automatiska uppdateringar**~~ — klart; kvar är Windows-signering.
