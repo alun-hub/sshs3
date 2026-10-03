@@ -99,6 +99,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   shortcuts,
   showHiddenFiles = false,
 }) => {
+  const onPathChangeRef = useRef(onPathChange);
+  onPathChangeRef.current = onPathChange;
+  const lastPasteTimeRef = useRef(0);
+
   const [entries, setEntries] = useState<FileEntry[]>([]);
   // UX audit finding #1: Settings > Files & Storage > "Show hidden files and
   // dotfiles" existed and persisted, but nothing ever read it back — the
@@ -245,6 +249,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [selectedPaths, cutFiles, side, source.providerId]);
 
   const handlePaste = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPasteTimeRef.current < 200) return;
+    lastPasteTimeRef.current = now;
     if (!clipboard || clipboard.sourcePaths.length === 0) return;
     onTransferRequested({
       sourceProviderId: clipboard.providerId,
@@ -274,14 +281,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
         if (source.sourceType === 'local') {
           const home = await window.multissh.getHomeDir?.();
           if (home && currentPath !== home) {
-            onPathChange(home);
+            onPathChangeRef.current?.(home);
             return;
           }
         } else if (source.sourceType === 'sftp') {
           try {
             const home = await window.multissh.storageGetHomeDir(source.providerId);
             if (home && currentPath !== home) {
-              onPathChange(home);
+              onPathChangeRef.current?.(home);
               return;
             }
           } catch {
@@ -302,7 +309,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         if (latestRequestRef.current === requestKey) setLoading(false);
       }
     },
-    [source.providerId, source.sourceType, currentPath, onPathChange]
+    [source.providerId, source.sourceType, currentPath]
   );
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config, SFTPConfig } from '@shared/types/storage';
@@ -530,6 +530,39 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     [panes]
   );
 
+  const handleLeftPathChange = useCallback((path: string) => setPanePath('left', path), [setPanePath]);
+  const handleRightPathChange = useCallback((path: string) => setPanePath('right', path), [setPanePath]);
+
+  const handleLeftFocus = useCallback(() => setActiveSide('left'), []);
+  const handleRightFocus = useCallback(() => setActiveSide('right'), []);
+
+  const handleLeftSourceTypeRequest = useCallback((type: SourceType) => setPaneSourceType('left', type), [setPaneSourceType]);
+  const handleRightSourceTypeRequest = useCallback((type: SourceType) => setPaneSourceType('right', type), [setPaneSourceType]);
+
+  const handleLeftTransferRequested = useCallback(
+    (params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => handleTransferRequested('left', params),
+    [handleTransferRequested]
+  );
+  const handleRightTransferRequested = useCallback(
+    (params: { sourceProviderId: string; sourcePaths: string[]; targetPath: string }) => handleTransferRequested('right', params),
+    [handleTransferRequested]
+  );
+
+  const handleLeftOpenTerminal = useMemo(() => {
+    return onOpenTerminal || onOpenK8sTerminal
+      ? (path: string) => void handleOpenTerminal(panes.left.source.providerId, path)
+      : undefined;
+  }, [onOpenTerminal, onOpenK8sTerminal, handleOpenTerminal, panes.left.source.providerId]);
+
+  const handleRightOpenTerminal = useMemo(() => {
+    return onOpenTerminal || onOpenK8sTerminal
+      ? (path: string) => void handleOpenTerminal(panes.right.source.providerId, path)
+      : undefined;
+  }, [onOpenTerminal, onOpenK8sTerminal, handleOpenTerminal, panes.right.source.providerId]);
+
+  const otherPaneForLeft = useMemo(() => ({ ...panes.right.source, path: panes.right.path }), [panes.right.source, panes.right.path]);
+  const otherPaneForRight = useMemo(() => ({ ...panes.left.source, path: panes.left.path }), [panes.left.source, panes.left.path]);
+
   if (!ready) {
     return <div className="flex flex-1 items-center justify-center text-sm text-txt-muted">Initializing file manager...</div>;
   }
@@ -560,17 +593,13 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             source={panes.left.source}
             currentPath={panes.left.path}
             isActive={activeSide === 'left'}
-            onFocus={() => setActiveSide('left')}
-            onPathChange={(path) => setPanePath('left', path)}
-            onSourceTypeRequest={(type) => setPaneSourceType('left', type)}
-            onTransferRequested={(params) => handleTransferRequested('left', params)}
-            onOpenTerminal={
-              onOpenTerminal || onOpenK8sTerminal
-                ? (path) => void handleOpenTerminal(panes.left.source.providerId, path)
-                : undefined
-            }
+            onFocus={handleLeftFocus}
+            onPathChange={handleLeftPathChange}
+            onSourceTypeRequest={handleLeftSourceTypeRequest}
+            onTransferRequested={handleLeftTransferRequested}
+            onOpenTerminal={handleLeftOpenTerminal}
             refreshToken={refreshToken}
-            otherPane={{ ...panes.right.source, path: panes.right.path }}
+            otherPane={otherPaneForLeft}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
           />
@@ -579,17 +608,13 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             source={panes.right.source}
             currentPath={panes.right.path}
             isActive={activeSide === 'right'}
-            onFocus={() => setActiveSide('right')}
-            onPathChange={(path) => setPanePath('right', path)}
-            onSourceTypeRequest={(type) => setPaneSourceType('right', type)}
-            onTransferRequested={(params) => handleTransferRequested('right', params)}
-            onOpenTerminal={
-              onOpenTerminal || onOpenK8sTerminal
-                ? (path) => void handleOpenTerminal(panes.right.source.providerId, path)
-                : undefined
-            }
+            onFocus={handleRightFocus}
+            onPathChange={handleRightPathChange}
+            onSourceTypeRequest={handleRightSourceTypeRequest}
+            onTransferRequested={handleRightTransferRequested}
+            onOpenTerminal={handleRightOpenTerminal}
             refreshToken={refreshToken}
-            otherPane={{ ...panes.left.source, path: panes.left.path }}
+            otherPane={otherPaneForRight}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
           />

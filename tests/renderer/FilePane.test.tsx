@@ -115,4 +115,53 @@ describe('FilePane Home Button', () => {
 
     expect(screen.queryByRole('button', { name: 'Home' })).not.toBeInTheDocument();
   });
+
+  it('does NOT reload folder or clear selection when isActive or callback references change', async () => {
+    const storageListMock = vi.fn().mockResolvedValue([
+      { name: 'file1.txt', path: '/var/log/file1.txt', size: 100, isDirectory: false },
+    ]);
+    (window as any).multissh.storageList = storageListMock;
+
+    const { rerender } = render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="right"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            isActive={false}
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect(storageListMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Re-render with isActive=true and a new inline function reference for onPathChange
+    rerender(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="right"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            isActive={true}
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    // storageList should STILL have only been called once (no redundant reload that resets scroll)
+    expect(storageListMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -698,6 +698,28 @@ describe('FileList Component', () => {
       expect(onPaste).toHaveBeenCalledTimes(1);
     });
 
+    it('stops event propagation on Ctrl+V to prevent parent pane duplicate paste', () => {
+      const onPaste = vi.fn();
+      const parentKeyDown = vi.fn();
+      const { container } = render(
+        <div onKeyDown={parentKeyDown}>
+          <FileList
+            entries={mockEntries}
+            loading={false}
+            selectedPaths={new Set()}
+            onSelectionChange={vi.fn()}
+            onOpen={vi.fn()}
+            onPaste={onPaste}
+          />
+        </div>
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'v', ctrlKey: true });
+      expect(onPaste).toHaveBeenCalledTimes(1);
+      expect(parentKeyDown).not.toHaveBeenCalled();
+    });
+
     it('triggers onNavigateBack on Alt+Left and onNavigateForward on Alt+Right', () => {
       const onNavigateBack = vi.fn();
       const onNavigateForward = vi.fn();

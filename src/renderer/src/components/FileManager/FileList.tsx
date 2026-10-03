@@ -328,12 +328,14 @@ export const FileList: React.FC<FileListProps> = ({
       if (renamingPath) return;
       if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
+        e.stopPropagation();
         onSelectionChange(new Set(sorted.map((item) => item.path)));
         return;
       }
 
       if (e.key === 'Delete' && selectedPaths.size > 0) {
         e.preventDefault();
+        e.stopPropagation();
         onDeleteSelected?.();
         return;
       }
@@ -345,30 +347,35 @@ export const FileList: React.FC<FileListProps> = ({
       const currentIndex = activeIndex !== -1 ? activeIndex : firstSelectedIndex;
       if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
+        e.stopPropagation();
         onCopySelected?.();
         return;
       }
 
       if (e.key === 'x' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
+        e.stopPropagation();
         onCutSelected?.();
         return;
       }
 
       if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
+        e.stopPropagation();
         onPaste?.();
         return;
       }
 
       if (e.key === 'ArrowLeft' && e.altKey) {
         e.preventDefault();
+        e.stopPropagation();
         onNavigateBack?.();
         return;
       }
 
       if (e.key === 'ArrowRight' && e.altKey) {
         e.preventDefault();
+        e.stopPropagation();
         onNavigateForward?.();
         return;
       }
@@ -558,7 +565,7 @@ export const FileList: React.FC<FileListProps> = ({
         ref={containerRef}
         tabIndex={0}
         className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
-        onMouseDown={() => containerRef.current?.focus()}
+        onMouseDown={() => containerRef.current?.focus({ preventScroll: true })}
         onKeyDown={handleContainerKeyDown}
         onDragOver={(e) => {
           e.preventDefault();

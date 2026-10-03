@@ -379,6 +379,31 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
     });
 
+    // Deduplicate rapid identical pastes (e.g. when Shift+Insert triggers both
+    // Chromium's native paste event and the custom keydown handler below).
+    let lastPasteText = '';
+    let lastPasteTime = 0;
+
+    const originalPaste = term.paste.bind(term);
+    term.paste = (data: string) => {
+      const now = Date.now();
+      if (data && data === lastPasteText && now - lastPasteTime < 150) {
+        return;
+      }
+      lastPasteText = data;
+      lastPasteTime = now;
+      originalPaste(data);
+    };
+
+    const handleDomPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData('text/plain');
+      if (text) {
+        lastPasteText = text;
+        lastPasteTime = Date.now();
+      }
+    };
+    container.addEventListener('paste', handleDomPaste, true);
+
     // Shift+Insert is the conventional Linux terminal "paste from clipboard" shortcut;
     // xterm.js only reacts to the browser's native paste event (typically Ctrl/Cmd+V),
     // so it's wired up explicitly here.
@@ -613,6 +638,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
       term.dispose();
       if (container) {
+        container.removeEventListener('paste', handleDomPaste, true);
         container.innerHTML = '';
       }
       termRef.current = null;

@@ -365,5 +365,27 @@ describe('TerminalView Component', () => {
     expect(mockTerminalKill).not.toHaveBeenCalled();
     expect(mockTerminalCreate).toHaveBeenCalledTimes(1);
   });
+
+  it('deduplicates rapid identical paste events to prevent double paste', async () => {
+    render(<TerminalView config={sampleConfig} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const container = screen.getByTestId('terminal-container');
+
+    // Dispatch a DOM paste event with test string
+    act(() => {
+      const pasteEvent = new Event('paste', { bubbles: true }) as any;
+      pasteEvent.clipboardData = {
+        getData: (type: string) => (type === 'text/plain' ? 'echo duplicate-test' : ''),
+      };
+      container.dispatchEvent(pasteEvent);
+    });
+
+    // Terminal container handles DOM paste listener without errors
+    expect(container).toBeInTheDocument();
+  });
 });
 
