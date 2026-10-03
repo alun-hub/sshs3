@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.14] - 2026-10-03
+
+### Added
+- **Performance bar** above SSH, local-shell and Kubernetes terminals. Off by default; enable it under *Settings → Performance*. While it is off nothing is polled.
+  - SSH sessions are sampled over the already open ControlMaster connection (no extra login or PIN prompt) with one fixed, read-only `/proc` script: CPU, RAM, load, swap, disk, network, disk I/O, iowait/steal, processes, per-core CPU, cache, all filesystems, uptime and latency. Linux hosts only.
+  - Local shells show your own machine (full set on Linux; CPU, RAM, uptime and disk elsewhere).
+  - Kubernetes pods use `metrics.k8s.io` (like `kubectl top pod`): CPU/memory against request and limit, restarts, Ready, age and node.
+  - Three layouts (text, bars, sparklines), selectable metrics and update interval. Hover for a tooltip with every value; click for up to 15 minutes of history with donuts, bars and stat tiles.
+
+### Fixed
+- Prevent double-paste and scroll-to-top when clicking an inactive pane.
+
 ## [0.96.13] - 2026-10-03
 
 ### Added
