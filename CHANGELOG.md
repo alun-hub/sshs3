@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.16] - 2026-10-03
+
+### Fixed
+- **Last terminal row clipped.** Padding sat on the xterm container, so FitAddon sized the terminal ~16 px too tall and cut off the bottom row (worst on Windows). Padding now lives on a wrapper element, in both the terminal and the Kubernetes log view.
+- **Performance bar on Windows.** The non-interactive `ssh` fallback is now limited to login methods that need no per-login prompt, so sampling never triggers a password, PIN or passphrase prompt.
+
 ## [0.96.15] - 2026-10-03
 
 ### Fixed
