@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.15] - 2026-10-03
+
+### Fixed
+- **Performance bar on Windows.** Remote SSH sessions showed "Not connected" because Windows OpenSSH has no ControlMaster socket to reuse. On Windows each sample now uses a short-lived, non-interactive `ssh` connection (key/agent auth; password-only profiles are not supported) and polls at most every 10 s. Latency is measured as TCP connect time to sshd (hidden behind a proxy or ProxyJump). Linux and macOS are unchanged.
+
 ## [0.96.14] - 2026-10-03
 
 ### Added
