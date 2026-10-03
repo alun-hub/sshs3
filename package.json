@@ -28,6 +28,7 @@
     "package:linux": "npm run build && electron-builder --linux",
     "package:appimage": "npm run build && electron-builder --linux AppImage",
     "package:win": "npm run build && electron-builder --win",
+    "docs:sync": "node scripts/sync-docs.mjs",
     "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {

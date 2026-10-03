@@ -72,6 +72,13 @@ Before writing new features or modifying IPC interfaces, please read [`ARCHITECT
 - Asynchronous streaming contract for [`IStorageProvider`](src/main/storage/StorageProvider.ts).
 - Terminal PTY lifecycle, proxy routing, and Askpass security boundaries.
 
+### User Documentation & Guides (`docs.sshs3.com`)
+
+User documentation is maintained in Markdown under [`docs/user-guide/`](docs/user-guide/) and published to [docs.sshs3.com](https://docs.sshs3.com).
+- Any PR introducing or changing user-facing functionality (new shortcuts, connection options, file manager features, settings, etc.) **must update or add to the relevant chapter** in `docs/user-guide/`.
+- Validate documentation locally using `npm run docs:sync`.
+- Changes merged to `master` automatically trigger validation and deployment via `.github/workflows/deploy-docs.yml`.
+
 ---
 
 ## Code Standards & Style

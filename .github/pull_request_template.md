@@ -29,4 +29,5 @@ Fixes #(issue)
 - [ ] I have executed `npm run lint` and verified 0 ESLint warnings/errors.
 - [ ] I have run `npm run test` and all existing & new unit tests pass.
 - [ ] I have added appropriate automated tests for any new behavior or bug fixes.
+- [ ] User documentation in `docs/user-guide/` has been updated (if user-facing change).
 - [ ] Any public documentation or architectural changes have been updated.

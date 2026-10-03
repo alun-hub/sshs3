@@ -1,0 +1,42 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'docs/**'
+      - 'scripts/sync-docs.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout sshs3
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate documentation structure
+        run: node scripts/sync-docs.mjs
+
+  dispatch-site-update:
+    needs: validate-docs
+    runs-on: ubuntu-24.04
+    if: github.repository == 'alun-hub/sshs3'
+    steps:
+      - name: Trigger sshs3-site rebuild / sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SITE_DISPATCH_TOKEN || github.token }}
+          repository: alun-hub/sshs3-site
+          event-type: docs-updated
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
+        continue-on-error: true
