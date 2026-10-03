@@ -1,4 +1,5 @@
 import type { UpdateState } from './update';
+import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from './perf';
 import type {
   SSHConnectionConfig,
   PtyOptions,
@@ -267,6 +268,9 @@ export const IPC_CHANNELS = {
   K8S_TERMINAL_WRITE: 'k8s-terminal:write',
   K8S_TERMINAL_RESIZE: 'k8s-terminal:resize',
   K8S_TERMINAL_KILL: 'k8s-terminal:kill',
+  PERF_SSH_SAMPLE: 'perf:ssh-sample',
+  PERF_K8S_SAMPLE: 'perf:k8s-sample',
+  PERF_LOCAL_SAMPLE: 'perf:local-sample',
   K8S_TERMINAL_DATA: 'k8s-terminal:data',
   K8S_TERMINAL_EXIT: 'k8s-terminal:exit',
 
@@ -624,6 +628,9 @@ export interface MultiSSHApi {
   k8sTerminalWrite(sessionId: string, data: string): Promise<void>;
   k8sTerminalResize(sessionId: string, cols: number, rows: number): Promise<void>;
   k8sTerminalKill(sessionId: string): Promise<void>;
+  perfSshSample(sessionId: string): Promise<PerfSshResult>;
+  perfK8sSample(target: PerfK8sTarget): Promise<PerfK8sResult>;
+  perfLocalSample(): Promise<PerfSshResult>;
   onK8sTerminalData(callback: (sessionId: string, data: string) => void): () => void;
   onK8sTerminalExit(callback: (sessionId: string, event: { status: string }) => void): () => void;
   k8sLogStart(

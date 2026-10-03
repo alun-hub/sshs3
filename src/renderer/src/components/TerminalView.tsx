@@ -6,6 +6,9 @@ import { RotateCcw, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import { PerfBar } from './PerfBar';
+import { usePerfSamples } from '../lib/usePerfSamples';
+import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
 
 export interface TerminalViewProps {
@@ -33,6 +36,8 @@ export interface TerminalViewProps {
   sessionExitAction?: SessionExitAction;
   /** Mirror text selections into the system clipboard, not just the X11 PRIMARY selection. */
   copyOnSelect?: boolean;
+  /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
+  perfMetrics?: { layout: PerfLayout; items: PerfMetricId[]; intervalSec?: number };
   /** Callback to close the enclosing tab. */
   onCloseTab?: () => void;
   /** Emitted when an OSC 0 or OSC 2 title sequence is received from the shell. */
@@ -141,6 +146,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   scrollback = 5000,
   sessionExitAction = 'reconnect',
   copyOnSelect = false,
+  perfMetrics,
   onCloseTab,
   onTitleChange,
 }) => {
@@ -148,6 +154,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  // State copy of the SSH session id so the perf bar can poll it (the ref alone doesn't re-render).
+  const [perfSessionId, setPerfSessionId] = useState<string | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
   const onTitleChangeRef = useRef(onTitleChange);
@@ -189,6 +197,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const lastRowsRef = useRef(0);
 
   const [sessionKey, setSessionKey] = useState(0);
+  const perfTitle = k8sTarget
+    ? `${k8sTarget.podName}/${k8sTarget.containerName}`
+    : local
+      ? 'Local shell'
+      : (config?.name || config?.host);
+  const perfKind = k8sTarget ? 'k8s' : local || config ? 'ssh' : null;
+  const perfState = usePerfSamples({
+    local: Boolean(local && !k8sTarget),
+    sshSessionId: perfSessionId,
+    k8sTarget,
+    intervalSec: perfMetrics?.intervalSec,
+    active: Boolean(perfMetrics && perfKind && isActive),
+  });
   const [exitEvent, setExitEvent] = useState<SSHPtyExitEvent | null>(null);
 
   // Lazy connection: background tabs (isActive === false on mount) defer
@@ -440,6 +461,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             return;
           }
           sessionIdRef.current = sessionId;
+          setPerfSessionId(sessionId);
 
           // Force PTY size synchronization once session ID is established.
           // On app launch or tab restoration, the session was spawned with provisional
@@ -596,6 +618,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       termRef.current = null;
       fitAddonRef.current = null;
       sessionIdRef.current = null;
+      setPerfSessionId(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- target & shell types are encapsulated into connectionKey
   }, [connectionKey, sessionKey, syncPtySize, hasEverBeenActive]);
@@ -622,16 +645,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   return (
     <div
       data-testid="terminal-view"
-      className={`relative h-full w-full overflow-hidden ${
+      className={`relative flex h-full w-full flex-col overflow-hidden ${
         isBreeze ? 'bg-[#232627]' : isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
       } ${className}`}
     >
+      {perfMetrics && perfKind && (
+        <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} light={isLight} title={perfTitle} />
+      )}
       <div
         ref={containerRef}
         data-testid="terminal-container"
         role="application"
         aria-label={terminalAriaLabel}
-        className="h-full w-full p-2 focus:outline-none"
+        className="min-h-0 w-full flex-1 p-2 focus:outline-none"
       />
 
       {exitEvent && (

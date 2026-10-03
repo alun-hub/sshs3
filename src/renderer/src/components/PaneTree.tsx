@@ -5,6 +5,7 @@ import { TerminalView } from './TerminalView';
 import { K8sLogView } from './K8sLogView';
 import { collectLeaves } from '../lib/paneTree';
 import type { AppSettings } from '@shared/types/settings';
+import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import type { LocalShellType } from '@shared/types/ssh';
 import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
 
@@ -292,12 +293,24 @@ const PaneLeafContent: React.FC<{
   onSelectPane,
 }) => {
   const isSole = totalPanes === 1;
+  const perfEnabled = settings.perfMetricsEnabled === true;
+  const perfLayout = settings.perfMetricsLayout ?? 'text';
+  const perfItems = settings.perfMetricsItems;
+  const perfIntervalSec = settings.perfMetricsIntervalSec;
+  const perfMetrics = useMemo(
+    () =>
+      perfEnabled
+        ? { layout: perfLayout, items: perfItems ?? DEFAULT_PERF_ITEMS, intervalSec: perfIntervalSec }
+        : undefined,
+    [perfEnabled, perfLayout, perfItems, perfIntervalSec]
+  );
   let content: React.ReactNode;
 
   if (leaf.config) {
     content = (
       <TerminalView
         config={leaf.config}
+        perfMetrics={perfMetrics}
         isActive={isActive}
         fontSize={settings.terminalFontSize}
         fontFamily={settings.terminalFontFamily}
@@ -314,6 +327,7 @@ const PaneLeafContent: React.FC<{
     content = (
       <TerminalView
         k8sTarget={leaf.k8sTarget}
+        perfMetrics={perfMetrics}
         isActive={isActive}
         fontSize={settings.terminalFontSize}
         fontFamily={settings.terminalFontFamily}
@@ -338,6 +352,7 @@ const PaneLeafContent: React.FC<{
     content = (
       <TerminalView
         local
+        perfMetrics={perfMetrics}
         shellType={leaf.shellType}
         wslDistro={leaf.wslDistro}
         isActive={isActive}

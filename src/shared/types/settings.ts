@@ -1,4 +1,5 @@
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from './kubernetes';
+import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from './perf';
 
 export type AppTheme = 'dark' | 'light' | 'breeze' | 'system';
 export type SessionExitAction = 'reconnect' | 'close' | 'keep';
@@ -120,6 +121,14 @@ export interface AppSettings {
   shareFoldersAcrossTypes?: boolean;
   /** Ephemeral debug container images used for Kubernetes / OpenShift pod debugging. */
   k8sDebugImages?: K8sDebugImage[];
+  /** Master switch for the performance bar above SSH / Kubernetes terminals. Off by default; when off nothing is polled. */
+  perfMetricsEnabled?: boolean;
+  /** How the performance bar is drawn. */
+  perfMetricsLayout?: PerfLayout;
+  /** Which metrics the bar shows. Ids that don't apply to the session type (e.g. 'load' for a pod) are ignored. */
+  perfMetricsItems?: PerfMetricId[];
+  /** Polling interval in seconds. Kubernetes sessions are clamped to at least PERF_K8S_MIN_INTERVAL_SEC. */
+  perfMetricsIntervalSec?: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -138,6 +147,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dotfilesPoolEnabled: false,
   enableOpenShift: false,
   shareFoldersAcrossTypes: false,
+  perfMetricsEnabled: false,
+  perfMetricsLayout: 'text',
+  perfMetricsItems: [...DEFAULT_PERF_ITEMS],
+  perfMetricsIntervalSec: 5,
   sessionExitAction: 'reconnect',
   confirmBeforeQuit: false,
   autoCheckUpdates: true,

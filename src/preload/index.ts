@@ -71,6 +71,7 @@ import type {
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { AppSettings } from '../shared/types/settings';
+import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
 import type {
   SearchDoneEvent,
@@ -684,6 +685,14 @@ export const api: MultiSSHApi = {
 
   k8sTerminalKill: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_TERMINAL_KILL, sessionId),
+
+  perfSshSample: (sessionId: string): Promise<PerfSshResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PERF_SSH_SAMPLE, sessionId),
+
+  perfK8sSample: (target: PerfK8sTarget): Promise<PerfK8sResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PERF_K8S_SAMPLE, target),
+
+  perfLocalSample: (): Promise<PerfSshResult> => ipcRenderer.invoke(IPC_CHANNELS.PERF_LOCAL_SAMPLE),
 
   onK8sTerminalData: (callback: (sessionId: string, data: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) =>

@@ -54,6 +54,7 @@ import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { SSHTunnelManager } from './services/SSHTunnelManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
+import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
@@ -213,6 +214,7 @@ export class IpcBridge {
   public readonly k8sDiscoveryService: K8sDiscoveryService;
   public readonly k8sDebugService: K8sDebugService;
   public readonly k8sTerminalManager: K8sTerminalManager;
+  private readonly perfMetricsService: PerfMetricsService;
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
   public readonly sshTunnelManager: SSHTunnelManager;
@@ -337,6 +339,10 @@ export class IpcBridge {
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
+    this.perfMetricsService = new PerfMetricsService((sessionId) => {
+      const session = this.sshPtyManager.getSession(sessionId);
+      return session ? { host: session.config.host, controlPath: session.controlPath } : undefined;
+    });
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
     this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
     this.sshTunnelManager = options.sshTunnelManager ?? new SSHTunnelManager();
@@ -3584,6 +3590,15 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.K8S_TERMINAL_KILL, async (_event, sessionId: string) => {
       this.k8sTerminalManager.kill(sessionId);
     });
+
+    // Performance bar. The renderer only sends a session id / pod target; host and mux socket are resolved here.
+    this.registerHandler(IPC_CHANNELS.PERF_SSH_SAMPLE, async (_event, sessionId: unknown) =>
+      this.perfMetricsService.sampleSsh(sessionId)
+    );
+    this.registerHandler(IPC_CHANNELS.PERF_LOCAL_SAMPLE, async () => this.perfMetricsService.sampleLocal());
+    this.registerHandler(IPC_CHANNELS.PERF_K8S_SAMPLE, async (_event, target: unknown) =>
+      this.perfMetricsService.sampleK8s(target)
+    );
 
     this.registerHandler(
       IPC_CHANNELS.K8S_LOG_START,
