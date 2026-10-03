@@ -1,88 +1,98 @@
-# Dual-Pane File Manager
+# Dual-Pane File Manager (Komplett Referenshandbok)
 
-The Dual-Pane File Manager in sshs3 provides a unified explorer for managing files across local storage, remote SFTP servers, Amazon S3 buckets, and Kubernetes containers.
+Filhanteraren i **sshs3** erbjuder en integrerad tvåpanelsutforskare för att överföra och hantera filer sömlöst mellan lokal disk, fjärranslutna SFTP-servrar, Amazon S3-kompatibla molnbuckets och Kubernetes-containrar.
 
----
-
-## High-Performance SFTP Engine
-
-sshs3 uses an integrated SFTP engine carried directly over your system's OpenSSH binary (`ssh -s sftp`):
-- **Maximum Compatibility**: Reuses your existing OpenSSH credentials, keys, ProxyJump bastions, and smartcard agents without requiring an independent SFTP connection.
-- **Optimised Throughput**: Features a high-speed SFTP v3 parser with a 16 MB packet guard and concurrent byte chunking for multi-gigabyte transfers.
+![Dual-Pane File Manager](/img/filemanager.png)
 
 ---
 
-## Dual-Pane Architecture & Any-to-Any Transfers
+## 1. Arkitektur & SFTP v3 Motor
 
-The file manager features two independent browsing panes (Left and Right). Each pane can independently connect to:
-- **Local Filesystem**
-- **Remote SFTP Server**
-- **S3 Bucket / Object Store**
-- **Kubernetes Pod Container**
-
-### Supported Transfer Paths
-- Local ↔ SFTP
-- SFTP ↔ SFTP (Direct server-to-server or streamed)
-- Local ↔ S3
-- SFTP ↔ S3 (Transfer remote server files directly into S3 object storage)
-- Local / SFTP / S3 ↔ Kubernetes Pod
+### 1.1 SFTP över Systemets OpenSSH-binär
+sshs3 använder en egenutvecklad SFTP v3-protokollmotor som körs direkt över ditt operativsystems `ssh`-binär (`ssh -s sftp`):
+- **Återanvänder alla OpenSSH-konfigurationer**: Dina SSH-nycklar, lösenfraser, `~/.ssh/config`-inställningar, ProxyJump-bastioner och smartcard-agenter används automatiskt utan att behöva konfigureras separat.
+- **Prestanda & Säkerhet**: Motorn har en inbyggd säkerhetsspärr på **16 MB paketlängd** för att skydda mot minnesläckor eller felaktiga servrar, samt optimerad samtidig byte-chunking för höghastighetsöverföring av filer i gigabyte-klassen.
 
 ---
 
-## Transfer Queue & Conflict Resolution
+## 2. Tvåpanelslayout & Protokolloberoende Överföringar
 
-- **Concurrent Job Execution**: File transfers are queued and executed concurrently according to your settings (default: 3 concurrent jobs).
-- **Pause & Resume**: Large transfers can be paused, reprioritised, or cancelled at any time.
-- **Conflict Handling**: When a destination file already exists, a conflict dialog prompts you to:
-  - **Overwrite**: Replace destination file.
-  - **Skip**: Omit the conflicting file and proceed with the remaining queue.
-  - **Resume**: Continue appending where an interrupted transfer left off (supported on SFTP/local).
-  - **Rename**: Save with an incremental suffix (e.g. `document_copy(1).pdf`).
-  - Choose *"Apply to all remaining conflicts"* to avoid repeated prompts.
+Filhanteraren har två oberoende paneler (Vänster och Höger). Varje panel kan fritt kopplas till vilket protokoll som helst:
+- **Lokal maskin**: Din lokala arbetsstations filsystem.
+- **SFTP-server**: Fjärrvärdar via SSH.
+- **S3 Object Storage**: AWS S3, Cloudflare R2, MinIO, Wasabi m.fl.
+- **Kubernetes Pod**: Containerns filsystem i realtid.
 
----
-
-## Recursive Search & Wildcards (<kbd>Ctrl+F</kbd>)
-
-Press <kbd>Ctrl+F</kbd> inside either file pane to activate the search bar:
-
-- **Current Folder Search**: Instantly filters the active directory listing.
-- **Recursive Subfolder Search**: Check the **"Recursive"** checkbox to traverse the entire folder tree downwards across SFTP, Local, S3, or K8s:
-  - Supports up to 1,000 matches across up to 3,000 directories.
-  - Traversal results display relative folder paths.
-  - Symlink loop protection: Symlinked directories are never recursively followed.
-  - Hidden folder awareness: Skips hidden directories unless *"Show Hidden Files"* is enabled.
-- **Wildcards (`*` and `?`)**:
-  - `*.log` matches all files ending in `.log`.
-  - `backup-202?-*.tar.gz` matches variable year digits.
-  - Plain strings fall back to case-insensitive substring search.
+### 2.1 Överföringsvägar
+- **Lokal ↔ SFTP**
+- **SFTP ↔ SFTP** (Direkt överföring mellan två olika fjärrservrar)
+- **Lokal ↔ S3**
+- **SFTP ↔ S3** (Ladda upp direkt från en Linux-server till en S3-bucket utan att först mellanlanda på din lokala dator)
+- **Lokal / SFTP / S3 ↔ Kubernetes Pod**
 
 ---
 
-## Integrated Monaco Code Editor
+## 3. Funktioner & Detaljerad Användning
 
-Double-click or right-click any text file, script, YAML manifest, or configuration file and select **Edit**:
-- Powered by the Monaco Editor (the editor core of VS Code).
-- Features syntax highlighting for JSON, YAML, Shell, Python, Go, Rust, TypeScript, Markdown, Dockerfile, and more.
-- Press <kbd>Ctrl+S</kbd> to save changes directly back to the remote SFTP host, S3 object, or Kubernetes container.
-- Built-in Markdown live preview.
+### 3.1 Dra-och-Släpp & Överföringskö (Transfer Queue)
+- **Dra-och-släpp**: Markera en eller flera filer och dra dem från ena panelen till den andra.
+- **Överföringskön**: Visas i en utfällbar list längst ner i fönstret:
+  - Visar aktuell överföringshastighet (KB/s eller MB/s), förfluten tid och beräknad återstående tid (ETA).
+  - Stöder paus, återuppta och avbrytning av enskilda jobb eller hela kön.
+  - Samtidiga jobb konfigureras i inställningarna (standard: 3 parallella strömmar).
 
----
-
-## Directory Synchronisation (Diff & Sync)
-
-Compare and synchronise two directories (e.g. Local ↔ SFTP or SFTP ↔ S3):
-1. Navigate Left pane to source directory and Right pane to destination directory.
-2. Click **Sync Directories** on the toolbar.
-3. Review the visual diff table:
-   - Green: New files to be uploaded.
-   - Blue: Modified files (detected via timestamp and byte size differences).
-   - Red: Files present only on destination.
-4. Select sync mode (One-way mirroring, Update existing only, or Two-way) and click **Execute Sync**.
+### 3.2 Konflikthantering vid Filkollisioner
+När en fil med samma namn redan finns i målkatalogen öppnas konfliktfönstret:
+- **Overwrite**: Skriver över den befintliga filen.
+- **Skip**: Hoppar över filen och fortsätter med nästa i kön.
+- **Resume**: Återupptar en avbruten överföring genom att fortsätta skriva från sista kända byten (stöds på SFTP och lokal disk).
+- **Rename**: Sparar filen med ett automatiskt tillägg (t.ex. `rapport_copy(1).pdf`).
+- **Apply to all**: Applicerar samma val på alla efterföljande filkonflikter i den aktuella överföringsbatchen.
 
 ---
 
-## Permissions, Chmod & File Operations
+### 3.3 Rekursiv Filsökning & Jokertecken (<kbd>Ctrl+F</kbd>)
+Tryck <kbd>Ctrl+F</kbd> i valfri panel för att öppna sökfältet:
 
-- **Chmod Modal**: Select any remote file or directory on SFTP or K8s, right-click and select **Permissions**. Modify Read/Write/Execute permissions visually or input octal values (e.g. `0755`, `0644`). Supports recursive chmod.
-- **Symlinks & Attributes**: View symlink targets, ownership (UID/GID), and exact byte sizes.
+- **Lokal mappfiltrering**: Filtrerar omedelbart filerna i den aktuella mappen.
+- **Kryssrutan "Recursive"**:
+  Traverserar undermappar nedåt i filträdet:
+  - Begränsat till max **1 000 träffar över 3 000 mappar** för att skydda minnet och undvika API-blockeringar.
+  - Träfflistan visar filernas relativa sökväg och låter dig öppna, kopiera eller överföra dem som vanliga filer.
+  - **Loop-skydd**: Symboliska länkar (symlinks) till mappar ignoreras automatiskt under rekursion för att förhindra oändliga loopar.
+  - Dolda mappar hoppas över såvida inte "Show Hidden Files" är påslaget.
+- **Jokertecken (`*` och `?`)**:
+  - `*.log`: Matchar alla filer som slutar på `.log`.
+  - `config-?.json`: Matchar enskilda variabla tecken.
+  - Text utan jokertecken tolkas som skiftlägesokänslig delsträngssökning.
+
+---
+
+### 3.4 Inbyggd Monaco Kodeditor
+Dubbelklicka eller högerklicka på valfri textfil, skript eller YAML-manifest och välj **Edit**:
+- Drivs av samma editorkärna som Visual Studio Code (Monaco Editor).
+- Har full syntaxfärgning för Shell, Python, YAML, JSON, Dockerfile, TypeScript, Markdown m.fl.
+- **Spara direkt mot fjärrservern**: Tryck <kbd>Ctrl+S</kbd> för att skriva ändringarna direkt tillbaka till SFTP-servern, S3-objektet eller containern.
+- Inbyggd **Markdown Live Preview**.
+
+---
+
+### 3.5 Directory Sync (Katalogjämförelse & Synkronisering)
+Klicka på **Sync Directories** i verktygsfältet för att jämföra två kataloger:
+- **Visuell Färgkodad Diff**:
+  - Grön: Nya filer som saknas på målet.
+  - Blå: Modifierade filer (upptäcks via storleksskillnad och nyare tidsstämpel).
+  - Röd: Filer som endast existerar på målet.
+- **Synkroniseringslägen**:
+  - *One-Way (Spegling)*: Målet görs till en exakt kopia av källan.
+  - *Update Existing Only*: Endast filer som redan finns på målet uppdateras.
+  - *Two-Way*: Nya och ändrade filer kopieras i båda riktningarna.
+- **Spara Profiler**: Spara återkommande synkroniseringsjobb för backup eller deployment.
+
+---
+
+### 3.6 Behörigheter & Chmod
+Högerklicka på valfri fil eller mapp och välj **Permissions**:
+- Visuell matris för **Read**, **Write** och **Execute** för User, Group och Others.
+- Direkt inmatning av oktala behörighetsvärden (t.ex. `0755`, `0644`, `0700`).
+- **Recursive Chmod**: Applicera behörigheterna rekursivt på alla undermappar och filer med ett klick.

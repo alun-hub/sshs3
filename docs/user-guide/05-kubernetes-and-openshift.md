@@ -1,64 +1,81 @@
-# Kubernetes & OpenShift Integration
+# Kubernetes & OpenShift Workloads (Komplett Referenshandbok)
 
-sshs3 provides native Kubernetes and OpenShift management directly alongside its SSH, SFTP, and S3 capabilities. Rather than requiring external plugins, proprietary container agents, or daemonsets on your clusters, sshs3 communicates directly with the standard **Kubernetes API** using the credentials in your local `~/.kube/config` (or token authentication via OpenShift `oc login`).
-
----
-
-## Automatic Cluster Discovery & Lazy Loading
-
-- **Kubeconfig Discovery**: On launch, sshs3 automatically parses your local `~/.kube/config` and lists all discovered contexts in the Connection Manager and the "+" menu.
-- **Live File Watcher**: A background file watcher listens for changes to `~/.kube/config`. Running `kubectl config use-context` or logging into new clusters via CLI immediately updates the sshs3 cluster tree without restarting.
-- **Resilient Lazy Loading**: Contexts, namespaces, and workloads are only queried on demand when you expand a node. If a cluster is offline or unreachable across a VPN, it will never block the UI or delay startup.
+**sshs3** tillhandahåller en inbyggd och säker miljö för att inspektera, felsöka och hantera Kubernetes- och OpenShift-kluster direkt vid sidan av SSH-, SFTP- och S3-arbetsflöden. Inga externa tillägg eller agenter krävs i klustret.
 
 ---
 
-## Interactive Container Exec Terminal (`tty`)
+## 1. Arkitektur & Säkerhet (Zero-Agent)
 
-Launch interactive pseudo-terminal sessions directly into running containers:
-1. In the cluster tree, expand your target Context → Namespace → Pod.
-2. Select any container and click **Exec Terminal** (or right-click → *Exec Shell*).
-3. Choose your preferred shell: `sh`, `bash`, or specify a custom diagnostic command.
-4. The session runs inside sshs3's standard xterm/split-pane terminal interface with full support for ANSI colors, cursor keys, terminal resize events, and split panes (<kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>).
+sshs3 kommunicerar direkt med standard **Kubernetes API** med hjälp av uppgifterna i din lokala `~/.kube/config` (eller via OpenShift `oc login` token-autentisering):
 
----
+![Kubernetes Klustervy](/img/docs/k8s-clusters-view.png)
 
-## Real-Time Container Log Streaming
-
-sshs3 includes a dedicated high-performance streaming log viewer for debugging microservices and containers:
-
-- **Live Streaming (`follow`)**: Streams container `stdout` and `stderr` in real time over Kubernetes streaming sockets.
-- **Configurable History (`tailLines`)**: Request the last 50, 100, 500, or 1000 lines.
-- **Timestamps**: Toggle ISO 8601 timestamps on every line.
-- **Container Switcher**: For multi-container pods, instantly switch between containers via the dropdown without closing the viewer.
-- **Previous Container Logs**: Toggle *"Previous container instance"* (`previous: true`) to diagnose containers that have crashed with `CrashLoopBackOff` or `OOMKilled`.
-- **Filtering & Search**: Live text search and regex filtering across the log buffer.
+### 1.1 Klusterupptäckt & Lazy Loading
+- **Automatisk Upptäckt**: Vid start läser appen automatiskt av alla kontexter i `~/.kube/config`.
+- **Live File Watcher**: En filbevakare (`fs.watch`) lyssnar på ändringar i din kubeconfig-fil. Om du byter aktiv kontext i terminalen (`kubectl config use-context`) eller loggar in på ett nytt kluster via CLI uppdateras trädet i sshs3 ögonblickligen utan omstart.
+- **Resilient Lazy Loading**: Kontexter, namnrymder och poddar anropas asynkront endast när du klickar för att expandera en gren. Om ett kluster är offline eller bakom en stängd VPN-tunnel låser det aldrig gränssnittet eller fördröjer appens uppstart.
 
 ---
 
-## Container File Explorer (`K8sPodStorageProvider`)
+## 2. Funktioner & Detaljerad Användning
 
-You can open any running container directly in sshs3's **Dual-Pane File Manager**:
-- Browse container directories, view configuration files, and inspect persistent volume mounts (`/data`, `/config`).
-- Download files from a container to your local disk or upload files into the container.
-- Transfer files directly between a Kubernetes container and an SFTP server or S3 bucket in a single drag-and-drop operation.
-- **In-App Editing**: Open and edit configuration files inside the container directly using the embedded editor.
-
-> [!NOTE]
-> Container file operations require standard POSIX utilities (`cat`, `dd`, `stat`, `rm`, `mv`, `chmod`) available in the container image. Minimal "scratch" or distroless images without a shell binary cannot support direct file browsing.
-
----
-
-## Kubernetes Port Forwarding
-
-Forward ports from pods or services to your local machine:
-1. Right-click any Pod or Service in the cluster tree and select **Port Forward**.
-2. Specify the remote target port and your preferred local port (e.g. `8080` → `8080`).
-3. Click **Start Forwarding**.
-4. The Port Forward modal displays real-time connection status and byte counters, with a direct button to open `http://localhost:<port>` in your default browser.
+### 2.1 Interaktiv Container Exec Terminal (`tty`)
+- **Syfte**: Öppna ett interaktivt skal rakt in i en körande applikationscontainer för omedelbar felsökning.
+- **Hur den används**:
+  1. Expandera ditt kluster → Kontext → Namnrymd → Pod.
+  2. Klicka på containern och välj **Exec Terminal** (eller högerklicka och välj *Exec Shell*).
+  3. Välj skal: `sh`, `bash` eller ange ett anpassat diagnoskommando.
+  4. Sessionen startar i sshs3:s vanliga terminal och kan delas upp i Konsole-stilade split-paneler (<kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>).
+- **Begränsningar**:
+  > [!WARNING]
+  > **Distroless & Scratch Containrar**: Minimala containeravbildningar (som `scratch`, distroless eller strippade Go-binärer) som saknar ett POSIX-skal (`/bin/sh` eller `/bin/bash`) kan inte starta en interaktiv terminal. För dessa rekommenderas ephemeral debugging (se nedan).
 
 ---
 
-## OpenShift Support
+### 2.2 Strömmande Containerloggar (Live Log Viewer)
+- **Syfte**: Följa loggutdata (stdout/stderr) i realtid med sökning och filtrering.
+- **Hur den används**:
+  - Klicka på **View Logs** på valfri container.
+  - **Follow**: Strömmar nya loggrader direkt när de skrivs.
+  - **Tail Lines**: Välj hur många rader historik som ska hämtas initialt (`50`, `100`, `500` eller `1000`).
+  - **Timestamps**: Slå på eller av ISO 8601-tidsstämplar på varje loggrad.
+  - **Container Switcher**: För poddar med flera containrar (t.ex. sidovagnar som Envoy/Istio) byter du container direkt i rullgardinsmenyn.
+  - **Previous Container Logs (`previous: true`)**:
+    Bocka för *"Previous container instance"* för att läsa loggarna från den containerinstans som nyss kraschade vid `CrashLoopBackOff` eller `OOMKilled`.
+- **Begränsningar**: Logghistoriken begränsas av klustrets konfigurerade loggrotationspolicy på noderna.
 
-- **`oc login` Integration**: Click **OpenShift Login** and paste an `oc login --token=... --server=...` command copied from the OpenShift Web Console. sshs3 automatically extracts the cluster URL and bearer token and updates your local kubeconfig.
-- **Project & Namespace Parity**: OpenShift projects and security contexts are treated identically to native Kubernetes namespaces.
+---
+
+### 2.3 Container-filhanterare (`K8sPodStorageProvider`)
+- **Syfte**: Bläddra i, ladda upp, ladda ner och redigera filer inuti containrar via tvåpanels-filhanteraren.
+- **Hur den används**:
+  - Öppna containern i vänster eller höger panel i filhanteraren.
+  - Kopiera filer direkt mellan containern och din lokala dator, en SFTP-server eller en S3-bucket via dra-och-släpp.
+  - Dubbelklicka på text- eller konfigurationsfiler för att öppna och redigera dem i den inbyggda Monaco-editorn; tryck <kbd>Ctrl+S</kbd> för att spara direkt in i containern.
+- **Hur det fungerar under huven**:
+  - Inga agenter installeras i containern. Filoperationer strömmas via Kubernetes `exec`-protokoll (`cat`, `dd`, `stat`, `rm`, `mv`, `chmod`).
+- **Begränsningar**:
+  - Kräver standard POSIX-verktyg i containern (`cat`, `stat`, `chmod`).
+  - Filer som skrivs till icke-beständiga volymer (utanför Persistent Volume Claims) försvinner om podden startar om.
+
+---
+
+### 2.4 Kubernetes Port Forwarding
+- **Syfte**: Vidarebefordra portar från interna poddar eller klustertjänster (ClusterIP) till din lokala dator.
+- **Hur den används**:
+  1. Högerklicka på en Pod eller Service och välj **Port Forward**.
+  2. Ange fjärrport och önskad lokal port (t.ex. `8080` → `8080`).
+  3. Klicka **Start Forwarding**.
+  4. Statusindikatorn visar överförda bytes och ger en direktlänk för att öppna tjänsten i din webbläsare (`http://localhost:8080`).
+- **Begränsningar**: Vid nätverksavbrott mot API-servern bryts port forwarding-anslutningen och måste återupptas.
+
+---
+
+### 2.5 OpenShift-stöd
+- **`oc login` Integration**:
+  Klicka på **OpenShift Login** och klistra in inloggningskommandot från OpenShift Web Console:
+  ```bash
+  oc login --token=sha256~... --server=https://api.mycluster.openshift.com:6443
+  ```
+  sshs3 parsar token och API-URL och uppdaterar automatiskt din lokala `~/.kube/config`.
+- **Projekt & SCC**: Behandlas med full paritet mot standard Kubernetes-namnrymder.
