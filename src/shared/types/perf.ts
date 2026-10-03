@@ -76,7 +76,7 @@ export interface PerfSshRaw {
 
 export type PerfSshResult =
   | { ok: true; raw: PerfSshRaw }
-  | { ok: false; reason: 'no-session' | 'unsupported' | 'error' };
+  | { ok: false; reason: 'no-session' | 'unsupported' | 'auth-unsupported' | 'error' };
 
 export interface PerfK8sTarget {
   contextName: string;

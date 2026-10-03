@@ -16,6 +16,8 @@ export interface PerfSshSessionInfo {
   controlPath?: string;
   /** Full connection config, used on Windows where there is no mux socket to reuse. */
   config?: SSHConnectionConfig;
+  /** The session's askpass environment (Windows password fallback only). */
+  askpassEnv?: Record<string, string>;
 }
 
 /**
@@ -311,6 +313,18 @@ export class PerfMetricsService {
       // non-interactive connection instead (BatchMode: key/agent auth works, a password prompt just fails).
       viaMux = false;
       timeout = SSH_FALLBACK_TIMEOUT_MS;
+      const cfg = info.config;
+      // Every sample is a new login, so only methods that need no per-login user interaction qualify: FIDO2 would
+      // need a PIN/touch each time, a smartcard needs its private agent (else a PIN each time), and a password
+      // needs to be saved.
+      const needsUser =
+        cfg.authType === 'fido2' ||
+        (cfg.authType === 'smartcard' && !cfg.agentPath) ||
+        (cfg.authType === 'password' && !cfg.password);
+      if (needsUser) return { ok: false, reason: 'auth-unsupported' };
+      // A saved password is answered through the session's askpass helper, which BatchMode would disable.
+      const usePassword = cfg.authType === 'password';
+      if (usePassword && !info.askpassEnv) return { ok: false, reason: 'auth-unsupported' };
       try {
         const base = SmartcardDetector.buildSSHArguments({
           ...info.config,
@@ -321,7 +335,7 @@ export class PerfMetricsService {
         args = [
           '-T',
           '-o',
-          'BatchMode=yes',
+          usePassword ? 'NumberOfPasswordPrompts=1' : 'BatchMode=yes',
           '-o',
           'ConnectTimeout=8',
           '-o',
@@ -334,7 +348,7 @@ export class PerfMetricsService {
       } catch {
         return { ok: false, reason: 'error' };
       }
-      env = { ...process.env, ...SmartcardDetector.buildProxyEnv(info.config) };
+      env = { ...process.env, ...SmartcardDetector.buildProxyEnv(info.config), ...(usePassword ? info.askpassEnv : {}) };
       if (info.config.agentPath) env.SSH_AUTH_SOCK = info.config.agentPath;
     } else {
       // Fail closed: without a live mux socket ssh would open a brand-new connection and could prompt for auth.

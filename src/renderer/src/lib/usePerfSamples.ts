@@ -24,6 +24,7 @@ interface Options {
 
 const REASONS: Record<string, string> = {
   unsupported: 'Metrics need a Linux host',
+  'auth-unsupported': 'Not available for this login method on Windows',
   'no-metrics': 'metrics-server not available',
   forbidden: 'No permission to read pod metrics',
 };
@@ -75,8 +76,8 @@ export function usePerfSamples({ local, sshSessionId, k8sTarget, intervalSec, ac
               const sample = computeSshSample(prev, res.raw);
               prev = res.raw;
               setState((s) => ({ history: pushHistory(s.history, sample), status: 'ok' }));
-            } else if (res.reason === 'unsupported') {
-              setState({ history: [], status: 'unavailable', reason: REASONS.unsupported });
+            } else if (res.reason === 'unsupported' || res.reason === 'auth-unsupported') {
+              setState({ history: [], status: 'unavailable', reason: REASONS[res.reason] });
               return; // permanent for this session: stop polling
             } else {
               prev = null; // a gap would corrupt the next delta

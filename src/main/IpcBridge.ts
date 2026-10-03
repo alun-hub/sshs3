@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog, shell as electronShell } from 'electron';
 import type { IpcMain } from 'electron';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
-import { SSHPtyManager } from './ssh/SSHPtyManager';
+import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
@@ -342,7 +342,12 @@ export class IpcBridge {
     this.perfMetricsService = new PerfMetricsService((sessionId) => {
       const session = this.sshPtyManager.getSession(sessionId);
       return session
-        ? { host: session.config.host, controlPath: session.controlPath, config: session.config }
+        ? {
+            host: session.config.host,
+            controlPath: session.controlPath,
+            config: session.config,
+            askpassEnv: (session as InternalSSHPtySession).askpassServer?.getEnv(),
+          }
         : undefined;
     });
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
