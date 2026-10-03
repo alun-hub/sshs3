@@ -1017,6 +1017,17 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 <span>Enable Compression</span>
               </label>
 
+              {config.forwardAgent && (
+                <div className="col-span-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                  <div>
+                    <span className="font-semibold block">Security Advisory: SSH Agent Forwarding</span>
+                    Agent forwarding allows anyone with root/administrator access on the remote server to access your local SSH keys while the session is active. Only enable this on servers you completely trust.
+                  </div>
+                </div>
+              )}
+
+
               <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary col-span-2">
                 <input
                   type="checkbox"

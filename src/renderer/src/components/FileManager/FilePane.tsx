@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ArrowUp,
   Boxes,
+  ChevronDown,
   Clipboard,
   Cloud,
   Copy,
@@ -33,9 +34,11 @@ import {
   Terminal,
   Trash2,
   X,
+  GitBranch,
 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import type { TransferConflictResolution } from '@shared/types/ipc';
+import type { GitRepoStatus } from '@shared/types/git';
 import { joinPath, parentPath, describeIpcError } from '../../lib/format';
 import { FileList } from './FileList';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -53,6 +56,7 @@ import { FileEditorModal } from './FileEditorModal';
 import { DirectorySyncModal, type DirectorySyncModalSource } from './DirectorySyncModal';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { SearchModal } from './SearchModal';
+import { GitCloneModal } from './GitCloneModal';
 import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursiveFilter';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
@@ -75,6 +79,21 @@ interface FilePaneProps {
   shortcuts?: Record<string, string>;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default — entries whose name starts with "." are filtered out of the list (but still counted/selectable if already selected). */
   showHiddenFiles?: boolean;
+  /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
+  gitIntegrationEnabled?: boolean;
+}
+
+function toWebRepoUrl(gitUrl: string): string | undefined {
+  const trimmed = gitUrl.trim();
+  const scpMatch = /^git@([^:]+):([^/]+)\/(.+?)(\.git)?$/.exec(trimmed);
+  if (scpMatch) {
+    const [, host, owner, repo] = scpMatch;
+    return `https://${host}/${owner}/${repo}`;
+  }
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+    return trimmed.replace(/\.git$/, '');
+  }
+  return undefined;
 }
 
 const SOURCE_ICONS: Record<SourceType, React.ComponentType<{ className?: string }>> = {
@@ -98,6 +117,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   otherPane,
   shortcuts,
   showHiddenFiles = false,
+  gitIntegrationEnabled = true,
 }) => {
   const onPathChangeRef = useRef(onPathChange);
   onPathChangeRef.current = onPathChange;
@@ -143,6 +163,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [showFilter, setShowFilter] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [gitStatus, setGitStatus] = useState<GitRepoStatus | null>(null);
+  const [gitCloneOpen, setGitCloneOpen] = useState(false);
+  const [gitCloneTargetDir, setGitCloneTargetDir] = useState<string | null>(null);
+  const [gitPulling, setGitPulling] = useState(false);
+  const [gitMenuOpen, setGitMenuOpen] = useState(false);
+  const gitMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!gitMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (gitMenuRef.current && !gitMenuRef.current.contains(e.target as Node)) {
+        setGitMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, [gitMenuOpen]);
   const filterInputRef = React.useRef<HTMLInputElement>(null);
   const {
     activeDrag,
@@ -276,6 +313,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
         // a stale response instead of clobbering the pane with the wrong host's content.
         if (latestRequestRef.current !== requestKey) return;
         setEntries(result);
+
+        if (gitIntegrationEnabled && (source.sourceType === 'local' || source.sourceType === 'sftp')) {
+          window.multissh
+            .gitGetStatus(currentPath, source.providerId)
+            .then((status) => {
+              if (latestRequestRef.current === requestKey) {
+                setGitStatus(status);
+              }
+            })
+            .catch(() => {
+              if (latestRequestRef.current === requestKey) {
+                setGitStatus(null);
+              }
+            });
+        } else {
+          setGitStatus(null);
+        }
       } catch (err) {
         if (latestRequestRef.current !== requestKey) return;
         if (source.sourceType === 'local') {
@@ -309,8 +363,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
         if (latestRequestRef.current === requestKey) setLoading(false);
       }
     },
-    [source.providerId, source.sourceType, currentPath]
+    [source.providerId, source.sourceType, currentPath, gitIntegrationEnabled]
   );
+
+  const handleGitPull = useCallback(async () => {
+    setGitPulling(true);
+    try {
+      const res = await window.multissh.gitPull(currentPath, source.providerId);
+      if (!res.success) {
+        setError(res.error || 'Git pull failed');
+      } else {
+        void load(true);
+      }
+    } catch (err) {
+      setError(describeIpcError(err, 'Git pull failed'));
+    } finally {
+      setGitPulling(false);
+    }
+  }, [currentPath, source.providerId, load]);
+
+  useEffect(() => {
+    if (!gitIntegrationEnabled) {
+      setGitStatus(null);
+    }
+  }, [gitIntegrationEnabled]);
 
   useEffect(() => {
     setSelectedPaths(new Set());
@@ -756,6 +832,48 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   },
                 ]
               : []),
+            ...(gitIntegrationEnabled && source.sourceType !== 's3' && source.sourceType !== 'k8s'
+              ? [
+                  ...(selectedEntries.length === 1 && selectedEntries[0].isDirectory
+                    ? [
+                        {
+                          key: 'git-clone-into',
+                          label: 'Git Clone inside...',
+                          icon: GitBranch,
+                          separatorBefore: true,
+                          onSelect: () => {
+                            setGitCloneTargetDir(selectedEntries[0].path);
+                            setGitCloneOpen(true);
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(gitStatus?.isRepo
+                    ? [
+                        {
+                          key: 'git-pull',
+                          label: 'Git Pull',
+                          icon: GitBranch,
+                          separatorBefore: selectedEntries.length !== 1 || !selectedEntries[0].isDirectory,
+                          onSelect: () => void handleGitPull(),
+                        },
+                        ...(gitStatus.remoteOriginUrl
+                          ? [
+                              {
+                                key: 'open-git-web',
+                                label: 'Open in GitHub/GitLab',
+                                icon: ExternalLink,
+                                onSelect: () => {
+                                  const url = toWebRepoUrl(gitStatus.remoteOriginUrl!);
+                                  if (url) void window.multissh.openExternal(url);
+                                },
+                              },
+                            ]
+                          : []),
+                      ]
+                    : []),
+                ]
+              : []),
             {
               key: 'properties',
               label: 'Properties',
@@ -788,6 +906,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
               icon: Search,
               onSelect: () => setSearchOpen(true),
             },
+            ...(gitIntegrationEnabled && source.sourceType !== 's3' && source.sourceType !== 'k8s'
+              ? [
+                  {
+                    key: 'git-clone',
+                    label: 'Git Clone to here...',
+                    icon: GitBranch,
+                    separatorBefore: true,
+                    onSelect: () => {
+                      setGitCloneTargetDir(currentPath);
+                      setGitCloneOpen(true);
+                    },
+                  },
+                  ...(gitStatus?.isRepo
+                    ? [
+                        {
+                          key: 'git-pull',
+                          label: 'Git Pull',
+                          icon: GitBranch,
+                          onSelect: () => void handleGitPull(),
+                        },
+                        ...(gitStatus.remoteOriginUrl
+                          ? [
+                              {
+                                key: 'open-git-web',
+                                label: 'Open in GitHub/GitLab',
+                                icon: ExternalLink,
+                                onSelect: () => {
+                                  const url = toWebRepoUrl(gitStatus.remoteOriginUrl!);
+                                  if (url) void window.multissh.openExternal(url);
+                                },
+                              },
+                            ]
+                          : []),
+                      ]
+                    : []),
+                ]
+              : []),
           ];
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
@@ -980,6 +1135,121 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
 
         <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
+
+        {gitIntegrationEnabled ? (
+          gitStatus?.isRepo && gitStatus.branch ? (
+            <div ref={gitMenuRef} className="relative shrink-0">
+              <button
+                type="button"
+                title={`Git: ${gitStatus.branch}${gitStatus.isClean ? ' (clean)' : ' (uncommitted changes)'}${gitStatus.ahead ? `, ahead ${gitStatus.ahead}` : ''}${gitStatus.behind ? `, behind ${gitStatus.behind}` : ''}\nClick for Git options (Pull, Web, Clone)`}
+                onClick={() => setGitMenuOpen((prev) => !prev)}
+                className="flex items-center gap-1 bg-app-card hover:bg-app-surface border border-border-subtle rounded-md px-1.5 py-0.5 text-[11px] text-txt-secondary transition-colors cursor-pointer select-none"
+              >
+                {gitPulling ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-sky-400 shrink-0" />
+                ) : (
+                  <GitBranch className="h-3 w-3 text-sky-400 shrink-0" />
+                )}
+                <span className="font-medium text-txt-primary max-w-[100px] truncate">{gitStatus.branch}</span>
+                {!gitStatus.isClean && <span className="text-amber-400 font-bold">*</span>}
+                {Boolean(gitStatus.ahead) && <span className="text-emerald-400 text-[10px]">↑{gitStatus.ahead}</span>}
+                {Boolean(gitStatus.behind) && <span className="text-amber-400 text-[10px]">↓{gitStatus.behind}</span>}
+                <ChevronDown className="h-3 w-3 text-txt-muted ml-0.5" />
+              </button>
+
+              {gitMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-xl text-xs space-y-2">
+                  <div className="flex items-center justify-between border-b border-border-subtle/60 pb-1.5">
+                    <div className="flex items-center gap-1.5 font-semibold text-txt-primary truncate">
+                      <GitBranch className="h-4 w-4 text-sky-400 shrink-0" />
+                      <span className="truncate">{gitStatus.branch}</span>
+                    </div>
+                    {gitStatus.isClean ? (
+                      <span className="rounded bg-emerald-500/15 text-emerald-400 text-[10px] px-1.5 py-0.5 font-medium">Clean</span>
+                    ) : (
+                      <span className="rounded bg-amber-500/15 text-amber-400 text-[10px] px-1.5 py-0.5 font-medium">Modified</span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-txt-muted space-y-0.5">
+                    {!gitStatus.isClean && (
+                      <div className="text-amber-300">
+                        ● {gitStatus.modifiedCount ?? 0} modified, {gitStatus.untrackedCount ?? 0} untracked
+                      </div>
+                    )}
+                    {(Boolean(gitStatus.ahead) || Boolean(gitStatus.behind)) && (
+                      <div className="flex items-center gap-2">
+                        {Boolean(gitStatus.ahead) && <span className="text-emerald-400">↑ {gitStatus.ahead} ahead</span>}
+                        {Boolean(gitStatus.behind) && <span className="text-amber-400">↓ {gitStatus.behind} behind</span>}
+                      </div>
+                    )}
+                    {gitStatus.remoteOriginUrl && (
+                      <div className="truncate text-txt-muted font-mono text-[10px]" title={gitStatus.remoteOriginUrl}>
+                        {gitStatus.remoteOriginUrl}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1 pt-1 border-t border-border-subtle/60">
+                    <button
+                      type="button"
+                      disabled={gitPulling}
+                      onClick={() => {
+                        setGitMenuOpen(false);
+                        void handleGitPull();
+                      }}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-txt-primary hover:bg-app-surface hover:text-sky-400 transition-colors disabled:opacity-40 text-left"
+                    >
+                      {gitPulling ? <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400" /> : <RefreshCw className="h-3.5 w-3.5 text-sky-400" />}
+                      <span>Git Pull</span>
+                    </button>
+
+                    {gitStatus.remoteOriginUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGitMenuOpen(false);
+                          const url = toWebRepoUrl(gitStatus.remoteOriginUrl!);
+                          if (url) void window.multissh.openExternal(url);
+                        }}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-txt-primary hover:bg-app-surface hover:text-sky-400 transition-colors text-left"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 text-sky-400" />
+                        <span>Open in GitHub/GitLab</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGitMenuOpen(false);
+                        setGitCloneTargetDir(currentPath);
+                        setGitCloneOpen(true);
+                      }}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-txt-primary hover:bg-app-surface hover:text-sky-400 transition-colors text-left"
+                    >
+                      <FolderPlus className="h-3.5 w-3.5 text-sky-400" />
+                      <span>Clone Git repository here...</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : source.sourceType !== 's3' && source.sourceType !== 'k8s' ? (
+            <button
+              type="button"
+              title="Git (Clone repository here...)"
+              aria-label="Git (Clone repository here...)"
+              onClick={() => {
+                setGitCloneTargetDir(currentPath);
+                setGitCloneOpen(true);
+              }}
+              className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-sky-400 transition-colors shrink-0"
+            >
+              <GitBranch className="h-4 w-4" />
+            </button>
+          ) : null
+        ) : null}
 
         <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
 
@@ -1339,6 +1609,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
           rootPath={currentPath}
           onClose={() => setSearchOpen(false)}
           onJumpToFile={(path) => onPathChange(parentPath(path))}
+        />
+      )}
+
+      {gitCloneOpen && (
+        <GitCloneModal
+          targetPath={gitCloneTargetDir || currentPath}
+          providerId={source.providerId}
+          onClose={() => {
+            setGitCloneOpen(false);
+            setGitCloneTargetDir(null);
+          }}
+          onCloned={() => void load(true)}
         />
       )}
 

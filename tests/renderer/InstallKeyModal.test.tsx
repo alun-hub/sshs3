@@ -47,7 +47,8 @@ describe('InstallKeyModal', () => {
       results: [{ fingerprint: 'SHA256:own', status: 'installed', verified: true }],
     });
     buildInstallCommand.mockResolvedValue("printf '%s\\n' 'k' | sh -c '...'");
-    window.multissh = { ...(window.multissh || {}), listPublicKeys, installPublicKeys, buildInstallCommand } as any;
+    const openExternal = vi.fn().mockResolvedValue(true);
+    window.multissh = { ...(window.multissh || {}), listPublicKeys, installPublicKeys, buildInstallCommand, openExternal } as any;
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
   });
 
@@ -345,4 +346,17 @@ describe('InstallKeyModal', () => {
       expect(listPublicKeys).toHaveBeenLastCalledWith({ config: expect.objectContaining({ id: 'p1' }), includeHardware: true })
     );
   });
+
+  it('copies public key to clipboard when clicking Copy', async () => {
+    render(<InstallKeyModal connection={conn} onClose={onClose} />);
+    await screen.findByLabelText('Select id_ed25519.pub');
+    const copyButtons = screen.getAllByRole('button', { name: /Copy/i });
+    expect(copyButtons.length).toBeGreaterThan(0);
+    fireEvent.click(copyButtons[0]);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(ownKey.line);
+    });
+  });
 });
+

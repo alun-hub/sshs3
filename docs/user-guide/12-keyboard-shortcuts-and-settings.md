@@ -84,6 +84,27 @@ Inställningarna är indelade i sju specialiserade paneler:
 
 ---
 
+### 1.7 Git & GitHub (Utvecklarnycklar & Git-konfiguration)
+Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och kryptografisk commit-signering:
+
+- **Developer SSH Keys & Git Providers**:
+  - Samlar alla upptäckta publika nycklar från `~/.ssh`, operativsystemets aktiva SSH-agent samt den globala smartcard-cachen (YubiKey/PIV/FIDO2).
+  - **Copy**: Kopierar den publika nyckelsträngen direkt till urklipp.
+  - **GitHub / GitLab**: Öppnar respektive leverantörs SSH-nyckelinställningar i webbläsaren med nyckelnamnet ifyllt och kopierar automatiskt nyckeltexten till urklipp så att den är redo att klistras in (<kbd>Ctrl+V</kbd>).
+  - **Sign Active / Git Sign**: Väljer och konfigurerar den valda nyckeln som aktiv signeringsnyckel i `~/.gitconfig` med ett enda klick.
+- **Git Commit Signing (`~/.gitconfig`)**:
+  - Visar aktivt signeringsformat (`ssh`) och aktiv publik nyckel.
+  - **Automatic Signing (`commit.gpgsign`)**: Slå på eller av global automatisk signering av alla commits.
+  - **allowed_signers**: Uppdaterar automatiskt `~/.ssh/allowed_signers` så att lokala signaturer kan verifieras utan felmeddelanden.
+  - **Change Key / Custom Key**: Möjlighet att manuellt klistra in valfri SSH-publiknyckel eller nyckelsökväg.
+- **SFTP & File Manager Git Integration**:
+  - Reglage för att aktivera eller inaktivera Git-integrationen i filhanteraren (standard: påslagen).
+  - När den är avstängd utförs ingen bakgrundspolling av git-status över SFTP eller lokala mappar, och verktygsfältet hålls rent.
+- **Lookup Public Keys (`username.keys`)**:
+  - Slå upp och inspektera publika nycklar för valfritt användarnamn på GitHub, GitLab eller privat GitLab-instans via deras officiella `.keys`-slutpunkter.
+
+---
+
 ## 2. Komplett Referenstabell över Tangentbordsgenvägar
 
 ![Kortkommandon](/img/docs/settings-shortcuts.png)

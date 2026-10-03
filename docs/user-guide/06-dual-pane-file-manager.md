@@ -96,3 +96,22 @@ Högerklicka på valfri fil eller mapp och välj **Permissions**:
 - Visuell matris för **Read**, **Write** och **Execute** för User, Group och Others.
 - Direkt inmatning av oktala behörighetsvärden (t.ex. `0755`, `0644`, `0700`).
 - **Recursive Chmod**: Applicera behörigheterna rekursivt på alla undermappar och filer med ett klick.
+
+---
+
+### 3.7 Git-integration & Fjärrhantering (SFTP & Lokal)
+Filhanteraren känner automatiskt av om en öppnad mapp är ett Git-repositorium (både lokalt och på fjärrservrar över SFTP via SSH):
+- **Gren- & Statusindikator i Verktygsfältet**:
+  - Visar aktuell gren (t.ex. `main`).
+  - Visar om det finns osparade ändringar (`*` och antal modifierade/ospårade filer i detaljvyn).
+  - Visar antal commits före (`↑ ahead`) eller efter (`↓ behind`) fjärr-repot (`origin`).
+- **Git-meny & Snabbkommandon**:
+  - **Git Pull**: Uppdatera repot direkt med ett klick utan att behöva öppna en terminal.
+  - **Open in GitHub/GitLab**: Öppnar repositoriets webbsida direkt i standardwebbläsaren om ett fjärr-repo (`remote.origin.url`) finns konfigurerat.
+  - **Clone Git repository here...**: Klona ett nytt git-arkiv till den aktuella mappen.
+- **Kontextmenyåtgärder**:
+  - Högerklicka på en undermapp för att välja **Git Clone inside...**.
+  - Högerklicka på en tom yta för att välja **Git Clone to here...**, **Git Pull** eller **Open in GitHub/GitLab**.
+- **Slå på / stänga av**:
+  - Git-integrationen kan slås på och av under **Settings > Git & GitHub** (*SFTP & File Manager Git Integration*). När den stängs av sker ingen git-polling i bakgrunden och verktygsfältet och kontextmenyn hålls helt rena från git-element.
+

@@ -212,7 +212,7 @@ export interface XServerStatus {
 }
 
 /** Varifrån en publik nyckel kommer. */
-export type PublicKeySource = 'file' | 'agent' | 'fido2' | 'smartcard' | 'manual';
+export type PublicKeySource = 'file' | 'agent' | 'fido2' | 'smartcard' | 'manual' | 'github' | 'gitlab' | 'git-custom';
 
 /** En publik nyckel som kan installeras i `authorized_keys` på en host. */
 export interface LocalPublicKey {
@@ -231,8 +231,8 @@ export interface LocalPublicKey {
 }
 
 export interface ListPublicKeysRequest {
-  /** Profilen (sparad eller osparad); ger nyckelfilen och (med includeHardware) kortet/säkerhetsnyckeln. */
-  config: SSHConnectionConfig;
+  /** Profilen (sparad eller osparad); ger nyckelfilen och (med includeHardware) kortet/säkerhetsnyckeln. Valfri vid global listning. */
+  config?: SSHConnectionConfig;
   /** Läs även nycklar från smartcard/FIDO2 (kräver PIN/touch). */
   includeHardware?: boolean;
 }

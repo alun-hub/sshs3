@@ -42,6 +42,20 @@ import type {
   DotfilesSyncStatusEvent,
 } from '../shared/types/dotfiles';
 import type {
+  ConfigureGitSigningRequest,
+  ConfigureGitSigningResult,
+  DotfilesImportFromGitRequest,
+  DotfilesImportFromGitResult,
+  FetchGitKeysRequest,
+  FetchGitKeysResult,
+  GitCloneRequest,
+  GitOperationResult,
+  GitRepoStatus,
+  GitSigningConfig,
+  TestRemoteGitAccessRequest,
+  TestRemoteGitAccessResult,
+} from '../shared/types/git';
+import type {
   SSHConnectionConfig,
   PtyOptions,
   SSHPtyExitEvent,
@@ -503,6 +517,34 @@ export const api: MultiSSHApi = {
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.SSH_AGENT_STATUS),
+
+  // Git & Git Provider Integration
+  gitFetchPublicKeys: (request: FetchGitKeysRequest): Promise<FetchGitKeysResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_FETCH_PUBLIC_KEYS, request),
+
+  gitGetSigningConfig: (): Promise<GitSigningConfig> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_GET_SIGNING_CONFIG),
+
+  gitConfigureSigning: (request: ConfigureGitSigningRequest): Promise<ConfigureGitSigningResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_CONFIGURE_SIGNING, request),
+
+  gitSetSigningEnabled: (enabled: boolean): Promise<ConfigureGitSigningResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_SET_SIGNING_ENABLED, enabled),
+
+  gitGetStatus: (directoryPath: string, providerId?: string): Promise<GitRepoStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_GET_STATUS, directoryPath, providerId),
+
+  gitClone: (request: GitCloneRequest): Promise<GitOperationResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_CLONE, request),
+
+  gitPull: (directoryPath: string, providerId?: string): Promise<GitOperationResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_PULL, directoryPath, providerId),
+
+  gitTestRemoteAccess: (request: TestRemoteGitAccessRequest): Promise<TestRemoteGitAccessResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GIT_TEST_REMOTE_ACCESS, request),
+
+  dotfilesImportFromGit: (request: DotfilesImportFromGitRequest): Promise<DotfilesImportFromGitResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_IMPORT_FROM_GIT, request),
 
   // Dotfiles pools
   dotfilePoolsGet: (): Promise<DotfilePool[]> =>

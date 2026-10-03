@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { makeNameMatcher } from '../../lib/nameFilter';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { File, FileArchive, FileCode, FileImage, FileText, Folder, Loader2, Search } from 'lucide-react';
+import { File, FileArchive, FileCode, FileImage, FileText, Folder, GitBranch, Loader2, Search } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { classNames, formatBytes } from '../../lib/format';
 
@@ -42,6 +42,7 @@ interface FileListProps {
 }
 
 function iconForEntry(entry: FileEntry) {
+  if (entry.name === '.git') return GitBranch;
   if (entry.isDirectory) return Folder;
   const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) return FileImage;

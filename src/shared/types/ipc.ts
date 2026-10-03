@@ -42,6 +42,20 @@ import type {
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
 import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
 import type {
+  ConfigureGitSigningRequest,
+  ConfigureGitSigningResult,
+  DotfilesImportFromGitRequest,
+  DotfilesImportFromGitResult,
+  FetchGitKeysRequest,
+  FetchGitKeysResult,
+  GitCloneRequest,
+  GitOperationResult,
+  GitRepoStatus,
+  GitSigningConfig,
+  TestRemoteGitAccessRequest,
+  TestRemoteGitAccessResult,
+} from './git';
+import type {
   SearchDoneEvent,
   SearchErrorEvent,
   SearchPreviewResult,
@@ -190,6 +204,17 @@ export const IPC_CHANNELS = {
   AWS_SSO_PROMPT: 'aws-sso:prompt',
   AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
   AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
+
+  // Git & Git Provider Integration
+  GIT_FETCH_PUBLIC_KEYS: 'git:fetch-public-keys',
+  GIT_GET_SIGNING_CONFIG: 'git:get-signing-config',
+  GIT_CONFIGURE_SIGNING: 'git:configure-signing',
+  GIT_SET_SIGNING_ENABLED: 'git:set-signing-enabled',
+  GIT_GET_STATUS: 'git:get-status',
+  GIT_CLONE: 'git:clone',
+  GIT_PULL: 'git:pull',
+  GIT_TEST_REMOTE_ACCESS: 'git:test-remote-access',
+  DOTFILES_IMPORT_FROM_GIT: 'dotfiles:import-from-git',
 
   // SSH Agent
   SSH_AGENT_STATUS: 'ssh:agent-status',
@@ -575,6 +600,17 @@ export interface MultiSSHApi {
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;
+
+  // Git & Git Provider Integration
+  gitFetchPublicKeys(request: FetchGitKeysRequest): Promise<FetchGitKeysResult>;
+  gitGetSigningConfig(): Promise<GitSigningConfig>;
+  gitConfigureSigning(request: ConfigureGitSigningRequest): Promise<ConfigureGitSigningResult>;
+  gitSetSigningEnabled(enabled: boolean): Promise<ConfigureGitSigningResult>;
+  gitGetStatus(directoryPath: string, providerId?: string): Promise<GitRepoStatus>;
+  gitClone(request: GitCloneRequest): Promise<GitOperationResult>;
+  gitPull(directoryPath: string, providerId?: string): Promise<GitOperationResult>;
+  gitTestRemoteAccess(request: TestRemoteGitAccessRequest): Promise<TestRemoteGitAccessResult>;
+  dotfilesImportFromGit(request: DotfilesImportFromGitRequest): Promise<DotfilesImportFromGitResult>;
 
   // Dotfiles pools
   dotfilePoolsGet(): Promise<DotfilePool[]>;

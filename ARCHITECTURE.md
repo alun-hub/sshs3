@@ -51,8 +51,9 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
 │   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
 │   │   ├── dirsync/                # Directory diff and synchronization engine
-│   │   ├── dotfiles/               # Dotfiles pool store and SFTP sync service
+│   │   ├── dotfiles/               # Dotfiles pool store, SFTP sync & Git importer (DotfileGitImporter)
 │   │   ├── editor/                 # Temporary external file editor service
+│   │   ├── git/                    # Git config, commit signing, status & remote operations
 │   │   ├── profile/                # OS keychain encrypted profile store (safeStorage)
 │   │   ├── proxy/                  # HTTP/SOCKS socket creation & proxyCli helper
 │   │   ├── search/                 # Local/remote regex search & live log tailing (tail -f)
@@ -73,9 +74,9 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │       ├── App.tsx             # Root component, keyboard shortcuts, tab views
 │   │       ├── components/
 │   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes
-│   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane, ContextMenu
+│   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane, ContextMenu, GitCloneModal
 │   │       │   ├── K8s/            # Pod inspector, port forward modal, debug container UI
-│   │       │   ├── SettingsModal/  # Preferences & shortcut configuration
+│   │       │   ├── SettingsModal/  # Preferences, shortcut configuration & GitSettingsPanel
 │   │       │   ├── TabBar.tsx      # Draggable/closable tab bar
 │   │       │   ├── TerminalView.tsx# xterm.js terminal instance & FitAddon
 │   │       │   └── Tunnels/        # Independent SSH port-forwarding management dashboard
@@ -84,6 +85,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   └── shared/                     # Types shared between main and renderer
 │       └── types/
 │           ├── dotfiles.ts         # Dotfiles sync pool contracts
+│           ├── git.ts              # Git status, commit signing, clone & key fetching types
 │           ├── ipc.ts              # IPC_CHANNELS and MultiSSHApi interface
 │           ├── k8s.ts              # Kubernetes cluster, pod, and container exec types
 │           ├── session.ts          # Tab, pane, and split layout types

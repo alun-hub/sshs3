@@ -180,6 +180,7 @@ A slim live-metrics strip above SSH, local-shell and Kubernetes terminals. It is
 - **File & path shortcuts** — Quick actions to copy filenames or full local/remote locations, and duplicate items.
 - **Type-ahead search**: start typing anywhere in a focused pane to jump to and select the first matching file/folder (Explorer/Finder-style), independent of the `Ctrl+F` filter.
 - **"Open in Terminal"** from an SFTP pane, landing directly in the browsed directory.
+- **Git repository integration & branch status** — Live branch indicator, clean/modified/untracked indicators, commit status (ahead/behind counts), Git Pull, and "Open in GitHub/GitLab" directly in SFTP and local pane toolbars and context menus. Includes **Git Clone to here / inside...** with branch and shallow clone options. Can be switched on/off globally under *Settings → Git & GitHub*.
 
 ### S3 & object storage
 - **AWS S3**, **MinIO**, **NetApp StorageGRID**, and any other S3-compatible endpoint, with custom endpoints, region selection, path-style addressing, and self-signed CA support.
@@ -199,6 +200,16 @@ A slim live-metrics strip above SSH, local-shell and Kubernetes terminals. It is
 - Define a reusable pool of files (`.bashrc`, `.vimrc`, etc.) and assign it to specific SSH profiles.
 - On connect, a short-lived background SFTP check compares the pool against the live server and, depending on the profile's policy, either shows a non-blocking banner to review and apply the diff, or updates silently.
 - Disabled by default at two levels: a global settings switch, and a per-host pool/policy assignment — nothing runs until both are explicitly turned on.
+- **Git dotfile repository import**: clone or import dotfiles directly from any Git repository URL into a dotfile pool.
+
+### Git & GitHub / GitLab integration
+- **Developer SSH Keys & Git Providers (`Settings → Git & GitHub`)** — Centralized hub to discover developer keys across `~/.ssh`, active SSH agents, and unlocked smartcard/hardware token caches.
+- **One-click GitHub & GitLab key registration** — Copies your public key to clipboard and launches your browser directly to GitHub (`/settings/ssh/new`) or GitLab (`/-/user_settings/ssh_keys`) prefilled with your key title.
+- **Cryptographic SSH Git commit signing (`~/.gitconfig`)** — Configure `user.signingKey`, set `gpg.format = ssh`, toggle `commit.gpgsign`, and maintain `~/.ssh/allowed_signers` for local signature verification with a single click. Supports custom key strings and automatic signing enforcement.
+- **Git remote key lookup (`username.keys`)** — Query public SSH keys for any user on GitHub, GitLab, or self-hosted GitLab instances.
+- **Dual-pane Git operations** — Git Clone, Git Pull, and repository status polling across local and remote SFTP sessions.
+- **SFTP & File Manager Git Integration toggle** — Toggle Git detection and actions in SFTP and local file manager panes on or off under *Settings → Git & GitHub*.
+
 
 ### Remote profile sync *(opt-in, "own your data")*
 - Back up and sync connection profiles, dotfile pools, saved directory-sync profiles, and app settings to your own S3 bucket or SFTP server — no sshs3-operated cloud service involved.
@@ -253,6 +264,7 @@ main process (src/main) — IpcBridge routes every channel to a dedicated servic
 - **`SystemTrustStore`** reads the OS's CA bundle (via `win-ca` on Windows, or the known Linux distro bundle paths) at startup so S3/TLS connections to internally-issued certificates succeed without manual CA configuration.
 - **Persistence** (`ProfileStore`, `SettingsStore`, `SessionStore`, `DotfilePoolStore`, `KnownHostsStore`, `SyncConfigStore`) is all flat JSON under Electron's per-OS `userData` directory, written through a serialized mutation queue to avoid concurrent-write corruption, with secret fields passed through `safeStorage` before hitting disk.
 - **Dotfiles sync** (`DotfileSyncService`) opens its own short-lived SFTP connection — separate from the interactive PTY session — to diff and, on approval, atomically write (`temp file + rename`) pool files to a host.
+- **Git & GitHub services** (`GitConfigService`, `GitStatusService`, `RemoteGitService`, `GitKeyFetcher`, `DotfileGitImporter`) — manage Git commit signing (`gpg.format=ssh`, `user.signingKey`, `commit.gpgsign`, `~/.ssh/allowed_signers`), query repository status and run Git commands (`git pull`, `git clone`) locally or over remote SFTP hosts, fetch public keys via `username.keys`, and import dotfiles directly from Git repositories.
 
 ---
 

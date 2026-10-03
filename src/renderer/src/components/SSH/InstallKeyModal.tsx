@@ -1,12 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clipboard, KeyRound, Loader2, ShieldAlert, X, XCircle } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  Clipboard,
+  Copy,
+  Globe,
+  KeyRound,
+  Loader2,
+  ShieldAlert,
+  X,
+  XCircle,
+} from 'lucide-react';
 import type {
   InstallLoginMethod,
   InstallPublicKeysResult,
   LocalPublicKey,
   SSHConnectionConfig,
 } from '@shared/types/ssh';
-import { describeIpcError } from '../../lib/format';
+import { classNames, describeIpcError } from '../../lib/format';
 import { chooseLoginOrder, LOGIN_STEP_LABELS } from '@shared/loginOrder';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 
@@ -25,6 +36,9 @@ const SOURCE_LABEL: Record<LocalPublicKey['source'], string> = {
   fido2: 'FIDO2',
   smartcard: 'Smartcard',
   manual: 'Pasted',
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  'git-custom': 'Git',
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -60,9 +74,17 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
   const [pasteValue, setPasteValue] = useState('');
   const [command, setCommand] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedPowerShell, setCopiedPowerShell] = useState(false);
   const [loginMethod, setLoginMethod] = useState<InstallLoginMethod>('auto');
 
-  const busy = installing || loadingHardware;
+  // Git public key import state
+  const [gitProvider, setGitProvider] = useState<'github' | 'gitlab' | 'custom'>('github');
+  const [gitUsername, setGitUsername] = useState('');
+  const [gitCustomHost, setGitCustomHost] = useState('');
+  const [fetchingGit, setFetchingGit] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
+  const busy = installing || loadingHardware || fetchingGit;
   const handleBackdrop = useModalDismiss(onClose, !busy);
   const hasHardware =
     (connection.authType === 'smartcard' && !!connection.pkcs11LibPath) ||
@@ -206,6 +228,61 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
     void refreshCommand(selectedKeys.map((k) => k.line), true);
   };
 
+  const copyPowerShellCommand = async () => {
+    if (selectedKeys.length === 0) return;
+    setError(null);
+    try {
+      const keysContent = selectedKeys.map((k) => k.line.trim()).join('\r\n');
+      const ps = `if (!(Test-Path $HOME\\.ssh)) { New-Item -ItemType Directory -Path $HOME\\.ssh }; @'\r\n${keysContent}\r\n'@ | Out-File -Append -Encoding ascii -FilePath $HOME\\.ssh\\authorized_keys`;
+      await navigator.clipboard.writeText(ps);
+      setCopiedPowerShell(true);
+      setTimeout(() => setCopiedPowerShell(false), 2000);
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to copy PowerShell command'));
+    }
+  };
+
+  const copyKeyOnly = async (key: LocalPublicKey) => {
+    try {
+      await navigator.clipboard.writeText(key.line);
+      setCopiedKeyId(key.id);
+      setTimeout(() => {
+        setCopiedKeyId((current) => (current === key.id ? null : current));
+      }, 3000);
+    } catch {
+      setError('Failed to copy key to clipboard');
+    }
+  };
+
+  const fetchGitKeys = async () => {
+    const user = gitUsername.trim();
+    if (!user) return;
+    setFetchingGit(true);
+    setError(null);
+    try {
+      const res = await window.multissh.gitFetchPublicKeys({
+        provider: gitProvider,
+        username: user,
+        customHost: gitCustomHost.trim() || undefined,
+      });
+      if (!res.success) {
+        setError(res.error || 'Failed to fetch public keys');
+      } else if (res.keys.length === 0) {
+        setError(`No public keys found for '${user}' on ${gitProvider}.`);
+      } else {
+        setKeys((prev) => {
+          const known = new Set(prev.map((k) => k.id));
+          return [...prev, ...res.keys.filter((k) => !known.has(k.id))];
+        });
+        setSelected((prev) => new Set([...prev, ...res.keys.map((k) => k.id)]));
+      }
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to fetch keys from Git provider'));
+    } finally {
+      setFetchingGit(false);
+    }
+  };
+
   // Once the command is shown, keep it (and the clipboard) in sync with the selection.
   const selectionSignature = selectedKeys.map((k) => k.line).join('\n');
   useEffect(() => {
@@ -321,6 +398,35 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                       {k.fingerprint ? ` · ${k.fingerprint}` : ''}
                     </div>
                   </div>
+                  <div className="flex items-center gap-1.5 shrink-0 self-center">
+                    <button
+                      type="button"
+                      title="Copy public key to clipboard"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void copyKeyOnly(k);
+                      }}
+                      className={classNames(
+                        'flex items-center gap-1 text-[10px] rounded px-2 py-1 transition-colors border',
+                        copiedKeyId === k.id
+                          ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 font-medium'
+                          : 'text-txt-muted hover:text-txt-primary bg-app-card hover:bg-app-surface border-border-subtle'
+                      )}
+                    >
+                      {copiedKeyId === k.id ? (
+                        <>
+                          <Check className="h-3 w-3 text-emerald-400" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </label>
               ))}
             </div>
@@ -340,6 +446,74 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                   : 'Read keys from security key (PIN / touch)'}
             </button>
           )}
+
+          <div className="space-y-2 rounded-xl border border-border-subtle bg-app-surface p-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-txt-primary flex items-center gap-1.5">
+                <Globe className="h-3.5 w-3.5 text-sky-400" /> Fetch from Git Provider (username.keys)
+              </span>
+              <div className="flex items-center gap-1 bg-app-card rounded-lg p-0.5 border border-border-subtle text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setGitProvider('github')}
+                  className={classNames(
+                    'px-2 py-0.5 rounded transition-colors',
+                    gitProvider === 'github' ? 'bg-sky-600 text-white font-medium' : 'text-txt-muted hover:text-txt-primary'
+                  )}
+                >
+                  GitHub
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGitProvider('gitlab')}
+                  className={classNames(
+                    'px-2 py-0.5 rounded transition-colors',
+                    gitProvider === 'gitlab' ? 'bg-sky-600 text-white font-medium' : 'text-txt-muted hover:text-txt-primary'
+                  )}
+                >
+                  GitLab
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGitProvider('custom')}
+                  className={classNames(
+                    'px-2 py-0.5 rounded transition-colors',
+                    gitProvider === 'custom' ? 'bg-sky-600 text-white font-medium' : 'text-txt-muted hover:text-txt-primary'
+                  )}
+                >
+                  Custom
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2 items-center">
+              {gitProvider === 'custom' && (
+                <input
+                  type="text"
+                  value={gitCustomHost}
+                  onChange={(e) => setGitCustomHost(e.target.value)}
+                  placeholder="git.example.com"
+                  className="w-40 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-[11px] text-txt-primary"
+                />
+              )}
+              <input
+                type="text"
+                value={gitUsername}
+                onChange={(e) => setGitUsername(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void fetchGitKeys()}
+                placeholder={gitProvider === 'github' ? 'GitHub username (e.g. torvalds)' : 'GitLab username'}
+                className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-[11px] text-txt-primary"
+              />
+              <button
+                type="button"
+                onClick={() => void fetchGitKeys()}
+                disabled={!gitUsername.trim() || fetchingGit || busy}
+                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1 text-xs text-txt-primary transition-colors hover:bg-app-surface-hover disabled:opacity-50"
+              >
+                {fetchingGit && <Loader2 className="h-3 w-3 animate-spin" />}
+                Fetch keys
+              </button>
+            </div>
+          </div>
 
           <div className="space-y-1.5">
             <label htmlFor="install-key-paste" className="text-txt-muted">
@@ -444,15 +618,26 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-5 py-3">
-          <button
-            type="button"
-            onClick={copyCommand}
-            disabled={selectedKeys.length === 0 || busy}
-            className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-primary transition-colors hover:bg-app-surface-hover disabled:opacity-50"
-          >
-            <Clipboard className="h-3.5 w-3.5" />
-            {copied ? 'Copied' : 'Copy command'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={copyCommand}
+              disabled={selectedKeys.length === 0 || busy}
+              className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-primary transition-colors hover:bg-app-surface-hover disabled:opacity-50"
+            >
+              <Clipboard className="h-3.5 w-3.5" />
+              {copied ? 'Copied Bash' : 'Copy command (Bash)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyPowerShellCommand()}
+              disabled={selectedKeys.length === 0 || busy}
+              className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-primary transition-colors hover:bg-app-surface-hover disabled:opacity-50"
+            >
+              <Clipboard className="h-3.5 w-3.5" />
+              {copiedPowerShell ? 'Copied PowerShell' : 'Copy PowerShell'}
+            </button>
+          </div>
           <div className="flex gap-2">
             {done ? (
               // Everything selected is installed: the way forward is "Done", not "Close"/"Install again".

@@ -129,6 +129,8 @@ export interface AppSettings {
   perfMetricsItems?: PerfMetricId[];
   /** Polling interval in seconds. Kubernetes sessions are clamped to at least PERF_K8S_MIN_INTERVAL_SEC. */
   perfMetricsIntervalSec?: number;
+  /** Enable Git status and Git operations (pull, clone) in file manager/SFTP panes. On by default. */
+  fileManagerGitIntegration?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -158,4 +160,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   smartcardUnlockAtStartup: false,
   x11ServerMode: 'auto',
   k8sDebugImages: [...DEFAULT_K8S_DEBUG_IMAGES],
+  fileManagerGitIntegration: true,
 };

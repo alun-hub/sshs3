@@ -71,6 +71,25 @@ import {
 } from './smartcard/SmartcardSyncService';
 import { encryptSecretValue, decryptSecretValue, isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
+import { fetchGitPublicKeys } from './git/GitKeyFetcher';
+import { GitConfigService } from './git/GitConfigService';
+import { GitStatusService } from './git/GitStatusService';
+import { RemoteGitService } from './git/RemoteGitService';
+import { DotfileGitImporter } from './dotfiles/DotfileGitImporter';
+import type {
+  ConfigureGitSigningRequest,
+  ConfigureGitSigningResult,
+  DotfilesImportFromGitRequest,
+  DotfilesImportFromGitResult,
+  FetchGitKeysRequest,
+  FetchGitKeysResult,
+  GitCloneRequest,
+  GitOperationResult,
+  GitRepoStatus,
+  GitSigningConfig,
+  TestRemoteGitAccessRequest,
+  TestRemoteGitAccessResult,
+} from '../shared/types/git';
 import type { SearchStartOptions } from '../shared/types/search';
 import {
   IPC_CHANNELS,
@@ -381,6 +400,7 @@ export class IpcBridge {
       .catch(() => {});
     this.registerConnectionTestHandlers();
     this.registerKeyInstallHandlers();
+    this.registerGitHandlers();
     this.registerAwsSsoHandlers();
     this.registerFileEditorHandlers();
     this.registerSearchHandlers();
@@ -3125,37 +3145,48 @@ export class IpcBridge {
 
     this.registerHandler(
       IPC_CHANNELS.SSH_LIST_PUBLIC_KEYS,
-      async (_event, request: ListPublicKeysRequest): Promise<LocalPublicKey[]> => {
-        const profile = await resolveDraft(request?.config);
+      async (_event, request?: ListPublicKeysRequest): Promise<LocalPublicKey[]> => {
+        let profile: SSHConnectionConfig | undefined;
+        if (request?.config?.host && request?.config?.username && request?.config?.authType) {
+          try {
+            profile = await resolveDraft(request.config);
+          } catch {
+            // Draft resolution optional for global key discovery
+          }
+        }
         const lists = [
-          await listFilePublicKeys(profile.privateKeyPath),
+          await listFilePublicKeys(profile?.privateKeyPath),
           await listAgentPublicKeys('agent', 'Cached key'),
         ];
 
-        const wantsCard = profile.authType === 'smartcard' && !!profile.pkcs11LibPath;
-        const wantsFido = profile.authType === 'fido2' && !!profile.fido2Resident;
-
-        // Reuse anything already unlocked, for free (no PIN, no touch): the app-wide agent
-        // ('agent-global' PIN caching) and the private agents of sessions that are open right now.
-        const cachedSockets: string[] = [];
-        if (wantsCard || wantsFido) {
-          const global = this.globalSmartcardAgents.get(wantsCard ? (profile.pkcs11LibPath as string) : '__fido2__');
-          if (global) cachedSockets.push(global.socketPath);
-          for (const entry of this.smartcardSessionAgents.values()) {
-            if (wantsFido && entry.kind === 'fido2') cachedSockets.push(entry.socketPath);
-            if (wantsCard && entry.kind === 'pkcs11' && entry.pkcs11LibPath === profile.pkcs11LibPath) {
-              cachedSockets.push(entry.socketPath);
-            }
-          }
-        }
-        for (const socketPath of new Set(cachedSockets)) {
+        // Query ALL unlocked global smartcard/FIDO2 agents ('agent-global' PIN caching)
+        for (const [key, agent] of this.globalSmartcardAgents.entries()) {
+          const isFido = key === '__fido2__';
           lists.push(
-            await listAgentPublicKeys(wantsCard ? 'smartcard' : 'fido2', wantsCard ? 'Smartcard key' : 'Security key', socketPath)
+            await listAgentPublicKeys(
+              isFido ? 'fido2' : 'smartcard',
+              isFido ? 'Security key' : 'Smartcard key',
+              agent.socketPath
+            )
           );
         }
+
+        // Query ALL active session agents
+        for (const entry of this.smartcardSessionAgents.values()) {
+          lists.push(
+            await listAgentPublicKeys(
+              entry.kind === 'fido2' ? 'fido2' : 'smartcard',
+              entry.kind === 'fido2' ? 'Security key' : 'Smartcard key',
+              entry.socketPath
+            )
+          );
+        }
+
+        const wantsCard = profile?.authType === 'smartcard' && !!profile?.pkcs11LibPath;
+        const wantsFido = profile?.authType === 'fido2' && !!profile?.fido2Resident;
         const cached = lists.some((l) => l.some((k) => k.source === 'smartcard' || k.source === 'fido2'));
 
-        if (!cached && request?.includeHardware && (wantsCard || wantsFido)) {
+        if (!cached && request?.includeHardware && (wantsCard || wantsFido) && profile) {
           const installId = `keylist-${crypto.randomUUID()}`;
           try {
             const config = await prepareHardware(profile, installId);
@@ -3382,6 +3413,81 @@ export class IpcBridge {
             error: err instanceof Error ? err.message : String(err),
           };
         }
+      }
+    );
+  }
+
+  private registerGitHandlers(): void {
+    this.registerHandler(
+      IPC_CHANNELS.GIT_FETCH_PUBLIC_KEYS,
+      async (_event, request: FetchGitKeysRequest): Promise<FetchGitKeysResult> => {
+        return await fetchGitPublicKeys(request);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_GET_SIGNING_CONFIG,
+      async (): Promise<GitSigningConfig> => {
+        return await GitConfigService.getSigningConfig();
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_CONFIGURE_SIGNING,
+      async (_event, request: ConfigureGitSigningRequest): Promise<ConfigureGitSigningResult> => {
+        return await GitConfigService.configureSigning(request);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_SET_SIGNING_ENABLED,
+      async (_event, enabled: boolean): Promise<ConfigureGitSigningResult> => {
+        return await GitConfigService.setSigningEnabled(Boolean(enabled));
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_GET_STATUS,
+      async (_event, directoryPath: string, providerId?: string): Promise<GitRepoStatus> => {
+        return await GitStatusService.getStatus(directoryPath, providerId, this.storageRegistry);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_CLONE,
+      async (_event, request: GitCloneRequest): Promise<GitOperationResult> => {
+        if (request.sftpConfig) {
+          const config = await this.restoreSavedSecrets(request.sftpConfig);
+          request.sftpConfig = await this.resolveProxyJumpConfig(config);
+        }
+        return await RemoteGitService.clone(request);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_PULL,
+      async (_event, directoryPath: string, providerId?: string): Promise<GitOperationResult> => {
+        return await RemoteGitService.pull(directoryPath, providerId);
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.GIT_TEST_REMOTE_ACCESS,
+      async (_event, request: TestRemoteGitAccessRequest): Promise<TestRemoteGitAccessResult> => {
+        const config = await this.restoreSavedSecrets(request.config);
+        const resolved = await this.resolveProxyJumpConfig(config);
+        return await RemoteGitService.testRemoteAccess({ ...request, config: resolved });
+      }
+    );
+
+    this.registerHandler(
+      IPC_CHANNELS.DOTFILES_IMPORT_FROM_GIT,
+      async (_event, request: DotfilesImportFromGitRequest): Promise<DotfilesImportFromGitResult> => {
+        const res = await DotfileGitImporter.importFromGit(request, this.dotfilePoolStore);
+        if (res.success) {
+          this.scheduleAutoSync();
+        }
+        return res;
       }
     );
   }

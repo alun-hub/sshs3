@@ -98,7 +98,7 @@ export function buildKeyInstallArgs(
   ];
 }
 
-interface SshRunResult {
+export interface SshRunResult {
   code: number | null;
   stdout: string;
   stderr: string;
@@ -110,10 +110,10 @@ interface SshRunResult {
  * Kör ett kommando över OpenSSH med askpass kopplat till UI:t. Gemensam för installation, probe och
  * inloggningstest. Stdin (om angiven) går aldrig via kommandoraden.
  */
-async function runSshCommand(
+export async function runSshCommand(
   config: SSHConnectionConfig,
   remoteCommand: string,
-  handlers: PromptHandlers,
+  handlers: PromptHandlers = {},
   opts: { stdin?: string; leadingArgs?: string[] } = {}
 ): Promise<SshRunResult> {
   const { pinPromptHandler, hostKeyPromptHandler, onPresence, onPresenceCleared } = handlers;

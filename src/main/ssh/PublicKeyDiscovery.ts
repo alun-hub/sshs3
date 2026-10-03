@@ -80,7 +80,16 @@ export async function listAgentPublicKeys(
 }
 
 /** Vilken källa som får "äga" en nyckel som hittas på flera ställen: maskinvaran först, agenten sist. */
-const SOURCE_PRIORITY: Record<PublicKeySource, number> = { smartcard: 4, fido2: 4, file: 3, agent: 2, manual: 1 };
+const SOURCE_PRIORITY: Record<PublicKeySource, number> = {
+  smartcard: 4,
+  fido2: 4,
+  file: 3,
+  agent: 2,
+  manual: 1,
+  github: 1,
+  gitlab: 1,
+  'git-custom': 1,
+};
 
 /**
  * Slår ihop listor och tar bort dubbletter på fingeravtryck. Samma nyckel ligger ofta både i skrivbordets

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Git & GitHub / GitLab integration hub (`Settings → Git & GitHub`).**
+  - **Developer SSH Keys:** Centralized discovery of public keys across `~/.ssh`, active SSH agents, and unlocked smartcard/FIDO2 hardware caches. Includes one-click copy to clipboard and one-click direct browser registration on GitHub (`/settings/ssh/new`) and GitLab (`/-/user_settings/ssh_keys`).
+  - **Cryptographic SSH Git commit signing (`~/.gitconfig`):** Inspect active signing format and key, toggle `commit.gpgsign`, configure signing key with one-click "Git Sign" / "Sign Active", automatically update `~/.ssh/allowed_signers` for local signature verification, and enter custom signing keys.
+  - **SFTP & File Manager Git integration:** Automatic Git repository detection in dual-pane file manager panes (local and remote SFTP hosts). Shows branch badge, uncommitted/untracked status, ahead/behind commit indicators (`↑`/`↓`), Git Pull, and "Open in GitHub/GitLab". Includes dedicated toggle switch under *Settings → Git & GitHub* to turn off Git polling and hide Git controls if preferred.
+  - **Git Clone:** Clone Git repositories into the active pane folder or selected subfolder with branch selection and shallow clone depth options.
+  - **Remote key lookup (`username.keys`):** Inspect and copy public SSH keys from GitHub, GitLab, or self-hosted GitLab accounts.
+  - **Dotfiles Git import:** Clone and import dotfiles directly from Git repositories into dotfile pools.
+  - **Key Installation with Developer Keys:** Pick public keys directly from local files, active SSH agents, or smartcards when installing keys on remote hosts via SSHProfileForm / InstallKeyModal.
+
 ## [0.96.17] - 2026-10-03
 
 ### Added

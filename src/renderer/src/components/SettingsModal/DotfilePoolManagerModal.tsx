@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import {
   FileCode,
   FolderOpen,
+  GitBranch,
   Loader2,
   Plus,
   Save,
+  ShieldAlert,
   Trash2,
   Upload,
   X,
@@ -46,6 +48,37 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   const [draft, setDraft] = useState<DotfilePool | null>(null);
   const [saving, setSaving] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // Git import state
+  const [gitImportOpen, setGitImportOpen] = useState(false);
+  const [gitImportUrl, setGitImportUrl] = useState('');
+  const [gitImporting, setGitImporting] = useState(false);
+  const [gitImportError, setGitImportError] = useState<string | null>(null);
+
+  const handleGitImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gitImportUrl.trim()) return;
+    setGitImporting(true);
+    setGitImportError(null);
+    try {
+      const res = await window.multissh.dotfilesImportFromGit({ urlOrRepo: gitImportUrl.trim() });
+      if (!res.success) {
+        setGitImportError(res.error || 'Import failed');
+      } else {
+        setGitImportOpen(false);
+        setGitImportUrl('');
+        const updated = await load();
+        if (res.poolId) {
+          const imported = updated.find((p) => p.id === res.poolId);
+          if (imported) selectPool(imported);
+        }
+      }
+    } catch (err) {
+      setGitImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGitImporting(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -242,14 +275,27 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
         <div className="flex flex-1 min-h-0">
           <aside className="w-56 shrink-0 border-r border-border-subtle bg-app-surface p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <button
-              type="button"
-              onClick={startNewPool}
-              className="mb-1.5 flex items-center justify-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Pool
-            </button>
+            <div className="grid grid-cols-2 gap-1 mb-1.5">
+              <button
+                type="button"
+                onClick={startNewPool}
+                className="flex items-center justify-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGitImportError(null);
+                  setGitImportOpen(true);
+                }}
+                className="flex items-center justify-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                From Git
+              </button>
+            </div>
             {loading ? (
               <div className="flex items-center justify-center py-4 text-txt-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -441,6 +487,65 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
           </div>
         </div>
       </div>
+
+      {gitImportOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+              <div className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-sky-400" />
+                <span className="text-sm font-semibold text-txt-primary">Import Dotfiles from Git</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGitImportOpen(false)}
+                disabled={gitImporting}
+                className="rounded-lg p-1 text-txt-muted hover:text-txt-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleGitImport} className="p-4 space-y-3 text-xs">
+              <p className="text-txt-secondary">
+                Enter a GitHub repo (<code>username/dotfiles</code>) or any Git clone URL. The repository will be scanned for shell and editor configuration files.
+              </p>
+              <input
+                type="text"
+                autoFocus
+                required
+                value={gitImportUrl}
+                onChange={(e) => setGitImportUrl(e.target.value)}
+                placeholder="username/dotfiles or https://github.com/..."
+                className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-txt-primary placeholder:text-txt-muted/60 focus:border-sky-500 focus:outline-none"
+              />
+              {gitImportError && (
+                <div className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-300">
+                  <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>{gitImportError}</span>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setGitImportOpen(false)}
+                  disabled={gitImporting}
+                  className="rounded-lg px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!gitImportUrl.trim() || gitImporting}
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                >
+                  {gitImporting && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {gitImporting ? 'Importing…' : 'Import'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -164,4 +164,74 @@ describe('FilePane Home Button', () => {
     // storageList should STILL have only been called once (no redundant reload that resets scroll)
     expect(storageListMock).toHaveBeenCalledTimes(1);
   });
+
+  it('queries git status and renders git branch when gitIntegrationEnabled is true', async () => {
+    const gitGetStatusMock = vi.fn().mockResolvedValue({
+      isRepo: true,
+      branch: 'main',
+      isClean: true,
+      ahead: 0,
+      behind: 0,
+    });
+    (window as any).multissh.gitGetStatus = gitGetStatusMock;
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            gitIntegrationEnabled={true}
+            onPathChange={vi.fn()}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect(gitGetStatusMock).toHaveBeenCalledWith('/var/log', 'local');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('main')).toBeInTheDocument();
+    });
+  });
+
+  it('does NOT query git status or render git toolbar elements when gitIntegrationEnabled is false', async () => {
+    const gitGetStatusMock = vi.fn().mockResolvedValue({
+      isRepo: true,
+      branch: 'main',
+      isClean: true,
+    });
+    (window as any).multissh.gitGetStatus = gitGetStatusMock;
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            gitIntegrationEnabled={false}
+            onPathChange={vi.fn()}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect((window as any).multissh.storageList).toHaveBeenCalled();
+    });
+
+    expect(gitGetStatusMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('main')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Git \(Clone repository here\.\.\.\)/i)).not.toBeInTheDocument();
+  });
 });

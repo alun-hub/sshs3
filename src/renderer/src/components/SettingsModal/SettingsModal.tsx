@@ -33,6 +33,7 @@ import {
   Square,
   FolderOpen,
   Boxes,
+  GitBranch,
   Plus,
   Trash2,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kube
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
+import { GitSettingsPanel } from './GitSettingsPanel';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { IS_WINDOWS } from '../../lib/platform';
@@ -76,7 +78,7 @@ const FONT_PRESETS: FontPreset[] = [
   { label: 'System Default Monospace', value: 'monospace' },
 ];
 
-type SettingsCategory = 'general' | 'terminal' | 'performance' | 'files' | 'security' | 'sync' | 'shortcuts' | 'kubernetes';
+type SettingsCategory = 'general' | 'terminal' | 'performance' | 'files' | 'security' | 'sync' | 'shortcuts' | 'kubernetes' | 'git';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   open,
@@ -137,6 +139,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     currentSettings.smartcardUnlockAtStartup ?? false
   );
   const [smartcardLibPath, setSmartcardLibPath] = useState<string>(currentSettings.smartcardLibPath ?? '');
+  const [fileManagerGitIntegration, setFileManagerGitIntegration] = useState<boolean>(
+    currentSettings.fileManagerGitIntegration ?? true
+  );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(() => ({
@@ -205,6 +210,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSmartcardAuthMode(currentSettings.smartcardAuthMode ?? 'always-prompt');
       setSmartcardUnlockAtStartup(currentSettings.smartcardUnlockAtStartup ?? false);
       setSmartcardLibPath(currentSettings.smartcardLibPath ?? '');
+      setFileManagerGitIntegration(currentSettings.fileManagerGitIntegration ?? true);
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
@@ -349,6 +355,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       smartcardAuthMode,
       smartcardUnlockAtStartup,
       smartcardLibPath: smartcardLibPath || undefined,
+      fileManagerGitIntegration,
       x11ServerMode,
       x11ServerPath,
       x11ServerArgs,
@@ -402,8 +409,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ],
     },
     {
-      group: 'Security & Shortcuts',
+      group: 'Developer & Security',
       items: [
+        { id: 'git', label: 'Git & GitHub', icon: GitBranch },
         { id: 'security', label: 'Security & Smartcard', icon: Shield },
         { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
       ],
@@ -1682,6 +1690,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Category: Synchronization */}
               {activeCategory === 'sync' && <SyncSettingsPanel />}
+
+              {/* Category: Git & GitHub */}
+              {activeCategory === 'git' && (
+                <GitSettingsPanel
+                  fileManagerGitIntegration={fileManagerGitIntegration}
+                  onChangeFileManagerGitIntegration={setFileManagerGitIntegration}
+                />
+              )}
 
               {/* Category: Keyboard Shortcuts */}
               {activeCategory === 'shortcuts' && (

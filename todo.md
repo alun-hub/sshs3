@@ -124,10 +124,7 @@ att bygga.
    Bygg vidare på befintlig "Open in Terminal" (#35): högerklick på ett skript (`.sh`,
    `.py` osv.) i SFTP-panelen ska ge ett val att köra det direkt i den tillhörande
    SSH-terminalfliken, istället för att bara öppna en tom prompt i samma katalog.
-- [ ] **60. Smarta Git-indikatorer i SFTP-vyn** — om fjärrkatalogen är ett Git-repo,
-   visa små statusikoner i filträdet (grönt = ändrat, rött = konflikt) likt VS Code,
-   via ett `git status --porcelain`-anrop i bakgrunden över samma SSH-anslutning.
-   Förhindrar att man råkar skriva över filer som någon annan redan har ändrat.
+- [x] **60. Smarta Git-indikatorer i SFTP-vyn och Git & GitHub-panel** — Automatisk avkänning av Git-repositorier på fjärrservrar (SFTP) och lokal disk via `GitStatusService` och `RemoteGitService`. Visar grennamn, ändringsindikator (`*`), commits ahead/behind (`↑`/`↓`), Git Pull, Git Clone och direktlänk till GitHub/GitLab. Inkluderar centraliserad **Settings > Git & GitHub** med Developer SSH Keys (kopiera, registrera på GitHub/GitLab), kryptografisk commit-signering (`~/.gitconfig`, `gpg.format=ssh`, `commit.gpgsign`, `allowed_signers`), public key lookup (`username.keys`), import av dotfiles från Git-repositorier samt inställning för att slå av/på Git-integrationen i filhanteraren.
 - [x] **64. Certifikatdetaljer i "Cached smartcard identities".** Popovern (kort-ikonen
    i toppfältet, `TabBar.tsx`) listade tidigare bara vad `ssh-add -l` rapporterar
    (fingerprint/keytype/PIV-slotetikett) — ingen certifikatinfo. Varje identitet kan nu
@@ -223,6 +220,14 @@ att bygga.
    - **"Väntar på input"** är det svåra (PTY vet inte om skalet är på prompten). Steg 1: tystnadsheuristik (1–2 s) + mönster på sista raden. Steg 2 (valfritt): shell-integration via OSC 133 för exakt prompt/kommando-status, kräver snutt i fjärrskalets rc-fil.
    - **Genomförande:** ren statusmaskin i utility-fil (data/exit/reconnect → status, med timers), `TerminalView` rapporterar uppåt via callback likt `onExit`, prick/kant i `TabBar`. Inställning för av/på, färgblindsäkert (ikon/form utöver färg), enhetstester för statusmaskinen.
    - **Öppna frågor:** ska grönt betyda prompt-redo eller ska "program frågar" ha egen färg? Prick eller färgad kant på hela fliken?
+- [ ] **69. Företagsprofilering (corporate branding: accentfärg, logotyp, miljömarkering)** — låt företag/användare ge appen sin egen accentfärg och logotyp, samt färgmarkera miljöer (prod/stage/dev) per profil. Börja i plan mode; delar berör säkerhetskänsliga områden (IPC, sync, CSP).
+   - **Underlag finns:** all färg går via CSS-variabler i `index.css` (`--accent-primary`, `--bg-*`; teman `dark`/`light`/`breeze`, `AppTheme` i `shared/types/settings.ts`). `BrandLogo.tsx` är en hårdkodad inline-SVG. Branding läggs som override ovanpå temana, inga komponenter behöver skrivas om.
+   - **Steg 1 — Tema (accent + logotyp):** `branding?: { accent?: string; logoDataUrl?: string; appName?: string }` i `AppSettings`, ny `BrandingStore` (med `queueMutation`) och IPC enligt `ARCHITECTURE.md` §4. Sätt `--accent-primary` från `branding.accent`; härled `--accent-hover`/`--accent-subtle` med `color-mix()`. Bakgrunder och text lämnas orörda. Kontrastvarning (WCAG) mot `--bg-app` i inställningarna.
+   - **Steg 2 — Var det syns:** `BrandLogo` byts mot `<img>` när egen logotyp finns (sshs3-märket som fallback) i titelrad/sidopanel, Om-dialog och startskärm. Valfri färg/ikon per profil som miljömarkering i `TabBar` och profillista, plus färgad kant eller svag vattenstämpel på terminalen (syns vid skärmdelning, minskar risken att skriva i fel miljö).
+   - **Steg 3 — Distribution:** signerad `branding.json` + logotyp via den krypterade profilsynken (`SyncCryptoService`) och/eller managed config (`/etc/sshs3/branding.json`, `%PROGRAMDATA%`) för MDM/image-utrullning. `branding.locked: true` döljer ändringsmöjligheten i inställningarna.
+   - **Säkerhet (granska efteråt):** logotyp endast PNG/JPEG/WebP (SVG bara efter sanering, annars XSS), max ~256 KB, validerad i main, lagrad som data-URL, aldrig extern URL (CSP, IP-läckage). IPC-handlers validerar argument. Säkerhetsdialoger (host key/TOFU, PIN) behåller neutral styling så branding inte kan användas för spoofing. Branding från synk/admin-fil måste vara signerad eller krypterad, inte skrivbar av vem som helst.
+   - **Öppna frågor:** global inställning per installation eller branding per organisation/synkprofil? Ska managed config kunna låsa och åsidosätta användarens val?
+   - **Tester:** enhetstester för färgvalidering/kontrast, logotypvalidering (MIME, storlek, SVG-avvisning) och `BrandingStore`.
 
 
 ## Funktionsanalys: PuTTY, WinSCP & S3 Browser

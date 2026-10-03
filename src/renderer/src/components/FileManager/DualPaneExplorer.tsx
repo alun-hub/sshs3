@@ -34,6 +34,8 @@ interface DualPaneExplorerProps {
   initialSSHConfig?: SSHConnectionConfig;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default. */
   showHiddenFiles?: boolean;
+  /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
+  gitIntegrationEnabled?: boolean;
 }
 
 export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
@@ -43,6 +45,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   initialK8sTarget,
   initialSSHConfig,
   showHiddenFiles = false,
+  gitIntegrationEnabled = true,
 }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
@@ -602,6 +605,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             otherPane={otherPaneForLeft}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
+            gitIntegrationEnabled={gitIntegrationEnabled}
           />
           <FilePane
             side="right"
@@ -617,6 +621,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             otherPane={otherPaneForRight}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
+            gitIntegrationEnabled={gitIntegrationEnabled}
           />
         </div>
         <TransferQueueDrawer />
