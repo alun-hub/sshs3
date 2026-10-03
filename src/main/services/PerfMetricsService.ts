@@ -1,8 +1,12 @@
 import { execFile } from 'node:child_process';
+import dns from 'node:dns';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { PerfK8sRaw, PerfK8sResult, PerfK8sTarget, PerfSshRaw, PerfSshResult } from '../../shared/types/perf';
+import type { SSHConnectionConfig } from '../../shared/types/ssh';
+import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { loadK8sClient } from './k8sClient';
 import { loadKubeConfigForContext } from './k8sKubeConfig';
 
@@ -10,6 +14,8 @@ import { loadKubeConfigForContext } from './k8sKubeConfig';
 export interface PerfSshSessionInfo {
   host: string;
   controlPath?: string;
+  /** Full connection config, used on Windows where there is no mux socket to reuse. */
+  config?: SSHConnectionConfig;
 }
 
 /**
@@ -25,6 +31,7 @@ const REMOTE_SCRIPT =
 const REMOTE_COMMAND = `sh -c '${REMOTE_SCRIPT}'`;
 
 const SSH_TIMEOUT_MS = 4000;
+const SSH_FALLBACK_TIMEOUT_MS = 12000;
 const SSH_MAX_BUFFER = 256 * 1024;
 
 const K8S_NAME_RE = /^[a-z0-9][-a-z0-9.]*$/;
@@ -234,6 +241,34 @@ async function localDisk(): Promise<{ mount: string; usedPct: number; sizeKb: nu
   }
 }
 
+/** TCP connect time to the session's sshd, or undefined when not meaningful (proxy/jump host) or unreachable. */
+function tcpConnectMs(config: SSHConnectionConfig | undefined): Promise<number | undefined> {
+  if (!config || config.proxy?.enabled || config.proxyJump?.trim()) return Promise.resolve(undefined);
+  // Resolve first (untimed, IPv4 preferred like ping) so DNS and IPv6->IPv4 fallback delays aren't counted.
+  const lookup = (family: 4 | 0): Promise<string | undefined> =>
+    dns.promises.lookup(config.host, { family }).then(
+      (r) => r.address,
+      () => undefined
+    );
+  return lookup(4)
+    .then((a) => a ?? lookup(0))
+    .then(
+      (address) =>
+        new Promise<number | undefined>((resolve) => {
+          if (!address) return resolve(undefined);
+          const start = process.hrtime.bigint();
+          const sock = net.connect({ host: address, port: config.port ?? 22, autoSelectFamily: false });
+          const done = (ms?: number): void => {
+            sock.destroy();
+            resolve(ms);
+          };
+          sock.setTimeout(3000, () => done());
+          sock.once('error', () => done());
+          sock.once('connect', () => done(Number(process.hrtime.bigint() - start) / 1e6));
+        })
+    );
+}
+
 export class PerfMetricsService {
   constructor(
     private readonly getSshSession: (sessionId: string) => PerfSshSessionInfo | undefined,
@@ -243,33 +278,74 @@ export class PerfMetricsService {
   async sampleSsh(sessionId: unknown): Promise<PerfSshResult> {
     if (typeof sessionId !== 'string') return { ok: false, reason: 'no-session' };
     const info = this.getSshSession(sessionId);
-    // Fail closed: without a live mux socket ssh would open a brand-new connection and could prompt for auth.
-    if (!info?.controlPath || !fs.existsSync(info.controlPath)) return { ok: false, reason: 'no-session' };
-    // Defense in depth against argv flag smuggling (same guard as SSHPtyManager's `-O exit`).
-    if (info.host.startsWith('-') || info.controlPath.startsWith('-')) return { ok: false, reason: 'error' };
+    if (!info) return { ok: false, reason: 'no-session' };
 
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
-    const args = [
-      '-S',
-      info.controlPath,
-      '-T',
-      '-o',
-      'ControlMaster=no',
-      '-o',
-      'BatchMode=yes',
-      '-o',
-      'ConnectTimeout=3',
-      '-o',
-      'ClearAllForwardings=yes',
-      '-o',
-      'RemoteCommand=none',
-      '--',
-      info.host,
-      REMOTE_COMMAND,
-    ];
+    let args: string[];
+    let env: NodeJS.ProcessEnv | undefined;
+    let timeout = SSH_TIMEOUT_MS;
+    let viaMux = true;
+    if (info.controlPath && fs.existsSync(info.controlPath)) {
+      // Defense in depth against argv flag smuggling (same guard as SSHPtyManager's `-O exit`).
+      if (info.host.startsWith('-') || info.controlPath.startsWith('-')) return { ok: false, reason: 'error' };
+      args = [
+        '-S',
+        info.controlPath,
+        '-T',
+        '-o',
+        'ControlMaster=no',
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'ConnectTimeout=3',
+        '-o',
+        'ClearAllForwardings=yes',
+        '-o',
+        'RemoteCommand=none',
+        '--',
+        info.host,
+        REMOTE_COMMAND,
+      ];
+    } else if (process.platform === 'win32' && info.config) {
+      // Windows OpenSSH has no ControlMaster, so there is no socket to piggyback on. Open a short-lived,
+      // non-interactive connection instead (BatchMode: key/agent auth works, a password prompt just fails).
+      viaMux = false;
+      timeout = SSH_FALLBACK_TIMEOUT_MS;
+      try {
+        const base = SmartcardDetector.buildSSHArguments({
+          ...info.config,
+          tunnels: [],
+          x11Forwarding: false,
+        });
+        // buildSSHArguments ends with `-- destination`, so the remote command goes last.
+        args = [
+          '-T',
+          '-o',
+          'BatchMode=yes',
+          '-o',
+          'ConnectTimeout=8',
+          '-o',
+          'ClearAllForwardings=yes',
+          '-o',
+          'RemoteCommand=none',
+          ...base,
+          REMOTE_COMMAND,
+        ];
+      } catch {
+        return { ok: false, reason: 'error' };
+      }
+      env = { ...process.env, ...SmartcardDetector.buildProxyEnv(info.config) };
+      if (info.config.agentPath) env.SSH_AUTH_SOCK = info.config.agentPath;
+    } else {
+      // Fail closed: without a live mux socket ssh would open a brand-new connection and could prompt for auth.
+      return { ok: false, reason: 'no-session' };
+    }
+
     const started = Date.now();
+    // A fresh connection pays for the handshake, so time a bare TCP connect to the sshd port instead.
+    const tcpLatency = viaMux ? Promise.resolve(undefined) : tcpConnectMs(info.config);
     const stdout = await new Promise<string | null>((resolve) => {
-      execFile(sshBinary, args, { timeout: SSH_TIMEOUT_MS, maxBuffer: SSH_MAX_BUFFER }, (err, out) => {
+      execFile(sshBinary, args, { timeout, maxBuffer: SSH_MAX_BUFFER, env, windowsHide: true }, (err, out) => {
         resolve(err ? null : String(out));
       });
     });
@@ -277,7 +353,7 @@ export class PerfMetricsService {
     const raw = parseProcSnapshot(stdout);
     if (!raw) return { ok: false, reason: 'unsupported' };
     // Includes the remote script's runtime (a few ms), which is fine for a "how laggy is this link" figure.
-    raw.latencyMs = Date.now() - started;
+    raw.latencyMs = viaMux ? Date.now() - started : await tcpLatency;
     return { ok: true, raw };
   }
 

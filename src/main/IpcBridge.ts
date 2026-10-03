@@ -341,7 +341,9 @@ export class IpcBridge {
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
     this.perfMetricsService = new PerfMetricsService((sessionId) => {
       const session = this.sshPtyManager.getSession(sessionId);
-      return session ? { host: session.config.host, controlPath: session.controlPath } : undefined;
+      return session
+        ? { host: session.config.host, controlPath: session.controlPath, config: session.config }
+        : undefined;
     });
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
     this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();

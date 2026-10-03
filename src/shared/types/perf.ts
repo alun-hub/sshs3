@@ -29,6 +29,8 @@ export const PERF_LAYOUTS: readonly PerfLayout[] = ['text', 'bars', 'sparklines'
 export const PERF_INTERVALS_SEC = [2, 5, 10, 30] as const;
 /** metrics-server only refreshes every ~15-60 s, so polling faster than this is pointless. */
 export const PERF_K8S_MIN_INTERVAL_SEC = 10;
+/** Windows has no ssh multiplexing, so every remote sample is a fresh connection; don't do that more often than this. */
+export const PERF_WIN_SSH_MIN_INTERVAL_SEC = 10;
 
 export const DEFAULT_PERF_ITEMS: PerfMetricId[] = ['cpu', 'mem', 'load'];
 

@@ -53,7 +53,7 @@ export function usePerfSamples({ local, sshSessionId, k8sTarget, intervalSec, ac
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let prev: PerfSshRaw | null = null;
-    const delay = resolveIntervalMs(kind, intervalSec);
+    const delay = resolveIntervalMs(kind, intervalSec, !local && /Windows/i.test(navigator.userAgent));
 
     const tick = async (): Promise<void> => {
       let next = delay;

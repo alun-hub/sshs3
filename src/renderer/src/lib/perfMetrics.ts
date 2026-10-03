@@ -1,6 +1,7 @@
 import {
   PERF_HISTORY_MS,
   PERF_K8S_MIN_INTERVAL_SEC,
+  PERF_WIN_SSH_MIN_INTERVAL_SEC,
   type PerfK8sRaw,
   type PerfMetricId,
   type PerfSample,
@@ -147,9 +148,15 @@ export function pushHistory(history: PerfSample[], sample: PerfSample, windowMs 
 }
 
 /** Interval in ms, with the Kubernetes floor applied (metrics-server only refreshes every ~15-60 s). */
-export function resolveIntervalMs(kind: 'ssh' | 'k8s', sec: number | undefined): number {
+export function resolveIntervalMs(
+  kind: 'ssh' | 'k8s',
+  sec: number | undefined,
+  /** Remote SSH sampling on Windows (new connection per sample). Never set for local panes or other platforms. */
+  windowsRemoteSsh = false
+): number {
   const base = Number.isFinite(sec) && (sec as number) > 0 ? (sec as number) : 5;
-  return Math.max(base, kind === 'k8s' ? PERF_K8S_MIN_INTERVAL_SEC : 1) * 1000;
+  const min = kind === 'k8s' ? PERF_K8S_MIN_INTERVAL_SEC : windowsRemoteSsh ? PERF_WIN_SSH_MIN_INTERVAL_SEC : 1;
+  return Math.max(base, min) * 1000;
 }
 
 const K8S_ONLY: ReadonlySet<PerfMetricId> = new Set(['restarts', 'ready', 'age', 'node', 'resources']);
