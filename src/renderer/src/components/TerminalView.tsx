@@ -678,13 +678,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       {perfMetrics && perfKind && (
         <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} light={isLight} title={perfTitle} />
       )}
-      <div
-        ref={containerRef}
-        data-testid="terminal-container"
-        role="application"
-        aria-label={terminalAriaLabel}
-        className="min-h-0 w-full flex-1 p-2 focus:outline-none"
-      />
+      {/* Padding sits on this wrapper, not on the xterm container: FitAddon reads the parent's
+          border-box height and only subtracts the xterm element's own padding, so padding on the
+          container made the terminal ~16px too tall and clipped the last row (worse on Windows). */}
+      <div className="min-h-0 w-full flex-1 p-2">
+        <div
+          ref={containerRef}
+          data-testid="terminal-container"
+          role="application"
+          aria-label={terminalAriaLabel}
+          className="h-full w-full overflow-hidden focus:outline-none"
+        />
+      </div>
 
       {exitEvent && (
         <div

@@ -216,20 +216,23 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
         </button>
       )}
 
-      <div
-        ref={containerRef}
-        data-testid="k8s-log-container"
-        role="log"
-        aria-label={`Logs: ${target.podName}/${target.containerName}`}
-        className="min-h-0 flex-1 p-2"
-        onKeyDown={(e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-            e.preventDefault();
-            setSearchOpen(true);
-          }
-        }}
-        tabIndex={-1}
-      />
+      {/* Padding on the wrapper so FitAddon measures a padding-free container (see TerminalView). */}
+      <div className="min-h-0 flex-1 p-2">
+        <div
+          ref={containerRef}
+          data-testid="k8s-log-container"
+          role="log"
+          aria-label={`Logs: ${target.podName}/${target.containerName}`}
+          className="h-full w-full overflow-hidden"
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+              e.preventDefault();
+              setSearchOpen(true);
+            }
+          }}
+          tabIndex={-1}
+        />
+      </div>
 
       {ended && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-lg bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 text-xs text-amber-300 shadow-lg">
