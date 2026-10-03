@@ -103,6 +103,16 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 - **Session persistence** — tabs, pane layouts, and per-pane working directories are saved and restored automatically between restarts.
 - **SSH agent lifecycle management** — detects whether `ssh-agent` is already running and, if not, can spawn and manage one itself (Linux/macOS), or detect the Windows OpenSSH Authentication Agent service. A local shell tab's `SSH_AUTH_SOCK` is set explicitly from this, in priority order: (1) a smartcard currently cached under **Global (App Lifetime)** PIN caching (see below) — so a card you already unlocked in an SSH terminal is immediately usable for a plain `ssh`/`ssh-add` typed into a local shell tab too, no second PIN prompt; (2) otherwise the app's own ensured/managed agent (spawned only if no usable agent was already running). Since this is resolved once, at the moment that specific tab's shell process is spawned, a local shell tab opened *before* a card is unlocked won't retroactively pick it up — open the tab (or a new one) after unlocking the card.
 
+### Performance bar *(opt-in)*
+A slim live-metrics strip above SSH, local-shell and Kubernetes terminals. It is **off by default** — enable it under **Settings → Performance**. While it is off nothing is polled and no extra commands are run.
+
+- **SSH sessions** — sampled over the *already open* OpenSSH connection (the same ControlMaster socket the terminal uses), so there is no extra login, no extra PIN/touch prompt and nothing to install on the server. Each sample runs one fixed, read-only script that reads `/proc` (Linux hosts); `BatchMode=yes` guarantees it can never open a new connection or ask for a password. Available metrics: CPU, RAM, load (vs. core count), swap, disk `/` and every real filesystem, network ↓/↑, disk I/O read/write, iowait, steal, processes, per-core CPU, page cache, uptime and round-trip latency ("Ping").
+- **Local shell** — measures your own computer: the same set on Linux, and CPU (total and per core), RAM, uptime and disk (plus load on macOS) on macOS/Windows.
+- **Kubernetes pods** — the equivalent of `kubectl top pod`, read from the `metrics.k8s.io` API with the app's own Kubernetes client (no `kubectl` needed): CPU and memory per container, usage against the container's **request and limit**, restarts, Ready, pod age and node. Shows "metrics-server not available" on clusters without metrics-server; refreshes at most every 10 s because metrics-server only updates every ~15–60 s.
+- **Three layouts** — compact text, bars (colour-coded green/amber/red gauges) or sparklines — plus a choice of which metrics to show and the update interval (2/5/10/30 s).
+- **Hover** the bar for a tooltip with *every* value for that session, including metrics you did not pick for the bar.
+- **Click** the bar to open the history view: line charts for up to the last 15 minutes plus "right now" cards — donuts for CPU time (user+sys / iowait / steal / idle), memory (used / cache / free) and swap, load bars against core count, per-filesystem disk bars, per-core CPU, ↓/↑ and read/write bars, request/limit bars for pods, and stat tiles (uptime, ping, processes, node, ready, age). History is kept while the tab is open and survives switching tabs.
+
 ### Kubernetes & OpenShift (Clusters, Pods & Containers)
 - **Automatic cluster discovery** — Reads `~/.kube/config` and lazily inspects cluster contexts, namespaces, pods, and individual containers inside the Connection Manager and the "+" new-tab menu.
 - **Resilient lazy loading** — Never blocks the UI or stalls on unreachable clusters; contexts and namespaces are only queried on-demand when expanded.
@@ -209,6 +219,7 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 ### Customization
 - Dark, light, Breeze, and system-following themes.
 - Configurable terminal font family/size with a live preview.
+- Optional performance bar above terminals (layout, metrics and interval under **Settings → Performance**).
 - Fully rebindable keyboard shortcuts with interactive key-capture and a reset-to-default option.
 
 ---
@@ -557,6 +568,7 @@ sshs3 is one codebase, but the Windows build can't do everything the Linux build
 
 ## Known Limitations
 
+- **Performance bar on non-Linux hosts**: the SSH metrics are read from `/proc`, so a macOS/BSD server shows "Metrics need a Linux host". On Windows the app has no ControlMaster socket to reuse, so the bar is not available for SSH sessions there (local shell and Kubernetes work). Network, swap, disk I/O, iowait/steal, processes and cache are not available for a local shell on macOS/Windows.
 - **Linux Drag & Drop Cursor Icon**: On some Linux desktop environments (notably GNOME/Wayland or KDE Plasma with certain cursor themes like Breeze), Chromium's native drag-and-drop implementation does not update the mouse cursor bitmap during internal pane-to-pane drags, displaying a "forbidden" or "no-drop" icon (white circle with red slash). This is an upstream Chromium window manager integration quirk; dragging and dropping files between panes and into folders works normally and completely reliably.
 
 ---
