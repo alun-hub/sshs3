@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import type { DotfilePool, DotfilePoolFile } from '../../shared/types/dotfiles';
 import type { DotfilesImportFromGitRequest, DotfilesImportFromGitResult } from '../../shared/types/git';
 import type { DotfilePoolStore } from './DotfilePoolStore';
+import { safeGitConfigArgs, safeGitEnv } from '../git/gitSafety';
 import { isValidGitCloneUrl } from '../git/RemoteGitService';
 
 const execFileAsync = promisify(execFile);
@@ -96,8 +97,9 @@ export class DotfileGitImporter {
 
     try {
       const gitBin = resolveGitBinary();
-      await execFileAsync(gitBin, ['clone', '--depth', '1', cloneUrl, tempDir], {
+      await execFileAsync(gitBin, [...safeGitConfigArgs(), 'clone', '--depth', '1', '--', cloneUrl, tempDir], {
         timeout: 60000,
+        env: safeGitEnv(),
       });
 
       // Walk tempDir to collect matching dotfiles

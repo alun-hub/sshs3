@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types/git';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import { runSshCommand } from '../ssh/KeyInstallService';
+import { hasControlChars, safeGitConfigArgs, safeGitEnv, shellQuote } from './gitSafety';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,7 +21,7 @@ export function isValidGitCloneUrl(rawUrl: string): boolean {
   const url = rawUrl.trim();
   if (!url || url.length > 2000) return false;
   // Disallow shell characters
-  if (/[\r\n\t;`$&|><"']/.test(url)) return false;
+  if (/[\r\n\t;`$&|><"']/.test(url) || url.startsWith('-')) return false;
   // Check standard git URLs
   if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('ssh://') || url.startsWith('git://')) {
     return true;
@@ -51,19 +52,30 @@ export class RemoteGitService {
       return { success: false, error: 'Invalid Git repository URL' };
     }
 
-    const targetDir = request.targetDirectory?.trim();
+    const targetDir = typeof request.targetDirectory === 'string' ? request.targetDirectory.trim() : '';
     if (!targetDir) {
       return { success: false, error: 'Target directory is required' };
+    }
+    if (hasControlChars(targetDir)) {
+      return { success: false, error: 'Invalid target directory' };
     }
 
     const dirName = request.directoryName?.trim();
     const args = ['clone'];
-    if (request.depth && request.depth > 0) {
-      args.push('--depth', String(request.depth));
+    if (request.depth !== undefined && request.depth !== null) {
+      if (!Number.isInteger(request.depth) || request.depth < 0) {
+        return { success: false, error: 'Invalid clone depth' };
+      }
+      if (request.depth > 0) args.push('--depth', String(request.depth));
     }
-    args.push(url);
+    args.push('--', url);
     if (dirName) {
-      if (/[\r\n\t;`$&|><"']/.test(dirName) || dirName.includes('/') || dirName.includes('\\')) {
+      if (
+        dirName.startsWith('-') ||
+        /[\r\n\t;`$&|><"']/.test(dirName) ||
+        dirName.includes('/') ||
+        dirName.includes('\\')
+      ) {
         return { success: false, error: 'Invalid directory name' };
       }
       args.push(dirName);
@@ -73,9 +85,10 @@ export class RemoteGitService {
     if (!request.providerId || request.providerId === 'local') {
       try {
         const gitBin = resolveGitBinary();
-        const { stdout, stderr } = await execFileAsync(gitBin, args, {
+        const { stdout, stderr } = await execFileAsync(gitBin, [...safeGitConfigArgs(), ...args], {
           cwd: targetDir,
           timeout: 120000, // 2 minutes max
+          env: safeGitEnv(),
         });
         return { success: true, output: (stdout + '\n' + stderr).trim() };
       } catch (err: unknown) {
@@ -87,7 +100,7 @@ export class RemoteGitService {
 
     // Remote SFTP clone over SSH
     if (request.sftpConfig) {
-      const remoteCmd = `cd ${targetDir.replace(/'/g, "'\\''")} && git ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`;
+      const remoteCmd = `cd -- ${shellQuote(targetDir)} && git ${[...safeGitConfigArgs('/dev/null'), ...args].map(shellQuote).join(' ')}`;
       try {
         const res = await runSshCommand(request.sftpConfig, remoteCmd);
         if (res.code === 0) {
@@ -114,15 +127,16 @@ export class RemoteGitService {
       return { success: false, error: 'Directory path is required' };
     }
     const dir = directoryPath.trim();
-    if (!dir) return { success: false, error: 'Directory path is required' };
+    if (!dir || hasControlChars(dir)) return { success: false, error: 'Directory path is required' };
 
     // Local pull
     if (!providerId || providerId === 'local') {
       try {
         const gitBin = resolveGitBinary();
-        const { stdout, stderr } = await execFileAsync(gitBin, ['pull'], {
+        const { stdout, stderr } = await execFileAsync(gitBin, [...safeGitConfigArgs(), 'pull'], {
           cwd: dir,
           timeout: 60000,
+          env: safeGitEnv(),
         });
         return { success: true, output: (stdout + '\n' + stderr).trim() };
       } catch (err: unknown) {
@@ -134,7 +148,7 @@ export class RemoteGitService {
 
     // Remote SFTP pull over SSH
     if (sftpConfig) {
-      const remoteCmd = `cd '${dir.replace(/'/g, "'\\''")}' && git pull`;
+      const remoteCmd = `cd -- ${shellQuote(dir)} && git ${safeGitConfigArgs('/dev/null').map(shellQuote).join(' ')} pull`;
       try {
         const res = await runSshCommand(sftpConfig, remoteCmd);
         if (res.code === 0) {

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.18] - 2026-10-03
+
+### Added
+- add Git & GitHub integration hub and SFTP file manager Git support
+
+### Changed
+- update landing and privacy-safe markdown editor screenshots
+- clean up internal persona tags from user guide headings
+- integrate privacy-safe screenshots, performance metrics, and senior UX guide
+- expand user guides with complete field reference, limitations and UI screenshots
+- add modular user guides, sync script, CI workflow and PR checklist
+
 ## [Unreleased]
 
 ### Added
@@ -16,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Remote key lookup (`username.keys`):** Inspect and copy public SSH keys from GitHub, GitLab, or self-hosted GitLab accounts.
   - **Dotfiles Git import:** Clone and import dotfiles directly from Git repositories into dotfile pools.
   - **Key Installation with Developer Keys:** Pick public keys directly from local files, active SSH agents, or smartcards when installing keys on remote hosts via SSHProfileForm / InstallKeyModal.
+
+### Security
+- **Git clone over SFTP:** the target directory is now shell-quoted in the remote command (previously a directory name such as `x$(cmd)` could execute commands on the server). Control characters in paths are rejected.
+- **Git status in untrusted local folders:** git is run with `core.fsmonitor=false`, hooks disabled and no optional locks, so a malicious `.git/config` can no longer run code when browsing into a folder. `.git` files are only followed into `worktrees`/`modules`.
+- **Git clone hardening:** URLs and folder names starting with `-` are rejected, `--` separates arguments, `depth` must be an integer, and transports are restricted to https/http/ssh/git. The same protections apply to dotfile Git import and `git pull`.
 
 ## [0.96.17] - 2026-10-03
 

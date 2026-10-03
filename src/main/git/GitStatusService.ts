@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { GitRepoStatus } from '../../shared/types/git';
 import type { StorageRegistry } from '../storage/StorageRegistry';
+import { safeGitConfigArgs, safeGitEnv } from './gitSafety';
 
 const execFileAsync = promisify(execFile);
 
@@ -90,9 +91,13 @@ export class GitStatusService {
             const match = /gitdir:\s*([^\r\n]+)/i.exec(content);
             if (match) {
               const rel = match[1].trim();
-              gitDir = path.isAbsolute(rel) ? rel : path.resolve(currentDir, rel);
-              rootPath = currentDir;
-              break;
+              const resolved = path.isAbsolute(rel) ? rel : path.resolve(currentDir, rel);
+              // Only accept worktree/submodule pointers into a .git directory; arbitrary targets are untrusted.
+              if (/[\\/]\.git[\\/](worktrees|modules)[\\/]/.test(resolved + path.sep)) {
+                gitDir = resolved;
+                rootPath = currentDir;
+                break;
+              }
             }
           }
         } catch {
@@ -135,10 +140,11 @@ export class GitStatusService {
 
       try {
         const gitBin = resolveGitBinary();
-        const { stdout } = await execFileAsync(gitBin, ['status', '--porcelain=v1', '-b'], {
-          cwd: rootPath,
-          timeout: 2500,
-        });
+        const { stdout } = await execFileAsync(
+          gitBin,
+          [...safeGitConfigArgs(), '--no-optional-locks', 'status', '--porcelain=v1', '-b'],
+          { cwd: rootPath, timeout: 2500, env: safeGitEnv() }
+        );
 
         const lines = stdout.split(/\r?\n/).filter(Boolean);
         for (const line of lines) {

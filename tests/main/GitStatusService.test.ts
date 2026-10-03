@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   parseHeadBranch,
   parseOriginUrl,
@@ -84,6 +88,34 @@ describe('GitStatusService', () => {
       expect(res.isRepo).toBe(true);
       expect(res.branch).toBeDefined();
       expect(res.rootPath).toBe(process.cwd());
+    });
+
+    it('does not execute core.fsmonitor from an untrusted repository config', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-fsmon-'));
+      try {
+        execFileSync('git', ['init', '-q', dir]);
+        const marker = path.join(dir, 'pwned');
+        fs.appendFileSync(
+          path.join(dir, '.git', 'config'),
+          `[core]\n\tfsmonitor = touch ${marker.replace(/\\/g, '/')}\n`
+        );
+        const res = await GitStatusService.getStatus(dir);
+        expect(res.isRepo).toBe(true);
+        expect(fs.existsSync(marker)).toBe(false);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('ignores a .git file whose gitdir points outside worktrees/modules', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-gitfile-'));
+      try {
+        fs.writeFileSync(path.join(dir, '.git'), 'gitdir: /tmp/evil-gitdir\n');
+        const res = await GitStatusService.getStatus(dir);
+        expect(res.rootPath).not.toBe(dir);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 });

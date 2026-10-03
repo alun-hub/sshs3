@@ -1,7 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+
+const runSshCommand = vi.hoisted(() => vi.fn());
+vi.mock('../../src/main/ssh/KeyInstallService', () => ({ runSshCommand }));
+
 import { isValidGitCloneUrl, RemoteGitService } from '../../src/main/git/RemoteGitService';
 
 describe('RemoteGitService', () => {
+  beforeEach(() => {
+    runSshCommand.mockReset();
+    runSshCommand.mockResolvedValue({ code: 0, stdout: '', stderr: '' });
+  });
+
   describe('isValidGitCloneUrl', () => {
     it('accepts HTTPS and HTTP URLs', () => {
       expect(isValidGitCloneUrl('https://github.com/torvalds/linux.git')).toBe(true);
@@ -25,6 +35,11 @@ describe('RemoteGitService', () => {
       expect(isValidGitCloneUrl('https://github.com/user/repo$(id)')).toBe(false);
       expect(isValidGitCloneUrl('https://github.com/user/repo && echo pwned')).toBe(false);
       expect(isValidGitCloneUrl('git@github.com:user/repo|cat')).toBe(false);
+    });
+
+    it('rejects URLs that start with a dash (option injection)', () => {
+      expect(isValidGitCloneUrl('--upload-pack=touch pwned')).toBe(false);
+      expect(isValidGitCloneUrl('-ucmd@host:path')).toBe(false);
     });
 
     it('rejects empty or excessively long URLs', () => {
@@ -61,6 +76,47 @@ describe('RemoteGitService', () => {
       });
       expect(res.success).toBe(false);
       expect(res.error).toContain('Invalid directory name');
+    });
+  });
+
+  describe('clone hardening', () => {
+    const sftpConfig = { host: 'h', port: 22, username: 'u' } as unknown as SSHConnectionConfig;
+    const base = { url: 'https://github.com/example/repo.git', providerId: 'sftp-1', sftpConfig };
+
+    it('rejects directoryName starting with a dash', async () => {
+      const res = await RemoteGitService.clone({
+        ...base,
+        targetDirectory: '/tmp',
+        directoryName: '--upload-pack=calc',
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Invalid directory name');
+      expect(runSshCommand).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-integer depth', async () => {
+      const res = await RemoteGitService.clone({ ...base, targetDirectory: '/tmp', depth: 1.5 });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Invalid clone depth');
+    });
+
+    it('single-quotes the target directory so shell metacharacters are inert', async () => {
+      await RemoteGitService.clone({ ...base, targetDirectory: '/srv/x$(touch /tmp/p);id' });
+      const cmd = runSshCommand.mock.calls[0][1] as string;
+      expect(cmd.startsWith("cd -- '/srv/x$(touch /tmp/p);id' && git ")).toBe(true);
+      expect(cmd).toContain("'--' 'https://github.com/example/repo.git'");
+    });
+
+    it('escapes embedded single quotes in the target directory', async () => {
+      await RemoteGitService.clone({ ...base, targetDirectory: "/srv/it's" });
+      const cmd = runSshCommand.mock.calls[0][1] as string;
+      expect(cmd.startsWith("cd -- '/srv/it'\\''s' && ")).toBe(true);
+    });
+
+    it('rejects target directories containing newlines', async () => {
+      const res = await RemoteGitService.clone({ ...base, targetDirectory: '/srv/a\nb' });
+      expect(res.success).toBe(false);
+      expect(runSshCommand).not.toHaveBeenCalled();
     });
   });
 
