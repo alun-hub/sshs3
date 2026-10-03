@@ -14,6 +14,38 @@ if (process.platform === 'linux') {
   app.setDesktopName('sshs3.desktop');
 }
 
+// Redirect userData to <exe-dir>/data if running as a portable executable (set by electron-builder)
+// or if a local 'data' folder exists next to the executable (e.g. portable ZIP distribution).
+// This ensures true portability (data travels with the exe) and avoids collision with any installed
+// sshs3 instance sharing the default %APPDATA%\sshs3 directory.
+if (process.env.PORTABLE_EXECUTABLE_DIR) {
+  app.setPath('userData', path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'data'));
+} else if (process.platform === 'win32' && !process.env.VITE_DEV_SERVER_URL) {
+  const localDataDir = path.join(path.dirname(process.execPath), 'data');
+  if (fs.existsSync(localDataDir)) {
+    app.setPath('userData', localDataDir);
+  }
+}
+
+// Enforce single-instance lock: if an instance is already running with the same userData directory,
+// focus the existing window and immediately terminate the new instance.
+let hasSingleInstanceLock = true;
+if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+  hasSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!hasSingleInstanceLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.focus();
+      }
+    });
+  }
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Some Linux GPU drivers crash Chromium's GPU process (see the "Linux GPU crash" fix). Rather than
@@ -238,9 +270,13 @@ async function initializeApp(): Promise<void> {
   }
 }
 
-app.whenReady().then(initializeApp);
+app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
+  return initializeApp();
+});
 
 app.on('before-quit', (event) => {
+  if (!hasSingleInstanceLock) return;
   if (!isQuitting) {
     event.preventDefault();
     void (async () => {
@@ -264,10 +300,12 @@ app.on('before-quit', (event) => {
 });
 
 app.on('will-quit', () => {
+  if (!hasSingleInstanceLock) return;
   AgentLifecycleManager.killAllPrivateAgents();
 });
 
 app.on('window-all-closed', () => {
+  if (!hasSingleInstanceLock) return;
   AgentLifecycleManager.killAllPrivateAgents();
   if (process.platform !== 'darwin') {
     app.quit();

@@ -24,7 +24,8 @@
     "icon": "build/icon.ico",
     "target": [
       "nsis",
-      "portable"
+      "portable",
+      "zip"
     ],
     "artifactName": "${name}-${version}.${ext}",
     "extraResources": [
@@ -42,6 +43,9 @@
     "allowToChangeInstallationDirectory": true,
     "artifactName": "${name}-Setup-${version}.${ext}",
     "include": "build/installer.nsh"
+  },
+  "portable": {
+    "artifactName": "${name}-${version}-portable.${ext}"
   },
   "publish": {
     "provider": "github",

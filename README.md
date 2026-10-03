@@ -86,8 +86,9 @@ Under the hood it's a fairly thin, security-conscious shell around a handful of 
 | **Linux** | Standalone AppImage | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.AppImage`) |
 | **Linux (Debian / Ubuntu)** | DEB package | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.deb`) |
 | **Linux (Fedora / RHEL)** | RPM package | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.rpm`) |
-| **Windows** | Setup Installer (with bundled VcXsrv) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`Setup-*.exe`) |
-| **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`.exe`) |
+| **Windows** | Setup Installer (with bundled VcXsrv) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-Setup-*.exe`) |
+| **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*-portable.exe`) |
+| **Windows** | Portable ZIP (unpack & run) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*.zip`) |
 
 **Updates:** the app checks GitHub Releases for a new version shortly after start and every 6 hours (switch off under *Settings → App Behavior*). Nothing is downloaded or installed until you click *Download* and then *Restart and install*. This works for the AppImage and the DEB/RPM packages (DEB/RPM ask for administrator rights). Windows builds are not code-signed yet, so on Windows the app does not update itself: download new versions from the releases page. The only network request is to GitHub Releases. On air-gapped machines, untick the setting, or set the environment variable `SSHS3_DISABLE_UPDATES=1` to switch the feature off completely (the setting is then locked and no update traffic is made). Release assets carry `SHA256SUMS` and a build-provenance attestation if you prefer to verify manually.
 
@@ -354,7 +355,7 @@ sshs3 wouldn't exist without these projects:
 | [@kubernetes/client-node](https://github.com/kubernetes-client/javascript) | Kubernetes client for cluster discovery, WebSocket exec sessions, and log streams |
 | [pkcs11js](https://github.com/PeculiarVentures/pkcs11js) | Native PKCS#11 bindings for reading smartcard certificates directly from hardware modules |
 | [@xterm/addon-search](https://www.npmjs.com/package/@xterm/addon-search) | Real-time text search for terminal logs and output panes |
-| [electron-builder](https://www.electron.build/) | Packaging (AppImage/deb/rpm for Linux, NSIS/portable for Windows) and GitHub Releases publishing |
+| [electron-builder](https://www.electron.build/) | Packaging (AppImage/deb/rpm for Linux, NSIS/portable/ZIP for Windows) and GitHub Releases publishing |
 
 ---
 
@@ -438,8 +439,10 @@ Prebuilt binaries are available on [GitHub Releases](https://github.com/alun-hub
   ```
 
 ### Windows
-- **NSIS Installer**: `sshs3-Setup-<version>.exe` (installation wizard with a desktop shortcut).
-- **Portable**: `sshs3-<version>.exe` (runs directly, no installation).
+- **NSIS Installer**: `sshs3-Setup-<version>.exe` (installation wizard with a desktop shortcut, firewall configuration for bundled VcXsrv, and optional OpenSSH agent service startup). Stores user data in `%APPDATA%\sshs3`.
+- **Portable standalone**: `sshs3-<version>-portable.exe` (single self-contained `.exe`, no installation). User data is automatically isolated in a `data/` folder next to the executable, keeping it completely portable on USB drives and avoiding collisions with any installed copy.
+- **Portable ZIP**: `sshs3-<version>.zip` (pre-extracted folder archive). Extract to any directory or USB drive and run `sshs3.exe` immediately without any `%TEMP%` extraction delay. If a `data` folder exists next to `sshs3.exe`, it will be used for user data; otherwise it defaults to `%APPDATA%\sshs3`.
+- **Single-instance window focusing**: If sshs3 is already running, launching the application again (installed or portable) safely brings the existing window to the front and focuses it instead of failing or conflicting over profile locks.
 
 ---
 

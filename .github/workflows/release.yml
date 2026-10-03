@@ -96,6 +96,7 @@ jobs:
             release/*.deb
             release/*.rpm
             release/*.exe
+            release/*.zip
             release/*.blockmap
             release/latest*.yml
           if-no-files-found: error
@@ -138,7 +139,7 @@ jobs:
 
       - name: Generate SHA256SUMS
         working-directory: dist-artifacts
-        run: sha256sum *.AppImage *.deb *.rpm *.exe > SHA256SUMS
+        run: sha256sum *.AppImage *.deb *.rpm *.exe *.zip > SHA256SUMS
 
       - name: Setup Node.js (for SBOM)
         uses: actions/setup-node@v7
@@ -156,6 +157,7 @@ jobs:
             dist-artifacts/*.deb
             dist-artifacts/*.rpm
             dist-artifacts/*.exe
+            dist-artifacts/*.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -170,6 +172,7 @@ jobs:
             dist-artifacts/*.deb
             dist-artifacts/*.rpm
             dist-artifacts/*.exe
+            dist-artifacts/*.zip
             dist-artifacts/*.blockmap
             dist-artifacts/latest*.yml
             dist-artifacts/SHA256SUMS
