@@ -1,65 +1,68 @@
-# Terminal, Tabs & Workspaces
+# Terminal, Flikar & Arbetsytor (Senior UX & Ergonomi)
 
-sshs3 provides a high-performance terminal workspace designed for heavy multitaskers, sysadmins, and DevOps engineers.
-
----
-
-## Real OpenSSH Architecture
-
-Unlike many terminal emulators that rely on custom JavaScript or WebAssembly reimplementations of the SSH protocol, sshs3 spawns your host operating system's genuine `ssh` binary via `node-pty`.
-
-### Why Real OpenSSH Matters:
-- **`~/.ssh/config` Support**: Every directive in your SSH config file (`Host`, `HostName`, `ProxyJump`, `IdentityFile`, `CertificateFile`, `SendEnv`, etc.) works identically to the command line.
-- **SSH Agent Integration**: Seamless integration with existing agents (`ssh-agent`, GnuPG agent, 1Password SSH agent).
-- **Compatibility**: Supports cutting-edge OpenSSH ciphers, key exchange algorithms, and MACs supported by your system's OpenSSH version.
+Terminalupplevelsen i **sshs3** är byggd för professionella administratörer och utvecklare som arbetar intensivt med många samtidiga sessioner och komplexa kommandon.
 
 ---
 
-## Konsole-Style Recursive Split Panes
+## 1. Native OpenSSH-Kärna vs. JS-Reimplementationer
 
-sshs3 implements a recursive split-tree architecture inspired by KDE's Konsole (`ViewSplitter`), allowing arbitrary horizontal and vertical subdividing of the terminal workspace.
+Många webb- och Electron-baserade terminaler använder egna JavaScript- eller WASM-bibliotek för att hantera SSH-protokollet, vilket ofta leder till subtila buggar i terminalemulering, felaktiga radbrytningar eller bristande stöd för moderna OpenSSH-funktioner.
 
-### Split Actions & Shortcuts
-
-| Action | Shortcut | Description |
-| :--- | :--- | :--- |
-| **Split Right** | <kbd>Ctrl+Shift+D</kbd> | Subdivides the current pane vertically, placing a new pane to the right. |
-| **Split Down** | <kbd>Ctrl+Shift+E</kbd> | Subdivides the current pane horizontally, placing a new pane below. |
-| **Cycle Next Pane** | <kbd>Ctrl+Shift+N</kbd> | Cycles focus forward through all split panes in the active tab. |
-| **Cycle Previous Pane** | <kbd>Ctrl+Shift+P</kbd> | Cycles focus backward through all split panes in the active tab. |
-| **Close Active Pane** | <kbd>Ctrl+Shift+W</kbd> | Closes the currently focused pane. |
-| **Unsplit** | Toolbar button | Closes all other panes in the tab, expanding the active pane to fill 100% of the window. |
-
-### Pane Independence & Reparenting
-- **Zero Session Restarts**: Splitting or closing adjacent panes never recreates, reloads, or interrupts running processes in existing panes. The tree automatically reparents remaining panes smoothly without leaving empty slots.
-- **Individual Connection Picker**: Each split pane features its own mini-toolbar and connection picker, allowing you to run an SSH session in one pane, a local shell in another, and a Kubernetes container exec in a third side-by-side.
+sshs3 kör **ditt operativsystems genuina OpenSSH-binär** (`ssh`) via `node-pty`:
+- **100% kompatibilitet med `~/.ssh/config`**: Alla direktiv (`Host`, `ProxyJump`, `CertificateFile`, `SendEnv`, `IdentityFile`) fungerar exakt likadant som i ditt vanliga CLI-skal.
+- **Systemets SSH-agenter**: Fungerar sömlöst med `ssh-agent`, GnuPG, 1Password och YubiKey PIV.
+- **Escape-sekvenser & Färgstöd**: Fullt stöd för TrueColor (24-bitars färger), OSC-koder och musinteraktion i program som `tmux`, `vim`, `htop` och `lazygit`.
 
 ---
 
-## Tabs & Dynamic Tracking
+## 2. Terminalergonomi & Interaktionsflöden (UX)
 
-- **Dynamic Titles**: Tab headers and pane titles automatically track the remote hostname, current working directory, and running process via OSC escape sequences (e.g. `vim`, `htop`, `tail`).
-- **Tab Reordering**: Drag and drop tabs to reorder them.
-- **New Tab Shortcuts**: Press <kbd>Ctrl+T</kbd> to open a new connection or local shell tab.
+### 2.1 Urklipp & Markering (Clipboard Workflow)
+- **Copy on Select (Kopiera vid markering)**: När du markerar text i terminalfönstret kopieras den automatiskt till operativsystemets urklippshanterare utan att du behöver trycka något kortkommando.
+- **Klistra in**:
+  - Tangentbord: <kbd>Ctrl+Shift+V</kbd> (för att inte kollidera med terminalens vanliga <kbd>Ctrl+V</kbd> som skickar raw literals i bash).
+  - Högerklick: Klicka med höger musknapp var som helst i terminalpanelen för att klistra in text från urklipp.
+- **Högerklicksmeny (Context Menu)**:
+  - *Paste*: Klistrar in text.
+  - *Split Right*: Delar aktiv panel vertikalt.
+  - *Split Down*: Delar aktiv panel horisontellt.
+  - *Clear Buffer*: Rensar skärmen och återställer rullningsbufferten.
+
+### 2.2 Sökning i Terminalens Textbuffert (<kbd>Ctrl+Shift+F</kbd>)
+Tryck <kbd>Ctrl+Shift+F</kbd> för att öppna sökfältet i den aktiva terminalpanelen:
+- Söker igenom hela terminalhistoriken (upp till de 5 000 rader som konfigurerats i inställningarna).
+- Navigera mellan träffar med piltangenterna eller <kbd>Enter</kbd>.
+- Perfekt för att lokalisera specifika felkoder, stack traces eller IP-adresser i långa loggutskrifter.
+
+### 2.3 Dynamisk Textskalning (Zoom)
+Under presentationer, möten eller vid arbete på högupplösta 4K-skärmar kan teckenstorleken skalas ögonblickligen:
+- <kbd>Ctrl++</kbd>: Ökar teckenstorleken med 1 px.
+- <kbd>Ctrl+-</kbd>: Minskar teckenstorleken med 1 px.
+- <kbd>Ctrl+0</kbd>: Återställer teckenstorleken till standardvärdet från inställningarna.
 
 ---
 
-## Local Shell Terminals
+## 3. Konsole-Style Rekursiva Split-Paneler
 
-Open local terminal sessions side-by-side with remote SSH sessions:
-- **Linux & macOS**: Automatically opens your login `$SHELL` (bash, zsh, fish).
-- **Windows**: Choose between PowerShell, `pwsh` (PowerShell 7), Command Prompt (`cmd.exe`), or any installed WSL distribution (e.g. Ubuntu, Debian).
+sshs3 implementerar samma split-träd-arkitektur som KDE:s Konsole (`ViewSplitter`), vilket möjliggör obegränsad horisontell och vertikal uppdelning:
 
-### Managed SSH_AUTH_SOCK Integration
-When opening a local shell on Linux/macOS, sshs3 explicitly sets `SSH_AUTH_SOCK` according to the following priority:
-1. **Global App-Lifetime Smartcard Agent**: If you unlocked a PKCS#11 smartcard or FIDO2 token in an SSH session under Global PIN caching, that unlocked agent socket is passed to your local shell. Commands like `ssh` or `git pull` run inside the local shell tab immediately use the unlocked hardware token without prompting for a PIN.
-2. **Managed Agent**: If no system agent was detected, sshs3 starts and manages an isolated agent instance.
+![Split Paneler i Terminalen](/img/split-terminal.png)
+
+### 3.1 Navigering & Storleksändring
+- **Dra i delningsbalkarna**: Placera muspekaren mellan två paneler för att dra och anpassa panelernas bredd och höjd.
+- **Tangentbordsnavigering**:
+  - <kbd>Ctrl+Shift+N</kbd>: Flyttar fokus till **nästa panel** i trädet.
+  - <kbd>Ctrl+Shift+P</kbd>: Flyttar fokus till **föregående panel**.
+- **Paneloberoende**:
+  - Varje panel har en egen miniverktygsrad och anslutningsväljare. Du kan ha en fjärr-SSH-session i vänstra panelen, ett lokalt bash-skal i den övre högra och en Kubernetes container exec i den nedre högra.
+  - Att stänga en panel (<kbd>Ctrl+Shift+W</kbd>) avbryter aldrig intilliggande sessioner; trädet kollapsar mjukt och ger utrymme till de återstående panelerna.
+- **Unsplit**: Klicka på unsplit-ikonen i panelens verktygsrad för att maximera den aktiva panelen till 100% och stänga alla andra split-paneler i fliken.
 
 ---
 
-## Session Persistence
+## 4. Sessionsbeständighet (Session Persistence)
 
-sshs3 automatically saves the state of your workspace upon exit and restores it on startup:
-- All open tabs and recursive split pane layouts are preserved.
-- Working directories for local shells and profile associations are restored.
-- If the app was shut down abruptly or restarted after an update, your layout reappears exactly as you left it.
+När du stänger sshs3 sparas din aktuella arbetsyta automatiskt:
+- Alla öppna flikar och deras split-panellayouter bevaras.
+- Arbetskataloger för lokala skal återställs vid nästa start.
+- Om applikationen startas om efter en mjukvaruuppdatering öppnas dina fönster och anslutningar i exakt samma tillstånd.

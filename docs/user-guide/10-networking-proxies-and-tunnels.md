@@ -1,57 +1,65 @@
-# Networking, Proxies & SSH Tunnels
+# Nätverk, Proxys & SSH-Tunnlar (Komplett Nätverksguide)
 
-sshs3 provides powerful networking tools for navigating complex enterprise topologies, DMZs, bastion jump hosts, and private internal subnets.
-
----
-
-## 1. ProxyJump (Bastion & Jump Host Chains)
-
-When connecting to private instances that lack public IP addresses:
-- **Profile Configuration**: Under *Network & Proxy*, set **ProxyJump** to your bastion server profile or hostname (e.g. `jumpbox.internal` or `bastion-admin`).
-- **Multi-Hop Chaining**: Chain multiple jump hosts separated by commas (e.g. `jump01.corp.com,jump02.dmz.local`).
-- OpenSSH forwards standard TCP streams automatically through the bastion chain with full end-to-end encryption between your workstation and the target host.
+**sshs3** tillhandahåller professionella nätverksverktyg för att navigera genom komplexa företagsnätverk, DMZ-zoner, bastioner och isolerade privata subnät.
 
 ---
 
-## 2. Standalone SSH Tunnels Manager
+## 1. ProxyJump (Bastion- & Jumphost-Kedjor)
 
-Unlike traditional SSH clients where port forwards terminate when a terminal tab is closed, sshs3 features an **independent background SSH Tunnels panel**.
+När du ansluter till interna servrar i ett privat nätverk (som saknar publika IP-adresser) ansluter du via en mellanliggande bastion (hoppvärd):
 
-### Forwarding Modes Supported:
-1. **Local Port Forwarding (`-L`)**:
-   - Forwards a local port on your workstation to a remote host/port via the SSH server.
-   - Example: Forward local `127.0.0.1:5432` to remote database `postgres.internal:5432`.
-2. **Remote Port Forwarding (`-R`)**:
-   - Exposes a local service running on your workstation to the remote network.
-   - Example: Expose your local development web server `localhost:3000` on the remote server's port `8080`.
-3. **Dynamic Port Forwarding (SOCKS5 Proxy `-D`)**:
-   - Spawns a local SOCKS5 proxy on your machine (e.g. `127.0.0.1:1080`).
-   - Configure your browser or applications to route all internal web traffic through the remote server.
+```
+┌─────────────────┐       ┌───────────────────────┐       ┌────────────────────────┐
+│ Din Arbetsplats │ ────► │ Bastion (jumpbox.corp)│ ────► │ Intern Server (web-01) │
+└─────────────────┘       └───────────────────────┘       └────────────────────────┘
+         └────────────────── E2E Krypterad SSH Tunnel ───────────────────┘
+```
 
-### Saved Tunnels & Independent Lifecycle
-- Tunnels are defined once and saved in the SSH Tunnels menu.
-- Start or stop any tunnel with a single click.
-- Tunnels run in their own background processes—they continue running seamlessly even if you close all open terminal tabs.
-- Easily delete obsolete saved tunnels directly from the menu.
+### Konfiguration i Profilen:
+- **Profilval (`proxyJumpProfileId`)**: Välj en befintlig sparad SSH-profil från rullgardinsmenyn som hoppvärd. sshs3 återanvänder automatiskt hoppvärdens nycklar, lösenord och portar.
+- **Manuell hoppsträng (`proxyJump`)**: Ange en anpassad ProxyJump-sträng (t.ex. `jumpuser@bastion.example.com:22`).
+- **Flerstegshopp (Multi-Hop)**: Separera flera hoppvärdar med kommatecken (`bastion1.corp.com,bastion2.dmz.internal`).
+- **Säkerhet**: Trafiken är end-to-end-krypterad mellan din dator och slutmålet. Administratören på bastionen kan inte avlyssna eller dekryptera sessionen.
 
 ---
 
-## 3. HTTP & SOCKS5 Corporate Proxies
+## 2. Fristående Bakgrundstunnlar (SSH Tunnels Panel)
 
-If your workstation connects to the internet via an outbound corporate proxy:
-- Configure proxy settings per profile or globally.
-- Supports both **HTTP/HTTPS CONNECT** proxies and **SOCKS5** proxies.
-- Supports proxy authentication (usernames and passwords stored securely in system keychain).
+I traditionella SSH-klienter avslutas portvidarebefordran i samma sekund som du stänger terminalfönstret. I sshs3 är **SSH Tunnels en fristående bakgrundstjänst** med en helt egen livscykel:
+
+![Fristående SSH Tunnlar](/img/ssh-tunnels.png)
+
+> [!IMPORTANT]
+> **Oberoende Livscykel**: En tunnel som startats från SSH Tunnels-panelen fortsätter att köra i bakgrunden även om du stänger alla öppna terminalflikar eller arbetar i filhanteraren.
+
+### 2.1 Stödda Tunnellägen
+
+#### A. Local Port Forwarding (`-L`)
+- **Syfte**: Gör en fjärrtjänst (t.ex. en intern PostgreSQL-databas eller ett internt webbgränssnitt) tillgänglig på en lokal port på din egen dator.
+- **Exempel**:
+  - `Local Port`: `5432`
+  - `Remote Host`: `postgres.internal.corp`
+  - `Remote Port`: `5432`
+- **Resultat**: Du kan ansluta ditt lokala databasverktyg (DBeaver, psql) direkt till `localhost:5432`.
+
+#### B. Remote Port Forwarding (`-R`)
+- **Syfte**: Exponerar en lokal webbserver eller tjänst som körs på din dator för det fjärranslutna nätverket.
+- **Exempel**: Exponera din lokala utvecklingsserver på `localhost:3000` som port `8080` på fjärrservern så att kollegor kan testa ditt API.
+
+#### C. Dynamic Port Forwarding (SOCKS5 Proxy `-D`)
+- **Syfte**: Startar en lokal SOCKS5-proxy på din maskin (t.ex. `127.0.0.1:1080`).
+- **Hur det används**: Konfigurera din webbläsare (Firefox, Chrome) eller verktyg (`curl --socks5 127.0.0.1:1080`) att skicka trafik genom tunneln. All webbtrafik routas då krypterat genom SSH-servern och ut på dess lokala nätverk.
+
+### 2.2 Spara & Hantera Tunnlar
+- Klicka på <kbd>Ctrl+Shift+T</kbd> för att öppna tunnelpanelen.
+- Skapa och namnge återanvändbara tunnelkonfigurationer (t.ex. *"Prod DB Tunnel"*).
+- Starta och stoppa med ett klick. Statusindikatorn visar realtidstrafik och aktiv process.
 
 ---
 
-## 4. X11 & GUI Forwarding
+## 3. X11 & Grafisk Vidarebefordran (GUI Forwarding)
 
-Run remote graphical Linux applications (such as `xclock`, `virt-manager`, `gvim`, or IDEs) and render them directly on your desktop:
+Kör grafiska Linux-program (som `virt-manager`, `xclock`, `gvim`, eller proprietära diagnosverktyg) på fjärrservern och visa fönstren sömlöst på ditt skrivbord:
 
-### Linux Hosts
-- Automatically forwards remote X11 traffic to your local `$DISPLAY` environment.
-
-### Windows Workstations
-- The official Windows Setup installer **bundles VcXsrv**, the high-performance Windows X11 server.
-- sshs3 automatically configures the necessary display routing and launches the X server in the background when an X11-enabled profile connects.
+- **Linux**: Använder din lokala `$DISPLAY` (fungerar i både X11 och via XWayland).
+- **Windows**: Den officiella installationsfilen (`sshs3-Setup-*.exe`) **inkluderar den beprövade VcXsrv X-servern**. sshs3 startar och konfigurerar display-routingen automatiskt när du ansluter till en profil med X11 aktiverat.

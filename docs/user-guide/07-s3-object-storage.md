@@ -1,50 +1,65 @@
-# S3 & Cloud Object Storage
+# S3 & Molnlagring (Komplett Referenshandbok)
 
-sshs3 provides native object storage capabilities built directly on the AWS SDK v3, allowing you to manage cloud storage alongside your servers and clusters.
+**sshs3** tillhandahåller inbyggt stöd för objektlagring baserat på AWS SDK v3, vilket gör att du kan hantera molnlagring och bucketar direkt vid sidan av dina servrar och kluster.
 
----
-
-## Supported Providers & Endpoints
-
-sshs3 supports any storage service implementing the standard S3 API:
-- **Amazon S3** (All standard AWS regions)
-- **Cloudflare R2**
-- **MinIO** (Self-hosted & on-premise clusters)
-- **Wasabi Hot Cloud Storage**
-- **Backblaze B2** (S3-compatible endpoint)
-- **DigitalOcean Spaces**
-- **Ceph / NetApp StorageGRID**
+![S3 Profilformulär](/img/docs/s3-profile-form.png)
 
 ---
 
-## Authentication Modes
+## 1. Stödda Molnleverantörer & S3-Kompatibla Tjänster
 
-When setting up an S3 Profile in the Connection Manager:
-
-### 1. Static Access Keys
-- **Access Key ID** & **Secret Access Key**
-- Stored safely in your operating system's native keychain.
-
-### 2. AWS SSO & IAM Identity Center
-For enterprise environments using AWS Organizations and Single Sign-On:
-- Configure your **SSO Start URL** (e.g. `https://my-company.awsapps.com/start`) and **SSO Region**.
-- Click **Login with AWS SSO**.
-- sshs3 automatically initiates the device authorization flow, opens your system browser, and prompts you to verify the authorization code.
-- Once approved, sshs3 securely retrieves ephemeral STS credentials and presents a role-picker modal to select your target AWS Account and IAM Role.
-- Tokens are automatically refreshed in the background.
-
-### 3. Custom S3 Endpoints
-For MinIO, R2, Wasabi, or local development:
-- Check **Use Custom Endpoint**.
-- Enter URL (e.g. `https://s3.wasabisys.com` or `http://localhost:9000`).
-- Toggle **Path-style addressing** (recommended for MinIO and legacy setups where buckets are passed as paths rather than subdomains).
+sshs3 stöder alla leverantörer som implementerar S3-API:et:
+- **Amazon Web Services (AWS S3)**: Alla globala regioner.
+- **Cloudflare R2**: Noll kostnad för data egress.
+- **MinIO**: Självhostade och on-premise kluster.
+- **Wasabi Hot Cloud Storage**: Högpresterande molnarkivering.
+- **Backblaze B2**: S3-kompatibla endpoints.
+- **DigitalOcean Spaces & Ceph**: Privata molnlösningar.
 
 ---
 
-## Bucket & Object Management
+## 2. Autentiseringslägen & AWS SSO
 
-- **Bucket Hierarchy**: Browse buckets in the Connection Manager or open them inside either pane of the File Manager.
-- **Multipart Upload Engine**: Files exceeding 5 MB are automatically chunked and transferred using S3 Multipart Uploads, ensuring optimal transfer speeds and resumability.
-- **Object Metadata & Storage Classes**: Inspect and set S3 object metadata, HTTP headers (`Content-Type`, `Cache-Control`), and storage tiers (`STANDARD`, `INTELLIGENT_TIERING`, `GLACIER`, etc.).
-- **Bucket Creation & Deletion**: Create new buckets with region selection, or empty and remove existing buckets.
-- **S3-to-Server Transfers**: Transfer files directly between an S3 bucket and an SSH/SFTP server in a single operation without first downloading them to your local computer.
+När du skapar en S3-profil i Connection Managern stöder sshs3 tre autentiseringslägen:
+
+### A. Statiska IAM-Nycklar (Access Key & Secret Key)
+- Standardautentisering med **Access Key ID** och **Secret Access Key**.
+- Nycklarna krypteras i operativsystemets säkra nyckelring (Keychain / Secret Service / DPAPI).
+- Stöd för valfri **Session Token** vid användning av temporära STS-credentials.
+
+### B. AWS SSO / IAM Identity Center (Företagsinloggning)
+För företag som hanterar AWS via SSO och organisationer:
+1. Konfigurera **SSO Start URL** (t.ex. `https://my-org.awsapps.com/start`) och **SSO Region**.
+2. Klicka på **Login with AWS SSO**.
+3. sshs3 initierar OIDC-enhetsflödet och öppnar din standardwebbläsare med en 8-teckens verifieringskod.
+4. Efter godkännande i webbläsaren hämtar sshs3 temporära STS-uppgifter och visar en rollväljare där du väljer AWS-konto och IAM-roll.
+5. Tokens förnyas automatiskt i bakgrunden.
+
+### C. Anpassade Endpoints & Path-Style Addressing
+För MinIO, R2, Wasabi eller lokal Ceph-lagring:
+- Ange din **Endpoint URL** (t.ex. `https://s3.wasabisys.com` eller `http://localhost:9000`).
+- **Path-Style Addressing**:
+  > [!IMPORTANT]
+  > För MinIO och privata servrar är **Path-Style Addressing obligatoriskt**. Det tvingar anrop i formatet `endpoint/bucket/object` istället för virtuell hosting (`bucket.endpoint/object`), vilket förhindrar DNS-fel vid privata IP-adresser.
+
+---
+
+## 3. Avancerade Objektoperationer (Senior UX)
+
+### 3.1 Förhandssignerade Länkar (Presigned URLs)
+- **Syfte**: Dela en privat fil från en sluten S3-bucket med en kund eller kollega utan att göra hela bucketen offentlig.
+- **Hur det används**:
+  1. Högerklicka på valfri fil i S3-panelen och välj **Generate Presigned URL**.
+  2. Välj giltighetstid (t.ex. 15 minuter, 1 timme, 24 timmar eller 7 dagar).
+  3. Klicka **Copy Link**. Länken kan nu klistras in i en webbläsare eller skickas via chatt. Mottagaren kan ladda ner filen direkt från AWS med samma säkerhet.
+
+### 3.2 Objektversionering (S3 Versioning)
+I buckets där versionshantering är aktiverad:
+- Högerklicka på ett objekt och välj **Version History**.
+- Visar alla tidigare versioner av filen, deras unika Version IDs, storlek och ändringsdatum.
+- Återställ en tidigare version av en fil om den oavsiktligt har skrivits över.
+
+### 3.3 Flerdelad Uppladdning (Multipart Uploads)
+- Filer större än 5 MB delas automatiskt upp i mindre delar som laddas upp parallellt via AWS SDK v3.
+- Ger maximal överföringshastighet och gör att avbrutna uppladdningar kan återupptas automatiskt vid nätverksstörningar.
+- Överför filer direkt mellan en S3-bucket och en SFTP-server i en enda operation utan att spara filen lokalt på din hårddisk.

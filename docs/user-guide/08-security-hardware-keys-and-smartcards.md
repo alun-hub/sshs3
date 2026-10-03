@@ -1,64 +1,77 @@
-# Security, Hardware Keys & Smartcards
+# Säkerhet, Hårdvarunycklar & Smartcards (Senior Säkerhetsguide)
 
-Security is the core design priority of sshs3. All cryptographic operations and credentials follow strict isolation and zero-trust principles.
-
----
-
-## 1. Zero Private Key Extraction
-
-A fundamental security principle of sshs3 is that **private keys are never exposed to the JavaScript or renderer environment**:
-- **Hardware Security Keys (FIDO2)**: Cryptographic signatures are calculated directly on the physical authenticator chip (e.g. YubiKey). The private key cannot be extracted by any software.
-- **Smartcards (PKCS#11)**: Keys reside inside the secure element of the smartcard. Operations are delegated via the PKCS#11 module to the card hardware.
-- **Software Private Keys**: Standard OpenSSH private keys on disk (`id_ed25519`, `id_rsa`) are read and processed exclusively by your operating system's native `ssh` binary. sshs3 never reads, parses, or retains your private key bytes in memory.
+Säkerhet och integritet är grundfundamenten i **sshs3**. Applikationen är utformad kring principerna om **Zero Private Key Extraction** och strikt minnesisolering.
 
 ---
 
-## 2. FIDO2 / WebAuthn Hardware Security Keys
+## 1. Zero Private Key Extraction-Arkitektur
 
-sshs3 natively supports OpenSSH FIDO2 hardware keys:
-- Supported algorithms: `sk-ssh-ed25519@openssh.com` and `sk-ecdsa-sha2-nistp256@openssh.com`.
-- **Touch-Presence Banner**: When a remote connection requires user verification, sshs3 displays a prominent visual touch-presence banner with an animated indicator:
+En avgörande skillnad mellan sshs3 och andra klienter är att **privata nycklar aldrig exponeras för JavaScript-, Node- eller renderer-minnet**:
+
+- **FIDO2 / WebAuthn-nycklar (YubiKey)**:
+  De kryptografiska signaturerna utförs direkt på säkerhetschippet i maskinvaran. Den privata nyckeln kan tekniskt inte extraheras av någon mjukvara på datorn.
+- **Smartcards (PKCS#11)**:
+  Nycklarna bor i smartcardets skyddade element. Signeringar delegeras via PKCS#11-modulen (`p11-kit`, `libykcs11`, `opensc`).
+- **Mjukvarunycklar på disk (`id_ed25519`, `id_rsa`)**:
+  Läses och hanteras uteslutande av ditt operativsystems egna `ssh`-binär. sshs3 läser, parsar eller lagrar aldrig dina privata nyckelbytes i applikationens minne.
+
+---
+
+## 2. Visuell Touch-Presence Banner
+
+När du autentiserar mot en server med en FIDO2-hårdvarunyckel (`ed25519-sk` eller `ecdsa-sk`) kräver säkerhetsnyckeln fysisk användarnärvaro:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔑 Touch your security key to authenticate...                          │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Varför Bannern är Kritiskt Viktig (UX & Säkerhet):
+- I traditionella CLI-terminaler händer det ofta att anslutningen till synes "fryser" eller hänger sig i väntan på att användaren ska upptäcka att YubiKeyn blinkar diskret under bordet.
+- sshs3 känner av när OpenSSH-handskakningen begär användarverifiering och visar en animerad guldskimrande banner längst upp i fönstret:
   > *"Touch your security key to authenticate..."*
-  This ensures you always know when your hardware key is awaiting physical interaction, preventing timeouts and confusing UI hangs.
-- Pin-protected FIDO2 tokens are supported with secure ephemeral PIN entry.
+- **Timeout**: Om du inte vidrör nyckeln inom OpenSSH:s tidsgräns (oftast ~30 sekunder) avbryts handskakningen med ett tydligt felmeddelande istället för att hänga kvar.
 
 ---
 
-## 3. Smartcards & PKCS#11 Authentication
+## 3. Resident vs. Non-Resident FIDO2-Nycklar
 
-sshs3 provides built-in discovery and support for PKCS#11 security modules:
+När du konfigurerar en FIDO2-profil i sshs3 kan du välja mellan två lägen:
 
-### Supported Smartcard Providers & Libraries
-- **p11-kit** (Default on Linux: `/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so` or `/usr/lib64/p11-kit-proxy.so`). Proxies all system-registered cryptographic tokens.
-- **Yubico PIV Tool (`libykcs11`)**: Direct module for YubiKey PIV smartcard functionality on Linux, macOS, and Windows (`C:\Program Files\Yubico\Yubico PIV Tool\bin\libykcs11.dll`).
-- **OpenSC (`opensc-pkcs11.so` / `opensc-pkcs11.dll`)**: Universal open-source driver for standard cryptographic cards (CAC, PIV, Feitian, Nitrokey).
-- **Net iD (Enterprise PKCS#11)**: Supported for government and healthcare PKI environments.
+### A. Non-Resident Nycklar (Filbaserade)
+- **Hur det fungerar**: En liten pekarnyckel (`id_ed25519_sk` och `id_ed25519_sk.pub`) genereras och sparas på din hårddisk. Filen innehåller ett "key handle" som pekar på hårdvarunyckeln.
+- **Fördel**: Enkelt att hantera via standard OpenSSH-konfigurationsfiler.
+- **Begränsning**: Om du byter dator måste du flytta med dig din `id_ed25519_sk`-fil till den nya maskinen.
 
----
-
-## 4. Ephemeral PIN Caching Policies
-
-To balance security and productivity, sshs3 offers three configurable PIN caching policies:
-
-1. **Per-Session (Default)**:
-   - Your PIN is prompted upon connection and held in volatile memory only for the duration of that specific SSH session handshake.
-2. **Global (App Lifetime)**:
-   - Your PIN is securely cached in volatile application memory for the duration of the current sshs3 app run.
-   - Opening new split panes, additional tabs, SFTP sessions, or local shell tabs will automatically reuse the unlocked smartcard/key without re-prompting for a PIN.
-   - When sshs3 quits, the cache is completely purged.
-3. **Never (Highest Security)**:
-   - Every single cryptographic signature request triggers a PIN prompt.
-
-> [!IMPORTANT]
-> PIN codes and passphrases are **never** written to disk under any circumstance.
+### B. Resident / Discoverable Credentials (Inbyggda)
+- **Hur det fungerar**: Nyckeln och dess metadata lagras direkt inuti själva hårdvarunyckeln (t.ex. YubiKey 5).
+- **Hur det används**: Klicka på **Scan Security Key** i profilformuläret. sshs3 läser in alla residenta nycklar direkt från nyckeln utan att du behöver ha några filer på disken.
+- **Fördel**: Maximal mobilitet. Du kan plugga in din YubiKey i vilken dator som helst och omedelbart ansluta utan att behöva kopiera några filer.
 
 ---
 
-## 5. Stored Secrets Encryption at Rest
+## 4. Efemära PIN-Caching Strategier
 
-When you choose to save passwords or S3 access keys in sshs3:
-- **Operating System Keychain**: Credentials are encrypted using your system's native security infrastructure:
-  - **Linux**: Secret Service API via `libsecret` (GNOME Keyring or KWallet).
-  - **Windows**: Windows Credential Manager / DPAPI.
-  - **macOS**: Apple Keychain Services.
-- **Passphrase Fallback**: On headless systems or minimal environments without a running Secret Service daemon, sshs3 offers an AES-256-GCM master passphrase vault to protect stored secrets on disk.
+För att skydda smartcards och PIN-skyddade säkerhetsnycklar erbjuder sshs3 tre finkorniga policys:
+
+![Säkerhetsinställningar](/img/docs/settings-security.png)
+
+1. **Per-Session (Standard)**:
+   - Du anger din PIN-kod när du ansluter. Koden behålls i flyktigt minne endast under själva inloggningshandskakningen och rensas därefter omedelbart.
+2. **Global (App Lifetime) — Rekommenderas för hög produktivitet**:
+   - PIN-koden sparas i säkert, krypterat flyktigt RAM-minne under den tid sshs3 körs.
+   - När du öppnar nya delade split-paneler, nya flikar, startar SFTP eller kör `git pull` i ett lokalt skal återanvänds det upplåsta kortet automatiskt utan att du behöver slå din PIN-kod tjugo gånger om dagen.
+   - **Säkerhetsgaranti**: Koden skrivs **ALDRIG till disk**. I samma ögonblick som du avslutar sshs3 (<kbd>Ctrl+Q</kbd>) töms minnet fullständigt.
+3. **Never (Högsta säkerhetskrav)**:
+   - Kräver PIN-kod vid precis varje enskild kryptografisk signering.
+
+---
+
+## 5. Kryptering av Sparade Uppgifter i Vila (At-Rest Encryption)
+
+När du väljer att spara lösenord, proxylösenord eller S3-åtkomstnycklar i sshs3 skyddas de av operativsystemets hårdvarunära nyckelringar:
+- **Linux**: GNOME Keyring / KWallet via `libsecret` (Secret Service API).
+- **Windows**: Windows Credential Manager / DPAPI (Data Protection API).
+- **macOS**: Apple Keychain Services.
+- **Passphrase Vault (Fallback)**: Om du kör i en minimal miljö utan en aktiv Secret Service-demon krypteras databasen med **AES-256-GCM** skyddad av ett huvudlösenord.
