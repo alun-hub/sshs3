@@ -1,4 +1,4 @@
-# Terminal, Flikar & Arbetsytor (Senior UX & Ergonomi)
+# Terminal, Flikar & Arbetsytor
 
 Terminalupplevelsen i **sshs3** är byggd för professionella administratörer och utvecklare som arbetar intensivt med många samtidiga sessioner och komplexa kommandon.
 
@@ -15,7 +15,7 @@ sshs3 kör **ditt operativsystems genuina OpenSSH-binär** (`ssh`) via `node-pty
 
 ---
 
-## 2. Terminalergonomi & Interaktionsflöden (UX)
+## 2. Terminalergonomi & Urklippshantering
 
 ### 2.1 Urklipp & Markering (Clipboard Workflow)
 - **Copy on Select (Kopiera vid markering)**: När du markerar text i terminalfönstret kopieras den automatiskt till operativsystemets urklippshanterare utan att du behöver trycka något kortkommando.

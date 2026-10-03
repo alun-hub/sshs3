@@ -1,4 +1,4 @@
-# Säkerhet, Hårdvarunycklar & Smartcards (Senior Säkerhetsguide)
+# Säkerhet, Hårdvarunycklar & Smartcards
 
 Säkerhet och integritet är grundfundamenten i **sshs3**. Applikationen är utformad kring principerna om **Zero Private Key Extraction** och strikt minnesisolering.
 
@@ -27,7 +27,7 @@ När du autentiserar mot en server med en FIDO2-hårdvarunyckel (`ed25519-sk` el
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Varför Bannern är Kritiskt Viktig (UX & Säkerhet):
+### Varför Bannern är Kritiskt Viktig:
 - I traditionella CLI-terminaler händer det ofta att anslutningen till synes "fryser" eller hänger sig i väntan på att användaren ska upptäcka att YubiKeyn blinkar diskret under bordet.
 - sshs3 känner av när OpenSSH-handskakningen begär användarverifiering och visar en animerad guldskimrande banner längst upp i fönstret:
   > *"Touch your security key to authenticate..."*

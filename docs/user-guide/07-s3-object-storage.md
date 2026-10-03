@@ -44,7 +44,7 @@ För MinIO, R2, Wasabi eller lokal Ceph-lagring:
 
 ---
 
-## 3. Avancerade Objektoperationer (Senior UX)
+## 3. Avancerade Objektoperationer & Fildelning
 
 ### 3.1 Förhandssignerade Länkar (Presigned URLs)
 - **Syfte**: Dela en privat fil från en sluten S3-bucket med en kund eller kollega utan att göra hela bucketen offentlig.

@@ -1,4 +1,4 @@
-# Performance Bar & Diagnostik (Senior UX & SRE Guide)
+# Performance Bar & Systemdiagnostik
 
 **Performance Bar** är en strömlinjeformad, realtidsuppdaterad telemetrilist som sitter direkt ovanför aktiva SSH-, lokala skal- och Kubernetes-terminaler i **sshs3**. Den ger ögonblicklig insyn i maskinens hälsotillstånd utan att belasta servern eller kräva externa övervakningsagenter.
 
@@ -42,7 +42,7 @@ Klicka var som helst på prestandabalken för att öppna den djupgående diagnos
 
 ---
 
-## 4. Senior SRE/DevOps Guide: Hur Mätvärdena Ska Tolkas
+## 4. Tolkning av Mätvärden & Prestandadiagnostik
 
 Som systemadministratör eller DevOps-ingenjör är råa procentsatser sällan tillräckliga. Här förklaras hur du tolkar de specifika mätvärdena i sshs3:
 
