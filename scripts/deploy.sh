@@ -11,6 +11,10 @@
 # Worker: syncs screenshots, commits and pushes the site repo, runs `wrangler deploy`.
 # By default this happens only when docs/ changed since the previous tag.
 #
+# After a successful push it also prunes old GitHub releases: all drafts (except the one for the
+# tag just pushed) and every published release beyond the newest N (default 10, counting the one the
+# workflow is about to publish). Git tags are never deleted. See --keep-releases / --no-prune.
+#
 
 set -euo pipefail
 
@@ -33,6 +37,8 @@ COMMIT_MSG=""
 VERSION_TYPE="patch"
 SITE_MODE="auto"   # auto | on | off
 SITE_DIR="${SSHS3_SITE_DIR:-$REPO_ROOT/../sshs3-site}"
+KEEP_RELEASES="${SSHS3_KEEP_RELEASES:-10}"   # published releases to keep, including the new one
+PRUNE_RELEASES=true
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -51,6 +57,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-site)
       SITE_MODE="off"
+      shift
+      ;;
+    --keep-releases)
+      if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Error: --keep-releases needs a whole number (e.g. --keep-releases 10).${RESET}"
+        exit 1
+      fi
+      KEEP_RELEASES="$2"
+      shift 2
+      ;;
+    --no-prune)
+      PRUNE_RELEASES=false
       shift
       ;;
     --minor)
@@ -82,11 +100,14 @@ while [[ $# -gt 0 ]]; do
       echo "  --dry-run             Simulate version bump and commit without pushing or writing git state"
       echo "  --site                Always deploy sshs3-site after the release (default: only if docs/ changed)"
       echo "  --no-site             Never deploy sshs3-site"
+      echo "  --keep-releases <n>   Keep the newest n published GitHub releases (default 10) and delete older ones"
+      echo "  --no-prune            Do not delete any old releases or drafts"
       echo "  --minor               Bump minor version instead of patch"
       echo "  --major               Bump major version instead of patch"
       echo "  -h, --help            Show this help message"
       echo ""
       echo "Environment: SSHS3_SITE_DIR overrides the sshs3-site checkout (default: ../sshs3-site)."
+      echo "             SSHS3_KEEP_RELEASES sets the default for --keep-releases."
       echo ""
       echo -e "${BOLD}Examples:${RESET}"
       echo "  ./deploy.sh"
@@ -104,6 +125,78 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Validate the retention setting early (it also comes from SSHS3_KEEP_RELEASES).
+if [[ ! "$KEEP_RELEASES" =~ ^[0-9]+$ || "$KEEP_RELEASES" -lt 1 ]]; then
+  echo -e "${RED}Error: --keep-releases / SSHS3_KEEP_RELEASES must be a whole number >= 1 (got '${KEEP_RELEASES}').${RESET}"
+  exit 1
+fi
+
+# Prune old GitHub releases so they do not pile up (each release carries ~0.8 GB of installers).
+#   - every draft, except the one for the tag being released (the workflow may be creating it right now)
+#   - every published release beyond the newest KEEP_RELEASES - 1, because the release this run is
+#     pushing will be published by the workflow and takes the last slot
+# Only releases are deleted: git tags stay, so any version can be rebuilt. Never fatal: the release
+# itself is already pushed (or, in a dry run, nothing is deleted at all).
+#   usage: prune_releases plan|apply
+PRUNE_RESULT="skipped"
+prune_releases() {
+  local mode="$1"
+  if [[ "$PRUNE_RELEASES" != "true" ]]; then
+    PRUNE_RESULT="disabled (--no-prune)"
+    return 0
+  fi
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+    PRUNE_RESULT="skipped (gh CLI missing or not logged in)"
+    echo -e "${YELLOW}Warning: cannot prune old releases: the gh CLI is not installed or not authenticated.${RESET}"
+    return 0
+  fi
+
+  local listing
+  if ! listing="$(gh api --paginate 'repos/{owner}/{repo}/releases?per_page=100' \
+      --jq '.[] | [.id, .tag_name, (.draft | tostring)] | @tsv' 2>/dev/null)"; then
+    PRUNE_RESULT="skipped (could not list releases)"
+    echo -e "${YELLOW}Warning: could not list GitHub releases; skipping prune.${RESET}"
+    return 0
+  fi
+
+  local drafts older
+  drafts="$(awk -F'\t' -v tag="$TAG" '$3 == "true" && $2 != tag { print $1 "\t" $2 }' <<<"$listing")"
+  older="$(awk -F'\t' -v tag="$TAG" '$3 == "false" && $2 != tag { print $1 "\t" $2 }' <<<"$listing" \
+    | sort -t $'\t' -k2,2Vr | tail -n +"$KEEP_RELEASES")"
+
+  local n_drafts=0 n_old=0
+  [[ -n "$drafts" ]] && n_drafts="$(wc -l <<<"$drafts")"
+  [[ -n "$older" ]] && n_old="$(wc -l <<<"$older")"
+  if (( n_drafts + n_old == 0 )); then
+    PRUNE_RESULT="nothing to prune (keeping ${KEEP_RELEASES})"
+    return 0
+  fi
+
+  if [[ "$mode" == "plan" ]]; then
+    echo "  7. prune GitHub releases (tags are kept): ${n_drafts} draft(s), ${n_old} published older than the newest $((KEEP_RELEASES - 1)) + ${TAG}"
+    [[ -n "$older" ]] && echo "     would delete: $(cut -f2 <<<"$older" | paste -sd' ' -)"
+    PRUNE_RESULT="planned"
+    return 0
+  fi
+
+  local id deleted=0 failed=0
+  while IFS=$'\t' read -r id _; do
+    [[ -z "$id" ]] && continue
+    if gh api -X DELETE "repos/{owner}/{repo}/releases/${id}" >/dev/null 2>&1; then
+      deleted=$((deleted + 1))
+    else
+      failed=$((failed + 1))
+    fi
+  done <<<"${drafts}"$'\n'"${older}"
+
+  PRUNE_RESULT="deleted ${deleted} (${n_drafts} draft(s), ${n_old} older), ${failed} failed; newest ${KEEP_RELEASES} kept"
+  if (( failed > 0 )); then
+    echo -e "${YELLOW}⚠ ${failed} old release(s) could not be deleted (see the GitHub releases page).${RESET}"
+  else
+    echo -e "${GREEN}✓ Pruned old releases: ${PRUNE_RESULT}.${RESET}"
+  fi
+}
 
 echo -e "${BOLD}${CYAN}=== SSHS3 Deploy & Release Script ===${RESET}"
 
@@ -260,6 +353,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
   else
     echo "  6. (sshs3-site deploy skipped: ${SITE_MODE})"
   fi
+  if [[ "$PRUNE_RELEASES" == "true" ]]; then
+    prune_releases plan
+    [[ "$PRUNE_RESULT" == nothing* || "$PRUNE_RESULT" == skipped* ]] && echo "  7. prune GitHub releases: ${PRUNE_RESULT}"
+  else
+    echo "  7. (release pruning disabled: --no-prune)"
+  fi
   
   # Revert version bump for dry run
   restore_backups
@@ -350,7 +449,10 @@ if [[ "$DO_SITE" == "true" ]]; then
   fi
 fi
 
-# 11. Summary
+# 11. Prune old GitHub releases (never fatal).
+prune_releases apply
+
+# 12. Summary
 echo -e "\n${BOLD}${GREEN}===============================================${RESET}"
 echo -e "${BOLD}${GREEN}🚀 Release ${TAG} successfully pushed!${RESET}"
 echo -e "${BOLD}${GREEN}===============================================${RESET}"
@@ -359,6 +461,7 @@ echo -e "• Git Tag:        ${BOLD}${TAG}${RESET}"
 echo -e "• Branch:         ${BOLD}${CURRENT_BRANCH}${RESET}"
 echo -e "• Commit:         ${FINAL_COMMIT_MSG}"
 echo -e "• sshs3-site:     ${SITE_RESULT}"
+echo -e "• Old releases:   ${PRUNE_RESULT}"
 echo ""
 echo -e "GitHub Actions will now build and publish the release artifacts:"
 echo -e "${CYAN}https://github.com/alun-hub/sshs3/actions${RESET}"
