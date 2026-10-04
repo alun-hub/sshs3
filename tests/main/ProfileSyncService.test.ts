@@ -15,6 +15,7 @@ import {
   SyncInProgressError,
   mergeRecords,
   mergePools,
+  stripDeviceLocalPoolFields,
   getComparisonState,
   compareRecords,
   compareDotfilePools,
@@ -678,6 +679,20 @@ describe('mergePools', () => {
     const { merged, changedIds } = mergePools(local, remote);
     expect(changedIds.has('p1')).toBe(true);
     expect(merged[0].deletedAt).toBeTruthy();
+  });
+
+  it('keeps this device\'s sourcePath and ignores the remote one', () => {
+    const local: DotfilePool[] = [{ id: 'p1', name: 'Pool', files: [{ id: 'f1', remotePath: '~/.kube/config', content: 'x', sourcePath: '/home/a/.kube/config', updatedAt: '2026-01-01T00:00' }], updatedAt: '2026-01-01T00:00' }];
+    const remote: DotfilePool[] = [{ id: 'p1', name: 'Pool', files: [{ id: 'f1', remotePath: '~/.kube/config', content: 'y', sourcePath: 'C:\\Users\\b\\.kube\\config', updatedAt: '2026-02-01T00:00' }], updatedAt: '2026-02-01T00:00' }];
+
+    const { merged } = mergePools(local, remote);
+    expect(merged[0].files[0].content).toBe('y');
+    expect(merged[0].files[0].sourcePath).toBe('/home/a/.kube/config');
+  });
+
+  it('strips sourcePath before a pool is pushed', () => {
+    const pool: DotfilePool = { id: 'p1', name: 'Pool', files: [{ id: 'f1', remotePath: '~/.a', content: 'x', sourcePath: '/home/a/.a' }] };
+    expect(stripDeviceLocalPoolFields(pool).files[0]).not.toHaveProperty('sourcePath');
   });
 });
 

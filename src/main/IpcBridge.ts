@@ -46,7 +46,6 @@ import { listFilePublicKeys, listAgentPublicKeys, dedupeKeys } from './ssh/Publi
 import { buildInstallCommand, parsePublicKeyLine } from './ssh/PublicKeyUtils';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
-import { collectDotfileDirectory } from './dotfiles/collectDotfileDirectory';
 import { defaultDotfileRemotePath } from '../shared/dotfilePath';
 import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from './dirsync/DirectorySyncService';
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
@@ -1442,22 +1441,25 @@ export class IpcBridge {
       return await this.dotfilePoolStore.openPoolFolder(poolId);
     });
 
-    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async (_event, directory?: boolean) => {
-      const asDirectory = directory === true;
+    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async () => {
       const result = await electronDialog.showOpenDialog({
-        title: asDirectory ? 'Select a directory of dotfiles' : 'Select dotfiles / master files',
-        properties: asDirectory
-          ? ['openDirectory', 'showHiddenFiles']
-          : ['openFile', 'multiSelections', 'showHiddenFiles'],
+        title: 'Select files to add to the pool',
+        defaultPath: os.homedir(),
+        properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
       });
       if (result.canceled || result.filePaths.length === 0) {
         return [];
       }
-      const imported = asDirectory
-        ? await this.dotfilePoolStore.importLocalDirectory(result.filePaths[0])
-        : await this.dotfilePoolStore.importLocalFiles(result.filePaths);
-      this.scheduleAutoSync();
-      return imported;
+      return await this.dotfilePoolStore.importLocalFiles(result.filePaths);
+    });
+
+    // Re-reads local source files of pooled entries (status check / Refresh).
+    // Files that are missing or no longer importable are simply absent.
+    this.registerHandler(IPC_CHANNELS.DOTFILES_READ_SOURCES, async (_event, paths: string[]) => {
+      if (!Array.isArray(paths) || paths.length > 500 || !paths.every((p) => typeof p === 'string')) {
+        throw new Error('Invalid source path list');
+      }
+      return await this.dotfilePoolStore.importLocalFiles(paths);
     });
 
     this.registerHandler(
@@ -1475,50 +1477,35 @@ export class IpcBridge {
         if (!provider) {
           throw new Error(`Storage provider not found: ${options.providerId}`);
         }
-        const readContent = async (filePath: string): Promise<string> => {
-          const stream = await provider.createReadStream(filePath);
-          const chunks: Buffer[] = [];
-          return new Promise<string>((resolve, reject) => {
-            stream.on('data', (c: Buffer) => chunks.push(c));
-            stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-            stream.on('error', reject);
-          });
-        };
+        const stream = await provider.createReadStream(options.filePath);
+        const chunks: Buffer[] = [];
+        const content = await new Promise<string>((resolve, reject) => {
+          stream.on('data', (c: Buffer) => chunks.push(c));
+          stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+          stream.on('error', reject);
+        });
 
-        const rootStat = await provider.stat(options.filePath);
-        const rootRemote = (options.targetRemotePath || defaultDotfileRemotePath(options.filePath)).replace(
-          /\/+$/,
-          ''
-        );
-
-        if (!rootStat.isDirectory) {
-          const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
-            remotePath: rootRemote,
-            content: await readContent(options.filePath),
-            mode: rootStat.permissions || undefined,
-          });
-          this.scheduleAutoSync();
-          return added;
+        let mode: string | undefined;
+        try {
+          const stat = await provider.stat(options.filePath);
+          if (stat.permissions) {
+            mode = stat.permissions;
+          }
+        } catch {
+          // Ignore stat error
         }
 
-        // Directory: walk it breadth-first and pool every regular text file
-        // under <rootRemote>/<relative path>. Symlinks are skipped (could
-        // escape the tree or loop), as are binary and oversized files, since
-        // pool content is stored as UTF-8 text.
-        const files = await collectDotfileDirectory(provider, options.filePath);
-        if (files.length === 0) {
-          throw new Error('No eligible text files found in this directory');
-        }
-        let added: DotfilePool | undefined;
-        for (const f of files) {
-          added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
-            remotePath: `${rootRemote}/${f.relPath}`,
-            content: f.content,
-            mode: f.mode,
-          });
-        }
+        const remotePath =
+          options.targetRemotePath || defaultDotfileRemotePath(options.filePath, os.homedir());
+
+        const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
+          remotePath,
+          content,
+          mode,
+          sourcePath: provider.type === 'local' ? options.filePath : undefined,
+        });
         this.scheduleAutoSync();
-        return added!;
+        return added;
       }
     );
 

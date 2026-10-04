@@ -584,8 +584,11 @@ export const api: MultiSSHApi = {
   dotfilePoolOpenFolder: (poolId: string): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_OPEN_FOLDER, poolId),
 
-  dotfilePoolSelectFiles: (directory?: boolean): Promise<DotfileImportedFile[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_SELECT_FILES, directory),
+  dotfilePoolSelectFiles: (): Promise<DotfileImportedFile[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_SELECT_FILES),
+
+  dotfilePoolReadSources: (paths: string[]): Promise<DotfileImportedFile[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOTFILES_READ_SOURCES, paths),
 
   dotfilePoolAddFromStorage: (options: {
     poolId: string;

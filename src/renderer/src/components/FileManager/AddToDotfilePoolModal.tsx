@@ -5,25 +5,7 @@ import type { FileEntry } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { describeIpcError } from '../../lib/format';
 import { defaultDotfileRemotePath } from '@shared/dotfilePath';
-
-// LOW finding (code review): pooled dotfile content is always stored as
-// plaintext on disk — an intentional tradeoff (these are config files
-// pushed to remote hosts as-is, not secrets our own app ever decrypts for
-// its own use), but a handful of well-known dotfiles exist specifically to
-// hold credentials. Warn rather than silently store those unencrypted too.
-const CREDENTIAL_DOTFILE_BASENAMES = new Set([
-  '.netrc',
-  '.pgpass',
-  '.npmrc',
-  '.git-credentials',
-  'credentials', // e.g. ~/.aws/credentials
-  'config.json', // e.g. ~/.docker/config.json
-]);
-
-function looksLikeCredentialFile(remotePath: string): boolean {
-  const basename = remotePath.split('/').pop() ?? remotePath;
-  return CREDENTIAL_DOTFILE_BASENAMES.has(basename);
-}
+import { looksLikeCredentialFile } from '../../lib/dotfileCredentials';
 
 interface AddToDotfilePoolModalProps {
   open: boolean;
@@ -116,7 +98,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
         isCreatingNewPool
           ? newPoolName.trim()
           : pools.find((p) => p.id === poolId)?.name || 'the pool';
-      onSuccess?.(`Saved ${entry.name} as ${entry.isDirectory ? 'master files' : 'a master file'} in "${poolName}"`);
+      onSuccess?.(`Saved ${entry.name} as a master file in "${poolName}"`);
       onClose();
     } catch (err) {
       setError(describeIpcError(err, String(err)));
@@ -157,14 +139,14 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
           )}
 
           <div className="space-y-1">
-            <span className="text-xs font-medium text-txt-primary">{entry.isDirectory ? 'Source Directory' : 'Source File'}</span>
+            <span className="text-xs font-medium text-txt-primary">Source File</span>
             <div className="rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary truncate">
               {entry.path}
             </div>
           </div>
 
           <div className="space-y-1">
-            <span className="text-xs font-medium text-txt-primary">{entry.isDirectory ? 'Target Directory on Server' : 'Target Path on Server (remotePath)'}</span>
+            <span className="text-xs font-medium text-txt-primary">Target Path on Server (remotePath)</span>
             <input
               aria-label="Target path on server"
               value={remotePath}
@@ -173,9 +155,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 font-mono text-txt-primary outline-none focus:border-sky-500"
             />
             <p className="text-xs text-txt-muted">
-              {entry.isDirectory
-                ? 'Text files under the directory (up to 200, max 1 MB each; symlinks and binary files are skipped) are written below this path when the pool syncs.'
-                : 'The path the file is automatically written to when the pool syncs to a connected server.'}
+              The path the file is automatically written to when the pool syncs to a connected server.
             </p>
             {looksLikeCredentialFile(remotePath) && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-2.5 py-2 text-2xs text-amber-300">

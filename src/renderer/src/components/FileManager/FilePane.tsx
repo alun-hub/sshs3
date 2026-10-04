@@ -782,7 +782,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   },
                 ]
               : []),
-            ...(source.sourceType !== 's3' && selectedEntries.length === 1
+            ...(source.sourceType !== 's3' && selectedEntries.length === 1 && !selectedEntries[0].isDirectory
               ? [
                   {
                     key: 'add-to-dotfiles',

@@ -2,18 +2,19 @@ import React, { useEffect, useState } from 'react';
 import {
   FileCode,
   FolderOpen,
-  FolderUp,
   GitBranch,
   Loader2,
   Plus,
   Save,
   ShieldAlert,
+  RefreshCw,
   Trash2,
-  Upload,
   X,
 } from 'lucide-react';
 import type { DotfilePool, DotfilePoolFile } from '@shared/types/dotfiles';
-import { defaultDotfileRemotePath } from '@shared/dotfilePath';
+import type { DotfileImportedFile } from '@shared/types/dotfiles';
+import { DotfilePoolFileTable, type DotfileSourceStatus } from './DotfilePoolFileTable';
+import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface DotfilePoolManagerModalProps {
@@ -34,16 +35,6 @@ function emptyPool(): DotfilePool {
   return { id: crypto.randomUUID(), name: '', files: [], updatedAt: formatTimestamp() };
 }
 
-function emptyFile(): DotfilePoolFile {
-  return {
-    id: crypto.randomUUID(),
-    remotePath: '',
-    content: '',
-    mode: '',
-    updatedAt: formatTimestamp(),
-  };
-}
-
 export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = ({ open, onClose }) => {
   const [pools, setPools] = useState<DotfilePool[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +42,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   const [draft, setDraft] = useState<DotfilePool | null>(null);
   const [saving, setSaving] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [statuses, setStatuses] = useState<Record<string, DotfileSourceStatus>>({});
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Git import state
   const [gitImportOpen, setGitImportOpen] = useState(false);
@@ -107,9 +100,33 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   useModalDismiss(() => setGitImportOpen(false), gitImportOpen, !gitImporting);
   if (!open) return null;
 
+  const activeFiles = draft ? draft.files.filter((f) => !f.deletedAt) : [];
+
+  const checkSources = async (files: DotfilePoolFile[]) => {
+    const withSource = files.filter((f) => f.sourcePath && !f.deletedAt);
+    if (withSource.length === 0) {
+      setStatuses({});
+      return;
+    }
+    try {
+      const read = await window.multissh.dotfilePoolReadSources(withSource.map((f) => f.sourcePath!));
+      const byPath = new Map(read.map((r) => [r.path, r]));
+      const next: Record<string, DotfileSourceStatus> = {};
+      for (const f of withSource) {
+        const src = byPath.get(f.sourcePath!);
+        next[f.id] = !src ? 'missing' : src.content === f.content ? 'up-to-date' : 'changed';
+      }
+      setStatuses(next);
+    } catch {
+      setStatuses({});
+    }
+  };
+
   const selectPool = (pool: DotfilePool) => {
     setSelectedId(pool.id);
     setDraft(JSON.parse(JSON.stringify(pool)));
+    setNotice(null);
+    void checkSources(pool.files);
   };
 
   const startNewPool = () => {
@@ -135,10 +152,6 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     );
   };
 
-  const addFile = () => {
-    setDraft((prev) => (prev ? { ...prev, files: [...prev.files, emptyFile()] } : prev));
-  };
-
   const removeFile = (fileId: string) => {
     setDraft((prev) => {
       if (!prev) return prev;
@@ -156,36 +169,49 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     });
   };
 
-  const handleUploadFiles = async (directory = false) => {
+  /** Adds (or updates, matching on target path) the given local files; each file is added explicitly by the user. */
+  const addImported = (imported: DotfileImportedFile[], requested: number) => {
+    if (imported.length === 0) {
+      if (requested > 0) setNotice(`Skipped ${requested} file(s): binary, larger than 1 MB, or unreadable.`);
+      return;
+    }
+    if (!draft) return;
+    const now = formatTimestamp();
+    const files = [...draft.files];
+    const added: string[] = [];
+    for (const f of imported) {
+      const idx = files.findIndex((ef) => !ef.deletedAt && ef.remotePath === f.suggestedRemotePath);
+      const entry: DotfilePoolFile = {
+        id: idx >= 0 ? files[idx].id : crypto.randomUUID(),
+        remotePath: f.suggestedRemotePath,
+        content: f.content,
+        mode: f.mode || '644',
+        masterFileName: f.name,
+        sourcePath: f.path,
+        updatedAt: now,
+      };
+      if (idx >= 0) files[idx] = { ...files[idx], ...entry };
+      else files.push(entry);
+      added.push(entry.id);
+    }
+    setDraft({ ...draft, files });
+    setStatuses((prev) => {
+      const next = { ...prev };
+      for (const id of added) next[id] = 'up-to-date';
+      return next;
+    });
+    setNotice(
+      imported.length < requested ? `Skipped ${requested - imported.length} file(s): binary, larger than 1 MB, or unreadable.` : null
+    );
+  };
+
+  const handleAddFiles = async () => {
     if (!draft) return;
     try {
-      const imported = await window.multissh.dotfilePoolSelectFiles(directory);
-      if (!imported || imported.length === 0) return;
-
-      const newFiles: DotfilePoolFile[] = imported.map((f) => {
-        return {
-          id: crypto.randomUUID(),
-          remotePath: defaultDotfileRemotePath(f.path),
-          content: f.content,
-          mode: f.mode || '644',
-          masterFileName: f.name,
-          masterFilePath: f.path,
-          updatedAt: formatTimestamp(),
-        };
-      });
-
-      setDraft((prev) => {
-        if (!prev) return prev;
-        // Merge without duplicating remotePath
-        const existingPaths = new Set(newFiles.map((nf) => nf.remotePath));
-        const filtered = prev.files.filter((ef) => !existingPaths.has(ef.remotePath));
-        return {
-          ...prev,
-          files: [...filtered, ...newFiles],
-        };
-      });
+      const imported = await window.multissh.dotfilePoolSelectFiles();
+      addImported(imported ?? [], imported?.length ?? 0);
     } catch (err) {
-      console.error('Failed to import dotfiles:', err);
+      setNotice(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -193,35 +219,31 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     e.preventDefault();
     setIsDraggingOver(false);
     if (!draft) return;
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-
-    const readFilesPromises = files.map(async (file) => {
-      const text = await file.text();
-      const localPath = (file as unknown as { path?: string }).path;
-      return {
-        id: crypto.randomUUID(),
-        remotePath: defaultDotfileRemotePath(localPath || file.name),
-        content: text,
-        mode: '644',
-        masterFileName: file.name,
-        masterFilePath: localPath,
-        updatedAt: formatTimestamp(),
-      } as DotfilePoolFile;
-    });
-
-    const newFiles = await Promise.all(readFilesPromises);
-    setDraft((prev) => {
-      if (!prev) return prev;
-      const existingPaths = new Set(newFiles.map((nf) => nf.remotePath));
-      const filtered = prev.files.filter((ef) => !existingPaths.has(ef.remotePath));
-      return {
-        ...prev,
-        files: [...filtered, ...newFiles],
-      };
-    });
+    const paths = Array.from(e.dataTransfer.files)
+      .map((file) => window.multissh.getPathForFile?.(file) ?? '')
+      .filter(Boolean);
+    if (paths.length === 0) return;
+    try {
+      const imported = await window.multissh.dotfilePoolReadSources(paths);
+      addImported(imported, paths.length);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err));
+    }
   };
+
+  const handleRefreshFile = async (fileId: string) => {
+    const file = draft?.files.find((f) => f.id === fileId);
+    if (!file?.sourcePath) return;
+    const [src] = await window.multissh.dotfilePoolReadSources([file.sourcePath]);
+    if (!src) {
+      setStatuses((prev) => ({ ...prev, [fileId]: 'missing' }));
+      return;
+    }
+    updateFile(fileId, { content: src.content });
+    setStatuses((prev) => ({ ...prev, [fileId]: 'up-to-date' }));
+  };
+
+  const changedFileIds = Object.keys(statuses).filter((id) => statuses[id] === 'changed');
 
   const handleOpenMasterFolder = async () => {
     if (!draft) return;
@@ -266,7 +288,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
             </div>
             <div>
               <h2 className="text-sm font-semibold text-txt-primary leading-tight">Dotfile Pools &amp; Master Files</h2>
-              <p className="text-xs text-txt-muted">Upload and manage master files for automatic sync to servers</p>
+              <p className="text-xs text-txt-muted">Choose the files that are synced to your servers</p>
             </div>
           </div>
           <button aria-label="Close" title="Close"
@@ -378,104 +400,57 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-txt-primary">Master Files</span>
-                        <span className="text-xs text-txt-muted">
-                          ({draft.files.filter((f) => !f.deletedAt).length})
-                        </span>
+                        <span className="text-xs font-medium text-txt-primary">Files in this pool</span>
+                        <span className="text-xs text-txt-muted">({activeFiles.length})</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleUploadFiles()}
-                          className="flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-sky-500/20 transition-colors"
-                          title="Select and upload existing files from your computer as master files"
+                        {changedFileIds.length > 0 && (
+                          <Button
+                            variant="secondary"
+                            onClick={() => void Promise.all(changedFileIds.map((id) => handleRefreshFile(id)))}
+                            title="Re-read all changed source files"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5 text-amber-300" />
+                            Refresh all ({changedFileIds.length})
+                          </Button>
+                        )}
+                        <Button
+                          variant="primary"
+                          onClick={() => void handleAddFiles()}
+                          title="Choose the files to add. Each file is added explicitly."
                         >
-                          <Upload className="h-3.5 w-3.5" />
-                          Upload Files
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleUploadFiles(true)}
-                          className="flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-sky-500/20 transition-colors"
-                          title="Select a directory and upload its text files (up to 200, max 1 MB each) as master files"
-                        >
-                          <FolderUp className="h-3.5 w-3.5" />
-                          Upload Directory
-                        </button>
-                        <button
-                          type="button"
-                          onClick={addFile}
-                          className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add Empty File
-                        </button>
+                          <Plus className="h-3.5 w-3.5" />
+                          Add Files...
+                        </Button>
                       </div>
                     </div>
 
-                    {draft.files.filter((f) => !f.deletedAt).length === 0 ? (
+                    {notice && (
+                      <div className="flex items-start gap-1.5 rounded-lg border border-amber-900/60 bg-amber-950/40 px-2.5 py-2 text-2xs text-amber-300">
+                        <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        <span>{notice}</span>
+                      </div>
+                    )}
+
+                    {activeFiles.length === 0 ? (
                       <div
-                        onClick={() => void handleUploadFiles()}
+                        onClick={() => void handleAddFiles()}
                         className="cursor-pointer flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-subtle p-8 text-center hover:border-sky-500/40 hover:bg-app-surface/50 transition-colors"
                       >
-                        <Upload className="h-8 w-8 text-sky-400/60 mb-2" />
-                        <p className="text-xs font-medium text-txt-primary">Upload or drag &amp; drop dotfiles here</p>
+                        <FileCode className="h-8 w-8 text-sky-400/60 mb-2" />
+                        <p className="text-xs font-medium text-txt-primary">Add files or drag &amp; drop them here</p>
                         <p className="text-xs text-txt-muted mt-1">
-                          Files are saved as physical master files and synced out to connected SSH servers.
+                          Only the files you pick are copied into the pool and synced to connected SSH servers.
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {draft.files
-                          .filter((f) => !f.deletedAt)
-                          .map((file) => (
-                          <div
-                            key={file.id}
-                            className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-3 transition-colors hover:border-border-strong"
-                          >
-                            <div className="flex items-center justify-between text-xs text-txt-muted mb-0.5">
-                              <span className="font-medium text-sky-400 flex items-center gap-1">
-                                <FileCode className="h-3 w-3" />
-                                Master file: {file.masterFileName || file.remotePath.replace(/^~?[/\\]/, '') || 'Unnamed'}
-                              </span>
-                              {file.updatedAt && <span>Last saved: {file.updatedAt}</span>}
-                            </div>
-                            <div className="grid grid-cols-[1fr_80px_auto] gap-2">
-                              <input
-                                aria-label="Remote path"
-                                value={file.remotePath}
-                                onChange={(e) => updateFile(file.id, { remotePath: e.target.value })}
-                                placeholder="Remote path, e.g. ~/.bashrc"
-                                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                              />
-                              <input
-                                aria-label="File mode"
-                                value={file.mode ?? ''}
-                                onChange={(e) => updateFile(file.id, { mode: e.target.value })}
-                                placeholder="Mode (644)"
-                                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono text-center"
-                                title="File permissions (octal, e.g. 644 or 600)"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeFile(file.id)}
-                                className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
-                                title="Remove master file from the pool"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                            <textarea
-                              aria-label="File content"
-                              value={file.content}
-                              onChange={(e) => updateFile(file.id, { content: e.target.value })}
-                              rows={5}
-                              placeholder="File content / configuration..."
-                              className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono leading-relaxed resize-y"
-                            />
-                          </div>
-                        ))}
-                      </div>
+                      <DotfilePoolFileTable
+                        files={activeFiles}
+                        statuses={statuses}
+                        onUpdate={updateFile}
+                        onRemove={removeFile}
+                        onRefresh={(id) => void handleRefreshFile(id)}
+                      />
                     )}
                   </div>
                 </div>
@@ -496,7 +471,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
                   >
                     {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    Save Master Files
+                    Save Pool
                   </button>
                 </div>
               </>

@@ -109,16 +109,25 @@ describe('DotfilePoolStore with Master Files', () => {
     expect(imported[1].content).toBe('" Vim config\nsyntax on');
   });
 
-  it('imports a local directory recursively, skipping binary files', async () => {
-    const dir = path.join(tempDir, '.kube');
-    await fs.mkdir(path.join(dir, 'cache'), { recursive: true });
-    await fs.writeFile(path.join(dir, 'config'), 'apiVersion: v1', 'utf-8');
-    await fs.writeFile(path.join(dir, 'cache', 'x'), 'cached', 'utf-8');
-    await fs.writeFile(path.join(dir, 'blob'), Buffer.from([1, 0, 2]));
+  it('skips binary, missing and relative paths and suggests a home-relative remote path', async () => {
+    const text = path.join(tempDir, 'config');
+    const bin = path.join(tempDir, 'blob');
+    await fs.writeFile(text, 'apiVersion: v1', 'utf-8');
+    await fs.writeFile(bin, Buffer.from([1, 0, 2]));
 
-    const imported = await store.importLocalDirectory(dir);
-    expect(imported.map((f) => path.relative(dir, f.path)).sort()).toEqual([path.join('cache', 'x'), 'config']);
-    expect(imported.find((f) => f.name === 'config')?.content).toBe('apiVersion: v1');
+    const imported = await store.importLocalFiles([text, bin, path.join(tempDir, 'nope'), 'relative/path']);
+    expect(imported).toHaveLength(1);
+    expect(imported[0].size).toBe(14);
+    expect(imported[0].suggestedRemotePath).toBe('~/.config');
+  });
+
+  it('stores sourcePath when adding a file to a pool', async () => {
+    const updated = await store.addFileToPool('pool-src', {
+      remotePath: '~/.kube/config',
+      content: 'x',
+      sourcePath: '/home/u/.kube/config',
+    });
+    expect(updated.files[0].sourcePath).toBe('/home/u/.kube/config');
   });
 
   it('adds files to an existing pool or creates one with addFileToPool', async () => {

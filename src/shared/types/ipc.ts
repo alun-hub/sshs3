@@ -234,6 +234,7 @@ export const IPC_CHANNELS = {
   DOTFILES_POOLS_DELETE: 'dotfiles:pools-delete',
   DOTFILES_OPEN_FOLDER: 'dotfiles:open-folder',
   DOTFILES_SELECT_FILES: 'dotfiles:select-files',
+  DOTFILES_READ_SOURCES: 'dotfiles:read-sources',
   DOTFILES_ADD_FROM_STORAGE: 'dotfiles:add-from-storage',
   DOTFILES_SYNC_PROMPT: 'dotfiles:sync-prompt',
   DOTFILES_SYNC_RESPOND: 'dotfiles:sync-respond',
@@ -633,7 +634,9 @@ export interface MultiSSHApi {
   dotfilePoolsSave(pool: DotfilePool): Promise<void>;
   dotfilePoolsDelete(id: string): Promise<void>;
   dotfilePoolOpenFolder(poolId: string): Promise<string>;
-  dotfilePoolSelectFiles(directory?: boolean): Promise<DotfileImportedFile[]>;
+  dotfilePoolSelectFiles(): Promise<DotfileImportedFile[]>;
+  /** Re-reads local source files of pooled entries; missing/unimportable files are absent from the result. */
+  dotfilePoolReadSources(paths: string[]): Promise<DotfileImportedFile[]>;
   dotfilePoolAddFromStorage(options: {
     poolId: string;
     providerId: string;

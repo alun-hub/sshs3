@@ -17,6 +17,14 @@ describe('DotfilePoolManagerModal Component', () => {
           content: 'export EDITOR=vim',
           mode: '644',
           masterFileName: '.bashrc',
+          sourcePath: '/home/user/.bashrc',
+          updatedAt: '2026-09-17 19:40',
+        },
+        {
+          id: 'f2',
+          remotePath: '~/.kube/config',
+          content: 'apiVersion: v1',
+          mode: '600',
           updatedAt: '2026-09-17 19:40',
         },
       ],
@@ -37,6 +45,19 @@ describe('DotfilePoolManagerModal Component', () => {
           path: '/home/user/.zshrc',
           content: 'export ZSH=1',
           mode: '644',
+          size: 12,
+          suggestedRemotePath: '~/.zshrc',
+        },
+      ]),
+      // Source of ~/.bashrc has been edited locally since it was pooled.
+      dotfilePoolReadSources: vi.fn().mockResolvedValue([
+        {
+          name: '.bashrc',
+          path: '/home/user/.bashrc',
+          content: 'export EDITOR=nano',
+          mode: '644',
+          size: 18,
+          suggestedRemotePath: '~/.bashrc',
         },
       ]),
     } as unknown as typeof window.multissh;
@@ -62,12 +83,37 @@ describe('DotfilePoolManagerModal Component', () => {
     fireEvent.click(screen.getByText('Linux Servers'));
 
     expect(screen.getByDisplayValue('Linux Servers')).toBeInTheDocument();
-    expect(screen.getByText(/Master file: \.bashrc/)).toBeInTheDocument();
-    expect(screen.getByText(/Last saved: 2026-09-17 19:40/)).toBeInTheDocument();
+    // Files are grouped by target directory; no editable content area.
+    expect(screen.getByText('~/.kube')).toBeInTheDocument();
+    expect(screen.getByText('config')).toBeInTheDocument();
+    expect(screen.getByText('.bashrc')).toBeInTheDocument();
+    expect(screen.queryByLabelText('File content')).toBeNull();
     expect(screen.getByText('Open Master Directory')).toBeInTheDocument();
   });
 
-  it('triggers file upload and adds imported file to draft pool', async () => {
+  it('flags changed sources and refreshes the stored copy', async () => {
+    render(<DotfilePoolManagerModal open={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Linux Servers')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Linux Servers'));
+
+    await waitFor(() => expect(screen.getByText('Source changed')).toBeInTheDocument());
+    expect(window.multissh.dotfilePoolReadSources).toHaveBeenCalledWith(['/home/user/.bashrc']);
+
+    fireEvent.click(screen.getByLabelText('Refresh from source'));
+    await waitFor(() => expect(screen.getByText('Up to date')).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByLabelText('Preview content')[0]);
+    expect(screen.getByText('export EDITOR=nano')).toBeInTheDocument();
+  });
+
+  it('warns about credential files like .kube/config', async () => {
+    render(<DotfilePoolManagerModal open={true} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Linux Servers')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Linux Servers'));
+    expect(await screen.findByTitle(/looks like a credentials file/)).toBeInTheDocument();
+  });
+
+  it('adds explicitly chosen files to the draft pool', async () => {
     render(<DotfilePoolManagerModal open={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
@@ -76,12 +122,11 @@ describe('DotfilePoolManagerModal Component', () => {
 
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const uploadBtn = screen.getByTitle('Select and upload existing files from your computer as master files');
-    fireEvent.click(uploadBtn);
+    fireEvent.click(screen.getByText('Add Files...'));
 
     await waitFor(() => {
       expect(window.multissh.dotfilePoolSelectFiles).toHaveBeenCalled();
-      expect(screen.getByDisplayValue('~/.zshrc')).toBeInTheDocument();
+      expect(screen.getByText('.zshrc')).toBeInTheDocument();
     });
   });
 
@@ -109,7 +154,7 @@ describe('DotfilePoolManagerModal Component', () => {
 
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const saveBtn = screen.getByText('Save Master Files');
+    const saveBtn = screen.getByText('Save Pool');
     fireEvent.click(saveBtn);
 
     await waitFor(() => {

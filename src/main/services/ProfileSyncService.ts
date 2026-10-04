@@ -168,6 +168,17 @@ export function mergeRecords<T extends Syncable>(local: T[], remote: T[]): { mer
  * mergeRecords, since a file can be edited on one machine while a sibling
  * file in the same pool is edited on another.
  */
+/** Removes fields that only make sense on this device (local source paths) before a pool is pushed. */
+export function stripDeviceLocalPoolFields(pool: DotfilePool): DotfilePool {
+  return {
+    ...pool,
+    files: pool.files.map((f) => {
+      const { sourcePath: _sourcePath, ...rest } = f;
+      return rest;
+    }),
+  };
+}
+
 export function mergePools(
   local: DotfilePool[],
   remote: DotfilePool[]
@@ -200,7 +211,14 @@ export function mergePools(
       remotePool.files
     );
     const winnerShell = remoteIsNewer ? remotePool : localPool;
-    byId.set(remotePool.id, { ...winnerShell, files: mergedFiles });
+    // sourcePath is a local filesystem path: keep this device's value, never the remote's.
+    const localSources = new Map(localPool.files.map((f) => [f.id, f.sourcePath]));
+    const filesWithLocalSources = mergedFiles.map((f) => {
+      const { sourcePath: _remoteSource, ...rest } = f;
+      const local = localSources.get(f.id);
+      return local ? { ...rest, sourcePath: local } : rest;
+    });
+    byId.set(remotePool.id, { ...winnerShell, files: filesWithLocalSources });
     if (remoteIsNewer || filesChanged) {
       changedIds.add(remotePool.id);
     }
@@ -661,7 +679,7 @@ export class ProfileSyncService {
       ssh: sshSplit.map((s) => s.credentials),
       s3: s3Split.map((s) => s.credentials),
     };
-    const dotfilePoolsPayload: DotfilePoolsPayload = { pools };
+    const dotfilePoolsPayload: DotfilePoolsPayload = { pools: pools.map(stripDeviceLocalPoolFields) };
 
     // M4 (code review): mark the remote as "push in progress" for the
     // duration of the 5 sequential uploads below, so a crash or network

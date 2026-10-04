@@ -4,7 +4,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { DotfileImportedFile, DotfilePool } from '../../shared/types/dotfiles';
-import { DOTFILE_DIR_MAX_FILES, DOTFILE_DIR_MAX_FILE_BYTES } from './collectDotfileDirectory';
+import { defaultDotfileRemotePath } from '../../shared/dotfilePath';
 
 function formatTimestamp(d = new Date()): string {
   const yyyy = d.getFullYear();
@@ -14,6 +14,9 @@ function formatTimestamp(d = new Date()): string {
   const min = String(d.getMinutes()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
+
+/** Pooled content is stored as UTF-8 text; larger or binary files are not importable. */
+const MAX_IMPORT_BYTES = 1024 * 1024;
 
 export class DotfilePoolStore {
   private filePath: string;
@@ -268,18 +271,29 @@ export class DotfilePoolStore {
     return '';
   }
 
+  /**
+   * Reads local files chosen by the user (or previously pooled via
+   * `sourcePath`). Only regular, non-binary files up to MAX_IMPORT_BYTES are
+   * returned; anything missing, unreadable or skipped is simply absent so
+   * callers can treat absence as "source missing".
+   */
   public async importLocalFiles(filePaths: string[]): Promise<DotfileImportedFile[]> {
     const results: DotfileImportedFile[] = [];
+    const home = os.homedir();
     for (const p of filePaths) {
       try {
-        const content = await fs.readFile(p, 'utf-8');
+        if (typeof p !== 'string' || !path.isAbsolute(p)) continue;
         const stat = await fs.stat(p);
-        const mode = (stat.mode & 0o777).toString(8);
+        if (!stat.isFile() || stat.size > MAX_IMPORT_BYTES) continue;
+        const buf = await fs.readFile(p);
+        if (buf.includes(0)) continue;
         results.push({
           name: path.basename(p),
           path: p,
-          content,
-          mode,
+          content: buf.toString('utf-8'),
+          mode: (stat.mode & 0o777).toString(8),
+          size: stat.size,
+          suggestedRemotePath: defaultDotfileRemotePath(p, home),
         });
       } catch {
         // Skip files that cannot be read
@@ -288,53 +302,9 @@ export class DotfilePoolStore {
     return results;
   }
 
-  /**
-   * Recursively reads the text files under a local directory. Symlinks,
-   * binary files, files over 1 MiB and anything beyond the file/depth caps
-   * are skipped (same limits as pooling a remote directory).
-   */
-  public async importLocalDirectory(dir: string): Promise<DotfileImportedFile[]> {
-    const results: DotfileImportedFile[] = [];
-    const queue: Array<{ dir: string; depth: number }> = [{ dir, depth: 0 }];
-    while (queue.length > 0 && results.length < DOTFILE_DIR_MAX_FILES) {
-      const cur = queue.shift()!;
-      let entries;
-      try {
-        entries = await fs.readdir(cur.dir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const e of entries) {
-        if (results.length >= DOTFILE_DIR_MAX_FILES) break;
-        if (e.isSymbolicLink()) continue;
-        const full = path.join(cur.dir, e.name);
-        if (e.isDirectory()) {
-          if (cur.depth + 1 < 8) queue.push({ dir: full, depth: cur.depth + 1 });
-          continue;
-        }
-        if (!e.isFile()) continue;
-        try {
-          const stat = await fs.stat(full);
-          if (stat.size > DOTFILE_DIR_MAX_FILE_BYTES) continue;
-          const buf = await fs.readFile(full);
-          if (buf.includes(0)) continue;
-          results.push({
-            name: e.name,
-            path: full,
-            content: buf.toString('utf-8'),
-            mode: (stat.mode & 0o777).toString(8),
-          });
-        } catch {
-          // Skip unreadable files
-        }
-      }
-    }
-    return results;
-  }
-
   public async addFileToPool(
     poolId: string,
-    fileData: { remotePath: string; content: string; mode?: string }
+    fileData: { remotePath: string; content: string; mode?: string; sourcePath?: string }
   ): Promise<DotfilePool> {
     const pools = await this.getPools();
     let pool = pools.find((p) => p.id === poolId);
@@ -350,6 +320,7 @@ export class DotfilePoolStore {
     if (existingFile) {
       existingFile.content = fileData.content;
       if (fileData.mode) existingFile.mode = fileData.mode;
+      if (fileData.sourcePath) existingFile.sourcePath = fileData.sourcePath;
       existingFile.updatedAt = formatTimestamp();
     } else {
       pool.files.push({
@@ -357,6 +328,7 @@ export class DotfilePoolStore {
         remotePath: fileData.remotePath,
         content: fileData.content,
         mode: fileData.mode,
+        sourcePath: fileData.sourcePath,
         updatedAt: formatTimestamp(),
       });
     }

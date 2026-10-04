@@ -11,6 +11,12 @@ export interface DotfilePoolFile {
   masterFileName?: string;
   /** Absolute path to the physical master file on local disk */
   masterFilePath?: string;
+  /**
+   * Absolute path of the local file this entry was copied from. Device-specific:
+   * never synced between machines (see ProfileSyncService). Used to detect
+   * "source changed" and to refresh the stored copy.
+   */
+  sourcePath?: string;
   /** Timestamp formatted as yyyy-mm-dd HH:mm */
   updatedAt?: string;
   /** Timestamp formatted as yyyy-mm-dd HH:mm, set instead of removing the file, so sync can propagate the deletion. */
@@ -34,6 +40,9 @@ export interface DotfileImportedFile {
   path: string;
   content: string;
   mode?: string;
+  size: number;
+  /** Suggested remotePath, e.g. "~/.kube/config" for a file under the local home directory. */
+  suggestedRemotePath: string;
 }
 
 export interface DotfileDiffEntry {
