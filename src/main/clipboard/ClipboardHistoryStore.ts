@@ -10,6 +10,8 @@ import {
 } from '../../shared/types/clipboard';
 import { decryptSecretValue, encryptSecretValue, isEncryptionAvailable } from '../crypto/SecretFieldCrypto';
 
+const ENCRYPTED_PREFIX = 'enc:v1:';
+
 /**
  * Persistent history of terminal selections. Copied text routinely contains
  * passwords and tokens, so the whole list is encrypted with the OS keyring
@@ -71,10 +73,22 @@ export class ClipboardHistoryStore {
     return entries;
   }
 
+  private async removeFile(): Promise<void> {
+    await fs.rm(this.filePath, { force: true });
+    await fs.rm(`${this.filePath}.tmp`, { force: true });
+  }
+
   private async persist(entries: ClipboardHistoryEntry[]): Promise<void> {
-    if (!isEncryptionAvailable()) return;
+    // encryptSecretValue falls back to plaintext when encryption fails, so verify the result
+    // really is ciphertext before writing. Anything else must never reach the disk; also drop a
+    // file left over from a time when a keyring was available, so it can't outlive "clear".
+    const encrypted = isEncryptionAvailable() ? encryptSecretValue(JSON.stringify(entries)) : '';
+    if (!encrypted.startsWith(ENCRYPTED_PREFIX)) {
+      await this.removeFile();
+      return;
+    }
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    const body = JSON.stringify({ version: 1, data: encryptSecretValue(JSON.stringify(entries)) });
+    const body = JSON.stringify({ version: 1, data: encrypted });
     const tmp = `${this.filePath}.tmp`;
     await fs.writeFile(tmp, body, { encoding: 'utf-8', mode: 0o600 });
     await fs.rename(tmp, this.filePath);

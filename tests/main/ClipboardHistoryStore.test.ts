@@ -3,8 +3,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
-const { mockIsEncryptionAvailable } = vi.hoisted(() => ({
+const { mockIsEncryptionAvailable, mockEncryptString } = vi.hoisted(() => ({
   mockIsEncryptionAvailable: vi.fn().mockReturnValue(true),
+  mockEncryptString: vi.fn((v: string) => Buffer.from(`cipher:${v}`, 'utf-8')),
 }));
 
 vi.mock('electron', () => {
@@ -12,7 +13,7 @@ vi.mock('electron', () => {
     app: { getPath: () => os.tmpdir() },
     safeStorage: {
       isEncryptionAvailable: mockIsEncryptionAvailable,
-      encryptString: (v: string) => Buffer.from(`cipher:${v}`, 'utf-8'),
+      encryptString: mockEncryptString,
       decryptString: (b: Buffer) => b.toString('utf-8').replace(/^cipher:/, ''),
     },
   };
@@ -65,6 +66,22 @@ describe('ClipboardHistoryStore', () => {
     await store.add('secret', 'h1', 'Host 1');
     await expect(fs.access(file)).rejects.toThrow();
     expect(await store.list()).toHaveLength(1);
+  });
+
+  it('removes a previously written file once no keyring is available', async () => {
+    await store.add('first', 'h1', 'Host 1');
+    await fs.access(file);
+    mockIsEncryptionAvailable.mockReturnValue(false);
+    await store.clear();
+    await expect(fs.access(file)).rejects.toThrow();
+  });
+
+  it('never writes plaintext when encryption throws', async () => {
+    mockEncryptString.mockImplementationOnce(() => {
+      throw new Error('keyring locked');
+    });
+    await store.add('plain-secret', 'h1', 'Host 1');
+    await expect(fs.access(file)).rejects.toThrow();
   });
 
   it('deletes single entries and clears everything', async () => {
