@@ -163,7 +163,34 @@ async function runOnce(runIndex) {
     })`);
     void tType;
 
-    return { rendererRenderedMs: tRendered, pageTargetMs: tPage, ...startup, flood, list, xt };
+    // --- Scenario: open the File Manager on a 10 000-file directory (IPC + React + virtualised list)
+    const fm = await evaluate(`(async () => {
+      const cur = (await window.multissh.sessionGet?.()) ?? {};
+      await window.multissh.sessionSave({ ...cur, tabs: [], activeTabId: null, lastPaths: { ...(cur.lastPaths ?? {}), local: ${JSON.stringify(bigDir)} }, panes: undefined });
+      return true;
+    })()`);
+    void fm;
+    // Reload so the landing page and the File Manager both start from the seeded session.
+    await send('Page.reload');
+    await evaluate(`new Promise((res) => { const f = () => document.getElementById('root')?.children.length ? res(true) : setTimeout(f, 20); f(); })`);
+    await new Promise((r) => setTimeout(r, 1500));
+    const fmResult = await evaluate(`new Promise((res, rej) => {
+      const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('File Manager'));
+      if (!b) return rej(new Error('File Manager button not found'));
+      const long = [];
+      new PerformanceObserver((l) => l.getEntries().forEach((e) => long.push(e.duration))).observe({ entryTypes: ['longtask'] });
+      const t0 = performance.now();
+      b.click();
+      const f = () => {
+        if (document.body.innerText.includes('10000') || performance.now() - t0 > 30000) {
+          const ms = Math.round(performance.now() - t0);
+          res({ openMs: ms, longTasks: long.length, longTaskTotalMs: Math.round(long.reduce((acc, c) => acc + c, 0)) });
+        } else setTimeout(f, 20);
+      };
+      f();
+    })`);
+
+    return { rendererRenderedMs: tRendered, pageTargetMs: tPage, ...startup, flood, list, xt, fmResult };
   } finally {
     try {
       ws?.close();
@@ -211,6 +238,11 @@ const summary = {
     longTasks: pick((r) => r.xt.longTasks),
     longTaskTotalMs: pick((r) => r.xt.longTaskTotalMs),
     timedOut: runs.some((r) => r.xt.timedOut),
+  },
+  fileManager10k: {
+    openMs: pick((r) => r.fmResult.openMs),
+    longTasks: pick((r) => r.fmResult.longTasks),
+    longTaskTotalMs: pick((r) => r.fmResult.longTaskTotalMs),
   },
   list10kFiles: { entries: runs[0].list.entries, firstCallMs: pick((r) => r.list.ms[0]), repeatMs: pick((r) => r.list.ms[2]) },
 };
