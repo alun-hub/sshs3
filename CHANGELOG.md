@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.22] - 2026-10-04
+
+### Added
+- dotfiles pool manager redesign: pick individual files explicitly, files grouped by target directory with read-only preview, source status (up to date / changed / missing) and Refresh
+- unsaved/saved indicator when editing a pool
+
+### Fixed
+- dotfile target path keeps the directory (e.g. ~/.kube/config instead of ~/.config)
+- device-local dotfile source paths are no longer accepted from remote sync
+
+### Changed
+- dotfile pool content is no longer edited in the modal (use Open Master Directory)
+
 ## [0.96.21] - 2026-10-04
 
 ### Added
