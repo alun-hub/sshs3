@@ -51,7 +51,9 @@ export async function collectDotfileDirectory(
     const entries = await provider.list(dir);
     for (const e of entries) {
       if (out.length >= DOTFILE_DIR_MAX_FILES) break;
-      if (e.isSymlink || e.name === '.' || e.name === '..') continue;
+      // Entry names come from the (possibly untrusted) remote listing; a name
+      // with a separator or ".." must not be able to climb out of the target.
+      if (e.isSymlink || e.name === '.' || e.name === '..' || /[\\/\0]/.test(e.name)) continue;
       const entryRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory) {
         if (depth + 1 < MAX_DEPTH) {

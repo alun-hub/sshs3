@@ -38,6 +38,8 @@ describe('collectDotfileDirectory', () => {
           cache: { dir: { x: { text: Buffer.from('b') } } },
           bin: { text: Buffer.from([1, 0, 2]) },
           lnk: { text: Buffer.from('z'), link: true },
+          '..': { text: Buffer.from('evil') },
+          'a/../../b': { text: Buffer.from('evil') },
         },
       },
     });
