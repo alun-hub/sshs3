@@ -51,7 +51,7 @@ sshs3 kommunicerar direkt med standard **Kubernetes API** med hjälp av uppgifte
 - **Hur den används**:
   - Öppna containern i vänster eller höger panel i filhanteraren.
   - Kopiera filer direkt mellan containern och din lokala dator, en SFTP-server eller en S3-bucket via dra-och-släpp.
-  - Dubbelklicka på text- eller konfigurationsfiler för att öppna och redigera dem i den inbyggda Monaco-editorn; tryck <kbd>Ctrl+S</kbd> för att spara direkt in i containern.
+  - Dubbelklicka på text- eller konfigurationsfiler för att öppna och redigera dem i den inbyggda texteditorn; tryck <kbd>Ctrl+S</kbd> för att spara direkt in i containern.
 - **Hur det fungerar under huven**:
   - Inga agenter installeras i containern. Filoperationer strömmas via Kubernetes `exec`-protokoll (`cat`, `dd`, `stat`, `rm`, `mv`, `chmod`).
 - **Begränsningar**:

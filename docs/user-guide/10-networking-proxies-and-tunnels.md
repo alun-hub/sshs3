@@ -51,7 +51,7 @@ I traditionella SSH-klienter avslutas portvidarebefordran i samma sekund som du 
 - **Hur det används**: Konfigurera din webbläsare (Firefox, Chrome) eller verktyg (`curl --socks5 127.0.0.1:1080`) att skicka trafik genom tunneln. All webbtrafik routas då krypterat genom SSH-servern och ut på dess lokala nätverk.
 
 ### 2.2 Spara & Hantera Tunnlar
-- Klicka på <kbd>Ctrl+Shift+T</kbd> för att öppna tunnelpanelen.
+- Klicka på knappen **SSH Tunnels** i toppraden för att öppna tunnelpanelen.
 - Skapa och namnge återanvändbara tunnelkonfigurationer (t.ex. *"Prod DB Tunnel"*).
 - Starta och stoppa med ett klick. Statusindikatorn visar realtidstrafik och aktiv process.
 

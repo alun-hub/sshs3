@@ -68,12 +68,12 @@ Tryck <kbd>Ctrl+F</kbd> i valfri panel för att öppna sökfältet:
 
 ---
 
-### 3.4 Inbyggd Monaco Kodeditor
+### 3.4 Inbyggd Texteditor
 Dubbelklicka eller högerklicka på valfri textfil, skript eller YAML-manifest och välj **Edit**:
-- Drivs av samma editorkärna som Visual Studio Code (Monaco Editor).
-- Har full syntaxfärgning för Shell, Python, YAML, JSON, Dockerfile, TypeScript, Markdown m.fl.
+- En enkel textredigerare utan syntaxfärgning. Vill du ha din egen editor finns överlämning till en extern editor.
 - **Spara direkt mot fjärrservern**: Tryck <kbd>Ctrl+S</kbd> för att skriva ändringarna direkt tillbaka till SFTP-servern, S3-objektet eller containern.
-- Inbyggd **Markdown Live Preview**.
+- Inbyggd **Markdown Live Preview** med omkopplaren **Source | Preview**.
+- **Live Log Tail**: följ en växande loggfil (`tail -f`) i samma vy, med paus, återuppta och sök.
 
 ---
 

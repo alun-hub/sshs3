@@ -62,7 +62,7 @@ sshs3 stöder fem separata autentiseringsmetoder i rullgardinsmenyn **Authentica
   - **YubiKey (`libykcs11`)**: Direktbibliotek för YubiKey PIV (`libykcs11.so` / `libykcs11.dll`).
   - **OpenSC (`opensc-pkcs11.so` / `opensc-pkcs11.dll`)**: Generell öppen drivrutin för de flesta smartcards.
   - **Net iD**: Stöd för företags- och myndighetskort.
-- **Begränsningar**: Biblioteksfilen måste finnas installerad lokalt på datorn. PIN-kod cachas enligt den valda policyn (Per-Session, Global eller Never) och skrivs aldrig till disk.
+- **Begränsningar**: Biblioteksfilen måste finnas installerad lokalt på datorn. PIN-kod cachas enligt den valda policyn (Always Prompt, Once Per Terminal Connection eller Global) och skrivs aldrig till disk.
 
 #### E. FIDO2 / Security Key (Hårdvarunyckel)
 ![FIDO2 Hårdvarunyckel](/img/docs/profile-auth-fido2.png)
@@ -85,7 +85,7 @@ Längst ner i profilformuläret finns sektionen **Access**:
   En 5-stegs visuell tidslinje som testar hela anslutningskedjan:
   1. `Reach Host`: TCP-uppkoppling till IP/port (inkl. via ProxyJump).
   2. `Host Key`: Verifierar att serverns värdnyckel stämmer med `known_hosts`.
-  3. `Allowed Methods`: Frågar sshd tyst vilka inloggningsmetoder som tillåts (lösenord, publickey, etc.) utan att kräva PIN eller beröring.
+  3. `Login Methods`: Frågar sshd tyst vilka inloggningsmetoder som tillåts (lösenord, publickey, etc.) utan att kräva PIN eller beröring.
   4. `Key Installed`: Undersöker om den valda publika nyckeln finns i `~/.ssh/authorized_keys`.
   5. `Login Works`: Testar faktisk inloggning.
 - **Install Key…**:
@@ -112,7 +112,6 @@ Genom att expandera sektionen **Advanced SSH Options** får du tillgång till fi
 | **KEX Algorithms** | *System default* | Begränsar godkända nyckelutbytesalgoritmer (t.ex. `curve25519-sha256,diffie-hellman-group16-sha512`). | Används vid hårda säkerhetskrav eller vid anslutning till äldre hårdvara. |
 | **MAC Algorithms** | *System default* | Begränsar Message Authentication Codes (t.ex. `hmac-sha2-512-etm@openssh.com`). | Endast relevant för icke-AEAD ciphers. |
 | **Custom SSH Arguments** | *Tomt* | Fria `-o Option=Value`-parametrar som skickas rakt in i `ssh`-kommandot. | Felaktiga flaggor kan göra att OpenSSH vägrar starta. |
-| **Auto Reconnect** | Av | Återansluter automatiskt vid oväntade nätverksavbrott. | Har inställningar för max återförsök (standard: 3) och fördröjning i millisekunder. |
 | **Dotfiles Pool Sync** | *Av* | Kopplar profilen till en dotfile-pool för automatisk miljöinläsning vid start. | Kräver att Dotfiles Pool är aktiverad i appens inställningar. |
 
 ---

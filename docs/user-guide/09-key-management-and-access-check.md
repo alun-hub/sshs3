@@ -34,12 +34,12 @@ During key deployment, the app ensures you are not prompted unnecessarily:
 When configuring or troubleshooting a connection, sshs3 provides a real-time diagnostic timeline that shows exactly where a connection chain succeeds or breaks:
 
 ```
-[1. Reach Host] ───► [2. Host Key] ───► [3. Allowed Methods] ───► [4. Key Installed] ───► [5. Login Works]
+[1. Reach Host] ───► [2. Host Key] ───► [3. Login Methods] ───► [4. Key Installed] ───► [5. Login Works]
 ```
 
 1. **Reach Host**: Verifies TCP connectivity to the target host and port (or through the ProxyJump bastion chain).
 2. **Host Key**: Verifies that the remote host key matches `~/.ssh/known_hosts` (or prompts for initial trust).
-3. **Allowed Methods**: Probes the remote OpenSSH daemon (`sshd`) silently to determine which authentication methods are permitted (e.g. `publickey`, `password`, `keyboard-interactive`). This probe requires no PIN, passphrase, or physical touch.
+3. **Login Methods**: Probes the remote OpenSSH daemon (`sshd`) silently to determine which authentication methods are permitted (e.g. `publickey`, `password`, `keyboard-interactive`). This probe requires no PIN, passphrase, or physical touch.
 4. **Key Installed**: Inspects whether the selected public key exists in the remote user's `~/.ssh/authorized_keys`.
 5. **Login Works**: Executes a non-interactive authentication test to confirm end-to-end access.
 

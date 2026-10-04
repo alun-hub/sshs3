@@ -50,7 +50,7 @@ För MinIO, R2, Wasabi eller lokal Ceph-lagring:
 - **Syfte**: Dela en privat fil från en sluten S3-bucket med en kund eller kollega utan att göra hela bucketen offentlig.
 - **Hur det används**:
   1. Högerklicka på valfri fil i S3-panelen och välj **Generate Presigned URL**.
-  2. Välj giltighetstid (t.ex. 15 minuter, 1 timme, 24 timmar eller 7 dagar).
+  2. Välj giltighetstid (15 minuter, 1 timme, 12 timmar, 1 dag eller 7 dagar, som är maxgränsen).
   3. Klicka **Copy Link**. Länken kan nu klistras in i en webbläsare eller skickas via chatt. Mottagaren kan ladda ner filen direkt från AWS med samma säkerhet.
 
 ### 3.2 Objektversionering (S3 Versioning)

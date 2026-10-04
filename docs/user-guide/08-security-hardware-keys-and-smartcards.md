@@ -57,14 +57,15 @@ För att skydda smartcards och PIN-skyddade säkerhetsnycklar erbjuder sshs3 tre
 
 ![Säkerhetsinställningar](/img/docs/settings-security.png)
 
-1. **Per-Session (Standard)**:
-   - Du anger din PIN-kod när du ansluter. Koden behålls i flyktigt minne endast under själva inloggningshandskakningen och rensas därefter omedelbart.
-2. **Global (App Lifetime) — Rekommenderas för hög produktivitet**:
-   - PIN-koden sparas i säkert, krypterat flyktigt RAM-minne under den tid sshs3 körs.
+1. **Always Prompt (Standard)**:
+   - Ingen cachning mellan anslutningar: återanslutning frågar alltid efter PIN igen. Använd där policy kräver ny autentisering vid varje inloggning.
+2. **Once Per Terminal Connection**:
+   - PIN anges en gång i en privat, appstyrd `ssh-agent` som delas av terminalfliken och dess dotfiles-sync. Agenten stängs när terminalen kopplar ned; automatiska återanslutningar efter nätavbrott återanvänder den öppna agenten.
+3. **Global (App Lifetime) — bekvämast, minst strikt**:
+   - PIN anges en gång per kort och delas av alla terminaler och profiler så länge sshs3 körs.
    - När du öppnar nya delade split-paneler, nya flikar, startar SFTP eller kör `git pull` i ett lokalt skal återanvänds det upplåsta kortet automatiskt utan att du behöver slå din PIN-kod tjugo gånger om dagen.
    - **Säkerhetsgaranti**: Koden skrivs **ALDRIG till disk**. I samma ögonblick som du avslutar sshs3 (<kbd>Ctrl+Q</kbd>) töms minnet fullständigt.
-3. **Never (Högsta säkerhetskrav)**:
-   - Kräver PIN-kod vid precis varje enskild kryptografisk signering.
+   - En kortikon i toppraden (visas bara i detta läge) listar vad som är cachat och har knappen **Lock All Now**.
 
 ---
 

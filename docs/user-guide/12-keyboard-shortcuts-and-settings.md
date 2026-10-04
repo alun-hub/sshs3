@@ -78,9 +78,9 @@ Inställningarna är indelade i sju specialiserade paneler:
 ![Säkerhetsinställningar](/img/docs/settings-security.png)
 
 - **PIN Caching Policy**:
-  - `Per-Session (Standard)`: Frågar efter PIN-kod vid anslutning och behåller den i flyktigt minne endast under handskakningen.
-  - `Global (App Lifetime)`: Cachas säkert i appens minne under hela appens körtid. Nya flikar, split-paneler och SFTP-sessioner återanvänder samma upplåsta kort utan nya promptar. Raderas omedelbart vid avslut.
-  - `Never`: Frågar efter PIN-kod vid precis varje enskild kryptografisk signering.
+  - `Always Prompt (Default)`: Ingen cachning mellan anslutningar; återanslutning frågar efter PIN igen.
+  - `Once Per Terminal Connection`: PIN anges en gång i en privat, appstyrd `ssh-agent` som delas av terminalfliken och dess dotfiles-sync. Agenten stängs när terminalen kopplar ned.
+  - `Global (App Lifetime)`: PIN anges en gång per kort och delas av alla terminaler och profiler så länge appen körs, tills du avslutar eller låser. Bekvämast men minst strikt.
 - **Preferred PKCS#11 Library**: Välj vilket bibliotek som ska prioriteras vid autoupptäckt: `p11-kit` (standard), `YubiKey libykcs11`, `OpenSC` eller `Net iD`.
 - **Master Password Vault**: Fallback-kryptering med AES-256-GCM om operativsystemets inbyggda nyckelring (Secret Service / DPAPI) inte är tillgänglig.
 
@@ -139,7 +139,7 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 | :--- | :--- | :--- |
 | <kbd>Ctrl+F</kbd> | **Sök Filer** | Öppnar filfilteringslisten i aktiv panel. Stöder rekursiv sökning och jokertecken (`*`, `?`). |
 | <kbd>F5</kbd> / <kbd>Ctrl+R</kbd> | **Uppdatera** | Läser in innehållet i den aktiva katalogen på nytt. |
-| <kbd>Ctrl+S</kbd> | **Spara Fjärrfil** | I den inbyggda Monaco-editorn: sparar ändringarna direkt tillbaka till servern. |
+| <kbd>Ctrl+S</kbd> | **Spara Fjärrfil** | I den inbyggda texteditorn: sparar ändringarna direkt tillbaka till servern. |
 | <kbd>Delete</kbd> | **Ta Bort** | Raderar markerade filer eller mappar efter bekräftelse. |
 | <kbd>F2</kbd> | **Byt Namn** | Byt namn på den markerade filen. |
 
