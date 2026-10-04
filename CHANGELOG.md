@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.19] - 2026-10-04
+
+### Added
+- Overflow ("...") menu for the secondary actions on SSH profile rows in the Connection Manager (install public key, tunnels, duplicate, delete), with arrow-key navigation
+- Source | Preview segmented control in the Markdown editor, so the current mode is always visible
+- Collapsible "Recently Used" section in the Connection Manager
+- Contrast audit tool for the desktop app (`contrast-audit.mjs` in the run-desktop skill)
+
+### Changed
+- Denser desktop layout: smaller file-list rows, compact pane toolbars, tab bar, transfer drawer and performance bar, right-aligned tabular numbers, and a shorter "Perms" column header aligned with its values
+- Terminal: the redundant single-pane title bar is gone and the performance bar follows the theme in dark, light and Breeze
+- Fixed-height Settings and Connection Manager dialogs, so they no longer jump between tabs and categories
+- Much stronger contrast in the light theme (borders, text, filled buttons, markdown preview, terminal palette), and stronger text, borders and filled buttons in Breeze and dark
+- Softer hairlines between rows and sections via a dedicated divider colour, and a single line under the tab bar
+- Top-right notices stack instead of overlapping; "Overwrite" is shown as a destructive action; the host-key and conflict prompts focus the safe option by default
+- All dialogs expose `role="dialog"` and accessible names, and `prefers-reduced-motion` is respected (spinners keep turning)
+
+### Fixed
+- Escape closed both a dialog and the one underneath it (tunnels, install key, PIN prompts, ...); it now goes to the topmost dialog only, including while a save is in progress
+- Several dialogs could not be closed with Escape (new folder, diff, K8s login/debug, sync bootstrap, dotfile pools, master password, SFTP password prompt)
+- Undefined colour tokens that rendered nothing (hover borders, some backgrounds) and a focus ring that overlapped field labels
+- Markdown preview headings were white on white in the light theme
+- Optional sshs3-site deploy in `deploy.sh` now stops on the first failing step instead of reporting success
+
 ## [0.96.18] - 2026-10-03
 
 ### Added
