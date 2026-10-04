@@ -212,6 +212,26 @@ describe('LocalStorageProvider', () => {
       expect(entries).toEqual([]);
     });
 
+    it('keeps metadata and directories-first ordering when listing more entries than the stat concurrency limit', async () => {
+      const count = 200;
+      for (let i = 0; i < count; i++) {
+        await fs.writeFile(path.join(testDir, `file-${String(i).padStart(3, '0')}.txt`), 'x'.repeat(i));
+      }
+      await fs.mkdir(path.join(testDir, 'zdir'));
+
+      const entries = await provider.list(testDir);
+
+      expect(entries).toHaveLength(count + 1);
+      expect(entries[0]).toMatchObject({ name: 'zdir', isDirectory: true });
+      expect(entries.slice(1).map((e) => e.name)).toEqual(
+        Array.from({ length: count }, (_, i) => `file-${String(i).padStart(3, '0')}.txt`)
+      );
+      for (const entry of entries.slice(1)) {
+        expect(entry.size).toBe(Number(entry.name.slice(5, 8)));
+        expect(entry.mtimeMs).toBeGreaterThan(0);
+      }
+    });
+
     // Regression tests for the H6 finding (code review): TransferPipeline's
     // directory scan decides whether to recurse using isDirectory, which
     // comes from a followed stat() — indistinguishable from a real

@@ -33,6 +33,9 @@ function formatPermissions(mode: number): string {
   return (mode & 0o777).toString(8).padStart(3, '0');
 }
 
+/** Max concurrent stat() calls while listing a directory (bounded to stay clear of EMFILE). */
+const LIST_STAT_CONCURRENCY = 32;
+
 export class LocalStorageProvider extends BaseStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -100,44 +103,52 @@ export class LocalStorageProvider extends BaseStorageProvider {
     }
 
     const entries = await fsp.readdir(fullPath, { withFileTypes: true });
-    const results: FileEntry[] = [];
+    const results: FileEntry[] = new Array(entries.length);
 
-    for (const entry of entries) {
-      const entryFullPath = path.join(fullPath, entry.name);
-      const entryRelativePath = path.join(remotePath, entry.name);
-      // Dirent.isSymbolicLink() reflects lstat, not the stat() below (which
-      // follows the link) — this is the only way to know an entry is a
-      // symlink at all, since a followed stat() reports the target's own
-      // type instead (see the H6 code-review finding).
-      const isSymlink = entry.isSymbolicLink();
+    // stat() each entry with bounded concurrency: a sequential await per entry costs ~70 µs of
+    // libuv round trip each (≈0.7 s for 10 000 files), unbounded Promise.all risks EMFILE.
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < entries.length) {
+        const index = next++;
+        const entry = entries[index];
+        const entryFullPath = path.join(fullPath, entry.name);
+        const entryRelativePath = path.join(remotePath, entry.name);
+        // Dirent.isSymbolicLink() reflects lstat, not the stat() below (which
+        // follows the link) — this is the only way to know an entry is a
+        // symlink at all, since a followed stat() reports the target's own
+        // type instead (see the H6 code-review finding).
+        const isSymlink = entry.isSymbolicLink();
 
-      try {
-        const itemStats = await fsp.stat(entryFullPath);
-        const isDir = itemStats.isDirectory();
-        results.push({
-          name: entry.name,
-          path: entryRelativePath,
-          size: itemStats.size,
-          isDirectory: isDir,
-          isSymlink,
-          mtime: formatDate(itemStats.mtime),
-          mtimeMs: itemStats.mtime.getTime(),
-          mimeType: isDir ? undefined : getMimeType(entry.name),
-          permissions: formatPermissions(itemStats.mode),
-        });
-      } catch {
-        // Fallback for unreadable items / broken symlinks
-        const isDir = entry.isDirectory();
-        results.push({
-          name: entry.name,
-          path: entryRelativePath,
-          size: 0,
-          isDirectory: isDir,
-          isSymlink,
-          mimeType: isDir ? undefined : getMimeType(entry.name),
-        });
+        try {
+          const itemStats = await fsp.stat(entryFullPath);
+          const isDir = itemStats.isDirectory();
+          results[index] = {
+            name: entry.name,
+            path: entryRelativePath,
+            size: itemStats.size,
+            isDirectory: isDir,
+            isSymlink,
+            mtime: formatDate(itemStats.mtime),
+            mtimeMs: itemStats.mtime.getTime(),
+            mimeType: isDir ? undefined : getMimeType(entry.name),
+            permissions: formatPermissions(itemStats.mode),
+          };
+        } catch {
+          // Fallback for unreadable items / broken symlinks
+          const isDir = entry.isDirectory();
+          results[index] = {
+            name: entry.name,
+            path: entryRelativePath,
+            size: 0,
+            isDirectory: isDir,
+            isSymlink,
+            mimeType: isDir ? undefined : getMimeType(entry.name),
+          };
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(LIST_STAT_CONCURRENCY, entries.length) }, worker));
 
     // Sort directories first, then alphabetical by name
     results.sort((a, b) => {
