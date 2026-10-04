@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Check,
   FileCode,
   FolderOpen,
   GitBranch,
@@ -31,6 +32,14 @@ function formatTimestamp(d = new Date()): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
+/** Stable fingerprint of what Save would persist (ignores timestamps), used for the unsaved-changes indicator. */
+function poolSnapshot(pool: DotfilePool): string {
+  return JSON.stringify({
+    name: pool.name,
+    files: pool.files.map((f) => [f.id, f.remotePath, f.content, f.mode ?? '', f.deletedAt ?? '']),
+  });
+}
+
 function emptyPool(): DotfilePool {
   return { id: crypto.randomUUID(), name: '', files: [], updatedAt: formatTimestamp() };
 }
@@ -44,6 +53,16 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, DotfileSourceStatus>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+    },
+    []
+  );
 
   // Git import state
   const [gitImportOpen, setGitImportOpen] = useState(false);
@@ -100,6 +119,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   useModalDismiss(() => setGitImportOpen(false), gitImportOpen, !gitImporting);
   if (!open) return null;
 
+  const dirty = draft ? savedSnapshot === null || poolSnapshot(draft) !== savedSnapshot : false;
   const activeFiles = draft ? draft.files.filter((f) => !f.deletedAt) : [];
 
   const checkSources = async (files: DotfilePoolFile[]) => {
@@ -125,6 +145,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   const selectPool = (pool: DotfilePool) => {
     setSelectedId(pool.id);
     setDraft(JSON.parse(JSON.stringify(pool)));
+    setSavedSnapshot(poolSnapshot(pool));
+    setJustSaved(false);
     setNotice(null);
     void checkSources(pool.files);
   };
@@ -133,6 +155,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     const pool = emptyPool();
     setSelectedId(pool.id);
     setDraft(pool);
+    setSavedSnapshot(null);
+    setJustSaved(false);
   };
 
   const updateDraft = <K extends keyof DotfilePool>(key: K, value: DotfilePool[K]) => {
@@ -266,6 +290,11 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
       const updated = await load();
       const saved = updated.find((p) => p.id === draft.id);
       if (saved) selectPool(saved);
+      setJustSaved(true);
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+      justSavedTimer.current = setTimeout(() => setJustSaved(false), 3000);
+    } catch (err) {
+      setNotice(`Failed to save pool: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -464,15 +493,28 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete Pool
                   </button>
-                  <button
-                    type="button"
-                    disabled={!draft.name.trim() || saving}
-                    onClick={() => void handleSave()}
-                    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
-                  >
-                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    Save Pool
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {justSaved && !dirty ? (
+                      <span role="status" className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+                        <Check className="h-3.5 w-3.5" />
+                        Saved
+                      </span>
+                    ) : dirty ? (
+                      <span className="flex items-center gap-1.5 text-xs text-amber-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                        Unsaved changes
+                      </span>
+                    ) : null}
+                    <Button
+                      variant="primary"
+                      className="px-4"
+                      disabled={!draft.name.trim() || saving || !dirty}
+                      onClick={() => void handleSave()}
+                    >
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Save Pool
+                    </Button>
+                  </div>
                 </div>
               </>
             )}

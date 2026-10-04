@@ -145,20 +145,24 @@ describe('DotfilePoolManagerModal Component', () => {
     expect(window.multissh.dotfilePoolOpenFolder).toHaveBeenCalledWith('p1');
   });
 
-  it('saves master files and pool changes', async () => {
+  it('disables Save until something changes, then confirms the save', async () => {
     render(<DotfilePoolManagerModal open={true} onClose={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Linux Servers')).toBeInTheDocument();
-    });
-
+    await waitFor(() => expect(screen.getByText('Linux Servers')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Linux Servers'));
 
-    const saveBtn = screen.getByText('Save Pool');
-    fireEvent.click(saveBtn);
+    const saveBtn = screen.getByText('Save Pool').closest('button')!;
+    expect(saveBtn).toBeDisabled();
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
 
-    await waitFor(() => {
-      expect(window.multissh.dotfilePoolsSave).toHaveBeenCalled();
-    });
+    fireEvent.click(screen.getByText('Add Files...'));
+    await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeInTheDocument());
+    expect(saveBtn).not.toBeDisabled();
+
+    fireEvent.click(saveBtn);
+    await waitFor(() => expect(window.multissh.dotfilePoolsSave).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Saved'));
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    // The pool stays open after saving.
+    expect(screen.getByDisplayValue('Linux Servers')).toBeInTheDocument();
   });
 });
