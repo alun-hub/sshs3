@@ -690,6 +690,12 @@ describe('mergePools', () => {
     expect(merged[0].files[0].sourcePath).toBe('/home/a/.kube/config');
   });
 
+  it('drops a sourcePath carried by a remote pool that is new on this device', () => {
+    const remote: DotfilePool[] = [{ id: 'p2', name: 'New', files: [{ id: 'f9', remotePath: '~/.x', content: 'x', sourcePath: '/home/a/.ssh/id_ed25519' }], updatedAt: '2026-02-01T00:00' }];
+    const { merged } = mergePools([], remote);
+    expect(merged[0].files[0]).not.toHaveProperty('sourcePath');
+  });
+
   it('strips sourcePath before a pool is pushed', () => {
     const pool: DotfilePool = { id: 'p1', name: 'Pool', files: [{ id: 'f1', remotePath: '~/.a', content: 'x', sourcePath: '/home/a/.a' }] };
     expect(stripDeviceLocalPoolFields(pool).files[0]).not.toHaveProperty('sourcePath');

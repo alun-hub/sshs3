@@ -183,6 +183,10 @@ export function mergePools(
   local: DotfilePool[],
   remote: DotfilePool[]
 ): { merged: DotfilePool[]; changedIds: Set<string> } {
+  // A remote pool is untrusted input: a sourcePath it carries would make
+  // "Refresh" read an arbitrary local file into the pool, so drop it up front
+  // (this device's own sourcePath values are re-applied below from `local`).
+  remote = remote.map(stripDeviceLocalPoolFields);
   const byId = new Map<string, DotfilePool>();
   for (const pool of local) byId.set(pool.id, pool);
   const changedIds = new Set<string>();
