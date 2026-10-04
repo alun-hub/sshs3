@@ -109,6 +109,18 @@ describe('DotfilePoolStore with Master Files', () => {
     expect(imported[1].content).toBe('" Vim config\nsyntax on');
   });
 
+  it('imports a local directory recursively, skipping binary files', async () => {
+    const dir = path.join(tempDir, '.kube');
+    await fs.mkdir(path.join(dir, 'cache'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'config'), 'apiVersion: v1', 'utf-8');
+    await fs.writeFile(path.join(dir, 'cache', 'x'), 'cached', 'utf-8');
+    await fs.writeFile(path.join(dir, 'blob'), Buffer.from([1, 0, 2]));
+
+    const imported = await store.importLocalDirectory(dir);
+    expect(imported.map((f) => path.relative(dir, f.path)).sort()).toEqual([path.join('cache', 'x'), 'config']);
+    expect(imported.find((f) => f.name === 'config')?.content).toBe('apiVersion: v1');
+  });
+
   it('adds files to an existing pool or creates one with addFileToPool', async () => {
     const updated = await store.addFileToPool('pool-quick', {
       remotePath: '~/.tmux.conf',

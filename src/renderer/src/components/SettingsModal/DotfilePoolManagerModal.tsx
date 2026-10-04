@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   FileCode,
   FolderOpen,
+  FolderUp,
   GitBranch,
   Loader2,
   Plus,
@@ -12,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { DotfilePool, DotfilePoolFile } from '@shared/types/dotfiles';
+import { defaultDotfileRemotePath } from '@shared/dotfilePath';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface DotfilePoolManagerModalProps {
@@ -154,17 +156,16 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     });
   };
 
-  const handleUploadFiles = async () => {
+  const handleUploadFiles = async (directory = false) => {
     if (!draft) return;
     try {
-      const imported = await window.multissh.dotfilePoolSelectFiles();
+      const imported = await window.multissh.dotfilePoolSelectFiles(directory);
       if (!imported || imported.length === 0) return;
 
       const newFiles: DotfilePoolFile[] = imported.map((f) => {
-        const remoteName = f.name.startsWith('.') ? f.name : `.${f.name}`;
         return {
           id: crypto.randomUUID(),
-          remotePath: `~/${remoteName}`,
+          remotePath: defaultDotfileRemotePath(f.path),
           content: f.content,
           mode: f.mode || '644',
           masterFileName: f.name,
@@ -198,14 +199,14 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
     const readFilesPromises = files.map(async (file) => {
       const text = await file.text();
-      const remoteName = file.name.startsWith('.') ? file.name : `.${file.name}`;
+      const localPath = (file as unknown as { path?: string }).path;
       return {
         id: crypto.randomUUID(),
-        remotePath: `~/${remoteName}`,
+        remotePath: defaultDotfileRemotePath(localPath || file.name),
         content: text,
         mode: '644',
         masterFileName: file.name,
-        masterFilePath: (file as unknown as { path?: string }).path,
+        masterFilePath: localPath,
         updatedAt: formatTimestamp(),
       } as DotfilePoolFile;
     });
@@ -391,6 +392,15 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                         >
                           <Upload className="h-3.5 w-3.5" />
                           Upload Files
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleUploadFiles(true)}
+                          className="flex items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-400 hover:bg-sky-500/20 transition-colors"
+                          title="Select a directory and upload its text files (up to 200, max 1 MB each) as master files"
+                        >
+                          <FolderUp className="h-3.5 w-3.5" />
+                          Upload Directory
                         </button>
                         <button
                           type="button"

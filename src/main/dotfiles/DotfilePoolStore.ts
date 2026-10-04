@@ -4,6 +4,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { DotfileImportedFile, DotfilePool } from '../../shared/types/dotfiles';
+import { DOTFILE_DIR_MAX_FILES, DOTFILE_DIR_MAX_FILE_BYTES } from './collectDotfileDirectory';
 
 function formatTimestamp(d = new Date()): string {
   const yyyy = d.getFullYear();
@@ -282,6 +283,50 @@ export class DotfilePoolStore {
         });
       } catch {
         // Skip files that cannot be read
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Recursively reads the text files under a local directory. Symlinks,
+   * binary files, files over 1 MiB and anything beyond the file/depth caps
+   * are skipped (same limits as pooling a remote directory).
+   */
+  public async importLocalDirectory(dir: string): Promise<DotfileImportedFile[]> {
+    const results: DotfileImportedFile[] = [];
+    const queue: Array<{ dir: string; depth: number }> = [{ dir, depth: 0 }];
+    while (queue.length > 0 && results.length < DOTFILE_DIR_MAX_FILES) {
+      const cur = queue.shift()!;
+      let entries;
+      try {
+        entries = await fs.readdir(cur.dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const e of entries) {
+        if (results.length >= DOTFILE_DIR_MAX_FILES) break;
+        if (e.isSymbolicLink()) continue;
+        const full = path.join(cur.dir, e.name);
+        if (e.isDirectory()) {
+          if (cur.depth + 1 < 8) queue.push({ dir: full, depth: cur.depth + 1 });
+          continue;
+        }
+        if (!e.isFile()) continue;
+        try {
+          const stat = await fs.stat(full);
+          if (stat.size > DOTFILE_DIR_MAX_FILE_BYTES) continue;
+          const buf = await fs.readFile(full);
+          if (buf.includes(0)) continue;
+          results.push({
+            name: e.name,
+            path: full,
+            content: buf.toString('utf-8'),
+            mode: (stat.mode & 0o777).toString(8),
+          });
+        } catch {
+          // Skip unreadable files
+        }
       }
     }
     return results;

@@ -1442,15 +1442,20 @@ export class IpcBridge {
       return await this.dotfilePoolStore.openPoolFolder(poolId);
     });
 
-    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async () => {
+    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async (_event, directory?: boolean) => {
+      const asDirectory = directory === true;
       const result = await electronDialog.showOpenDialog({
-        title: 'Select dotfiles / master files',
-        properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
+        title: asDirectory ? 'Select a directory of dotfiles' : 'Select dotfiles / master files',
+        properties: asDirectory
+          ? ['openDirectory', 'showHiddenFiles']
+          : ['openFile', 'multiSelections', 'showHiddenFiles'],
       });
       if (result.canceled || result.filePaths.length === 0) {
         return [];
       }
-      const imported = await this.dotfilePoolStore.importLocalFiles(result.filePaths);
+      const imported = asDirectory
+        ? await this.dotfilePoolStore.importLocalDirectory(result.filePaths[0])
+        : await this.dotfilePoolStore.importLocalFiles(result.filePaths);
       this.scheduleAutoSync();
       return imported;
     });

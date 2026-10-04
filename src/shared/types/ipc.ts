@@ -633,7 +633,7 @@ export interface MultiSSHApi {
   dotfilePoolsSave(pool: DotfilePool): Promise<void>;
   dotfilePoolsDelete(id: string): Promise<void>;
   dotfilePoolOpenFolder(poolId: string): Promise<string>;
-  dotfilePoolSelectFiles(): Promise<DotfileImportedFile[]>;
+  dotfilePoolSelectFiles(directory?: boolean): Promise<DotfileImportedFile[]>;
   dotfilePoolAddFromStorage(options: {
     poolId: string;
     providerId: string;

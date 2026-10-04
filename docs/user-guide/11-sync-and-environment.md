@@ -13,7 +13,7 @@ When working across dozens of remote servers, having to configure `.bashrc`, cus
 - In any SSH profile, enable **Sync Dotfiles on Connect**.
 - When the session opens, sshs3 securely stages these dotfiles in an isolated remote session directory without overwriting or polluting permanent server-wide files.
 - Your familiar aliases, prompts, and settings become immediately active in your session shell.
-- In the file manager, right-click a file **or a directory** and choose **Add to Dotfiles Pool...**. The suggested target keeps the path from the first dot-folder (`~/.kube/config`, `~/.config/nvim/init.vim`). A directory is added recursively (up to 200 text files, max 1 MB each; symlinks and binary files are skipped). Pooled files are stored unencrypted on this device, so avoid directories containing credentials.
+- In the file manager, right-click a file **or a directory** and choose **Add to Dotfiles Pool...**. The suggested target keeps the path from the first dot-folder (`~/.kube/config`, `~/.config/nvim/init.vim`). A directory is added recursively (up to 200 text files, max 1 MB each; symlinks and binary files are skipped). In the Dotfiles Pool Manager, **Upload Files** and **Upload Directory** use the same path rule. Pooled files are stored unencrypted on this device, so avoid directories containing credentials.
 
 ---
 
