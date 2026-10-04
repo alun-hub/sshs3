@@ -111,7 +111,7 @@ async function runOnce(runIndex) {
       });
       await new Promise((r) => setTimeout(r, 400));
       const t = performance.now();
-      await window.multissh.terminalWrite(sessionId, 'seq 1 400000; echo FLOODEND$((1+1))\\r');
+      await window.multissh.terminalWrite(sessionId, 'seq 1 ${process.env.FLOOD_N || 400000}; echo FLOODEND$((1+1))\\r');
       await Promise.race([done, new Promise((r) => setTimeout(r, 60000))]);
       const ms = performance.now() - t;
       po.disconnect();
@@ -134,7 +134,36 @@ async function runOnce(runIndex) {
       return { entries: n, ms: times };
     })()`);
 
-    return { rendererRenderedMs: tRendered, pageTargetMs: tPage, ...startup, flood, list };
+    // --- Scenario: the same flood through a real TerminalView (xterm parsing + rendering)
+    await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('New Terminal')); if (!b) throw new Error('New Terminal button not found'); b.click(); })()`);
+    await evaluate(`new Promise((res, rej) => { let n = 0; const f = () => document.querySelector('.xterm-helper-textarea') ? res(true) : ++n > 200 ? rej(new Error('no xterm')) : setTimeout(f, 50); f(); })`);
+    await new Promise((r) => setTimeout(r, 1500)); // shell prompt
+    await evaluate(`(() => {
+      window.__bench = { frames: 0, maxGap: 0, last: performance.now(), long: [] };
+      const tick = (t) => { const b = window.__bench; b.maxGap = Math.max(b.maxGap, t - b.last); b.last = t; b.frames++; b.raf = requestAnimationFrame(tick); };
+      window.__bench.raf = requestAnimationFrame(tick);
+      new PerformanceObserver((l) => l.getEntries().forEach((e) => window.__bench.long.push(e.duration))).observe({ entryTypes: ['longtask'] });
+      document.querySelector('.xterm-helper-textarea').focus();
+    })()`);
+    const tType = Date.now();
+    await send('Input.insertText', { text: `seq 1 ${process.env.FLOOD_N || 400000}; echo FLOODEND$((1+1))` });
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    const xt = await evaluate(`new Promise((res) => {
+      const t0 = performance.now();
+      const f = () => {
+        const rows = document.querySelector('.xterm-rows')?.innerText ?? '';
+        if (/^FLOODEND2/m.test(rows) || performance.now() - t0 > 120000) {
+          const b = window.__bench; cancelAnimationFrame(b.raf);
+          res({ ms: Math.round(performance.now() - t0), frames: b.frames, maxFrameGapMs: Math.round(b.maxGap),
+            longTasks: b.long.length, longTaskTotalMs: Math.round(b.long.reduce((a, c) => a + c, 0)), timedOut: performance.now() - t0 > 120000 });
+        } else setTimeout(f, 25);
+      };
+      f();
+    })`);
+    void tType;
+
+    return { rendererRenderedMs: tRendered, pageTargetMs: tPage, ...startup, flood, list, xt };
   } finally {
     try {
       ws?.close();
@@ -174,6 +203,14 @@ const summary = {
     avgChunkBytes: pick((r) => r.flood.avgChunk),
     rendererLongTasks: pick((r) => r.flood.longTasks),
     rendererLongTaskTotalMs: pick((r) => r.flood.longTaskTotalMs),
+  },
+  terminalUiFlood: {
+    ms: pick((r) => r.xt.ms),
+    frames: pick((r) => r.xt.frames),
+    maxFrameGapMs: pick((r) => r.xt.maxFrameGapMs),
+    longTasks: pick((r) => r.xt.longTasks),
+    longTaskTotalMs: pick((r) => r.xt.longTaskTotalMs),
+    timedOut: runs.some((r) => r.xt.timedOut),
   },
   list10kFiles: { entries: runs[0].list.entries, firstCallMs: pick((r) => r.list.ms[0]), repeatMs: pick((r) => r.list.ms[2]) },
 };
