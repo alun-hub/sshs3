@@ -7,6 +7,10 @@
 # creates an annotated git tag (e.g. v0.96.3), and pushes both the branch
 # and tag to GitHub to trigger the release workflow in GitHub Actions.
 #
+# Optionally also publishes the sshs3-site (sshs3.com / docs.sshs3.com) Cloudflare
+# Worker: syncs screenshots, commits and pushes the site repo, runs `wrangler deploy`.
+# By default this happens only when docs/ changed since the previous tag.
+#
 
 set -euo pipefail
 
@@ -27,6 +31,8 @@ SKIP_CHECKS=false
 DRY_RUN=false
 COMMIT_MSG=""
 VERSION_TYPE="patch"
+SITE_MODE="auto"   # auto | on | off
+SITE_DIR="${SSHS3_SITE_DIR:-$REPO_ROOT/../sshs3-site}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -37,6 +43,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN=true
+      shift
+      ;;
+    --site)
+      SITE_MODE="on"
+      shift
+      ;;
+    --no-site)
+      SITE_MODE="off"
       shift
       ;;
     --minor)
@@ -66,9 +80,13 @@ while [[ $# -gt 0 ]]; do
       echo "  -m, --message <msg>   Custom commit message (defaults to 'chore: release v<version>')"
       echo "  --skip-checks         Skip typecheck, lint, and test before deploying"
       echo "  --dry-run             Simulate version bump and commit without pushing or writing git state"
+      echo "  --site                Always deploy sshs3-site after the release (default: only if docs/ changed)"
+      echo "  --no-site             Never deploy sshs3-site"
       echo "  --minor               Bump minor version instead of patch"
       echo "  --major               Bump major version instead of patch"
       echo "  -h, --help            Show this help message"
+      echo ""
+      echo "Environment: SSHS3_SITE_DIR overrides the sshs3-site checkout (default: ../sshs3-site)."
       echo ""
       echo -e "${BOLD}Examples:${RESET}"
       echo "  ./deploy.sh"
@@ -207,6 +225,21 @@ else
   echo -e "${GREEN}✓ Drafted CHANGELOG.md entry for ${NEW_VERSION} (edit it before the next release if needed).${RESET}"
 fi
 
+# 4c. Decide whether sshs3-site should be deployed (docs/ changed since last tag, or forced)
+LAST_TAG_FOR_SITE="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+DO_SITE=false
+if [[ "$SITE_MODE" == "on" ]]; then
+  DO_SITE=true
+elif [[ "$SITE_MODE" == "auto" ]]; then
+  if [[ -z "$LAST_TAG_FOR_SITE" ]] || [[ -n "$(git diff --name-only "$LAST_TAG_FOR_SITE" -- docs)" ]]; then
+    DO_SITE=true
+  fi
+fi
+if [[ "$DO_SITE" == "true" && ! -d "$SITE_DIR/.git" ]]; then
+  echo -e "${YELLOW}Warning: sshs3-site not found at ${SITE_DIR}; skipping site deploy (set SSHS3_SITE_DIR).${RESET}"
+  DO_SITE=false
+fi
+
 # 5. Format commit message
 if [[ -z "$COMMIT_MSG" ]]; then
   FINAL_COMMIT_MSG="chore: release ${TAG}"
@@ -222,6 +255,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "  3. git tag -a \"${TAG}\" -m \"Release ${TAG}\""
   echo "  4. git push origin \"${CURRENT_BRANCH}\""
   echo "  5. git push origin \"${TAG}\""
+  if [[ "$DO_SITE" == "true" ]]; then
+    echo "  6. sshs3-site (${SITE_DIR}): sync screenshots, commit, push, npx wrangler deploy"
+  else
+    echo "  6. (sshs3-site deploy skipped: ${SITE_MODE})"
+  fi
   
   # Revert version bump for dry run
   restore_backups
@@ -254,7 +292,65 @@ echo -e "\n${CYAN}Pushing branch '${CURRENT_BRANCH}' and tag '${TAG}' to GitHub.
 git push origin "${CURRENT_BRANCH}"
 git push origin "${TAG}"
 
-# 10. Summary
+# 10. Deploy sshs3-site (Cloudflare Worker). The release is already pushed at this point,
+# so a failure here only warns; re-run the printed commands manually.
+#
+# Written as a function with explicit `|| return 1` after every step: `set -e` is ignored inside
+# anything that runs as an `if` condition (including a `( set -e; ... )` subshell), so a failing
+# sync, commit or push would otherwise be skipped over and `wrangler deploy` would still run.
+deploy_site() {
+  # Keep the screenshot sync pointed at the same checkout we commit in (sync-docs.mjs defaults to
+  # ../sshs3-site and would otherwise ignore SSHS3_SITE_DIR).
+  SSHS3_SITE_DOCS_DIR="$SITE_DIR/public/docs" node "$REPO_ROOT/scripts/sync-docs.mjs" >/dev/null || return 1
+
+  cd "$SITE_DIR" || return 1
+
+  # Only the synced assets may be committed. Refuse to sweep unrelated work in the site repo into a
+  # release commit.
+  local stray
+  stray="$(git status --porcelain -- . ':(exclude)public/img' ':(exclude)public/docs')" || return 1
+  if [[ -n "$stray" ]]; then
+    echo -e "${YELLOW}sshs3-site has uncommitted changes outside public/img and public/docs; commit or stash them first:${RESET}" >&2
+    echo "$stray" >&2
+    return 1
+  fi
+
+  git add -- public/img public/docs || return 1
+  if ! git diff --cached --quiet; then
+    git commit -m "docs: sync from sshs3 ${TAG}" || return 1
+  fi
+
+  # Without an upstream there is nothing to compare against: fail loudly instead of silently
+  # skipping the push and deploying a Worker built from a local-only commit.
+  local site_branch ahead
+  site_branch="$(git rev-parse --abbrev-ref HEAD)" || return 1
+  if ! git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+    echo -e "${YELLOW}sshs3-site branch '${site_branch}' has no upstream; run: git -C ${SITE_DIR} push -u origin ${site_branch}${RESET}" >&2
+    return 1
+  fi
+  ahead="$(git rev-list --count '@{u}..HEAD')" || return 1
+  if [[ "$ahead" -gt 0 ]]; then
+    git push origin "$site_branch" || return 1
+  fi
+
+  npx wrangler deploy || return 1
+}
+
+SITE_RESULT="skipped"
+if [[ "$DO_SITE" == "true" ]]; then
+  echo -e "\n${CYAN}Deploying sshs3-site from ${SITE_DIR}...${RESET}"
+  # Subshell so the `cd` above does not move the rest of this script.
+  if (deploy_site); then
+    SITE_RESULT="deployed"
+    echo -e "${GREEN}✓ sshs3-site deployed.${RESET}"
+  else
+    SITE_RESULT="FAILED"
+    echo -e "${YELLOW}⚠ sshs3-site deploy failed. The release itself is unaffected. Fix the cause above, then retry manually:${RESET}"
+    echo "    cd ${SITE_DIR} && git push && npx wrangler deploy"
+  fi
+fi
+
+# 11. Summary
 echo -e "\n${BOLD}${GREEN}===============================================${RESET}"
 echo -e "${BOLD}${GREEN}🚀 Release ${TAG} successfully pushed!${RESET}"
 echo -e "${BOLD}${GREEN}===============================================${RESET}"
@@ -262,6 +358,7 @@ echo -e "• Version:        ${OLD_VERSION} -> ${BOLD}${NEW_VERSION}${RESET}"
 echo -e "• Git Tag:        ${BOLD}${TAG}${RESET}"
 echo -e "• Branch:         ${BOLD}${CURRENT_BRANCH}${RESET}"
 echo -e "• Commit:         ${FINAL_COMMIT_MSG}"
+echo -e "• sshs3-site:     ${SITE_RESULT}"
 echo ""
 echo -e "GitHub Actions will now build and publish the release artifacts:"
 echo -e "${CYAN}https://github.com/alun-hub/sshs3/actions${RESET}"
