@@ -18,6 +18,8 @@ export interface PerfBarProps {
   items: PerfMetricId[];
   /** Shown in the tooltip and the detail view header, e.g. the host or pod name. */
   title?: string;
+  /** Local shell pane: there is no remote host to ping, so the Ping cell is hidden. */
+  local?: boolean;
 }
 
 const levelClass = (pct: number | null): string =>
@@ -54,10 +56,10 @@ const CoreBars: React.FC<{ pcts: number[] }> = ({ pcts }) => (
 );
 
 /** One-row performance bar rendered above a terminal. Layout, metrics and polling are decided by the caller. */
-export const PerfBar: React.FC<PerfBarProps> = ({ kind, state, layout, items, title }) => {
+export const PerfBar: React.FC<PerfBarProps> = ({ kind, state, layout, items, title, local }) => {
   const [detailOpen, setDetailOpen] = useState(false);
   const latest = state.history[state.history.length - 1];
-  const shown = items.filter((id) => metricApplies(kind, id));
+  const shown = items.filter((id) => metricApplies(kind, id) && !(local && id === 'latency'));
   const recent = state.history.slice(-PERF_SPARK_POINTS);
   // Theme tokens (not fixed slate shades) so the bar matches the pane header in dark, light and breeze alike.
   const base =

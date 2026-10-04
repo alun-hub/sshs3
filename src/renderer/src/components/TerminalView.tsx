@@ -692,7 +692,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       } ${className}`}
     >
       {perfMetrics && perfKind && (
-        <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} title={perfTitle} />
+        <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} title={perfTitle} local={Boolean(local)} />
       )}
       {/* Padding sits on this wrapper, not on the xterm container: FitAddon reads the parent's
           border-box height and only subtracts the xterm element's own padding, so padding on the
