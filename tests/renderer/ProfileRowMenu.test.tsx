@@ -94,4 +94,30 @@ describe('ProfileRowMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     off();
   });
+
+  it('keeps the menu open when something unrelated scrolls (e.g. a background terminal)', () => {
+    const { cleanup: off } = setup();
+    const unrelated = document.createElement('div');
+    document.body.appendChild(unrelated);
+    fireEvent.click(screen.getByTitle('More actions'));
+
+    fireEvent.scroll(unrelated);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.scroll(document);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    unrelated.remove();
+    off();
+  });
+
+  it('goes to the last item on ArrowUp when focus is not on an item', () => {
+    const { cleanup: off } = setup();
+    fireEvent.click(screen.getByTitle('More actions'));
+    const items = screen.getAllByRole('menuitem');
+    (document.activeElement as HTMLElement).blur();
+
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
+    expect(items[items.length - 1]).toHaveFocus();
+    off();
+  });
 });

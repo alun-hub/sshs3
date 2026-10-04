@@ -48,11 +48,11 @@ function shellQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
-// Foreground colours are >= 6:1 on the #f8fafc background (low-contrast displays need the headroom).
-// "White" and "bright white" are the awkward pair on a light surface: programs use them both as text
-// (should be dark) and as a fill behind black text (htop bars, vim/tmux status lines, diff highlights).
-// Following VS Code's Light+ theme, they are mid greys: readable as a fill under dark text, and
-// `minimumContrastRatio` darkens them further when they are used as text.
+// Every ANSI foreground is >= 7:1 on the #f8fafc background, so `minimumContrastRatio` 7 never has to
+// rewrite the palette itself (only 256-colour / truecolor output from programs). "White" and
+// "bright white" are the awkward pair on a light surface: programs use them as text (should be dark)
+// and as a fill behind black text (htop bars, vim/tmux status lines, diff highlights). They are light
+// greys here: black text on them is 12-14:1, and when they are used as text xterm simply darkens them.
 const XTERM_LIGHT_THEME = {
   background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
   foreground: '#0f172a', // slate-900
@@ -60,21 +60,21 @@ const XTERM_LIGHT_THEME = {
   cursorAccent: '#f8fafc',
   selectionBackground: '#bfdbfe', // Blue-200: visible against the page, text stays readable
   black: '#0f172a',
-  red: '#b91c1c',
-  green: '#166534',
-  yellow: '#854d0e',
+  red: '#a61b1b',
+  green: '#14532d',
+  yellow: '#713f12',
   blue: '#075985',
-  magenta: '#7e22ce',
-  cyan: '#155e75',
-  white: '#64748b',
+  magenta: '#6b21a8',
+  cyan: '#164e63',
+  white: '#cbd5e1',
   brightBlack: '#475569',
-  brightRed: '#b91c1c',
-  brightGreen: '#166534',
-  brightYellow: '#854d0e',
+  brightRed: '#a61b1b',
+  brightGreen: '#14532d',
+  brightYellow: '#713f12',
   brightBlue: '#075985',
-  brightMagenta: '#7e22ce',
-  brightCyan: '#155e75',
-  brightWhite: '#94a3b8',
+  brightMagenta: '#6b21a8',
+  brightCyan: '#164e63',
+  brightWhite: '#e2e8f0',
 };
 
 const XTERM_DARK_THEME = {

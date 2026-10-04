@@ -131,4 +131,58 @@ describe('modal stack (useModalDismiss / useEscapeToClose)', () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
+
+  it('ranks correctly under React.StrictMode (double-invoked render and effects)', () => {
+    const parent = vi.fn();
+    const child = vi.fn();
+    const Tree: React.FC<{ showChild: boolean }> = ({ showChild }) => (
+      <React.StrictMode>
+        <Modal onClose={parent}>{showChild && <Modal onClose={child} />}</Modal>
+      </React.StrictMode>
+    );
+    const { rerender } = render(<Tree showChild={false} />);
+    rerender(<Tree showChild />);
+
+    esc();
+    expect(child).toHaveBeenCalledTimes(1);
+    expect(parent).not.toHaveBeenCalled();
+
+    rerender(<Tree showChild={false} />);
+    esc();
+    expect(parent).toHaveBeenCalledTimes(1);
+  });
+
+  it('ranks a child above its parent when both mount together under StrictMode', () => {
+    const parent = vi.fn();
+    const child = vi.fn();
+    render(
+      <React.StrictMode>
+        <Modal onClose={parent}>
+          <Modal onClose={child} />
+        </Modal>
+      </React.StrictMode>
+    );
+
+    esc();
+    expect(child).toHaveBeenCalledTimes(1);
+    expect(parent).not.toHaveBeenCalled();
+  });
+
+  it('a modal that mounts closed and opens later ranks above one that was already open', () => {
+    const early = vi.fn();
+    const late = vi.fn();
+    const App: React.FC<{ lateActive: boolean }> = ({ lateActive }) => (
+      <>
+        <Modal onClose={late} active={lateActive} />
+        <Modal onClose={early} />
+      </>
+    );
+    // `late` mounts first (lower mount rank) but is closed; opening it afterwards must put it on top.
+    const { rerender } = render(<App lateActive={false} />);
+    rerender(<App lateActive />);
+
+    esc();
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(early).not.toHaveBeenCalled();
+  });
 });

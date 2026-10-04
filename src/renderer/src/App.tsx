@@ -811,7 +811,7 @@ export const App: React.FC = () => {
           file names, hostnames and other content below stays selectable. */}
       <header
         ref={headerRef}
-        className="flex h-10 shrink-0 items-center border-b border-divider bg-app-surface select-none"
+        className="relative flex h-10 shrink-0 items-center bg-app-surface select-none after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-0 after:h-px after:bg-divider"
       >
         {/* Clicking the brand shows the landing page again; tabs stay open and mounted (no tab is active). */}
         <button

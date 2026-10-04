@@ -38,7 +38,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       .finally(() => setLoading(false));
   }, [open, providerId, targetPath]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+  const handleBackdropClick = useModalDismiss(onClose, open, !saving);
 
   if (!open) return null;
 

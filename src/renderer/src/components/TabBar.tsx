@@ -151,7 +151,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               }}
               className={`group relative flex max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
                 isActive
-                  ? '-mb-px h-[33px] bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
+                  ? 'z-10 h-[34px] bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
                   : 'h-[30px] bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
               }`}
             >

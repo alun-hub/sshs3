@@ -48,11 +48,12 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
       close();
       buttonRef.current?.focus();
     };
-    // The menu is positioned from the trigger's rect at open time, so any scroll (the modal body, the
-    // profile list) would leave it detached from its row: close instead of following.
+    // The menu is positioned from the trigger's rect at open time, so scrolling the modal body or the
+    // profile list (anything containing the trigger) would leave it detached from its row: close instead
+    // of following. Scrolls elsewhere, such as a background terminal receiving output, must not close it.
     const onScroll = (e: Event) => {
-      if (menuRef.current?.contains(e.target as Node)) return;
-      close();
+      const target = e.target;
+      if (target === document || (target instanceof Node && target.contains(buttonRef.current))) close();
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown, true);
@@ -75,8 +76,8 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
     if (entries.length === 0) return;
     const current = entries.indexOf(document.activeElement as HTMLButtonElement);
     let next: number | null = null;
-    if (e.key === 'ArrowDown') next = (current + 1) % entries.length;
-    else if (e.key === 'ArrowUp') next = (current - 1 + entries.length) % entries.length;
+    if (e.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % entries.length;
+    else if (e.key === 'ArrowUp') next = current < 0 ? entries.length - 1 : (current - 1 + entries.length) % entries.length;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = entries.length - 1;
     else if (e.key === 'Tab') {

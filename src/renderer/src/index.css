@@ -359,14 +359,18 @@ body,
   }
 }
 
-/* Light theme: disabled controls stay noticeably "off" but remain readable (the default 40% opacity
-   leaves white-on-blue buttons at ~2.5:1, which vanishes on a washed-out display). */
-.light :is(button, input, select, textarea):disabled {
+/* Light theme: disabled controls stay noticeably "off" but remain readable (the 40-50% opacities used
+   across the app leave white-on-blue buttons at ~2.5:1, which vanishes on a washed-out display).
+   Only those two utilities are overridden; the deliberately fainter disabled:opacity-30 icon buttons keep
+   their own value. */
+.light .disabled\:opacity-40:disabled,
+.light .disabled\:opacity-50:disabled {
   opacity: 0.65;
 }
 
-/* Dark and Breeze: same idea, slightly less opaque since light text on dark loses less contrast. */
-html:not(.light) :is(button, input, select, textarea):disabled {
+/* Dark and Breeze: same idea for the faintest value (40%), slightly less opaque since light text on dark
+   loses less contrast. */
+html:not(.light) .disabled\:opacity-40:disabled {
   opacity: 0.55;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Modals that are currently open, ordered by when they were opened. Escape goes to the topmost one
@@ -21,9 +21,11 @@ let openCounter = 0;
  * The listener is window-wide, so it fires regardless of where focus is (e.g. a terminal's hidden
  * textarea), and always sees the latest `onEscape`.
  *
- * Position on the stack is decided at render time, when `active` turns true: a parent renders before
- * its child even though the child's effects run first, and a modal that is re-activated later ranks
- * above one opened in between.
+ * Ranking: a modal that is already open when it mounts takes its rank from mount order. Render order is
+ * parent-before-child, so a child that mounts in the same commit as its parent still ends up above it,
+ * although its effects run first. A modal that opens later, or re-opens, takes the next rank when it
+ * becomes active and so sits above everything opened in the meantime. The rank survives React's
+ * StrictMode double-invoked effects, because it is only forgotten when the modal actually closes.
  */
 export function useEscapeToClose(onEscape: () => void, active: boolean, enabled = true): void {
   const callbackRef = useRef(onEscape);
@@ -31,10 +33,23 @@ export function useEscapeToClose(onEscape: () => void, active: boolean, enabled 
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
-  const seq = useMemo(() => (active ? ++openCounter : 0), [active]);
+  const [mountRank] = useState(() => ++openCounter);
+  const mountedActive = useRef(active);
+  const usedMountRank = useRef(false);
+  const rankRef = useRef<number | null>(null);
+
+  // Forget the rank when the modal closes, so the next opening is ranked afresh.
+  useEffect(() => {
+    if (!active) rankRef.current = null;
+  }, [active]);
 
   useEffect(() => {
     if (!active) return;
+    if (rankRef.current === null) {
+      rankRef.current = mountedActive.current && !usedMountRank.current ? mountRank : ++openCounter;
+      usedMountRank.current = true;
+    }
+    const seq = rankRef.current;
     const entry: StackEntry = { id: Symbol('modal'), seq };
     let at = modalStack.length;
     while (at > 0 && modalStack[at - 1].seq > seq) at--;
@@ -52,7 +67,7 @@ export function useEscapeToClose(onEscape: () => void, active: boolean, enabled 
       const idx = modalStack.indexOf(entry);
       if (idx !== -1) modalStack.splice(idx, 1);
     };
-  }, [active, seq]);
+  }, [active, mountRank]);
 }
 
 /**
