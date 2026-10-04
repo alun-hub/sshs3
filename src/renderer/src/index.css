@@ -53,9 +53,11 @@
   --border-subtle: #1e283d;
   --border-strong: #2e3c59;
 
+  /* Muted was 3.2-4.2:1 on hover rows and tinted (selected) cards; raised so it holds >= 4.5:1 there,
+     with secondary lifted by the same step to keep the hierarchy. */
   --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #7c8aa0;
+  --text-secondary: #b8c4d6;
+  --text-muted: #99a6bb;
 
   --accent-primary: #0284c7;
   --accent-hover: #0369a1;
@@ -98,16 +100,55 @@
   --bg-card: #31363b;
   --bg-input: #232627;
 
-  --border-subtle: #41474d;
-  --border-strong: #616870;
+  /* Borders were 1.3:1 against the cards, so panels and fields melted together. Subtle now reaches
+     3.3:1 on the (darker) input background and 2.7:1 on cards; strong is 3.9:1 on cards. */
+  --border-subtle: #6e777d;
+  --border-strong: #8a9397;
 
+  /* Secondary used to be almost the same colour as primary (no hierarchy); muted gained headroom so
+     it stays >= 4.8:1 even on hover surfaces and tinted selections. */
   --text-primary: #fcfcfc;
-  --text-secondary: #eff0f1;
-  --text-muted: #97a3a4;
+  --text-secondary: #dce0e1;
+  --text-muted: #b2bbbc;
 
   --accent-primary: #3daee9;
   --accent-hover: #1d9bf3;
   --accent-subtle: rgba(61, 174, 233, 0.15);
+
+  /* The 400 text shades are tuned for the navy dark theme; on Breeze's lighter grey surfaces (and on
+     tinted chips) they fall to ~3.4-4.2:1, so use the 300 shade there. */
+  --color-sky-400: #7dd3fc;
+  --color-indigo-400: #a5b4fc;
+  --color-emerald-400: #6ee7b7;
+  --color-red-400: #fca5a5;
+  --color-rose-400: #fda4af;
+  --color-amber-400: #fcd34d;
+  --color-purple-400: #d8b4fe;
+}
+
+/*
+ * Dark and Breeze: solid fills that carry white text. White on sky-600 is 4.1:1 and on emerald-600
+ * 3.8:1 (hover shades are lower still), so the primary / connect / delete buttons use slightly deeper
+ * fills here. Only the fill utilities are overridden (not the palette variables), so sky-500 borders,
+ * rings and tints keep their brighter look. Light has its own palette remap below.
+ */
+html:not(.light) .bg-sky-600 {
+  background-color: #0369a1;
+}
+html:not(.light) .hover\:bg-sky-500:hover {
+  background-color: #0374b0;
+}
+html:not(.light) .bg-emerald-600 {
+  background-color: #047857;
+}
+html:not(.light) .hover\:bg-emerald-500:hover {
+  background-color: #05805f;
+}
+html:not(.light) .bg-red-600 {
+  background-color: #b91c1c;
+}
+html:not(.light) .hover\:bg-red-500:hover {
+  background-color: #dc2626;
 }
 
 /*
@@ -316,6 +357,11 @@ body,
    leaves white-on-blue buttons at ~2.5:1, which vanishes on a washed-out display). */
 .light :is(button, input, select, textarea):disabled {
   opacity: 0.65;
+}
+
+/* Dark and Breeze: same idea, slightly less opaque since light text on dark loses less contrast. */
+html:not(.light) :is(button, input, select, textarea):disabled {
+  opacity: 0.55;
 }
 
 /* Respect the OS "reduce motion" setting: drop decorative motion (entrance, pulse, ping, bounce, slide)

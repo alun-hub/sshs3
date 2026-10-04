@@ -135,9 +135,13 @@ function getXTermTheme(themeName: 'dark' | 'light' | 'breeze' | 'system') {
   return XTERM_DARK_THEME;
 }
 
-/** On the light theme xterm nudges any too-pale colour (256-colour / truecolor output) up to AAA (7:1). */
+/** xterm nudges colours that are too dim (256-colour / truecolor output) up to AAA (7:1) on light, AA on Breeze. */
 function minContrastFor(themeName: 'dark' | 'light' | 'breeze' | 'system'): number {
-  return getXTermTheme(themeName) === XTERM_LIGHT_THEME ? 7 : 1;
+  const theme = getXTermTheme(themeName);
+  if (theme === XTERM_LIGHT_THEME) return 7;
+  // Breeze's palette has a few colours that are dim on its grey background (e.g. bright red).
+  if (theme === XTERM_BREEZE_THEME) return 4.5;
+  return 1;
 }
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
