@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.20] - 2026-10-04
+
+### Added
+- encrypted clipboard history for terminal selections
+- prune old GitHub releases after a release
+
+### Fixed
+- address code-review findings
+- never persist history in plaintext
+- hide the Ping cell in the performance bar for local shell panes
+
+### Changed
+- restore SettingsModal formatting
+- refresh README screenshots for the updated Breeze UI
+
 ## [0.96.19] - 2026-10-04
 
 ### Added
