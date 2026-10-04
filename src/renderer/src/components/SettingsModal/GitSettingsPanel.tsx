@@ -357,17 +357,17 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
             {keys.map((k) => {
               const isSigning = isKeyActiveSigning(k);
               return (
-                <div key={k.id} className="flex items-center justify-between gap-3 p-3 hover:bg-app-surface-hover/50 transition-colors">
+                <div key={k.id} className="flex flex-col gap-2 p-3 hover:bg-app-surface-hover/50 transition-colors">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="truncate font-medium text-txt-primary">{k.label}</span>
                       <span
-                        className="rounded bg-app-card px-1.5 py-0.5 text-[10px] uppercase text-txt-muted border border-border-subtle"
+                        className="shrink-0 whitespace-nowrap rounded bg-app-card px-1.5 py-0.5 text-[10px] uppercase text-txt-muted border border-border-subtle"
                       >
                         {SOURCE_LABEL[k.source] || k.source}
                       </span>
                       {isSigning && (
-                        <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
+                        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
                           <Check className="h-3 w-3" /> Active Signing Key
                         </span>
                       )}
@@ -378,7 +378,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {/* Copy Raw Key */}
                     <button
                       type="button"

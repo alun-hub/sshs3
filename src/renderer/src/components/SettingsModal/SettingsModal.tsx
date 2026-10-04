@@ -395,7 +395,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     {
       group: 'Appearance',
       items: [
-        { id: 'general', label: 'General & Appearance', icon: Sliders },
+        { id: 'general', label: 'General', icon: Sliders },
         { id: 'terminal', label: 'Terminal', icon: Terminal },
         { id: 'performance', label: 'Performance', icon: Activity },
       ],
@@ -431,11 +431,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      {/* max-h instead of a fixed h- (UX review, section 7/8.7): a fixed
-          height left sparse categories (General, Files & Storage) with
-          ~60% empty space while dense ones needed to scroll. Letting the
-          modal size to its content, capped at 85vh, fixes both. */}
-      <div className="flex max-h-[85vh] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      {/* Fixed height (capped at 680px / 85vh): sizing to content made the dialog
+          change height and jump on screen every time a different category was
+          selected. Sparse categories now leave some empty space instead. */}
+      <div className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -1723,7 +1722,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
 
-                  <div className="max-h-[330px] space-y-1.5 overflow-y-auto pr-1">
+                  <div className="space-y-1">
                     {filteredShortcuts.map((def) => {
                       const currentKey = shortcuts[def.id] || def.defaultKeys;
                       const isRecording = recordingAction === def.id;
@@ -1731,11 +1730,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       return (
                         <div
                           key={def.id}
-                          className="flex items-center justify-between rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs"
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs"
                         >
-                          <div>
-                            <div className="font-medium text-txt-primary">{def.name}</div>
-                            <div className="text-2xs text-txt-muted">{def.category}</div>
+                          <div className="flex min-w-0 items-baseline gap-2">
+                            <span className="truncate font-medium text-txt-primary">{def.name}</span>
+                            <span className="shrink-0 text-2xs text-txt-muted">{def.category}</span>
                           </div>
 
                           <div>
@@ -1744,7 +1743,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 type="button"
                                 onKeyDown={(e) => handleKeyDownRecord(e, def.id)}
                                 autoFocus
-                                className="rounded-md border border-sky-500 bg-sky-950 px-2.5 py-1 font-mono text-xs text-sky-300 outline-none animate-pulse"
+                                className="rounded-md border border-sky-500 bg-sky-950 px-2.5 py-0.5 font-mono text-xs text-sky-300 outline-none animate-pulse"
                               >
                                 Press keys (Esc to cancel)...
                               </button>
@@ -1752,7 +1751,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => setRecordingAction(def.id)}
-                                className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1 font-mono text-xs text-txt-primary hover:border-sky-500 hover:text-sky-400 transition-colors"
+                                className="rounded-md border border-border-subtle bg-app-input px-2.5 py-0.5 font-mono text-xs text-txt-primary hover:border-sky-500 hover:text-sky-400 transition-colors"
                               >
                                 {currentKey}
                               </button>
