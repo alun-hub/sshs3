@@ -97,7 +97,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
         const isHovered = dragOverSegment === segment.path;
         return (
           <React.Fragment key={segment.path}>
-            {idx > 0 && <span className="text-txt-muted opacity-50">/</span>}
+            {idx > 0 && <span className="text-txt-muted">/</span>}
             <button
               type="button"
               onClick={() => onNavigate(segment.path)}

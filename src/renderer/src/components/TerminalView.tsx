@@ -48,31 +48,32 @@ function shellQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
-// Foreground colours are >= 4.5:1 on the #f8fafc background. "White" and "bright white" are the awkward
-// pair on a light surface: programs use them both as text (should be dark) and as a fill behind black text
-// (htop bars, vim/tmux status lines, diff highlights). Following VS Code's Light+ theme, they are mid greys:
-// readable as a fill under dark text, and `minimumContrastRatio` darkens them further when they are used as text.
+// Foreground colours are >= 6:1 on the #f8fafc background (low-contrast displays need the headroom).
+// "White" and "bright white" are the awkward pair on a light surface: programs use them both as text
+// (should be dark) and as a fill behind black text (htop bars, vim/tmux status lines, diff highlights).
+// Following VS Code's Light+ theme, they are mid greys: readable as a fill under dark text, and
+// `minimumContrastRatio` darkens them further when they are used as text.
 const XTERM_LIGHT_THEME = {
   background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
-  foreground: '#1e293b', // Crisp slate-800 instead of black
-  cursor: '#0369a1', // Sky-700
+  foreground: '#0f172a', // slate-900
+  cursor: '#075985', // Sky-800
   cursorAccent: '#f8fafc',
   selectionBackground: '#bfdbfe', // Blue-200: visible against the page, text stays readable
-  black: '#1e293b',
+  black: '#0f172a',
   red: '#b91c1c',
-  green: '#15803d',
-  yellow: '#a16207',
-  blue: '#0369a1',
+  green: '#166534',
+  yellow: '#854d0e',
+  blue: '#075985',
   magenta: '#7e22ce',
-  cyan: '#0e7490',
+  cyan: '#155e75',
   white: '#64748b',
-  brightBlack: '#64748b',
-  brightRed: '#dc2626',
-  brightGreen: '#15803d',
-  brightYellow: '#a16207',
-  brightBlue: '#0369a1',
-  brightMagenta: '#9333ea',
-  brightCyan: '#0e7490',
+  brightBlack: '#475569',
+  brightRed: '#b91c1c',
+  brightGreen: '#166534',
+  brightYellow: '#854d0e',
+  brightBlue: '#075985',
+  brightMagenta: '#7e22ce',
+  brightCyan: '#155e75',
   brightWhite: '#94a3b8',
 };
 
@@ -134,9 +135,9 @@ function getXTermTheme(themeName: 'dark' | 'light' | 'breeze' | 'system') {
   return XTERM_DARK_THEME;
 }
 
-/** On the light theme xterm nudges any too-pale colour (256-colour / truecolor output) until it is readable. */
+/** On the light theme xterm nudges any too-pale colour (256-colour / truecolor output) up to AAA (7:1). */
 function minContrastFor(themeName: 'dark' | 'light' | 'breeze' | 'system'): number {
-  return getXTermTheme(themeName) === XTERM_LIGHT_THEME ? 4.5 : 1;
+  return getXTermTheme(themeName) === XTERM_LIGHT_THEME ? 7 : 1;
 }
 
 export const TerminalView: React.FC<TerminalViewProps> = ({

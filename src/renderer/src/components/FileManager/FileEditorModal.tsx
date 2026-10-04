@@ -903,7 +903,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             </div>
           ) : isMarkdown && markdownPreview ? (
             <div className="flex-1 h-full overflow-auto p-6">
-              <div className="markdown-preview max-w-3xl mx-auto prose prose-invert prose-sm sm:prose-base prose-headings:font-semibold prose-a:text-sky-400 prose-pre:bg-app-surface prose-pre:border prose-pre:border-border-subtle prose-code:text-sky-300">
+              <div className="markdown-preview max-w-3xl mx-auto prose prose-sm sm:prose-base prose-headings:font-semibold prose-a:text-sky-400 prose-pre:bg-app-surface prose-pre:border prose-pre:border-border-subtle prose-code:text-sky-300">
                 <Suspense
                   fallback={
                     <div className="flex items-center gap-2 text-txt-muted text-sm">

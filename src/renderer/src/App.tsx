@@ -823,7 +823,7 @@ export const App: React.FC = () => {
           <BrandLogo className="h-5 w-auto" />
           <span className="font-bold tracking-wide">
             <span className="text-txt-primary">ssh</span>
-            <span className="text-[#EAB308]">S3</span>
+            <span className="text-brand-s3">S3</span>
           </span>
         </button>
 
@@ -873,7 +873,7 @@ export const App: React.FC = () => {
                   }
                 >
                   <span className="text-txt-primary">ssh</span>
-                  <span className="text-[#EAB308]">S3</span>
+                  <span className="text-brand-s3">S3</span>
                 </h1>
                 {recentSSH.length === 0 && (
                   <p className="text-xs text-txt-muted max-w-md">

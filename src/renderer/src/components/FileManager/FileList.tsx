@@ -726,9 +726,9 @@ export const FileList: React.FC<FileListProps> = ({
                   className={classNames(
                     'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-border-subtle/60 px-3 text-sm select-none transition-colors outline-none',
                     selected
-                      ? 'bg-sky-500/15 text-txt-primary font-medium'
+                      ? 'bg-sky-500/15 text-txt-primary font-medium [&>span]:text-txt-secondary'
                       : 'text-txt-primary hover:bg-app-surface-hover',
-                    isFocused && 'ring-1 ring-inset ring-sky-400 bg-sky-500/25',
+                    isFocused && 'ring-1 ring-inset ring-sky-400 bg-sky-500/25 [&>span]:text-txt-secondary',
                     isDropHover && 'ring-1 ring-inset ring-sky-400 bg-sky-500/20 animate-pulse',
                     cutPaths?.has(entry.path) && 'opacity-40'
                   )}

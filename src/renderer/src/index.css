@@ -11,6 +11,8 @@
   --color-app-card: var(--bg-card);
   --color-app-input: var(--bg-input);
 
+  --color-brand-s3: var(--brand-s3);
+
   --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
 
@@ -58,27 +60,33 @@
   --accent-primary: #0284c7;
   --accent-hover: #0369a1;
   --accent-subtle: rgba(2, 132, 199, 0.15);
+
+  --brand-s3: #eab308;
 }
 
 .light {
   color-scheme: light;
-  --bg-app: #f1f5f9;
-  --bg-surface: #f8fafc;
-  --bg-surface-subtle: #f1f5f9;
-  --bg-surface-hover: #e2e8f0;
+  /* Tuned for low-contrast / washed-out displays: surfaces step down visibly from white cards,
+     control borders reach >= 3:1 on white (strong 4.7:1), and text is 7.6:1 or better on every surface. */
+  --bg-app: #e6ebf2;
+  --bg-surface: #f2f5f9;
+  --bg-surface-subtle: #e9eef4;
+  --bg-surface-hover: #d8e0ea;
   --bg-card: #ffffff;
   --bg-input: #ffffff;
 
-  --border-subtle: #d3dce8;
-  --border-strong: #b0bccd;
+  --border-subtle: #8090a6;
+  --border-strong: #64748b;
 
-  --text-primary: #1e293b;
-  --text-secondary: #475569;
-  --text-muted: #5b6b82;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #475569;
 
-  --accent-primary: #0284c7;
-  --accent-hover: #0369a1;
-  --accent-subtle: rgba(2, 132, 199, 0.12);
+  --accent-primary: #0369a1;
+  --accent-hover: #075985;
+  --accent-subtle: rgba(3, 105, 161, 0.14);
+
+  --brand-s3: #854d0e;
 }
 
 .breeze {
@@ -103,38 +111,44 @@
 }
 
 /*
- * Light theme: the UI uses Tailwind's 100-400 shades for text/icons and 800-950
- * for tinted surfaces, which are designed for dark backgrounds (e.g. text-sky-400
- * on white is ~2.8:1, bg-red-950/40 turns into a muddy dark overlay). Re-point
- * those palette variables to their light-theme counterparts so every utility,
- * variant (hover:, /opacity) and ring/border built on them stays legible.
- * Pairs stay consistent: light-on-dark-tint becomes dark-on-light-tint.
+ * Light theme: the UI uses Tailwind's 100-400 shades for text/icons and 800-950 for tinted
+ * surfaces, which are designed for dark backgrounds (e.g. text-sky-400 on white is ~2.8:1,
+ * bg-red-950/40 turns into a muddy dark overlay). Re-point those palette variables to their
+ * light-theme counterparts so every utility, variant (hover:, /opacity) and ring/border built on
+ * them stays legible. Pairs stay consistent: light-on-dark-tint becomes dark-on-light-tint.
+ * The 500/600 fills behind white text (primary/connect/delete buttons) are darkened as well, since
+ * white on sky-600 is only 4.1:1 and on emerald-600 3.8:1.
  */
 .light {
   /* sky */
   --color-sky-100: #0c4a6e;
-  --color-sky-200: #075985;
-  --color-sky-300: #0369a1;
-  --color-sky-400: #0369a1;
+  --color-sky-200: #0c4a6e;
+  --color-sky-300: #075985;
+  --color-sky-400: #075985;
   --color-sky-800: #7dd3fc;
   --color-sky-900: #bae6fd;
   --color-sky-950: #e0f2fe;
+  --color-sky-500: #0369a1;
+  --color-sky-600: #075985;
   /* amber */
   --color-amber-100: #78350f;
-  --color-amber-200: #92400e;
-  --color-amber-300: #b45309;
-  --color-amber-400: #b45309;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-amber-400: #92400e;
   --color-amber-800: #fcd34d;
   --color-amber-900: #fde68a;
   --color-amber-950: #fef3c7;
+  --color-amber-600: #b45309;
   /* emerald */
   --color-emerald-100: #064e3b;
-  --color-emerald-200: #065f46;
-  --color-emerald-300: #047857;
-  --color-emerald-400: #047857;
+  --color-emerald-200: #064e3b;
+  --color-emerald-300: #065f46;
+  --color-emerald-400: #065f46;
   --color-emerald-800: #6ee7b7;
   --color-emerald-900: #a7f3d0;
   --color-emerald-950: #d1fae5;
+  --color-emerald-500: #047857;
+  --color-emerald-600: #065f46;
   /* red */
   --color-red-100: #7f1d1d;
   --color-red-200: #991b1b;
@@ -143,6 +157,8 @@
   --color-red-800: #fca5a5;
   --color-red-900: #fecaca;
   --color-red-950: #fee2e2;
+  --color-red-500: #dc2626;
+  --color-red-600: #b91c1c;
   /* rose */
   --color-rose-100: #881337;
   --color-rose-200: #9f1239;
@@ -170,8 +186,8 @@
 }
 
 /*
- * Surfaces that stay dark in every theme (log viewer, exit toast) opt out of the
- * light-theme palette remap above by restoring the original dark-background shades.
+ * Surfaces that stay dark in every theme (log viewer, exit toast) opt out of the light-theme palette
+ * remap above by restoring the original dark-background shades.
  */
 .light .dark-surface {
   --color-sky-100: #e0f2fe;
@@ -181,6 +197,8 @@
   --color-sky-800: #075985;
   --color-sky-900: #0c4a6e;
   --color-sky-950: #082f49;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
   --color-amber-100: #fef3c7;
   --color-amber-200: #fde68a;
   --color-amber-300: #fcd34d;
@@ -188,6 +206,7 @@
   --color-amber-800: #92400e;
   --color-amber-900: #78350f;
   --color-amber-950: #451a03;
+  --color-amber-600: #d97706;
   --color-emerald-100: #d1fae5;
   --color-emerald-200: #a7f3d0;
   --color-emerald-300: #6ee7b7;
@@ -195,6 +214,8 @@
   --color-emerald-800: #065f46;
   --color-emerald-900: #064e3b;
   --color-emerald-950: #022c22;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
   --color-red-100: #fee2e2;
   --color-red-200: #fecaca;
   --color-red-300: #fca5a5;
@@ -202,6 +223,8 @@
   --color-red-800: #991b1b;
   --color-red-900: #7f1d1d;
   --color-red-950: #450a0a;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
   --color-rose-100: #ffe4e6;
   --color-rose-200: #fecdd3;
   --color-rose-300: #fda4af;
@@ -289,6 +312,12 @@ body,
   }
 }
 
+/* Light theme: disabled controls stay noticeably "off" but remain readable (the default 40% opacity
+   leaves white-on-blue buttons at ~2.5:1, which vanishes on a washed-out display). */
+.light :is(button, input, select, textarea):disabled {
+  opacity: 0.65;
+}
+
 /* Respect the OS "reduce motion" setting: drop decorative motion (entrance, pulse, ping, bounce, slide)
    and instant-ify transitions, but keep spinners turning - they are the only sign that work is in
    progress, and a frozen one looks the same as a finished operation. */
@@ -307,6 +336,27 @@ body,
   [class*='slide-in-from'] {
     animation: none !important;
   }
+}
+
+/* Markdown preview: drive the typography plugin from the theme tokens instead of `prose-invert`
+   (which assumes a dark page and left headings white-on-white in the light theme). */
+.markdown-preview {
+  --tw-prose-body: var(--text-primary);
+  --tw-prose-headings: var(--text-primary);
+  --tw-prose-lead: var(--text-secondary);
+  --tw-prose-links: var(--accent-primary);
+  --tw-prose-bold: var(--text-primary);
+  --tw-prose-counters: var(--text-muted);
+  --tw-prose-bullets: var(--text-muted);
+  --tw-prose-hr: var(--border-subtle);
+  --tw-prose-quotes: var(--text-primary);
+  --tw-prose-quote-borders: var(--border-strong);
+  --tw-prose-captions: var(--text-muted);
+  --tw-prose-code: var(--text-primary);
+  --tw-prose-pre-code: var(--text-primary);
+  --tw-prose-pre-bg: var(--bg-surface);
+  --tw-prose-th-borders: var(--border-strong);
+  --tw-prose-td-borders: var(--border-subtle);
 }
 
 /* Custom scrollbar */
