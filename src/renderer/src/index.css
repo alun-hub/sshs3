@@ -104,9 +104,10 @@
   --bg-card: #31363b;
   --bg-input: #232627;
 
-  /* Borders were 1.3:1 against the cards, so panels and fields melted together. Subtle now reaches
-     3.3:1 on the (darker) input background and 2.7:1 on cards; strong is 3.9:1 on cards. */
-  --border-subtle: #6e777d;
+  /* One soft line colour for everything in Breeze (cards, rows, fields, dividers): a stronger
+     subtle border (3.3:1) made the profile cards and file rows look boxed-in. Fields still stand out
+     through their darker fill; use border-strong (3.9:1 on cards) where a firm edge is needed. */
+  --border-subtle: #454c52;
   --border-divider: #454c52;
   --border-strong: #8a9397;
 
