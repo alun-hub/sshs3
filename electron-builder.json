@@ -45,7 +45,8 @@
     "include": "build/installer.nsh"
   },
   "portable": {
-    "artifactName": "${name}-${version}-portable.${ext}"
+    "artifactName": "${name}-${version}-portable.${ext}",
+    "splashImage": "build/portable-splash.bmp"
   },
   "publish": {
     "provider": "github",

@@ -121,7 +121,9 @@ export function extractHostnameFromTitle(rawTitle: string): string | null {
 
   // 3. Host with colon and path/prompt (without user@ prefix):
   // e.g. "myhost: ~", "myhost: /etc/nginx", "db-01:~"
-  const hostColonMatch = trimmed.match(/(?:^|\s)([a-zA-Z0-9.-]+):(?:\s*[~/\\]|$)/);
+  // The lookahead skips Windows drive paths ("C:\Users\...", "C:/work"), whose
+  // single-letter drive would otherwise be mistaken for a host named "C".
+  const hostColonMatch = trimmed.match(/(?:^|\s)(?![a-zA-Z]:[\\/])([a-zA-Z0-9.-]+):(?:\s*[~/\\]|$)/);
   if (hostColonMatch) {
     const candidate = hostColonMatch[1];
     if (isValidHostname(candidate)) return candidate;

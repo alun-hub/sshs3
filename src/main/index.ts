@@ -2,7 +2,8 @@ import { app, BrowserWindow, Menu, nativeImage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { IpcBridge } from './IpcBridge';
+import type { IpcBridge } from './IpcBridge';
+import { showSplash, type SplashController } from './splash/SplashWindow';
 import { SystemTrustStore } from './crypto/SystemTrustStore';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { applyLoginShellEnv } from './ssh/LoginShellEnv';
@@ -107,6 +108,8 @@ process.on('uncaughtException', (err) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
+// Windows-only startup progress window (null elsewhere); see ./splash/SplashWindow.
+let splash: SplashController | null = null;
 let ipcBridge: IpcBridge | null = null;
 let isQuitting = false;
 // Set once the user has cleared any quit confirmation, so a quit that was
@@ -170,6 +173,9 @@ function createWindow(): BrowserWindow {
     width: 1200,
     height: 800,
     icon: appIcon,
+    // On Windows the splash stays up until the renderer has loaded, so the main
+    // window is created hidden instead of flashing an empty frame.
+    show: process.platform !== 'win32',
     webPreferences: {
       preload: path.join(__dirname, 'index.cjs'),
       sandbox: true,
@@ -221,6 +227,31 @@ function createWindow(): BrowserWindow {
     mainWindow = null;
   });
 
+  if (process.platform === 'win32') {
+    const window = mainWindow;
+    let revealed = false;
+    const reveal = (): void => {
+      if (revealed) return;
+      revealed = true;
+      clearTimeout(fallback);
+      splash?.setProgress(100, 'Ready');
+      if (!window.isDestroyed()) window.show();
+      splash?.close();
+      splash = null;
+    };
+    // Never leave the user stuck on the splash if the renderer fails to load.
+    const fallback = setTimeout(reveal, 30_000);
+    window.webContents.on('did-start-loading', () => splash?.setProgress(70, 'Loading interface…'));
+    window.webContents.on('dom-ready', () => splash?.setProgress(85, 'Starting interface…'));
+    window.webContents.once('did-finish-load', reveal);
+    window.webContents.once('did-fail-load', reveal);
+    window.once('closed', () => {
+      clearTimeout(fallback);
+      splash?.close();
+      splash = null;
+    });
+  }
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -232,6 +263,13 @@ function createWindow(): BrowserWindow {
 
 // Initialize IPC bridge before or when app is ready
 async function initializeApp(): Promise<void> {
+  splash?.setProgress(10, 'Starting…');
+
+  // Loaded lazily so the splash is already on screen while the (large) service
+  // layer is parsed, instead of showing nothing until it is done.
+  const { IpcBridge } = await import('./IpcBridge');
+  splash?.setProgress(35, 'Loading services…');
+
   // Set registry directory for ssh-agents
   configureRegistryDir(path.join(app.getPath('userData'), 'runtime-agents'));
 
@@ -244,6 +282,7 @@ async function initializeApp(): Promise<void> {
     confirmQuit,
   });
   ipcBridge.register();
+  splash?.setProgress(55, 'Creating window…');
   // A previous run may have crashed before it could empty the clipboard history on exit.
   void ipcBridge.clearClipboardHistoryIfConfigured().catch(() => {});
 
@@ -274,6 +313,7 @@ async function initializeApp(): Promise<void> {
 
 app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
+  splash = showSplash();
   return initializeApp();
 });
 

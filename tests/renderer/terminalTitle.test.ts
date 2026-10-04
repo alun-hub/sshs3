@@ -37,6 +37,13 @@ describe('terminalTitle', () => {
       expect(extractHostnameFromTitle('web-prod: /etc/nginx')).toBe('web-prod');
     });
 
+    it('does not mistake Windows drive paths for hosts', () => {
+      expect(extractHostnameFromTitle('C:\\Users\\alun')).toBeNull();
+      expect(extractHostnameFromTitle('Windows PowerShell - C:\\Users\\alun')).toBeNull();
+      expect(extractHostnameFromTitle('C:\\Windows\\system32\\cmd.exe')).toBeNull();
+      expect(extractHostnameFromTitle('D:/work')).toBeNull();
+    });
+
     it('extracts bare valid hostnames', () => {
       expect(extractHostnameFromTitle('gnarg')).toBe('gnarg');
       expect(extractHostnameFromTitle('srv-backup-01')).toBe('srv-backup-01');
