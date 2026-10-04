@@ -28,12 +28,14 @@ Inställningarna är indelade i sju specialiserade paneler:
 
 | Inställning | Standardvärde | Syfte & Beskrivning | Begränsningar |
 | :--- | :--- | :--- | :--- |
-| **Font Family** | `JetBrains Mono, Fira Code, Consolas` | Typsnittet som används för att rendera text och symboler i terminalen. | Kräver ett monospaced (fast teckenbredd) typsnitt. Proportionella typsnitt gör att markörpositioner förskjuts. |
-| **Font Size** | `14 px` | Grundstorleken för text i terminalpaneler. | Kan justeras dynamiskt per flik med <kbd>Ctrl++</kbd> och <kbd>Ctrl+-</kbd>. |
-| **Line Height** | `1.2` | Radavståndet mellan textrader i terminalen. | Ett för stort radavstånd minskar antalet synliga rader vid split-paneler. |
+| **Font Family** | Monospace-stack (välj förinställning eller egen) | Typsnittet som används för att rendera text och symboler i terminalen. | Kräver ett monospaced (fast teckenbredd) typsnitt. Proportionella typsnitt gör att markörpositioner förskjuts. |
+| **Font Size** | `13 px` | Grundstorleken för text i terminalpaneler. | Kan justeras dynamiskt per flik med <kbd>Ctrl++</kbd> och <kbd>Ctrl+-</kbd>. |
 | **Cursor Style** | `Block` | Markörens utseende: **Block**, **Underline** (understreck) eller **Bar** (vertikal linje). | Visas i aktiv panel. |
-| **Cursor Blink** | `Av` | Gör att terminalmarkören blinkar i ett jämnt intervall. | Kan stängas av för att minska visuell distraktion. |
 | **Scrollback Buffer** | `5000 rader` | Hur många rader historik som bevaras i minnet för varje terminalpanel. | Högre värden (t.ex. 50 000 rader) använder mer RAM-minne per öppen panel. |
+| **Copy text automatically on selection** | `Av` | Kopierar varje markering till urklipp och sparar den i den krypterade urklippshistoriken. | Historiken kräver OS-nyckelring för att sparas på disk, annars bara i minnet. |
+| **Clipboard history scope** | `Global` | Delad historik för alla värdar, eller separat historik per anslutning. | Gäller bara när Copy on Select är på. |
+| **Empty clipboard history on exit** | `Av` | Tömmer urklippshistoriken när appen avslutas (och vid nästa start om den kraschade). | |
+| **On Logout / Session End** | `Reconnect` | Vad som händer när en session avslutas: återanslut, stäng fliken eller behåll den. | |
 
 ---
 
@@ -117,8 +119,9 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 | <kbd>Ctrl+Shift+E</kbd> | **Dela Horisontellt (Ner)** | Delar aktiv panel på mitten och placerar en ny panel nedanför. |
 | <kbd>Ctrl+Shift+N</kbd> | **Nästa Panel** | Flyttar tangentbordsfokus framåt till nästa panel i trädet. |
 | <kbd>Ctrl+Shift+P</kbd> | **Föregående Panel** | Flyttar tangentbordsfokus bakåt till föregående panel. |
-| <kbd>Ctrl+Shift+W</kbd> | **Stäng Panel** | Stänger den fokuserade delade panelen utan att störa intilliggande sessioner. |
-| <kbd>Ctrl+T</kbd> | **Ny Flik** | Öppnar Connection Managern för att starta en ny flik eller lokalt skal. |
+| <kbd>Ctrl+Shift+T</kbd> | **Ny Terminal** | Öppnar en ny terminalflik. |
+| <kbd>Ctrl+Shift+F</kbd> | **Ny Filhanterare** | Öppnar en ny filhanterarflik. |
+| <kbd>Ctrl+Shift+O</kbd> | **Connection Manager** | Öppnar sparade profiler och anslutningar. |
 | <kbd>Ctrl+W</kbd> | **Stäng Flik** | Stänger hela den aktiva fliken och alla dess split-paneler. |
 | <kbd>Ctrl+Tab</kbd> | **Nästa Flik** | Växlar till nästa öppna flik. |
 | <kbd>Ctrl+Shift+Tab</kbd> | **Föregående Flik** | Växlar till föregående öppen flik. |
@@ -144,7 +147,6 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 
 | Genväg | Åtgärd | Beskrivning |
 | :--- | :--- | :--- |
-| <kbd>Ctrl+N</kbd> | **Ny Profil** | Öppnar profilformuläret för att skapa en ny anslutning. |
+| <kbd>Ctrl+Shift+K</kbd> | **Sök i Filer** | Innehållssökning över lokal disk, SFTP och S3. |
 | <kbd>Ctrl+,</kbd> | **Inställningar** | Öppnar inställningsdialogen. |
-| <kbd>Ctrl+Shift+T</kbd> | **SSH Tunnlar** | Öppnar den fristående panelen för bakgrundstunnlar. |
 | <kbd>Ctrl+Q</kbd> | **Avsluta sshs3** | Stänger applikationen (kontrollerar aktiva överföringar först). |

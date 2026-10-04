@@ -19,14 +19,8 @@ sshs3 kör **ditt operativsystems genuina OpenSSH-binär** (`ssh`) via `node-pty
 
 ### 2.1 Urklipp & Markering (Clipboard Workflow)
 - **Copy on Select (Kopiera vid markering)**: När du markerar text i terminalfönstret kopieras den automatiskt till operativsystemets urklippshanterare utan att du behöver trycka något kortkommando.
-- **Klistra in**:
-  - Tangentbord: <kbd>Ctrl+Shift+V</kbd> (för att inte kollidera med terminalens vanliga <kbd>Ctrl+V</kbd> som skickar raw literals i bash).
-  - Högerklick: Klicka med höger musknapp var som helst i terminalpanelen för att klistra in text från urklipp.
-- **Högerklicksmeny (Context Menu)**:
-  - *Paste*: Klistrar in text.
-  - *Split Right*: Delar aktiv panel vertikalt.
-  - *Split Down*: Delar aktiv panel horisontellt.
-  - *Clear Buffer*: Rensar skärmen och återställer rullningsbufferten.
+- **Klistra in**: <kbd>Shift+Insert</kbd> klistrar in den senaste posten i urklippshistoriken (annars systemets urklipp), och mittenklick klistrar in den senaste posten. Systemets vanliga klistra-in-kommando fungerar också.
+- **Högerklick**: med Copy on Select påslaget öppnas urklippshistoriken (se 2.2). Paneler delas via panelens verktygsfält eller genvägarna <kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>.
 
 ### 2.2 Urklippshistorik (<kbd>Ctrl+Shift+R</kbd>)
 När **Copy on Select** är påslaget sparas varje markering i en krypterad, sökbar historik (OS-nyckelringen; bara i minnet om ingen nyckelring finns).

@@ -68,7 +68,7 @@ Download the preferred format from [GitHub Releases](https://github.com/alun-hub
 ## Your First Connection
 
 1. Launch sshs3. You will be greeted by the **Welcome Screen**.
-2. Click **New Profile** (or press <kbd>Ctrl+N</kbd>).
+2. Click **New Profile**.
 3. Fill in your remote host details:
    - **Profile Name**: E.g. `Production Web 01`
    - **Host / IP**: `192.168.1.50` or `web01.internal`
