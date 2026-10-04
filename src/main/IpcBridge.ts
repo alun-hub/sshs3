@@ -34,6 +34,7 @@ import {
 } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
+import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
 import { KnownHostsStore } from './ssh/KnownHostsStore';
@@ -189,6 +190,7 @@ export interface IpcBridgeOptions {
   profileStore?: ProfileStore;
   knownHostsStore?: KnownHostsStore;
   sessionStore?: SessionStore;
+  clipboardHistoryStore?: ClipboardHistoryStore;
   settingsStore?: SettingsStore;
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
@@ -219,6 +221,7 @@ export class IpcBridge {
   public readonly profileStore: ProfileStore;
   public readonly knownHostsStore: KnownHostsStore;
   public readonly sessionStore: SessionStore;
+  public readonly clipboardHistoryStore: ClipboardHistoryStore;
   public readonly settingsStore: SettingsStore;
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
@@ -341,6 +344,7 @@ export class IpcBridge {
     this.transferQueue = options.transferQueue ?? new TransferQueue();
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.sessionStore = options.sessionStore ?? new SessionStore();
+    this.clipboardHistoryStore = options.clipboardHistoryStore ?? new ClipboardHistoryStore();
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();
@@ -388,6 +392,7 @@ export class IpcBridge {
     this.registerProfileHandlers();
     this.registerDotfileHandlers();
     this.registerSessionHandlers();
+    this.registerClipboardHistoryHandlers();
     this.registerSettingsHandlers();
     this.registerSyncHandlers();
     void this.syncConfigStore
@@ -2449,6 +2454,34 @@ export class IpcBridge {
     );
   }
 
+  private registerClipboardHistoryHandlers(): void {
+    const isShortString = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max;
+
+    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_LIST, async (_event, hostKey?: unknown) => {
+      if (hostKey !== undefined && !isShortString(hostKey, 1024)) throw new Error('Invalid host key');
+      return await this.clipboardHistoryStore.list(hostKey);
+    });
+
+    this.registerHandler(
+      IPC_CHANNELS.CLIPBOARD_HISTORY_ADD,
+      async (_event, text: unknown, hostKey: unknown, hostLabel: unknown): Promise<void> => {
+        if (typeof text !== 'string' || !isShortString(hostKey, 1024) || !isShortString(hostLabel, 1024)) {
+          throw new Error('Invalid clipboard history entry');
+        }
+        await this.clipboardHistoryStore.add(text, hostKey, hostLabel);
+      }
+    );
+
+    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_DELETE, async (_event, id: unknown): Promise<void> => {
+      if (!isShortString(id, 128)) throw new Error('Invalid entry id');
+      await this.clipboardHistoryStore.delete(id);
+    });
+
+    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_CLEAR, async (): Promise<void> => {
+      await this.clipboardHistoryStore.clear();
+    });
+  }
+
   private registerSettingsHandlers(): void {
     this.registerHandler(IPC_CHANNELS.SETTINGS_GET, async (): Promise<AppSettings> => {
       return await this.settingsStore.getSettings();
@@ -4344,8 +4377,17 @@ export class IpcBridge {
     }
   }
 
+  /** Empties the clipboard history when the "empty on exit" setting is on. */
+  public async clearClipboardHistoryIfConfigured(): Promise<void> {
+    const settings = await this.settingsStore.getSettings();
+    if (settings.clipboardHistoryClearOnExit) {
+      await this.clipboardHistoryStore.clear();
+    }
+  }
+
   public async dispose(): Promise<void> {
     this.updateService?.dispose();
+    await this.disposeStep('clear clipboard history', () => this.clearClipboardHistoryIfConfigured());
     for (const channel of this.handlers) {
       this.ipcMain.removeHandler(channel);
     }

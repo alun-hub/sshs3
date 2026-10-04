@@ -4,9 +4,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
 import { RotateCcw, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
-import type { SessionExitAction } from '@shared/types/settings';
+import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { PerfBar } from './PerfBar';
+import { ClipboardHistoryModal } from './ClipboardHistoryModal';
+import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
@@ -36,6 +38,8 @@ export interface TerminalViewProps {
   sessionExitAction?: SessionExitAction;
   /** Mirror text selections into the system clipboard, not just the X11 PRIMARY selection. */
   copyOnSelect?: boolean;
+  /** Whether the selection history is shared by all hosts or kept per connection. */
+  clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
   /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
   perfMetrics?: { layout: PerfLayout; items: PerfMetricId[]; intervalSec?: number };
   /** Callback to close the enclosing tab. */
@@ -160,6 +164,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   scrollback = 5000,
   sessionExitAction = 'reconnect',
   copyOnSelect = false,
+  clipboardHistoryScope = 'global',
   perfMetrics,
   onCloseTab,
   onTitleChange,
@@ -197,12 +202,28 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- config properties are checked individually to avoid re-running on new object references
   }, [local, shellType, wslDistro, k8sTarget, config?.id, config?.host, config?.port, config?.username]);
 
+  const hostLabel = k8sTarget
+    ? `${k8sTarget.podName}/${k8sTarget.containerName}`
+    : local
+      ? 'Local shell'
+      : config
+        ? config.name || config.host
+        : '';
+  const hostKeyRef = useRef(connectionKey);
+  hostKeyRef.current = connectionKey;
+  const hostLabelRef = useRef(hostLabel);
+  hostLabelRef.current = hostLabel;
+
   const sessionExitActionRef = useRef(sessionExitAction);
   sessionExitActionRef.current = sessionExitAction;
   const onCloseTabRef = useRef(onCloseTab);
   onCloseTabRef.current = onCloseTab;
   const copyOnSelectRef = useRef(copyOnSelect);
   copyOnSelectRef.current = copyOnSelect;
+  const clipboardScopeRef = useRef(clipboardHistoryScope);
+  clipboardScopeRef.current = clipboardHistoryScope;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
   // Tracks the size last reported to the PTY, shared between the resize observer and the
@@ -384,16 +405,75 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     // Copy-on-select mirrors the selection into the system CLIPBOARD (not just the
     // browser/X11 PRIMARY selection middle-click already gets for free), so keyboard
-    // paste shortcuts that read CLIPBOARD have something to paste.
+    // paste shortcuts that read CLIPBOARD have something to paste. Once the selection
+    // settles it is also recorded in the (encrypted) clipboard history.
+    const historyScope = (): string | undefined => (clipboardScopeRef.current === 'host' ? hostKeyRef.current : undefined);
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
     const selectionSub = term.onSelectionChange(() => {
       if (!copyOnSelectRef.current) return;
+      clearTimeout(settleTimer);
       const selection = term.getSelection();
-      if (selection) {
-        navigator.clipboard?.writeText(selection).catch(() => {
-          // Ignore: clipboard access can be denied (no focus, permissions, etc.)
-        });
-      }
+      if (!selection) return;
+      navigator.clipboard?.writeText(selection).catch(() => {
+        // Ignore: clipboard access can be denied (no focus, permissions, etc.)
+      });
+      settleTimer = setTimeout(() => {
+        void window.multissh
+          ?.clipboardHistoryAdd(selection, hostKeyRef.current, hostLabelRef.current)
+          .catch(() => {});
+        setCopyNotice(`Copied ${selection.length} character${selection.length === 1 ? '' : 's'}`);
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => setCopyNotice(null), 2000);
+      }, 350);
     });
+
+    // Shift+Insert and middle-click paste the most recent history entry; without
+    // copy-on-select (or with an empty history) they fall back to the system clipboard.
+    const pasteLatest = (): void => {
+      const fallback = (): void => {
+        navigator.clipboard
+          ?.readText()
+          .then((text) => {
+            if (text) term.paste(text);
+          })
+          .catch(() => {
+            // Ignore: clipboard access can be denied
+          });
+      };
+      if (!copyOnSelectRef.current || !window.multissh?.clipboardHistoryList) {
+        fallback();
+        return;
+      }
+      window.multissh
+        .clipboardHistoryList(historyScope())
+        .then((entries) => (entries.length > 0 ? term.paste(entries[0].text) : fallback()))
+        .catch(fallback);
+    };
+
+    const handleMiddleClick = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      // Stop Chromium's native PRIMARY-selection paste so only the history entry is pasted.
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'auxclick') pasteLatest();
+    };
+    container.addEventListener('mouseup', handleMiddleClick, true);
+    container.addEventListener('auxclick', handleMiddleClick, true);
+
+    const handleContextMenu = (e: MouseEvent) => {
+      if (!copyOnSelectRef.current) return;
+      e.preventDefault();
+      setHistoryOpen(true);
+    };
+    // Keyboard shortcut (dispatched by App): only the terminal that currently has focus reacts.
+    const handleOpenHistory = () => {
+      if (!copyOnSelectRef.current || !isActiveRef.current) return;
+      if (!container.contains(document.activeElement)) return;
+      setHistoryOpen(true);
+    };
+    window.addEventListener(OPEN_CLIPBOARD_HISTORY_EVENT, handleOpenHistory);
+    container.addEventListener('contextmenu', handleContextMenu, true);
 
     // Deduplicate rapid identical pastes (e.g. when Shift+Insert triggers both
     // Chromium's native paste event and the custom keydown handler below).
@@ -427,14 +507,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
         e.preventDefault();
-        navigator.clipboard
-          ?.readText()
-          .then((text) => {
-            if (text) term.paste(text);
-          })
-          .catch(() => {
-            // Ignore: clipboard access can be denied
-          });
+        pasteLatest();
         return false;
       }
       if (
@@ -647,6 +720,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
       titleSub.dispose();
       selectionSub.dispose();
+      clearTimeout(settleTimer);
+      clearTimeout(noticeTimer);
       const sid = sessionIdRef.current;
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
       if (sid && killSession) {
@@ -655,6 +730,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       term.dispose();
       if (container) {
         container.removeEventListener('paste', handleDomPaste, true);
+        container.removeEventListener('mouseup', handleMiddleClick, true);
+        container.removeEventListener('auxclick', handleMiddleClick, true);
+        container.removeEventListener('contextmenu', handleContextMenu, true);
+        window.removeEventListener(OPEN_CLIPBOARD_HISTORY_EVENT, handleOpenHistory);
         container.innerHTML = '';
       }
       termRef.current = null;
@@ -706,6 +785,31 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           className="h-full w-full overflow-hidden focus:outline-none"
         />
       </div>
+
+      {copyNotice && (
+        <div
+          data-testid="copy-notice"
+          role="status"
+          className="dark-surface pointer-events-none absolute bottom-3 right-4 z-20 rounded-lg bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow-lg animate-fade-in"
+        >
+          {copyNotice}
+        </div>
+      )}
+
+      {historyOpen && (
+        <ClipboardHistoryModal
+          hostKey={clipboardHistoryScope === 'host' ? connectionKey : undefined}
+          onPaste={(text) => {
+            setHistoryOpen(false);
+            termRef.current?.paste(text);
+            termRef.current?.focus();
+          }}
+          onClose={() => {
+            setHistoryOpen(false);
+            termRef.current?.focus();
+          }}
+        />
+      )}
 
       {exitEvent && (
         <div

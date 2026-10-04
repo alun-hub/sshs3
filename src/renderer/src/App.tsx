@@ -28,6 +28,7 @@ import type { PaneNode, PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import { formatDateTime } from './lib/format';
+import { OPEN_CLIPBOARD_HISTORY_EVENT } from './lib/clipboardHistoryEvents';
 import {
   closePane,
   collectLeafIds,
@@ -758,6 +759,9 @@ export const App: React.FC = () => {
                 ?.focus();
               break;
             }
+            case 'clipboardHistory':
+              window.dispatchEvent(new CustomEvent(OPEN_CLIPBOARD_HISTORY_EVENT));
+              break;
             case 'increaseFontSize': {
               setSettings((prev) => {
                 const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;

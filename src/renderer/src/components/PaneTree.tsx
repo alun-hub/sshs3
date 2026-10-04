@@ -318,6 +318,7 @@ const PaneLeafContent: React.FC<{
         initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
+        clipboardHistoryScope={settings.clipboardHistoryScope}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
@@ -334,6 +335,7 @@ const PaneLeafContent: React.FC<{
         scrollback={settings.terminalScrollback}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
+        clipboardHistoryScope={settings.clipboardHistoryScope}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
@@ -361,6 +363,7 @@ const PaneLeafContent: React.FC<{
         scrollback={settings.terminalScrollback}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
+        clipboardHistoryScope={settings.clipboardHistoryScope}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />

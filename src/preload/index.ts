@@ -84,6 +84,7 @@ import type {
   ObjectVersionEntry,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
+import type { ClipboardHistoryEntry } from '../shared/types/clipboard';
 import type { AppSettings } from '../shared/types/settings';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
@@ -424,6 +425,19 @@ export const api: MultiSSHApi = {
 
   sessionSave: (data: SessionData): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_SAVE, data),
+
+  // Clipboard history
+  clipboardHistoryList: (hostKey?: string): Promise<ClipboardHistoryEntry[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_HISTORY_LIST, hostKey),
+
+  clipboardHistoryAdd: (text: string, hostKey: string, hostLabel: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_HISTORY_ADD, text, hostKey, hostLabel),
+
+  clipboardHistoryDelete: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_HISTORY_DELETE, id),
+
+  clipboardHistoryClear: (): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_HISTORY_CLEAR),
 
   // Settings
   settingsGet: (): Promise<AppSettings> =>

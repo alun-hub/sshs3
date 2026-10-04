@@ -99,6 +99,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copyOnSelect, setCopyOnSelect] = useState<boolean>(
     currentSettings.copyOnSelect ?? false
   );
+  const [clipboardScope, setClipboardScope] = useState<'global' | 'host'>(
+    currentSettings.clipboardHistoryScope ?? 'global'
+  );
+  const [clipboardClearOnExit, setClipboardClearOnExit] = useState<boolean>(
+    currentSettings.clipboardHistoryClearOnExit ?? false
+  );
   const [perfEnabled, setPerfEnabled] = useState<boolean>(currentSettings.perfMetricsEnabled ?? false);
   const [perfLayout, setPerfLayout] = useState<PerfLayout>(currentSettings.perfMetricsLayout ?? 'text');
   const [perfItems, setPerfItems] = useState<PerfMetricId[]>(currentSettings.perfMetricsItems ?? DEFAULT_PERF_ITEMS);
@@ -193,6 +199,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCursorStyle(currentSettings.terminalCursorStyle ?? 'block');
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
+      setClipboardScope(currentSettings.clipboardHistoryScope ?? 'global');
+      setClipboardClearOnExit(currentSettings.clipboardHistoryClearOnExit ?? false);
       setPerfEnabled(currentSettings.perfMetricsEnabled ?? false);
       setPerfLayout(currentSettings.perfMetricsLayout ?? 'text');
       setPerfItems(currentSettings.perfMetricsItems ?? DEFAULT_PERF_ITEMS);
@@ -338,6 +346,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       terminalCursorStyle: cursorStyle,
       terminalScrollback: scrollback,
       copyOnSelect,
+      clipboardHistoryScope: clipboardScope,
+      clipboardHistoryClearOnExit: clipboardClearOnExit,
       perfMetricsEnabled: perfEnabled,
       perfMetricsLayout: perfLayout,
       perfMetricsItems: perfItems,
@@ -805,6 +815,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                     <span className="text-xs text-txt-primary">Copy text automatically on selection</span>
                   </label>
+                  <p className="text-xs text-txt-muted -mt-1 pl-6">
+                    Selections are kept in an encrypted history. Shift+Insert and middle-click paste the latest one;
+                    right-click opens the full history.
+                  </p>
+
+                  {copyOnSelect && (
+                    <div className="space-y-1.5 pl-6">
+                      <label className="text-xs font-medium text-txt-primary" htmlFor="clipboard-history-scope">
+                        Clipboard history scope
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <select
+                          id="clipboard-history-scope"
+                          value={clipboardScope}
+                          onChange={(e) => setClipboardScope(e.target.value === 'host' ? 'host' : 'global')}
+                          className="rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
+                        >
+                          <option value="global">Global (shared by all hosts and terminals)</option>
+                          <option value="host">Per host (follows the connection)</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void window.multissh.clipboardHistoryClear()}
+                          className="rounded-lg border border-border-subtle px-3 py-2 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary cursor-pointer"
+                        >
+                          Clear history
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2.5 pt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={clipboardClearOnExit}
+                          onChange={(e) => setClipboardClearOnExit(e.target.checked)}
+                          className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+                        />
+                        <span className="text-xs text-txt-primary">Empty clipboard history on exit</span>
+                      </label>
+                    </div>
+                  )}
 
                   {/* Session Exit Action */}
                   <div className="space-y-2 pt-2 border-t border-divider">

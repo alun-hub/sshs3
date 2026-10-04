@@ -244,6 +244,8 @@ async function initializeApp(): Promise<void> {
     confirmQuit,
   });
   ipcBridge.register();
+  // A previous run may have crashed before it could empty the clipboard history on exit.
+  void ipcBridge.clearClipboardHistoryIfConfigured().catch(() => {});
 
   // Create the main window immediately so the UI starts loading without waiting for subshells
   createWindow();

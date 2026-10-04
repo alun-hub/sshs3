@@ -30,6 +30,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'increaseFontSize', name: 'Increase Font Size', defaultKeys: 'Ctrl++', category: 'Terminal' },
   { id: 'decreaseFontSize', name: 'Decrease Font Size', defaultKeys: 'Ctrl+-', category: 'Terminal' },
   { id: 'resetFontSize', name: 'Reset Font Size', defaultKeys: 'Ctrl+0', category: 'Terminal' },
+  { id: 'clipboardHistory', name: 'Clipboard History', defaultKeys: 'Ctrl+Shift+R', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];
 
@@ -69,6 +70,10 @@ export interface AppSettings {
   terminalCursorStyle?: 'block' | 'underline' | 'bar';
   terminalScrollback?: number;
   copyOnSelect?: boolean;
+  /** Whether the terminal selection history is shared by all hosts ('global') or kept per connection ('host'). */
+  clipboardHistoryScope?: 'global' | 'host';
+  /** Wipe the clipboard history when the app quits (and on next start, in case it crashed). */
+  clipboardHistoryClearOnExit?: boolean;
   defaultNewTabType: 'terminal' | 'filemanager';
   confirmBeforeDelete?: boolean;
   showHiddenFiles?: boolean;
@@ -140,6 +145,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalCursorStyle: 'block',
   terminalScrollback: 5000,
   copyOnSelect: false,
+  clipboardHistoryScope: 'global',
+  clipboardHistoryClearOnExit: false,
   defaultNewTabType: 'terminal',
   confirmBeforeDelete: true,
   showHiddenFiles: false,
