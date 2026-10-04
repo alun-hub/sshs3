@@ -873,7 +873,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             onChange={() => setSessionExitAction('keep')}
                             className="hidden"
                           />
-                          <Terminal className="h-3.5 w-3.5 text-slate-400" />
+                          <Terminal className="h-3.5 w-3.5 text-txt-muted" />
                           <span>Keep Open</span>
                         </div>
                         <span className="text-xs text-txt-muted leading-tight">
@@ -900,7 +900,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {x11Status.managedByApp && x11Status.pid ? ` [PID ${x11Status.pid}]` : ''}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-500/10 text-txt-muted border border-slate-500/20">
                             Stopped
                           </span>
                         )}

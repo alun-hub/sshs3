@@ -91,7 +91,7 @@ export const HBars: React.FC<{ rows: HBarRow[] }> = ({ rows }) => (
           <span className="truncate">{r.label}</span>
           <span className="shrink-0 text-txt-muted">{r.right}</span>
         </div>
-        <div className="relative h-2 rounded-full bg-slate-700/50">
+        <div className="relative h-2 rounded-full bg-border-strong/50">
           <div
             className="h-full rounded-full"
             style={{ width: `${Math.min(100, Math.max(0, r.pct))}%`, background: r.color ?? levelColor(r.pct) }}
@@ -115,7 +115,7 @@ export const CoreChart: React.FC<{ pcts: number[] }> = ({ pcts }) => (
   <div className="flex items-end gap-1 overflow-x-auto" aria-label="CPU load per core">
     {pcts.map((p, i) => (
       <div key={i} className="flex w-5 shrink-0 flex-col items-center gap-0.5" title={`Core ${i}: ${Math.round(p)}%`}>
-        <div className="flex h-16 w-full items-end rounded-sm bg-slate-700/50">
+        <div className="flex h-16 w-full items-end rounded-sm bg-border-strong/50">
           <div className="w-full rounded-sm" style={{ height: `${Math.max(p, 3)}%`, background: levelColor(p) }} />
         </div>
         <span className="text-[9px] text-txt-muted">{i}</span>
@@ -126,7 +126,7 @@ export const CoreChart: React.FC<{ pcts: number[] }> = ({ pcts }) => (
 
 /** Big number with a small caption. */
 export const StatTile: React.FC<{ label: string; value: string; testId?: string }> = ({ label, value, testId }) => (
-  <div className="rounded-md bg-slate-700/30 px-3 py-2" data-testid={testId}>
+  <div className="rounded-md bg-border-subtle/60 px-3 py-2" data-testid={testId}>
     <div className="truncate text-sm font-semibold text-txt-primary" title={value}>
       {value}
     </div>

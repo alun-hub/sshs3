@@ -48,28 +48,30 @@ function shellQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
+// Every foreground colour is >= 4.5:1 on the #f8fafc background; the usual "bright" ANSI
+// variants (and white) are far too pale on a light surface, so they map to dark tones here.
 const XTERM_LIGHT_THEME = {
   background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
   foreground: '#1e293b', // Crisp slate-800 instead of black
-  cursor: '#0284c7', // Sky-600
+  cursor: '#0369a1', // Sky-700
   cursorAccent: '#f8fafc',
-  selectionBackground: '#e2e8f0', // Slate-200
+  selectionBackground: '#bfdbfe', // Blue-200: visible against the page, text stays readable
   black: '#1e293b',
-  red: '#dc2626',
-  green: '#16a34a',
-  yellow: '#ca8a04',
-  blue: '#0284c7',
-  magenta: '#9333ea',
-  cyan: '#0891b2',
-  white: '#ffffff',
+  red: '#b91c1c',
+  green: '#15803d',
+  yellow: '#a16207',
+  blue: '#0369a1',
+  magenta: '#7e22ce',
+  cyan: '#0e7490',
+  white: '#64748b',
   brightBlack: '#64748b',
-  brightRed: '#ef4444',
-  brightGreen: '#22c55e',
-  brightYellow: '#eab308',
-  brightBlue: '#38bdf8',
-  brightMagenta: '#c084fc',
-  brightCyan: '#06b6d4',
-  brightWhite: '#ffffff',
+  brightRed: '#dc2626',
+  brightGreen: '#15803d',
+  brightYellow: '#a16207',
+  brightBlue: '#0369a1',
+  brightMagenta: '#9333ea',
+  brightCyan: '#0e7490',
+  brightWhite: '#0f172a',
 };
 
 const XTERM_DARK_THEME = {
@@ -128,6 +130,11 @@ function getXTermTheme(themeName: 'dark' | 'light' | 'breeze' | 'system') {
     return isSystemLight ? XTERM_LIGHT_THEME : XTERM_DARK_THEME;
   }
   return XTERM_DARK_THEME;
+}
+
+/** On the light theme xterm nudges any too-pale colour (256-colour / truecolor output) until it is readable. */
+function minContrastFor(themeName: 'dark' | 'light' | 'breeze' | 'system'): number {
+  return getXTermTheme(themeName) === XTERM_LIGHT_THEME ? 4.5 : 1;
 }
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
@@ -309,6 +316,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       termRef.current.options.fontSize = fontSize;
       termRef.current.options.fontFamily = fontFamily;
       termRef.current.options.theme = getXTermTheme(theme);
+      termRef.current.options.minimumContrastRatio = minContrastFor(theme);
       if (scrollback !== undefined) {
         termRef.current.options.scrollback = scrollback;
       }
@@ -344,6 +352,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       fontSize: fontSizeRef.current,
       fontFamily: fontFamilyRef.current,
       theme: getXTermTheme(currentTheme),
+      minimumContrastRatio: minContrastFor(currentTheme),
       scrollback: scrollbackRef.current ?? 5000,
       allowProposedApi: true,
     });
@@ -694,7 +703,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       {exitEvent && (
         <div
           data-testid="session-exit-overlay"
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/90 dark:bg-slate-800/95 border border-slate-700/80 shadow-2xl text-xs text-slate-200 z-20 animate-fade-in"
+          className="dark-surface absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900/90 dark:bg-slate-800/95 border border-slate-700/80 shadow-2xl text-xs text-slate-200 z-20 animate-fade-in"
         >
           <div className="flex items-center gap-2 pr-2 border-r border-slate-700/70">
             <span

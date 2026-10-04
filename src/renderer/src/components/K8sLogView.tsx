@@ -159,7 +159,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0f172a]">
+    <div className="dark-surface relative flex h-full w-full flex-col overflow-hidden bg-[#0f172a]">
       {searchOpen && (
         <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-border-subtle bg-app-card px-2 py-1 shadow-lg">
           <Search className="h-3.5 w-3.5 text-txt-muted" />

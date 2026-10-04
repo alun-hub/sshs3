@@ -466,7 +466,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         <li
                           key={i}
                           title={w.path ? `${w.path}: ${w.message}` : w.message}
-                          className="break-all whitespace-pre-wrap rounded border border-amber-900/40 bg-black/30 px-2 py-1 font-mono text-xs leading-relaxed text-amber-200/90"
+                          className="break-all whitespace-pre-wrap rounded border border-amber-900/40 bg-app-card/60 px-2 py-1 font-mono text-xs leading-relaxed text-amber-200/90"
                         >
                           {w.path ? <span className="font-semibold text-amber-300">{w.path}: </span> : null}
                           <span>{w.message}</span>

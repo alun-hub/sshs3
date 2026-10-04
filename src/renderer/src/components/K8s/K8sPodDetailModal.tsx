@@ -98,7 +98,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
       case 'failed':
         return 'bg-rose-500/15 border-rose-500/30 text-rose-400';
       default:
-        return 'bg-zinc-500/15 border-zinc-500/30 text-zinc-400';
+        return 'bg-zinc-500/15 border-zinc-500/30 text-txt-muted';
     }
   };
 

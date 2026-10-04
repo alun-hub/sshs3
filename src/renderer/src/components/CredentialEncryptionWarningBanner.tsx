@@ -43,8 +43,8 @@ export const CredentialEncryptionWarningBanner: React.FC = () => {
           <ShieldAlert className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-100">Saved passwords are not encrypted</p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="text-sm font-medium text-txt-primary">Saved passwords are not encrypted</p>
+          <p className="mt-0.5 text-xs text-txt-secondary">
             No OS keyring (Secret Service / KWallet / gnome-keyring, etc.) was found, so sshs3 cannot
             encrypt saved SSH and S3 credentials at rest. Any password, passphrase, or proxy password
             you save will be stored in plaintext in your profile file. Install and unlock a keyring
@@ -54,7 +54,7 @@ export const CredentialEncryptionWarningBanner: React.FC = () => {
         <button
           type="button"
           onClick={() => setShow(false)}
-          className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-white/5 hover:text-slate-300"
+          className="shrink-0 rounded-md p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />

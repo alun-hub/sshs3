@@ -930,11 +930,11 @@ export const App: React.FC = () => {
                   needs to do; full-sized only for a first run with no
                   history yet. */}
               {recentSSH.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full text-left">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(122px,1fr))] gap-2 w-full text-left">
                   <button
                     type="button"
                     onClick={handleQuickStartTerminal}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all"
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all"
                   >
                     <Terminal className="h-4 w-4 text-sky-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">New Terminal</span>
@@ -942,7 +942,7 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleNewTab('filemanager')}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all"
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all"
                   >
                     <Folder className="h-4 w-4 text-amber-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">File Manager</span>
@@ -950,7 +950,7 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleOpenProfiles}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all"
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all"
                   >
                     <Server className="h-4 w-4 text-emerald-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">Connections</span>
@@ -958,7 +958,7 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSyncBootstrapModalOpen(true)}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2.5 py-2 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all"
+                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all"
                   >
                     <Cloud className="h-4 w-4 text-purple-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">Cloud Sync</span>
@@ -966,7 +966,7 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleNewProfile}
-                    className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 hover:bg-sky-500/20 transition-all"
+                    className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2 py-2 hover:bg-sky-500/20 transition-all"
                   >
                     <Plus className="h-4 w-4 text-sky-400 shrink-0" />
                     <span className="truncate text-xs font-medium text-txt-primary">New Profile</span>

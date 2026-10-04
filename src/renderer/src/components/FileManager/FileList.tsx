@@ -724,7 +724,7 @@ export const FileList: React.FC<FileListProps> = ({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={classNames(
-                    'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-white/[0.04] dark:border-white/[0.04] border-slate-200/60 px-3 text-sm select-none transition-colors outline-none',
+                    'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-border-subtle/60 px-3 text-sm select-none transition-colors outline-none',
                     selected
                       ? 'bg-sky-500/15 text-txt-primary font-medium'
                       : 'text-txt-primary hover:bg-app-surface-hover',
