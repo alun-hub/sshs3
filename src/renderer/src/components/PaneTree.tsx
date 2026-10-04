@@ -6,7 +6,7 @@ import { K8sLogView } from './K8sLogView';
 import { collectLeaves } from '../lib/paneTree';
 import type { AppSettings } from '@shared/types/settings';
 import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
-import type { LocalShellType } from '@shared/types/ssh';
+import type { LocalShellType, SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
 
 /** Buttons for launching a local shell (no SSH connection) in a pane. */
@@ -112,6 +112,7 @@ export interface PaneTreeViewProps {
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onCloseTab: () => void;
   onTitleChange?: (paneId: string, title: string) => void;
+  onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
   initialCwd?: string;
@@ -275,6 +276,7 @@ const PaneLeafContent: React.FC<{
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onTitleChange?: (paneId: string, title: string) => void;
+  onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
   onSelectPane: (paneId: string) => void;
 }> = ({
   leaf,
@@ -289,6 +291,7 @@ const PaneLeafContent: React.FC<{
   onChangeConnection,
   onOpenLocalTerminal,
   onTitleChange,
+  onOpenRemotePath,
   onSelectPane,
 }) => {
   const isSole = totalPanes === 1;
@@ -319,6 +322,7 @@ const PaneLeafContent: React.FC<{
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
+        onOpenPath={onOpenRemotePath ? (path) => onOpenRemotePath(leaf.config as SSHConnectionConfig, path) : undefined}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
@@ -477,6 +481,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onChangeConnection={props.onChangeConnection}
             onOpenLocalTerminal={props.onOpenLocalTerminal}
             onTitleChange={props.onTitleChange}
+            onOpenRemotePath={props.onOpenRemotePath}
             onSelectPane={props.onSelectPane}
           />,
           container,

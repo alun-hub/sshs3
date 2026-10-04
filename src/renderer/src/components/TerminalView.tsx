@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import 'xterm/css/xterm.css';
-import { RotateCcw, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, Search, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import { registerTerminalLinks } from '../lib/terminalLinks';
+import { CommandOutputTracker } from '../lib/terminalOutput';
+import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
+import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
 import { ClipboardHistoryModal } from './ClipboardHistoryModal';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
@@ -40,6 +45,8 @@ export interface TerminalViewProps {
   copyOnSelect?: boolean;
   /** Whether the selection history is shared by all hosts or kept per connection. */
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
+  /** Ctrl+click on a file path in the output (SSH sessions only). Receives the path as printed, e.g. `/var/log/x` or `~/x`. */
+  onOpenPath?: (path: string) => void;
   /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
   perfMetrics?: { layout: PerfLayout; items: PerfMetricId[]; intervalSec?: number };
   /** Callback to close the enclosing tab. */
@@ -165,6 +172,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   sessionExitAction = 'reconnect',
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
+  onOpenPath,
   perfMetrics,
   onCloseTab,
   onTitleChange,
@@ -222,6 +230,21 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelectRef.current = copyOnSelect;
   const clipboardScopeRef = useRef(clipboardHistoryScope);
   clipboardScopeRef.current = clipboardHistoryScope;
+  const onOpenPathRef = useRef(onOpenPath);
+  onOpenPathRef.current = onOpenPath;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // The search addon selects each match (xterm reports that asynchronously); copy-on-select must ignore it.
+  const searchSelectingRef = useRef(false);
+  const searchQueryRef = useRef('');
+  const searchOpenRef = useRef(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  searchOpenRef.current = searchOpen;
+  const [searchQuery, setSearchQuery] = useState('');
+  searchQueryRef.current = searchQuery;
+  const [searchResults, setSearchResults] = useState<{ index: number; count: number } | null>(null);
+  const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const isActiveRef = useRef(isActive);
@@ -389,6 +412,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
+    const resultsSub = searchAddon.onDidChangeResults(({ resultIndex, resultCount }: { resultIndex: number; resultCount: number }) =>
+      setSearchResults({ index: resultIndex, count: resultCount })
+    );
+    registerTerminalLinks(term, {
+      openUrl: (url) => void window.multissh.openExternal(url),
+      openPath: (path) => onOpenPathRef.current?.(path),
+    });
+    const outputTracker = new CommandOutputTracker(term);
 
     term.open(containerRef.current);
     if (isActiveRef.current) {
@@ -411,10 +445,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let noticeTimer: ReturnType<typeof setTimeout> | undefined;
     const selectionSub = term.onSelectionChange(() => {
-      if (!copyOnSelectRef.current) return;
+      if (!copyOnSelectRef.current || searchSelectingRef.current) return;
       clearTimeout(settleTimer);
       const selection = term.getSelection();
       if (!selection) return;
+      if (searchOpenRef.current && selection.toLowerCase() === searchQueryRef.current.toLowerCase()) return;
       navigator.clipboard?.writeText(selection).catch(() => {
         // Ignore: clipboard access can be denied (no focus, permissions, etc.)
       });
@@ -473,6 +508,38 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       setHistoryOpen(true);
     };
     window.addEventListener(OPEN_CLIPBOARD_HISTORY_EVENT, handleOpenHistory);
+
+    const showNotice = (message: string): void => {
+      setCopyNotice(message);
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => setCopyNotice(null), 2000);
+    };
+    const handleTerminalAction = (e: Event) => {
+      if (!isActiveRef.current || !rootRef.current?.contains(document.activeElement)) return;
+      const action = (e as CustomEvent<TerminalAction>).detail;
+      if (action === 'search') {
+        const selection = term.getSelection();
+        if (selection && !selection.includes('\n')) setSearchQuery(selection);
+        setSearchOpen(true);
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (action === 'snippets') {
+        setSnippetsOpen(true);
+      } else if (action === 'copyLastOutput') {
+        const output = outputTracker.lastOutput();
+        if (!output) {
+          showNotice('No command output to copy');
+          return;
+        }
+        navigator.clipboard?.writeText(output).catch(() => {});
+        if (copyOnSelectRef.current) {
+          void window.multissh?.clipboardHistoryAdd(output, hostKeyRef.current, hostLabelRef.current).catch(() => {});
+        }
+        const lines = output.split('\n').length;
+        showNotice(`Copied last output (${lines} line${lines === 1 ? '' : 's'})`);
+      }
+    };
+    window.addEventListener(TERMINAL_ACTION_EVENT, handleTerminalAction);
     container.addEventListener('contextmenu', handleContextMenu, true);
 
     // Deduplicate rapid identical pastes (e.g. when Shift+Insert triggers both
@@ -613,6 +680,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               write(sessionIdRef.current, data);
             }
             if (data.includes('\r') || data.includes('\n')) {
+              outputTracker.recordEnter();
               const parts = data.split(/[\r\n]+/);
               const cmd = (inputLineBuffer + (parts[0] || '')).trim();
               inputLineBuffer = parts.length > 1 ? parts[parts.length - 1] : '';
@@ -720,6 +788,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
       titleSub.dispose();
       selectionSub.dispose();
+      resultsSub.dispose();
+      outputTracker.dispose();
+      searchAddonRef.current = null;
       clearTimeout(settleTimer);
       clearTimeout(noticeTimer);
       const sid = sessionIdRef.current;
@@ -734,6 +805,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         container.removeEventListener('auxclick', handleMiddleClick, true);
         container.removeEventListener('contextmenu', handleContextMenu, true);
         window.removeEventListener(OPEN_CLIPBOARD_HISTORY_EVENT, handleOpenHistory);
+        window.removeEventListener(TERMINAL_ACTION_EVENT, handleTerminalAction);
         container.innerHTML = '';
       }
       termRef.current = null;
@@ -751,6 +823,48 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       Boolean(window.matchMedia?.('(prefers-color-scheme: light)')?.matches));
   const isBreeze = theme === 'breeze';
 
+  // Highlight colours for search matches (the addon requires #RRGGBB values).
+  const searchColors = isBreeze
+    ? { match: '#8e2a2a', matchBorder: '#ed1515', active: '#ed1515', activeBorder: '#fcfcfc' }
+    : isLight
+      ? { match: '#fde047', matchBorder: '#ca8a04', active: '#fb923c', activeBorder: '#9a3412' }
+      : { match: '#a16207', matchBorder: '#facc15', active: '#ea580c', activeBorder: '#fed7aa' };
+  const searchOptions = {
+    decorations: {
+      matchBackground: searchColors.match,
+      matchBorder: searchColors.matchBorder,
+      matchOverviewRuler: searchColors.matchBorder,
+      activeMatchBackground: searchColors.active,
+      activeMatchBorder: searchColors.activeBorder,
+      activeMatchColorOverviewRuler: searchColors.active,
+    },
+  };
+  const runSearch = (direction: 'next' | 'previous', query = searchQuery): void => {
+    const addon = searchAddonRef.current;
+    if (!addon) return;
+    if (!query) {
+      addon.clearDecorations();
+      setSearchResults(null);
+      return;
+    }
+    searchSelectingRef.current = true;
+    try {
+      if (direction === 'next') addon.findNext(query, searchOptions);
+      else addon.findPrevious(query, searchOptions);
+    } finally {
+      setTimeout(() => {
+        searchSelectingRef.current = false;
+      }, 100);
+    }
+  };
+  const closeSearch = (): void => {
+    setSearchOpen(false);
+    setSearchResults(null);
+    searchAddonRef.current?.clearDecorations();
+    termRef.current?.focus();
+  };
+
+
   // LOW finding (code review): xterm.js renders its own internal DOM (a
   // canvas layer plus a hidden textarea for input capture) into this
   // container, none of which carries any indication of what a screen
@@ -765,6 +879,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
   return (
     <div
+      ref={rootRef}
       data-testid="terminal-view"
       className={`relative flex h-full w-full flex-col overflow-hidden ${
         isBreeze ? 'bg-[#232627]' : isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
@@ -786,6 +901,68 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         />
       </div>
 
+      {searchOpen && (
+        <div
+          data-testid="terminal-search"
+          className="absolute right-4 top-2 z-20 flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1.5 text-xs text-txt-primary shadow-lg"
+        >
+          <Search className="h-3.5 w-3.5 text-txt-muted" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            aria-label="Search terminal"
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              runSearch('next', e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') runSearch(e.shiftKey ? 'previous' : 'next');
+              else if (e.key === 'Escape') closeSearch();
+            }}
+            placeholder="Search…"
+            className="w-44 bg-transparent px-1 text-xs text-txt-primary outline-none placeholder:text-txt-muted"
+          />
+          <span className="w-14 text-right text-[11px] text-txt-muted" aria-live="polite">
+            {searchQuery && searchResults
+              ? searchResults.count === 0
+                ? 'No results'
+                : searchResults.index >= 0
+                  ? `${searchResults.index + 1}/${searchResults.count}`
+                  : `${searchResults.count}+`
+              : ''}
+          </span>
+          <button
+            type="button"
+            aria-label="Previous match"
+            title="Previous match (Shift+Enter)"
+            onClick={() => runSearch('previous')}
+            className="rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary cursor-pointer"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Next match"
+            title="Next match (Enter)"
+            onClick={() => runSearch('next')}
+            className="rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary cursor-pointer"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Close search"
+            title="Close (Esc)"
+            onClick={closeSearch}
+            className="rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {copyNotice && (
         <div
           data-testid="copy-notice"
@@ -794,6 +971,30 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         >
           {copyNotice}
         </div>
+      )}
+
+      {snippetsOpen && (
+        <SnippetPaletteModal
+          hostKey={connectionKey}
+          hostLabel={hostLabel}
+          context={{ host: config?.host ?? hostLabel, user: config?.username ?? '' }}
+          onInsert={(command, run) => {
+            setSnippetsOpen(false);
+            const term = termRef.current;
+            if (term) {
+              term.paste(command);
+              if (run && sessionIdRef.current) {
+                const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
+                write?.(sessionIdRef.current, '\r');
+              }
+              term.focus();
+            }
+          }}
+          onClose={() => {
+            setSnippetsOpen(false);
+            termRef.current?.focus();
+          }}
+        />
       )}
 
       {historyOpen && (

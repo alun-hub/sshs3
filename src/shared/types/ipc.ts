@@ -32,6 +32,7 @@ import type {
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoDevicePrompt, AwsSsoLoginResult } from './aws';
 import type { SessionData } from './session';
 import type { ClipboardHistoryEntry } from './clipboard';
+import type { Snippet } from './snippets';
 import type { AppSettings } from './settings';
 import type {
   DotfileImportedFile,
@@ -171,6 +172,9 @@ export const IPC_CHANNELS = {
   CLIPBOARD_HISTORY_ADD: 'clipboardHistory:add',
   CLIPBOARD_HISTORY_DELETE: 'clipboardHistory:delete',
   CLIPBOARD_HISTORY_CLEAR: 'clipboardHistory:clear',
+  SNIPPETS_LIST: 'snippets:list',
+  SNIPPETS_SAVE: 'snippets:save',
+  SNIPPETS_DELETE: 'snippets:delete',
 
   // Settings
   SETTINGS_GET: 'settings:get',
@@ -562,6 +566,9 @@ export interface MultiSSHApi {
   clipboardHistoryAdd(text: string, hostKey: string, hostLabel: string): Promise<void>;
   clipboardHistoryDelete(id: string): Promise<void>;
   clipboardHistoryClear(): Promise<void>;
+  snippetsList(hostKey?: string): Promise<Snippet[]>;
+  snippetsSave(snippet: Omit<Snippet, 'id'> & { id?: string }): Promise<Snippet>;
+  snippetsDelete(id: string): Promise<void>;
 
   // Settings
   settingsGet(): Promise<AppSettings>;

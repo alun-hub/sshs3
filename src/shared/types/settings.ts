@@ -31,6 +31,9 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'decreaseFontSize', name: 'Decrease Font Size', defaultKeys: 'Ctrl+-', category: 'Terminal' },
   { id: 'resetFontSize', name: 'Reset Font Size', defaultKeys: 'Ctrl+0', category: 'Terminal' },
   { id: 'clipboardHistory', name: 'Clipboard History', defaultKeys: 'Ctrl+Shift+R', category: 'Terminal' },
+  { id: 'terminalSearch', name: 'Search in Terminal', defaultKeys: 'Ctrl+Shift+S', category: 'Terminal' },
+  { id: 'copyLastOutput', name: 'Copy Last Command Output', defaultKeys: 'Ctrl+Shift+G', category: 'Terminal' },
+  { id: 'snippets', name: 'Snippets', defaultKeys: 'Ctrl+Shift+L', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];
 

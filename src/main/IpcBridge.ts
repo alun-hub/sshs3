@@ -35,6 +35,8 @@ import {
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
 import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
+import { SnippetStore } from './snippets/SnippetStore';
+import { SNIPPET_MAX_NAME_CHARS } from '../shared/types/snippets';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
 import { KnownHostsStore } from './ssh/KnownHostsStore';
@@ -191,6 +193,7 @@ export interface IpcBridgeOptions {
   knownHostsStore?: KnownHostsStore;
   sessionStore?: SessionStore;
   clipboardHistoryStore?: ClipboardHistoryStore;
+  snippetStore?: SnippetStore;
   settingsStore?: SettingsStore;
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
@@ -222,6 +225,7 @@ export class IpcBridge {
   public readonly knownHostsStore: KnownHostsStore;
   public readonly sessionStore: SessionStore;
   public readonly clipboardHistoryStore: ClipboardHistoryStore;
+  public readonly snippetStore: SnippetStore;
   public readonly settingsStore: SettingsStore;
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
@@ -345,6 +349,7 @@ export class IpcBridge {
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.sessionStore = options.sessionStore ?? new SessionStore();
     this.clipboardHistoryStore = options.clipboardHistoryStore ?? new ClipboardHistoryStore();
+    this.snippetStore = options.snippetStore ?? new SnippetStore();
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();
@@ -393,6 +398,7 @@ export class IpcBridge {
     this.registerDotfileHandlers();
     this.registerSessionHandlers();
     this.registerClipboardHistoryHandlers();
+    this.registerSnippetHandlers();
     this.registerSettingsHandlers();
     this.registerSyncHandlers();
     void this.syncConfigStore
@@ -2479,6 +2485,44 @@ export class IpcBridge {
 
     this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_CLEAR, async (): Promise<void> => {
       await this.clipboardHistoryStore.clear();
+    });
+  }
+
+  private registerSnippetHandlers(): void {
+    this.registerHandler(IPC_CHANNELS.SNIPPETS_LIST, async (_event, hostKey?: unknown) => {
+      if (hostKey !== undefined && (typeof hostKey !== 'string' || hostKey.length > 1024)) {
+        throw new Error('Invalid host key');
+      }
+      return await this.snippetStore.list(hostKey);
+    });
+
+    this.registerHandler(IPC_CHANNELS.SNIPPETS_SAVE, async (_event, input: unknown) => {
+      const s = input as Record<string, unknown> | null;
+      const optionalString = (v: unknown, max: number): boolean =>
+        v === undefined || (typeof v === 'string' && v.length <= max);
+      if (
+        !s ||
+        typeof s.name !== 'string' ||
+        s.name.length > SNIPPET_MAX_NAME_CHARS * 2 ||
+        typeof s.command !== 'string' ||
+        !optionalString(s.id, 128) ||
+        !optionalString(s.hostKey, 1024) ||
+        !optionalString(s.hostLabel, 1024)
+      ) {
+        throw new Error('Invalid snippet');
+      }
+      return await this.snippetStore.save({
+        id: s.id as string | undefined,
+        name: s.name,
+        command: s.command,
+        hostKey: s.hostKey as string | undefined,
+        hostLabel: s.hostLabel as string | undefined,
+      });
+    });
+
+    this.registerHandler(IPC_CHANNELS.SNIPPETS_DELETE, async (_event, id: unknown): Promise<void> => {
+      if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid snippet id');
+      await this.snippetStore.delete(id);
     });
   }
 

@@ -29,6 +29,7 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import { formatDateTime } from './lib/format';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from './lib/clipboardHistoryEvents';
+import { dispatchTerminalAction } from './lib/terminalActionEvents';
 import {
   closePane,
   collectLeafIds,
@@ -514,6 +515,23 @@ export const App: React.FC = () => {
     []
   );
 
+  // Ctrl+click on a file path in an SSH terminal: browse that folder over SFTP in a new file manager tab.
+  const handleOpenRemotePath = useCallback((config: SSHConnectionConfig, rawPath: string) => {
+    const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
+    const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
+    // The terminal can't tell files from folders: a trailing slash means folder, anything else opens its parent.
+    const folder = absolute.endsWith('/') ? absolute : absolute.slice(0, absolute.lastIndexOf('/')) || '/';
+    const newId = `fm-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'filemanager',
+      title: `${config.name} (SFTP)`,
+      initialSSHConfig: { ...config, initialPath: folder },
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
   const handleOpenK8sTerminalAt = useCallback((target: K8sTerminalTarget, folderPath: string) => {
     const newId = `term-${Date.now()}`;
     const shellCommand = folderPath && folderPath !== '/' ? `cd ${JSON.stringify(folderPath)} && exec /bin/sh` : undefined;
@@ -761,6 +779,11 @@ export const App: React.FC = () => {
             }
             case 'clipboardHistory':
               window.dispatchEvent(new CustomEvent(OPEN_CLIPBOARD_HISTORY_EVENT));
+              break;
+            case 'terminalSearch':
+            case 'copyLastOutput':
+            case 'snippets':
+              dispatchTerminalAction(actionId === 'terminalSearch' ? 'search' : actionId);
               break;
             case 'increaseFontSize': {
               setSettings((prev) => {
@@ -1177,6 +1200,7 @@ export const App: React.FC = () => {
                         }
                         onCloseTab={() => handleCloseTab(tab.id)}
                         onTitleChange={(paneId, title) => handlePaneTitleChange(tab.id, paneId, title)}
+                        onOpenRemotePath={handleOpenRemotePath}
                         initialCwdPaneId={rootLeaf?.id}
                         initialCwd={tab.initialCwd}
                       />

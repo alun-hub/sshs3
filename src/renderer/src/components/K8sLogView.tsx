@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import 'xterm/css/xterm.css';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { registerTerminalLinks } from '../lib/terminalLinks';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 
 export interface K8sLogViewProps {
@@ -79,6 +80,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
     term.loadAddon(fitAddon);
     term.loadAddon(searchAddon);
     searchAddonRef.current = searchAddon;
+    registerTerminalLinks(term, { openUrl: (url) => void window.multissh.openExternal(url) });
     term.open(container);
     try {
       fitAddon.fit();
