@@ -1095,22 +1095,21 @@ export const App: React.FC = () => {
               >
                 {tab.type === 'terminal' && tab.paneTree ? (
                   <div className="flex flex-1 flex-col h-full w-full overflow-hidden">
-                    {/* Top Pane Bar with status and quick "unsplit" action */}
-                    <div className="flex h-7 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
+                    {/* Top Pane Bar with status and quick "unsplit" action. For a single pane without
+                        connection details it only repeated the tab and pane-header names, so skip it. */}
+                    {(totalPanes > 1 ||
+                      rootLeaf?.config?.username ||
+                      rootLeaf?.k8sTarget ||
+                      rootLeaf?.k8sLogTarget) && (
+                    <div className="flex h-6 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
                       <div className="flex items-center gap-2 truncate">
                         <Terminal className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                        <span className="truncate font-medium text-txt-primary">
-                          {totalPanes > 1
-                            ? `Split view (${totalPanes} panes)`
-                            : rootLeaf?.dynamicHost
-                              ? `${rootLeaf.config?.name || (rootLeaf?.local ? 'Local Shell' : 'Terminal')} → ${rootLeaf.dynamicHost}`
-                              : rootLeaf?.config?.name ||
-                                (rootLeaf?.k8sTarget &&
-                                  `${rootLeaf.k8sTarget.podName} / ${rootLeaf.k8sTarget.containerName}`) ||
-                                (rootLeaf?.k8sLogTarget &&
-                                  `Logs: ${rootLeaf.k8sLogTarget.podName} / ${rootLeaf.k8sLogTarget.containerName}`) ||
-                                (rootLeaf?.local ? 'Local Shell' : 'No connection selected')}
-                        </span>
+                        {/* A single pane already shows its name in the pane header; only name the split view. */}
+                        {totalPanes > 1 && (
+                          <span className="truncate font-medium text-txt-primary">
+                            {`Split view (${totalPanes} panes)`}
+                          </span>
+                        )}
                         {totalPanes === 1 && rootLeaf?.config?.username && (
                           <span className="text-xs text-txt-muted select-text">
                             ({rootLeaf.config.username}@{rootLeaf.config.host}:{rootLeaf.config.port ?? 22})
@@ -1154,6 +1153,7 @@ export const App: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* Pane content */}
                     <div className="flex-1 min-h-0 relative">

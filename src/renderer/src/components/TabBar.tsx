@@ -130,7 +130,7 @@ export const TabBar: React.FC<TabBarProps> = ({
     <div
       role="tablist"
       aria-label="Open tabs"
-      className="flex h-10 w-full items-center border-b border-border-subtle bg-app-surface px-2 select-none"
+      className="flex h-9 w-full items-center border-b border-border-subtle bg-app-surface px-2 select-none"
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
@@ -149,7 +149,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                   onSelectTab(tab.id);
                 }
               }}
-              className={`group relative flex h-8 max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
+              className={`group relative flex h-7 max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
                 isActive
                   ? 'bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
                   : 'bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
@@ -201,7 +201,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           aria-haspopup="menu"
           aria-expanded={isMenuOpen}
           onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -278,7 +278,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                     .finally(() => setLoadingCachedAgents(false));
                 }
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 transition-colors"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-amber-400 hover:bg-amber-500/15 hover:text-amber-300 transition-colors"
             >
               <CreditCard className="h-4 w-4" />
             </button>
@@ -427,7 +427,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           title="Connections & Profiles (Ctrl+Shift+O)"
           aria-label="Connections & Profiles"
           onClick={onOpenProfiles}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Server className="h-4 w-4" />
         </button>
@@ -443,7 +443,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           }
           aria-label="SSH Tunnels"
           onClick={onOpenTunnels}
-          className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-app-surface-hover ${
+          className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-app-surface-hover ${
             erroredTunnelCount > 0
               ? 'text-rose-400 hover:text-rose-300'
               : liveTunnelCount > 0
@@ -459,7 +459,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           title="Directory Sync: Saved Profiles"
           aria-label="Directory Sync: Saved Profiles"
           onClick={onOpenDirSyncProfiles}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <FolderSync className="h-4 w-4" />
         </button>
@@ -469,7 +469,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           title="Settings (Ctrl+,)"
           aria-label="Settings"
           onClick={onOpenSettings}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
           <Settings className="h-4 w-4" />
         </button>

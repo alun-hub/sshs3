@@ -158,3 +158,11 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* Hide scrollbars on horizontally scrolling chrome (tabs, breadcrumbs) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

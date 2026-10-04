@@ -52,6 +52,9 @@ function iconForEntry(entry: FileEntry) {
   return File;
 }
 
+// Dense desktop row height (was 33px); fits ~25% more entries per pane.
+const FILE_ROW_HEIGHT = 26;
+
 export const FileList: React.FC<FileListProps> = ({
   entries,
   loading,
@@ -262,7 +265,7 @@ export const FileList: React.FC<FileListProps> = ({
   const rowVirtualizer = useVirtualizer({
     count: sorted.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => 33,
+    estimateSize: () => FILE_ROW_HEIGHT,
     overscan: 10,
     observeElementRect: (instance, cb) => {
       const element = instance.scrollElement;
@@ -529,16 +532,19 @@ export const FileList: React.FC<FileListProps> = ({
     ]
   );
 
-  const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string }> = ({
+  const SortHeader: React.FC<{ label: string; sortKeyName: SortKey; className?: string; title?: string }> = ({
     label,
     sortKeyName,
     className,
+    title,
   }) => (
     <button
       type="button"
       onClick={() => toggleSort(sortKeyName)}
+      title={title}
+      aria-label={title}
       className={classNames(
-        'flex items-center gap-1 text-left text-xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
+        'flex items-center gap-1 text-left text-2xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
         className
       )}
     >
@@ -549,7 +555,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-app-card">
-      <div className="grid grid-cols-[minmax(120px,1fr)_70px_100px_135px] items-center gap-3 border-b border-border-subtle bg-app-surface px-3 py-1.5">
+      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-border-subtle bg-app-surface py-1 pl-3 pr-[18px]">
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (
@@ -558,14 +564,14 @@ export const FileList: React.FC<FileListProps> = ({
             </span>
           )}
         </div>
-        <SortHeader label="Size" sortKeyName="size" />
-        <SortHeader label="Permissions" sortKeyName="permissions" />
+        <SortHeader label="Size" sortKeyName="size" className="justify-end" />
+        <SortHeader label="Perms" title="Permissions" sortKeyName="permissions" />
         <SortHeader label="Modified" sortKeyName="mtime" />
       </div>
       <div
         ref={containerRef}
         tabIndex={0}
-        className="flex-1 overflow-y-auto outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
+        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
         onMouseDown={() => containerRef.current?.focus({ preventScroll: true })}
         onKeyDown={handleContainerKeyDown}
         onDragOver={(e) => {
@@ -718,7 +724,7 @@ export const FileList: React.FC<FileListProps> = ({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={classNames(
-                    'grid cursor-default grid-cols-[minmax(120px,1fr)_70px_100px_135px] items-center gap-3 border-b border-white/[0.04] dark:border-white/[0.04] border-slate-200/60 px-3 text-sm select-none transition-colors outline-none',
+                    'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-white/[0.04] dark:border-white/[0.04] border-slate-200/60 px-3 text-sm select-none transition-colors outline-none',
                     selected
                       ? 'bg-sky-500/15 text-txt-primary font-medium'
                       : 'text-txt-primary hover:bg-app-surface-hover',
@@ -750,9 +756,9 @@ export const FileList: React.FC<FileListProps> = ({
                       <span className="truncate">{entry.name}</span>
                     )}
                   </div>
-                  <span className="pointer-events-none truncate text-xs text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
+                  <span className="pointer-events-none truncate text-right text-xs tabular-nums text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
                   <span className="pointer-events-none truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
-                  <span className="pointer-events-none truncate text-xs text-txt-muted">{entry.mtime ?? ''}</span>
+                  <span className="pointer-events-none truncate text-xs tabular-nums text-txt-muted">{entry.mtime ?? ''}</span>
                 </div>
               );
             })}

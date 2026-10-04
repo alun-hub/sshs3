@@ -78,7 +78,7 @@ describe('FileList Component', () => {
       />
     );
 
-    expect(screen.getByText('Permissions')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Permissions' })).toBeInTheDocument();
     expect(screen.getByText('755')).toBeInTheDocument();
   });
 

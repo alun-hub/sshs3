@@ -13,6 +13,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
   const [draft, setDraft] = useState(currentPath);
   const [dragOverSegment, setDragOverSegment] = useState<string | null>(null);
 
+  const segmentsRef = useRef<HTMLDivElement | null>(null);
   const springTimerRef = useRef<NodeJS.Timeout | null>(null);
   const springTargetRef = useRef<string | null>(null);
 
@@ -27,6 +28,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
   useEffect(() => {
     setDraft(currentPath);
   }, [currentPath]);
+
+  // Keep the current (last) segment visible when the path is wider than the bar.
+  useEffect(() => {
+    const el = segmentsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [currentPath, editing]);
 
   useEffect(() => {
     return () => {
@@ -66,7 +73,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
 
   return (
     <div
-      className="group/bc relative flex min-w-0 flex-1 items-center justify-between gap-1 overflow-x-auto rounded-md border border-border-subtle/40 bg-app-input/40 px-1.5 py-0.5 text-xs hover:border-border-subtle transition-colors cursor-pointer"
+      className="group/bc relative flex min-w-0 flex-1 items-center justify-between gap-1 overflow-x-auto no-scrollbar rounded-md border border-border-subtle/40 bg-app-input/40 px-1.5 py-0.5 text-xs hover:border-border-subtle transition-colors cursor-pointer"
       onDoubleClick={() => setEditing(true)}
       title="Click edit button or double-click to enter path manually, or drop files on any folder"
       onDragOver={(e) => {
@@ -85,7 +92,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
         onDropToPath?.(currentPath, e);
       }}
     >
-      <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto py-0.5">
+      <div ref={segmentsRef} className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto no-scrollbar py-0.5">
       {segments.map((segment, idx) => {
         const isHovered = dragOverSegment === segment.path;
         return (

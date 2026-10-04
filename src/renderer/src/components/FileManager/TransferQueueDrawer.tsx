@@ -55,11 +55,11 @@ export const TransferQueueDrawer: React.FC = () => {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+        className="flex items-center justify-between px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
       >
         <div className="flex items-center gap-2">
           <span>
-            Transfers {activeCount > 0 ? `(${activeCount} active)` : ''}
+            Transfers {activeCount > 0 ? `(${activeCount} active)` : jobs.length === 0 ? '· none active' : ''}
           </span>
           {failedCount > 0 && (
             <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-2xs font-semibold text-red-400">
@@ -88,9 +88,8 @@ export const TransferQueueDrawer: React.FC = () => {
         </span>
       </button>
 
-      {expanded && (
+      {expanded && jobs.length > 0 && (
         <div className="max-h-48 overflow-y-auto px-3 pb-2">
-          {jobs.length === 0 && <div className="py-3 text-center text-xs text-txt-muted">No active transfers</div>}
           {[...jobs].reverse().map((job) => (
             <div key={job.jobId} className="flex items-center gap-2 border-b border-border-subtle py-1.5 text-xs">
               <div className="min-w-0 flex-1">

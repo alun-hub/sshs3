@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { SftpButton } from '../SftpButton';
+import { ProfileRowMenu } from './ProfileRowMenu';
 import {
   Boxes,
   Cable,
@@ -550,6 +551,26 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       });
   }, [filteredS3, s3FolderNames, query]);
 
+  // Collapsed state of the "Recently Used" box, remembered per viewer (best effort).
+  const [recentCollapsed, setRecentCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('connmgr.recentCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleRecent = useCallback(() => {
+    setRecentCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('connmgr.recentCollapsed', next ? '1' : '0');
+      } catch {
+        /* storage unavailable: keep in-memory state only */
+      }
+      return next;
+    });
+  }, []);
+
   // Top 3 recently used
   const recentSSH = useMemo(() => {
     return [...sshProfiles]
@@ -579,7 +600,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
+      <div className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
@@ -874,18 +895,24 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                   {/* Recently Used SSH Profiles */}
                   {!query && recentSSH.length > 0 && (
-                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
-                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-sky-400">
+                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2">
+                      <button
+                        type="button"
+                        onClick={toggleRecent}
+                        aria-expanded={!recentCollapsed}
+                        className={`flex w-full items-center gap-1.5 text-xs font-semibold text-sky-400 ${recentCollapsed ? '' : 'mb-2'}`}
+                      >
                         <Clock className="h-3.5 w-3.5" />
                         <span>Recently Used</span>
-                      </div>
-                      <div className="flex flex-col gap-1.5">
+                        {recentCollapsed ? <ChevronRight className="ml-auto h-3.5 w-3.5" /> : <ChevronDown className="ml-auto h-3.5 w-3.5" />}
+                      </button>
+                      <div className={recentCollapsed ? 'hidden' : 'flex flex-col gap-1.5'}>
                         {recentSSH.map((profile) => (
                           <div
                             key={`recent-${profile.id}`}
                             onDoubleClick={() => void handleConnectSSH(profile)}
                             title="Double-click to connect"
-                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-default transition-colors cursor-pointer"
+                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -932,39 +959,6 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   different action sets depending on where you saw it. */}
                               <button
                                 type="button"
-                                title="Install public key (ssh-copy-id)"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setInstallKeyProfile(profile);
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-sky-400 transition-colors"
-                              >
-                                <KeyRound className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Manage SSH Tunnels"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setTunnelsProfile(profile);
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-indigo-400 transition-colors"
-                              >
-                                <Cable className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Duplicate / Clone Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleCloneSSH(profile);
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
                                 title="Edit Profile"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -974,17 +968,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
-                              <button
-                                type="button"
-                                title="Delete Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleDeleteSSH(profile.id, profile.name);
-                                }}
-                                className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+<ProfileRowMenu
+                                items={[
+                                  { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                                  { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+                                  { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
+                                  { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
+                                ]}
+                              />
                             </div>
                           </div>
                         ))}
@@ -1099,7 +1090,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
                           {/* Folder Content / Cards */}
                           {!isCollapsed && (
-                            <div className="flex flex-col gap-1.5 pl-2">
+                            <div className="flex flex-col gap-1.5 px-2">
                               {profiles.length === 0 ? (
                                 <div
                                   onDragOver={(e) => {
@@ -1130,7 +1121,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                     }}
                                     onDoubleClick={() => void handleConnectSSH(profile)}
                                     title="Double-click to connect (or drag to folder)"
-                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-2 cursor-grab active:cursor-grabbing hover:border-border-default transition-all select-none"
+                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
                                   >
                                     <div className="min-w-0">
                                       <div className="flex items-center gap-2">
@@ -1176,39 +1167,6 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 )}
                                       <button
                                         type="button"
-                                        title="Install public key (ssh-copy-id)"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setInstallKeyProfile(profile);
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-sky-400 transition-colors"
-                                      >
-                                        <KeyRound className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title="Manage SSH Tunnels"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setTunnelsProfile(profile);
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-indigo-400 transition-colors"
-                                      >
-                                        <Cable className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title="Duplicate / Clone Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void handleCloneSSH(profile);
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                                      >
-                                        <Copy className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
                                         title="Edit Profile"
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -1218,17 +1176,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                       >
                                         <Pencil className="h-3.5 w-3.5" />
                                       </button>
-                                      <button
-                                        type="button"
-                                        title="Delete Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void handleDeleteSSH(profile.id, profile.name);
-                                        }}
-                                        className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
+<ProfileRowMenu
+                                        items={[
+                                          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                                          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+                                          { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
+                                          { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
+                                        ]}
+                                      />
                                     </div>
                                   </div>
                                 ))
@@ -1246,18 +1201,24 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 <div className="space-y-4">
                   {/* Recently Used S3 Profiles */}
                   {!query && recentS3.length > 0 && (
-                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
-                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+                    <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2">
+                      <button
+                        type="button"
+                        onClick={toggleRecent}
+                        aria-expanded={!recentCollapsed}
+                        className={`flex w-full items-center gap-1.5 text-xs font-semibold text-amber-400 ${recentCollapsed ? '' : 'mb-2'}`}
+                      >
                         <Clock className="h-3.5 w-3.5" />
                         <span>Recently Used</span>
-                      </div>
-                      <div className="flex flex-col gap-1.5">
+                        {recentCollapsed ? <ChevronRight className="ml-auto h-3.5 w-3.5" /> : <ChevronDown className="ml-auto h-3.5 w-3.5" />}
+                      </button>
+                      <div className={recentCollapsed ? 'hidden' : 'flex flex-col gap-1.5'}>
                         {recentS3.map((profile) => (
                           <div
                             key={`recent-s3-${profile.id}`}
                             onDoubleClick={() => void handleConnectS3(profile)}
                             title="Double-click to connect"
-                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-default transition-colors cursor-pointer"
+                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -1321,7 +1282,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   e.stopPropagation();
                                   void handleDeleteS3(profile.id, profile.name);
                                 }}
-                                className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
+                                className="ml-1.5 rounded-lg p-1.5 text-red-400 hover:bg-red-500/15 transition-colors"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -1438,7 +1399,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           </div>
 
                           {!isCollapsed && (
-                            <div className="flex flex-col gap-1.5 pl-2">
+                            <div className="flex flex-col gap-1.5 px-2">
                               {profiles.length === 0 ? (
                                 <div
                                   onDragOver={(e) => {
@@ -1469,7 +1430,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                     }}
                                     onDoubleClick={() => void handleConnectS3(profile)}
                                     title="Double-click to connect (or drag to folder)"
-                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-2 cursor-grab active:cursor-grabbing hover:border-border-default transition-all select-none"
+                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
                                   >
                                     <div className="min-w-0">
                                       <div className="truncate text-sm font-medium text-txt-primary">{profile.name}</div>
@@ -1520,7 +1481,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                           e.stopPropagation();
                                           void handleDeleteS3(profile.id, profile.name);
                                         }}
-                                        className="rounded-lg p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"
+                                        className="ml-1.5 rounded-lg p-1.5 text-red-400 hover:bg-red-500/15 transition-colors"
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </button>

@@ -278,7 +278,8 @@ describe('ConnectionManagerModal', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Prod DB 01')).toBeInTheDocument());
-    fireEvent.click(screen.getAllByTitle('Install public key (ssh-copy-id)')[0]);
+    fireEvent.click(screen.getAllByTitle('More actions')[0]);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Install public key' }));
 
     expect(await screen.findByTestId('install-key-modal')).toBeInTheDocument();
     expect((window.multissh as any).listPublicKeys).toHaveBeenCalledWith(
@@ -320,8 +321,13 @@ describe('ConnectionManagerModal', () => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
     });
 
-    const deleteButtons = screen.getAllByTitle('Delete Profile');
-    fireEvent.click(deleteButtons[deleteButtons.length - 1]); // Dev Sandbox, per the Connect-button test's ordering
+    // Delete lives in each row's overflow menu. Dev Sandbox is the last row, per the Connect-button test's ordering.
+    const openDeleteMenu = async () => {
+      const menus = screen.getAllByTitle('More actions');
+      fireEvent.click(menus[menus.length - 1]);
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete profile' }));
+    };
+    await openDeleteMenu();
 
     const dialog = await screen.findByTestId('confirm-dialog');
     expect(dialog).toHaveTextContent('Dev Sandbox');
@@ -329,7 +335,7 @@ describe('ConnectionManagerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(window.multissh.profilesDeleteSSH).not.toHaveBeenCalled();
 
-    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+    await openDeleteMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     await waitFor(() => {
       expect(window.multissh.profilesDeleteSSH).toHaveBeenCalledWith('ssh-3');
