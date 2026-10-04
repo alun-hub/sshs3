@@ -727,7 +727,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             </button>
 
             {fido2GenOpen && (
-              <div className="border-t border-border-subtle p-2.5 space-y-2.5 text-xs">
+              <div className="border-t border-divider p-2.5 space-y-2.5 text-xs">
                 <div className="grid grid-cols-2 gap-2.5">
                   <label className="flex flex-col gap-1 text-txt-secondary">
                     Key Type
@@ -864,7 +864,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </label>
 
         {config.proxy && (
-          <div className="mt-2.5 grid grid-cols-2 gap-2.5 pt-2 border-t border-border-subtle">
+          <div className="mt-2.5 grid grid-cols-2 gap-2.5 pt-2 border-t border-divider">
             <label className="flex flex-col gap-1 text-txt-secondary">
               Proxy Type
               <select
@@ -998,7 +998,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </button>
 
         {advancedOpen && (
-          <div className="border-t border-border-subtle p-3 space-y-3 text-xs">
+          <div className="border-t border-divider p-3 space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-3">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
                 <input
@@ -1129,7 +1129,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
 
       </div>
 
-      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
+      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-divider bg-app-card px-4 py-3">
         <div className="min-w-0 text-xs text-txt-muted">
           {accessState === 'verified' && <span className="text-emerald-300">Login verified</span>}
           {accessState === 'installed' && <span className="text-emerald-300">Key installed</span>}

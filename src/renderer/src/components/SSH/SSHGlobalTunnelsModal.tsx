@@ -131,7 +131,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
     >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-3.5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-400">
               <Cable className="h-5 w-5" />
@@ -219,7 +219,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                 profilesWithTunnels.map((profile) => (
                   <div key={profile.id} className="space-y-2">
                     <h3 className="text-sm font-semibold text-txt-primary">{profile.name}</h3>
-                    <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
+                    <div className="divide-y divide-divider rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
                       {(profile.tunnels || []).map((tunnel) => {
                         const active = findActive(tunnel.id);
                         const { icon, text } = tunnelLabel(tunnel);
@@ -308,7 +308,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end border-t border-border-subtle bg-app-surface px-5 py-3">
+        <div className="flex justify-end border-t border-divider bg-app-surface px-5 py-3">
           <button
             type="button"
             onClick={onClose}

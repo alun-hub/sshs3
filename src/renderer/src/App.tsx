@@ -811,14 +811,14 @@ export const App: React.FC = () => {
           file names, hostnames and other content below stays selectable. */}
       <header
         ref={headerRef}
-        className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-app-surface select-none"
+        className="flex h-10 shrink-0 items-center border-b border-divider bg-app-surface select-none"
       >
         {/* Clicking the brand shows the landing page again; tabs stay open and mounted (no tab is active). */}
         <button
           type="button"
           title="Home"
           onClick={() => setActiveTabId('')}
-          className="flex items-center gap-2.5 border-r border-border-subtle px-3.5 font-semibold text-sm hover:bg-app-surface-hover transition-colors"
+          className="flex items-center gap-2.5 border-r border-divider px-3.5 font-semibold text-sm hover:bg-app-surface-hover transition-colors"
         >
           <BrandLogo className="h-5 w-auto" />
           <span className="font-bold tracking-wide">
@@ -828,7 +828,7 @@ export const App: React.FC = () => {
         </button>
 
         {/* TabBar */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1 self-stretch">
           {/* LOW finding (code review): window.multissh! throws if the preload
               bridge is somehow missing, unlike the otherwise-consistent
               window.multissh?.x pattern used everywhere else in this file —
@@ -1072,7 +1072,7 @@ export const App: React.FC = () => {
               )}
 
               {/* Keyboard shortcuts reminder */}
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-txt-muted pt-2 border-t border-border-subtle/50 w-full">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-txt-muted pt-2 border-t border-divider w-full">
                 <span><Kbd variant="plain">Ctrl+Tab</Kbd> Cycle tabs</span>
                 <span><Kbd variant="plain">Ctrl+W</Kbd> Close tab</span>
                 <span><Kbd variant="plain">Ctrl+,</Kbd> Settings</span>
@@ -1101,7 +1101,7 @@ export const App: React.FC = () => {
                       rootLeaf?.config?.username ||
                       rootLeaf?.k8sTarget ||
                       rootLeaf?.k8sLogTarget) && (
-                    <div className="flex h-6 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
+                    <div className="flex h-6 shrink-0 items-center justify-between border-b border-divider bg-app-surface-subtle px-2.5 text-xs text-txt-secondary">
                       <div className="flex items-center gap-2 truncate">
                         <Terminal className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                         {/* A single pane already shows its name in the pane header; only name the split view. */}

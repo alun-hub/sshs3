@@ -462,11 +462,11 @@ export const SyncSettingsPanel: React.FC = () => {
             )}
           </div>
 
-          <div className="text-xs text-txt-muted pt-1 border-t border-border-subtle">
+          <div className="text-xs text-txt-muted pt-1 border-t border-divider">
             Last sync: {formatTimestampWithRelative(status.lastSyncAt)}
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+          <div className="flex items-center justify-between pt-2 border-t border-divider">
             <div className="space-y-0.5">
               <div className="text-xs font-medium text-txt-primary flex items-center gap-1.5">
                 <RefreshCw className="h-3.5 w-3.5 text-sky-400" />
@@ -489,7 +489,7 @@ export const SyncSettingsPanel: React.FC = () => {
             </label>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+          <div className="flex items-center justify-between pt-2 border-t border-divider">
             <div className="space-y-0.5">
               <div className="text-xs font-medium text-txt-primary flex items-center gap-1.5">
                 <KeyRound className="h-3.5 w-3.5 text-sky-400" />
@@ -627,7 +627,7 @@ export const SyncSettingsPanel: React.FC = () => {
               )}
 
               {showDetails && comparison && (comparison.aheadCount > 0 || comparison.behindCount > 0) && (
-                <div className="space-y-1.5 pt-1.5 border-t border-border-subtle/50 text-xs">
+                <div className="space-y-1.5 pt-1.5 border-t border-divider text-xs">
                   {comparison.categories.map((cat) => {
                     if (cat.state === 'in_sync' && cat.ahead === 0 && cat.behind === 0) return null;
                     return (

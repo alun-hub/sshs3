@@ -13,6 +13,7 @@
 
   --color-brand-s3: var(--brand-s3);
 
+  --color-divider: var(--border-divider);
   --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
 
@@ -51,6 +52,8 @@
   --bg-input: #0c101c;
 
   --border-subtle: #1e283d;
+  /* Hairlines between rows / sections: decorative, so deliberately softer than control borders. */
+  --border-divider: #1e283d;
   --border-strong: #2e3c59;
 
   /* Muted was 3.2-4.2:1 on hover rows and tinted (selected) cards; raised so it holds >= 4.5:1 there,
@@ -78,6 +81,7 @@
   --bg-input: #ffffff;
 
   --border-subtle: #8090a6;
+  --border-divider: #c3cedb;
   --border-strong: #64748b;
 
   --text-primary: #0f172a;
@@ -103,6 +107,7 @@
   /* Borders were 1.3:1 against the cards, so panels and fields melted together. Subtle now reaches
      3.3:1 on the (darker) input background and 2.7:1 on cards; strong is 3.9:1 on cards. */
   --border-subtle: #6e777d;
+  --border-divider: #454c52;
   --border-strong: #8a9397;
 
   /* Secondary used to be almost the same colour as primary (no hierarchy); muted gained headroom so

@@ -322,7 +322,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
     >
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-3.5">
           <div className="flex items-center gap-3">
             <KeyRound className="h-4 w-4 text-sky-400" />
             <div>
@@ -371,7 +371,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Looking for keys…
             </div>
           ) : (
-            <div className="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
+            <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
               {keys.length === 0 && <div className="p-3 text-txt-muted">No public keys found. Paste one below.</div>}
               {keys.map((k) => (
                 <label key={k.id} className="flex cursor-pointer items-start gap-3 p-3 hover:bg-app-surface-hover">
@@ -618,7 +618,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-5 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface px-5 py-3">
           <div className="flex items-center gap-2">
             <button
               type="button"

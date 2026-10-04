@@ -130,9 +130,9 @@ export const TabBar: React.FC<TabBarProps> = ({
     <div
       role="tablist"
       aria-label="Open tabs"
-      className="flex h-9 w-full items-center border-b border-border-subtle bg-app-surface px-2 select-none"
+      className="flex h-full w-full items-end bg-app-surface px-2 select-none"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
+      <div className="flex min-w-0 flex-1 items-end gap-1 self-stretch overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
@@ -149,10 +149,10 @@ export const TabBar: React.FC<TabBarProps> = ({
                   onSelectTab(tab.id);
                 }
               }}
-              className={`group relative flex h-7 max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
+              className={`group relative flex max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
                 isActive
-                  ? 'bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
-                  : 'bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
+                  ? '-mb-px h-[33px] bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
+                  : 'h-[30px] bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
               }`}
             >
               <div className="flex items-center gap-2 truncate">
@@ -192,7 +192,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       </div>
 
       {/* New Tab Button & Dropdown */}
-      <div className="relative flex shrink-0 items-center" ref={menuRef}>
+      <div className="relative flex shrink-0 items-center self-center" ref={menuRef}>
         <button
           type="button"
           data-testid="add-tab-btn"
@@ -257,7 +257,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       </div>
 
       {/* Quick links: Smartcard lock, Connections & Settings */}
-      <div className="flex items-center gap-1 border-l border-border-subtle pl-2">
+      <div className="flex items-center gap-1 self-center border-l border-divider pl-2">
         {showLockSmartcardButton && (
           <div className="relative flex items-center" ref={smartcardMenuRef}>
             <button
@@ -356,7 +356,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                                     </div>
                                   )}
                                   {isExpanded && id.certificate && (
-                                    <dl className="ml-1 mt-0.5 space-y-0.5 border-l border-border-subtle pl-2 text-2xs text-txt-muted">
+                                    <dl className="ml-1 mt-0.5 space-y-0.5 border-l border-divider pl-2 text-2xs text-txt-muted">
                                       <div className="flex gap-1">
                                         <dt className="shrink-0 text-txt-muted/70">Subject:</dt>
                                         <dd className="truncate select-text text-txt-primary" title={id.certificate.subject}>

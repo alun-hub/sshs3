@@ -74,7 +74,7 @@ export const GitCloneModal: React.FC<GitCloneModalProps> = ({
       className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
     >
       <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <GitBranch className="h-4 w-4 text-sky-400" />
             <div>

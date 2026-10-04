@@ -353,7 +353,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
+          <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
             {keys.map((k) => {
               const isSigning = isKeyActiveSigning(k);
               return (
@@ -556,7 +556,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
           )}
 
           {showCustomSigningKey && (
-            <div className="pt-2 border-t border-border-subtle space-y-2">
+            <div className="pt-2 border-t border-divider space-y-2">
               <label htmlFor="custom-signing-key-input" className="text-2xs text-txt-secondary block">
                 Paste an SSH public key (e.g. <code>ssh-rsa AAAAB3…</code> or <code>ssh-ed25519…</code>) or key path:
               </label>
@@ -697,7 +697,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
         </div>
 
         {fetchedKeys.length > 0 && (
-          <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-app-card mt-2">
+          <div className="divide-y divide-divider overflow-hidden rounded-lg border border-border-subtle bg-app-card mt-2">
             {fetchedKeys.map((fk) => (
               <div key={fk.id} className="flex items-center justify-between gap-3 p-2.5 text-xs">
                 <div className="min-w-0 flex-1">

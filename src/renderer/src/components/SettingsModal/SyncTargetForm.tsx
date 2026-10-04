@@ -983,7 +983,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
       )}
 
       {/* Test Connection */}
-      <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50">
+      <div className="flex items-center justify-between pt-1 border-t border-divider">
         <button
           type="button"
           disabled={testing || disabled || (draft.type === 'sftp' ? !draft.host || !draft.username : !draft.region)}

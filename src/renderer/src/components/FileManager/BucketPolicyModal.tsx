@@ -113,7 +113,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div role="dialog" aria-modal="true" aria-label="Bucket policy and CORS" className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <FileJson className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Bucket Policy &amp; CORS — {bucketName}</h2>
@@ -123,7 +123,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
           </button>
         </div>
 
-        <div className="flex border-b border-border-subtle bg-app-surface px-2">
+        <div className="flex border-b border-divider bg-app-surface px-2">
           {(['policy', 'cors'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -171,7 +171,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={() => void handleDelete()}

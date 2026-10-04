@@ -115,7 +115,7 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4" onClick={handleBackdropClick}>
       <div role="dialog" aria-modal="true" aria-label="File diff" className="w-[92vw] max-w-[1600px] h-[88vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <FileDiff className="h-4 w-4 shrink-0 text-sky-400" />
             <h2 className="truncate text-sm font-semibold text-txt-primary" title={relativePath}>

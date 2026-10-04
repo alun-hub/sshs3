@@ -203,7 +203,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
       <div role="dialog" aria-modal="true" aria-label={title} className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
               <KeyRound className="h-4 w-4" />
@@ -300,7 +300,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
                 </div>
 
                 {/* Credentials password */}
-                <div className="space-y-2 pt-2 border-t border-border-subtle">
+                <div className="space-y-2 pt-2 border-t border-divider">
                   <PasswordField label="Credentials master password" value={credentialsPassword} onChange={setCredentialsPassword} />
                   <p className="text-2xs text-txt-muted">
                     Protects usernames, saved passwords, private keys, and API tokens.
@@ -372,7 +372,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-5 py-3">
+          <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface px-5 py-3">
             {mode === 'unlock' && onUnlockWithSmartcard ? (
               <button
                 type="button"

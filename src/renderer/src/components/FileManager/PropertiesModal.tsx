@@ -96,7 +96,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div role="dialog" aria-modal="true" aria-label="Properties" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Info className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Properties</h2>
@@ -117,7 +117,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
             <div className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
           {!loading && (
-            <dl className="divide-y divide-border-subtle/50 rounded-lg border border-border-subtle bg-app-surface">
+            <dl className="divide-y divide-divider rounded-lg border border-border-subtle bg-app-surface">
               {rows.map((row) => (
                 <div key={row.label} className="flex items-start gap-3 px-3 py-2">
                   <dt className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wider text-txt-muted">{row.label}</dt>
@@ -143,7 +143,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Close
           </Button>

@@ -124,7 +124,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div role="dialog" aria-modal="true" aria-label="Object versions" className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">
@@ -178,7 +178,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
               )}
               {versions.length > 0 && (
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-app-surface-subtle text-xs uppercase tracking-wider text-txt-muted border-b border-border-subtle">
+                  <thead className="sticky top-0 bg-app-surface-subtle text-xs uppercase tracking-wider text-txt-muted border-b border-divider">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Version</th>
                       <th className="px-3 py-2 font-semibold">Modified</th>
@@ -187,7 +187,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
                       <th className="px-3 py-2 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border-subtle/50">
+                  <tbody className="divide-y divide-divider">
                     {versions.map((v) => (
                       <tr key={v.versionId} className={v.isDeleteMarker ? 'text-txt-muted' : 'text-txt-primary'}>
                         <td className="max-w-[140px] truncate px-3 py-2 font-mono text-xs">{v.versionId || '(null)'}</td>
@@ -229,7 +229,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <button
             type="button"
             onClick={onClose}

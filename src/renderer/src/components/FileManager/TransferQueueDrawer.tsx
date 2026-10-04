@@ -51,7 +51,7 @@ export const TransferQueueDrawer: React.FC = () => {
   const failedCount = jobs.filter((j) => j.status === 'failed').length;
 
   return (
-    <div className="flex flex-col border-t border-border-subtle bg-app-surface text-txt-primary">
+    <div className="flex flex-col border-t border-divider bg-app-surface text-txt-primary">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -91,7 +91,7 @@ export const TransferQueueDrawer: React.FC = () => {
       {expanded && jobs.length > 0 && (
         <div className="max-h-48 overflow-y-auto px-3 pb-2">
           {[...jobs].reverse().map((job) => (
-            <div key={job.jobId} className="flex items-center gap-2 border-b border-border-subtle py-1.5 text-xs">
+            <div key={job.jobId} className="flex items-center gap-2 border-b border-divider py-1.5 text-xs">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-txt-primary">{job.fileName}</span>

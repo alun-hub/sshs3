@@ -555,7 +555,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-app-card">
-      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-border-subtle bg-app-surface py-1 pl-3 pr-[18px]">
+      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider bg-app-surface py-1 pl-3 pr-[18px]">
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (
@@ -724,7 +724,7 @@ export const FileList: React.FC<FileListProps> = ({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={classNames(
-                    'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-border-subtle/60 px-3 text-sm select-none transition-colors outline-none',
+                    'grid cursor-default grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider/60 px-3 text-sm select-none transition-colors outline-none',
                     selected
                       ? 'bg-sky-500/15 text-txt-primary font-medium [&>span]:text-txt-secondary'
                       : 'text-txt-primary hover:bg-app-surface-hover',

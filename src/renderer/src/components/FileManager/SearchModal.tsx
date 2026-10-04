@@ -242,7 +242,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       >
         <div
           onDoubleClick={() => setIsMaximized((prev) => !prev)}
-          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 select-none cursor-default"
+          className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3 select-none cursor-default"
         >
           <div className="flex min-w-0 items-center gap-2">
             <Search className="h-4 w-4 shrink-0 text-sky-400" />
@@ -270,7 +270,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </div>
         </div>
 
-        <div className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="space-y-2 border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
@@ -398,9 +398,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           {isDragging && <div className="fixed inset-0 z-50 cursor-col-resize select-none" />}
           <div
             style={{ width: `${leftWidth}px` }}
-            className="flex shrink-0 flex-col border-r border-border-subtle overflow-hidden"
+            className="flex shrink-0 flex-col border-r border-divider overflow-hidden"
           >
-            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface-subtle px-3 py-1.5 text-xs text-txt-muted">
+            <div className="flex items-center justify-between border-b border-divider bg-app-surface-subtle px-3 py-1.5 text-xs text-txt-muted">
               <span className="truncate" title={currentPath}>
                 {matches.length} match{matches.length === 1 ? '' : 'es'} · {scannedCount} scanned
                 {searching && currentPath ? ` · ${currentPath}` : ''}

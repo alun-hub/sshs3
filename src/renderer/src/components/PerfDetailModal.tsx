@@ -258,7 +258,7 @@ export const PerfDetailModal: React.FC<PerfDetailModalProps> = ({ kind, history,
         aria-label="Performance history"
         className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-surface shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold text-txt-primary">Performance{title ? ` · ${title}` : ''}</h2>
             <p className="text-xs text-txt-muted">

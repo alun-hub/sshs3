@@ -81,7 +81,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div role="dialog" aria-modal="true" aria-label="Choose folder" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between border-b border-border-subtle p-3">
+        <div className="flex items-center justify-between border-b border-divider p-3">
           <div className="text-sm font-semibold text-txt-primary">Choose folder — {providerLabel}</div>
           <button aria-label="Close" title="Close"
             type="button"
@@ -92,7 +92,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-0.5 overflow-x-auto whitespace-nowrap border-b border-border-subtle px-3 py-2 text-xs text-txt-secondary">
+        <div className="flex items-center gap-0.5 overflow-x-auto whitespace-nowrap border-b border-divider px-3 py-2 text-xs text-txt-secondary">
           {crumbs.map((crumb, idx) => (
             <React.Fragment key={crumb.path}>
               {idx > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-txt-muted" />}
@@ -138,7 +138,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
             ))}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle p-3">
+        <div className="flex items-center justify-between gap-2 border-t border-divider p-3">
           <span className="truncate font-mono text-xs text-txt-muted">{currentPath}</span>
           <div className="flex gap-2 shrink-0">
             <button

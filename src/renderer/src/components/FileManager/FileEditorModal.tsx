@@ -507,7 +507,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         <div
           onDoubleClick={() => setIsMaximized((m) => !m)}
           title="Double-click header to maximize / restore"
-          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-2.5 select-none shrink-0 cursor-default"
+          className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-2.5 select-none shrink-0 cursor-default"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <FileText className="h-4 w-4 text-sky-400 shrink-0" />
@@ -723,7 +723,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         </div>
 
         {/* Path Subheader */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface/60 px-4 py-1 text-xs text-txt-muted">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface/60 px-4 py-1 text-xs text-txt-muted">
           <span className="font-mono truncate">{entry.path}</span>
           <span className="shrink-0">{formatBytes(entry.size)}</span>
         </div>
@@ -772,7 +772,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
         {/* In-Editor Search Bar */}
         {showSearch && (
-          <div className="flex items-center gap-2 border-b border-border-subtle bg-app-surface px-3 py-1.5 select-none">
+          <div className="flex items-center gap-2 border-b border-divider bg-app-surface px-3 py-1.5 select-none">
             <Search className="h-3.5 w-3.5 text-txt-muted shrink-0" />
             <input
               aria-label="Find in file"
@@ -927,7 +927,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <div
                 ref={lineNumbersRef}
                 aria-hidden="true"
-                className="w-12 sm:w-14 shrink-0 select-none bg-app-surface border-r border-border-subtle text-right font-mono text-xs leading-5 text-txt-muted py-2.5 pr-2.5 overflow-hidden"
+                className="w-12 sm:w-14 shrink-0 select-none bg-app-surface border-r border-divider text-right font-mono text-xs leading-5 text-txt-muted py-2.5 pr-2.5 overflow-hidden"
               >
                 {Array.from({ length: lineCount }, (_, i) => (
                   <div key={i + 1} className="h-5 leading-5">
@@ -981,7 +981,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         </div>
 
         {/* Status Bar */}
-        <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-muted select-none shrink-0 font-mono">
+        <div className="flex items-center justify-between border-t border-divider bg-app-surface px-3 py-1.5 text-xs text-txt-muted select-none shrink-0 font-mono">
           <div className="flex items-center gap-3">
             <span>
               Ln {cursorPos.line}, Col {cursorPos.col}

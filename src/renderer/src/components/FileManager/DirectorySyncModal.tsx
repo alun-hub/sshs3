@@ -528,7 +528,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
         <div
           onDoubleClick={() => setIsMaximized((m) => !m)}
           title="Double-click header to maximize / restore"
-          className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 select-none cursor-default shrink-0"
+          className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3 select-none cursor-default shrink-0"
         >
           <div className="flex items-center gap-2">
             <FolderSync className="h-4 w-4 text-sky-400" />
@@ -822,13 +822,13 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="rounded-lg border border-border-subtle bg-app-surface overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-border-subtle text-xs text-txt-muted uppercase tracking-wider">
+                      <tr className="border-b border-divider text-xs text-txt-muted uppercase tracking-wider">
                         <th className="p-2 font-semibold w-8" />
                         <th className="p-2 font-semibold">Path</th>
                         <th className="p-2 font-semibold w-44 text-right pr-3">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border-subtle/50">
+                    <tbody className="divide-y divide-divider">
                       {(['new', 'changed', 'only-target'] as const).map((status) => {
                         const entries =
                           status === 'new' ? grouped.new : status === 'changed' ? grouped.changed : grouped.onlyTarget;
@@ -1052,7 +1052,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <div>
             {step === 'diff' && !showSaveProfile && (
               <button

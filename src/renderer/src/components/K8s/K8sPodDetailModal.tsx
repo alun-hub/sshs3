@@ -113,7 +113,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
     >
       <div className="flex h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-3.5">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-400">
               <Box className="h-5 w-5" />
@@ -177,7 +177,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         </div>
 
         {/* Tab navigation */}
-        <div className="flex items-center gap-1 border-b border-border-subtle bg-app-surface-subtle px-5 pt-2">
+        <div className="flex items-center gap-1 border-b border-divider bg-app-surface-subtle px-5 pt-2">
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
@@ -294,14 +294,14 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                     <div className="overflow-hidden rounded-lg border border-border-subtle bg-app-surface">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-xs font-medium text-txt-muted">
+                          <tr className="border-b border-divider bg-app-surface-subtle text-xs font-medium text-txt-muted">
                             <th className="px-3 py-2">Condition</th>
                             <th className="px-3 py-2">Status</th>
                             <th className="px-3 py-2">Updated</th>
                             <th className="px-3 py-2">Reason / Message</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-subtle text-xs">
+                        <tbody className="divide-y divide-divider text-xs">
                           {pod.conditions.map((cond) => {
                             const isTrue = cond.status === 'True';
                             return (
@@ -369,7 +369,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                       key={c.name}
                       className="rounded-xl border border-border-subtle bg-app-surface p-4 space-y-3"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider pb-3">
                         <div className="flex items-center gap-2">
                           <Cpu className="h-4 w-4 text-indigo-400" />
                           <span className="text-sm font-semibold text-txt-primary">{c.name}</span>
@@ -550,14 +550,14 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                     <div className="overflow-hidden rounded-xl border border-border-subtle bg-app-surface">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-border-subtle bg-app-surface-subtle text-xs font-medium text-txt-muted">
+                          <tr className="border-b border-divider bg-app-surface-subtle text-xs font-medium text-txt-muted">
                             <th className="px-3 py-2 w-24">Type</th>
                             <th className="px-3 py-2 w-36">Reason</th>
                             <th className="px-3 py-2">Message</th>
                             <th className="px-3 py-2 w-32 whitespace-nowrap">Last Seen</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border-subtle text-xs">
+                        <tbody className="divide-y divide-divider text-xs">
                           {pod.events.map((evt, idx) => {
                             const isWarning = evt.type === 'Warning';
                             return (
@@ -634,7 +634,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-5 py-3">
+        <div className="flex items-center justify-between border-t border-divider bg-app-surface px-5 py-3">
           <div className="flex items-center gap-2">
             {onPortForward && (
               <button

@@ -140,7 +140,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
       <div role="dialog" aria-modal="true" aria-label="Attach debug container" className="flex w-full max-w-xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
               <Bug className="h-4 w-4" />
@@ -303,7 +303,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           )}
 
           {/* Footer actions */}
-          <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+          <div className="flex items-center justify-between pt-2 border-t border-divider">
             <div className="text-xs text-txt-muted">
               {submitting ? (
                 <span className="flex items-center gap-1.5 text-amber-400 font-medium">

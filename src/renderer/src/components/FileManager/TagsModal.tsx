@@ -70,7 +70,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div role="dialog" aria-modal="true" aria-label="Tags" className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <TagIcon className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Tags</h2>
@@ -139,7 +139,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

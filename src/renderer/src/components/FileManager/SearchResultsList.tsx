@@ -98,7 +98,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               <div
                 key={`header-${row.displayPath}`}
                 style={style}
-                className="flex items-center gap-1.5 border-b border-border-subtle/50 bg-app-surface-subtle px-3 text-xs font-medium text-txt-secondary"
+                className="flex items-center gap-1.5 border-b border-divider bg-app-surface-subtle px-3 text-xs font-medium text-txt-secondary"
               >
                 <FileText className="h-3 w-3 shrink-0 text-sky-400" />
                 <span className="truncate" title={row.displayPath}>
@@ -133,7 +133,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               onClick={() => onSelect(match)}
               style={style}
               className={classNames(
-                'flex w-full flex-col gap-0.5 border-b border-border-subtle/50 px-3 py-1.5 pl-6 text-left text-xs transition-colors',
+                'flex w-full flex-col gap-0.5 border-b border-divider px-3 py-1.5 pl-6 text-left text-xs transition-colors',
                 isSelected ? 'bg-sky-500/15' : 'hover:bg-app-surface-hover'
               )}
             >

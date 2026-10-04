@@ -603,7 +603,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     >
       <div role="dialog" aria-modal="true" aria-label="Connection Manager" className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Server className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Connection Manager</h2>
@@ -618,7 +618,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         </div>
 
         {/* Tab switcher */}
-        <div className="flex border-b border-border-subtle bg-app-surface px-2 pt-2">
+        <div className="flex border-b border-divider bg-app-surface px-2 pt-2">
           {(
             [
               { key: 'ssh' as Tab, label: 'SSH / SFTP', icon: Server },
@@ -1507,7 +1507,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         {importCandidates && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 animate-in fade-in duration-100">
             <div role="dialog" aria-modal="true" aria-label="Import hosts from SSH config" className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-app-surface p-4 shadow-2xl space-y-3">
-              <div className="flex items-center justify-between border-b border-border-subtle pb-2">
+              <div className="flex items-center justify-between border-b border-divider pb-2">
                 <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
                   <Upload className="h-4 w-4" />
                   <span>Import Hosts from ~/.ssh/config</span>
@@ -1586,7 +1586,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 })}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-divider">
                 <button
                   type="button"
                   onClick={() => setImportCandidates(null)}

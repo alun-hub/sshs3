@@ -73,7 +73,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-secondary">
+      <div className="flex items-center justify-between border-b border-divider bg-app-surface px-3 py-2 text-xs text-txt-secondary">
         <div className="flex min-w-0 items-center gap-1.5" title={match.path}>
           <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
           <span className="truncate font-mono text-txt-primary">{match.displayPath}</span>
@@ -123,7 +123,7 @@ export const SearchPreviewPane: React.FC<SearchPreviewPaneProps> = ({
                 const isMatchLine = lineNo === match.lineNumber;
                 return (
                   <tr key={lineNo} className={isMatchLine ? 'bg-sky-500/15' : undefined}>
-                    <td className="select-none whitespace-nowrap border-r border-border-subtle px-2 py-0.5 text-right text-txt-muted">
+                    <td className="select-none whitespace-nowrap border-r border-divider px-2 py-0.5 text-right text-txt-muted">
                       {lineNo}
                     </td>
                     <td className="whitespace-pre px-2 py-0.5 text-txt-primary">{line || ' '}</td>

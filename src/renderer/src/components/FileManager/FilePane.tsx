@@ -1045,7 +1045,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }}
     >
       {/* Pane Top Bar with Source Switcher */}
-      <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-2.5 py-1">
+      <div className="flex items-center justify-between border-b border-divider bg-app-surface px-2.5 py-1">
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border-subtle bg-app-card p-0.5 text-xs">
             {(['local', 'sftp', 's3', 'k8s'] as SourceType[]).map((type) => {
@@ -1087,7 +1087,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
 
       {/* Pane Action Toolbar */}
-      <div className="flex items-center gap-1 border-b border-border-subtle bg-app-surface-subtle px-2 py-0.5">
+      <div className="flex items-center gap-1 border-b border-divider bg-app-surface-subtle px-2 py-0.5">
         {/* Navigation Group */}
         <div className="flex items-center gap-0.5 shrink-0">
           <button
@@ -1159,7 +1159,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
               {gitMenuOpen && (
                 <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-xl text-xs space-y-2">
-                  <div className="flex items-center justify-between border-b border-border-subtle/60 pb-1.5">
+                  <div className="flex items-center justify-between border-b border-divider pb-1.5">
                     <div className="flex items-center gap-1.5 font-semibold text-txt-primary truncate">
                       <GitBranch className="h-4 w-4 text-sky-400 shrink-0" />
                       <span className="truncate">{gitStatus.branch}</span>
@@ -1190,7 +1190,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-1 pt-1 border-t border-border-subtle/60">
+                  <div className="flex flex-col gap-1 pt-1 border-t border-divider">
                     <button
                       type="button"
                       disabled={gitPulling}
@@ -1371,7 +1371,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* Filter Bar */}
       {showFilter && (
-        <div className="flex items-center gap-2 border-b border-border-subtle bg-app-surface px-2.5 py-1">
+        <div className="flex items-center gap-2 border-b border-divider bg-app-surface px-2.5 py-1">
           <Search className="h-3.5 w-3.5 shrink-0 text-txt-muted" />
           <input
             ref={filterInputRef}

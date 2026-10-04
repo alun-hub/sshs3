@@ -159,8 +159,8 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
             className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
               i > 0
                 ? node.orientation === 'row'
-                  ? 'border-l border-border-subtle'
-                  : 'border-t border-border-subtle'
+                  ? 'border-l border-divider'
+                  : 'border-t border-divider'
                 : ''
             }`}
           >

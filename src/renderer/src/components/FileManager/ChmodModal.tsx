@@ -141,7 +141,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
     >
       <div role="dialog" aria-modal="true" aria-label="Change permissions" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Change Permissions (chmod)</h2>
@@ -168,14 +168,14 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
           <div className="rounded-lg border border-border-subtle bg-app-surface p-3">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-border-subtle text-xs text-txt-muted uppercase tracking-wider">
+                <tr className="border-b border-divider text-xs text-txt-muted uppercase tracking-wider">
                   <th className="pb-2 font-semibold">Scope</th>
                   <th className="pb-2 text-center font-semibold">Read (r)</th>
                   <th className="pb-2 text-center font-semibold">Write (w)</th>
                   <th className="pb-2 text-center font-semibold">Execute (x)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle/50 font-medium">
+              <tbody className="divide-y divide-divider font-medium">
                 <tr>
                   <td className="py-2 text-txt-primary">Owner (User)</td>
                   <td className="py-2 text-center">
@@ -293,7 +293,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-4 py-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

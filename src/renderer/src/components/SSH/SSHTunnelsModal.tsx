@@ -140,7 +140,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-3.5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-400">
               <Cable className="h-5 w-5" />
@@ -206,7 +206,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                 No tunnels saved on this connection yet.
               </div>
             ) : (
-              <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
+              <div className="divide-y divide-divider rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
                 {savedTunnels.map((tunnel) => {
                   const active = findActive(tunnel.id);
                   const { icon, text } = tunnelLabel(tunnel);
@@ -287,7 +287,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
           {adHoc.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-txt-primary">Temporary Tunnels (not saved)</h3>
-              <div className="divide-y divide-border-subtle rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
+              <div className="divide-y divide-divider rounded-xl border border-border-subtle bg-app-surface overflow-hidden">
                 {adHoc.map((t) => {
                   const { icon, text } = tunnelLabel(t.tunnel);
                   return (
@@ -318,7 +318,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end border-t border-border-subtle bg-app-surface px-5 py-3">
+        <div className="flex justify-end border-t border-divider bg-app-surface px-5 py-3">
           <button
             type="button"
             onClick={onClose}

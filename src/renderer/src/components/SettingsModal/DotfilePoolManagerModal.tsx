@@ -258,7 +258,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
       <div role="dialog" aria-modal="true" aria-label="Dotfile pools and master files" className="flex h-[600px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
               <FileCode className="h-4 w-4" />
@@ -278,7 +278,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
         </div>
 
         <div className="flex flex-1 min-h-0">
-          <aside className="w-56 shrink-0 border-r border-border-subtle bg-app-surface p-2.5 flex flex-col gap-1 overflow-y-auto">
+          <aside className="w-56 shrink-0 border-r border-divider bg-app-surface p-2.5 flex flex-col gap-1 overflow-y-auto">
             <div className="grid grid-cols-2 gap-1 mb-1.5">
               <button
                 type="button"
@@ -470,7 +470,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border-subtle bg-app-surface px-5 py-3">
+                <div className="flex items-center justify-between border-t border-divider bg-app-surface px-5 py-3">
                   <button
                     type="button"
                     onClick={() => void handleDelete(draft.id)}
@@ -498,7 +498,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
       {gitImportOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
           <div role="dialog" aria-modal="true" aria-label="Import dotfiles from Git" className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
+            <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-sky-400" />
                 <span className="text-sm font-semibold text-txt-primary">Import Dotfiles from Git</span>

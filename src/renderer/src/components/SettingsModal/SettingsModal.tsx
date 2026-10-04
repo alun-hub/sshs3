@@ -436,7 +436,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           selected. Sparse categories now leave some empty space instead. */}
       <div role="dialog" aria-modal="true" aria-label="Settings" className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
               <Settings className="h-4 w-4" />
@@ -457,7 +457,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Body with Sidebar & Content */}
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-          <aside className="w-52 shrink-0 overflow-y-auto border-r border-border-subtle bg-app-surface p-2.5 flex flex-col gap-3">
+          <aside className="w-52 shrink-0 overflow-y-auto border-r border-divider bg-app-surface p-2.5 flex flex-col gap-3">
             {categoryGroups.map(({ group, items }) => (
               <div key={group} className="flex flex-col gap-1">
                 <div className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
@@ -595,7 +595,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* App Behavior */}
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                  <div className="space-y-2 pt-2 border-t border-divider">
                     <label className="text-xs font-medium text-txt-primary">App Behavior</label>
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
@@ -767,7 +767,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Cursor Style & Scrollback */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border-subtle">
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-divider">
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-txt-primary">Cursor Style</label>
                       <select
@@ -807,7 +807,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </label>
 
                   {/* Session Exit Action */}
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                  <div className="space-y-2 pt-2 border-t border-divider">
                     <div>
                       <label className="text-xs font-medium text-txt-primary">On Logout / Session End</label>
                       <p className="text-xs text-txt-muted">Choose what happens when an SSH session or local terminal ends.</p>
@@ -885,7 +885,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Local X11 Server (Windows GUI Forwarding) */}
-                  <div className="space-y-3 pt-3 border-t border-border-subtle">
+                  <div className="space-y-3 pt-3 border-t border-divider">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Monitor className="h-4 w-4 text-sky-400" />
@@ -959,7 +959,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </span>
                           <span className="text-2xs text-txt-muted group-open:rotate-180 transition-transform">▼</span>
                         </summary>
-                        <div className="mt-3 space-y-3 pt-2 border-t border-border-subtle/50">
+                        <div className="mt-3 space-y-3 pt-2 border-t border-divider">
                           <p className="text-xs text-txt-muted">
                             These settings configure VcXsrv when sshs3 runs on Windows. They are saved in your settings profile if you sync across multiple operating systems.
                           </p>
@@ -1371,7 +1371,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                  <div className="space-y-2 pt-2 border-t border-divider">
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1404,7 +1404,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Folder organization */}
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                  <div className="space-y-2 pt-2 border-t border-divider">
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1425,7 +1425,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {/* Dotfiles Pool (opt-in) */}
-                  <div className="space-y-2 pt-2 border-t border-border-subtle">
+                  <div className="space-y-2 pt-2 border-t border-divider">
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1963,7 +1963,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-border-subtle bg-app-surface px-5 py-3">
+            <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-5 py-3">
               {activeCategory === 'sync' ? (
                 <>
                   <p className="mr-auto text-xs text-txt-muted">

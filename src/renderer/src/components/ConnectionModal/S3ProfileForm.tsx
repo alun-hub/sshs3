@@ -463,7 +463,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
         </label>
 
         {config.proxy?.enabled && (
-          <div className="mt-2.5 space-y-2 text-xs pt-2 border-t border-border-subtle">
+          <div className="mt-2.5 space-y-2 text-xs pt-2 border-t border-divider">
             <div className="grid grid-cols-[110px_1fr_90px] gap-2">
               <label className="flex flex-col gap-1 text-txt-secondary">
                 Proxy Type
@@ -557,7 +557,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
       </div>
       </div>
 
-      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border-subtle bg-app-card px-4 py-3">
+      <div className="shrink-0 flex items-center justify-between gap-2 border-t border-divider bg-app-card px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
