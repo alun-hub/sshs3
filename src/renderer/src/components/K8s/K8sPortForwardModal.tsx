@@ -17,6 +17,7 @@ import type {
 } from '@shared/types/kubernetes';
 import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 interface K8sPortForwardModalProps {
   initialTarget?: {
@@ -172,6 +173,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     }
   };
 
+  useEscapeToClose(onClose, open);
+
   if (!open) return null;
 
   return (
@@ -179,7 +182,6 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
@@ -195,7 +197,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -223,7 +225,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Context</label>
-                <input
+                <input aria-label="e.g. minikube or default"
                   type="text"
                   required
                   value={contextName}
@@ -235,7 +237,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Namespace</label>
-                <input
+                <input aria-label="e.g. default"
                   type="text"
                   required
                   value={namespace}
@@ -247,7 +249,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-txt-muted mb-1">Pod Name</label>
-                <input
+                <input aria-label="e.g. my-app-7d8f9c-xyz"
                   type="text"
                   required
                   value={podName}
@@ -261,7 +263,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   Container Port (Target)
                 </label>
-                <input
+                <input aria-label="e.g. 8080, 5432"
                   type="number"
                   required
                   min={1}
@@ -306,7 +308,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   Local Port (0 = auto-assign)
                 </label>
-                <input
+                <input aria-label="e.g. 8080 (0 for random)"
                   type="number"
                   min={0}
                   max={65535}

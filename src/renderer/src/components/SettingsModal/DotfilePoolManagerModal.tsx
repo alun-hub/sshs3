@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { DotfilePool, DotfilePoolFile } from '@shared/types/dotfiles';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface DotfilePoolManagerModalProps {
   open: boolean;
@@ -99,6 +100,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     }
   }, [open]);
 
+  // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
+  useModalDismiss(onClose, open && !gitImportOpen);
+  useModalDismiss(() => setGitImportOpen(false), gitImportOpen && !gitImporting);
   if (!open) return null;
 
   const selectPool = (pool: DotfilePool) => {
@@ -253,7 +257,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
-      <div className="flex h-[600px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Dotfile pools and master files" className="flex h-[600px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
@@ -264,7 +268,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               <p className="text-xs text-txt-muted">Upload and manage master files for automatic sync to servers</p>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -417,7 +421,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                           .map((file) => (
                           <div
                             key={file.id}
-                            className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-3 transition-colors hover:border-border"
+                            className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface p-3 transition-colors hover:border-border-strong"
                           >
                             <div className="flex items-center justify-between text-xs text-txt-muted mb-0.5">
                               <span className="font-medium text-sky-400 flex items-center gap-1">
@@ -427,13 +431,13 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                               {file.updatedAt && <span>Last saved: {file.updatedAt}</span>}
                             </div>
                             <div className="grid grid-cols-[1fr_80px_auto] gap-2">
-                              <input
+                              <input aria-label="Remote path, e.g. ~/.bashrc"
                                 value={file.remotePath}
                                 onChange={(e) => updateFile(file.id, { remotePath: e.target.value })}
                                 placeholder="Remote path, e.g. ~/.bashrc"
                                 className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                               />
-                              <input
+                              <input aria-label="Mode (644)"
                                 value={file.mode ?? ''}
                                 onChange={(e) => updateFile(file.id, { mode: e.target.value })}
                                 placeholder="Mode (644)"
@@ -449,7 +453,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                            <textarea
+                            <textarea aria-label="File content / configuration..."
                               value={file.content}
                               onChange={(e) => updateFile(file.id, { content: e.target.value })}
                               rows={5}
@@ -490,13 +494,13 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
       {gitImportOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-          <div className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+          <div role="dialog" aria-modal="true" aria-label="Import dotfiles from Git" className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-sky-400" />
                 <span className="text-sm font-semibold text-txt-primary">Import Dotfiles from Git</span>
               </div>
-              <button
+              <button aria-label="Close" title="Close"
                 type="button"
                 onClick={() => setGitImportOpen(false)}
                 disabled={gitImporting}
@@ -509,7 +513,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               <p className="text-txt-secondary">
                 Enter a GitHub repo (<code>username/dotfiles</code>) or any Git clone URL. The repository will be scanned for shell and editor configuration files.
               </p>
-              <input
+              <input aria-label="username/dotfiles or https://github.com/..."
                 type="text"
                 autoFocus
                 required

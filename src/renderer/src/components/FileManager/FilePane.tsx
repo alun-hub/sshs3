@@ -1143,7 +1143,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 type="button"
                 title={`Git: ${gitStatus.branch}${gitStatus.isClean ? ' (clean)' : ' (uncommitted changes)'}${gitStatus.ahead ? `, ahead ${gitStatus.ahead}` : ''}${gitStatus.behind ? `, behind ${gitStatus.behind}` : ''}\nClick for Git options (Pull, Web, Clone)`}
                 onClick={() => setGitMenuOpen((prev) => !prev)}
-                className="flex items-center gap-1 bg-app-card hover:bg-app-surface border border-border-subtle rounded-md px-1.5 py-0.5 text-[11px] text-txt-secondary transition-colors cursor-pointer select-none"
+                className="flex items-center gap-1 bg-app-card hover:bg-app-surface border border-border-subtle rounded-md px-1.5 py-0.5 text-2xs text-txt-secondary transition-colors cursor-pointer select-none"
               >
                 {gitPulling ? (
                   <Loader2 className="h-3 w-3 animate-spin text-sky-400 shrink-0" />
@@ -1152,8 +1152,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 )}
                 <span className="font-medium text-txt-primary max-w-[100px] truncate">{gitStatus.branch}</span>
                 {!gitStatus.isClean && <span className="text-amber-400 font-bold">*</span>}
-                {Boolean(gitStatus.ahead) && <span className="text-emerald-400 text-[10px]">↑{gitStatus.ahead}</span>}
-                {Boolean(gitStatus.behind) && <span className="text-amber-400 text-[10px]">↓{gitStatus.behind}</span>}
+                {Boolean(gitStatus.ahead) && <span className="text-emerald-400 text-2xs">↑{gitStatus.ahead}</span>}
+                {Boolean(gitStatus.behind) && <span className="text-amber-400 text-2xs">↓{gitStatus.behind}</span>}
                 <ChevronDown className="h-3 w-3 text-txt-muted ml-0.5" />
               </button>
 
@@ -1165,13 +1165,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <span className="truncate">{gitStatus.branch}</span>
                     </div>
                     {gitStatus.isClean ? (
-                      <span className="rounded bg-emerald-500/15 text-emerald-400 text-[10px] px-1.5 py-0.5 font-medium">Clean</span>
+                      <span className="rounded bg-emerald-500/15 text-emerald-400 text-2xs px-1.5 py-0.5 font-medium">Clean</span>
                     ) : (
-                      <span className="rounded bg-amber-500/15 text-amber-400 text-[10px] px-1.5 py-0.5 font-medium">Modified</span>
+                      <span className="rounded bg-amber-500/15 text-amber-400 text-2xs px-1.5 py-0.5 font-medium">Modified</span>
                     )}
                   </div>
 
-                  <div className="text-[11px] text-txt-muted space-y-0.5">
+                  <div className="text-2xs text-txt-muted space-y-0.5">
                     {!gitStatus.isClean && (
                       <div className="text-amber-300">
                         ● {gitStatus.modifiedCount ?? 0} modified, {gitStatus.untrackedCount ?? 0} untracked
@@ -1184,7 +1184,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </div>
                     )}
                     {gitStatus.remoteOriginUrl && (
-                      <div className="truncate text-txt-muted font-mono text-[10px]" title={gitStatus.remoteOriginUrl}>
+                      <div className="truncate text-txt-muted font-mono text-2xs" title={gitStatus.remoteOriginUrl}>
                         {gitStatus.remoteOriginUrl}
                       </div>
                     )}

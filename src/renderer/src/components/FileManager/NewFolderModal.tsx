@@ -3,6 +3,7 @@ import { FolderPlus, X, Loader2 } from 'lucide-react';
 import type { SourceType } from './types';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface NewFolderModalProps {
   open: boolean;
@@ -23,6 +24,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const handleBackdropClick = useModalDismiss(onClose, open && !submitting);
 
   const isS3Root = sourceType === 's3' && (currentPath === '/' || currentPath === '');
   const title = isS3Root ? 'Create S3 Bucket' : 'Create New Folder';
@@ -70,9 +72,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
-      }}
+      onClick={handleBackdropClick}
     >
       <div
         className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-card p-5 shadow-2xl space-y-4"
@@ -84,7 +84,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
             <FolderPlus className="h-5 w-5 text-sky-400 shrink-0" />
             <span>{title}</span>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             disabled={submitting}

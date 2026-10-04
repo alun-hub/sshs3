@@ -223,7 +223,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-txt-muted mb-1">Name</label>
-            <input
+            <input aria-label="e.g. jumpbox, prod-bastion"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -272,7 +272,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   {type === 'local' ? 'Target address (as seen from the server)' : 'Target address (as seen from your computer)'}
                 </label>
-                <input
+                <input aria-label="localhost"
                   type="text"
                   value={remoteHost}
                   onChange={(e) => setRemoteHost(e.target.value)}
@@ -287,7 +287,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Target port</label>
-                <input
+                <input aria-label="e.g. 5432 for Postgres, 3306 for MySQL"
                   type="number"
                   min={1}
                   max={65535}
@@ -310,7 +310,7 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-txt-muted mb-1">Description (optional)</label>
-            <input
+            <input aria-label="e.g. Production database"
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}

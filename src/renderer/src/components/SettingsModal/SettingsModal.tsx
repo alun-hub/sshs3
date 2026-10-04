@@ -434,7 +434,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {/* Fixed height (capped at 680px / 85vh): sizing to content made the dialog
           change height and jump on screen every time a different category was
           selected. Sparse categories now leave some empty space instead. */}
-      <div className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Settings" className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -445,7 +445,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Settings</h2>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -731,7 +731,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       ))}
                       <option value="custom">Custom...</option>
                     </select>
-                    <input
+                    <input aria-label="Enter custom font family..."
                       type="text"
                       value={fontFamily}
                       onChange={(e) => setFontFamily(e.target.value)}
@@ -1036,7 +1036,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="space-y-2">
                             <label className="text-xs font-medium text-txt-primary">X Server Binary Path</label>
                             <div className="flex items-center gap-2">
-                              <input
+                              <input aria-label="Not needed on Linux (e.g. C:\Program Files\VcXsrv\vcxsrv.exe on Windows)"
                                 type="text"
                                 value={x11ServerPath}
                                 onChange={(e) => {
@@ -1061,7 +1061,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           {/* Custom Arguments */}
                           <div className="space-y-1.5">
                             <label className="text-xs font-medium text-txt-primary">Server Arguments</label>
-                            <input
+                            <input aria-label=":0 -multiwindow -clipboard -wgl -ac"
                               type="text"
                               value={x11ServerArgs}
                               onChange={(e) => setX11ServerArgs(e.target.value)}
@@ -1178,7 +1178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {/* Custom Arguments */}
                         <div className="space-y-1.5">
                           <label className="text-xs font-medium text-txt-primary">Server Arguments</label>
-                          <input
+                          <input aria-label=":0 -multiwindow -clipboard -wgl -ac"
                             type="text"
                             value={x11ServerArgs}
                             onChange={(e) => setX11ServerArgs(e.target.value)}
@@ -1704,7 +1704,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <div className="relative flex-1">
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
-                      <input
+                      <input aria-label="Search keyboard shortcuts..."
                         type="text"
                         placeholder="Search keyboard shortcuts..."
                         value={shortcutSearch}
@@ -1820,7 +1820,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-txt-secondary">Display Name *</label>
-                          <input
+                          <input aria-label="e.g. Alpine Linux"
                             type="text"
                             value={newImageName}
                             onChange={(e) => setNewImageName(e.target.value)}
@@ -1830,7 +1830,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-txt-secondary">Image Reference *</label>
-                          <input
+                          <input aria-label="e.g. alpine:latest"
                             type="text"
                             value={newImageRef}
                             onChange={(e) => setNewImageRef(e.target.value)}
@@ -1842,7 +1842,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1 sm:col-span-1">
                           <label className="text-xs font-medium text-txt-secondary">Default Shell / Command</label>
-                          <input
+                          <input aria-label="e.g. sh or bash"
                             type="text"
                             value={newImageCmd}
                             onChange={(e) => setNewImageCmd(e.target.value)}
@@ -1852,7 +1852,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="space-y-1 sm:col-span-2">
                           <label className="text-xs font-medium text-txt-secondary">Description</label>
-                          <input
+                          <input aria-label="e.g. Lightweight shell with apk package manager"
                             type="text"
                             value={newImageDesc}
                             onChange={(e) => setNewImageDesc(e.target.value)}

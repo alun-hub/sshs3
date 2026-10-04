@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Copy, FileWarning, SkipForward } from 'lucide-react';
 import type { TransferConflictPromptEvent, TransferConflictResolution } from '@shared/types/ipc';
+import { useEscapeToClose } from '../lib/useModalDismiss';
 
 export const TransferConflictModal: React.FC = () => {
   const [prompts, setPrompts] = useState<TransferConflictPromptEvent[]>([]);
@@ -59,18 +60,7 @@ export const TransferConflictModal: React.FC = () => {
   // M11 (code review): a window-level listener catches Escape even while
   // focus is elsewhere (e.g. a terminal), unlike a handler attached only to
   // this dialog's own <div>.
-  useEffect(() => {
-    if (!currentPrompt) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        void respond('skip');
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPrompt]);
+  useEscapeToClose(() => void respond('skip'), !!currentPrompt);
 
   if (!currentPrompt) {
     return null;
@@ -120,6 +110,7 @@ export const TransferConflictModal: React.FC = () => {
           <button
             type="button"
             onClick={() => respond('skip')}
+            autoFocus
             data-testid="transfer-conflict-skip"
             className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
@@ -139,7 +130,7 @@ export const TransferConflictModal: React.FC = () => {
             type="button"
             onClick={() => respond('overwrite')}
             data-testid="transfer-conflict-overwrite"
-            className="rounded-lg bg-sky-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+            className="rounded-lg bg-red-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-red-500 shadow-sm transition-colors"
           >
             Overwrite
           </button>

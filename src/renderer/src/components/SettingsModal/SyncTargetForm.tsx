@@ -424,7 +424,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
   return (
     <div className="space-y-3">
       {hasProfiles && (
-        <div className="rounded-lg border border-border-subtle bg-app-bg/60 p-2.5 space-y-1.5">
+        <div className="rounded-lg border border-border-subtle bg-app/60 p-2.5 space-y-1.5">
           <label className="text-xs font-medium text-txt-secondary flex items-center justify-between">
             <span>Autofill from saved profile:</span>
           </label>
@@ -638,7 +638,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
           )}
 
           {draft.authType === 'smartcard' && (
-            <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app-bg/50 p-2.5">
+            <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app/50 p-2.5">
               <Field label="PKCS#11 Library (.so / .dll)">
                 {(id) => (
                   <div className="flex gap-1.5">
@@ -807,7 +807,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
               </Field>
             </div>
           ) : (
-            <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app-bg/50 p-3">
+            <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app/50 p-3">
               <div className="grid grid-cols-2 gap-2.5">
                 <Field label="SSO Start URL">
                   {(id) => (

@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { K8sLoginResult } from '@shared/types/kubernetes';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 interface K8sLoginModalProps {
   open: boolean;
@@ -68,6 +69,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
+  useModalDismiss(onClose, open);
   if (!open) return null;
 
   const handlePasteChange = (val: string) => {
@@ -118,7 +121,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
-      <div className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="OpenShift / Kubernetes token login" className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-5 py-4">
           <div className="flex items-center gap-2.5">
@@ -130,7 +133,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <p className="text-xs text-txt-muted">Log in to a cluster directly without needing the local oc CLI</p>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -150,7 +153,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               </div>
               <span className="text-xs text-txt-muted">Auto-populates fields below</span>
             </div>
-            <textarea
+            <textarea aria-label="e.g. oc login --token=sha256~... --server=https://api.cluster.example.com:6443"
               rows={2}
               value={pasteInput}
               onChange={(e) => handlePasteChange(e.target.value)}
@@ -180,7 +183,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Server URL <span className="text-red-400">*</span>
               </label>
-              <input
+              <input aria-label="https://api.mycluster.example.com:6443"
                 type="text"
                 required
                 value={server}
@@ -205,7 +208,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 </button>
               </div>
               <div className="relative">
-                <input
+                <input aria-label="sha256~..."
                   type={showToken ? 'text' : 'password'}
                   required
                   value={token}
@@ -221,7 +224,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Default Project / Namespace <span className="text-txt-muted font-normal">(optional)</span>
               </label>
-              <input
+              <input aria-label="Leave empty to auto-detect from user projects"
                 type="text"
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
@@ -264,7 +267,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               type="button"
               disabled={loading}
               onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              className="rounded-lg px-3.5 py-1.5 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
             >
               Cancel
             </button>

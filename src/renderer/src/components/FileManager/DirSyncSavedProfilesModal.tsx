@@ -165,14 +165,14 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Saved sync profiles" className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3 shrink-0">
           <div className="flex items-center gap-2">
             <FolderSync className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Saved Sync Profiles</h2>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -218,7 +218,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
               return (
                 <div
                   key={profile.id}
-                  className="rounded-xl border border-border-subtle bg-app-surface p-3.5 flex flex-col gap-3 hover:border-border-default transition-all shadow-sm"
+                  className="rounded-xl border border-border-subtle bg-app-surface p-3.5 flex flex-col gap-3 hover:border-border-strong transition-all shadow-sm"
                 >
                   {/* Card Header */}
                   <div className="flex items-center justify-between gap-3 border-b border-border-subtle/50 pb-2.5">

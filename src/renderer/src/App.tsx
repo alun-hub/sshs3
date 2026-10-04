@@ -898,7 +898,7 @@ export const App: React.FC = () => {
                         key={profile.id}
                         onDoubleClick={() => handleConnectRecentSSH(profile)}
                         title="Double-click to connect"
-                        className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-default transition-colors cursor-pointer"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
                       >
                         <div className="min-w-0">
                           <div className="truncate text-xs font-medium text-txt-primary">{profile.name}</div>
@@ -1214,17 +1214,19 @@ export const App: React.FC = () => {
       <TransferConflictModal />
       <QuitConfirmBridge />
 
-      {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
-      <DotfilesSyncBanner />
+      {/* Top-right notices share one column so two of them showing at once stack instead of overlapping */}
+      <div className="pointer-events-none fixed top-3 right-3 z-50 flex w-full max-w-sm flex-col gap-2 [&>*]:pointer-events-auto">
+        {/* Surfaces a wrong/missing PIN from smartcardUnlockAtStartup, which otherwise fails silently */}
+        <SmartcardStartupUnlockBanner />
+        {/* Global dotfiles pool sync prompt (opt-in feature, see Settings) */}
+        <DotfilesSyncBanner />
+      </div>
 
       {/* New-version notice (poll against GitHub Releases, user-driven download/install) */}
       <UpdateBanner />
 
       {/* Warns if saved credentials can't be OS-keyring-encrypted and are falling back to plaintext */}
       <CredentialEncryptionWarningBanner />
-
-      {/* Surfaces a wrong/missing PIN from smartcardUnlockAtStartup, which otherwise fails silently */}
-      <SmartcardStartupUnlockBanner />
 
       {/* Per-tab or per-pane: pick an SSH profile to connect */}
       <ConnectionManagerModal

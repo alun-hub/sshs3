@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, ShieldCheck, Cpu, Lock, Server, Layers, FolderSync } from 'lucide-react';
 import type { AskpassPromptKind } from '@shared/types/ipc';
+import { useEscapeToClose } from '../lib/useModalDismiss';
 
 export interface AskpassPromptItem {
   id: string;
@@ -266,18 +267,7 @@ export const SmartcardPinModal: React.FC = () => {
   // own onKeyDown below, which needs focus already inside it. Enter (submit)
   // stays on the dialog's onKeyDown: it's only meaningful once the user is
   // actively typing in the focused PIN input anyway.
-  useEffect(() => {
-    if (!currentPrompt) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        handleCancel();
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPrompt]);
+  useEscapeToClose(handleCancel, !!currentPrompt);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -416,14 +406,14 @@ export const SmartcardPinModal: React.FC = () => {
                         type="button"
                         onClick={handleCancel}
                         data-testid="smartcard-pin-cancel"
-                        className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                        className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         data-testid="smartcard-pin-submit"
-                        className={`rounded-lg ${visuals.submitBtnClass} px-4 py-2 text-xs font-medium shadow-sm transition-colors`}
+                        className={`rounded-lg ${visuals.submitBtnClass} px-4 py-1.5 text-xs font-medium shadow-sm transition-colors`}
                       >
                         Submit
                       </button>
@@ -438,7 +428,7 @@ export const SmartcardPinModal: React.FC = () => {
                     type="button"
                     onClick={handleCancel}
                     data-testid="smartcard-pin-cancel"
-                    className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                    className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
                   >
                     Cancel
                   </button>
@@ -446,7 +436,7 @@ export const SmartcardPinModal: React.FC = () => {
                     type="button"
                     onClick={() => void handleSubmit()}
                     data-testid="smartcard-pin-submit"
-                    className={`rounded-lg ${visuals.submitBtnClass} px-4 py-2 text-xs font-medium shadow-sm transition-colors`}
+                    className={`rounded-lg ${visuals.submitBtnClass} px-4 py-1.5 text-xs font-medium shadow-sm transition-colors`}
                   >
                     Confirm
                   </button>

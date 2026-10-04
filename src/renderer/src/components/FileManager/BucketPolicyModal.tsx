@@ -112,13 +112,13 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Bucket policy and CORS" className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <FileJson className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Bucket Policy &amp; CORS — {bucketName}</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
+          <button aria-label="Close" title="Close" type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>

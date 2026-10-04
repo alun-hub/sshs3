@@ -35,6 +35,7 @@ import { FileDiffModal } from './FileDiffModal';
 import { DirSyncSavedProfilesModal } from './DirSyncSavedProfilesModal';
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 /** Last path segment, used to preview the nested sync root under the chosen target parent. */
 function baseName(path: string): string {
@@ -250,19 +251,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
     ).length;
   }, [diff, included, deleteExtraneous]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (folderBrowserOpen || compareEntry || profilePickerOpen || connectionPickerOpen) {
-          return;
-        }
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [open, folderBrowserOpen, compareEntry, profilePickerOpen, connectionPickerOpen, onClose]);
+  useEscapeToClose(onClose, open && !folderBrowserOpen && !compareEntry && !profilePickerOpen && !connectionPickerOpen);
 
   // Reset + prefill only on the rising edge of `open` (closed -> open), not
   // on every re-render while already open — otherwise an unrelated prop
@@ -528,6 +517,9 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sync Directory"
         className={classNames(
           'flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden transition-all duration-150',
           isMaximized ? 'w-[98vw] h-[96vh] max-w-none' : 'w-[94vw] max-w-[1400px] h-[88vh]'
@@ -986,7 +978,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5 space-y-2">
                   <span className="text-xs font-medium text-txt-primary">Profile name</span>
                   <div className="flex gap-2">
-                    <input
+                    <input aria-label="e.g. Web server → backup"
                       value={saveProfileName}
                       onChange={(e) => setSaveProfileName(e.target.value)}
                       placeholder="e.g. Web server → backup"

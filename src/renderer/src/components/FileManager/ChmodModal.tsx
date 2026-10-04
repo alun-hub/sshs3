@@ -139,14 +139,14 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Change permissions" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Change Permissions (chmod)</h2>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

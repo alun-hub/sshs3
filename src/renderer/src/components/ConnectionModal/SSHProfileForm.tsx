@@ -24,6 +24,7 @@ import { describeIpcError } from '../../lib/format';
 import { AccessSetupPanel, type AccessState } from '../SSH/AccessSetupPanel';
 import { pickDefaultPkcs11Lib, pkcs11PlaceholderPath } from '../../lib/smartcard';
 import { IS_WINDOWS } from '../../lib/platform';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -68,6 +69,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [detecting, setDetecting] = useState(false);
   const [accessState, setAccessState] = useState<AccessState>('unknown');
   const [saveReminderOpen, setSaveReminderOpen] = useState(false);
+  // Escape backs out of the reminder and returns to the form without saving.
+  useEscapeToClose(() => setSaveReminderOpen(false), saveReminderOpen);
   const [openInstallSignal, setOpenInstallSignal] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
@@ -304,7 +307,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-6 flex flex-col gap-3.5">
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-txt-secondary">
-          Profile Name
+          <span>Profile Name<span className="text-red-400" aria-hidden="true"> *</span></span>
           <input
             required
             value={config.name}
@@ -326,7 +329,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
 
       <div className="grid grid-cols-[1fr_80px_1fr] gap-2.5">
         <label className="flex flex-col gap-1 text-txt-secondary">
-          Hostname / IP
+          <span>Hostname / IP<span className="text-red-400" aria-hidden="true"> *</span></span>
           <input
             required
             value={config.host}
@@ -345,7 +348,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           />
         </label>
         <label className="flex flex-col gap-1 text-txt-secondary">
-          Username
+          <span>Username<span className="text-red-400" aria-hidden="true"> *</span></span>
           <input
             required
             value={config.username}
@@ -398,7 +401,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             <option value="__custom__">Custom (enter manually)</option>
           </select>
           {proxyJumpMode === 'custom' && (
-            <input
+            <input aria-label="e.g. jumpuser@bastion.example.com:22"
               value={config.proxyJump ?? ''}
               onChange={(e) => update('proxyJump', e.target.value)}
               className="mt-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
@@ -1018,7 +1021,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               </label>
 
               {config.forwardAgent && (
-                <div className="col-span-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-300 flex items-start gap-2">
+                <div className="col-span-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-2xs text-amber-300 flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
                   <div>
                     <span className="font-semibold block">Security Advisory: SSH Agent Forwarding</span>
@@ -1143,6 +1146,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           <button
             type="submit"
             disabled={!isValid}
+            title={isValid ? undefined : 'Fill in profile name, hostname and username first'}
             className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
           >
             Save Profile

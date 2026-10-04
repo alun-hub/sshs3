@@ -388,12 +388,12 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                       <span className="truncate font-medium text-txt-primary">{k.label}</span>
                       <span
                         title={k.source === 'agent' ? 'Already unlocked and cached on this computer, so no PIN or password is needed to read it' : undefined}
-                        className="rounded bg-app-card px-1.5 py-0.5 text-[10px] uppercase text-txt-muted"
+                        className="rounded bg-app-card px-1.5 py-0.5 text-2xs uppercase text-txt-muted"
                       >
                         {SOURCE_LABEL[k.source]}
                       </span>
                     </div>
-                    <div className="truncate font-mono text-[11px] text-txt-muted">
+                    <div className="truncate font-mono text-2xs text-txt-muted">
                       {k.type}
                       {k.fingerprint ? ` · ${k.fingerprint}` : ''}
                     </div>
@@ -408,7 +408,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                         void copyKeyOnly(k);
                       }}
                       className={classNames(
-                        'flex items-center gap-1 text-[10px] rounded px-2 py-1 transition-colors border',
+                        'flex items-center gap-1 text-2xs rounded px-2 py-1 transition-colors border',
                         copiedKeyId === k.id
                           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 font-medium'
                           : 'text-txt-muted hover:text-txt-primary bg-app-card hover:bg-app-surface border-border-subtle'
@@ -452,7 +452,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
               <span className="font-medium text-txt-primary flex items-center gap-1.5">
                 <Globe className="h-3.5 w-3.5 text-sky-400" /> Fetch from Git Provider (username.keys)
               </span>
-              <div className="flex items-center gap-1 bg-app-card rounded-lg p-0.5 border border-border-subtle text-[11px]">
+              <div className="flex items-center gap-1 bg-app-card rounded-lg p-0.5 border border-border-subtle text-2xs">
                 <button
                   type="button"
                   onClick={() => setGitProvider('github')}
@@ -487,12 +487,12 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
             </div>
             <div className="flex gap-2 items-center">
               {gitProvider === 'custom' && (
-                <input
+                <input aria-label="git.example.com"
                   type="text"
                   value={gitCustomHost}
                   onChange={(e) => setGitCustomHost(e.target.value)}
                   placeholder="git.example.com"
-                  className="w-40 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-[11px] text-txt-primary"
+                  className="w-40 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-2xs text-txt-primary"
                 />
               )}
               <input
@@ -501,7 +501,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                 onChange={(e) => setGitUsername(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void fetchGitKeys()}
                 placeholder={gitProvider === 'github' ? 'GitHub username (e.g. torvalds)' : 'GitLab username'}
-                className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-[11px] text-txt-primary"
+                className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-app-card px-2.5 py-1 text-2xs text-txt-primary"
               />
               <button
                 type="button"
@@ -526,7 +526,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                 value={pasteValue}
                 onChange={(e) => setPasteValue(e.target.value)}
                 placeholder="ssh-ed25519 AAAA… comment"
-                className="min-w-0 flex-1 resize-none rounded-lg border border-border-subtle bg-app-surface p-2 font-mono text-[11px] text-txt-primary"
+                className="min-w-0 flex-1 resize-none rounded-lg border border-border-subtle bg-app-surface p-2 font-mono text-2xs text-txt-primary"
               />
               <button
                 type="button"
@@ -560,13 +560,13 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                 </select>
               </div>
               {loginMethod === 'auto' && loginOrder.length === 0 && (
-                <div data-testid="install-key-login-order" className="text-[11px] text-amber-300">
+                <div data-testid="install-key-login-order" className="text-2xs text-amber-300">
                   No automatic login is possible: the host only accepts keys, and the only key selected is the one this
                   profile logs in with. Select another key, pick a login method above, or copy the command.
                 </div>
               )}
               {loginMethod === 'auto' && loginOrder.length > 0 && (
-                <div data-testid="install-key-login-order" className="text-[11px] text-txt-muted">
+                <div data-testid="install-key-login-order" className="text-2xs text-txt-muted">
                   Tries, in order: {loginOrder.map((step) => LOGIN_STEP_LABELS[step]).join(' → ')}
                 </div>
               )}
@@ -610,7 +610,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
           {command && (
             <div className="space-y-1.5">
               <div className="text-txt-muted">Paste this on the host if it can&apos;t be reached from here. It only creates ~/.ssh/authorized_keys if needed and appends the selected keys:</div>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg border border-border-subtle bg-app-surface p-2 font-mono text-[11px] text-txt-primary">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg border border-border-subtle bg-app-surface p-2 font-mono text-2xs text-txt-primary">
                 {command}
               </pre>
             </div>

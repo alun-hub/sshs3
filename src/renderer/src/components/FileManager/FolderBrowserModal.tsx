@@ -80,10 +80,10 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">
+      <div role="dialog" aria-modal="true" aria-label="Choose folder" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between border-b border-border-subtle p-3">
           <div className="text-sm font-semibold text-txt-primary">Choose folder — {providerLabel}</div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="text-txt-muted hover:text-txt-primary transition-colors"
@@ -144,7 +144,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+              className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
             >
               Cancel
             </button>

@@ -24,6 +24,7 @@ import type { FileEntry } from '@shared/types/storage';
 import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc';
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
 
@@ -325,20 +326,13 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   }, [isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
 
   // Global Escape key handling
-  useEffect(() => {
-    if (!open) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showSearch) {
-          setShowSearch(false);
-          return;
-        }
-        handleRequestClose();
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [open, showSearch, handleRequestClose]);
+  useEscapeToClose(() => {
+    if (showSearch) {
+      setShowSearch(false);
+      return;
+    }
+    handleRequestClose();
+  }, open);
 
   // Textarea key handling
   const handleKeyDown = useCallback(
@@ -565,22 +559,37 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <span>{tailModeActive ? 'TAILING...' : 'Tail -f'}</span>
             </button>
 
-            {/* Markdown Preview Toggle */}
+            {/* Markdown Source / Preview: a segmented control so the current mode is always visible */}
             {isMarkdown && (
-              <button
-                type="button"
-                title={markdownPreview ? 'Switch to Source (Edit)' : 'Switch to Preview'}
-                onClick={() => setMarkdownPreview((p) => !p)}
-                className={classNames(
-                  'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors',
-                  markdownPreview
-                    ? 'bg-sky-500/20 text-sky-400'
-                    : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
-                )}
+              <div
+                role="group"
+                aria-label="Markdown view"
+                className="flex items-center rounded-lg border border-border-subtle bg-app-input p-0.5 text-xs font-semibold"
               >
-                {markdownPreview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                <span>{markdownPreview ? 'Edit' : 'Preview'}</span>
-              </button>
+                {(
+                  [
+                    { preview: false, label: 'Source', title: 'Switch to Source (Edit)', icon: <Pencil className="h-3.5 w-3.5" /> },
+                    { preview: true, label: 'Preview', title: 'Switch to Preview', icon: <Eye className="h-3.5 w-3.5" /> },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    title={opt.title}
+                    aria-pressed={markdownPreview === opt.preview}
+                    onClick={() => setMarkdownPreview(opt.preview)}
+                    className={classNames(
+                      'flex items-center gap-1 rounded-md px-2 py-0.5 transition-colors',
+                      markdownPreview === opt.preview
+                        ? 'bg-sky-500/20 text-sky-400'
+                        : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+                    )}
+                  >
+                    {opt.icon}
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
             )}
 
             {/* Search Toggle */}
@@ -765,7 +774,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         {showSearch && (
           <div className="flex items-center gap-2 border-b border-border-subtle bg-app-surface px-3 py-1.5 select-none">
             <Search className="h-3.5 w-3.5 text-txt-muted shrink-0" />
-            <input
+            <input aria-label="Find in file... (Enter for next, Esc to close)"
               ref={searchInputRef}
               type="text"
               placeholder="Find in file... (Enter for next, Esc to close)"
@@ -810,7 +819,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             >
               Next
             </button>
-            <button
+            <button aria-label="Close" title="Close"
               type="button"
               onClick={() => {
                 setShowSearch(false);
@@ -830,7 +839,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
               <span className="truncate">{error}</span>
             </div>
-            <button
+            <button aria-label="Close" title="Close"
               type="button"
               onClick={() => setError(null)}
               className="rounded p-0.5 hover:bg-red-900/40 text-red-300"
@@ -874,7 +883,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <Code className="h-4 w-4 shrink-0 text-sky-400" />
               <span>{externalStatus}</span>
             </div>
-            <button
+            <button aria-label="Close" title="Close"
               type="button"
               onClick={() => setExternalStatus(null)}
               className="rounded p-0.5 hover:bg-sky-900/40 text-sky-300"
@@ -943,7 +952,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 )}
 
                 {/* Text Area */}
-                <textarea
+                <textarea aria-label="Empty file"
                   ref={textareaRef}
                   value={content}
                   readOnly={readOnly || saving || tailModeActive}
@@ -993,7 +1002,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                   : 'bg-sky-500/20 text-sky-400'
               )}
             >
-              {tailModeActive ? 'Tail -f' : readOnly ? 'Read-Only' : 'Edit'}
+              {tailModeActive ? 'Tail -f' : isMarkdown && markdownPreview ? 'Preview' : readOnly ? 'Read-Only' : 'Edit'}
             </span>
             <span>UTF-8</span>
           </div>

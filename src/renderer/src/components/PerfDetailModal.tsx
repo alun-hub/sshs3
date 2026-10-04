@@ -219,7 +219,7 @@ const NowCards: React.FC<{ kind: 'ssh' | 'k8s'; history: PerfSample[]; latest: P
       {resRows.length > 0 && (
         <PerfCard title="Resources (usage vs request / limit)" testId="perf-card-resources">
           <HBars rows={resRows} />
-          <p className="text-[10px] text-txt-muted">The vertical ticks mark request and limit.</p>
+          <p className="text-2xs text-txt-muted">The vertical ticks mark request and limit.</p>
         </PerfCard>
       )}
       {tiles.length > 0 && (
@@ -285,7 +285,7 @@ export const PerfDetailModal: React.FC<PerfDetailModalProps> = ({ kind, history,
             <details className="md:col-span-2 text-xs text-txt-secondary">
               <summary className="cursor-pointer select-none">All values as text</summary>
               <pre
-                className="mt-2 whitespace-pre-wrap rounded-md bg-app-input p-3 text-[11px] leading-5"
+                className="mt-2 whitespace-pre-wrap rounded-md bg-app-input p-3 text-2xs leading-5"
                 data-testid="perf-detail-values"
               >
                 {tooltipText(kind, latest).replace(/\nClick for history$/, '')}

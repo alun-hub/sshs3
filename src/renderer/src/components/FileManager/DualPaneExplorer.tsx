@@ -12,6 +12,7 @@ import type { PaneSide, PaneSource, SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
   left: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
@@ -63,6 +64,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     side: PaneSide;
   } | null>(null);
   const [promptPassword, setPromptPassword] = useState('');
+  useModalDismiss(() => setPasswordPrompt(null), !!passwordPrompt && !connecting);
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
@@ -644,7 +646,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       />
       {passwordPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
+          <div role="dialog" aria-modal="true" aria-label="Password required for SFTP" className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-surface p-5 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
               <KeyRound className="h-4 w-4" />
               <span>Password Required for SFTP</span>
@@ -653,7 +655,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
               Profile <strong className="text-txt-primary">{passwordPrompt.config.name}</strong> has no saved password. File Manager runs in the background and needs a password to connect.
             </p>
             <form onSubmit={handlePasswordPromptSubmit} className="space-y-3">
-              <input
+              <input aria-label="Enter password"
                 type="password"
                 required
                 autoFocus

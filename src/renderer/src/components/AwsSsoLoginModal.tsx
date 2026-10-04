@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Cloud, Copy, Loader2 } from 'lucide-react';
 import type { AwsSsoPromptEvent } from '@shared/types/ipc';
+import { useEscapeToClose } from '../lib/useModalDismiss';
 
 export const AwsSsoLoginModal: React.FC = () => {
   const [prompts, setPrompts] = useState<AwsSsoPromptEvent[]>([]);
@@ -54,18 +55,7 @@ export const AwsSsoLoginModal: React.FC = () => {
   // M11 (code review): a window-level listener catches Escape even while
   // focus is elsewhere (e.g. a terminal), unlike a handler attached only to
   // this dialog's own <div>.
-  useEffect(() => {
-    if (!currentPrompt) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        void handleCancel();
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPrompt]);
+  useEscapeToClose(() => void handleCancel(), !!currentPrompt);
 
   if (!currentPrompt) {
     return null;

@@ -264,6 +264,41 @@ body,
       0 0 0 2px var(--bg-app),
       0 0 0 4px var(--accent-primary);
   }
+
+  /* Text fields already switch to an accent border on focus, so they only get a slim 2px halo:
+     the full 4px ring above overlapped the label sitting 4px above most inputs. */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 40%, transparent);
+  }
+}
+
+/* Pointer cursor on enabled buttons, "not allowed" on disabled ones (utilities such as
+   cursor-grab / cursor-default still win because this lives in the base layer). */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem'],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+}
+
+/* Respect the OS "reduce motion" setting: keep state changes, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Custom scrollbar */

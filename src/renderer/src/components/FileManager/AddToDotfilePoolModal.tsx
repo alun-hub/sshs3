@@ -130,7 +130,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Add to Dotfiles Pool" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
@@ -140,7 +140,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Add to Dotfiles Pool</h2>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -165,7 +165,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
 
           <div className="space-y-1">
             <span className="text-xs font-medium text-txt-primary">Target Path on Server (remotePath)</span>
-            <input
+            <input aria-label="e.g. ~/.bashrc"
               value={remotePath}
               onChange={(e) => setRemotePath(e.target.value)}
               placeholder="e.g. ~/.bashrc"
@@ -175,7 +175,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               The path the file is automatically written to when the pool syncs to a connected server.
             </p>
             {looksLikeCredentialFile(remotePath) && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-2.5 py-2 text-[11px] text-amber-300">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/40 px-2.5 py-2 text-2xs text-amber-300">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <span>
                   This looks like a credentials file. Pooled dotfiles are stored unencrypted on this device —
@@ -205,7 +205,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : isCreatingNewPool ? (
-              <input
+              <input aria-label="New pool name, e.g. Personal dotfiles"
                 value={newPoolName}
                 onChange={(e) => setNewPoolName(e.target.value)}
                 placeholder="New pool name, e.g. Personal dotfiles"
@@ -230,7 +230,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
+              className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
             >
               Cancel
             </button>

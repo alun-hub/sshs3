@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, AlertTriangle, Loader2, X } from 'lucide-react';
 import { estimatePasswordStrength, MIN_ACCEPTABLE_SCORE, type PasswordStrength } from './passwordStrength';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 const INITIAL_STRENGTH: PasswordStrength = { score: 0, label: 'Very weak', colorClassName: 'bg-red-500' };
 
@@ -47,7 +48,7 @@ function StrengthTooWeakHint({
 }): React.ReactElement | null {
   if (password.length < 8 || !strength.loaded || strength.score >= MIN_ACCEPTABLE_SCORE) return null;
   return (
-    <p className="text-[10px] text-red-400">
+    <p className="text-2xs text-red-400">
       Too easy to guess (common word, pattern, or reused elsewhere) — try something longer or less predictable.
     </p>
   );
@@ -152,6 +153,8 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
   const topologyStrength = usePasswordStrength(topologyPassword);
   const credentialsStrength = usePasswordStrength(credentialsPassword);
 
+  // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
+  useModalDismiss(onCancel, open);
   if (!open) return null;
 
   const isSetup = mode === 'setup';
@@ -199,7 +202,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
-      <div className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label={title} className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
@@ -207,7 +210,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
             </div>
             <h2 className="text-sm font-semibold text-txt-primary">{title}</h2>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onCancel}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

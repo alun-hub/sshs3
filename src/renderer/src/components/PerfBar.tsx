@@ -99,7 +99,7 @@ export const PerfBar: React.FC<PerfBarProps> = ({
   const latest = state.history[state.history.length - 1];
   const shown = items.filter((id) => metricApplies(kind, id));
   const recent = state.history.slice(-PERF_SPARK_POINTS);
-  const base = `flex items-center gap-2.5 px-2.5 h-5 shrink-0 tabular-nums overflow-hidden whitespace-nowrap text-[11px] font-mono border-b w-full text-left ${"bg-app-surface-subtle text-txt-secondary border-border-subtle"}`;
+  const base = `flex items-center gap-2.5 px-2.5 h-5 shrink-0 tabular-nums overflow-hidden whitespace-nowrap text-2xs font-mono border-b w-full text-left ${"bg-app-surface-subtle text-txt-secondary border-border-subtle"}`;
 
   if (!latest) {
     return (

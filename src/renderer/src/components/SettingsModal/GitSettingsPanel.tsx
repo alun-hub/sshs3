@@ -284,12 +284,12 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
           <div className="flex-1 space-y-1">
             <div className="font-semibold text-sky-100">{notice.title}</div>
             {notice.description && (
-              <p className="text-[11px] leading-relaxed text-sky-200/90">{notice.description}</p>
+              <p className="text-2xs leading-relaxed text-sky-200/90">{notice.description}</p>
             )}
             {notice.keySnippet && (
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-[10px] text-sky-300 font-semibold uppercase tracking-wider">Key in clipboard:</span>
-                <code className="rounded bg-sky-900/70 border border-sky-700/50 px-2 py-0.5 font-mono text-[10px] text-sky-200 select-all">
+                <span className="text-2xs text-sky-300 font-semibold uppercase tracking-wider">Key in clipboard:</span>
+                <code className="rounded bg-sky-900/70 border border-sky-700/50 px-2 py-0.5 font-mono text-2xs text-sky-200 select-all">
                   {notice.keySnippet}
                 </code>
               </div>
@@ -309,7 +309,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-300 flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-white">
+          <button aria-label="Close" title="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-white">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -323,7 +323,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
               <KeyRound className="h-4 w-4 text-sky-400" />
               Developer SSH Keys & Git Providers
             </h3>
-            <p className="text-txt-muted text-[11px] mt-0.5">
+            <p className="text-txt-muted text-2xs mt-0.5">
               Copy your public keys to clipboard or register them on GitHub/GitLab for push/pull access and commit signing.
             </p>
           </div>
@@ -348,7 +348,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
         ) : keys.length === 0 ? (
           <div className="p-4 text-txt-muted bg-app-surface rounded-xl border border-border-subtle text-center space-y-1">
             <p>No public SSH keys found in <code>~/.ssh</code>, active agent, or global smartcard cache.</p>
-            <p className="text-[11px] text-txt-muted/80">
+            <p className="text-2xs text-txt-muted/80">
               If you use a smartcard, YubiKey, or FIDO2 key, unlock it into the global cache using the card icon in the top bar or under <strong>Settings &gt; Security &amp; Smartcard</strong>.
             </p>
           </div>
@@ -362,17 +362,17 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="truncate font-medium text-txt-primary">{k.label}</span>
                       <span
-                        className="shrink-0 whitespace-nowrap rounded bg-app-card px-1.5 py-0.5 text-[10px] uppercase text-txt-muted border border-border-subtle"
+                        className="shrink-0 whitespace-nowrap rounded bg-app-card px-1.5 py-0.5 text-2xs uppercase text-txt-muted border border-border-subtle"
                       >
                         {SOURCE_LABEL[k.source] || k.source}
                       </span>
                       {isSigning && (
-                        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
+                        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
                           <Check className="h-3 w-3" /> Active Signing Key
                         </span>
                       )}
                     </div>
-                    <div className="truncate font-mono text-[11px] text-txt-muted mt-0.5">
+                    <div className="truncate font-mono text-2xs text-txt-muted mt-0.5">
                       {k.type}
                       {k.fingerprint ? ` · ${k.fingerprint}` : ''}
                     </div>
@@ -385,7 +385,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       title="Copy public key to clipboard"
                       onClick={() => void copyKeyOnly(k)}
                       className={classNames(
-                        'flex items-center gap-1 text-[10px] rounded px-2.5 py-1.5 transition-colors border',
+                        'flex items-center gap-1 text-2xs rounded px-2.5 py-1.5 transition-colors border',
                         copiedKeyId === k.id && copiedAction === 'copy'
                           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 font-medium'
                           : 'text-txt-secondary hover:text-txt-primary bg-app-card hover:bg-app-surface border-border-subtle'
@@ -411,7 +411,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       onClick={() => void configureSigning(k)}
                       disabled={signingConfiguringId === k.id}
                       className={classNames(
-                        'flex items-center gap-1 text-[10px] rounded px-2.5 py-1.5 transition-colors border',
+                        'flex items-center gap-1 text-2xs rounded px-2.5 py-1.5 transition-colors border',
                         isSigning
                           ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-medium'
                           : 'text-txt-secondary hover:text-sky-400 bg-app-card hover:bg-app-surface border-border-subtle'
@@ -431,7 +431,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       title="Register this public key on GitHub (copies key to clipboard and opens browser)"
                       onClick={() => void registerOnGitProvider(k, 'github')}
                       className={classNames(
-                        'flex items-center gap-1 text-[10px] rounded px-2.5 py-1.5 transition-colors border',
+                        'flex items-center gap-1 text-2xs rounded px-2.5 py-1.5 transition-colors border',
                         copiedKeyId === k.id && copiedAction === 'github'
                           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 font-medium'
                           : 'text-txt-secondary hover:text-txt-primary bg-app-card hover:bg-app-surface border-border-subtle'
@@ -456,7 +456,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       title="Register this public key on GitLab (copies key to clipboard and opens browser)"
                       onClick={() => void registerOnGitProvider(k, 'gitlab')}
                       className={classNames(
-                        'flex items-center gap-1 text-[10px] rounded px-2.5 py-1.5 transition-colors border',
+                        'flex items-center gap-1 text-2xs rounded px-2.5 py-1.5 transition-colors border',
                         copiedKeyId === k.id && copiedAction === 'gitlab'
                           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 font-medium'
                           : 'text-txt-secondary hover:text-txt-primary bg-app-card hover:bg-app-surface border-border-subtle'
@@ -488,20 +488,20 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
           <ShieldCheck className="h-4 w-4 text-sky-400" />
           <h3 className="text-sm font-semibold text-txt-primary">Git Commit Signing (~/.gitconfig)</h3>
         </div>
-        <p className="text-txt-muted text-[11px] leading-relaxed">
+        <p className="text-txt-muted text-2xs leading-relaxed">
           SSH commit signing cryptographically signs git commits using your SSH key. GitHub and GitLab will display the green <span className="text-emerald-400 font-semibold">Verified</span> badge on your commits without requiring GPG.
         </p>
 
         <div className="grid grid-cols-2 gap-3 pt-1">
           <div className="rounded-lg border border-border-subtle bg-app-card p-3 space-y-1">
-            <span className="text-txt-muted text-[10px] uppercase tracking-wider font-semibold">Signing Format</span>
+            <span className="text-txt-muted text-2xs uppercase tracking-wider font-semibold">Signing Format</span>
             <div className="text-xs font-medium text-txt-primary font-mono">
               {signingConfig?.format || 'ssh (default)'}
             </div>
           </div>
 
           <div className="rounded-lg border border-border-subtle bg-app-card p-3 space-y-1">
-            <span className="text-txt-muted text-[10px] uppercase tracking-wider font-semibold">Automatic Signing (commit.gpgsign)</span>
+            <span className="text-txt-muted text-2xs uppercase tracking-wider font-semibold">Automatic Signing (commit.gpgsign)</span>
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs font-medium flex items-center gap-1.5">
                 {signingConfig?.enabled ? (
@@ -522,7 +522,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                     : undefined
                 }
                 className={classNames(
-                  'rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                  'rounded px-2 py-0.5 text-2xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                   signingConfig?.enabled
                     ? 'border border-border-subtle bg-app-surface text-txt-secondary hover:bg-red-500/15 hover:text-red-300 hover:border-red-500/30'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -536,11 +536,11 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
 
         <div className="rounded-lg border border-border-subtle bg-app-card p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-txt-muted text-[10px] uppercase tracking-wider font-semibold">Active Signing Key</span>
+            <span className="text-txt-muted text-2xs uppercase tracking-wider font-semibold">Active Signing Key</span>
             <button
               type="button"
               onClick={() => setShowCustomSigningKey(!showCustomSigningKey)}
-              className="text-[10px] text-sky-400 hover:text-sky-300 font-medium transition-colors"
+              className="text-2xs text-sky-400 hover:text-sky-300 font-medium transition-colors"
             >
               {showCustomSigningKey ? 'Cancel' : signingConfig?.signingKey ? 'Change Key…' : 'Set Key…'}
             </button>
@@ -557,7 +557,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
 
           {showCustomSigningKey && (
             <div className="pt-2 border-t border-border-subtle space-y-2">
-              <label htmlFor="custom-signing-key-input" className="text-[11px] text-txt-secondary block">
+              <label htmlFor="custom-signing-key-input" className="text-2xs text-txt-secondary block">
                 Paste an SSH public key (e.g. <code>ssh-rsa AAAAB3…</code> or <code>ssh-ed25519…</code>) or key path:
               </label>
               <div className="flex gap-2">
@@ -604,10 +604,10 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
             </label>
           )}
         </div>
-        <p className="text-txt-muted text-[11px] leading-relaxed">
+        <p className="text-txt-muted text-2xs leading-relaxed">
           Show Git branch indicators, commit status (ahead/behind/uncommitted changes), and Git operations (Pull, Clone, Open in GitHub/GitLab) in SFTP and local file manager panes. Turn this off if you prefer a clean file browser without Git polling.
         </p>
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex items-center gap-2 text-2xs">
           <span className="text-txt-muted">Status:</span>
           {fileManagerGitIntegration ? (
             <span className="flex items-center gap-1 text-emerald-400 font-medium">
@@ -628,7 +628,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
             <Globe className="h-4 w-4 text-sky-400" />
             <h3 className="text-sm font-semibold text-txt-primary">Lookup Public Keys (username.keys)</h3>
           </div>
-          <div className="flex items-center gap-1 bg-app-card rounded-lg p-0.5 border border-border-subtle text-[11px]">
+          <div className="flex items-center gap-1 bg-app-card rounded-lg p-0.5 border border-border-subtle text-2xs">
             <button
               type="button"
               onClick={() => setGitProvider('github')}
@@ -662,13 +662,13 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
           </div>
         </div>
 
-        <p className="text-txt-muted text-[11px]">
+        <p className="text-txt-muted text-2xs">
           Fetch publicly available SSH keys for any account on {gitProvider === 'github' ? 'GitHub' : gitProvider === 'gitlab' ? 'GitLab' : 'your custom Git server'} to inspect or copy.
         </p>
 
         <div className="flex gap-2 items-center">
           {gitProvider === 'custom' && (
-            <input
+            <input aria-label="git.example.com"
               type="text"
               value={gitCustomHost}
               onChange={(e) => setGitCustomHost(e.target.value)}
@@ -701,7 +701,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
               <div key={fk.id} className="flex items-center justify-between gap-3 p-2.5 text-xs">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-txt-primary truncate">{fk.label}</div>
-                  <div className="font-mono text-[10px] text-txt-muted truncate">{fk.line}</div>
+                  <div className="font-mono text-2xs text-txt-muted truncate">{fk.line}</div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -710,7 +710,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                     onClick={() => void configureSigning(fk)}
                     disabled={signingConfiguringId === fk.id}
                     className={classNames(
-                      'flex items-center gap-1 text-[10px] rounded px-2 py-1 transition-colors border',
+                      'flex items-center gap-1 text-2xs rounded px-2 py-1 transition-colors border',
                       isKeyActiveSigning(fk)
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-medium'
                         : 'text-txt-secondary hover:text-sky-400 bg-app-card hover:bg-app-surface border-border-subtle'
@@ -727,7 +727,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => void copyKeyOnly(fk)}
-                    className="flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-[10px] text-txt-secondary hover:text-txt-primary hover:bg-app-surface transition-colors shrink-0"
+                    className="flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-2xs text-txt-secondary hover:text-txt-primary hover:bg-app-surface transition-colors shrink-0"
                   >
                     <Copy className="h-3 w-3" />
                     Copy

@@ -15,6 +15,7 @@ import {
   type K8sTerminalTarget,
 } from '@shared/types/kubernetes';
 import { describeIpcError } from '../../lib/format';
+import { useModalDismiss } from '../../lib/useModalDismiss';
 
 export interface K8sDebugModalProps {
   target: {
@@ -82,6 +83,8 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
     }
   }, [open, target]);
 
+  // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
+  useModalDismiss(onClose, open && !!target);
   if (!open || !target) return null;
 
   const handlePresetChange = (presetId: string) => {
@@ -135,7 +138,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
-      <div className="flex w-full max-w-xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Attach debug container" className="flex w-full max-w-xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -146,7 +149,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Attach Debug Container</h2>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             disabled={submitting}
@@ -203,7 +206,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
               <Layers className="h-3.5 w-3.5 text-txt-muted" />
               <span>Container Image</span>
             </label>
-            <input
+            <input aria-label="e.g. nicolaka/netshoot:latest"
               type="text"
               value={image}
               onChange={(e) => {
@@ -251,7 +254,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
                 <Terminal className="h-3.5 w-3.5 text-txt-muted" />
                 <span>Interactive Shell</span>
               </label>
-              <input
+              <input aria-label="e.g. bash or sh"
                 type="text"
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
@@ -266,7 +269,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           {/* Ephemeral Container Name */}
           <div className="space-y-1.5">
             <label className="font-medium text-txt-primary">Ephemeral Container Name</label>
-            <input
+            <input aria-label="e.g. debugger-xyz123"
               type="text"
               value={containerName}
               onChange={(e) => setContainerName(e.target.value)}
@@ -313,7 +316,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
                 type="button"
                 onClick={onClose}
                 disabled={submitting}
-                className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
+                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

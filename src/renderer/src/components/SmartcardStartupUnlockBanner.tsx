@@ -30,7 +30,7 @@ export const SmartcardStartupUnlockBanner: React.FC = () => {
     <div
       role="alert"
       data-testid="smartcard-startup-unlock-error"
-      className="fixed top-3 right-3 z-50 w-full max-w-sm rounded-xl border border-border-subtle bg-app-card shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
+      className="w-full rounded-xl border border-border-subtle bg-app-card shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
     >
       <div className="flex items-start gap-2.5 p-3.5">
         <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-400">

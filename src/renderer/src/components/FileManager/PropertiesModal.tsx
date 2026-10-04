@@ -95,13 +95,13 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Properties" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Info className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Properties</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
+          <button aria-label="Close" title="Close" type="button" onClick={onClose} className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -128,7 +128,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
                 <div className="flex items-center gap-3 px-3 py-2">
                   <dt className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wider text-txt-muted">Content-Type</dt>
                   <dd className="min-w-0 flex-1">
-                    <input
+                    <input aria-label="application/octet-stream"
                       type="text"
                       value={contentType}
                       onChange={(e) => setContentType(e.target.value)}

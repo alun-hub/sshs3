@@ -16,6 +16,7 @@ import type { SSHActiveTunnel, SSHConnectionConfig, SSHTunnelConfig } from '@sha
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { SSHTunnelWizard } from './SSHTunnelWizard';
 import { useConfirm } from '../ConfirmDialog';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 interface SSHTunnelsModalProps {
   connection: SSHConnectionConfig;
@@ -124,6 +125,8 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     }
   };
 
+  useEscapeToClose(onClose, open && !wizardTarget);
+
   if (!open) return null;
 
   const savedTunnels = conn.tunnels || [];
@@ -132,8 +135,8 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
+      aria-label="SSH Tunnels"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
-      onKeyDown={(e) => e.key === 'Escape' && !wizardTarget && onClose()}
     >
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
@@ -149,7 +152,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -222,7 +225,11 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                         </div>
                         <div className="text-xs text-txt-muted flex flex-wrap items-center gap-2">
                           <span className="font-mono">{text}</span>
-                          {tunnel.description && <span>{tunnel.description}</span>}
+                          {tunnel.description && (
+                          <span className="truncate text-txt-secondary" title={tunnel.description}>
+                            · {tunnel.description}
+                          </span>
+                        )}
                           {active && <span>Started: {formatDateTime(active.startedAt)}</span>}
                         </div>
                         {active?.error && (

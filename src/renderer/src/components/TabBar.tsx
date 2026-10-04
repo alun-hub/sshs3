@@ -480,7 +480,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       <div
         data-testid="lock-smartcard-toast"
         role="status"
-        className="fixed top-12 right-3 z-50 flex w-full max-w-xs items-center gap-1.5 rounded-lg border border-amber-500/30 bg-app-card px-3 py-2 text-xs text-amber-300 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+        className="fixed top-12 right-3 z-[60] flex w-full max-w-xs items-center gap-1.5 rounded-lg border border-amber-500/30 bg-app-card px-3 py-2 text-xs text-amber-300 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
       >
         <Unlock className="h-3.5 w-3.5 shrink-0" />
         {lockFeedback}

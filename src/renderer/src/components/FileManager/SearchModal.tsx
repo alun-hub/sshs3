@@ -15,6 +15,7 @@ import type { SearchMatch, SearchMode, SearchSourceType } from '@shared/types/se
 import { classNames, describeIpcError } from '../../lib/format';
 import { SearchResultsList } from './SearchResultsList';
 import { SearchPreviewPane } from './SearchPreviewPane';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 interface SearchWarning {
   path?: string;
@@ -217,17 +218,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     };
   }, [isDragging]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        handleClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, handleClose]);
+  useEscapeToClose(handleClose, open);
 
   if (!open) return null;
 
@@ -239,6 +230,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       )}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search in Files"
         className={classNames(
           'flex flex-col overflow-hidden bg-app-card shadow-2xl transition-[width,height,border-radius] duration-150',
           isMaximized
@@ -279,7 +273,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         <div className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <input
+              <input aria-label="Search inside files..."
                 ref={queryInputRef}
                 type="text"
                 value={query}

@@ -511,7 +511,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   disabled={linkingSmartcard}
                   title={selectedLibPath}
                   aria-label="Smartcard PKCS#11 library"
-                  className="max-w-[180px] rounded border border-border-subtle bg-app-bg px-1.5 py-1 text-2xs text-txt-primary"
+                  className="max-w-[180px] rounded border border-border-subtle bg-app px-1.5 py-1 text-2xs text-txt-primary"
                 >
                   {detectedLibs.map((lib) => (
                     <option key={lib.path} value={lib.path}>
@@ -546,7 +546,7 @@ export const SyncSettingsPanel: React.FC = () => {
           </div>
 
           {status.topologyUnlocked && status.credentialsUnlocked && (
-            <div className="rounded-lg border border-border-subtle bg-app-bg/50 p-3 space-y-2.5">
+            <div className="rounded-lg border border-border-subtle bg-app/50 p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {checkingSync ? (

@@ -59,7 +59,7 @@ export const Donut: React.FC<{
           )}
         </g>
       </svg>
-      <ul className="space-y-0.5 text-[11px] text-txt-secondary">
+      <ul className="space-y-0.5 text-2xs text-txt-secondary">
         {segments.map((s) => (
           <li key={s.label} className="flex items-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
@@ -87,7 +87,7 @@ export const HBars: React.FC<{ rows: HBarRow[] }> = ({ rows }) => (
   <ul className="space-y-2">
     {rows.map((r) => (
       <li key={r.label} className="space-y-0.5">
-        <div className="flex justify-between gap-2 text-[11px] text-txt-secondary">
+        <div className="flex justify-between gap-2 text-2xs text-txt-secondary">
           <span className="truncate">{r.label}</span>
           <span className="shrink-0 text-txt-muted">{r.right}</span>
         </div>
@@ -118,7 +118,7 @@ export const CoreChart: React.FC<{ pcts: number[] }> = ({ pcts }) => (
         <div className="flex h-16 w-full items-end rounded-sm bg-border-strong/50">
           <div className="w-full rounded-sm" style={{ height: `${Math.max(p, 3)}%`, background: levelColor(p) }} />
         </div>
-        <span className="text-[9px] text-txt-muted">{i}</span>
+        <span className="text-2xs text-txt-muted">{i}</span>
       </div>
     ))}
   </div>
@@ -130,7 +130,7 @@ export const StatTile: React.FC<{ label: string; value: string; testId?: string 
     <div className="truncate text-sm font-semibold text-txt-primary" title={value}>
       {value}
     </div>
-    <div className="text-[10px] uppercase tracking-wide text-txt-muted">{label}</div>
+    <div className="text-2xs uppercase tracking-wide text-txt-muted">{label}</div>
   </div>
 );
 

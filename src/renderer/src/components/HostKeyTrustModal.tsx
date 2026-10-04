@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, ShieldQuestion } from 'lucide-react';
 import type { HostKeyPromptEvent } from '@shared/types/ipc';
+import { useEscapeToClose } from '../lib/useModalDismiss';
 
 export const HostKeyTrustModal: React.FC = () => {
   const [prompts, setPrompts] = useState<HostKeyPromptEvent[]>([]);
@@ -39,18 +40,7 @@ export const HostKeyTrustModal: React.FC = () => {
   // attached only to the dialog's own <div>. A window-level listener (like
   // FileEditorModal/SearchModal/DirectorySyncModal already use) catches
   // Escape regardless of where focus currently is.
-  useEffect(() => {
-    if (!currentPrompt) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        void respond(false);
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPrompt]);
+  useEscapeToClose(() => void respond(false), !!currentPrompt);
 
   if (!currentPrompt) {
     return null;
@@ -111,6 +101,7 @@ export const HostKeyTrustModal: React.FC = () => {
           <button
             type="button"
             onClick={() => respond(false)}
+            autoFocus
             data-testid="hostkey-trust-cancel"
             className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >

@@ -28,6 +28,7 @@ import type {
 } from '@shared/types/kubernetes';
 import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 interface K8sPodDetailModalProps {
   contextName: string;
@@ -59,6 +60,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [pod, setPod] = useState<K8sPodDescription | null>(null);
   const [copied, setCopied] = useState(false);
+  useEscapeToClose(onClose, true);
 
   const fetchPod = useCallback(() => {
     setLoading(true);
@@ -106,8 +108,8 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
+      aria-label={`Pod ${podName}`}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="flex h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}

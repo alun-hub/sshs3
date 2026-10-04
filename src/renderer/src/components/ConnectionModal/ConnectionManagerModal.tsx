@@ -590,7 +590,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // being edited (`editing` set to a non-null value) — an accidental Escape
   // press or stray click while filling in a new SSH/S3 profile should not
   // silently discard it, since there's no unsaved-changes warning here.
-  const handleBackdropClick = useModalDismiss(onClose, open && !editing);
+  const handleBackdropClick = useModalDismiss(onClose, open && !editing && !importCandidates);
+  useModalDismiss(() => setImportCandidates(null), !!importCandidates);
 
   if (!open) return null;
 
@@ -600,14 +601,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
+      <div role="dialog" aria-modal="true" aria-label="Connection Manager" className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Server className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Connection Manager</h2>
           </div>
-          <button
+          <button aria-label="Close" title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -772,7 +773,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   {newFolderOpen && (
                     <div className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-950/20 p-2 animate-in fade-in duration-100">
                       <FolderPlus className="h-4 w-4 text-sky-400 shrink-0" />
-                      <input
+                      <input aria-label="Folder name..."
                         type="text"
                         autoFocus
                         placeholder="Folder name..."
@@ -799,7 +800,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       >
                         Create
                       </button>
-                      <button
+                      <button aria-label="Close" title="Close"
                         type="button"
                         onClick={() => {
                           setNewFolderOpen(false);
@@ -1504,13 +1505,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
         {/* SSH Config Import Candidates Preview Modal */}
         {importCandidates && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 animate-in fade-in duration-100">
-            <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-app-surface p-4 shadow-2xl space-y-3">
+            <div role="dialog" aria-modal="true" aria-label="Import hosts from SSH config" className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-app-surface p-4 shadow-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-border-subtle pb-2">
                 <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
                   <Upload className="h-4 w-4" />
                   <span>Import Hosts from ~/.ssh/config</span>
                 </div>
-                <button
+                <button aria-label="Close" title="Close"
                   type="button"
                   onClick={() => setImportCandidates(null)}
                   className="rounded p-1 text-txt-muted hover:text-txt-primary"
@@ -1522,7 +1523,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
               <div className="flex items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="text-txt-muted">Target Folder:</span>
-                  <input
+                  <input aria-label="e.g. Imported"
                     type="text"
                     value={importTargetFolder}
                     onChange={(e) => setImportTargetFolder(e.target.value)}

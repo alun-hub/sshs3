@@ -53,7 +53,7 @@ export const DotfilesSyncBanner: React.FC = () => {
           role="alertdialog"
           aria-labelledby="dotfiles-sync-banner-title"
           data-testid="dotfiles-sync-banner"
-          className="fixed top-3 right-3 z-50 w-full max-w-sm rounded-xl border border-border-subtle bg-app-card shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
+          className="w-full rounded-xl border border-border-subtle bg-app-card shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
         >
           <div className="flex items-start gap-2.5 p-3.5">
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
@@ -115,7 +115,7 @@ export const DotfilesSyncBanner: React.FC = () => {
       {!currentPrompt && status && (
         <div
           data-testid="dotfiles-sync-status"
-          className="fixed top-3 right-3 z-50 w-full max-w-xs rounded-lg border border-border-subtle bg-app-card px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+          className="w-full rounded-lg border border-border-subtle bg-app-card px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
         >
           {status.status === 'updated' ? (
             <span className="text-emerald-400">
