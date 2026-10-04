@@ -51,7 +51,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
     }
   }, [open, providerId, entries]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+  const handleBackdropClick = useModalDismiss(onClose, open, !saving);
 
   if (!open) return null;
 
@@ -128,7 +128,8 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
                 <div className="flex items-center gap-3 px-3 py-2">
                   <dt className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wider text-txt-muted">Content-Type</dt>
                   <dd className="min-w-0 flex-1">
-                    <input aria-label="application/octet-stream"
+                    <input
+                      aria-label="Content-Type"
                       type="text"
                       value={contentType}
                       onChange={(e) => setContentType(e.target.value)}

@@ -206,7 +206,8 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
               <Layers className="h-3.5 w-3.5 text-txt-muted" />
               <span>Container Image</span>
             </label>
-            <input aria-label="e.g. nicolaka/netshoot:latest"
+            <input
+              aria-label="Container image"
               type="text"
               value={image}
               onChange={(e) => {
@@ -254,7 +255,8 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
                 <Terminal className="h-3.5 w-3.5 text-txt-muted" />
                 <span>Interactive Shell</span>
               </label>
-              <input aria-label="e.g. bash or sh"
+              <input
+                aria-label="Shell command"
                 type="text"
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
@@ -269,7 +271,8 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           {/* Ephemeral Container Name */}
           <div className="space-y-1.5">
             <label className="font-medium text-txt-primary">Ephemeral Container Name</label>
-            <input aria-label="e.g. debugger-xyz123"
+            <input
+              aria-label="Ephemeral container name"
               type="text"
               value={containerName}
               onChange={(e) => setContainerName(e.target.value)}

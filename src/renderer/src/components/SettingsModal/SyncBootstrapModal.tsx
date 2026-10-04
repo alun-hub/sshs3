@@ -34,7 +34,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
   }, [open]);
 
   // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
-  useModalDismiss(onClose, open && !passwordDialogOpen);
+  useModalDismiss(onClose, open);
   if (!open) return null;
 
   const handleContinue = async () => {

@@ -24,7 +24,7 @@ export const GitCloneModal: React.FC<GitCloneModalProps> = ({
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleBackdrop = useModalDismiss(onClose, !cloning);
+  const handleBackdrop = useModalDismiss(onClose, true, !cloning);
 
   const handleUrlChange = (newUrl: string) => {
     setUrl(newUrl);

@@ -125,7 +125,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     }
   };
 
-  useEscapeToClose(onClose, open && !wizardTarget);
+  useEscapeToClose(onClose, open, !wizardTarget);
 
   if (!open) return null;
 

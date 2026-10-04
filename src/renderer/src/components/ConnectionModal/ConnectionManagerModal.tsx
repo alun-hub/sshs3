@@ -590,7 +590,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // being edited (`editing` set to a non-null value) — an accidental Escape
   // press or stray click while filling in a new SSH/S3 profile should not
   // silently discard it, since there's no unsaved-changes warning here.
-  const handleBackdropClick = useModalDismiss(onClose, open && !editing && !importCandidates);
+  const handleBackdropClick = useModalDismiss(onClose, open, !editing);
   useModalDismiss(() => setImportCandidates(null), !!importCandidates);
 
   if (!open) return null;
@@ -773,7 +773,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   {newFolderOpen && (
                     <div className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-950/20 p-2 animate-in fade-in duration-100">
                       <FolderPlus className="h-4 w-4 text-sky-400 shrink-0" />
-                      <input aria-label="Folder name..."
+                      <input
+                        aria-label="Folder name"
                         type="text"
                         autoFocus
                         placeholder="Folder name..."
@@ -1523,7 +1524,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
               <div className="flex items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="text-txt-muted">Target Folder:</span>
-                  <input aria-label="e.g. Imported"
+                  <input
+                    aria-label="Target folder"
                     type="text"
                     value={importTargetFolder}
                     onChange={(e) => setImportTargetFolder(e.target.value)}

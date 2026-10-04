@@ -78,7 +78,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       });
   }, [open, entry]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !!entry && !saving);
+  const handleBackdropClick = useModalDismiss(onClose, open && !!entry, !saving);
 
   if (!open || !entry) return null;
 
@@ -165,7 +165,8 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
 
           <div className="space-y-1">
             <span className="text-xs font-medium text-txt-primary">Target Path on Server (remotePath)</span>
-            <input aria-label="e.g. ~/.bashrc"
+            <input
+              aria-label="Target path on server"
               value={remotePath}
               onChange={(e) => setRemotePath(e.target.value)}
               placeholder="e.g. ~/.bashrc"
@@ -205,7 +206,8 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : isCreatingNewPool ? (
-              <input aria-label="New pool name, e.g. Personal dotfiles"
+              <input
+                aria-label="New pool name"
                 value={newPoolName}
                 onChange={(e) => setNewPoolName(e.target.value)}
                 placeholder="New pool name, e.g. Personal dotfiles"

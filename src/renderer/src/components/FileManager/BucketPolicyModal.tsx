@@ -56,7 +56,7 @@ export const BucketPolicyModal: React.FC<BucketPolicyModalProps> = ({
       .finally(() => setLoading(false));
   }, [open, providerId, bucketPath]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+  const handleBackdropClick = useModalDismiss(onClose, open, !saving);
 
   if (!open) return null;
 

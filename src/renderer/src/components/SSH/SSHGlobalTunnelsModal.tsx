@@ -118,7 +118,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
     }
   };
 
-  useEscapeToClose(onClose, open && !wizardTarget);
+  useEscapeToClose(onClose, open, !wizardTarget);
 
   if (!open) return null;
 

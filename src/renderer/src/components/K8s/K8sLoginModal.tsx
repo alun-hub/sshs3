@@ -70,7 +70,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   const [error, setError] = useState<string | null>(null);
 
   // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
-  useModalDismiss(onClose, open);
+  useModalDismiss(onClose, open, !loading);
   if (!open) return null;
 
   const handlePasteChange = (val: string) => {
@@ -153,7 +153,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               </div>
               <span className="text-xs text-txt-muted">Auto-populates fields below</span>
             </div>
-            <textarea aria-label="e.g. oc login --token=sha256~... --server=https://api.cluster.example.com:6443"
+            <textarea
+              aria-label="Paste oc login command"
               rows={2}
               value={pasteInput}
               onChange={(e) => handlePasteChange(e.target.value)}
@@ -183,7 +184,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Server URL <span className="text-red-400">*</span>
               </label>
-              <input aria-label="https://api.mycluster.example.com:6443"
+              <input
+                aria-label="API server URL"
                 type="text"
                 required
                 value={server}
@@ -208,7 +210,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 </button>
               </div>
               <div className="relative">
-                <input aria-label="sha256~..."
+                <input
+                  aria-label="Token"
                   type={showToken ? 'text' : 'password'}
                   required
                   value={token}
@@ -224,7 +227,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <label className="block text-xs font-medium text-txt-secondary mb-1">
                 Default Project / Namespace <span className="text-txt-muted font-normal">(optional)</span>
               </label>
-              <input aria-label="Leave empty to auto-detect from user projects"
+              <input
+                aria-label="Default project / namespace"
                 type="text"
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}

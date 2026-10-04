@@ -223,7 +223,8 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-txt-muted mb-1">Name</label>
-            <input aria-label="e.g. jumpbox, prod-bastion"
+            <input
+              aria-label="Tunnel name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -272,7 +273,8 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   {type === 'local' ? 'Target address (as seen from the server)' : 'Target address (as seen from your computer)'}
                 </label>
-                <input aria-label="localhost"
+                <input
+                  aria-label="Target host"
                   type="text"
                   value={remoteHost}
                   onChange={(e) => setRemoteHost(e.target.value)}
@@ -287,7 +289,8 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Target port</label>
-                <input aria-label="e.g. 5432 for Postgres, 3306 for MySQL"
+                <input
+                  aria-label="Target port"
                   type="number"
                   min={1}
                   max={65535}
@@ -310,7 +313,8 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-txt-muted mb-1">Description (optional)</label>
-            <input aria-label="e.g. Production database"
+            <input
+              aria-label="Description (optional)"
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}

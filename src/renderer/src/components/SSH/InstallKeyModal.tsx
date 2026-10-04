@@ -85,7 +85,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
   const busy = installing || loadingHardware || fetchingGit;
-  const handleBackdrop = useModalDismiss(onClose, !busy);
+  const handleBackdrop = useModalDismiss(onClose, true, !busy);
   const hasHardware =
     (connection.authType === 'smartcard' && !!connection.pkcs11LibPath) ||
     (connection.authType === 'fido2' && !!connection.fido2Resident);
@@ -487,7 +487,8 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
             </div>
             <div className="flex gap-2 items-center">
               {gitProvider === 'custom' && (
-                <input aria-label="git.example.com"
+                <input
+                  aria-label="Custom Git host"
                   type="text"
                   value={gitCustomHost}
                   onChange={(e) => setGitCustomHost(e.target.value)}

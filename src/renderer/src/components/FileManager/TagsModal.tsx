@@ -106,14 +106,16 @@ export const TagsModal: React.FC<TagsModalProps> = ({
               )}
               {tags.map((tag, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <input aria-label="Key"
+                  <input
+                    aria-label="Tag key"
                     type="text"
                     placeholder="Key"
                     value={tag.key}
                     onChange={(e) => handleChange(idx, 'key', e.target.value)}
                     className="w-1/2 rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                   />
-                  <input aria-label="Value"
+                  <input
+                    aria-label="Tag value"
                     type="text"
                     placeholder="Value"
                     value={tag.value}

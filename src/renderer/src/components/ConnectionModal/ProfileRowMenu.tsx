@@ -17,7 +17,9 @@ interface ProfileRowMenuProps {
 }
 
 const MENU_WIDTH = 190;
-const ITEM_HEIGHT = 30;
+const ITEM_HEIGHT = 30; // h-[30px] on each item
+const MENU_PADDING = 8; // p-1 top + bottom
+const SEPARATOR_HEIGHT = 9; // my-1 + h-px
 
 /**
  * Overflow ("...") menu for secondary row actions. Rendered with fixed positioning so it is not
@@ -46,12 +48,20 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
       close();
       buttonRef.current?.focus();
     };
+    // The menu is positioned from the trigger's rect at open time, so any scroll (the modal body, the
+    // profile list) would leave it detached from its row: close instead of following.
+    const onScroll = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      close();
+    };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open, close]);
@@ -60,20 +70,42 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
     if (open) menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [open]);
 
-  const toggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (open) {
+  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const entries = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    if (entries.length === 0) return;
+    const current = entries.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (e.key === 'ArrowDown') next = (current + 1) % entries.length;
+    else if (e.key === 'ArrowUp') next = (current - 1 + entries.length) % entries.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = entries.length - 1;
+    else if (e.key === 'Tab') {
+      // Leave the menu like a native one: close it and let focus continue from the trigger.
       close();
+      buttonRef.current?.focus();
       return;
     }
+    if (next === null) return;
+    e.preventDefault();
+    entries[next].focus();
+  };
+
+  const openMenu = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const height = items.length * ITEM_HEIGHT + 12;
+    const separators = items.filter((item) => item.separated).length;
+    const height = items.length * ITEM_HEIGHT + separators * SEPARATOR_HEIGHT + MENU_PADDING;
     const openUp = rect.bottom + height > window.innerHeight - 8;
     setPos({
       top: openUp ? Math.max(8, rect.top - height - 4) : rect.bottom + 4,
       left: Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
     });
+  };
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) close();
+    else openMenu();
   };
 
   return (
@@ -86,6 +118,12 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && !open) {
+            e.preventDefault();
+            openMenu();
+          }
+        }}
         onDoubleClick={(e) => e.stopPropagation()}
         className={classNames(
           'rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors',
@@ -98,6 +136,8 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
         <div
           ref={menuRef}
           role="menu"
+          aria-orientation="vertical"
+          onKeyDown={onMenuKeyDown}
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: MENU_WIDTH }}
           className="z-[60] rounded-lg border border-border-strong bg-app-card p-1 shadow-xl"
           onClick={(e) => e.stopPropagation()}
@@ -109,6 +149,7 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
               <button
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 onClick={() => {
                   close();
                   item.onSelect();

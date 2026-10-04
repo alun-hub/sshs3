@@ -668,7 +668,8 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
 
         <div className="flex gap-2 items-center">
           {gitProvider === 'custom' && (
-            <input aria-label="git.example.com"
+            <input
+              aria-label="Custom Git host"
               type="text"
               value={gitCustomHost}
               onChange={(e) => setGitCustomHost(e.target.value)}

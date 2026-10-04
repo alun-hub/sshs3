@@ -401,7 +401,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             <option value="__custom__">Custom (enter manually)</option>
           </select>
           {proxyJumpMode === 'custom' && (
-            <input aria-label="e.g. jumpuser@bastion.example.com:22"
+            <input
               value={config.proxyJump ?? ''}
               onChange={(e) => update('proxyJump', e.target.value)}
               className="mt-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"

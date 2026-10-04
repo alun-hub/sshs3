@@ -55,4 +55,43 @@ describe('ProfileRowMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     cleanup();
   });
+
+  it('moves between items with the arrow keys and wraps around', () => {
+    const { cleanup: off } = setup();
+    fireEvent.click(screen.getByTitle('More actions'));
+    const [first, last] = screen.getAllByRole('menuitem');
+    expect(first).toHaveFocus();
+
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: 'ArrowDown' });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: 'End' });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: 'Home' });
+    expect(first).toHaveFocus();
+    off();
+  });
+
+  it('opens from the trigger with ArrowDown and closes on Tab', () => {
+    const { cleanup: off } = setup();
+    const trigger = screen.getByTitle('More actions');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getAllByRole('menuitem')[0], { key: 'Tab' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    off();
+  });
+
+  it('closes when anything scrolls, so it never floats away from its row', () => {
+    const { cleanup: off } = setup();
+    fireEvent.click(screen.getByTitle('More actions'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.scroll(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    off();
+  });
 });

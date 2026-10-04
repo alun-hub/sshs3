@@ -77,7 +77,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
     }
   }, [open, entries]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !saving);
+  const handleBackdropClick = useModalDismiss(onClose, open, !saving);
 
   if (!open) return null;
 

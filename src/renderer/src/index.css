@@ -289,15 +289,23 @@ body,
   }
 }
 
-/* Respect the OS "reduce motion" setting: keep state changes, drop the movement. */
+/* Respect the OS "reduce motion" setting: drop decorative motion (entrance, pulse, ping, bounce, slide)
+   and instant-ify transitions, but keep spinners turning - they are the only sign that work is in
+   progress, and a frozen one looks the same as a finished operation. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .animate-in,
+  .animate-pulse,
+  .animate-ping,
+  .animate-bounce,
+  [class*='animate-fade'],
+  [class*='slide-in-from'] {
+    animation: none !important;
   }
 }
 

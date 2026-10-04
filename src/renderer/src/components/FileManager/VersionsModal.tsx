@@ -55,7 +55,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
     void load();
   }, [open, load]);
 
-  const handleBackdropClick = useModalDismiss(onClose, open && !busy);
+  const handleBackdropClick = useModalDismiss(onClose, open, !busy);
 
   if (!open) return null;
 

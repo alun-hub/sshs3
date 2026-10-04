@@ -251,7 +251,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
     ).length;
   }, [diff, included, deleteExtraneous]);
 
-  useEscapeToClose(onClose, open && !folderBrowserOpen && !compareEntry && !profilePickerOpen && !connectionPickerOpen);
+  useEscapeToClose(onClose, open);
 
   // Reset + prefill only on the rising edge of `open` (closed -> open), not
   // on every re-render while already open — otherwise an unrelated prop
@@ -978,7 +978,8 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 <div className="rounded-lg border border-border-subtle bg-app-surface p-2.5 space-y-2">
                   <span className="text-xs font-medium text-txt-primary">Profile name</span>
                   <div className="flex gap-2">
-                    <input aria-label="e.g. Web server → backup"
+                    <input
+                      aria-label="Profile name"
                       value={saveProfileName}
                       onChange={(e) => setSaveProfileName(e.target.value)}
                       placeholder="e.g. Web server → backup"

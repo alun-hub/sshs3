@@ -774,7 +774,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         {showSearch && (
           <div className="flex items-center gap-2 border-b border-border-subtle bg-app-surface px-3 py-1.5 select-none">
             <Search className="h-3.5 w-3.5 text-txt-muted shrink-0" />
-            <input aria-label="Find in file... (Enter for next, Esc to close)"
+            <input
+              aria-label="Find in file"
               ref={searchInputRef}
               type="text"
               placeholder="Find in file... (Enter for next, Esc to close)"
@@ -952,7 +953,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 )}
 
                 {/* Text Area */}
-                <textarea aria-label="Empty file"
+                <textarea
+                  aria-label={`Contents of ${entry.name}`}
                   ref={textareaRef}
                   value={content}
                   readOnly={readOnly || saving || tailModeActive}

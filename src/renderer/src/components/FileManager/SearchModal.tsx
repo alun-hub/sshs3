@@ -273,7 +273,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         <div className="space-y-2 border-b border-border-subtle bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <input aria-label="Search inside files..."
+              <input
+                aria-label="Search query"
                 ref={queryInputRef}
                 type="text"
                 value={query}

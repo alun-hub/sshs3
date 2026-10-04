@@ -24,7 +24,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const handleBackdropClick = useModalDismiss(onClose, open && !submitting);
+  const handleBackdropClick = useModalDismiss(onClose, open, !submitting);
 
   const isS3Root = sourceType === 's3' && (currentPath === '/' || currentPath === '');
   const title = isS3Root ? 'Create S3 Bucket' : 'Create New Folder';

@@ -64,7 +64,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     side: PaneSide;
   } | null>(null);
   const [promptPassword, setPromptPassword] = useState('');
-  useModalDismiss(() => setPasswordPrompt(null), !!passwordPrompt && !connecting);
+  useModalDismiss(() => setPasswordPrompt(null), !!passwordPrompt, !connecting);
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
@@ -655,7 +655,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
               Profile <strong className="text-txt-primary">{passwordPrompt.config.name}</strong> has no saved password. File Manager runs in the background and needs a password to connect.
             </p>
             <form onSubmit={handlePasswordPromptSubmit} className="space-y-3">
-              <input aria-label="Enter password"
+              <input
+                aria-label="Password"
                 type="password"
                 required
                 autoFocus

@@ -225,7 +225,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Context</label>
-                <input aria-label="e.g. minikube or default"
+                <input
+                  aria-label="Context"
                   type="text"
                   required
                   value={contextName}
@@ -237,7 +238,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-txt-muted mb-1">Namespace</label>
-                <input aria-label="e.g. default"
+                <input
+                  aria-label="Namespace"
                   type="text"
                   required
                   value={namespace}
@@ -249,7 +251,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
 
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-txt-muted mb-1">Pod Name</label>
-                <input aria-label="e.g. my-app-7d8f9c-xyz"
+                <input
+                  aria-label="Pod name"
                   type="text"
                   required
                   value={podName}
@@ -263,7 +266,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   Container Port (Target)
                 </label>
-                <input aria-label="e.g. 8080, 5432"
+                <input
+                  aria-label="Container port"
                   type="number"
                   required
                   min={1}
@@ -308,7 +312,8 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                 <label className="block text-xs font-medium text-txt-muted mb-1">
                   Local Port (0 = auto-assign)
                 </label>
-                <input aria-label="e.g. 8080 (0 for random)"
+                <input
+                  aria-label="Local port"
                   type="number"
                   min={0}
                   max={65535}

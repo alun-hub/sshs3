@@ -48,8 +48,10 @@ function shellQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
-// Every foreground colour is >= 4.5:1 on the #f8fafc background; the usual "bright" ANSI
-// variants (and white) are far too pale on a light surface, so they map to dark tones here.
+// Foreground colours are >= 4.5:1 on the #f8fafc background. "White" and "bright white" are the awkward
+// pair on a light surface: programs use them both as text (should be dark) and as a fill behind black text
+// (htop bars, vim/tmux status lines, diff highlights). Following VS Code's Light+ theme, they are mid greys:
+// readable as a fill under dark text, and `minimumContrastRatio` darkens them further when they are used as text.
 const XTERM_LIGHT_THEME = {
   background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
   foreground: '#1e293b', // Crisp slate-800 instead of black
@@ -71,7 +73,7 @@ const XTERM_LIGHT_THEME = {
   brightBlue: '#0369a1',
   brightMagenta: '#9333ea',
   brightCyan: '#0e7490',
-  brightWhite: '#0f172a',
+  brightWhite: '#94a3b8',
 };
 
 const XTERM_DARK_THEME = {

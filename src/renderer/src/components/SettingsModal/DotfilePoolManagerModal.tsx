@@ -101,8 +101,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   }, [open]);
 
   // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
-  useModalDismiss(onClose, open && !gitImportOpen);
-  useModalDismiss(() => setGitImportOpen(false), gitImportOpen && !gitImporting);
+  useModalDismiss(onClose, open);
+  useModalDismiss(() => setGitImportOpen(false), gitImportOpen, !gitImporting);
   if (!open) return null;
 
   const selectPool = (pool: DotfilePool) => {
@@ -431,13 +431,15 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                               {file.updatedAt && <span>Last saved: {file.updatedAt}</span>}
                             </div>
                             <div className="grid grid-cols-[1fr_80px_auto] gap-2">
-                              <input aria-label="Remote path, e.g. ~/.bashrc"
+                              <input
+                                aria-label="Remote path"
                                 value={file.remotePath}
                                 onChange={(e) => updateFile(file.id, { remotePath: e.target.value })}
                                 placeholder="Remote path, e.g. ~/.bashrc"
                                 className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                               />
-                              <input aria-label="Mode (644)"
+                              <input
+                                aria-label="File mode"
                                 value={file.mode ?? ''}
                                 onChange={(e) => updateFile(file.id, { mode: e.target.value })}
                                 placeholder="Mode (644)"
@@ -453,7 +455,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                            <textarea aria-label="File content / configuration..."
+                            <textarea
+                              aria-label="File content"
                               value={file.content}
                               onChange={(e) => updateFile(file.id, { content: e.target.value })}
                               rows={5}
@@ -513,7 +516,8 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               <p className="text-txt-secondary">
                 Enter a GitHub repo (<code>username/dotfiles</code>) or any Git clone URL. The repository will be scanned for shell and editor configuration files.
               </p>
-              <input aria-label="username/dotfiles or https://github.com/..."
+              <input
+                aria-label="Git repository"
                 type="text"
                 autoFocus
                 required
