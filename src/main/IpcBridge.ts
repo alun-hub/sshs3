@@ -46,6 +46,8 @@ import { listFilePublicKeys, listAgentPublicKeys, dedupeKeys } from './ssh/Publi
 import { buildInstallCommand, parsePublicKeyLine } from './ssh/PublicKeyUtils';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
+import { collectDotfileDirectory } from './dotfiles/collectDotfileDirectory';
+import { defaultDotfileRemotePath } from '../shared/dotfilePath';
 import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from './dirsync/DirectorySyncService';
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
@@ -1468,35 +1470,50 @@ export class IpcBridge {
         if (!provider) {
           throw new Error(`Storage provider not found: ${options.providerId}`);
         }
-        const stream = await provider.createReadStream(options.filePath);
-        const chunks: Buffer[] = [];
-        const content = await new Promise<string>((resolve, reject) => {
-          stream.on('data', (c: Buffer) => chunks.push(c));
-          stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-          stream.on('error', reject);
-        });
+        const readContent = async (filePath: string): Promise<string> => {
+          const stream = await provider.createReadStream(filePath);
+          const chunks: Buffer[] = [];
+          return new Promise<string>((resolve, reject) => {
+            stream.on('data', (c: Buffer) => chunks.push(c));
+            stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+            stream.on('error', reject);
+          });
+        };
 
-        let mode: string | undefined;
-        try {
-          const stat = await provider.stat(options.filePath);
-          if (stat.permissions) {
-            mode = stat.permissions;
-          }
-        } catch {
-          // Ignore stat error
+        const rootStat = await provider.stat(options.filePath);
+        const rootRemote = (options.targetRemotePath || defaultDotfileRemotePath(options.filePath)).replace(
+          /\/+$/,
+          ''
+        );
+
+        if (!rootStat.isDirectory) {
+          const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
+            remotePath: rootRemote,
+            content: await readContent(options.filePath),
+            mode: rootStat.permissions || undefined,
+          });
+          this.scheduleAutoSync();
+          return added;
         }
 
-        const baseName = path.posix.basename(options.filePath);
-        const remotePath =
-          options.targetRemotePath || (baseName.startsWith('.') ? `~/${baseName}` : `~/.${baseName}`);
-
-        const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
-          remotePath,
-          content,
-          mode,
-        });
+        // Directory: walk it breadth-first and pool every regular text file
+        // under <rootRemote>/<relative path>. Symlinks are skipped (could
+        // escape the tree or loop), as are binary and oversized files, since
+        // pool content is stored as UTF-8 text.
+        const files = await collectDotfileDirectory(provider, options.filePath);
+        if (files.length === 0) {
+          throw new Error('No eligible text files found in this directory');
+        }
+        let added: DotfilePool | undefined;
+        for (const f of files) {
+          added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
+            remotePath: `${rootRemote}/${f.relPath}`,
+            content: f.content,
+            mode: f.mode,
+          });
+        }
         this.scheduleAutoSync();
-        return added;
+        return added!;
       }
     );
 
