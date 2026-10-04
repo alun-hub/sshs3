@@ -452,7 +452,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     };
 
     const handleMiddleClick = (e: MouseEvent) => {
-      if (e.button !== 1) return;
+      if (e.button !== 1 || !copyOnSelectRef.current) return;
       // Stop Chromium's native PRIMARY-selection paste so only the history entry is pasted.
       e.preventDefault();
       e.stopPropagation();

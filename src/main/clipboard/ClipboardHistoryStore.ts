@@ -22,6 +22,7 @@ export class ClipboardHistoryStore {
   private filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();
   private cache: ClipboardHistoryEntry[] | null = null;
+  private loading: Promise<ClipboardHistoryEntry[]> | null = null;
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -58,8 +59,18 @@ export class ClipboardHistoryStore {
     );
   }
 
-  private async load(): Promise<ClipboardHistoryEntry[]> {
-    if (this.cache) return this.cache;
+  // One shared read: a second caller must not overwrite a cache a mutation has updated meanwhile.
+  private load(): Promise<ClipboardHistoryEntry[]> {
+    if (this.cache) return Promise.resolve(this.cache);
+    this.loading ??= this.readFromDisk().then((entries) => {
+      this.cache ??= entries;
+      this.loading = null;
+      return this.cache;
+    });
+    return this.loading;
+  }
+
+  private async readFromDisk(): Promise<ClipboardHistoryEntry[]> {
     let entries: ClipboardHistoryEntry[] = [];
     try {
       const raw = JSON.parse(await fs.readFile(this.filePath, 'utf-8'));
@@ -69,7 +80,6 @@ export class ClipboardHistoryStore {
     } catch {
       // Missing, corrupted or undecryptable file: start with an empty history.
     }
-    this.cache = entries;
     return entries;
   }
 
@@ -98,7 +108,7 @@ export class ClipboardHistoryStore {
   public async list(hostKey?: string): Promise<ClipboardHistoryEntry[]> {
     await this.writeQueue;
     const entries = await this.load();
-    return hostKey ? entries.filter((e) => e.hostKey === hostKey) : [...entries];
+    return hostKey !== undefined ? entries.filter((e) => e.hostKey === hostKey) : [...entries];
   }
 
   public async add(text: string, hostKey: string, hostLabel: string): Promise<void> {

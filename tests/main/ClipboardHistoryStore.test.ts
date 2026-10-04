@@ -84,6 +84,18 @@ describe('ClipboardHistoryStore', () => {
     await expect(fs.access(file)).rejects.toThrow();
   });
 
+  it('does not mix hosts when the host key is empty', async () => {
+    await store.add('a', 'h1', 'Host 1');
+    expect(await store.list('')).toEqual([]);
+  });
+
+  it('keeps a concurrent add when a parallel list finishes loading', async () => {
+    const fresh = new ClipboardHistoryStore(file);
+    const [, listed] = await Promise.all([fresh.add('new', 'h1', 'Host 1'), fresh.list()]);
+    expect(listed.length).toBeLessThanOrEqual(1);
+    expect((await fresh.list()).map((e) => e.text)).toEqual(['new']);
+  });
+
   it('deletes single entries and clears everything', async () => {
     await store.add('a', 'h1', 'Host 1');
     await store.add('b', 'h1', 'Host 1');

@@ -4387,11 +4387,13 @@ export class IpcBridge {
 
   public async dispose(): Promise<void> {
     this.updateService?.dispose();
-    await this.disposeStep('clear clipboard history', () => this.clearClipboardHistoryIfConfigured());
+
     for (const channel of this.handlers) {
       this.ipcMain.removeHandler(channel);
     }
     this.handlers.clear();
+    // After the handlers are gone no late selection can be added behind this clear.
+    await this.disposeStep('clear clipboard history', () => this.clearClipboardHistoryIfConfigured());
 
     if (this.onPtyData) {
       this.sshPtyManager.off('data', this.onPtyData);
