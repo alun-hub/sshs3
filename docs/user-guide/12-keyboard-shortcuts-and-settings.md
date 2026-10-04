@@ -122,7 +122,10 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 | <kbd>Ctrl+W</kbd> | **Stäng Flik** | Stänger hela den aktiva fliken och alla dess split-paneler. |
 | <kbd>Ctrl+Tab</kbd> | **Nästa Flik** | Växlar till nästa öppna flik. |
 | <kbd>Ctrl+Shift+Tab</kbd> | **Föregående Flik** | Växlar till föregående öppen flik. |
-| <kbd>Ctrl+Shift+F</kbd> | **Sök i Terminal** | Öppnar sökfältet för att söka i terminalens textbuffert. |
+| <kbd>Ctrl+Shift+S</kbd> | **Sök i Terminal** | Öppnar sökfältet för att söka i terminalens textbuffert. |
+| <kbd>Ctrl+Shift+R</kbd> | **Urklippshistorik** | Öppnar den krypterade historiken över terminalmarkeringar (kräver Copy on Select). |
+| <kbd>Ctrl+Shift+G</kbd> | **Kopiera Senaste Utdata** | Kopierar det senaste kommandots utskrift. |
+| <kbd>Ctrl+Shift+L</kbd> | **Snippets** | Öppnar paletten med sparade kommandon. |
 | <kbd>Ctrl++</kbd> | **Zooma In** | Ökar teckenstorleken i den aktiva terminalen. |
 | <kbd>Ctrl+-</kbd> | **Zooma Ut** | Minskar teckenstorleken i den aktiva terminalen. |
 | <kbd>Ctrl+0</kbd> | **Återställ Zoom** | Återställer teckenstorleken till standardvärdet. |

@@ -235,9 +235,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  // The search addon selects each match (xterm reports that asynchronously); copy-on-select must ignore it.
-  const searchSelectingRef = useRef(false);
+  // The search addon selects each match (xterm reports that asynchronously); copy-on-select ignores a
+  // selection equal to the open search query.
   const searchQueryRef = useRef('');
+  const outputTrackerRef = useRef<CommandOutputTracker | null>(null);
+  // Bumped to re-run the search for a query set from the keyboard shortcut.
+  const [searchRequest, setSearchRequest] = useState(0);
   const searchOpenRef = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
   searchOpenRef.current = searchOpen;
@@ -420,9 +423,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     );
     registerTerminalLinks(term, {
       openUrl: (url) => void window.multissh.openExternal(url),
-      openPath: (path) => onOpenPathRef.current?.(path),
+      openPath: onOpenPathRef.current ? (path) => onOpenPathRef.current?.(path) : undefined,
     });
     const outputTracker = new CommandOutputTracker(term);
+    outputTrackerRef.current = outputTracker;
 
     term.open(containerRef.current);
     if (isActiveRef.current) {
@@ -445,7 +449,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let noticeTimer: ReturnType<typeof setTimeout> | undefined;
     const selectionSub = term.onSelectionChange(() => {
-      if (!copyOnSelectRef.current || searchSelectingRef.current) return;
+      if (!copyOnSelectRef.current) return;
       clearTimeout(settleTimer);
       const selection = term.getSelection();
       if (!selection) return;
@@ -519,7 +523,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const action = (e as CustomEvent<TerminalAction>).detail;
       if (action === 'search') {
         const selection = term.getSelection();
-        if (selection && !selection.includes('\n')) setSearchQuery(selection);
+        if (selection && !selection.includes('\n')) {
+          setSearchQuery(selection);
+          setSearchRequest((n) => n + 1);
+        }
         setSearchOpen(true);
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
@@ -531,12 +538,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           showNotice('No command output to copy');
           return;
         }
-        navigator.clipboard?.writeText(output).catch(() => {});
-        if (copyOnSelectRef.current) {
-          void window.multissh?.clipboardHistoryAdd(output, hostKeyRef.current, hostLabelRef.current).catch(() => {});
-        }
         const lines = output.split('\n').length;
-        showNotice(`Copied last output (${lines} line${lines === 1 ? '' : 's'})`);
+        (navigator.clipboard ? navigator.clipboard.writeText(output) : Promise.reject(new Error('no clipboard')))
+          .then(() => {
+            if (copyOnSelectRef.current) {
+              void window.multissh?.clipboardHistoryAdd(output, hostKeyRef.current, hostLabelRef.current).catch(() => {});
+            }
+            showNotice(`Copied last output (${lines} line${lines === 1 ? '' : 's'})`);
+          })
+          .catch(() => showNotice('Could not access the clipboard'));
       }
     };
     window.addEventListener(TERMINAL_ACTION_EVENT, handleTerminalAction);
@@ -790,6 +800,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       selectionSub.dispose();
       resultsSub.dispose();
       outputTracker.dispose();
+      outputTrackerRef.current = null;
       searchAddonRef.current = null;
       clearTimeout(settleTimer);
       clearTimeout(noticeTimer);
@@ -839,7 +850,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       activeMatchColorOverviewRuler: searchColors.active,
     },
   };
-  const runSearch = (direction: 'next' | 'previous', query = searchQuery): void => {
+  const runSearch = (direction: 'next' | 'previous', query = searchQuery, incremental = false): void => {
     const addon = searchAddonRef.current;
     if (!addon) return;
     if (!query) {
@@ -847,16 +858,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       setSearchResults(null);
       return;
     }
-    searchSelectingRef.current = true;
-    try {
-      if (direction === 'next') addon.findNext(query, searchOptions);
-      else addon.findPrevious(query, searchOptions);
-    } finally {
-      setTimeout(() => {
-        searchSelectingRef.current = false;
-      }, 100);
-    }
+    if (direction === 'next') addon.findNext(query, { ...searchOptions, incremental });
+    else addon.findPrevious(query, searchOptions);
   };
+  // A query filled in by the shortcut while the bar was already open is searched here.
+  useEffect(() => {
+    if (searchRequest > 0) runSearch('next');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new request should trigger a search
+  }, [searchRequest]);
   const closeSearch = (): void => {
     setSearchOpen(false);
     setSearchResults(null);
@@ -915,7 +924,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              runSearch('next', e.target.value);
+              runSearch('next', e.target.value, true);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') runSearch(e.shiftKey ? 'previous' : 'next');
@@ -982,8 +991,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             setSnippetsOpen(false);
             const term = termRef.current;
             if (term) {
-              term.paste(command);
+              // A trailing newline plus "run" would press Enter twice.
+              term.paste(run ? command.replace(/[\r\n]+$/, '') : command);
               if (run && sessionIdRef.current) {
+                outputTrackerRef.current?.recordEnter();
                 const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
                 write?.(sessionIdRef.current, '\r');
               }

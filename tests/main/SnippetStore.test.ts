@@ -58,8 +58,15 @@ describe('SnippetStore', () => {
     await expect(store.save({ name: 'a', command: '  ' })).rejects.toThrow('Invalid snippet');
   });
 
-  it('starts empty on a corrupted file', async () => {
+  it('starts empty on a corrupted file but keeps a copy of it', async () => {
     await fs.writeFile(file, '{not json');
     expect(await new SnippetStore(file).list()).toEqual([]);
+    expect(await fs.readFile(`${file}.corrupt`, 'utf-8')).toBe('{not json');
+  });
+
+  it('does not treat an unreadable file as empty', async () => {
+    await fs.mkdir(file); // reading a directory fails with EISDIR, not ENOENT
+    await expect(store.list()).rejects.toThrow();
+    await expect(store.save({ name: 'a', command: 'x' })).rejects.toThrow();
   });
 });

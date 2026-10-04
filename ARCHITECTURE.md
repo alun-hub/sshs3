@@ -59,6 +59,8 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── search/                 # Local/remote regex search & live log tailing (tail -f)
 │   │   ├── services/               # K8s discovery, debug containers, port forward & OpenShift
 │   │   ├── session/                # Window tab & layout persistence (SessionStore)
+│   │   ├── clipboard/              # Encrypted terminal selection history (ClipboardHistoryStore)
+│   │   ├── snippets/               # Saved terminal command snippets (SnippetStore, plain JSON)
 │   │   ├── settings/               # App configuration & default settings (SettingsStore)
 │   │   ├── update/                 # Auto-update polling & state machine (UpdateService, electron-updater)
 │   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
@@ -169,7 +171,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
 - **Electron Fuses**: set in `electron-builder.json` (`electronFuses`). `runAsNode` must stay enabled: askpass, `certWorker.cjs`, the K8s shims and the proxy `ProxyCommand` (`proxyCli.cjs`) run through the app binary with `ELECTRON_RUN_AS_NODE=1`. `NODE_OPTIONS` and `--inspect` are disabled for the app itself and `onlyLoadAppFromAsar` is on. Verify a packaged build with `npx @electron/fuses read --app <path-to-binary>`.
 - **Fast Refresh Cleanliness**: React component files should only export React components. Helper functions belong in `types.ts` or utility files, and hooks belong in dedicated files or contexts.
 - **Fail Closed for Security**: Host key verification (TOFU) and smartcard askpass operations must default to rejecting/aborting if the UI is unmounted or unavailable.
-- **Async Write Safety**: All stores (`ProfileStore`, `SessionStore`, `SettingsStore`, `DotfilePoolStore`) use `queueMutation` promises to ensure sequential, atomic writes to disk.
+- **Async Write Safety**: All stores (`ProfileStore`, `SessionStore`, `SettingsStore`, `DotfilePoolStore`, `ClipboardHistoryStore`, `SnippetStore`) use `queueMutation` promises to ensure sequential, atomic writes to disk.
 
 ---
 

@@ -122,7 +122,10 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
 
   const remove = (id: string): void => {
     setSnippets((prev) => prev.filter((s) => s.id !== id));
-    void window.multissh.snippetsDelete(id);
+    window.multissh.snippetsDelete(id).catch(() => {
+      // Deleting failed: show what is really stored again.
+      window.multissh.snippetsList(hostKey).then(setSnippets).catch(() => {});
+    });
   };
 
   return createPortal(

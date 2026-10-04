@@ -54,11 +54,22 @@ export class SnippetStore {
   private async load(): Promise<Snippet[]> {
     if (this.cache) return this.cache;
     let snippets: Snippet[] = [];
+    let raw: string | null = null;
     try {
-      const parsed = JSON.parse(await fs.readFile(this.filePath, 'utf-8'));
-      if (Array.isArray(parsed?.snippets)) snippets = parsed.snippets.filter((s: unknown) => this.isSnippet(s));
-    } catch {
-      // Missing or corrupted file: start empty.
+      raw = await fs.readFile(this.filePath, 'utf-8');
+    } catch (err) {
+      // No file yet means an empty store; any other read error must not be mistaken for "empty",
+      // or the next save would overwrite the snippets on disk.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    if (raw !== null) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.snippets)) snippets = parsed.snippets.filter((s: unknown) => this.isSnippet(s));
+      } catch {
+        // Unparseable file: keep a copy before a later save replaces it.
+        await fs.copyFile(this.filePath, `${this.filePath}.corrupt`).catch(() => {});
+      }
     }
     this.cache ??= snippets;
     return this.cache;

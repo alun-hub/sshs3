@@ -716,6 +716,16 @@ export const App: React.FC = () => {
             bindingLower === 'ctrl+-' &&
             (normalizedCombo === 'ctrl+-' || normalizedCombo === 'ctrl+shift+-'));
 
+        // These only act on the focused terminal; elsewhere the keys must stay free for other uses.
+        const terminalOnly = actionId === 'terminalSearch' || actionId === 'copyLastOutput' || actionId === 'snippets';
+        if (
+          isMatch &&
+          terminalOnly &&
+          !(document.activeElement as HTMLElement | null)?.closest?.('[data-testid="terminal-view"]')
+        ) {
+          continue;
+        }
+
         if (isMatch) {
           e.preventDefault();
           e.stopPropagation();

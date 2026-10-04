@@ -56,12 +56,21 @@ export function registerTerminalLinks(term: Terminal, handlers: TerminalLinkHand
       const buf = term.buffer.active;
       let first = bufferLineNumber - 1;
       while (first > 0 && buf.getLine(first)?.isWrapped) first--;
+      // Text of the whole wrapped line plus, per character, the terminal cell it sits in.
+      // Wide characters (CJK, emoji) take two cells, so string index != cell index.
       let text = '';
+      const cellOf: number[] = [];
       let last = first;
       for (let i = first; ; i++) {
         const line = buf.getLine(i);
         if (!line || (i > first && !line.isWrapped)) break;
-        text += line.translateToString(false, 0, term.cols).padEnd(term.cols);
+        for (let x = 0; x < term.cols; x++) {
+          const cell = line.getCell(x);
+          if (cell && cell.getWidth() === 0) continue;
+          const chars = cell?.getChars() || ' ';
+          for (let k = 0; k < chars.length; k++) cellOf.push((i - first) * term.cols + x);
+          text += chars;
+        }
         last = i;
       }
 
@@ -80,14 +89,16 @@ export function registerTerminalLinks(term: Terminal, handlers: TerminalLinkHand
 
       const links: ILink[] = [];
       for (const { index, text: linkText, length, open } of matches) {
-        const startRow = first + Math.floor(index / term.cols);
-        const endIdx = index + length - 1;
-        const endRow = first + Math.floor(endIdx / term.cols);
+        const startCell = cellOf[index];
+        const endCell = cellOf[Math.min(index + length - 1, cellOf.length - 1)];
+        if (startCell === undefined || endCell === undefined) continue;
+        const startRow = first + Math.floor(startCell / term.cols);
+        const endRow = first + Math.floor(endCell / term.cols);
         if (bufferLineNumber - 1 < startRow || bufferLineNumber - 1 > endRow || endRow > last) continue;
         links.push({
           range: {
-            start: { x: (index % term.cols) + 1, y: startRow + 1 },
-            end: { x: (endIdx % term.cols) + 1, y: endRow + 1 },
+            start: { x: (startCell % term.cols) + 1, y: startRow + 1 },
+            end: { x: (endCell % term.cols) + 1, y: endRow + 1 },
           },
           text: linkText,
           activate: (event, activated) => {
