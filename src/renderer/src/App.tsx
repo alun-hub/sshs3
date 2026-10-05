@@ -46,6 +46,7 @@ import {
   findAdjacentPane,
   getTopmostOverlay,
   navigateInOverlay,
+  installSpatialNavPointerReset,
   type PaneRect,
   type NavigationDirection,
 } from './lib/spatialNavigation';
@@ -123,7 +124,12 @@ export const App: React.FC = () => {
   // (e.g. Settings opened from the toolbar while Connection Manager was
   // still open, stacking two full-screen modals). Route every "open" call
   // for these four through here so opening one always closes the others.
+  const modalOpenerRef = useRef<HTMLElement | null>(null);
   const openTopLevelModal = (open: () => void) => {
+    const active = document.activeElement;
+    if (!modalOpenerRef.current && active instanceof HTMLElement && active !== document.body) {
+      modalOpenerRef.current = active;
+    }
     setProfilesModalOpen(false);
     setSettingsModalOpen(false);
     setTunnelsModalOpen(false);
@@ -716,11 +722,32 @@ export const App: React.FC = () => {
     }
   }, [tabs, activeTabId, handleSelectPane]);
 
+  useEffect(() => installSpatialNavPointerReset(), []);
+
+  // A modal owns the keyboard while open: drop tab-bar focus on open, and on close give
+  // focus back to whatever opened it (falling back to the active tab's content).
+  const prevModalOpenRef = useRef(false);
+  useEffect(() => {
+    if (anyTopLevelModalOpen) {
+      setTabBarFocused(false);
+    } else if (prevModalOpenRef.current) {
+      const opener = modalOpenerRef.current;
+      modalOpenerRef.current = null;
+      // Only restore when nothing else claimed focus meanwhile (e.g. a tab opened from the modal).
+      const focusFree = !document.activeElement || document.activeElement === document.body;
+      if (focusFree) {
+        if (opener?.isConnected && opener.offsetParent !== null) opener.focus();
+        else focusActiveTabContent();
+      }
+    }
+    prevModalOpenRef.current = anyTopLevelModalOpen;
+  }, [anyTopLevelModalOpen, focusActiveTabContent]);
+
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // If TabBar is focused and user presses Enter or Escape: descend into active tab
-      if (tabBarFocused && (e.key === 'Enter' || e.key === 'Escape')) {
+      if (tabBarFocused && (e.key === 'Enter' || e.key === 'Escape') && !getTopmostOverlay()) {
         e.preventDefault();
         e.stopPropagation();
         focusActiveTabContent();
@@ -733,7 +760,7 @@ export const App: React.FC = () => {
         if (overlay) {
           const active = document.activeElement as HTMLElement | null;
           if (active && overlay.contains(active)) {
-            if (active.tagName === 'TEXTAREA') return;
+            if (active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable) return;
 
             if (active.tagName === 'INPUT') {
               const input = active as HTMLInputElement;
@@ -922,6 +949,12 @@ export const App: React.FC = () => {
                 if (dir === 'up') {
                   setTabBarFocused(true);
                   (document.activeElement as HTMLElement | null)?.blur?.();
+                } else if (dir === 'down') {
+                  const pane = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
+                    '[data-testid^="file-pane-"]'
+                  );
+                  const side = pane?.getAttribute('data-testid') === 'file-pane-right' ? 'right' : 'left';
+                  window.dispatchEvent(new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: side }));
                 } else if (dir === 'left') {
                   window.dispatchEvent(
                     new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'left' })

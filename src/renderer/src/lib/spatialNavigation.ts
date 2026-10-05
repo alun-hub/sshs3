@@ -17,6 +17,65 @@ export type NavigationTarget =
   | { type: 'to_tab_bar' }
   | null;
 
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+interface Scoring {
+  /** How far a candidate's near edge may overlap the current box and still count as "in that direction". */
+  edgeTolerance: number;
+  /** Alternatively, how far its center must be past the current center. */
+  centerTolerance: number;
+  /** Weight of the gap along the movement axis / the offset across it. */
+  gapWeight: number;
+  crossWeight: number;
+  /** Penalty when the two boxes share no span on the cross axis. */
+  noOverlapPenalty: number;
+}
+
+const PANE_SCORING: Scoring = { edgeTolerance: 5, centerTolerance: 10, gapWeight: 2, crossWeight: 1, noOverlapPenalty: 500 };
+
+const ELEMENT_SCORING: Record<NavigationDirection, Scoring> = {
+  left: { edgeTolerance: 4, centerTolerance: 4, gapWeight: 1, crossWeight: 2.5, noOverlapPenalty: 400 },
+  right: { edgeTolerance: 4, centerTolerance: 4, gapWeight: 1, crossWeight: 2.5, noOverlapPenalty: 400 },
+  up: { edgeTolerance: 4, centerTolerance: 4, gapWeight: 1, crossWeight: 1.8, noOverlapPenalty: 250 },
+  down: { edgeTolerance: 4, centerTolerance: 4, gapWeight: 1, crossWeight: 1.8, noOverlapPenalty: 250 },
+};
+
+/** Lower is better; null when `cand` does not lie in `direction` from `cur`. */
+function directionalScore(
+  cur: Box,
+  cand: Box,
+  direction: NavigationDirection,
+  cfg: Scoring | Record<NavigationDirection, Scoring>
+): number | null {
+  const scoring = 'edgeTolerance' in cfg ? cfg : cfg[direction];
+  const horizontal = direction === 'left' || direction === 'right';
+  const forward = direction === 'right' || direction === 'down';
+  // Normalize to a movement axis (main) and its perpendicular (cross).
+  const [cMin, cMax, cCrossMin, cCrossMax] = horizontal
+    ? [cur.left, cur.right, cur.top, cur.bottom]
+    : [cur.top, cur.bottom, cur.left, cur.right];
+  const [pMin, pMax, pCrossMin, pCrossMax] = horizontal
+    ? [cand.left, cand.right, cand.top, cand.bottom]
+    : [cand.top, cand.bottom, cand.left, cand.right];
+  const cCenter = (cMin + cMax) / 2;
+  const pCenter = (pMin + pMax) / 2;
+
+  const inDirection = forward
+    ? pMin >= cMax - scoring.edgeTolerance || pCenter > cCenter + scoring.centerTolerance
+    : pMax <= cMin + scoring.edgeTolerance || pCenter < cCenter - scoring.centerTolerance;
+  if (!inDirection) return null;
+
+  const gap = Math.max(0, forward ? pMin - cMax : cMin - pMax);
+  const cross = Math.abs((cCrossMin + cCrossMax) / 2 - (pCrossMin + pCrossMax) / 2);
+  const overlap = Math.max(0, Math.min(cCrossMax, pCrossMax) - Math.max(cCrossMin, pCrossMin));
+  return gap * scoring.gapWeight + cross * scoring.crossWeight + (overlap > 0 ? 0 : scoring.noOverlapPenalty);
+}
+
 /**
  * Given a list of pane bounding boxes, the current active pane ID, and a direction,
  * finds the best adjacent pane or signals 'to_tab_bar' when moving up with no pane above.
@@ -39,67 +98,14 @@ export function findAdjacentPane(
     return null;
   }
 
-  const cRect = current.rect;
-  const cx = cRect.left + cRect.width / 2;
-  const cy = cRect.top + cRect.height / 2;
-
   let bestTarget: string | null = null;
   let bestScore = Infinity;
-
   for (const candidate of panes) {
     if (candidate.id === currentId) continue;
-    const pRect = candidate.rect;
-    const px = pRect.left + pRect.width / 2;
-    const py = pRect.top + pRect.height / 2;
-
-    if (direction === 'left') {
-      if (pRect.right <= cRect.left + 5 || px < cx - 10) {
-        const dx = Math.max(0, cRect.left - pRect.right);
-        const dy = Math.abs(cy - py);
-        const overlaps = Math.max(0, Math.min(cRect.bottom, pRect.bottom) - Math.max(cRect.top, pRect.top));
-        const overlapBonus = overlaps > 0 ? 0 : 500;
-        const score = dx * 2 + dy + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestTarget = candidate.id;
-        }
-      }
-    } else if (direction === 'right') {
-      if (pRect.left >= cRect.right - 5 || px > cx + 10) {
-        const dx = Math.max(0, pRect.left - cRect.right);
-        const dy = Math.abs(cy - py);
-        const overlaps = Math.max(0, Math.min(cRect.bottom, pRect.bottom) - Math.max(cRect.top, pRect.top));
-        const overlapBonus = overlaps > 0 ? 0 : 500;
-        const score = dx * 2 + dy + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestTarget = candidate.id;
-        }
-      }
-    } else if (direction === 'down') {
-      if (pRect.top >= cRect.bottom - 5 || py > cy + 10) {
-        const dy = Math.max(0, pRect.top - cRect.bottom);
-        const dx = Math.abs(cx - px);
-        const overlaps = Math.max(0, Math.min(cRect.right, pRect.right) - Math.max(cRect.left, pRect.left));
-        const overlapBonus = overlaps > 0 ? 0 : 500;
-        const score = dy * 2 + dx + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestTarget = candidate.id;
-        }
-      }
-    } else if (direction === 'up') {
-      if (pRect.bottom <= cRect.top + 5 || py < cy - 10) {
-        const dy = Math.max(0, cRect.top - pRect.bottom);
-        const dx = Math.abs(cx - px);
-        const overlaps = Math.max(0, Math.min(cRect.right, pRect.right) - Math.max(cRect.left, pRect.left));
-        const overlapBonus = overlaps > 0 ? 0 : 500;
-        const score = dy * 2 + dx + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestTarget = candidate.id;
-        }
-      }
+    const score = directionalScore(current.rect, candidate.rect, direction, PANE_SCORING);
+    if (score !== null && score < bestScore) {
+      bestScore = score;
+      bestTarget = candidate.id;
     }
   }
 
@@ -131,17 +137,19 @@ export const FOCUSABLE_OVERLAY_SELECTOR = [
 export function isElementVisible(el: HTMLElement): boolean {
   if (!el.isConnected) return false;
   if (typeof window === 'undefined') return true;
-  const style = window.getComputedStyle(el);
-  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-    return false;
+  if (typeof el.checkVisibility === 'function') {
+    // Native, handles display:none ancestors in one call; also skip rendered-but-empty boxes.
+    if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
   }
-  const rect = el.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) {
-    const isJsdom = typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '');
-    if (isJsdom) return true;
-    return false;
+  // Fallback (e.g. jsdom): display:none is not inherited, so walk up.
+  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.display === 'none') return false;
+    if (node === el && (style.visibility === 'hidden' || style.opacity === '0')) return false;
   }
-  return rect.width > 0 && rect.height > 0;
+  return true;
 }
 
 function getZIndexNumber(el: HTMLElement): number {
@@ -217,66 +225,16 @@ export function findAdjacentElement(
   if (candidates.length <= 1) return null;
 
   const cRect = current.getBoundingClientRect();
-  const cx = cRect.left + cRect.width / 2;
-  const cy = cRect.top + cRect.height / 2;
 
   let bestCandidate: HTMLElement | null = null;
   let bestScore = Infinity;
 
   for (const el of candidates) {
     if (el === current || current.contains(el) || el.contains(current)) continue;
-    const pRect = el.getBoundingClientRect();
-    const px = pRect.left + pRect.width / 2;
-    const py = pRect.top + pRect.height / 2;
-
-    if (direction === 'right') {
-      if (pRect.left >= cRect.right - 4 || px > cx + 4) {
-        const dx = Math.max(0, pRect.left - cRect.right);
-        const dy = Math.abs(cy - py);
-        const vOverlap = Math.max(0, Math.min(cRect.bottom, pRect.bottom) - Math.max(cRect.top, pRect.top));
-        const overlapBonus = vOverlap > 0 ? 0 : 400;
-        const score = dx + dy * 2.5 + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestCandidate = el;
-        }
-      }
-    } else if (direction === 'left') {
-      if (pRect.right <= cRect.left + 4 || px < cx - 4) {
-        const dx = Math.max(0, cRect.left - pRect.right);
-        const dy = Math.abs(cy - py);
-        const vOverlap = Math.max(0, Math.min(cRect.bottom, pRect.bottom) - Math.max(cRect.top, pRect.top));
-        const overlapBonus = vOverlap > 0 ? 0 : 400;
-        const score = dx + dy * 2.5 + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestCandidate = el;
-        }
-      }
-    } else if (direction === 'down') {
-      if (pRect.top >= cRect.bottom - 4 || py > cy + 4) {
-        const dy = Math.max(0, pRect.top - cRect.bottom);
-        const dx = Math.abs(cx - px);
-        const hOverlap = Math.max(0, Math.min(cRect.right, pRect.right) - Math.max(cRect.left, pRect.left));
-        const overlapBonus = hOverlap > 0 ? 0 : 250;
-        const score = dy + dx * 1.8 + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestCandidate = el;
-        }
-      }
-    } else if (direction === 'up') {
-      if (pRect.bottom <= cRect.top + 4 || py < cy - 4) {
-        const dy = Math.max(0, cRect.top - pRect.bottom);
-        const dx = Math.abs(cx - px);
-        const hOverlap = Math.max(0, Math.min(cRect.right, pRect.right) - Math.max(cRect.left, pRect.left));
-        const overlapBonus = hOverlap > 0 ? 0 : 250;
-        const score = dy + dx * 1.8 + overlapBonus;
-        if (score < bestScore) {
-          bestScore = score;
-          bestCandidate = el;
-        }
-      }
+    const score = directionalScore(cRect, el.getBoundingClientRect(), direction, ELEMENT_SCORING);
+    if (score !== null && score < bestScore) {
+      bestScore = score;
+      bestCandidate = el;
     }
   }
 
@@ -383,15 +341,13 @@ export function navigateInOverlay(
   return false;
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener(
-    'pointerdown',
-    () => {
-      document.querySelectorAll('.spatial-nav-active').forEach((el) => {
-        el.classList.remove('spatial-nav-active');
-      });
-    },
-    { passive: true }
-  );
+/** Clears the keyboard-focus highlight as soon as the mouse is used. Returns an unsubscribe function. */
+export function installSpatialNavPointerReset(): () => void {
+  const handler = () => {
+    document.querySelectorAll('.spatial-nav-active').forEach((el) => {
+      el.classList.remove('spatial-nav-active');
+    });
+  };
+  window.addEventListener('pointerdown', handler, { passive: true });
+  return () => window.removeEventListener('pointerdown', handler);
 }
-

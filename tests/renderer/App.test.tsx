@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { App } from '../../src/renderer/src/App';
 
@@ -646,6 +646,23 @@ describe('App Component', () => {
     await vi.waitFor(() => {
       expect(within(screen.getByTestId('tab-term-1')).getByText('Local Shell')).toBeInTheDocument();
     });
+  });
+
+  it('drops tab-bar focus when a modal opens so the modal owns Enter/Escape', async () => {
+    render(<App />);
+    await screen.findByTestId('tab-term-1');
+    fireEvent.click(screen.getByTestId('add-tab-btn'));
+    fireEvent.click(screen.getByTestId('new-filemanager-btn'));
+
+    const activeTab = () => screen.getAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true')!;
+
+    // Ctrl+Shift+Up in the file manager moves focus to the tab bar.
+    fireEvent.keyDown(window, { key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true, shiftKey: true });
+    expect(activeTab().className).toContain('ring-sky-400');
+
+    // Opening the Connection Manager must release tab-bar focus.
+    fireEvent.keyDown(window, { key: 'O', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(activeTab().className).not.toContain('ring-sky-400'));
   });
 });
 
