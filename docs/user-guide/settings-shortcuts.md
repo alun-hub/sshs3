@@ -12,30 +12,36 @@ Access the preferences dialog via the gear icon in the top toolbar or via the ke
 
 ### 1.1 General & Appearance
 ![General Settings](/img/docs/settings-general.png)
-- **Theme**: Select between **Dark** (slate dark), **Light** (clean gray), **Breeze** (KDE-inspired theme with cyan accents), or **System** (tracks OS dark/light mode).
-- **Confirm Before Quit**: Warns if active terminal sessions or background file transfers are in progress when closing the window.
-- **Keep ~/.ssh/config in sync**: (Enabled by default, opt-out) Serialized and injection-safe synchronization that automatically maintains a marked block in your local `~/.ssh/config` at startup and whenever an SSH profile is saved, deleted, or imported. Allows running `ssh <profile-name>` in any external terminal without manual configuration. Only sshs3's own block is modified.
-- **Automatic Updates**: Toggles background update checking against GitHub Releases every 6 hours (locked when `SSHS3_DISABLE_UPDATES=1` is active).
+- **Color Theme**: **Dark** (slate dark), **Light** (clean gray), **Breeze** (KDE-inspired theme with cyan accents), or **System** (tracks OS dark/light mode).
+- **Default Tab Type**: Whether a new tab is a **Terminal** or a **File Manager**.
+- **Confirm before quitting the app**: Warns if active terminal sessions or background file transfers are in progress when closing the window.
+- **Check for updates automatically**: Checks GitHub Releases in the background every 6 hours; **Check now**, **Download** and **Restart and install** are explicit actions. Locked off when `SSHS3_DISABLE_UPDATES=1` is set.
 
 ### 1.2 Terminal
 ![Terminal Settings](/img/docs/settings-terminal.png)
-- **Font Family & Font Size**: Configure monospaced font stacks with live preview.
-- **Cursor Style**: Block, Underline, or Bar.
-- **Scrollback Buffer**: Retained lines per terminal session (default 5,000 lines).
-- **Copy text automatically on selection**: Automatically adds highlighted text to the encrypted clipboard history.
-- **Local Terminal SSH Agent**: Configures how `$SSH_AUTH_SOCK` is populated in local shell tabs: **Auto** (uses unlocked app-wide `AppAgent` under Global PIN caching, otherwise system/login-shell agent, otherwise an app-spawned agent), **System Only** (only uses pre-existing system agent), or **Disabled** (no agent).
-- **On Logout / Session End**: Action when a session exits: **Reconnect**, **Close**, or **Keep**.
+- **Terminal Font Size** and **Terminal Font Family**, with a **Terminal Live Preview**.
+- **Cursor Style**: **Block**, **Underline**, or **Vertical Bar**.
+- **Scrollback Buffer (lines)**: Retained lines per terminal session (default 5,000).
+- **Copy text automatically on selection**: Adds highlighted text to the encrypted clipboard history. **Clipboard history scope** is **Global (shared by all hosts and terminals)** or **Per host (follows the connection)**; **Empty clipboard history on exit** clears it when the app quits.
+- **On Logout / Session End**: **Reconnect (Default)** (quick buttons to reconnect or close), **Close Tab Immediately** (on a clean logout), or **Keep Open**.
+- **Local Terminal SSH Agent**: How `$SSH_AUTH_SOCK` is set in local shell tabs: **Auto** (the active smartcard agent, else the system/login-shell agent, else an sshs3-managed one), **System Only** (inherit the system or login-shell `SSH_AUTH_SOCK`), or **Disabled** (do not set it).
+- **Keep `~/.ssh/config` in sync with saved SSH profiles** (on by default): Maintains a marked block in your local `~/.ssh/config` at startup and whenever an SSH profile is saved, deleted, or imported, so `ssh <profile-name>` works in any external terminal. Only the sshs3 block is touched. Writes are serialized and values are stripped of line breaks so a profile field cannot inject extra directives.
 
 ### 1.3 Performance
-- Enable/disable the real-time telemetry bar, choose layout (Compact Text, Bars, Sparklines), and sampling rate (2s, 5s, 10s, 30s).
+- **Show performance bar above terminals** turns the real-time telemetry bar on or off. Choose the layout (**Compact Text**, **Bars**, **Sparklines**), the sampling interval (2s, 5s, 10s, 30s) and which metrics to show.
 
 ### 1.4 Files & Storage
-- **Show Hidden Files**: Toggle visibility of dotfiles (`.`).
-- **Concurrent Transfers**: Number of simultaneous parallel streams in the transfer queue (default 3).
-- **Default Conflict Policy**: Default action on filename collisions: **Ask**, **Overwrite**, **Skip**, or **Resume**.
+- **Show hidden files and dotfiles (.git, .env, etc.)**.
+- **Default Conflict Resolution for File Transfers**: What happens on filename collisions: **Ask** (default), **Overwrite**, **Skip** or **Rename**.
+- **Confirm before deleting files and folders** and **Verify file integrity and size after transfer** (both on by default).
+- **Share folders between SSH/SFTP and S3 in Connection Manager**.
+- **Enable dotfiles pool sync (off by default)** and **Manage Dotfile Pools**.
+
+Up to 3 transfers run in parallel; this is fixed, not a setting.
 
 ### 1.5 Security & Smartcard
-- PKCS#11 driver discovery, FIDO2 resident key management, and PIN caching modes (Always Prompt, Per Session, Global). Under Global mode, all unlocked keys reside in a single app-wide `ssh-agent` (`AppAgent`), and the top bar card icon features an interactive **Lock All Now** / **Unlock Now** toggle.
+- **PIN caching**: **Always Prompt (Default)**, **Once Per Terminal Connection**, or **Global (App Lifetime)**. Under Global, all unlocked keys reside in a single app-wide `ssh-agent` (`AppAgent`), and the top bar card icon features an interactive **Lock All Now** / **Unlock Now** toggle. **Unlock smartcard at app startup** (Global only) asks for the PIN as soon as the app opens.
+- **Detected PKCS#11 Hardware Token Libraries**: the libraries found on the machine, with **Rescan**.
 
 ### 1.6 Kubernetes & Debug
 - Red Hat OpenShift support toggle, default diagnostic container presets for `kubectl debug` (Netshoot, RHEL Support Tools, BusyBox, Curl, Ubuntu).
@@ -65,7 +71,7 @@ Deliver maximum keyboard efficiency by allowing operators to navigate across spl
 - If desktop window managers (e.g. GNOME or Windows) bind these key combinations globally, shortcuts can be rebound in *Settings → Keyboard Shortcuts*.
 
 #### ⚙️ Technical Internals & Architecture
-`spatialNavigation.ts` computes the geometric bounding boxes (`getBoundingClientRect`) of all focusable containers and calculates the Euclidean vector distance in the direction of the pressed arrow key to determine the next logical element. Focus restoration on modal dismiss is managed via a focus history stack.
+`spatialNavigation.ts` reads the bounding boxes (`getBoundingClientRect`) of the candidate panes or focusable elements and, for the pressed arrow, scores each candidate in that direction by its gap along the axis plus a weighted offset across it (candidates that do not overlap the current element are penalized); the lowest score wins. When a modal closes, focus returns to the element that opened it if nothing else has taken focus.
 
 ---
 

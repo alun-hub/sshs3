@@ -65,7 +65,7 @@ With X11 forwarding, you can run Linux GUI tools on a remote server and render t
 Enable operators to run administrative graphical tools (e.g. `wireshark`, `gedit`, `xterm`, `virt-manager`) without installing desktop environments (GNOME/KDE) on headless servers.
 
 #### 🛠️ How to Use
-1. In your SSH profile under *Advanced Options*, enable **Enable X11 Forwarding**.
+1. In your SSH profile, click **Advanced...** and tick **Forward X11 GUI (-Y)**.
 2. Connect to the host.
 3. Launch an X11 program in the terminal (e.g., `xclock &` or `gedit &`).
 4. The window appears seamlessly on your workstation!

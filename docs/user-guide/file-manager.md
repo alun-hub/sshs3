@@ -94,7 +94,7 @@ Enable direct file transfers between disparate storage systems (e.g., from an SF
 
 ---
 
-## 3. Conflict Resolution & Byte-Offset Resume
+## 3. Conflict Resolution
 
 When a destination file already exists, sshs3 presents an interactive collision dialog:
 
@@ -102,23 +102,10 @@ When a destination file already exists, sshs3 presents an interactive collision 
 
 - **Overwrite**: Overwrites the existing destination file.
 - **Skip**: Skips the file and advances the queue.
-- **Resume**: Resumes transfer from the last written byte offset without restarting the download!
-- **Rename**: Automatically saves the file with an incremental suffix (e.g., `report_copy(1).pdf`).
-- **Apply to all**: Applies the chosen action to all subsequent conflicts in the batch.
+- **Rename**: Automatically saves the file under a new name instead of replacing the existing one.
+- **Apply to all remaining conflicts in this transfer**: Applies the chosen action to all subsequent conflicts in the batch.
 
-### Feature: Byte-Offset Transfer Resume
-
-#### 🎯 Purpose
-Save hours of transfer time and network bandwidth when copying multi-gigabyte database dumps, virtual machine disks, or log archives over unstable connections.
-
-#### 🛠️ How to Use
-If a 10 GB file transfer was interrupted at 85%, restart the copy operation and select **Resume** in the conflict modal.
-
-#### ⚠️ Limitations & Caveats
-- Resume is supported across SFTP and local disk. On S3, resume is supported for multi-part uploads where chunks have finalized.
-
-#### ⚙️ Technical Internals & Architecture
-When Resume is selected, the engine queries the destination file size via `stat()`. It then opens the source stream with `createReadStream(remotePath, existingSize)` and opens the destination stream in append mode (`flags: 'a'`).
+Under **Settings → Files & Storage → Default Conflict Resolution for File Transfers** you can choose **Ask** (the default), **Overwrite**, **Skip** or **Rename** so the dialog does not appear. Transfers in the queue can be paused, resumed and cancelled.
 
 ---
 
@@ -126,23 +113,24 @@ When Resume is selected, the engine queries the destination file size via `stat(
 
 ![File Settings](/img/docs/settings-files.png)
 
-### Feature: Bidirectional Directory Synchronization
+### Feature: Directory Synchronization
 
 #### 🎯 Purpose
-Compare directory trees across servers and synchronize changes with comprehensive diff previewing before execution.
+Compare a source directory with a target directory (on the same or different servers) and synchronize the differences, with a diff preview before anything is copied.
 
 #### 🛠️ How to Use
-1. Click the Sync icon in the file manager toolbar.
-2. Select comparison criteria: **File Size** and **Modification Time (mtime)**.
-3. Click **Compare**. Review the color-coded diff list:
-   - 🟢 Green: New file on source.
-   - 🟡 Yellow: Modified file (size or timestamp mismatch).
-   - 🔴 Red: File exists only on destination.
-4. Select sync direction (Left to Right, Right to Left, or Bidirectional) and click **Apply Sync**.
-5. Save the configuration as a **Sync Profile** for repeated execution.
+1. Right-click a folder and select **Sync to...**, then pick the target folder. The **Sync Directory** dialog opens with the **Source** and **Target**.
+2. Review the diff:
+   - **New on source**: will be copied to the target.
+   - **Modified**: will overwrite the target (newer target files are flagged).
+   - **Only in target**: kept by default (*safe sync*).
+   - **Identical**: nothing to do.
+3. Optionally tick **Enable mirror (delete extraneous files in target)** to also delete files that exist only in the target. Deletions happen only for the files you select.
+4. Run the sync. Enter a **Profile name** to save the configuration as a saved sync profile; saved profiles are listed under **Saved Sync Profiles**, where **Compute diff and run sync** repeats them.
 
 #### ⚠️ Limitations & Caveats
-- S3 and certain object storage backends lack microsecond `mtime` resolution. sshs3 employs a configurable time tolerance window (default 2 seconds) to avoid false positives.
+- The sync is one-way, from source to target.
+- Files are compared by size and modification time, with a fixed 2-second tolerance because SFTP and S3 backends truncate timestamps and clocks drift.
 
 #### ⚙️ Technical Internals & Architecture
 `DirectorySyncService` (`src/main/dirsync/DirectorySyncService.ts`) traverses directory hierarchies in memory, categorizes files, and enqueues sync tasks through `TransferQueue`.
@@ -158,8 +146,8 @@ Inspect and modify remote files or monitor server logs without launching an exte
 
 #### 🛠️ How to Use
 - **Built-in Editor**: Double-click or press <kbd>Enter</kbd> on a text file to open it in the built-in viewer. Press <kbd>Ctrl+S</kbd> to save directly back to the remote server. For documentation files, toggle the **Source / Preview** switch for an instant live-rendered Markdown preview.
-- **Live Log Tail**: Right-click a growing log file (e.g. `access.log`, `app.log`) and select **Follow Log (tail -f)**. The viewer streams new lines in real time, featuring pause, resume, and text search (<kbd>Ctrl+F</kbd>).
-- **External Editor**: Right-click any file and select **Edit in External Editor**. The file opens in your local desktop IDE (VS Code, Neovim, Sublime). Press <kbd>Ctrl+S</kbd> locally, and sshs3 automatically detects the file write and streams updates back to the server in the background!
+- **Live Log Tail**: Right-click a growing log file (e.g. `access.log`, `app.log`) and select **Tail -f (Stream Log)**. The editor streams new lines in real time and is read-only while tailing; click **Stop Tail -f** to end the stream.
+- **External Editor**: Right-click any file and select **Open in External Editor**. The file opens in your local desktop IDE (VS Code, Neovim, Sublime). Press <kbd>Ctrl+S</kbd> locally, and sshs3 automatically detects the file write and streams updates back to the server in the background!
 
 #### ⚠️ Limitations & Caveats
 - The built-in editor is optimized for lightweight text/markdown editing without heavy syntax trees. For complex multi-file projects, use External Editor hand-off.

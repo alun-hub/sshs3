@@ -21,7 +21,7 @@ Unlike traditional monitoring agents (Datadog, Prometheus node_exporter, Zabbix)
 Provide sysadmins with immediate visual feedback regarding resource bottlenecks (CPU compile spikes, memory leaks, I/O wait on slow disks, hypervisor steal) without requiring agent daemons or credentials.
 
 #### 🛠️ How to Use
-1. Open **Settings → Performance** and enable **Enable Performance Bar**.
+1. Open **Settings → Performance** and tick **Show performance bar above terminals**.
 2. Choose a display mode:
    - **Compact Text**: Clean textual readouts (e.g. `CPU: 14% | RAM: 3.8/16 GB | Load: 0.42 | Ping: 8ms`).
    - **Bars**: Color-coded meters that dynamically shift from green to amber and red during high load.
@@ -92,7 +92,7 @@ The resulting usage metrics are reconciled against the pod's PodSpec definition.
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
-| No metrics bar appears above terminal | Feature disabled in settings | Open *Settings → Performance* and check **Enable Performance Bar**. |
+| No metrics bar appears above terminal | Feature disabled in settings | Open *Settings → Performance* and tick **Show performance bar above terminals**. |
 | `metrics-server not available` | Kubernetes cluster lacks `metrics-server` | Deploy metrics-server to your cluster (`kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/...`). |
 | Ping metric displays `N/A` | ControlMaster connection multiplexing disabled | Socket RTT requires connection multiplexing. Ensure `ControlMaster` is supported by your server. |
 | Metric updates stall | Server under extreme load or network dropped | Sampler enforces a 3-second timeout. Updates resume automatically once the host responds. |

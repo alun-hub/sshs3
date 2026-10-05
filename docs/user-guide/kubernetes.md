@@ -37,13 +37,8 @@ Monitors `~/.kube/config` via `fs.watch`. To guarantee sub-500ms application lau
 Provide full interactive terminal sessions inside running containers directly within sshs3's split-pane layout without requiring external terminal windows.
 
 #### 🛠️ How to Use
-- **Launch Container Terminal**: Double-click any container in the tree or right-click and select **Terminal** (<kbd>Ctrl+Shift+D</kbd> / <kbd>E</kbd> for splits). Select shell binary (`/bin/sh`, `/bin/bash`, or custom).
-- **Stream Container Logs**: Right-click a pod or container and select **View Logs**:
-  - Streams stdout and stderr in real time with auto-scroll.
-  - Toggle **Timestamps** to inspect precise log delivery times.
-  - Set a **Tail Lines** limit (200 by default so high-throughput containers do not flood client memory; configurable to 500, 2000, or unlimited).
-  - Check **Previous Instance (`previous: true`)** to inspect logs from crashed or terminated containers (essential for diagnosing CrashLoopBackOff panics).
-  - Search log buffers with <kbd>Ctrl+F</kbd>.
+- **Launch Container Terminal**: Select a container in the tree and click **Exec** (or double-click it). Choose the shell binary (`/bin/sh`, `/bin/bash`, or custom). The session opens in a normal terminal tab that can be split (<kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>).
+- **Stream Container Logs**: Select a container and click **Logs**. The logs open in a new tab that follows the container in real time: the last 1,000 lines first, then new output as it is written, with auto-scroll. The view is read-only; search it with <kbd>Ctrl+F</kbd> (<kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> for next / previous match).
 
 #### ⚠️ Limitations & Caveats
 - Exec requires a shell binary (`sh`, `bash`) inside the container. For minimal distroless images, exec fails with `executable file not found in $PATH` (use *Ephemeral Debug* below!).
@@ -61,9 +56,9 @@ Provide full interactive terminal sessions inside running containers directly wi
 Access private pod endpoints, internal database instances, or cluster microservices directly from local desktop tools (Postman, DBeaver, web browser) without defining public Ingress routes.
 
 #### 🛠️ How to Use
-1. Right-click any pod or service and select **Port Forward...**.
-2. Specify the **Remote Port** (e.g. `5432` for Postgres, `8080` for web apps) and choose a **Local Port** (or leave blank to assign a dynamic loopback port).
-3. Click **Start Forwarding**.
+1. Select a pod or container in the cluster tree and click **Port Forward into pod** (or **Port Forward to this container**).
+2. Specify the **Container port** (e.g. `5432` for Postgres, `8080` for web apps) and the **Local port**.
+3. Start the forward.
 4. The Port Forwarding view displays connection state, local address (`127.0.0.1:<port>`), and real-time inbound/outbound transfer rates (KB/s, MB/s) with total transferred byte counters.
 
 #### ⚠️ Limitations & Caveats
@@ -83,7 +78,7 @@ Utilizes the Kubernetes API server `/portforward` subresource over SPDY/HTTP2, t
 Allow engineers to inspect generated application configs, crash dumps, or log files inside a running pod using the standard dual-pane file manager without installing SSH servers or debug agents inside the container.
 
 #### 🛠️ How to Use
-1. Right-click any container in the cluster tree and select **Explore Files**.
+1. Select a container in the cluster tree and click **Files** (**Browse container filesystem**).
 2. The pod opens as a pane in the dual-pane file manager.
 3. Browse directory trees, download files to your workstation, upload files, modify permissions via `chmod`, or edit files directly using your local desktop IDE!
 
@@ -108,12 +103,12 @@ When a container crashes, enters a CrashLoopBackOff state, or is built as a stri
 Debug production containers in real time by attaching a dedicated diagnostic container directly to the running pod's network and process namespace without restarting the application.
 
 #### 🛠️ How to Use
-1. Right-click any pod and select **Attach Debug Container...**.
+1. Select a pod and click **Debug** (**Attach ephemeral debug container (kubectl debug)**). The **Attach Debug Container** dialog opens.
 2. Select a preconfigured diagnostic profile:
    - **Netshoot**: Complete network troubleshooting suite (`tcpdump`, `curl`, `iperf`, `dig`, `mtr`, `socat`).
    - **RHEL Support Tools**: Enterprise system debugging (`strace`, `gdb`, `sysstat`, `lsof`, `ubi9`).
    - **BusyBox / Curl / Ubuntu**: Lightweight shells and utilities.
-3. Click **Attach**. sshs3 injects the debug container and automatically opens an interactive terminal sharing the target container's process namespace (`targetContainerName`).
+3. Click **Attach Debugger**. sshs3 injects the debug container and automatically opens an interactive terminal sharing the target container's process namespace (`targetContainerName`).
 
 ![Kubernetes Settings](/img/docs/settings-k8s.png)
 
@@ -156,7 +151,7 @@ Parses cluster URL and SHA256 tokens, verifies identity against OpenShift APIs, 
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
-| `executable file not found in $PATH` | Container is distroless and lacks `/bin/sh` | Use **Attach Debug Container...** to attach a Netshoot or BusyBox diagnostic container. |
+| `executable file not found in $PATH` | Container is distroless and lacks `/bin/sh` | Use **Debug** (**Attach Debug Container**) to attach a Netshoot or BusyBox diagnostic container. |
 | `pods/ephemeralcontainers is forbidden` | RBAC role lacks permission for ephemeral containers | Contact your cluster administrator to obtain `create`/`patch` RBAC rights on `pods/ephemeralcontainers`. |
 | Cluster missing from tree view | Context missing in `~/.kube/config` | Run `kubectl config get-contexts` or import the cluster via the OpenShift login modal. |
 | Port forward disconnects after 5 minutes | Cluster API server closed idle connection | Reconnect via the Port Forwarding manager; sshs3 features automatic reconnect logic. |

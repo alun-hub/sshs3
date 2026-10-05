@@ -63,8 +63,8 @@ sshs3 supports five distinct authentication mechanisms:
 Eliminate password compromises and enforce Zero Trust security using hardware-backed credentials that cannot be extracted from the physical token.
 
 #### 🛠️ How to Use
-- **FIDO2 Resident Credentials**: Select FIDO2, plug in your YubiKey, and click **Scan Security Key**. Discoverable credentials on the key are imported directly without requiring local pointer files on disk!
-- **Smartcard (PKCS#11)**: Select Smartcard and click **Detect Smartcards**. The app scans standard library paths, discovers active slots, and lists certificates.
+- **FIDO2 Resident Credentials**: Select FIDO2 and tick **Use a resident (discoverable) credential stored on the device**. No key file is needed: the app loads whatever resident credentials are on the connected security key when you connect. It scans the key automatically; click **Re-scan connected security key** after swapping keys. (Not available on Windows, whose OpenSSH build cannot read resident keys; use a key file there.)
+- **Smartcard (PKCS#11)**: Select Smartcard and click **Scan** next to the library field. The app scans the standard library paths and lists the **Detected modules on system** to pick from.
 
 #### ⚠️ Limitations & Caveats
 - FIDO2 requires OpenSSH 8.2+ on both client and target server.
@@ -87,11 +87,11 @@ Built on **Zero Private Key Extraction**. Key bytes never traverse Node.js or Ch
 Replace error-prone manual `ssh-copy-id` terminal commands with an intuitive graphical multi-key deployer that safely installs public keys without duplicating lines in `~/.ssh/authorized_keys`.
 
 #### 🛠️ How to Use
-1. Right-click any SSH profile and select **Install Public Key...** (or click the key icon in the profile editor).
+1. Right-click any SSH profile and select **Install public key** (or click the key icon in the profile editor).
 2. Check the public keys you want to authorize (e.g., workstation key, YubiKey public key, and smartcard public certificate).
 3. Select an installation strategy:
    - **Direct Deploy**: Authenticates temporarily via password or existing key to append the keys automatically.
-   - **Copy Offline Command**: Generates a safe, idempotent POSIX shell one-liner ready to paste into web consoles or out-of-band management terminals (iLO, iDRAC):
+   - **Copy command (Bash)**: Generates a safe, idempotent POSIX shell one-liner ready to paste into web consoles or out-of-band management terminals (iLO, iDRAC):
 
 ```bash
 mkdir -p -m 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG...' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
@@ -124,7 +124,7 @@ Connecting to a new host displays an interactive fingerprint dialog:
 │ ⚠️  The authenticity of host '10.0.4.12 (ED25519)' can't be established.│
 │ Fingerprint: SHA256:d8b248a...                                         │
 │ Are you sure you want to continue connecting?                          │
-│ [ Trust & Connect ]                                      [ Cancel ]    │
+│ [ Trust Host ]                                           [ Cancel ]    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -134,12 +134,12 @@ Connecting to a new host displays an interactive fingerprint dialog:
 Protect sysadmins and infrastructure against Man-In-The-Middle (MITM) attacks and DNS spoofing by validating the server's public key against `~/.ssh/known_hosts`.
 
 #### 🛠️ How to Use
-- Review the SHA256 fingerprint on first connection and click **Trust & Connect**.
+- Review the SHA256 fingerprint on first connection (the **Unknown Host** dialog) and click **Trust Host**.
 - The key is appended to your system's `~/.ssh/known_hosts`.
 
 #### ⚠️ Limitations & Caveats
 - If a server is reinstalled and generates a new host key, OpenSSH detects a mismatch and rejects connection (`HOST KEY VERIFICATION FAILED`).
-- Modified host keys can never be bypassed with a single click — the old entry must be purged explicitly via `ssh-keygen -R <host>`.
+- A changed key shows the red **Host Key Changed!** dialog with a man-in-the-middle warning; only click **Trust Anyway** if you are sure the change is legitimate. In terminal sessions OpenSSH itself refuses the connection until the old entry is removed with `ssh-keygen -R <host>`.
 
 #### ⚙️ Technical Internals & Architecture
 Leverages OpenSSH's native verification engine. When OpenSSH prompts *"Are you sure you want to continue connecting?"*, the prompt is captured by `AskpassServer` (`IPC_CHANNELS.HOSTKEY_PROMPT`). If the user does not respond within 60 seconds or closes the window, the request is answered `no` (fail-closed security).
@@ -156,7 +156,7 @@ Leverages OpenSSH's native verification engine. When OpenSSH prompts *"Are you s
 Fine-tune low-level OpenSSH protocol flags for complex enterprise environments, bastions, and high-latency connections.
 
 #### 🛠️ How to Use
-In any SSH profile, click **Advanced Options**:
+In any SSH profile, click **Advanced...**:
 
 | Parameter | Flag | Purpose & Description | Caveat / Limitation |
 | :--- | :--- | :--- | :--- |
@@ -169,22 +169,22 @@ In any SSH profile, click **Advanced Options**:
 
 ---
 
-## 6. Import & Export (`~/.ssh/config` & Encrypted JSON)
+## 6. Import & Export (`~/.ssh/config` & JSON)
 
-### Feature: Seamless Migration & Encrypted Backup
+### Feature: Seamless Migration & JSON Backup
 
 #### 🎯 Purpose
-Eliminate vendor lock-in by importing existing OpenSSH configuration files and exporting password-protected backups.
+Eliminate vendor lock-in by importing existing OpenSSH configuration files and exporting your profiles as JSON backups.
 
 #### 🛠️ How to Use
-- **Import from OpenSSH**: Click **Import** → **From ~/.ssh/config**. Parses all `Host` stanzas, hostnames, ports, users, `IdentityFile`, and `ProxyJump` directives into organized sshs3 profiles.
-- **Encrypted JSON Vault**: Click **Export** → **Encrypted Backup**. Prompts for a master passphrase and exports an AES-256-GCM encrypted file.
+- **Import from OpenSSH**: In the Connection Manager, click **Import Hosts from ~/.ssh/config**. Parses all `Host` stanzas, hostnames, ports, users, `IdentityFile`, and `ProxyJump` directives into organized sshs3 profiles.
+- **JSON backup**: **Export JSON Backup** saves your folders and profiles to a JSON file you choose in the save dialog, and **Import JSON Backup** loads one again. The file is **not encrypted** and does **not contain secrets**: saved passwords, key passphrases, proxy passwords and S3 secret keys / session tokens are left out, so they must be entered again after an import. Keep the file safe anyway; it lists your hosts and usernames.
 
 #### ⚠️ Limitations & Caveats
 - Executable directives such as `LocalCommand` and `ProxyCommand` with arbitrary shell scripts are flagged with security warnings.
 
 #### ⚙️ Technical Internals & Architecture
-Export encryption is handled by `SecretFieldCrypto`, generating a 256-bit key from the user passphrase using **scrypt** (N=32768, r=8, p=1) before applying AES-256-GCM authenticated encryption.
+The export is plain JSON written to a path chosen through the save dialog (never a path supplied by the renderer). Secret fields are stripped in the main process before writing. Saved credentials at rest in the app itself are protected separately by the OS keyring (see the security chapter).
 
 ---
 
@@ -193,6 +193,6 @@ Export encryption is handled by `SecretFieldCrypto`, generating a 256-bit key fr
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
 | `Host key verification failed` | Server's host key does not match `~/.ssh/known_hosts` | Check if the remote host was reinstalled. If valid, purge the stale entry using `ssh-keygen -R <hostname>`. |
-| `Permission denied (publickey)` | Server rejects the offered key | Verify key assignment. Use **Install Public Key...** to deploy your public key to the server. |
+| `Permission denied (publickey)` | Server rejects the offered key | Verify key assignment. Use **Install public key** to deploy your public key to the server. |
 | `Connection timed out` | Firewall blocking port 22 or incorrect IP address | Test connectivity with `ping` or `nc -zv <host> 22`. Verify if a bastion / ProxyJump is required. |
 | `FIDO2 device not found` | Token disconnected or OS lacks FIDO2 support | Reconnect the token. Run `ssh-keygen -K` in a terminal to verify that the OS recognizes the security key. |

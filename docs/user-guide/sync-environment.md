@@ -16,7 +16,7 @@ Reconfiguring `.bashrc`, custom aliases, `.vimrc`, or `.tmux.conf` on hundreds o
 Deliver a customized, familiar shell environment on every remote server upon login without modifying or polluting permanent server-wide system configuration files.
 
 #### 🛠️ How to Use
-1. Open **Settings → Synchronization → Dotfiles Pool Manager**.
+1. Open **Settings → Files & Storage**, tick **Enable dotfiles pool sync (off by default)**, and click **Manage Dotfile Pools**.
 2. Click **Add Files...** or drag files in (e.g. `~/.bash_aliases`, `~/.config/nvim/init.vim`). Nothing is added in bulk, so pooling only `~/.kube/config` means picking just that specific file.
 3. You can also right-click any file in the dual-pane file manager and choose **Add to Dotfiles Pool...**.
 4. Pooled files are displayed grouped by target directory, complete with:
@@ -66,7 +66,7 @@ Synchronize connection profiles, credentials, folders, and application settings 
 2. Choose a backend (**S3** or **SFTP**) and enter your target credentials.
 3. Choose a strong **Master Password**.
    - *Advanced:* Toggle "Use separate passwords" to maintain separate passwords for topology (hostnames and folders) vs. credentials (passwords, keys, API secrets).
-4. **Smartcard & Hardware Token Unlock (PKCS#11 / SITHS / YubiKey)**: Click **Link Smartcard to Vault**. Future vault unlocks require only your smartcard PIN!
+4. **Smartcard & Hardware Token Unlock (PKCS#11 / SITHS / YubiKey)**: Choose the smartcard library under **Smartcard / Hardware token** and click **Link smartcard**. Later you unlock sync with **Unlock with Smartcard** and only your smartcard PIN.
 
 #### ⚠️ Limitations & Caveats
 - **RSA / Ed25519 vs. ECDSA for Key Derivation**:
@@ -87,7 +87,7 @@ Data is encrypted with **AES-256-GCM** using keys derived via **scrypt** (N=3276
 Ensure all SSH profiles saved in sshs3 are instantly accessible when running plain `ssh <host>` commands in external terminal emulators, IDEs, or automated scripts.
 
 #### 🛠️ How to Use
-- Under *Settings → General*, verify **Keep ~/.ssh/config in sync** is checked.
+- Under *Settings → Terminal*, verify **Keep ~/.ssh/config in sync with saved SSH profiles** is checked.
 - Whenever a profile is added or edited, sshs3 updates a managed block in your local `~/.ssh/config`:
 
 ```ssh-config

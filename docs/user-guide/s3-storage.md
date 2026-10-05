@@ -30,7 +30,7 @@ When configuring an S3 profile, sshs3 supports three authentication strategies:
 ### B. AWS SSO / IAM Identity Center (Enterprise Login)
 For organizations managing AWS infrastructure through corporate Single Sign-On:
 1. Configure **SSO Start URL** (e.g., `https://my-org.awsapps.com/start`) and **SSO Region**.
-2. Click **Login with AWS SSO**.
+2. Click **Sign in with AWS SSO**.
 3. sshs3 initiates the OIDC device authorization flow and launches your system browser displaying an 8-character verification code.
 4. Once authorized in the browser, sshs3 fetches temporary STS credentials and presents an interactive selector to choose your target AWS Account and IAM Role.
 5. Tokens refresh automatically in the background while the session remains active.
@@ -69,9 +69,9 @@ Follow step B above. Once authenticated, browse buckets and transfer files trans
 Share large files (database dumps, application logs, build artifacts) from a completely private S3 bucket with colleagues or clients without modifying bucket permissions or creating IAM accounts.
 
 #### 🛠️ How to Use
-1. Right-click any object in the S3 pane and select **Generate Presigned URL**.
-2. Choose a validity duration: **15 minutes**, **1 hour**, **12 hours**, **1 day**, or **7 days**.
-3. Click **Copy Link**. The link can be pasted into any browser or downloaded via `curl`/`wget`.
+1. Right-click any object in the S3 pane and select **Generate Web URL...**.
+2. Choose **Link expires after**: **15 minutes**, **1 hour**, **12 hours**, **1 day**, or **7 days (maximum)**.
+3. Click **Copy link**. The link can be pasted into any browser or downloaded via `curl`/`wget`.
 
 #### ⚠️ Limitations & Caveats
 - Under AWS Signature Version 4 (SigV4), the maximum expiration time for presigned URLs using IAM credentials is **7 days (604,800 seconds)**.
@@ -90,9 +90,9 @@ Generated via `@aws-sdk/s3-request-presigner` (`getSignedUrl`) using `GetObjectC
 Protect critical cloud data against accidental deletions or overwrites by inspecting and rolling back object version histories.
 
 #### 🛠️ How to Use
-- In a versioning-enabled bucket, right-click an object and select **Version History**.
-- Displays all previous versions, unique Version IDs, file sizes, and modification timestamps.
-- Click **Download** or **Restore** to make a previous version active.
+- In a versioning-enabled bucket, right-click an object and select **Object Versions...**. To turn versioning on or off for the bucket, use **Bucket Versioning...** (**Enable Versioning** / **Suspend Versioning**).
+- Displays the object's versions with their Version IDs, sizes and modification timestamps.
+- Click **Restore version** (**Restore as current version**) to make a previous version active, or **Delete version** to permanently remove one.
 
 #### ⚠️ Limitations & Caveats
 - Versioning must be enabled on the bucket at the cloud provider level.
@@ -111,10 +111,9 @@ Invokes `ListObjectVersionsCommand` on `@aws-sdk/client-s3`, sorting versions ch
 Administer bucket policies, Cross-Origin Resource Sharing (CORS) rules, and object metadata tags directly from the desktop client without logging into web management consoles.
 
 #### 🛠️ How to Use
-1. Right-click any bucket in the S3 explorer and select **Bucket Properties**:
-   - **Bucket Policy**: Inspect and edit JSON bucket access policies in-place.
-   - **CORS Configuration**: Configure allowed origins, HTTP methods (`GET`, `PUT`, `POST`), and max-age settings for web browser integrations.
-   - **Tag Management**: View and assign cloud resource billing tags.
+1. Right-click a bucket in the S3 explorer:
+   - **Bucket Policy & CORS...**: Inspect and edit the JSON bucket access policy and the CORS rules (allowed origins, HTTP methods, max-age) for web browser integrations.
+   - **Tags...**: View and assign tags.
 2. In AWS SSO environments, sshs3 is compatible with the standard AWS CLI credential cache (`~/.aws/sso/cache/`), reusing active tokens to prevent duplicate browser authentication prompts.
 
 #### ⚠️ Limitations & Caveats

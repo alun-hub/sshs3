@@ -55,7 +55,7 @@ Enforce cryptographic provenance and origin integrity across your source code an
 
 #### 🛠️ How to Use
 1. In *Settings → Git & GitHub*, select your preferred SSH key (e.g., your local Ed25519 key or hardware YubiKey).
-2. Click **Configure Git Commit Signing**.
+2. Click **Git Sign** next to the key (or **Sign Active** for the current key), and turn on **Automatic Signing (commit.gpgsign)** if you want every commit signed.
 3. sshs3 automatically updates your global `~/.gitconfig` and maintains `~/.ssh/allowed_signers` for offline local signature verification!
 
 #### ⚠️ Limitations & Caveats
