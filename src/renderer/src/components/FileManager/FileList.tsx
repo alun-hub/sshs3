@@ -255,6 +255,30 @@ export const FileList: React.FC<FileListProps> = ({
     }
   }, []);
 
+  // Arrow navigation focuses individual rows; when the directory changes those rows are replaced
+  // and the browser drops focus to <body>. Remember that the list owned focus and hand it back.
+  const focusWithinRef = useRef(false);
+  const handleFocusCapture = useCallback(() => {
+    focusWithinRef.current = true;
+  }, []);
+  const handleBlurCapture = useCallback((e: React.FocusEvent) => {
+    if (e.relatedTarget) {
+      focusWithinRef.current = containerRef.current?.contains(e.relatedTarget as Node) ?? false;
+      return;
+    }
+    // No new focus target: either the user clicked away (row still mounted) or the row is being removed.
+    const target = e.target as HTMLElement;
+    setTimeout(() => {
+      if (target.isConnected) focusWithinRef.current = false;
+    }, 0);
+  }, []);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (focusWithinRef.current && (!active || active === document.body)) {
+      containerRef.current?.focus({ preventScroll: true });
+    }
+  }, [entries, loading]);
+
   useEffect(() => {
     if (!activePath) return;
     focusElement(activePath);
@@ -608,6 +632,8 @@ export const FileList: React.FC<FileListProps> = ({
         ref={containerRef}
         tabIndex={0}
         data-file-list="true"
+        onFocusCapture={handleFocusCapture}
+        onBlurCapture={handleBlurCapture}
         className="flex-1 overflow-y-auto [scrollbar-gutter:stable] outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
         onMouseDown={() => containerRef.current?.focus({ preventScroll: true })}
         onKeyDown={handleContainerKeyDown}

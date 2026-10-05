@@ -800,5 +800,22 @@ describe('FileList Component', () => {
       expect(onEntryContextMenu).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('hands focus back to the list when the focused row is replaced (e.g. entering a directory)', () => {
+    const props = { loading: false, selectedPaths: new Set<string>(), onSelectionChange: vi.fn(), onOpen: vi.fn() };
+    const { container, rerender } = render(<FileList entries={mockEntries} {...props} />);
+    const list = container.querySelector<HTMLElement>('[data-file-list="true"]')!;
+
+    const row = container.querySelector<HTMLElement>('[data-entry-path="/documents"]')!;
+    row.focus();
+    expect(document.activeElement).toBe(row);
+
+    const next: FileEntry[] = [
+      { name: 'inner.txt', path: '/documents/inner.txt', size: 1, isDirectory: false, mtime: '2026-09-15 10:00' },
+    ];
+    rerender(<FileList entries={next} {...props} />);
+
+    expect(document.activeElement).toBe(list);
+  });
 });
 

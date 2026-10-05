@@ -10,6 +10,7 @@ import { FilePane } from './FilePane';
 import { TransferQueueDrawer } from './TransferQueueDrawer';
 import { FILEMANAGER_FOCUS_SIDE_EVENT, type PaneSide, type PaneSource, type SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
+import { isElementVisible } from '../../lib/spatialNavigation';
 import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
 import { useModalDismiss } from '../../lib/useModalDismiss';
@@ -66,16 +67,20 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   const [promptPassword, setPromptPassword] = useState('');
   useModalDismiss(() => setPasswordPrompt(null), !!passwordPrompt, !connecting);
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
 
   useEffect(() => {
     const handleFocusSide = (e: Event) => {
       const side = (e as CustomEvent<PaneSide>).detail;
+      const root = rootRef.current;
+      // Inactive file-manager tabs stay mounted (display:none); only the visible one may react.
+      if (!root || !isElementVisible(root)) return;
       if (side === 'left' || side === 'right') {
         setActiveSide(side);
         // The pane wrapper isn't focusable; the list inside it owns the arrow-key handling.
-        const pane = document.querySelector<HTMLElement>(`[data-testid="file-pane-${side}"]`);
+        const pane = root.querySelector<HTMLElement>(`[data-testid="file-pane-${side}"]`);
         (pane?.querySelector<HTMLElement>('[data-file-list="true"]') ?? pane)?.focus();
       }
     };
@@ -589,6 +594,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   return (
     <DragDropProvider>
       <div
+        ref={rootRef}
         className="flex min-h-0 flex-1 flex-col bg-app"
         onDragOver={(e) => {
           e.preventDefault();
