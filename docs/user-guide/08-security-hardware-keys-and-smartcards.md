@@ -66,6 +66,9 @@ För att skydda smartcards och PIN-skyddade säkerhetsnycklar erbjuder sshs3 tre
    - När du öppnar nya delade split-paneler, nya flikar, startar SFTP eller kör `git pull` i ett lokalt skal återanvänds det upplåsta kortet automatiskt utan att du behöver slå din PIN-kod tjugo gånger om dagen.
    - **Säkerhetsgaranti**: Koden skrivs **ALDRIG till disk**. I samma ögonblick som du avslutar sshs3 (<kbd>Ctrl+Q</kbd>) töms minnet fullständigt.
    - En kortikon i toppraden (visas bara i detta läge) listar vad som är cachat och har knappen **Lock All Now**.
+   - **En gemensam agent**: alla upplåsta smartcards och FIDO2-nycklar ligger i *en* privat ssh-agent för hela appen, på en stabil socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock`, som bara du kan komma åt). Lokala terminaler får den som `SSH_AUTH_SOCK` – även flikar som öppnades *innan* du låste upp kortet fungerar när du har låst upp det, eftersom agenten finns kvar. **Lock All Now** får agenten att glömma alla nycklar utan att den startas om.
+   - Appens egna anslutningar via agenten låses till just den profilens kort (`IdentitiesOnly` + en publik nyckelfil), så servern ser inte alla dina upplåsta kort och en FIDO2-nyckel får inte en touch-fråga i onödan.
+   - Vill du hellre använda systemets egen agent i lokala terminaler väljer du **System Only** under **Settings → Local Terminal SSH Agent**.
 
 ---
 

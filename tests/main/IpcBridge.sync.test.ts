@@ -41,6 +41,7 @@ vi.mock('../../src/main/smartcard/SmartcardSyncService', () => ({
 }));
 
 import { IpcBridge } from '../../src/main/IpcBridge';
+import { fingerprintOfKeyBlob } from '../../src/main/ssh/AppAgent';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { ProfileStore } from '../../src/main/profile/ProfileStore';
 import { DotfilePoolStore } from '../../src/main/dotfiles/DotfilePoolStore';
@@ -130,6 +131,7 @@ interface Harness {
   settingsStore: SettingsStore;
   syncConfigStore: SyncConfigStore;
   syncCryptoService: SyncCryptoService;
+  appAgent: { addPkcs11: ReturnType<typeof vi.fn> };
 }
 
 async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness> {
@@ -160,9 +162,31 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
     syncCryptoService,
     profileSyncService,
   });
+  // A fake app-wide agent: it holds nothing until the card is added, like the real one.
+  const fakeBlob = Buffer.from('fake-key-blob');
+  let loaded = false;
+  const appAgent = {
+    setHandlers: vi.fn(),
+    setOnExit: vi.fn(),
+    getSocketPath: vi.fn().mockReturnValue('fake-agent-pipe'),
+    ensure: vi.fn().mockResolvedValue('fake-agent-pipe'),
+    list: vi.fn(async () =>
+      loaded ? [{ bits: '256', fingerprint: fingerprintOfKeyBlob(fakeBlob), comment: 'Test Card', keyType: 'ED25519' }] : []
+    ),
+    addPkcs11: vi.fn(async () => {
+      loaded = true;
+    }),
+    addFido2Resident: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    lockAll: vi.fn().mockResolvedValue(undefined),
+    shutdown: vi.fn().mockResolvedValue(undefined),
+    writePublicKeyFiles: vi.fn().mockResolvedValue([]),
+    noteLoadedLibrary: vi.fn(),
+  };
+  (bridge as any).appAgent = appAgent;
   bridge.register();
 
-  return { bridge, ipc, dir, settingsStore, syncConfigStore, syncCryptoService };
+  return { bridge, ipc, dir, settingsStore, syncConfigStore, syncCryptoService, appAgent };
 }
 
 const TARGET: StorageConnectConfig = {
@@ -523,8 +547,8 @@ describe('IpcBridge — remote profile sync handlers', () => {
       await bridge.dispose();
     }, 10000);
 
-    it('reuses cached global smartcard agent in agent-global mode without re-prompting for PIN', async () => {
-      const { ipc, bridge, syncCryptoService, settingsStore } = await harness();
+    it('reuses the app agent in agent-global mode without re-prompting for PIN', async () => {
+      const { ipc, bridge, syncCryptoService, settingsStore, appAgent } = await harness();
       await settingsStore.saveSettings({ smartcardAuthMode: 'agent-global' });
 
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
@@ -538,16 +562,42 @@ describe('IpcBridge — remote profile sync handlers', () => {
       syncCryptoService.lock();
       expect(syncCryptoService.isUnlocked('topology')).toBe(false);
 
-      const { loadSmartcardIntoPrivateAgent } = await import('../../src/main/smartcard/SmartcardAgentLoader');
-      // LINK_SMARTCARD called loadSmartcardIntoPrivateAgent once under agent-global, caching it in globalSmartcardAgents!
-      expect(loadSmartcardIntoPrivateAgent).toHaveBeenCalledTimes(1);
+      // LINK_SMARTCARD loaded the card into the app agent once under agent-global.
+      expect(appAgent.addPkcs11).toHaveBeenCalledTimes(1);
 
-      // Now unlock via smartcard again — it should reuse the cached global agent and NOT call loadSmartcardIntoPrivateAgent again!
+      // Now unlock via smartcard again — it should reuse the app agent and NOT load (or prompt) again.
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
 
       expect(syncCryptoService.isUnlocked('topology')).toBe(true);
-      expect(loadSmartcardIntoPrivateAgent).toHaveBeenCalledTimes(1); // No second PIN prompt / agent spawn!
+      expect(appAgent.addPkcs11).toHaveBeenCalledTimes(1); // No second PIN prompt / load!
 
+      await bridge.dispose();
+    });
+
+    it('links the card that was unlocked, not another card\'s key that shares the app agent', async () => {
+      const { ipc, bridge, settingsStore } = await harness();
+      await settingsStore.saveSettings({ smartcardAuthMode: 'agent-global' });
+      const { getAgentIdentities, signChallengeWithAgent } = await import('../../src/main/smartcard/SmartcardSyncService');
+      const otherCardKey = Buffer.from('some-other-cards-key');
+      // The agent lists another card's key first; the linked card's key is second.
+      vi.mocked(getAgentIdentities).mockResolvedValue([
+        { keyBlob: otherCardKey, comment: 'Other card' },
+        { keyBlob: Buffer.from('fake-key-blob'), comment: 'Test Card' },
+      ] as any);
+
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, {
+        topologyPassword: 'single-master-password',
+        credentialsPassword: 'single-master-password',
+      });
+      vi.mocked(signChallengeWithAgent).mockClear();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD, { pkcs11LibPath: '/fake/pkcs11.so' });
+
+      expect(vi.mocked(signChallengeWithAgent).mock.calls[0][1]).toEqual(Buffer.from('fake-key-blob'));
+
+      vi.mocked(getAgentIdentities).mockResolvedValue([
+        { keyBlob: Buffer.from('fake-key-blob'), comment: 'Test Card' },
+      ] as any);
       await bridge.dispose();
     });
   });

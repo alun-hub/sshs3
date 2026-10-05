@@ -232,6 +232,7 @@ export class DotfileSyncService {
         privateKeyPath: config.privateKeyPath,
         passphrase: config.passphrase,
         agentPath: config.agentPath,
+        agentIdentityFiles: config.agentIdentityFiles,
         pkcs11LibPath: config.pkcs11LibPath,
         proxy: config.proxy,
         serverAliveInterval: config.serverAliveInterval,

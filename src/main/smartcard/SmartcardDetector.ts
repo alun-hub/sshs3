@@ -264,8 +264,11 @@ export class SmartcardDetector {
         // IdentitiesOnly here: that option restricts ssh to *explicitly configured*
         // identity files, hiding whatever the agent offers (including our just-loaded
         // smartcard key) unless separately referenced with -i — the opposite of what
-        // we want. It's safe to let ssh use whatever this agent offers since it's our
-        // own private, freshly-spawned agent holding only this one key.
+        // we want. A per-session/per-card agent holds only this one key, so letting ssh
+        // use whatever it offers is safe. The app-wide agent holds every unlocked card,
+        // though: there `agentIdentityFiles` (public key files) pins the connection to
+        // this card's keys — IdentitiesOnly *plus* `-i <key>.pub`, which makes ssh pick
+        // the matching agent identity (below, shared by FIDO2 and smartcard).
         //
         // On Windows, `-o IdentityAgent=<named pipe>` is passed to the process env
         // (SSHPtyManager sets SSH_AUTH_SOCK=config.agentPath) instead of as a ssh
@@ -302,6 +305,15 @@ export class SmartcardDetector {
       // on Windows (SSH_AUTH_SOCK env var instead, set by SSHPtyManager).
       if (process.platform !== 'win32') {
         args.push('-o', `IdentityAgent=${config.agentPath}`);
+      }
+    }
+
+    // Shared (app-wide) agent: restrict ssh to this connection's own keys so it neither exhausts the
+    // server's MaxAuthTries with every unlocked card's keys nor touches an unrelated security key.
+    if (config.agentPath && config.agentIdentityFiles && config.agentIdentityFiles.length > 0) {
+      args.push('-o', 'IdentitiesOnly=yes');
+      for (const file of config.agentIdentityFiles) {
+        args.push('-i', file);
       }
     }
 

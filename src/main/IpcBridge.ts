@@ -10,12 +10,12 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
+import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard/WindowsAgentPath';
 import {
   loadSmartcardIntoPrivateAgent,
   loadFido2ResidentKeysIntoPrivateAgent,
-  listAgentIdentities,
 } from './smartcard/SmartcardAgentLoader';
 import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './smartcard/AskpassServer';
@@ -264,10 +264,15 @@ export class IpcBridge {
       | { kind: 'fido2'; askpassServer?: AskpassServer }
     )
   >();
-  /** pkcs11LibPath or '__fido2__' -> the app-lifetime shared agent for 'agent-global' mode, keyed per smartcard library/fido2 so multiple different cards can each be cached independently. */
-  private globalSmartcardAgents = new Map<string, { pid: number; socketPath: string; askpassServer?: AskpassServer }>();
-  /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each spawn their own agent and prompt separately. */
-  private globalSmartcardAgentLoads = new Map<string, Promise<{ pid: number; socketPath: string; askpassServer?: AskpassServer }>>();
+  /**
+   * The one app-wide ssh-agent for 'agent-global' mode (see AppAgent): every unlocked smartcard and
+   * FIDO2 key lives in it, so a local shell can use all of them through a single SSH_AUTH_SOCK.
+   */
+  private appAgent = new AppAgent();
+  /** pkcs11LibPath or '__fido2__' -> what that unlocked card/key contributed to the app agent (its key fingerprints), so keys can be attributed to a card. */
+  private globalCards = new Map<string, { fingerprints: Set<string> }>();
+  /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each prompt separately. */
+  private globalSmartcardAgentLoads = new Map<string, Promise<string>>();
   private globalSmartcardAgentFailures = new Map<string, number>();
   private startupUnlockPromise?: Promise<void>;
   /**
@@ -358,6 +363,29 @@ export class IpcBridge {
     this.fileTailService = options.fileTailService ?? new FileTailService();
     this.searchOrchestrator = options.searchOrchestrator ?? new SearchOrchestrator();
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
+    // Prompts the app agent itself raises later (e.g. a verify-required FIDO2 signature) — loads
+    // prompt through their own askpass server and never come through here.
+    this.appAgent.setHandlers({
+      promptHandler: (prompt, retry) =>
+        this.promptForPinDirect(
+          prompt.trim(),
+          /authenticator|security key|fido/i.test(prompt) ? 'fido2' : 'smartcard',
+          'App ssh-agent',
+          retry
+        ),
+      onPresence: () => {
+        const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+          undefined,
+          'Touch your security key to continue'
+        );
+        onPresenceRequested();
+        setTimeout(onPresenceCleared, 20_000).unref?.();
+      },
+    });
+    this.appAgent.setOnExit(() => {
+      this.globalCards.clear();
+      this.globalSmartcardCerts.clear();
+    });
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
     this.profileSyncService =
@@ -516,7 +544,7 @@ export class IpcBridge {
           const settings = await this.settingsStore.getSettings().catch(() => null);
           const agentMode = settings?.localTerminalAgentMode ?? 'auto';
           if (agentMode === 'auto' || agentMode === 'app-managed') {
-            const globalAgentSocket = this.globalSmartcardAgents.values().next().value?.socketPath;
+            const globalAgentSocket = await this.resolveLocalShellAgentSocket(settings?.smartcardAuthMode);
             if (globalAgentSocket) {
               ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
             }
@@ -627,7 +655,7 @@ export class IpcBridge {
     );
 
     this.registerHandler(IPC_CHANNELS.SMARTCARD_LOCK_ALL, async () => {
-      return { locked: this.lockAllGlobalSmartcardAgents() };
+      return { locked: await this.lockAllGlobalSmartcardAgents() };
     });
 
     this.registerHandler(IPC_CHANNELS.SMARTCARD_LIST_CACHED, async () => {
@@ -1611,7 +1639,29 @@ export class IpcBridge {
       sessionId,
       `connect via SSH to ${config.name || config.host}`
     );
-    return agentPath ? { ...configWithId, agentPath } : configWithId;
+    return agentPath
+      ? { ...configWithId, agentPath, ...(await this.agentIdentityFilesFor(agentPath, config.pkcs11LibPath)) }
+      : configWithId;
+  }
+
+  /**
+   * When `agentPath` is the shared app agent (which holds every unlocked card), the public key files
+   * that pin a connection to just this card's keys (see SSHConnectionConfig.agentIdentityFiles).
+   * Empty for a private per-session agent, which holds only this card, and on Windows.
+   */
+  private async agentIdentityFilesFor(
+    agentPath: string,
+    cardKey: string
+  ): Promise<{ agentIdentityFiles?: string[] }> {
+    const card = this.globalCards.get(cardKey);
+    if (!card || agentPath !== this.appAgent.getSocketPath()) return {};
+    try {
+      const files = await this.appAgent.writePublicKeyFiles(card.fingerprints);
+      return files.length > 0 ? { agentIdentityFiles: files } : {};
+    } catch (err) {
+      console.warn('[app-agent] could not write identity files; the connection will offer all agent keys:', err);
+      return {};
+    }
   }
 
   /**
@@ -1644,7 +1694,7 @@ export class IpcBridge {
       `connecting to ${config.name || config.host}`,
       'pty'
     );
-    return agentPath ? { ...configWithId, agentPath } : configWithId;
+    return agentPath ? { ...configWithId, agentPath, ...(await this.agentIdentityFilesFor(agentPath, '__fido2__')) } : configWithId;
   }
 
   /**
@@ -1668,7 +1718,9 @@ export class IpcBridge {
       providerId,
       `connect via SFTP to ${config.name || config.host}`
     );
-    return agentPath ? { ...config, agentPath } : config;
+    return agentPath
+      ? { ...config, agentPath, ...(await this.agentIdentityFilesFor(agentPath, config.pkcs11LibPath)) }
+      : config;
   }
 
   /**
@@ -1688,9 +1740,11 @@ export class IpcBridge {
       // Same physical card as an already-unlocked terminal/startup agent: reuse it rather than
       // opening a second PKCS#11 session (the card's PIV keys are the same whichever library
       // loaded them).
-      const unlocked = Array.from(this.globalSmartcardAgents.entries()).find(([key]) => key !== '__fido2__');
-      if (unlocked) {
-        sftpConfig = { ...sftpConfig, agentPath: unlocked[1].socketPath };
+      const unlockedSocket = Array.from(this.globalCards.keys()).some((key) => key !== '__fido2__')
+        ? this.appAgent.getSocketPath()
+        : null;
+      if (unlockedSocket) {
+        sftpConfig = { ...sftpConfig, agentPath: unlockedSocket };
       }
     }
     sftpConfig = await this.prepareSftpSmartcardConfig(sftpConfig, target.id);
@@ -1709,7 +1763,7 @@ export class IpcBridge {
       `connecting via SFTP to ${config.name || config.host}`,
       'direct'
     );
-    return agentPath ? { ...config, agentPath } : config;
+    return agentPath ? { ...config, agentPath, ...(await this.agentIdentityFilesFor(agentPath, '__fido2__')) } : config;
   }
 
   /**
@@ -1764,19 +1818,21 @@ export class IpcBridge {
   }
 
   /**
-   * Returns the socket path for the app-lifetime shared agent holding FIDO2 resident credentials,
-   * loading it (prompting for the PIN once) if it isn't already cached. Concurrent callers share
-   * the same in-flight load rather than each spawning their own agent.
+   * Returns the app agent's socket after making sure the connected security key's FIDO2 resident
+   * credentials are loaded into it (prompting for the PIN once if they aren't). Concurrent callers
+   * share the same in-flight load rather than each prompting separately.
    */
   private async getOrLoadGlobalFido2Agent(
     sessionId: string,
     promptLabel: string,
     pinPromptKind: 'pty' | 'direct' = 'pty'
   ): Promise<string> {
-    const cached = this.globalSmartcardAgents.get('__fido2__');
-    if (cached) {
-      console.log('[fido2] getOrLoadGlobalFido2Agent: reusing cached global agent');
-      return cached.socketPath;
+    if (this.globalCards.has('__fido2__')) {
+      const socketPath = await this.appAgent.ensure();
+      if (this.globalCards.has('__fido2__')) {
+        console.log('[fido2] getOrLoadGlobalFido2Agent: reusing the app agent');
+        return socketPath;
+      }
     }
 
     const lastFailedAt = this.globalSmartcardAgentFailures.get('__fido2__');
@@ -1788,11 +1844,10 @@ export class IpcBridge {
     const inFlight = this.globalSmartcardAgentLoads.get('__fido2__');
     if (inFlight) {
       console.log('[fido2] getOrLoadGlobalFido2Agent: awaiting in-flight load');
-      const { socketPath } = await inFlight;
-      return socketPath;
+      return await inFlight;
     }
 
-    console.log('[fido2] getOrLoadGlobalFido2Agent: loading global agent for FIDO2');
+    console.log('[fido2] getOrLoadGlobalFido2Agent: loading FIDO2 resident keys into the app agent');
     const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
       sessionId,
       'Touch your security key to connect'
@@ -1803,20 +1858,23 @@ export class IpcBridge {
         ? this.promptForPinDirect(rawPrompt.trim(), 'fido2', promptLabel, retry)
         : this.sshPtyManager.promptForPin(sessionId, rawPrompt.trim(), 'fido2', promptLabel, retry);
 
-    const loadPromise = loadFido2ResidentKeysIntoPrivateAgent(
-      promptPin,
-      { onPresenceRequested, onPresenceCleared, keepAskpassAliveForAgentLifetime: true }
-    );
+    const loadPromise = (async () => {
+      await this.appAgent.addFido2Resident(promptPin, { onPresenceRequested, onPresenceCleared });
+      const socketPath = await this.appAgent.ensure();
+      // Every security-key (`*-SK`) identity in the agent belongs to FIDO2; PIV keys never are.
+      const identities = await this.appAgent.list();
+      this.globalCards.set('__fido2__', {
+        fingerprints: new Set(identities.filter((i) => /-SK$/i.test(i.keyType)).map((i) => i.fingerprint)),
+      });
+      return socketPath;
+    })();
     this.globalSmartcardAgentLoads.set('__fido2__', loadPromise);
 
     try {
-      const result = await loadPromise;
+      const socketPath = await loadPromise;
       this.globalSmartcardAgentFailures.delete('__fido2__');
-      this.globalSmartcardAgents.set('__fido2__', result);
-      console.log(
-        `[fido2] getOrLoadGlobalFido2Agent: loaded OK, pid=${result.pid}, socket=${result.socketPath}`
-      );
-      return result.socketPath;
+      console.log(`[fido2] getOrLoadGlobalFido2Agent: loaded OK, socket=${socketPath}`);
+      return socketPath;
     } catch (err) {
       this.globalSmartcardAgentFailures.set('__fido2__', Date.now());
       throw err;
@@ -1882,20 +1940,22 @@ export class IpcBridge {
   }
 
   /**
-   * Returns the socket path for the app-lifetime shared agent holding the
-   * given PKCS#11 library, loading it (prompting for the PIN once) if it
-   * isn't already cached. Concurrent callers for the same library share the
-   * same in-flight load rather than each spawning their own agent.
+   * Returns the app agent's socket after making sure the given PKCS#11 library's card is loaded into
+   * it (prompting for the PIN once if it isn't). Concurrent callers for the same library share the
+   * same in-flight load rather than each prompting separately.
    */
   private async getOrLoadGlobalSmartcardAgent(
     pkcs11LibPath: string,
     sessionIdOrPinPrompt: string | AskpassPromptHandler,
     promptLabel?: string
   ): Promise<string> {
-    const cached = this.globalSmartcardAgents.get(pkcs11LibPath);
-    if (cached) {
-      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: reusing cached global agent for ${pkcs11LibPath}`);
-      return cached.socketPath;
+    if (this.globalCards.has(pkcs11LibPath)) {
+      const socketPath = await this.appAgent.ensure();
+      // ensure() drops all card state if it had to restart a dead agent.
+      if (this.globalCards.has(pkcs11LibPath)) {
+        console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: reusing the app agent for ${pkcs11LibPath}`);
+        return socketPath;
+      }
     }
 
     const lastFailedAt = this.globalSmartcardAgentFailures.get(pkcs11LibPath);
@@ -1907,11 +1967,10 @@ export class IpcBridge {
     const inFlight = this.globalSmartcardAgentLoads.get(pkcs11LibPath);
     if (inFlight) {
       console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: awaiting in-flight load for ${pkcs11LibPath}`);
-      const { socketPath } = await inFlight;
-      return socketPath;
+      return await inFlight;
     }
 
-    console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading global agent for ${pkcs11LibPath}`);
+    console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading ${pkcs11LibPath} into the app agent`);
     const pinHandler =
       typeof sessionIdOrPinPrompt === 'function'
         ? sessionIdOrPinPrompt
@@ -1928,40 +1987,85 @@ export class IpcBridge {
       // Read the certificate details *before* handing the module to `ssh-add -s` below (see
       // the doc comment on `globalSmartcardCerts` for why we want them at all). This must run
       // strictly before, not concurrently with or fire-and-forget after: once `ssh-add -s`
-      // succeeds, the private agent process keeps the PKCS#11 module initialized and the token
-      // open for as long as the agent lives, and opening a second, independent PKCS#11 session
-      // against the same physical token from this (separate) process while that first one is
-      // live crashed the vendor's Net iD module outright (SIGTRAP inside the driver, observed
-      // right at startup's auto-unlock). No PIN/session is needed to read certs (they're public
-      // objects, see readSmartcardCertificates' doc comment), so doing this first is safe and
-      // guarantees we're never more than one process talking to the token at a time.
+      // succeeds, the agent keeps the PKCS#11 module initialized and the token open for as long
+      // as it lives, and opening a second, independent PKCS#11 session against the same physical
+      // token from this (separate) process while that first one is live crashed the vendor's
+      // Net iD module outright (SIGTRAP inside the driver, observed right at startup's
+      // auto-unlock). No PIN/session is needed to read certs (they're public objects, see
+      // readSmartcardCertificates' doc comment), so doing this first is safe and guarantees
+      // we're never more than one process talking to the token at a time.
+      let certs = new Map<string, SmartcardCertificateDetails>();
       try {
-        const certs = await readSmartcardCertificates(pkcs11LibPath);
+        certs = await readSmartcardCertificates(pkcs11LibPath);
         this.globalSmartcardCerts.set(pkcs11LibPath, certs);
       } catch (err) {
         console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err);
       }
-      return this.loadSmartcardIntoPrivateAgentWithPresence(
+      await this.appAgent.ensure();
+      const before = new Set((await this.appAgent.list()).map((i) => i.fingerprint));
+      await this.addSmartcardToAppAgentWithPresence(
         pkcs11LibPath,
         pinHandler,
         typeof sessionIdOrPinPrompt === 'string' ? sessionIdOrPinPrompt : undefined
       );
+      const socketPath = await this.appAgent.ensure();
+      // Which keys are this card's: its certificates' fingerprints; if those couldn't be read, whatever
+      // this add contributed (excluding security keys, which belong to FIDO2).
+      const fingerprints = new Set(certs.keys());
+      if (fingerprints.size === 0) {
+        const nonSecurityKeys = (await this.appAgent.list()).filter((i) => !/-SK$/i.test(i.keyType));
+        for (const i of nonSecurityKeys) {
+          if (!before.has(i.fingerprint)) fingerprints.add(i.fingerprint);
+        }
+        // The add contributed nothing new (the same key was already there, e.g. loaded via another
+        // module for the same card): attribute every non-security key rather than none at all.
+        if (fingerprints.size === 0) nonSecurityKeys.forEach((i) => fingerprints.add(i.fingerprint));
+      }
+      this.globalCards.set(pkcs11LibPath, { fingerprints });
+      return socketPath;
     })();
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
 
     try {
-      const result = await loadPromise;
+      const socketPath = await loadPromise;
       this.globalSmartcardAgentFailures.delete(pkcs11LibPath);
-      this.globalSmartcardAgents.set(pkcs11LibPath, result);
-      console.log(
-        `[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, pid=${result.pid}, socket=${result.socketPath}`
-      );
-      return result.socketPath;
+      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, socket=${socketPath}`);
+      return socketPath;
     } catch (err) {
       this.globalSmartcardAgentFailures.set(pkcs11LibPath, Date.now());
       throw err;
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
+    }
+  }
+
+  /** Same presence banner as loadSmartcardIntoPrivateAgentWithPresence, but loading into the app agent. */
+  private addSmartcardToAppAgentWithPresence(
+    pkcs11LibPath: string,
+    promptHandler: AskpassPromptHandler,
+    sessionId?: string
+  ): Promise<void> {
+    const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
+      sessionId,
+      'Touch your YubiKey / smartcard to confirm'
+    );
+    return this.appAgent.addPkcs11(pkcs11LibPath, promptHandler, { onPresenceRequested, onPresenceCleared });
+  }
+
+  /**
+   * The SSH_AUTH_SOCK a local shell should get under 'agent-global' PIN caching: always the app agent
+   * (even while empty, so a card unlocked later is usable from terminals that are already open). On
+   * Windows the app agent is the shared system service, so only hand it out once a card is cached.
+   * Undefined in every other mode, or if the agent can't be started (the shell then keeps the default).
+   */
+  private async resolveLocalShellAgentSocket(smartcardAuthMode: string | undefined): Promise<string | undefined> {
+    if (smartcardAuthMode !== 'agent-global') return undefined;
+    if (process.platform === 'win32' && this.globalCards.size === 0) return undefined;
+    try {
+      return await this.appAgent.ensure();
+    } catch (err) {
+      console.warn('[app-agent] could not start for a local shell; using the default agent:', err);
+      return undefined;
     }
   }
 
@@ -2104,7 +2208,7 @@ export class IpcBridge {
     }
 
     const pathsNeedingUnlock = validPathsToUnlock.filter(
-      (p) => !this.globalSmartcardAgents.has(p) && !this.globalSmartcardAgentLoads.has(p)
+      (p) => !this.globalCards.has(p) && !this.globalSmartcardAgentLoads.has(p)
     );
 
     // Windows' OpenSSH can't load resident FIDO2 keys (`ssh-add -K` always fails there), and its
@@ -2116,7 +2220,7 @@ export class IpcBridge {
       return { started: false };
     }
 
-    const fido2Active = this.globalSmartcardAgents.has('__fido2__') || this.globalSmartcardAgentLoads.has('__fido2__');
+    const fido2Active = this.globalCards.has('__fido2__') || this.globalSmartcardAgentLoads.has('__fido2__');
     const smartcardActive = !hasSmartcard || pathsNeedingUnlock.length === 0;
     if ((!hasFido2 || fido2Active) && smartcardActive) {
       return { started: false };
@@ -2169,7 +2273,7 @@ export class IpcBridge {
       // 2. FIDO2 resident keys unlock last (if configured and not yet active). A FIDO2 key that needs
       // PIN+touch per signature (verify-required) can only be asked for one once it is in the agent, so
       // loading it after the PIV card keeps those prompts out of the way of the PIV load.
-      if (hasFido2 && !this.globalSmartcardAgents.has('__fido2__') && !this.globalSmartcardAgentLoads.has('__fido2__')) {
+      if (hasFido2 && !this.globalCards.has('__fido2__') && !this.globalSmartcardAgentLoads.has('__fido2__')) {
         try {
           console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
           await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
@@ -2234,22 +2338,16 @@ export class IpcBridge {
   }
 
   /**
-   * Kills every cached global smartcard agent (the 'agent-global' mode's
-   * "lock card" action), forcing the next connection that needs any of
-   * those cards to prompt for the PIN again.
+   * The 'agent-global' mode's "lock card" action: makes the app agent forget every key, forcing the
+   * next connection that needs any of those cards to prompt for the PIN again. The agent itself keeps
+   * running, so its socket stays valid for terminals that are already open. Returns how many cards
+   * were cached.
    */
-  private lockAllGlobalSmartcardAgents(): number {
-    let count = 0;
-    for (const [key, { pid, socketPath, askpassServer }] of this.globalSmartcardAgents.entries()) {
-      if (key !== '__fido2__') {
-        void AgentLifecycleManager.unloadCard(socketPath, key);
-      }
-      void askpassServer?.stop();
-      AgentLifecycleManager.killPrivateAgent(pid);
-      this.globalSmartcardCerts.delete(key);
-      count++;
-    }
-    this.globalSmartcardAgents.clear();
+  private async lockAllGlobalSmartcardAgents(): Promise<number> {
+    const count = this.globalCards.size;
+    await this.appAgent.lockAll();
+    this.globalCards.clear();
+    this.globalSmartcardCerts.clear();
     this.globalSmartcardAgentFailures.clear();
     return count;
   }
@@ -2265,32 +2363,34 @@ export class IpcBridge {
    * read on every call.
    */
   private async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
-    const entries = Array.from(this.globalSmartcardAgents.entries());
-    return Promise.all(
-      entries.map(async ([pkcs11LibPath, { socketPath }]) => {
-        const identities = await listAgentIdentities(socketPath);
-        const certsByFingerprint =
-          this.globalSmartcardCerts.get(pkcs11LibPath) ?? new Map<string, SmartcardCertificateDetails>();
-        return {
-          pkcs11LibPath: pkcs11LibPath === '__fido2__' ? 'FIDO2 Security Key' : pkcs11LibPath,
-          identities: identities.map((identity) => {
-            const cert = certsByFingerprint.get(identity.fingerprint);
-            return cert
-              ? {
-                  ...identity,
-                  certificate: {
-                    subject: cert.subject,
-                    issuer: cert.issuer,
-                    validFrom: cert.validFrom,
-                    validTo: cert.validTo,
-                    upn: cert.upn,
-                  },
-                }
-              : identity;
-          }),
-        };
-      })
-    );
+    if (this.globalCards.size === 0) return [];
+    // One agent holds every card, so attribute each identity to the card that contributed it.
+    const identities = await this.appAgent.list();
+    return Array.from(this.globalCards.entries()).map(([pkcs11LibPath, { fingerprints }]) => {
+      const certsByFingerprint =
+        this.globalSmartcardCerts.get(pkcs11LibPath) ?? new Map<string, SmartcardCertificateDetails>();
+      const mine = identities.filter((identity) =>
+        pkcs11LibPath === '__fido2__' ? /-SK$/i.test(identity.keyType) : fingerprints.has(identity.fingerprint)
+      );
+      return {
+        pkcs11LibPath: pkcs11LibPath === '__fido2__' ? 'FIDO2 Security Key' : pkcs11LibPath,
+        identities: mine.map((identity) => {
+          const cert = certsByFingerprint.get(identity.fingerprint);
+          return cert
+            ? {
+                ...identity,
+                certificate: {
+                  subject: cert.subject,
+                  issuer: cert.issuer,
+                  validFrom: cert.validFrom,
+                  validTo: cert.validTo,
+                  upn: cert.upn,
+                },
+              }
+            : identity;
+        }),
+      };
+    });
   }
 
   /**
@@ -2845,8 +2945,8 @@ export class IpcBridge {
         let socketPath: string;
         let privateAgentPid: number | undefined;
 
-        if (this.globalSmartcardAgents.has(options.pkcs11LibPath)) {
-          socketPath = this.globalSmartcardAgents.get(options.pkcs11LibPath)!.socketPath;
+        if (this.globalCards.has(options.pkcs11LibPath)) {
+          socketPath = await this.appAgent.ensure();
         } else if (mode === 'agent-global') {
           socketPath = await this.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
         } else {
@@ -2856,7 +2956,11 @@ export class IpcBridge {
         }
 
         try {
-          const identities = await getAgentIdentities(socketPath);
+          const identities = this.identitiesForLibrary(
+            await getAgentIdentities(socketPath),
+            options.pkcs11LibPath,
+            privateAgentPid === undefined
+          );
           if (identities.length === 0) {
             throw new Error('No smartcard identities/certificates found on the card');
           }
@@ -2902,15 +3006,7 @@ export class IpcBridge {
 
           return await this.buildSyncStatus();
         } catch (err) {
-          if (this.globalSmartcardAgents.has(options.pkcs11LibPath) && privateAgentPid === undefined) {
-            const cached = this.globalSmartcardAgents.get(options.pkcs11LibPath);
-            if (cached) {
-              void AgentLifecycleManager.unloadCard(cached.socketPath, options.pkcs11LibPath);
-              AgentLifecycleManager.killPrivateAgent(cached.pid);
-              this.globalSmartcardAgents.delete(options.pkcs11LibPath);
-              this.globalSmartcardCerts.delete(options.pkcs11LibPath);
-            }
-          }
+          this.forgetGlobalCardAfterFailure(options.pkcs11LibPath, privateAgentPid);
           throw err;
         } finally {
           if (privateAgentPid !== undefined) {
@@ -2970,19 +3066,39 @@ export class IpcBridge {
    * PKCS#11 agent that holds the given key, so the caller can reuse it instead.
    */
   private async findCachedGlobalAgentHoldingKey(keyBlobBase64: string | undefined): Promise<string | undefined> {
-    if (!keyBlobBase64) return undefined;
-    for (const [key, { socketPath }] of this.globalSmartcardAgents.entries()) {
-      if (key === '__fido2__') continue;
-      try {
-        const identities = await getAgentIdentities(socketPath);
-        if (identities.some((id) => id.keyBlob.toString('base64') === keyBlobBase64)) {
-          return socketPath;
-        }
-      } catch {
-        // Agent gone or unreachable — try the next cached one.
-      }
+    if (!keyBlobBase64 || !Array.from(this.globalCards.keys()).some((key) => key !== '__fido2__')) return undefined;
+    const socketPath = this.appAgent.getSocketPath();
+    if (!socketPath) return undefined;
+    try {
+      const identities = await getAgentIdentities(socketPath);
+      return identities.some((id) => id.keyBlob.toString('base64') === keyBlobBase64) ? socketPath : undefined;
+    } catch {
+      return undefined; // Agent gone or unreachable.
     }
-    return undefined;
+  }
+
+  /**
+   * Narrows an agent's identities to the ones belonging to `pkcs11LibPath` when they come from the
+   * shared app agent, which holds every unlocked card: sync linking/unlocking signs with the first
+   * identity it is given, and a key from another card would derive the wrong sync secret. A private
+   * per-session agent only ever holds this one card's keys, so it is returned untouched.
+   */
+  private identitiesForLibrary<T extends { keyBlob: Buffer }>(
+    identities: T[],
+    pkcs11LibPath: string,
+    fromAppAgent: boolean
+  ): T[] {
+    const card = this.globalCards.get(pkcs11LibPath);
+    if (!fromAppAgent || !card) return identities;
+    return identities.filter((id) => card.fingerprints.has(fingerprintOfKeyBlob(id.keyBlob)));
+  }
+
+  /** After a failed sync link/unlock: drop the card's keys from the app agent (never the agent itself). */
+  private forgetGlobalCardAfterFailure(pkcs11LibPath: string, privateAgentPid: number | undefined): void {
+    if (!this.globalCards.has(pkcs11LibPath) || privateAgentPid !== undefined) return;
+    void this.appAgent.remove(pkcs11LibPath);
+    this.globalCards.delete(pkcs11LibPath);
+    this.globalSmartcardCerts.delete(pkcs11LibPath);
   }
 
   /**
@@ -3037,12 +3153,12 @@ export class IpcBridge {
     // Windows only: there several PKCS#11 modules for one card (opensc-pkcs11 / onepin-opensc-pkcs11 /
     // libykcs11) share the single system agent; other platforms keep the plain per-library cache lookup.
     const sameCardSocket =
-      process.platform !== 'win32' || this.globalSmartcardAgents.has(libPath) || mode !== 'agent-global'
+      process.platform !== 'win32' || this.globalCards.has(libPath) || mode !== 'agent-global'
         ? undefined
         : await this.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
 
-    if (this.globalSmartcardAgents.has(libPath)) {
-      socketPath = this.globalSmartcardAgents.get(libPath)!.socketPath;
+    if (this.globalCards.has(libPath)) {
+      socketPath = await this.appAgent.ensure();
     } else if (sameCardSocket) {
       socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
@@ -3054,7 +3170,11 @@ export class IpcBridge {
     }
 
     try {
-      const identities = await getAgentIdentities(socketPath);
+      const identities = this.identitiesForLibrary(
+        await getAgentIdentities(socketPath),
+        libPath,
+        privateAgentPid === undefined && !sameCardSocket
+      );
       if (identities.length === 0) {
         throw new Error('No smartcard identities/certificates found on the card');
       }
@@ -3116,15 +3236,7 @@ export class IpcBridge {
 
       return await this.unlockSyncInternal({ topologyPassword, credentialsPassword }, unlockOptions);
     } catch (err) {
-      if (this.globalSmartcardAgents.has(libPath) && privateAgentPid === undefined) {
-        const cached = this.globalSmartcardAgents.get(libPath);
-        if (cached) {
-          void AgentLifecycleManager.unloadCard(cached.socketPath, libPath);
-          AgentLifecycleManager.killPrivateAgent(cached.pid);
-          this.globalSmartcardAgents.delete(libPath);
-          this.globalSmartcardCerts.delete(libPath);
-        }
-      }
+      this.forgetGlobalCardAfterFailure(libPath, privateAgentPid);
       throw err;
     } finally {
       if (privateAgentPid !== undefined) {
@@ -3250,15 +3362,12 @@ export class IpcBridge {
           await listAgentPublicKeys('agent', 'Cached key'),
         ];
 
-        // Query ALL unlocked global smartcard/FIDO2 agents ('agent-global' PIN caching)
-        for (const [key, agent] of this.globalSmartcardAgents.entries()) {
-          const isFido = key === '__fido2__';
+        // The app-wide agent ('agent-global' PIN caching) holds every unlocked smartcard and FIDO2 key.
+        const appSocket = this.globalCards.size > 0 ? this.appAgent.getSocketPath() : null;
+        if (appSocket) {
+          const keys = await listAgentPublicKeys('smartcard', 'Smartcard key', appSocket);
           lists.push(
-            await listAgentPublicKeys(
-              isFido ? 'fido2' : 'smartcard',
-              isFido ? 'Security key' : 'Smartcard key',
-              agent.socketPath
-            )
+            keys.map((k) => (k.type.startsWith('sk-') ? { ...k, source: 'fido2' as const, label: 'Security key' } : k))
           );
         }
 
@@ -3454,6 +3563,7 @@ export class IpcBridge {
               privateKeyPath: config.privateKeyPath,
               passphrase: config.passphrase,
               agentPath: config.agentPath,
+              agentIdentityFiles: config.agentIdentityFiles,
               pkcs11LibPath: config.pkcs11LibPath,
               proxy: config.proxy,
             },
@@ -4576,7 +4686,9 @@ export class IpcBridge {
     for (const sessionId of Array.from(this.smartcardSessionAgents.keys())) {
       this.cleanupSmartcardSessionAgent(sessionId);
     }
-    this.lockAllGlobalSmartcardAgents();
+    this.globalCards.clear();
+    this.globalSmartcardCerts.clear();
+    await this.appAgent.shutdown();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();

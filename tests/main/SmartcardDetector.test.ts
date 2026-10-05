@@ -238,6 +238,41 @@ describe('SmartcardDetector', () => {
       }
     });
 
+    it('pins a shared agent to the connection\'s own keys with IdentitiesOnly and one -i per key file', () => {
+      const config: SSHConnectionConfig = {
+        id: 'sc-shared-1',
+        name: 'Smartcard Host (shared agent)',
+        host: 'bastion.corp.net',
+        port: 22,
+        username: 'secadmin',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib64/libiidp11.so',
+        agentPath: '/run/user/1000/sshs3/agent.sock',
+        agentIdentityFiles: ['/run/user/1000/sshs3/keys/aa.pub', '/run/user/1000/sshs3/keys/bb.pub'],
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+
+      expect(args).toContain('IdentitiesOnly=yes');
+      const files = args.map((a, i) => (args[i - 1] === '-i' ? a : null)).filter(Boolean);
+      expect(files).toEqual(['/run/user/1000/sshs3/keys/aa.pub', '/run/user/1000/sshs3/keys/bb.pub']);
+      expect(args).not.toContain('-I');
+    });
+
+    it('leaves a per-card agent unrestricted (no IdentitiesOnly) when no identity files are given', () => {
+      const args = SmartcardDetector.buildSSHArguments({
+        id: 'sc-private-1',
+        name: 'h',
+        host: 'bastion.corp.net',
+        port: 22,
+        username: 'u',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib64/libiidp11.so',
+        agentPath: '/tmp/private-agent.sock',
+      });
+      expect(args).not.toContain('IdentitiesOnly=yes');
+    });
+
     it('should NOT include -I and include PKCS11Provider=none when authType is not smartcard', () => {
       const config: SSHConnectionConfig = {
         id: 'pw-1',

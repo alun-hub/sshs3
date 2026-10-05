@@ -242,7 +242,7 @@ interface FieldSplitSpec<T> {
 
 const SSH_FIELD_SPLIT: FieldSplitSpec<SSHConnectionConfig> = {
   credentialFields: ['username', 'password', 'passphrase'],
-  excludedFields: ['privateKeyPath', 'pkcs11LibPath', 'agentPath'],
+  excludedFields: ['privateKeyPath', 'pkcs11LibPath', 'agentPath', 'agentIdentityFiles'],
   proxyCredentialFields: ['username', 'password'],
 };
 

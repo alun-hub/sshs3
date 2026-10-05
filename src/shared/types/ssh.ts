@@ -42,6 +42,12 @@ export interface SSHConnectionConfig {
   pin?: string;
   agentPath?: string;
   /**
+   * Runtime only, never persisted or synced: public key files selecting which of the keys in a shared
+   * agent (`agentPath`) this connection may use. Set when the agent holds more than this profile's
+   * card (the app-wide agent); makes ssh run with IdentitiesOnly and one `-i` per file.
+   */
+  agentIdentityFiles?: string[];
+  /**
    * authType 'fido2' only. true = a discoverable/resident credential loaded
    * straight off the connected security key (no privateKeyPath); false/unset
    * = a regular `id_*_sk` key file referenced by privateKeyPath, same as a

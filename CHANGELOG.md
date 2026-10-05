@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - local terminals inherit the system/login-shell ssh-agent (setting: Local Terminal SSH Agent)
 - saved SSH profiles are kept in the sshs3-managed block of `~/.ssh/config` (setting: Keep ~/.ssh/config in sync; on by default)
 
+### Changed
+- **Global (App Lifetime)** PIN caching now keeps every unlocked smartcard and FIDO2 key in **one** app-wide ssh-agent with a stable socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock`) instead of one agent per card. Local terminals always point at it (so a card unlocked later works in already-open tabs), the lock icon makes the agent forget its keys without restarting it, and Remote Profile Sync picks the right card's key. The app's own SSH/SFTP connections through it are pinned to the profile's card with `IdentitiesOnly` and a public key file
+- startup unlock loads the PIV card before the FIDO2 key
+
 ### Fixed
 - Enter/Escape inside a modal were swallowed while the tab bar had keyboard focus
 - focus returns to the opener when a top-level modal closes

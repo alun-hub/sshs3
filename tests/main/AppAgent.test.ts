@@ -14,6 +14,10 @@ vi.mock('../../src/main/ssh/AgentLifecycleManager', () => ({
     unloadCard: vi.fn(),
   },
 }));
+vi.mock('../../src/main/smartcard/SmartcardSyncService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/main/smartcard/SmartcardSyncService')>()),
+  getAgentIdentities: vi.fn(),
+}));
 vi.mock('../../src/main/smartcard/SmartcardAgentLoader', () => ({
   listAgentIdentities: vi.fn(),
   addSmartcardToAgent: vi.fn(),
@@ -34,7 +38,8 @@ vi.mock('../../src/main/smartcard/AskpassServer', () => ({
   },
 }));
 
-import { AppAgent, resolveAppAgentDir } from '../../src/main/ssh/AppAgent';
+import { AppAgent, resolveAppAgentDir, fingerprintOfKeyBlob } from '../../src/main/ssh/AppAgent';
+import { getAgentIdentities } from '../../src/main/smartcard/SmartcardSyncService';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import {
   listAgentIdentities,
@@ -235,6 +240,55 @@ describe('AppAgent', () => {
     expect(order).toEqual(['first-start', 'first-end', 'second']);
     expect(lifecycle.killPrivateAgent).not.toHaveBeenCalled();
     expect(agent.getSocketPath()).not.toBeNull();
+  });
+
+  describe('writePublicKeyFiles', () => {
+    const blobFor = (algo: string, tag: string) => {
+      const a = Buffer.from(algo);
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(a.length, 0);
+      return Buffer.concat([len, a, Buffer.from(tag)]);
+    };
+
+    it('writes only the requested keys as private .pub files, with the real fingerprint math', async () => {
+      const piv = blobFor('ecdsa-sha2-nistp256', 'piv');
+      const sk = blobFor('sk-ssh-ed25519@openssh.com', 'fido');
+      vi.mocked(getAgentIdentities).mockResolvedValue([
+        { keyBlob: piv, comment: 'PIV AUTH pubkey\nsneaky' },
+        { keyBlob: sk, comment: 'sk' },
+      ] as any);
+
+      const agent = new AppAgent();
+      await agent.ensure();
+      const files = await agent.writePublicKeyFiles([fingerprintOfKeyBlob(piv)]);
+
+      expect(files).toHaveLength(1);
+      expect(path.dirname(files[0])).toBe(path.join(dir, 'keys'));
+      expect(fs.statSync(files[0]).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(path.join(dir, 'keys')).mode & 0o077).toBe(0);
+      const line = fs.readFileSync(files[0], 'utf8');
+      expect(line).toBe(`ecdsa-sha2-nistp256 ${piv.toString('base64')} PIV AUTH pubkey sneaky\n`);
+      expect(line.trim().split('\n')).toHaveLength(1);
+    });
+
+    it('returns nothing when the agent is not running, nothing is requested, or on Windows', async () => {
+      const agent = new AppAgent();
+      expect(await agent.writePublicKeyFiles(['SHA256:x'])).toEqual([]);
+      await agent.ensure();
+      expect(await agent.writePublicKeyFiles([])).toEqual([]);
+      setPlatform('win32');
+      expect(await agent.writePublicKeyFiles(['SHA256:x'])).toEqual([]);
+    });
+
+    it('removes the key files on shutdown', async () => {
+      const piv = blobFor('ssh-ed25519', 'k');
+      vi.mocked(getAgentIdentities).mockResolvedValue([{ keyBlob: piv, comment: 'k' }] as any);
+      const agent = new AppAgent();
+      await agent.ensure();
+      const [file] = await agent.writePublicKeyFiles([fingerprintOfKeyBlob(piv)]);
+      await agent.shutdown();
+      expect(fs.existsSync(file)).toBe(false);
+    });
   });
 
   it('lists identities from the agent, and nothing before it started', async () => {

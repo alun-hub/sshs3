@@ -131,6 +131,8 @@ export interface SFTPConfig {
   privateKeyPath?: string;
   passphrase?: string;
   agentPath?: string;
+  /** Runtime only: public key files selecting this connection's keys in a shared agent — see SSHConnectionConfig.agentIdentityFiles. */
+  agentIdentityFiles?: string[];
   pkcs11LibPath?: string;
   pin?: string;
   /** authType 'fido2' only — see SSHConnectionConfig.fido2Resident. */

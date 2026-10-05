@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
 import { AskpassServer, type AskpassPromptHandler } from '../smartcard/AskpassServer';
+import { getAgentIdentities, getKeyAlgorithm } from '../smartcard/SmartcardSyncService';
 import {
   listAgentIdentities,
   addSmartcardToAgent,
@@ -24,6 +26,11 @@ export interface AppAgentHandlers {
   promptHandler?: AskpassPromptHandler;
   /** Called when the agent asks the user to touch a key. */
   onPresence?: (prompt: string) => void;
+}
+
+/** OpenSSH-style `SHA256:<base64, no padding>` fingerprint of a key blob (what `ssh-add -l` prints). */
+export function fingerprintOfKeyBlob(keyBlob: Buffer): string {
+  return `SHA256:${crypto.createHash('sha256').update(keyBlob).digest('base64').replace(/=+$/, '')}`;
 }
 
 /** Directory holding the app agent's socket; created 0700 and verified before use. */
@@ -220,6 +227,35 @@ export class AppAgent {
     return task;
   }
 
+  /**
+   * Writes the public half of the agent's keys with the given fingerprints to files, so an `ssh -i
+   * <file>.pub -o IdentitiesOnly=yes` run can select exactly those keys from this shared agent.
+   * Public keys are not secret, but the files live in a verified 0700 directory (and are 0600) like
+   * the socket. Not supported on Windows (shared service pipe): returns an empty list there.
+   */
+  public async writePublicKeyFiles(fingerprints: Iterable<string>): Promise<string[]> {
+    const socketPath = this.socketPath;
+    if (!socketPath || process.platform === 'win32') return [];
+    const wanted = new Set(fingerprints);
+    if (wanted.size === 0) return [];
+
+    const dir = path.join(resolveAppAgentDir(), 'keys');
+    await ensureSecureDir(path.dirname(dir));
+    await ensureSecureDir(dir);
+
+    const files: string[] = [];
+    for (const identity of await getAgentIdentities(socketPath)) {
+      if (!wanted.has(fingerprintOfKeyBlob(identity.keyBlob))) continue;
+      const name = crypto.createHash('sha256').update(identity.keyBlob).digest('hex').slice(0, 32);
+      const file = path.join(dir, `${name}.pub`);
+      const comment = identity.comment.replace(/[\r\n]+/g, ' ');
+      const line = `${getKeyAlgorithm(identity.keyBlob)} ${identity.keyBlob.toString('base64')} ${comment}\n`;
+      await fs.promises.writeFile(file, line, { mode: 0o600 });
+      files.push(file);
+    }
+    return files;
+  }
+
   public async list(): Promise<AgentIdentity[]> {
     return this.socketPath ? listAgentIdentities(this.socketPath) : [];
   }
@@ -262,6 +298,9 @@ export class AppAgent {
     if (pid > 0) {
       AgentLifecycleManager.killPrivateAgent(pid);
       if (socketPath) await fs.promises.unlink(socketPath).catch(() => {});
+    }
+    if (process.platform !== 'win32') {
+      await fs.promises.rm(path.join(resolveAppAgentDir(), 'keys'), { recursive: true, force: true }).catch(() => {});
     }
   }
 }

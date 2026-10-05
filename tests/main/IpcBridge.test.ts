@@ -118,7 +118,28 @@ class MockWebContents {
   }
 }
 
+function makeFakeAppAgent() {
+  const socketPath = '/tmp/app-agent.sock';
+  const fake = {
+    identities: [] as Array<{ bits: string; fingerprint: string; comment: string; keyType: string }>,
+    setHandlers: vi.fn(),
+    setOnExit: vi.fn(),
+    getSocketPath: vi.fn().mockReturnValue(socketPath),
+    ensure: vi.fn().mockResolvedValue(socketPath),
+    list: vi.fn(async () => fake.identities),
+    addPkcs11: vi.fn().mockResolvedValue(undefined),
+    addFido2Resident: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    lockAll: vi.fn().mockResolvedValue(undefined),
+    shutdown: vi.fn().mockResolvedValue(undefined),
+    writePublicKeyFiles: vi.fn().mockResolvedValue([]),
+    noteLoadedLibrary: vi.fn(),
+  };
+  return fake;
+}
+
 describe('IpcBridge', () => {
+  let fakeAppAgent: ReturnType<typeof makeFakeAppAgent>;
   let mockIpc: MockIpcMain;
   let mockWebContents: MockWebContents;
   let mockPtyManager: any;
@@ -234,6 +255,8 @@ describe('IpcBridge', () => {
       getWebContents: () => mockWebContents as any,
     });
 
+    fakeAppAgent = makeFakeAppAgent();
+    (bridge as any).appAgent = fakeAppAgent;
     bridge.register();
   });
 
@@ -320,14 +343,10 @@ describe('IpcBridge', () => {
       mockSettingsStore.getSettings = vi.fn().mockResolvedValue({
         smartcardAuthMode: 'agent-global',
       });
-
-      let loadCount = 0;
-      const loadSpy = vi
-        .spyOn(SmartcardAgentLoader, 'loadFido2ResidentKeysIntoPrivateAgent')
-        .mockImplementation(async () => {
-          loadCount++;
-          return { pid: 9999, socketPath: '/tmp/fido2-global-agent.sock' };
-        });
+      fakeAppAgent.addFido2Resident.mockImplementation(async () => {
+        fakeAppAgent.identities = [{ bits: '256', fingerprint: 'SHA256:sk1', comment: 'sk', keyType: 'ED25519-SK' }];
+      });
+      fakeAppAgent.writePublicKeyFiles.mockResolvedValue(['/tmp/keys/sk1.pub']);
 
       const config1: SSHConnectionConfig = {
         id: 'fido2-conn-1',
@@ -339,13 +358,15 @@ describe('IpcBridge', () => {
       };
 
       await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { config: config1, ptyOptions: { cols: 100, rows: 40 } });
-      expect(loadCount).toBe(1);
+      expect(fakeAppAgent.addFido2Resident).toHaveBeenCalledTimes(1);
+      // The shared agent holds every unlocked card, so the connection is pinned to this key's public file.
       expect(mockPtyManager.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ agentPath: '/tmp/fido2-global-agent.sock' }),
+        expect.objectContaining({ agentPath: '/tmp/app-agent.sock', agentIdentityFiles: ['/tmp/keys/sk1.pub'] }),
         expect.anything()
       );
+      expect(fakeAppAgent.writePublicKeyFiles).toHaveBeenCalledWith(new Set(['SHA256:sk1']));
 
-      // Second connection reuses the cached global agent without calling loadFido2ResidentKeysIntoPrivateAgent again
+      // Second connection reuses the loaded keys without loading again
       const config2: SSHConnectionConfig = {
         id: 'fido2-conn-2',
         name: 'host2',
@@ -356,17 +377,44 @@ describe('IpcBridge', () => {
       };
 
       await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { config: config2, ptyOptions: { cols: 100, rows: 40 } });
-      expect(loadCount).toBe(1);
+      expect(fakeAppAgent.addFido2Resident).toHaveBeenCalledTimes(1);
       expect(mockPtyManager.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ agentPath: '/tmp/fido2-global-agent.sock' }),
+        expect.objectContaining({ agentPath: '/tmp/app-agent.sock' }),
         expect.anything()
       );
 
-      // Locking smartcards clears the global FIDO2 agent
+      // Locking smartcards makes the agent forget its keys (the agent itself keeps running)
       const lockedResult = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
       expect(lockedResult).toEqual({ locked: 1 });
+      expect(fakeAppAgent.lockAll).toHaveBeenCalledTimes(1);
+      expect(fakeAppAgent.shutdown).not.toHaveBeenCalled();
+    });
 
-      loadSpy.mockRestore();
+    it('pins a smartcard profile to its own card\'s keys when connecting through the app agent', async () => {
+      mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
+      const certs = new Map([['SHA256:piv1', { fingerprint: 'SHA256:piv1' } as any]]);
+      const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockResolvedValue(certs);
+      fakeAppAgent.writePublicKeyFiles.mockResolvedValue(['/tmp/keys/piv1.pub']);
+
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, {
+        config: {
+          id: 'sc-1',
+          name: 'card host',
+          host: 'card.example.com',
+          username: 'alun',
+          authType: 'smartcard',
+          pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
+        } as SSHConnectionConfig,
+        ptyOptions: { cols: 100, rows: 40 },
+      });
+
+      expect(fakeAppAgent.addPkcs11).toHaveBeenCalledTimes(1);
+      expect(fakeAppAgent.writePublicKeyFiles).toHaveBeenCalledWith(new Set(['SHA256:piv1']));
+      expect(mockPtyManager.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ agentPath: '/tmp/app-agent.sock', agentIdentityFiles: ['/tmp/keys/piv1.pub'] }),
+        expect.anything()
+      );
+      readCertsSpy.mockRestore();
     });
 
     it('throws when creating terminal without config', async () => {
@@ -378,19 +426,39 @@ describe('IpcBridge', () => {
       expect(mockPtyManager.createShellSession).toHaveBeenCalledWith({ cols: 80, rows: 24 });
     });
 
-    it('local shell terminals point SSH_AUTH_SOCK at a cached agent-global smartcard agent', async () => {
-      (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', {
-        pid: 4242,
-        socketPath: '/tmp/global-smartcard-agent.sock',
-      });
+    it('local shell terminals point SSH_AUTH_SOCK at the app agent under agent-global, even while it is empty', async () => {
+      mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
 
       await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
 
+      expect(fakeAppAgent.ensure).toHaveBeenCalled();
       expect(mockPtyManager.createShellSession).toHaveBeenCalledWith({
         cols: 80,
         rows: 24,
-        env: { SSH_AUTH_SOCK: '/tmp/global-smartcard-agent.sock' },
+        env: { SSH_AUTH_SOCK: '/tmp/app-agent.sock' },
       });
+    });
+
+    it('local shell terminals keep the default agent when the app agent cannot start', async () => {
+      mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
+      fakeAppAgent.ensure.mockRejectedValue(new Error('no ssh-agent binary'));
+
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
+
+      expect(mockPtyManager.createShellSession).toHaveBeenCalledWith({ cols: 80, rows: 24 });
+    });
+
+    it('local shell terminals leave SSH_AUTH_SOCK alone in System Only mode or outside agent-global', async () => {
+      mockSettingsStore.getSettings = vi
+        .fn()
+        .mockResolvedValue({ smartcardAuthMode: 'agent-global', localTerminalAgentMode: 'system' });
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
+      expect(mockPtyManager.createShellSession).toHaveBeenLastCalledWith({ cols: 80, rows: 24 });
+
+      mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'always-prompt' });
+      await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
+      expect(mockPtyManager.createShellSession).toHaveBeenLastCalledWith({ cols: 80, rows: 24 });
+      expect(fakeAppAgent.ensure).not.toHaveBeenCalled();
     });
 
     it('handles terminalWrite, resize, and kill', async () => {
@@ -497,9 +565,7 @@ describe('IpcBridge', () => {
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
           { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux', exists: true },
         ]);
-        const loadSpy = vi
-          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
-          .mockImplementation(() => new Promise(() => {}));
+        const loadSpy = fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {}));
         const readCertsSpy = vi
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map());
@@ -521,9 +587,7 @@ describe('IpcBridge', () => {
         const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
         ]);
-        const loadSpy = vi
-          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
-          .mockImplementation(() => new Promise(() => {})); // never resolves; only started:true matters here
+        const loadSpy = fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {})); // never resolves; only started:true matters here
         const readCertsSpy = vi
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map());
@@ -543,9 +607,9 @@ describe('IpcBridge', () => {
         const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
         ]);
-        (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', { pid: 1, socketPath: '/tmp/cached.sock' });
+        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
 
-        const loadSpy = vi.spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent');
+        const loadSpy = fakeAppAgent.addPkcs11;
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
 
         expect(res).toEqual({ started: false });
@@ -567,9 +631,7 @@ describe('IpcBridge', () => {
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
           { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.2', platform: 'linux', exists: true },
         ]);
-        const loadSpy = vi
-          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
-          .mockResolvedValue({ pid: 123, socketPath: '/tmp/test.sock' });
+        const loadSpy = fakeAppAgent.addPkcs11.mockResolvedValue(undefined);
         const readCertsSpy = vi
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map());
@@ -607,28 +669,27 @@ describe('IpcBridge', () => {
       };
 
       it('reads the certificate once when the card is loaded, then serves it from cache on every list call', async () => {
-        const loadSpy = vi
-          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
-          .mockResolvedValue({ pid: 123, socketPath: '/tmp/global.sock' });
-        const listIdentitiesSpy = vi.spyOn(SmartcardAgentLoader, 'listAgentIdentities').mockResolvedValue([identity]);
+        fakeAppAgent.addPkcs11.mockImplementation(async () => {
+          fakeAppAgent.identities = [identity];
+        });
         const readCertsSpy = vi
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
 
         await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
-        // readSmartcardCertificates is kicked off fire-and-forget after the agent load resolves —
-        // flush the microtask queue so its `.then()` (which populates the cache) has run.
-        await new Promise((resolve) => setImmediate(resolve));
 
         expect(readCertsSpy).toHaveBeenCalledTimes(1);
         expect(readCertsSpy).toHaveBeenCalledWith(pkcs11LibPath);
+        // The card is attributed its certificate's key, so identities can be grouped per card.
+        expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set([identity.fingerprint]));
 
+        fakeAppAgent.list.mockClear();
         const first = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
         const second = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
 
         // The certificate is only ever read once — not again for either "list cached" call.
         expect(readCertsSpy).toHaveBeenCalledTimes(1);
-        expect(listIdentitiesSpy).toHaveBeenCalledTimes(2); // identities themselves are still queried live
+        expect(fakeAppAgent.list).toHaveBeenCalledTimes(2); // identities themselves are still queried live
 
         for (const res of [first, second]) {
           expect(res).toEqual([
@@ -650,32 +711,38 @@ describe('IpcBridge', () => {
           ]);
         }
 
-        loadSpy.mockRestore();
-        listIdentitiesSpy.mockRestore();
         readCertsSpy.mockRestore();
       });
 
+      it('groups the single app agent\'s identities per card and puts security keys under FIDO2', async () => {
+        const otherIdentity = { bits: '256', fingerprint: 'SHA256:other', comment: 'other card', keyType: 'ECDSA' };
+        const skIdentity = { bits: '256', fingerprint: 'SHA256:sk', comment: 'sk', keyType: 'ED25519-SK' };
+        fakeAppAgent.identities = [identity, otherIdentity, skIdentity];
+        (bridge as any).globalCards.set(pkcs11LibPath, { fingerprints: new Set([identity.fingerprint]) });
+        (bridge as any).globalCards.set('/usr/lib/other.so', { fingerprints: new Set([otherIdentity.fingerprint]) });
+        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set([skIdentity.fingerprint]) });
+
+        const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
+
+        expect(res.map((r: any) => [r.pkcs11LibPath, r.identities.map((i: any) => i.fingerprint)])).toEqual([
+          [pkcs11LibPath, ['SHA256:abc']],
+          ['/usr/lib/other.so', ['SHA256:other']],
+          ['FIDO2 Security Key', ['SHA256:sk']],
+        ]);
+      });
+
       it('drops the cached certificate when the card is locked', async () => {
-        const { AgentLifecycleManager } = await import('../../src/main/ssh/AgentLifecycleManager');
-        const killSpy = vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});
-        const unloadSpy = vi.spyOn(AgentLifecycleManager, 'unloadCard').mockResolvedValue();
-        const loadSpy = vi
-          .spyOn(SmartcardAgentLoader, 'loadSmartcardIntoPrivateAgent')
-          .mockResolvedValue({ pid: 123, socketPath: '/tmp/global.sock' });
         const readCertsSpy = vi
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
 
         await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
-        await new Promise((resolve) => setImmediate(resolve));
         expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(true);
 
         await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
         expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(false);
+        expect((bridge as any).globalCards.size).toBe(0);
 
-        killSpy.mockRestore();
-        unloadSpy.mockRestore();
-        loadSpy.mockRestore();
         readCertsSpy.mockRestore();
       });
     });
@@ -1411,34 +1478,29 @@ describe('IpcBridge', () => {
       expect(mockStorageRegistry.disconnectAll).toHaveBeenCalled();
     });
 
-    it('kills every leftover private smartcard agent (per-session and global) on dispose', async () => {
+    it('kills every leftover per-session agent and shuts down the app agent on dispose', async () => {
       const { AgentLifecycleManager } = await import('../../src/main/ssh/AgentLifecycleManager');
       const killSpy = vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});
       const unloadSpy = vi.spyOn(AgentLifecycleManager, 'unloadCard').mockResolvedValue();
 
-      // Simulate two smartcard agents left tracked when the app quits: one
-      // 'agent-per-session' agent (never reaped because the PTY-exit listener
-      // that normally drives cleanupSmartcardSessionAgent() is detached before
-      // killAll() runs) and one 'agent-global' cached agent.
+      // One 'agent-per-session' agent left tracked when the app quits (never reaped because the
+      // PTY-exit listener that normally drives cleanupSmartcardSessionAgent() is detached before
+      // killAll() runs), plus a card cached in the app-wide 'agent-global' agent.
       (bridge as any).smartcardSessionAgents.set('session-1', {
         pid: 4242,
         socketPath: '/tmp/session-agent.sock',
         kind: 'pkcs11',
         pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
       });
-      (bridge as any).globalSmartcardAgents.set('/usr/lib/opensc-pkcs11.so', {
-        pid: 4343,
-        socketPath: '/tmp/global-agent.sock',
-      });
+      (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
 
       await bridge.dispose();
 
       expect(killSpy).toHaveBeenCalledWith(4242);
-      expect(killSpy).toHaveBeenCalledWith(4343);
       expect(unloadSpy).toHaveBeenCalledWith('/tmp/session-agent.sock', '/usr/lib/opensc-pkcs11.so');
-      expect(unloadSpy).toHaveBeenCalledWith('/tmp/global-agent.sock', '/usr/lib/opensc-pkcs11.so');
+      expect(fakeAppAgent.shutdown).toHaveBeenCalledTimes(1);
       expect((bridge as any).smartcardSessionAgents.size).toBe(0);
-      expect((bridge as any).globalSmartcardAgents.size).toBe(0);
+      expect((bridge as any).globalCards.size).toBe(0);
 
       killSpy.mockRestore();
       unloadSpy.mockRestore();
