@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.24] - 2026-10-05
+
+### Changed
+- the user guide (`docs/user-guide`) is now entirely in English; it was a mix of Swedish and English
+- release tooling: sshs3.com and docs.sshs3.com are published by a new `scripts/deploy-site.sh` (screenshot sync, docs rebuild from this checkout, link validation, commit, push, deploy), runnable on its own; the site deploy also triggers when `ipc.ts` or `settings.ts` change, and screenshots are synced to both `public/img` and `public/img/docs`
+
 ## [0.96.23] - 2026-10-05
 
 ### Added
