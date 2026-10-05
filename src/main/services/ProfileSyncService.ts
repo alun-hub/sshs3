@@ -580,6 +580,8 @@ export class ProfileSyncService {
   private readonly dirSyncProfileStore?: DirectorySyncProfileStore;
 
   private sshConfigWriteQueue: Promise<unknown> = Promise.resolve();
+  /** Called after every automatic sync of the managed ~/.ssh/config block (also after a remote pull). */
+  public onLocalSshConfigSynced?: () => void;
 
   constructor(
     private readonly profileStore: ProfileStore,
@@ -1169,6 +1171,9 @@ export class ProfileSyncService {
       await this.syncProfilesToLocalSshConfig();
     } catch (err) {
       console.warn('[sshs3] Failed to sync profiles to ~/.ssh/config:', err instanceof Error ? err.message : err);
+    } finally {
+      // Whatever depends on the managed block (the local agent block) is refreshed *after* it, in order.
+      this.onLocalSshConfigSynced?.();
     }
   }
 

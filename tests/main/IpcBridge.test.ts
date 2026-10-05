@@ -465,6 +465,18 @@ describe('IpcBridge', () => {
         mockProfileStore.getProfiles.mockResolvedValue({ ssh: [], s3: [] });
       });
 
+      it('refreshes the block after every managed-block sync, including a remote pull', async () => {
+        mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
+        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        syncAgentBlockSpy.mockClear();
+
+        // ProfileSyncService calls this hook from autoSyncLocalSshConfig (profile edits and pulls alike).
+        (bridge as any).profileSyncService.onLocalSshConfigSynced();
+        await flush();
+
+        expect(syncAgentBlockSpy).toHaveBeenCalledTimes(1);
+      });
+
       it('writes no block outside agent-global mode', async () => {
         mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'always-prompt' });
         (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });

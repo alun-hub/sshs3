@@ -463,6 +463,17 @@ describe('SshNativeFileMerger — local agent block', () => {
     expect(rewritten).toContain('changed.example.com');
   });
 
+  it('is not fooled by a stray END marker before the block, and does not duplicate the block', () => {
+    const base = managed();
+    const withBlock = writeAgentSshConfigBlock(base, buildAgentSshConfigBody([entry]));
+    const poisoned = `# END sshs3-agent\n${withBlock}`;
+
+    const updated = writeAgentSshConfigBlock(poisoned, buildAgentSshConfigBody([{ ...entry, alias: 'other' }]));
+    expect(updated.match(/BEGIN sshs3-agent/g)).toHaveLength(1);
+    expect(updated).toContain('Host other');
+    expect(updated.startsWith('# END sshs3-agent\n')).toBe(true);
+  });
+
   it('adds nothing when there is no managed block to override', () => {
     const original = 'Host mine\n  HostName mine.example.com\n';
     expect(writeAgentSshConfigBlock(original, buildAgentSshConfigBody([entry]))).toBe(original);

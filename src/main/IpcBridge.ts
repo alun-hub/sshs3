@@ -397,6 +397,8 @@ export class IpcBridge {
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
         directorySyncProfileStore: this.directorySyncProfileStore,
       });
+    // The local agent block is derived from the managed block, so refresh it after every managed-block sync.
+    this.profileSyncService.onLocalSshConfigSynced = () => this.refreshAgentSshConfig();
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
@@ -1297,7 +1299,6 @@ export class IpcBridge {
         await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
         this.scheduleAutoSync();
         void this.profileSyncService.autoSyncLocalSshConfig();
-        this.refreshAgentSshConfig();
       }
     );
 
@@ -1308,7 +1309,6 @@ export class IpcBridge {
         await this.storageRegistry.disconnect?.(`sftp-${id}`);
         this.scheduleAutoSync();
         void this.profileSyncService.autoSyncLocalSshConfig();
-        this.refreshAgentSshConfig();
       }
     );
 
@@ -1452,7 +1452,6 @@ export class IpcBridge {
         this.scheduleAutoSync();
         if (sshList.length > 0) {
           void this.profileSyncService.autoSyncLocalSshConfig();
-          this.refreshAgentSshConfig();
         }
         return { count };
       }
@@ -2101,6 +2100,7 @@ export class IpcBridge {
     const { ssh } = await this.profileStore.getProfiles();
     const aliases = assignHostAliases(ssh);
     const entries: AgentHostEntry[] = [];
+    const filesByCard = new Map<string, string[]>();
     for (const profile of ssh) {
       const cardKey =
         profile.authType === 'smartcard' && profile.pkcs11LibPath
@@ -2111,7 +2111,11 @@ export class IpcBridge {
       const card = cardKey ? this.globalCards.get(cardKey) : undefined;
       const alias = aliases.get(profile.id);
       if (!card || !alias) continue;
-      const identityFiles = await this.appAgent.writePublicKeyFiles(card.fingerprints);
+      let identityFiles = filesByCard.get(cardKey!);
+      if (!identityFiles) {
+        identityFiles = await this.appAgent.writePublicKeyFiles(card.fingerprints);
+        filesByCard.set(cardKey!, identityFiles);
+      }
       if (identityFiles.length > 0) entries.push({ alias, agentSocket: socketPath, identityFiles });
     }
     return entries;
@@ -2714,8 +2718,9 @@ export class IpcBridge {
       IPC_CHANNELS.SETTINGS_SAVE,
       async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
         const saved = await this.settingsStore.saveSettings(settings);
-        if (settings.autoSyncLocalSshConfig === true) void this.profileSyncService.autoSyncLocalSshConfig();
-        if ('autoSyncLocalSshConfig' in settings || 'smartcardAuthMode' in settings) this.refreshAgentSshConfig();
+        // autoSync refreshes the agent block itself afterwards (and removes it when turned off).
+        if ('autoSyncLocalSshConfig' in settings) void this.profileSyncService.autoSyncLocalSshConfig();
+        else if ('smartcardAuthMode' in settings) this.refreshAgentSshConfig();
         this.scheduleAutoSync();
         return saved;
       }

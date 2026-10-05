@@ -215,6 +215,31 @@ function buildSshConfigHostBlock(
   return lines.join('\n');
 }
 
+/** The order profiles appear in the managed block; aliases are assigned in the same order. */
+function sortProfilesForConfig(profiles: SSHConnectionConfig[]): SSHConnectionConfig[] {
+  return [...profiles].sort((a, b) => (a.name || a.host).localeCompare(b.name || b.host));
+}
+
+/**
+ * The `Host` alias each profile gets in the managed block (sorted by name, collisions suffixed -2, -3…).
+ * Exported so the local agent block can address exactly the same hosts.
+ */
+export function assignHostAliases(profiles: SSHConnectionConfig[]): Map<string, string> {
+  const usedAliases = new Set<string>();
+  const aliasById = new Map<string, string>();
+  for (const profile of sortProfilesForConfig(profiles)) {
+    let alias = sshConfigHostAlias(profile);
+    let suffix = 2;
+    while (usedAliases.has(alias)) {
+      alias = `${sshConfigHostAlias(profile)}-${suffix}`;
+      suffix += 1;
+    }
+    usedAliases.add(alias);
+    aliasById.set(profile.id, alias);
+  }
+  return aliasById;
+}
+
 /**
  * Generates the sshs3-managed block's body from the user's saved SSH
  * profiles, so a plain `ssh <alias>` typed in any terminal (inside or
@@ -228,35 +253,13 @@ function buildSshConfigHostBlock(
  * same body as before, so re-generating on every profile save doesn't
  * perpetually mark this machine "ahead" in sync comparisons for a no-op.
  */
-/**
- * The `Host` alias each profile gets in the managed block (sorted by name, collisions suffixed -2, -3…).
- * Exported so the local agent block can address exactly the same hosts.
- */
-export function assignHostAliases(profiles: SSHConnectionConfig[]): Map<string, string> {
-  const usedAliases = new Set<string>();
-  const aliasById = new Map<string, string>();
-  const sortedProfiles = [...profiles].sort((a, b) => (a.name || a.host).localeCompare(b.name || b.host));
-  for (const profile of sortedProfiles) {
-    let alias = sshConfigHostAlias(profile);
-    let suffix = 2;
-    while (usedAliases.has(alias)) {
-      alias = `${sshConfigHostAlias(profile)}-${suffix}`;
-      suffix += 1;
-    }
-    usedAliases.add(alias);
-    aliasById.set(profile.id, alias);
-  }
-  return aliasById;
-}
-
 export function buildManagedSshConfigBlockFromProfiles(
   profiles: SSHConnectionConfig[],
   previousBlock: ManagedSshConfigBlock | null,
   now: string = new Date().toISOString()
 ): ManagedSshConfigBlock {
   const aliasById = assignHostAliases(profiles);
-  const sortedProfiles = [...profiles].sort((a, b) => (a.name || a.host).localeCompare(b.name || b.host));
-  const blocks = sortedProfiles.map((profile) =>
+  const blocks = sortProfilesForConfig(profiles).map((profile) =>
     buildSshConfigHostBlock(profile, aliasById.get(profile.id)!, aliasById)
   );
 
@@ -308,8 +311,9 @@ export function buildAgentSshConfigBody(entries: AgentHostEntry[]): string {
 export function writeAgentSshConfigBlock(fileContent: string, body: string | null): string {
   const hasBody = !!body && body.trim().length > 0;
   const beginIdx = fileContent.indexOf(AGENT_BEGIN);
-  const endIdx = fileContent.indexOf(AGENT_END);
-  const exists = beginIdx !== -1 && endIdx > beginIdx;
+  // END is searched from BEGIN, so a stray END marker earlier in the file can't hide the block.
+  const endIdx = beginIdx === -1 ? -1 : fileContent.indexOf(AGENT_END, beginIdx + AGENT_BEGIN.length);
+  const exists = beginIdx !== -1 && endIdx !== -1;
 
   if (!hasBody) {
     if (!exists) return fileContent;

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Readable, Writable } from 'node:stream';
@@ -1057,6 +1058,25 @@ describe('compareWithRemote', () => {
       await harness.settingsStore.saveSettings({ autoSyncLocalSshConfig: false });
       await harness.sync.syncAgentBlockToLocalSshConfig([entry]);
       expect(await fs.readFile(harness.sshConfigPath, 'utf8')).not.toContain('sshs3-agent');
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('autoSyncLocalSshConfig notifies onLocalSshConfigSynced after the managed block is written, and when the setting is off', async () => {
+    const harness = await makeHarness(generateSalt(), generateSalt());
+    try {
+      await harness.profileStore.saveSSH({ id: 'p', name: 'p', host: 'p.example.com', username: 'u', authType: 'password' });
+      const seen: boolean[] = [];
+      harness.sync.onLocalSshConfigSynced = () => {
+        seen.push(fsSync.existsSync(harness.sshConfigPath));
+      };
+      await harness.sync.autoSyncLocalSshConfig();
+      expect(seen).toEqual([true]); // the managed block already existed when the callback ran
+
+      await harness.settingsStore.saveSettings({ autoSyncLocalSshConfig: false });
+      await harness.sync.autoSyncLocalSshConfig();
+      expect(seen).toHaveLength(2);
     } finally {
       await fs.rm(harness.dir, { recursive: true, force: true });
     }
