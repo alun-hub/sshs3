@@ -723,5 +723,36 @@ describe('SSHPtyManager', () => {
       expect(options.env.PATH).toContain('.sshs3');
       expect(options.env.PATH).toContain('/usr/bin');
     });
+
+    it('removes SSH_AUTH_SOCK when localTerminalAgentMode is disabled', async () => {
+      const mockSettingsStore = {
+        getSettings: vi.fn().mockResolvedValue({ localTerminalAgentMode: 'disabled' }),
+      } as any;
+      const customManager = new SSHPtyManager({ settingsStore: mockSettingsStore });
+      await customManager.createShellSession({ cols: 80, rows: 24, env: { SSH_AUTH_SOCK: '/some/sock' } });
+
+      const { options } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs;
+      expect(options.env.SSH_AUTH_SOCK).toBeUndefined();
+    });
+
+    it('calls AgentLifecycleManager.ensureAgent when localTerminalAgentMode is app-managed', async () => {
+      vi.mocked(AgentLifecycleManager.ensureAgent).mockResolvedValueOnce({
+        isRunning: true,
+        socketPath: '/app/managed/agent.sock',
+        isManaged: true,
+        platform: process.platform,
+      });
+
+      const mockSettingsStore = {
+        getSettings: vi.fn().mockResolvedValue({ localTerminalAgentMode: 'app-managed' }),
+      } as any;
+      const customManager = new SSHPtyManager({ settingsStore: mockSettingsStore });
+      await customManager.createShellSession({ cols: 80, rows: 24 });
+
+      const { options } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs;
+      if (process.platform !== 'win32') {
+        expect(options.env.SSH_AUTH_SOCK).toBe('/app/managed/agent.sock');
+      }
+    });
   });
 });

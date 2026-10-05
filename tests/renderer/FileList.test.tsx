@@ -761,6 +761,44 @@ describe('FileList Component', () => {
       const uncutRow = screen.getByText('documents').closest('[role="row"]')!;
       expect(uncutRow.className).not.toContain('opacity-40');
     });
+    it('clears selection on Escape when entries are selected', () => {
+      const onSelectionChange = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/documents'])}
+          onSelectionChange={onSelectionChange}
+          onOpen={vi.fn()}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'Escape' });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set());
+    });
+
+    it('triggers onEntryContextMenu on ContextMenu key or Shift+F10', () => {
+      const onEntryContextMenu = vi.fn();
+      const { container } = render(
+        <FileList
+          entries={mockEntries}
+          loading={false}
+          selectedPaths={new Set(['/documents'])}
+          onSelectionChange={vi.fn()}
+          onOpen={vi.fn()}
+          onEntryContextMenu={onEntryContextMenu}
+        />
+      );
+
+      const listContainer = container.querySelector('[tabindex="0"]')!;
+      fireEvent.keyDown(listContainer, { key: 'ContextMenu' });
+      expect(onEntryContextMenu).toHaveBeenCalledTimes(1);
+      expect(onEntryContextMenu.mock.calls[0][0].path).toBe('/documents');
+
+      fireEvent.keyDown(listContainer, { key: 'F10', shiftKey: true });
+      expect(onEntryContextMenu).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

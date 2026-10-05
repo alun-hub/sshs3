@@ -18,6 +18,8 @@ const TRUST_RELEVANT_VARS = [
   'GIT_SSL_CAINFO',
   'AWS_CA_BUNDLE',
   'PIP_CERT',
+  'SSH_AUTH_SOCK',
+  'SSH_AGENT_PID',
 ];
 
 let cachedEnv: Record<string, string> | undefined;

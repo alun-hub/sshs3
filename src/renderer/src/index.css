@@ -328,11 +328,13 @@ body,
   [role='button']:focus-visible,
   [role='tab']:focus-visible,
   [role='menuitem']:focus-visible,
-  [tabindex]:focus-visible {
-    outline: none;
+  [tabindex]:focus-visible,
+  .spatial-nav-active {
+    outline: none !important;
     box-shadow:
       0 0 0 2px var(--bg-app),
-      0 0 0 4px var(--accent-primary);
+      0 0 0 4px var(--accent-primary) !important;
+    border-radius: 0.375rem;
   }
 
   /* Text fields already switch to an accent border on focus, so they only get a slim 2px halo:

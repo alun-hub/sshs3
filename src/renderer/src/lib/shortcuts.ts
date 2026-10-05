@@ -65,6 +65,10 @@ export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
     key = PHYSICAL_KEY_BASE_SYMBOLS[e.code];
   }
   if (key === ' ') key = 'Space';
+  else if (key === 'ArrowUp') key = 'Up';
+  else if (key === 'ArrowDown') key = 'Down';
+  else if (key === 'ArrowLeft') key = 'Left';
+  else if (key === 'ArrowRight') key = 'Right';
   else if (key.length === 1) key = key.toUpperCase();
   parts.push(key);
 

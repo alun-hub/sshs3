@@ -30,6 +30,7 @@ export interface TabItem {
 export interface TabBarProps {
   tabs: TabItem[];
   activeTabId: string;
+  tabBarFocused?: boolean;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: (type: TabType) => void;
@@ -48,6 +49,7 @@ export interface TabBarProps {
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
+  tabBarFocused = false,
   onSelectTab,
   onCloseTab,
   onNewTab,
@@ -62,11 +64,13 @@ export const TabBar: React.FC<TabBarProps> = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [lockingSmartcard, setLockingSmartcard] = useState(false);
   const [lockFeedback, setLockFeedback] = useState<string | null>(null);
 
   const [isSmartcardMenuOpen, setIsSmartcardMenuOpen] = useState(false);
   const smartcardMenuRef = useRef<HTMLDivElement>(null);
+  const smartcardButtonRef = useRef<HTMLButtonElement>(null);
   const [cachedAgents, setCachedAgents] = useState<CachedSmartcardAgent[] | null>(null);
   const [loadingCachedAgents, setLoadingCachedAgents] = useState(false);
   const [expandedFingerprints, setExpandedFingerprints] = useState<Set<string>>(new Set());
@@ -117,11 +121,28 @@ export const TabBar: React.FC<TabBarProps> = ({
         setIsSmartcardMenuOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isMenuOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsMenuOpen(false);
+          menuButtonRef.current?.focus();
+        } else if (isSmartcardMenuOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsSmartcardMenuOpen(false);
+          smartcardButtonRef.current?.focus();
+        }
+      }
+    };
     if (isMenuOpen || isSmartcardMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMenuOpen, isSmartcardMenuOpen]);
 
@@ -151,7 +172,9 @@ export const TabBar: React.FC<TabBarProps> = ({
               }}
               className={`group relative flex max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
                 isActive
-                  ? 'z-10 h-[34px] bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm'
+                  ? `z-10 h-[34px] bg-app-card text-txt-primary font-medium border-t-2 border-sky-500 shadow-sm ${
+                      tabBarFocused ? 'ring-2 ring-sky-400 ring-inset shadow-md font-semibold' : ''
+                    }`
                   : 'h-[30px] bg-app-surface text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
               }`}
             >
@@ -194,6 +217,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       {/* New Tab Button & Dropdown */}
       <div className="relative flex shrink-0 items-center self-center" ref={menuRef}>
         <button
+          ref={menuButtonRef}
           type="button"
           data-testid="add-tab-btn"
           title="Open new tab"
@@ -207,8 +231,9 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
 
         {isMenuOpen && (
-          <div className="absolute top-8 right-0 z-50 min-w-[210px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+          <div role="menu" className="absolute top-8 right-0 z-50 min-w-[210px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
             <button
+              role="menuitem"
               type="button"
               data-testid="new-terminal-btn"
               onClick={() => {
@@ -224,6 +249,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               <Kbd>Ctrl+Shift+T</Kbd>
             </button>
             <button
+              role="menuitem"
               type="button"
               data-testid="new-filemanager-btn"
               onClick={() => {
@@ -240,6 +266,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             </button>
             {onNewK8sSession && (
               <button
+                role="menuitem"
                 type="button"
                 data-testid="new-k8s-btn"
                 onClick={() => {
@@ -261,6 +288,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         {showLockSmartcardButton && (
           <div className="relative flex items-center" ref={smartcardMenuRef}>
             <button
+              ref={smartcardButtonRef}
               type="button"
               data-testid="quick-lock-smartcard-btn"
               title="Cached smartcard identities"
@@ -284,7 +312,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             </button>
 
             {isSmartcardMenuOpen && (
-              <div className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
+              <div role="menu" className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
                 <div className="mb-1.5 text-xs font-semibold text-txt-primary">Cached smartcard identities</div>
 
                 {loadingCachedAgents ? (

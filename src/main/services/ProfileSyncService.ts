@@ -785,6 +785,9 @@ export class ProfileSyncService {
         const merged: ProfilesData = { ssh: sshResult.merged, s3: s3Result.merged };
         await this.profileStore.replaceAll(merged);
         changedCategories.push('topology', 'credentials');
+        if (sshResult.changed) {
+          void this.syncProfilesToLocalSshConfig().catch(() => {});
+        }
       }
     }
 
@@ -1135,6 +1138,28 @@ export class ProfileSyncService {
 
     const updated = writeManagedSshConfigBlock(currentContent, sshConfigBlock);
     await this.writeLocalFile(this.sshConfigPath, updated);
+  }
+
+  /**
+   * Synchronizes saved SSH profiles directly to the local ~/.ssh/config managed block,
+   * enabling native shell tab-completion and CLI ssh usage without requiring Remote Profile Sync.
+   */
+  public async syncProfilesToLocalSshConfig(): Promise<{ changed: boolean; count: number; path: string }> {
+    const activeProfiles = (await this.profileStore.getProfiles()).ssh;
+    const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+    const currentBlock = parseManagedSshConfigBlock(currentContent);
+    const generated = buildManagedSshConfigBlockFromProfiles(activeProfiles, currentBlock);
+    const hasContent = generated.body.trim().length > 0;
+    if (!hasContent && currentBlock === null) {
+      return { changed: false, count: 0, path: this.sshConfigPath };
+    }
+    if (currentBlock && currentBlock.body === generated.body) {
+      return { changed: false, count: activeProfiles.length, path: this.sshConfigPath };
+    }
+
+    const updated = writeManagedSshConfigBlock(currentContent, generated);
+    await this.writeLocalFile(this.sshConfigPath, updated);
+    return { changed: true, count: activeProfiles.length, path: this.sshConfigPath };
   }
 
   private async applySshNativePayload(

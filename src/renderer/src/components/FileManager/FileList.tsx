@@ -436,10 +436,43 @@ export const FileList: React.FC<FileListProps> = ({
         const selected = (activePath && sorted.find((it) => it.path === activePath)) || (selectedPaths.size === 1 ? sorted.find((it) => selectedPaths.has(it.path)) : undefined);
         if (selected) onOpen(selected);
         return;
+      } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearTypeahead();
+        const selected = (activePath && sorted.find((it) => it.path === activePath)) || (selectedPaths.size === 1 ? sorted.find((it) => selectedPaths.has(it.path)) : undefined);
+        if (selected && onEntryContextMenu) {
+          const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(selected.path) : selected.path.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+          const el = containerRef.current?.querySelector<HTMLElement>(`[data-entry-path="${escaped}"]`);
+          const rect = el?.getBoundingClientRect();
+          const fakeEvent = {
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            clientX: rect ? rect.left + 50 : 200,
+            clientY: rect ? rect.top + rect.height / 2 : 200,
+          } as unknown as React.MouseEvent;
+          onEntryContextMenu(selected, fakeEvent);
+        } else if (onPaneContextMenu) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          const fakeEvent = {
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            clientX: rect ? rect.left + 50 : 200,
+            clientY: rect ? rect.top + 50 : 200,
+          } as unknown as React.MouseEvent;
+          onPaneContextMenu(fakeEvent);
+        }
+        return;
       } else if (e.key === 'Escape') {
         if (typeaheadBufferRef.current) {
           e.preventDefault();
           clearTypeahead();
+          return;
+        }
+        if (selectedPaths.size > 0 || focusedPath) {
+          e.preventDefault();
+          setFocusedPath(null);
+          onSelectionChange(new Set());
           return;
         }
       } else if (e.key === 'Backspace') {
@@ -529,6 +562,9 @@ export const FileList: React.FC<FileListProps> = ({
       onCopySelected,
       onCutSelected,
       onPaste,
+      focusedPath,
+      onEntryContextMenu,
+      onPaneContextMenu,
     ]
   );
 

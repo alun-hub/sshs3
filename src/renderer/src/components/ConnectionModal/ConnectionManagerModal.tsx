@@ -693,6 +693,20 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (adHocTarget && onConnectSSH) {
+                              e.preventDefault();
+                              handleConnectAdHoc();
+                            } else if (tab === 'ssh' && filteredSSH.length === 1 && onConnectSSH) {
+                              e.preventDefault();
+                              void handleConnectSSH(filteredSSH[0]);
+                            } else if (tab === 's3' && filteredS3.length === 1 && onConnectS3) {
+                              e.preventDefault();
+                              void handleConnectS3(filteredS3[0]);
+                            }
+                          }
+                        }}
                         placeholder={
                           tab === 'ssh'
                             ? 'Search profiles, or type user@host to connect...'

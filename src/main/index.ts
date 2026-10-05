@@ -290,13 +290,14 @@ async function initializeApp(): Promise<void> {
   createWindow();
   ipcBridge.startUpdateChecks();
 
-  // Run background tasks (orphan cleanup, login shell environment, trust store)
+  // Run background tasks (orphan cleanup, login shell environment, trust store, ~/.ssh/config sync)
   // in parallel with window loading so startup time is not penalized
   void Promise.all([
     AgentLifecycleManager.cleanupOrphanedResources(),
     applyLoginShellEnv().then(() => {
       void SystemTrustStore.init();
     }),
+    ipcBridge.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {}),
   ]).catch((err) => {
     console.warn('[sshs3] Background initialization error:', err);
   });

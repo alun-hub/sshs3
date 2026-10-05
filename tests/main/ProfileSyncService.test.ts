@@ -952,4 +952,37 @@ describe('compareWithRemote', () => {
       await fs.rm(machineB.dir, { recursive: true, force: true });
     }
   });
+
+  it('syncProfilesToLocalSshConfig writes managed block to local ~/.ssh/config', async () => {
+    const saltTop = generateSalt();
+    const saltCred = generateSalt();
+    const harness = await makeHarness(saltTop, saltCred);
+
+    try {
+      await harness.profileStore.saveSSH({
+        id: 'ssh-test-sync',
+        name: 'My Production Host',
+        host: 'prod.example.com',
+        username: 'ubuntu',
+        port: 2202,
+        authType: 'password',
+      });
+
+      const res = await harness.sync.syncProfilesToLocalSshConfig();
+      expect(res.changed).toBe(true);
+      expect(res.count).toBe(1);
+
+      const content = await fs.readFile(res.path, 'utf8');
+      expect(content).toContain('Host My-Production-Host');
+      expect(content).toContain('HostName prod.example.com');
+      expect(content).toContain('User ubuntu');
+      expect(content).toContain('Port 2202');
+
+      // Calling again without changes returns changed: false
+      const res2 = await harness.sync.syncProfilesToLocalSshConfig();
+      expect(res2.changed).toBe(false);
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
 });

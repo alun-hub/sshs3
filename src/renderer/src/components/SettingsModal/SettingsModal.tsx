@@ -148,6 +148,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [fileManagerGitIntegration, setFileManagerGitIntegration] = useState<boolean>(
     currentSettings.fileManagerGitIntegration ?? true
   );
+  const [localTerminalAgentMode, setLocalTerminalAgentMode] = useState<'auto' | 'system' | 'app-managed' | 'disabled'>(
+    currentSettings.localTerminalAgentMode ?? 'auto'
+  );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
   const [shortcuts, setShortcuts] = useState<Record<string, string>>(() => ({
@@ -219,6 +222,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSmartcardUnlockAtStartup(currentSettings.smartcardUnlockAtStartup ?? false);
       setSmartcardLibPath(currentSettings.smartcardLibPath ?? '');
       setFileManagerGitIntegration(currentSettings.fileManagerGitIntegration ?? true);
+      setLocalTerminalAgentMode(currentSettings.localTerminalAgentMode ?? 'auto');
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
@@ -366,6 +370,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       smartcardUnlockAtStartup,
       smartcardLibPath: smartcardLibPath || undefined,
       fileManagerGitIntegration,
+      localTerminalAgentMode,
       x11ServerMode,
       x11ServerPath,
       x11ServerArgs,
@@ -929,6 +934,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </span>
                       </label>
                     </div>
+                  </div>
+
+                  {/* SSH CLI & Agent Integration */}
+                  <div className="space-y-3 pt-3 border-t border-divider">
+                    <div>
+                      <label className="text-xs font-medium text-txt-primary">Local Terminal SSH Agent</label>
+                      <p className="text-xs text-txt-muted">
+                        Configure how the <code>SSH_AUTH_SOCK</code> environment variable is set in local shell terminals.
+                      </p>
+                    </div>
+                    <select
+                      value={localTerminalAgentMode}
+                      onChange={(e) =>
+                        setLocalTerminalAgentMode(
+                          e.target.value as 'auto' | 'system' | 'app-managed' | 'disabled'
+                        )
+                      }
+                      className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
+                    >
+                      <option value="auto">Auto (Smartcard / app-managed agent if active, else inherit system/login shell)</option>
+                      <option value="system">System Only (Inherit system or login shell SSH_AUTH_SOCK)</option>
+                      <option value="app-managed">App Managed (Use sshs3-managed agent or active smartcard)</option>
+                      <option value="disabled">Disabled (Do not set SSH_AUTH_SOCK)</option>
+                    </select>
                   </div>
 
                   {/* Local X11 Server (Windows GUI Forwarding) */}

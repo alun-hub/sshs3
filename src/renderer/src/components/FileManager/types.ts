@@ -2,6 +2,8 @@ import type { FileEntry } from '@shared/types/storage';
 
 export type PaneSide = 'left' | 'right';
 
+export const FILEMANAGER_FOCUS_SIDE_EVENT = 'sshs3:filemanager-focus-side';
+
 export type SourceType = 'local' | 'sftp' | 's3' | 'k8s';
 
 export interface PaneSource {

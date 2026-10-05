@@ -153,4 +153,23 @@ describe('TabBar Component', () => {
     fireEvent.click(settingsBtn);
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
+
+  it('closes new tab menu on Escape and restores focus to the add-tab button', () => {
+    render(
+      <TabBar
+        tabs={sampleTabs}
+        activeTabId="tab-1"
+        onSelectTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    );
+
+    const addBtn = screen.getByTestId('add-tab-btn');
+    fireEvent.click(addBtn);
+    expect(screen.getByTestId('new-terminal-btn')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('new-terminal-btn')).not.toBeInTheDocument();
+  });
 });

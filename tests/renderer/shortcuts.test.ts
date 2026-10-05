@@ -73,4 +73,19 @@ describe('comboFromKeyboardEvent', () => {
       'Ctrl+0'
     );
   });
+
+  it('normalizes ArrowUp, ArrowDown, ArrowLeft, ArrowRight to Up, Down, Left, Right', () => {
+    expect(comboFromKeyboardEvent({ key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Left'
+    );
+    expect(comboFromKeyboardEvent({ key: 'ArrowRight', code: 'ArrowRight', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Right'
+    );
+    expect(comboFromKeyboardEvent({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Up'
+    );
+    expect(comboFromKeyboardEvent({ key: 'ArrowDown', code: 'ArrowDown', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Down'
+    );
+  });
 });

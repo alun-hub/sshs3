@@ -19,6 +19,10 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'prevTab', name: 'Previous Tab', defaultKeys: 'Ctrl+Shift+Tab', category: 'Tabs' },
   { id: 'openProfiles', name: 'Connection Manager', defaultKeys: 'Ctrl+Shift+O', category: 'General' },
   { id: 'openSettings', name: 'Settings', defaultKeys: 'Ctrl+,', category: 'General' },
+  { id: 'navigateLeft', name: 'Navigate Left (Split / Panel)', defaultKeys: 'Ctrl+Shift+Left', category: 'General' },
+  { id: 'navigateRight', name: 'Navigate Right (Split / Panel)', defaultKeys: 'Ctrl+Shift+Right', category: 'General' },
+  { id: 'navigateUp', name: 'Navigate Up (Split / To Tabs)', defaultKeys: 'Ctrl+Shift+Up', category: 'General' },
+  { id: 'navigateDown', name: 'Navigate Down (Split / Into Tab)', defaultKeys: 'Ctrl+Shift+Down', category: 'General' },
   { id: 'splitVertical', name: 'Split Terminal Vertically', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
   { id: 'splitHorizontal', name: 'Split Terminal Horizontally', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
   // Letters, not punctuation: Shift+<punctuation key> produces a different character on
@@ -139,6 +143,8 @@ export interface AppSettings {
   perfMetricsIntervalSec?: number;
   /** Enable Git status and Git operations (pull, clone) in file manager/SFTP panes. On by default. */
   fileManagerGitIntegration?: boolean;
+  /** SSH Agent integration for local shell terminals. 'auto' = use active smartcard/app agent or inherit login shell env. */
+  localTerminalAgentMode?: 'auto' | 'system' | 'app-managed' | 'disabled';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -171,4 +177,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   x11ServerMode: 'auto',
   k8sDebugImages: [...DEFAULT_K8S_DEBUG_IMAGES],
   fileManagerGitIntegration: true,
+  localTerminalAgentMode: 'auto',
 };

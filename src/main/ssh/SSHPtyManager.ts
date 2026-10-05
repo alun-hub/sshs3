@@ -676,27 +676,34 @@ export class SSHPtyManager extends EventEmitter {
       TERM: 'xterm-256color',
     };
 
-    // Explicitly point the local shell at the app's own ensured/managed
-    // ssh-agent instead of just relying on it having landed in
-    // process.env.SSH_AUTH_SOCK already — e.g. if this app process was
-    // itself launched without SSH_AUTH_SOCK set (common for GUI/.desktop
-    // launches vs. a terminal), ensureAgent() spawns a private agent for it,
-    // but a local shell opened before that mutation was observed would
-    // otherwise silently fall back to no agent (or a stale one) instead of
-    // the one the app just spawned for exactly this purpose. Skipped on
-    // Windows/WSL, where there's no app-managed agent concept to hand a Unix
-    // socket path into anyway.
-    if (process.platform !== 'win32' && options?.shellType !== 'wsl') {
-      const agentStatus = await AgentLifecycleManager.ensureAgent();
-      if (agentStatus.isRunning && agentStatus.socketPath) {
-        env.SSH_AUTH_SOCK = agentStatus.socketPath;
+    const settings = await this.settingsStore?.getSettings().catch(() => null);
+    const agentMode = settings?.localTerminalAgentMode ?? 'auto';
+
+    if (agentMode === 'disabled') {
+      delete env.SSH_AUTH_SOCK;
+      delete env.SSH_AGENT_PID;
+    } else if (process.platform !== 'win32' && options?.shellType !== 'wsl') {
+      if (agentMode === 'system') {
+        if (process.env.SSH_AUTH_SOCK && fs.existsSync(process.env.SSH_AUTH_SOCK)) {
+          env.SSH_AUTH_SOCK = process.env.SSH_AUTH_SOCK;
+        } else {
+          delete env.SSH_AUTH_SOCK;
+        }
+      } else {
+        const agentStatus = await AgentLifecycleManager.ensureAgent();
+        if (agentStatus.isRunning && agentStatus.socketPath) {
+          env.SSH_AUTH_SOCK = agentStatus.socketPath;
+        }
       }
     }
 
     Object.assign(env, options?.env || {});
+    if (agentMode === 'disabled') {
+      delete env.SSH_AUTH_SOCK;
+      delete env.SSH_AGENT_PID;
+    }
 
     try {
-      const settings = await this.settingsStore?.getSettings();
       if (settings?.enableOpenShift) {
         const shimDir = K8sShimManager.ensureShim();
         const currentPath = env.PATH || process.env.PATH || '';

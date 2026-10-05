@@ -8,7 +8,7 @@ import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModa
 import { DragDropProvider } from './DragDropLayer';
 import { FilePane } from './FilePane';
 import { TransferQueueDrawer } from './TransferQueueDrawer';
-import type { PaneSide, PaneSource, SourceType } from './types';
+import { FILEMANAGER_FOCUS_SIDE_EVENT, type PaneSide, type PaneSource, type SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
@@ -68,6 +68,18 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
+
+  useEffect(() => {
+    const handleFocusSide = (e: Event) => {
+      const side = (e as CustomEvent<PaneSide>).detail;
+      if (side === 'left' || side === 'right') {
+        setActiveSide(side);
+        document.querySelector<HTMLElement>(`[data-testid="file-pane-${side}"]`)?.focus();
+      }
+    };
+    window.addEventListener(FILEMANAGER_FOCUS_SIDE_EVENT, handleFocusSide);
+    return () => window.removeEventListener(FILEMANAGER_FOCUS_SIDE_EVENT, handleFocusSide);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

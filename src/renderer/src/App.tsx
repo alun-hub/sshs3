@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Clock, Cloud, Columns2, Folder, Plus, Rows2, Server, Square, Terminal } from 'lucide-react';
-import { SftpButton } from './components/SftpButton';
+import { Columns2, Rows2, Square, Terminal } from 'lucide-react';
 import { TabBar, type TabItem, type TabType } from './components/TabBar';
 import { BrandLogo } from './components/BrandLogo';
+import { LandingView } from './components/LandingView';
 import { PaneTreeView } from './components/PaneTree';
 import { SmartcardPinModal } from './components/SmartcardPinModal';
 import { TouchPresenceBanner } from './components/TouchPresenceBanner';
@@ -42,7 +42,14 @@ import {
 } from './lib/paneTree';
 import { extractHostnameFromTitle, isSameHost } from './lib/terminalTitle';
 import { comboFromKeyboardEvent } from './lib/shortcuts';
-import { Kbd } from './components/ui/Kbd';
+import {
+  findAdjacentPane,
+  getTopmostOverlay,
+  navigateInOverlay,
+  type PaneRect,
+  type NavigationDirection,
+} from './lib/spatialNavigation';
+import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
 
 export interface AppTab extends TabItem {
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
@@ -137,6 +144,7 @@ export const App: React.FC = () => {
     if (el) el.inert = anyTopLevelModalOpen;
   }, [anyTopLevelModalOpen]);
   const [dirSyncRunProfile, setDirSyncRunProfile] = useState<DirectorySyncProfile | null>(null);
+  const [tabBarFocused, setTabBarFocused] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [connectTarget, setConnectTarget] = useState<{ tabId: string; paneId?: string } | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -205,6 +213,7 @@ export const App: React.FC = () => {
 
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
+    setTabBarFocused(false);
   };
 
   const handleCloseTab = useCallback((id: string) => {
@@ -310,6 +319,7 @@ export const App: React.FC = () => {
   }, []);
 
   const handleSelectPane = useCallback((tabId: string, paneId: string) => {
+    setTabBarFocused(false);
     setTabs((prev) =>
       prev.map((t) => {
         if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
@@ -672,9 +682,81 @@ export const App: React.FC = () => {
     void window.multissh.settingsSave?.(newSettings);
   };
 
+  const focusActiveTabContent = useCallback(() => {
+    setTabBarFocused(false);
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) {
+      const landingBtn = document.querySelector<HTMLElement>(
+        '[data-testid="landing-view"] button:not([disabled])'
+      );
+      landingBtn?.focus();
+      return;
+    }
+    if (activeTab?.type === 'terminal') {
+      const targetPaneId =
+        activeTab.activePaneId || (activeTab.paneTree ? getFirstLeafId(activeTab.paneTree) : null);
+      if (targetPaneId) {
+        handleSelectPane(activeTab.id, targetPaneId);
+        const xtermTextarea = document.querySelector<HTMLTextAreaElement>(
+          `[data-testid="terminal-pane-${targetPaneId}"] .xterm-helper-textarea`
+        );
+        if (xtermTextarea) {
+          xtermTextarea.focus();
+        } else {
+          const paneBtn = document.querySelector<HTMLElement>(
+            `[data-testid="unconnected-pane-${targetPaneId}"] button:not([disabled]), [data-testid="terminal-pane-${targetPaneId}"] button:not([disabled])`
+          );
+          paneBtn?.focus();
+        }
+      }
+    } else if (activeTab?.type === 'filemanager') {
+      window.dispatchEvent(
+        new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'left' })
+      );
+    }
+  }, [tabs, activeTabId, handleSelectPane]);
+
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // If TabBar is focused and user presses Enter or Escape: descend into active tab
+      if (tabBarFocused && (e.key === 'Enter' || e.key === 'Escape')) {
+        e.preventDefault();
+        e.stopPropagation();
+        focusActiveTabContent();
+        return;
+      }
+
+      // Activate custom elements (or checkboxes) on Enter when inside an active modal/menu
+      if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+        const overlay = getTopmostOverlay();
+        if (overlay) {
+          const active = document.activeElement as HTMLElement | null;
+          if (active && overlay.contains(active)) {
+            if (active.tagName === 'TEXTAREA') return;
+
+            if (active.tagName === 'INPUT') {
+              const input = active as HTMLInputElement;
+              if (input.type === 'checkbox' || input.type === 'radio') {
+                e.preventDefault();
+                e.stopPropagation();
+                input.click();
+                return;
+              }
+              return;
+            }
+
+            // Custom non-button elements (e.g. div[role="button"], div[role="menuitem"], div[tabindex])
+            if (active.tagName !== 'BUTTON' && active.tagName !== 'A') {
+              e.preventDefault();
+              e.stopPropagation();
+              active.click();
+              return;
+            }
+          }
+        }
+      }
+
       const target = e.target as HTMLElement | null;
       // xterm.js captures keyboard input via a hidden <textarea class="xterm-helper-textarea">
       // inside every terminal pane. Treating it as a real input field would swallow every
@@ -688,7 +770,23 @@ export const App: React.FC = () => {
           target.tagName === 'SELECT' ||
           target.isContentEditable);
 
-      if (isInput) return;
+      if (isInput) {
+        // If an overlay (modal, menu) is open, allow spatial navigation shortcuts
+        // so the user can navigate out of inputs (e.g. search box) with Ctrl+Shift+Arrows
+        const rawCombo = comboFromKeyboardEvent(e);
+        if (rawCombo) {
+          const combo = rawCombo.toLowerCase().replace(/^cmd\+/, 'ctrl+');
+          const isNav =
+            combo === (settings.shortcuts?.navigateLeft || DEFAULT_SHORTCUTS.navigateLeft).toLowerCase() ||
+            combo === (settings.shortcuts?.navigateRight || DEFAULT_SHORTCUTS.navigateRight).toLowerCase() ||
+            combo === (settings.shortcuts?.navigateUp || DEFAULT_SHORTCUTS.navigateUp).toLowerCase() ||
+            combo === (settings.shortcuts?.navigateDown || DEFAULT_SHORTCUTS.navigateDown).toLowerCase();
+
+          if (!isNav) return;
+        } else {
+          return;
+        }
+      }
 
       // Quick Connect shortcut Ctrl+K (not Ctrl+Shift+K, which is a separate,
       // user-rebindable shortcut — see 'searchInFiles' below).
@@ -769,6 +867,124 @@ export const App: React.FC = () => {
             case 'splitHorizontal':
               if (activeTabId) handleSplitPane(activeTabId, 'column');
               break;
+            case 'navigateLeft':
+            case 'navigateRight':
+            case 'navigateUp':
+            case 'navigateDown': {
+              const dir: NavigationDirection =
+                actionId === 'navigateLeft'
+                  ? 'left'
+                  : actionId === 'navigateRight'
+                    ? 'right'
+                    : actionId === 'navigateUp'
+                      ? 'up'
+                      : 'down';
+
+              // If an overlay (modal dialog, menu popup) is active, navigate within its elements
+              const overlay = getTopmostOverlay();
+              if (overlay) {
+                const handled = navigateInOverlay(overlay, dir);
+                if (handled) break;
+              }
+
+              if (anyTopLevelModalOpen || overlay) break;
+
+              if (tabBarFocused) {
+                if (dir === 'left' && tabs.length > 1) {
+                  const idx = tabs.findIndex((t) => t.id === activeTabId);
+                  const currentIdx = idx >= 0 ? idx : 0;
+                  const prevIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+                  setActiveTabId(tabs[prevIdx].id);
+                } else if (dir === 'right' && tabs.length > 1) {
+                  const idx = tabs.findIndex((t) => t.id === activeTabId);
+                  const currentIdx = idx >= 0 ? idx : 0;
+                  const nextIdx = (currentIdx + 1) % tabs.length;
+                  setActiveTabId(tabs[nextIdx].id);
+                } else if (dir === 'down') {
+                  focusActiveTabContent();
+                }
+                break;
+              }
+
+              const activeTab = tabs.find((t) => t.id === activeTabId);
+              if (!activeTab) {
+                if (dir === 'up') {
+                  setTabBarFocused(true);
+                  (document.activeElement as HTMLElement | null)?.blur?.();
+                } else {
+                  const landing = document.querySelector<HTMLElement>('[data-testid="landing-view"]');
+                  if (landing) navigateInOverlay(landing, dir);
+                }
+                break;
+              }
+
+              if (activeTab.type === 'filemanager') {
+                if (dir === 'up') {
+                  setTabBarFocused(true);
+                  (document.activeElement as HTMLElement | null)?.blur?.();
+                } else if (dir === 'left') {
+                  window.dispatchEvent(
+                    new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'left' })
+                  );
+                } else if (dir === 'right') {
+                  window.dispatchEvent(
+                    new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'right' })
+                  );
+                }
+                break;
+              }
+
+              if (activeTab.type === 'terminal' && activeTab.paneTree) {
+                const paneEls = Array.from(
+                  document.querySelectorAll<HTMLElement>('[data-testid^="terminal-pane-"]')
+                ).filter((el) => el.offsetParent !== null);
+
+                const paneRects: PaneRect[] = paneEls.map((el) => {
+                  const id = el.getAttribute('data-testid')!.replace('terminal-pane-', '');
+                  const r = el.getBoundingClientRect();
+                  return {
+                    id,
+                    rect: {
+                      left: r.left,
+                      top: r.top,
+                      right: r.right,
+                      bottom: r.bottom,
+                      width: r.width,
+                      height: r.height,
+                    },
+                  };
+                });
+
+                const currentPaneId = activeTab.activePaneId || paneRects[0]?.id || '';
+                const target = findAdjacentPane(paneRects, currentPaneId, dir);
+
+                if (target?.type === 'to_tab_bar') {
+                  setTabBarFocused(true);
+                  (document.activeElement as HTMLElement | null)?.blur?.();
+                } else if (target?.type === 'pane') {
+                  handleSelectPane(activeTab.id, target.id);
+                  const xterm = document.querySelector<HTMLTextAreaElement>(
+                    `[data-testid="terminal-pane-${target.id}"] .xterm-helper-textarea`
+                  );
+                  if (xterm) {
+                    xterm.focus();
+                  } else {
+                    const btn = document.querySelector<HTMLElement>(
+                      `[data-testid="unconnected-pane-${target.id}"] button:not([disabled]), [data-testid="terminal-pane-${target.id}"] button:not([disabled])`
+                    );
+                    btn?.focus();
+                  }
+                } else if (!target || paneRects.length <= 1) {
+                  const currentUnconnected = document.querySelector<HTMLElement>(
+                    `[data-testid="unconnected-pane-${currentPaneId}"]`
+                  );
+                  if (currentUnconnected) {
+                    navigateInOverlay(currentUnconnected, dir);
+                  }
+                }
+              }
+              break;
+            }
             case 'nextPane':
             case 'prevPane': {
               const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -837,7 +1053,7 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [tabs, activeTabId, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane, handleSelectPane]);
+  }, [tabs, activeTabId, tabBarFocused, anyTopLevelModalOpen, settings.shortcuts, handleNewTab, handleCloseTab, handleSplitPane, handleSelectPane, focusActiveTabContent]);
 
   return (
     <ConfirmProvider>
@@ -874,6 +1090,7 @@ export const App: React.FC = () => {
           <TabBar
             tabs={tabs}
             activeTabId={activeTabId}
+            tabBarFocused={tabBarFocused}
             onSelectTab={handleSelectTab}
             onCloseTab={handleCloseTab}
             onNewTab={handleNewTab}
@@ -890,232 +1107,24 @@ export const App: React.FC = () => {
       </header>
 
       {/* Main Content Area: non-active tabs stay mounted with display: none */}
-      <main className="relative flex flex-1 w-full overflow-hidden bg-app">
+      <main
+        onMouseDownCapture={() => setTabBarFocused(false)}
+        className="relative flex flex-1 w-full overflow-hidden bg-app"
+      >
         {!sessionLoaded ? null : (
           <>
         {(tabs.length === 0 || activeTabId === '') && (
-          <div className="flex flex-1 flex-col items-center justify-center p-6 text-txt-secondary animate-in fade-in duration-200">
-            <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-6">
-              {/* Brand Header — smaller once there's real usage history to
-                  show instead (UX audit finding #14): the onboarding-sized
-                  logo/tagline made sense on a first run, not on the
-                  thousandth time this screen shows up between tabs. */}
-              <div className="flex flex-col items-center space-y-3">
-                <BrandLogo className={recentSSH.length > 0 ? 'h-20 w-auto' : 'h-32 w-auto'} />
-                <h1
-                  className={
-                    recentSSH.length > 0
-                      ? 'text-base font-bold tracking-tight'
-                      : 'text-3xl font-extrabold tracking-tight'
-                  }
-                >
-                  <span className="text-txt-primary">ssh</span>
-                  <span className="text-brand-s3">S3</span>
-                </h1>
-                {recentSSH.length === 0 && (
-                  <p className="text-xs text-txt-muted max-w-md">
-                    Multi-session SSH & SFTP client with dual-pane file management, Kubernetes support and cloud sync.
-                  </p>
-                )}
-              </div>
-
-              {/* Recent Connections — reuses the same lastUsedAt tracking
-                  Connection Manager's own "Recently Used" section shows, so
-                  getting back to what you were doing doesn't require opening
-                  that modal first. */}
-              {recentSSH.length > 0 && (
-                <div className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 text-left">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-sky-400">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>Recent Connections</span>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {recentSSH.map((profile) => (
-                      <div
-                        key={profile.id}
-                        onDoubleClick={() => handleConnectRecentSSH(profile)}
-                        title="Double-click to connect"
-                        className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-xs font-medium text-txt-primary">{profile.name}</div>
-                          <div className="truncate text-xs text-txt-muted">
-                            {profile.username}@{profile.host}:{profile.port ?? 22}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleConnectRecentSSH(profile);
-                            }}
-                            className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                          >
-                            Connect
-                          </button>
-                          <SftpButton authType={profile.authType} onOpen={() => handleConnectSFTP(profile)} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Cards — demoted to a slim icon row once Recent
-                  Connections above is doing the primary job this screen
-                  needs to do; full-sized only for a first run with no
-                  history yet. */}
-              {recentSSH.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(122px,1fr))] gap-2 w-full text-left">
-                  <button
-                    type="button"
-                    onClick={handleQuickStartTerminal}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all"
-                  >
-                    <Terminal className="h-4 w-4 text-sky-400 shrink-0" />
-                    <span className="truncate text-xs font-medium text-txt-primary">New Terminal</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleNewTab('filemanager')}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all"
-                  >
-                    <Folder className="h-4 w-4 text-amber-400 shrink-0" />
-                    <span className="truncate text-xs font-medium text-txt-primary">File Manager</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleOpenProfiles}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all"
-                  >
-                    <Server className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span className="truncate text-xs font-medium text-txt-primary">Connections</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSyncBootstrapModalOpen(true)}
-                    className="flex items-center gap-2 rounded-lg border border-border-subtle bg-app-card px-2 py-2 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all"
-                  >
-                    <Cloud className="h-4 w-4 text-purple-400 shrink-0" />
-                    <span className="truncate text-xs font-medium text-txt-primary">Cloud Sync</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNewProfile}
-                    className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2 py-2 hover:bg-sky-500/20 transition-all"
-                  >
-                    <Plus className="h-4 w-4 text-sky-400 shrink-0" />
-                    <span className="truncate text-xs font-medium text-txt-primary">New Profile</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
-                  <button
-                    type="button"
-                    onClick={handleQuickStartTerminal}
-                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-sky-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                  >
-                    <div className="flex items-start justify-between w-full">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
-                        <Terminal className="h-5 w-5" />
-                      </div>
-                      <Kbd>Ctrl+Shift+T</Kbd>
-                    </div>
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
-                        Open New Terminal
-                      </div>
-                      <div className="text-xs text-txt-muted mt-0.5">
-                        Launch a local shell — pick a saved connection or type user@host for SSH
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleNewTab('filemanager')}
-                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-amber-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                  >
-                    <div className="flex items-start justify-between w-full">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
-                        <Folder className="h-5 w-5" />
-                      </div>
-                      <Kbd>Ctrl+Shift+F</Kbd>
-                    </div>
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
-                        New File Manager
-                      </div>
-                      <div className="text-xs text-txt-muted mt-0.5">
-                        Dual-pane explorer for SFTP, S3 and local drives
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenProfiles}
-                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-emerald-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                  >
-                    <div className="flex items-start justify-between w-full">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
-                        <Server className="h-5 w-5" />
-                      </div>
-                      <Kbd>Ctrl+Shift+P</Kbd>
-                    </div>
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
-                        Saved Connections
-                      </div>
-                      <div className="text-xs text-txt-muted mt-0.5">
-                        Manage profiles, SSH keys and credentials
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSyncBootstrapModalOpen(true)}
-                    className="group flex flex-col justify-between rounded-xl border border-border-subtle bg-app-card p-4 hover:border-purple-500/40 hover:bg-app-surface-hover transition-all shadow-sm"
-                  >
-                    <div className="flex items-start justify-between w-full">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25 group-hover:scale-105 transition-all">
-                        <Cloud className="h-5 w-5" />
-                      </div>
-                      <span className="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-2xs font-medium text-purple-400">
-                        Cloud Sync
-                      </span>
-                    </div>
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold text-txt-primary group-hover:text-purple-400 transition-colors">
-                        Import / Cloud Sync
-                      </div>
-                      <div className="text-xs text-txt-muted mt-0.5">
-                        Restore configuration and profiles from cloud storage
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleNewProfile}
-                    className="sm:col-span-2 flex items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-2.5 text-xs font-semibold text-txt-primary hover:bg-sky-500/20 transition-all"
-                  >
-                    <Plus className="h-4 w-4 text-sky-400" />
-                    New Profile
-                  </button>
-                </div>
-              )}
-
-              {/* Keyboard shortcuts reminder */}
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-txt-muted pt-2 border-t border-divider w-full">
-                <span><Kbd variant="plain">Ctrl+Tab</Kbd> Cycle tabs</span>
-                <span><Kbd variant="plain">Ctrl+W</Kbd> Close tab</span>
-                <span><Kbd variant="plain">Ctrl+,</Kbd> Settings</span>
-              </div>
-            </div>
-          </div>
+          <LandingView
+            recentSSH={recentSSH}
+            onConnectRecentSSH={handleConnectRecentSSH}
+            onConnectSFTP={handleConnectSFTP}
+            onQuickStartTerminal={handleQuickStartTerminal}
+            onNewTab={handleNewTab}
+            onOpenProfiles={handleOpenProfiles}
+            onNewProfile={handleNewProfile}
+            onOpenSyncBootstrap={() => setSyncBootstrapModalOpen(true)}
+            onNavigateToTabBar={() => setTabBarFocused(true)}
+          />
         )}
         {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -1211,6 +1220,7 @@ export const App: React.FC = () => {
                         onCloseTab={() => handleCloseTab(tab.id)}
                         onTitleChange={(paneId, title) => handlePaneTitleChange(tab.id, paneId, title)}
                         onOpenRemotePath={handleOpenRemotePath}
+                        onNavigateToTabBar={() => setTabBarFocused(true)}
                         initialCwdPaneId={rootLeaf?.id}
                         initialCwd={tab.initialCwd}
                       />

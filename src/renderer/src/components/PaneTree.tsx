@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Columns2, RefreshCw, Rows2, Terminal, X } from 'lucide-react';
+import { Columns2, RefreshCw, Rows2, X } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { K8sLogView } from './K8sLogView';
 import { collectLeaves } from '../lib/paneTree';
@@ -8,95 +8,7 @@ import type { AppSettings } from '@shared/types/settings';
 import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import type { LocalShellType, SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
-
-/** Buttons for launching a local shell (no SSH connection) in a pane. */
-const LocalTerminalButtons: React.FC<{
-  platform: string;
-  onOpen: (shellType?: LocalShellType, wslDistro?: string) => void;
-}> = ({
-  platform,
-  onOpen,
-}) => {
-  const [pwshAvailable, setPwshAvailable] = React.useState(false);
-  const [wslAvailable, setWslAvailable] = React.useState(false);
-  const [wslDistros, setWslDistros] = React.useState<string[]>([]);
-
-  React.useEffect(() => {
-    if (platform !== 'win32') return;
-    void window.multissh.detectLocalShells?.().then((res) => {
-      setPwshAvailable(Boolean(res?.pwsh));
-      setWslAvailable(Boolean(res?.wsl));
-      setWslDistros(res?.wslDistros || []);
-    });
-  }, [platform]);
-
-  if (platform !== 'win32') {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpen()}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        Open Local Terminal
-      </button>
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-1.5">
-      <button
-        type="button"
-        onClick={() => onOpen('cmd')}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        Command Prompt
-      </button>
-      <button
-        type="button"
-        onClick={() => onOpen('powershell')}
-        className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-      >
-        PowerShell
-      </button>
-      {pwshAvailable && (
-        <button
-          type="button"
-          onClick={() => onOpen('pwsh')}
-          title="PowerShell 7+ (pwsh.exe)"
-          className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-        >
-          PowerShell 7
-        </button>
-      )}
-      {wslAvailable &&
-        (wslDistros.length > 1 ? (
-          wslDistros.map((distro) => (
-            <button
-              key={distro}
-              type="button"
-              onClick={() => onOpen('wsl', distro)}
-              title={`Windows Subsystem for Linux (${distro})`}
-              className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-            >
-              {distro}
-            </button>
-          ))
-        ) : (
-          <button
-            type="button"
-            onClick={() => onOpen('wsl', wslDistros[0])}
-            title={
-              wslDistros[0]
-                ? `Windows Subsystem for Linux (${wslDistros[0]})`
-                : 'Windows Subsystem for Linux (wsl.exe)'
-            }
-            className="rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors"
-          >
-            {wslDistros[0] ? `WSL (${wslDistros[0]})` : 'WSL'}
-          </button>
-        ))}
-    </div>
-  );
-};
+import { UnconnectedPanePlaceholder } from './UnconnectedPanePlaceholder';
 
 export interface PaneTreeViewProps {
   node: PaneNode;
@@ -116,6 +28,7 @@ export interface PaneTreeViewProps {
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
   initialCwd?: string;
+  onNavigateToTabBar?: () => void;
 }
 
 interface PaneTreeLayoutProps extends PaneTreeViewProps {
@@ -278,6 +191,7 @@ const PaneLeafContent: React.FC<{
   onTitleChange?: (paneId: string, title: string) => void;
   onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
   onSelectPane: (paneId: string) => void;
+  onNavigateToTabBar?: () => void;
 }> = ({
   leaf,
   isActive,
@@ -293,6 +207,7 @@ const PaneLeafContent: React.FC<{
   onTitleChange,
   onOpenRemotePath,
   onSelectPane,
+  onNavigateToTabBar,
 }) => {
   const isSole = totalPanes === 1;
   const perfEnabled = settings.perfMetricsEnabled === true;
@@ -372,40 +287,17 @@ const PaneLeafContent: React.FC<{
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
     );
-  } else if (isSole) {
-    content = (
-      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-app text-txt-muted">
-        <Terminal className="h-10 w-10 text-txt-muted" />
-        <p className="text-sm text-txt-secondary">No connection selected for this tab</p>
-        <button
-          type="button"
-          onClick={() => onChangeConnection(leaf.id)}
-          className="rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-        >
-          Select SSH Connection
-        </button>
-        <LocalTerminalButtons
-          platform={platform}
-          onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
-        />
-      </div>
-    );
   } else {
     content = (
-      <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 text-txt-muted bg-app">
-        <p className="text-xs text-txt-secondary">No connection selected</p>
-        <button
-          type="button"
-          onClick={() => onChangeConnection(leaf.id)}
-          className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-        >
-          Select SSH Connection
-        </button>
-        <LocalTerminalButtons
-          platform={platform}
-          onOpen={(shellType, wslDistro) => onOpenLocalTerminal(leaf.id, shellType, wslDistro)}
-        />
-      </div>
+      <UnconnectedPanePlaceholder
+        leafId={leaf.id}
+        isSole={isSole}
+        isActive={isActive}
+        platform={platform}
+        onChangeConnection={onChangeConnection}
+        onOpenLocalTerminal={onOpenLocalTerminal}
+        onNavigateToTabBar={onNavigateToTabBar}
+      />
     );
   }
 
@@ -483,6 +375,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onTitleChange={props.onTitleChange}
             onOpenRemotePath={props.onOpenRemotePath}
             onSelectPane={props.onSelectPane}
+            onNavigateToTabBar={props.onNavigateToTabBar}
           />,
           container,
           leaf.id

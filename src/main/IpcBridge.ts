@@ -513,16 +513,13 @@ export class IpcBridge {
 
         let ptyOptions = options.ptyOptions;
         if (options.local) {
-          // Point a local shell at whichever smartcard is currently cached under
-          // 'agent-global' PIN caching, so a plain `ssh`/`ssh-add` typed by hand
-          // there can use the card without asking for the PIN again — matching
-          // the "shared by every terminal and profile using it" promise of that
-          // mode. Falls through to SSHPtyManager's own AgentLifecycleManager
-          // fallback when no card is cached; an explicit caller-supplied
-          // env.SSH_AUTH_SOCK (none today) would still win over both.
-          const globalAgentSocket = this.globalSmartcardAgents.values().next().value?.socketPath;
-          if (globalAgentSocket) {
-            ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
+          const settings = await this.settingsStore.getSettings().catch(() => null);
+          const agentMode = settings?.localTerminalAgentMode ?? 'auto';
+          if (agentMode === 'auto' || agentMode === 'app-managed') {
+            const globalAgentSocket = this.globalSmartcardAgents.values().next().value?.socketPath;
+            if (globalAgentSocket) {
+              ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
+            }
           }
         }
 
@@ -1267,6 +1264,7 @@ export class IpcBridge {
         // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
         await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
         this.scheduleAutoSync();
+        void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
       }
     );
 
@@ -1276,8 +1274,13 @@ export class IpcBridge {
         await this.profileStore.deleteSSH(id);
         await this.storageRegistry.disconnect?.(`sftp-${id}`);
         this.scheduleAutoSync();
+        void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
       }
     );
+
+    this.registerHandler(IPC_CHANNELS.SSH_CONFIG_SYNC, async () => {
+      return await this.profileSyncService.syncProfilesToLocalSshConfig();
+    });
 
     this.registerHandler(
       IPC_CHANNELS.PROFILES_SAVE_S3,
@@ -1417,6 +1420,9 @@ export class IpcBridge {
         }
 
         this.scheduleAutoSync();
+        if (sshList.length > 0) {
+          void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
+        }
         return { count };
       }
     );
