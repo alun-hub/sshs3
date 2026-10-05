@@ -198,7 +198,6 @@ export const IPC_CHANNELS = {
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
-  SSH_CONFIG_SYNC: 'ssh-config:sync',
 
   // Install public keys in a host's authorized_keys (ssh-copy-id)
   SSH_LIST_PUBLIC_KEYS: 'ssh:list-public-keys',
@@ -618,7 +617,6 @@ export interface MultiSSHApi {
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;
-  sshConfigSync(): Promise<{ changed: boolean; count: number; path: string }>;
 
   // Git & Git Provider Integration
   gitFetchPublicKeys(request: FetchGitKeysRequest): Promise<FetchGitKeysResult>;

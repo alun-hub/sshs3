@@ -297,7 +297,7 @@ async function initializeApp(): Promise<void> {
     applyLoginShellEnv().then(() => {
       void SystemTrustStore.init();
     }),
-    ipcBridge.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {}),
+    ipcBridge.profileSyncService.autoSyncLocalSshConfig(),
   ]).catch((err) => {
     console.warn('[sshs3] Background initialization error:', err);
   });

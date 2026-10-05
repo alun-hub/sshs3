@@ -80,6 +80,10 @@ const FONT_PRESETS: FontPreset[] = [
 
 type SettingsCategory = 'general' | 'terminal' | 'performance' | 'files' | 'security' | 'sync' | 'shortcuts' | 'kubernetes' | 'git';
 
+/** 'app-managed' is a legacy alias of 'auto' that the select no longer offers. */
+const normalizeAgentMode = (mode: AppSettings['localTerminalAgentMode']) =>
+  !mode || mode === 'app-managed' ? 'auto' : mode;
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   open,
   currentSettings,
@@ -148,8 +152,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [fileManagerGitIntegration, setFileManagerGitIntegration] = useState<boolean>(
     currentSettings.fileManagerGitIntegration ?? true
   );
+  const [autoSyncLocalSshConfig, setAutoSyncLocalSshConfig] = useState<boolean>(
+    currentSettings.autoSyncLocalSshConfig ?? true
+  );
   const [localTerminalAgentMode, setLocalTerminalAgentMode] = useState<'auto' | 'system' | 'app-managed' | 'disabled'>(
-    currentSettings.localTerminalAgentMode ?? 'auto'
+    normalizeAgentMode(currentSettings.localTerminalAgentMode)
   );
   const [poolManagerOpen, setPoolManagerOpen] = useState(false);
 
@@ -222,7 +229,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSmartcardUnlockAtStartup(currentSettings.smartcardUnlockAtStartup ?? false);
       setSmartcardLibPath(currentSettings.smartcardLibPath ?? '');
       setFileManagerGitIntegration(currentSettings.fileManagerGitIntegration ?? true);
-      setLocalTerminalAgentMode(currentSettings.localTerminalAgentMode ?? 'auto');
+      setLocalTerminalAgentMode(normalizeAgentMode(currentSettings.localTerminalAgentMode));
+      setAutoSyncLocalSshConfig(currentSettings.autoSyncLocalSshConfig ?? true);
       setX11ServerMode(currentSettings.x11ServerMode ?? 'auto');
       setX11ServerPath(currentSettings.x11ServerPath ?? '');
       setX11ServerArgs(currentSettings.x11ServerArgs ?? '');
@@ -371,6 +379,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       smartcardLibPath: smartcardLibPath || undefined,
       fileManagerGitIntegration,
       localTerminalAgentMode,
+      autoSyncLocalSshConfig,
       x11ServerMode,
       x11ServerPath,
       x11ServerArgs,
@@ -953,11 +962,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }
                       className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
                     >
-                      <option value="auto">Auto (Smartcard / app-managed agent if active, else inherit system/login shell)</option>
+                      <option value="auto">Auto (Active smartcard agent, else system/login shell agent, else sshs3-managed)</option>
                       <option value="system">System Only (Inherit system or login shell SSH_AUTH_SOCK)</option>
-                      <option value="app-managed">App Managed (Use sshs3-managed agent or active smartcard)</option>
                       <option value="disabled">Disabled (Do not set SSH_AUTH_SOCK)</option>
                     </select>
+                  </div>
+
+                  <div className="space-y-2 pt-3 border-t border-divider">
+                    <label className="flex items-start gap-2 text-xs text-txt-primary">
+                      <input
+                        type="checkbox"
+                        checked={autoSyncLocalSshConfig}
+                        onChange={(e) => setAutoSyncLocalSshConfig(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        Keep <code>~/.ssh/config</code> in sync with saved SSH profiles
+                        <span className="block text-txt-muted">
+                          Maintains a managed block so plain <code>ssh &lt;profile&gt;</code> works in any terminal.
+                          Only the sshs3 block is touched.
+                        </span>
+                      </span>
+                    </label>
                   </div>
 
                   {/* Local X11 Server (Windows GUI Forwarding) */}

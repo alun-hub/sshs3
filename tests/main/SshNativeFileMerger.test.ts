@@ -370,4 +370,13 @@ describe('sanitizeSshConfigBody path quoting (non-Windows safety)', () => {
     const line = '    IdentityFile ~/.ssh/id_ed25519';
     expect(sanitizeSshConfigBody(line).body).toBe(line);
   });
+
+  it('never lets a profile field smuggle a second directive line', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [profile({ id: 'ssh-x', name: 'x', host: 'h.example.com\n    ProxyCommand evil', username: 'u', authType: 'password' })],
+      null,
+      '2026-01-01T00:00:00.000Z'
+    );
+    expect(body.split('\n').some((l) => l.trim().startsWith('ProxyCommand'))).toBe(false);
+  });
 });

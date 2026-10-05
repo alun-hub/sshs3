@@ -1264,7 +1264,7 @@ export class IpcBridge {
         // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
         await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
         this.scheduleAutoSync();
-        void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
+        void this.profileSyncService.autoSyncLocalSshConfig();
       }
     );
 
@@ -1274,13 +1274,9 @@ export class IpcBridge {
         await this.profileStore.deleteSSH(id);
         await this.storageRegistry.disconnect?.(`sftp-${id}`);
         this.scheduleAutoSync();
-        void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
+        void this.profileSyncService.autoSyncLocalSshConfig();
       }
     );
-
-    this.registerHandler(IPC_CHANNELS.SSH_CONFIG_SYNC, async () => {
-      return await this.profileSyncService.syncProfilesToLocalSshConfig();
-    });
 
     this.registerHandler(
       IPC_CHANNELS.PROFILES_SAVE_S3,
@@ -1421,7 +1417,7 @@ export class IpcBridge {
 
         this.scheduleAutoSync();
         if (sshList.length > 0) {
-          void this.profileSyncService.syncProfilesToLocalSshConfig().catch(() => {});
+          void this.profileSyncService.autoSyncLocalSshConfig();
         }
         return { count };
       }
@@ -2550,6 +2546,7 @@ export class IpcBridge {
       IPC_CHANNELS.SETTINGS_SAVE,
       async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
         const saved = await this.settingsStore.saveSettings(settings);
+        if (settings.autoSyncLocalSshConfig === true) void this.profileSyncService.autoSyncLocalSshConfig();
         this.scheduleAutoSync();
         return saved;
       }

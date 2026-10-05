@@ -985,4 +985,38 @@ describe('compareWithRemote', () => {
       await fs.rm(harness.dir, { recursive: true, force: true });
     }
   });
+
+  it('autoSyncLocalSshConfig honors the autoSyncLocalSshConfig setting', async () => {
+    const harness = await makeHarness(generateSalt(), generateSalt());
+    try {
+      await harness.profileStore.saveSSH({ id: 'ssh-auto', name: 'auto', host: 'a.example.com', username: 'u', authType: 'password' });
+
+      await harness.settingsStore.saveSettings({ autoSyncLocalSshConfig: false });
+      await harness.sync.autoSyncLocalSshConfig();
+      await expect(fs.readFile(harness.sshConfigPath, 'utf8')).rejects.toThrow();
+
+      await harness.settingsStore.saveSettings({ autoSyncLocalSshConfig: true });
+      await harness.sync.autoSyncLocalSshConfig();
+      expect(await fs.readFile(harness.sshConfigPath, 'utf8')).toContain('Host auto');
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('serializes concurrent syncProfilesToLocalSshConfig calls', async () => {
+    const harness = await makeHarness(generateSalt(), generateSalt());
+    try {
+      await harness.profileStore.saveSSH({ id: 'ssh-c', name: 'conc', host: 'c.example.com', username: 'u', authType: 'password' });
+      const results = await Promise.all([
+        harness.sync.syncProfilesToLocalSshConfig(),
+        harness.sync.syncProfilesToLocalSshConfig(),
+        harness.sync.syncProfilesToLocalSshConfig(),
+      ]);
+      expect(results.filter((r) => r.changed)).toHaveLength(1);
+      const content = await fs.readFile(harness.sshConfigPath, 'utf8');
+      expect(content.match(/Host conc/g)).toHaveLength(1);
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
 });

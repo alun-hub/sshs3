@@ -542,8 +542,6 @@ export const api: MultiSSHApi = {
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.SSH_AGENT_STATUS),
-  sshConfigSync: (): Promise<{ changed: boolean; count: number; path: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.SSH_CONFIG_SYNC),
 
   // Git & Git Provider Integration
   gitFetchPublicKeys: (request: FetchGitKeysRequest): Promise<FetchGitKeysResult> =>

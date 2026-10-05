@@ -143,8 +143,10 @@ export interface AppSettings {
   perfMetricsIntervalSec?: number;
   /** Enable Git status and Git operations (pull, clone) in file manager/SFTP panes. On by default. */
   fileManagerGitIntegration?: boolean;
-  /** SSH Agent integration for local shell terminals. 'auto' = use active smartcard/app agent or inherit login shell env. */
+  /** SSH Agent integration for local shell terminals. 'auto' = active smartcard agent, else the inherited system/login-shell agent, else an sshs3-managed one ('app-managed' is a legacy alias of 'auto'). */
   localTerminalAgentMode?: 'auto' | 'system' | 'app-managed' | 'disabled';
+  /** Keep the sshs3-managed block in ~/.ssh/config in sync with saved SSH profiles. On by default. */
+  autoSyncLocalSshConfig?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -178,4 +180,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   k8sDebugImages: [...DEFAULT_K8S_DEBUG_IMAGES],
   fileManagerGitIntegration: true,
   localTerminalAgentMode: 'auto',
+  autoSyncLocalSshConfig: true,
 };

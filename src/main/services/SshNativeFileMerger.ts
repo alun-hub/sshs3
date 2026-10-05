@@ -142,9 +142,12 @@ export function writeManagedSshConfigBlock(fileContent: string, block: ManagedSs
 const HOST_ALIAS_UNSAFE_CHARS = /[\s*?![\],]+/g;
 
 function sshConfigHostAlias(profile: SSHConnectionConfig): string {
-  const base = (profile.name?.trim() || profile.host || profile.id).replace(HOST_ALIAS_UNSAFE_CHARS, '-');
+  const base = oneLine(profile.name?.trim() || profile.host || profile.id).replace(HOST_ALIAS_UNSAFE_CHARS, '-');
   return base.replace(/^-+|-+$/g, '') || profile.id;
 }
+
+/** Collapses line breaks so a profile field can never smuggle an extra directive line into the config. */
+const oneLine = (value: string | number): string => String(value).replace(/[\r\n]+/g, ' ');
 
 /**
  * Builds one `Host` entry's directive lines for a single SSH profile.
@@ -158,19 +161,19 @@ function buildSshConfigHostBlock(
   alias: string,
   aliasById: Map<string, string>
 ): string {
-  const lines = [`Host ${alias}`, `    HostName ${profile.host}`];
+  const lines = [`Host ${alias}`, `    HostName ${oneLine(profile.host)}`];
 
   if (profile.port && profile.port !== 22) {
-    lines.push(`    Port ${profile.port}`);
+    lines.push(`    Port ${oneLine(profile.port)}`);
   }
   if (profile.username) {
-    lines.push(`    User ${profile.username}`);
+    lines.push(`    User ${oneLine(profile.username)}`);
   }
   if (profile.authType === 'privateKey' && profile.privateKeyPath) {
-    lines.push(`    IdentityFile ${profile.privateKeyPath}`);
+    lines.push(`    IdentityFile ${oneLine(profile.privateKeyPath)}`);
   }
   if (profile.authType === 'smartcard' && profile.pkcs11LibPath) {
-    lines.push(`    PKCS11Provider ${profile.pkcs11LibPath}`);
+    lines.push(`    PKCS11Provider ${oneLine(profile.pkcs11LibPath)}`);
   }
   const jumpAlias = profile.proxyJumpProfileId ? aliasById.get(profile.proxyJumpProfileId) : undefined;
   if (jumpAlias) {
@@ -179,7 +182,7 @@ function buildSshConfigHostBlock(
     // already stable and native ssh can chain through it exactly like the app does.
     lines.push(`    ProxyJump ${jumpAlias}`);
   } else if (profile.proxyJump) {
-    lines.push(`    ProxyJump ${profile.proxyJump}`);
+    lines.push(`    ProxyJump ${oneLine(profile.proxyJump)}`);
   }
   if (profile.forwardAgent) {
     lines.push('    ForwardAgent yes');
@@ -188,20 +191,20 @@ function buildSshConfigHostBlock(
     lines.push('    Compression yes');
   }
   if (profile.serverAliveInterval) {
-    lines.push(`    ServerAliveInterval ${profile.serverAliveInterval}`);
+    lines.push(`    ServerAliveInterval ${oneLine(profile.serverAliveInterval)}`);
   }
   if (profile.ciphers) {
-    lines.push(`    Ciphers ${profile.ciphers}`);
+    lines.push(`    Ciphers ${oneLine(profile.ciphers)}`);
   }
   if (profile.kexAlgorithms) {
-    lines.push(`    KexAlgorithms ${profile.kexAlgorithms}`);
+    lines.push(`    KexAlgorithms ${oneLine(profile.kexAlgorithms)}`);
   }
   if (profile.macs) {
-    lines.push(`    MACs ${profile.macs}`);
+    lines.push(`    MACs ${oneLine(profile.macs)}`);
   }
   for (const [key, value] of Object.entries(profile.extraOptions ?? {})) {
     if (!key.trim() || !value.trim()) continue;
-    lines.push(`    ${key} ${value}`);
+    lines.push(`    ${oneLine(key)} ${oneLine(value)}`);
   }
 
   return lines.join('\n');

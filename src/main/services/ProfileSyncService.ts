@@ -576,6 +576,8 @@ export class ProfileSyncService {
 
   private readonly dirSyncProfileStore?: DirectorySyncProfileStore;
 
+  private sshConfigWriteQueue: Promise<unknown> = Promise.resolve();
+
   constructor(
     private readonly profileStore: ProfileStore,
     private readonly dotfilePoolStore: DotfilePoolStore,
@@ -786,7 +788,7 @@ export class ProfileSyncService {
         await this.profileStore.replaceAll(merged);
         changedCategories.push('topology', 'credentials');
         if (sshResult.changed) {
-          void this.syncProfilesToLocalSshConfig().catch(() => {});
+          void this.autoSyncLocalSshConfig();
         }
       }
     }
@@ -1130,36 +1132,65 @@ export class ProfileSyncService {
    * use this feature don't get an empty stub block.
    */
   private async writeLocalSshNativePayload(sshConfigBlock: ManagedSshConfigBlock): Promise<void> {
-    const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
-    const currentBlock = parseManagedSshConfigBlock(currentContent);
-    const hasContent = sshConfigBlock.body.trim().length > 0;
-    if (!hasContent && currentBlock === null) return;
-    if (currentBlock && currentBlock.body === sshConfigBlock.body) return;
+    await this.enqueueSshConfigWrite(async () => {
+      const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+      const currentBlock = parseManagedSshConfigBlock(currentContent);
+      const hasContent = sshConfigBlock.body.trim().length > 0;
+      if (!hasContent && currentBlock === null) return;
+      if (currentBlock && currentBlock.body === sshConfigBlock.body) return;
 
-    const updated = writeManagedSshConfigBlock(currentContent, sshConfigBlock);
-    await this.writeLocalFile(this.sshConfigPath, updated);
+      const updated = writeManagedSshConfigBlock(currentContent, sshConfigBlock);
+      await this.writeLocalFile(this.sshConfigPath, updated);
+    });
+  }
+
+  /** Serializes read-modify-write cycles on ~/.ssh/config so concurrent triggers can't clobber each other. */
+  private enqueueSshConfigWrite<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.sshConfigWriteQueue.then(task);
+    this.sshConfigWriteQueue = result.then(
+      () => {},
+      () => {}
+    );
+    return result;
+  }
+
+  /**
+   * Fire-and-forget trigger used after profile changes and at startup. Honors the
+   * `autoSyncLocalSshConfig` setting (on by default) and logs failures instead of
+   * swallowing them.
+   */
+  public async autoSyncLocalSshConfig(): Promise<void> {
+    try {
+      const settings = await this.settingsStore.getSettings();
+      if (settings.autoSyncLocalSshConfig === false) return;
+      await this.syncProfilesToLocalSshConfig();
+    } catch (err) {
+      console.warn('[sshs3] Failed to sync profiles to ~/.ssh/config:', err instanceof Error ? err.message : err);
+    }
   }
 
   /**
    * Synchronizes saved SSH profiles directly to the local ~/.ssh/config managed block,
    * enabling native shell tab-completion and CLI ssh usage without requiring Remote Profile Sync.
    */
-  public async syncProfilesToLocalSshConfig(): Promise<{ changed: boolean; count: number; path: string }> {
-    const activeProfiles = (await this.profileStore.getProfiles()).ssh;
-    const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
-    const currentBlock = parseManagedSshConfigBlock(currentContent);
-    const generated = buildManagedSshConfigBlockFromProfiles(activeProfiles, currentBlock);
-    const hasContent = generated.body.trim().length > 0;
-    if (!hasContent && currentBlock === null) {
-      return { changed: false, count: 0, path: this.sshConfigPath };
-    }
-    if (currentBlock && currentBlock.body === generated.body) {
-      return { changed: false, count: activeProfiles.length, path: this.sshConfigPath };
-    }
+  public syncProfilesToLocalSshConfig(): Promise<{ changed: boolean; count: number; path: string }> {
+    return this.enqueueSshConfigWrite(async () => {
+      const activeProfiles = (await this.profileStore.getProfiles()).ssh;
+      const currentContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+      const currentBlock = parseManagedSshConfigBlock(currentContent);
+      const generated = buildManagedSshConfigBlockFromProfiles(activeProfiles, currentBlock);
+      const hasContent = generated.body.trim().length > 0;
+      if (!hasContent && currentBlock === null) {
+        return { changed: false, count: 0, path: this.sshConfigPath };
+      }
+      if (currentBlock && currentBlock.body === generated.body) {
+        return { changed: false, count: activeProfiles.length, path: this.sshConfigPath };
+      }
 
-    const updated = writeManagedSshConfigBlock(currentContent, generated);
-    await this.writeLocalFile(this.sshConfigPath, updated);
-    return { changed: true, count: activeProfiles.length, path: this.sshConfigPath };
+      const updated = writeManagedSshConfigBlock(currentContent, generated);
+      await this.writeLocalFile(this.sshConfigPath, updated);
+      return { changed: true, count: activeProfiles.length, path: this.sshConfigPath };
+    });
   }
 
   private async applySshNativePayload(
