@@ -158,6 +158,23 @@ describe('AgentLifecycleManager', () => {
     });
   });
 
+  describe('spawnPrivateAgent socketPath', () => {
+    it('pins the socket with -a when a path is given, and keeps the default args otherwise (non-Windows)', async () => {
+      if (process.platform === 'win32') return;
+      mockSpawnedAgent('/run/user/1000/sshs3/agent.sock', 12347);
+      const res = await AgentLifecycleManager.spawnPrivateAgent(undefined, {
+        socketPath: '/run/user/1000/sshs3/agent.sock',
+      });
+      expect(res.socketPath).toBe('/run/user/1000/sshs3/agent.sock');
+      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual(['-a', '/run/user/1000/sshs3/agent.sock', '-s']);
+
+      vi.mocked(mockedExecFile).mockClear();
+      mockSpawnedAgent('/tmp/random.sock', 12348);
+      await AgentLifecycleManager.spawnPrivateAgent();
+      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual(['-s']);
+    });
+  });
+
   describe('spawnPrivateAgent extraEnv', () => {
     it('merges extraEnv into the spawned ssh-agent process\'s own environment (non-Windows)', async () => {
       if (process.platform === 'win32') return;

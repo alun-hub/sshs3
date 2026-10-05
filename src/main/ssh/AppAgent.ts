@@ -1,0 +1,226 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { AgentLifecycleManager } from './AgentLifecycleManager';
+import { AskpassServer, type AskpassPromptHandler } from '../smartcard/AskpassServer';
+import { listAgentIdentities, type AgentIdentity } from '../smartcard/SmartcardAgentLoader';
+
+const execFileAsync = promisify(execFile);
+
+/** sun_path is 104 bytes on macOS/BSD and 108 on Linux; stay below both. */
+const MAX_UNIX_SOCKET_PATH = 100;
+
+export interface AppAgentHandlers {
+  /** Answers PIN/passphrase prompts raised by the agent itself (e.g. a later `verify-required` FIDO2 signature). */
+  promptHandler?: AskpassPromptHandler;
+  /** Called when the agent asks the user to touch a key. */
+  onPresence?: (prompt: string) => void;
+}
+
+/** Directory holding the app agent's socket; created 0700 and verified before use. */
+export function resolveAppAgentDir(): string {
+  const runtimeDir = process.env.XDG_RUNTIME_DIR;
+  if (runtimeDir && path.isAbsolute(runtimeDir)) {
+    return path.join(runtimeDir, 'sshs3');
+  }
+  const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'user';
+  return path.join(os.tmpdir(), `sshs3-${uid}`);
+}
+
+/**
+ * Creates `dir` (mode 0700) if missing and refuses to use it unless it is a real directory, owned by
+ * this user and closed to group/others. The fallback location lives under a shared temp directory,
+ * where another user could otherwise pre-create the path (or a symlink to somewhere they control)
+ * and have the agent socket land in a place they can reach.
+ */
+async function ensureSecureDir(dir: string): Promise<void> {
+  try {
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+  const st = await fs.promises.lstat(dir);
+  if (st.isSymbolicLink() || !st.isDirectory()) {
+    throw new Error(`Refusing to use ${dir} for the app ssh-agent: not a plain directory`);
+  }
+  if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
+    throw new Error(`Refusing to use ${dir} for the app ssh-agent: owned by another user`);
+  }
+  if ((st.mode & 0o077) !== 0) {
+    throw new Error(`Refusing to use ${dir} for the app ssh-agent: accessible by group/others`);
+  }
+}
+
+/**
+ * One app-wide ssh-agent for the 'agent-global' PIN caching mode: every unlocked smartcard / FIDO2
+ * key is loaded into it, and terminals and SFTP connections use its (stable) socket instead of one
+ * private agent per device. The agent process is a normal private agent (registered in
+ * AgentRegistry, killed on exit); this class adds the stable socket, the askpass server that lives as
+ * long as the agent, and lock/list/remove. It does not load keys itself.
+ *
+ * On Windows the "agent" is the shared OpenSSH service pipe (which also holds identities this app
+ * did not load), so locking only evicts the PKCS#11 libraries registered via `noteLoadedLibrary`.
+ */
+export class AppAgent {
+  private pid = 0;
+  private socketPath: string | null = null;
+  private askpass: AskpassServer | null = null;
+  private ensuring: Promise<string> | null = null;
+  private loadedLibs = new Set<string>();
+  private handlers: AppAgentHandlers = {};
+  private onExit?: () => void;
+
+  /** Handlers used for prompts the agent raises after keys were loaded; can be changed at any time. */
+  public setHandlers(handlers: AppAgentHandlers): void {
+    this.handlers = handlers;
+  }
+
+  /** Called when the agent was found dead on a later ensure(), so the owner can drop state tied to its keys. */
+  public setOnExit(callback: (() => void) | undefined): void {
+    this.onExit = callback;
+  }
+
+  public getSocketPath(): string | null {
+    return this.socketPath;
+  }
+
+  /** Records that a PKCS#11 library was loaded, so Windows can evict just it (see class comment). */
+  public noteLoadedLibrary(pkcs11LibPath: string): void {
+    this.loadedLibs.add(pkcs11LibPath);
+  }
+
+  /** Starts the agent if needed and returns its socket path. Concurrent callers share one start. */
+  public ensure(): Promise<string> {
+    if (!this.ensuring) {
+      this.ensuring = this.doEnsure().finally(() => {
+        this.ensuring = null;
+      });
+    }
+    return this.ensuring;
+  }
+
+  private async doEnsure(): Promise<string> {
+    if (this.socketPath) {
+      if (await AgentLifecycleManager.probeSocket(this.socketPath)) {
+        return this.socketPath;
+      }
+      console.warn('[app-agent] agent is no longer reachable; restarting');
+      await this.discardDeadAgent();
+    }
+
+    if (process.platform === 'win32') {
+      // The shared OpenSSH service; no stable path of our own and no askpass env to inject.
+      const { pid, socketPath } = await AgentLifecycleManager.spawnPrivateAgent();
+      this.pid = pid;
+      this.socketPath = socketPath;
+      return socketPath;
+    }
+
+    const dir = resolveAppAgentDir();
+    await ensureSecureDir(dir);
+    const wanted = await this.chooseSocketPath(dir);
+    if (wanted.length > MAX_UNIX_SOCKET_PATH) {
+      throw new Error(`App ssh-agent socket path is too long (${wanted.length} > ${MAX_UNIX_SOCKET_PATH}): ${wanted}`);
+    }
+
+    const askpass = new AskpassServer({
+      promptHandler: (prompt, retry) => this.handlers.promptHandler?.(prompt, retry) ?? '',
+      onPresence: (prompt) => this.handlers.onPresence?.(prompt),
+    });
+    await askpass.start();
+    try {
+      const { pid, socketPath } = await AgentLifecycleManager.spawnPrivateAgent(askpass.getEnv(), {
+        socketPath: wanted,
+      });
+      this.pid = pid;
+      this.socketPath = socketPath;
+      this.askpass = askpass;
+      console.log(`[app-agent] started pid=${pid}, socket=${socketPath}`);
+      return socketPath;
+    } catch (err) {
+      await askpass.stop().catch(() => {});
+      throw err;
+    }
+  }
+
+  /** Picks `agent.sock`, or `agent-<pid>.sock` when another live app instance already owns it. Removes stale sockets. */
+  private async chooseSocketPath(dir: string): Promise<string> {
+    for (const name of ['agent.sock', `agent-${process.pid}.sock`]) {
+      const candidate = path.join(dir, name);
+      let st: fs.Stats;
+      try {
+        st = await fs.promises.lstat(candidate);
+      } catch {
+        return candidate;
+      }
+      if (!st.isSocket()) {
+        throw new Error(`Refusing to replace ${candidate}: not a socket`);
+      }
+      if (await AgentLifecycleManager.probeSocket(candidate)) continue;
+      await fs.promises.unlink(candidate);
+      return candidate;
+    }
+    throw new Error(`No free app ssh-agent socket in ${dir}`);
+  }
+
+  private async discardDeadAgent(): Promise<void> {
+    const { pid, socketPath, askpass } = this;
+    this.pid = 0;
+    this.socketPath = null;
+    this.askpass = null;
+    this.loadedLibs.clear();
+    await askpass?.stop().catch(() => {});
+    if (pid > 0) {
+      AgentLifecycleManager.killPrivateAgent(pid);
+      if (socketPath) await fs.promises.unlink(socketPath).catch(() => {});
+    }
+    this.onExit?.();
+  }
+
+  public async list(): Promise<AgentIdentity[]> {
+    return this.socketPath ? listAgentIdentities(this.socketPath) : [];
+  }
+
+  /** Removes one PKCS#11 library's keys from the agent, leaving everything else loaded. */
+  public async remove(pkcs11LibPath: string): Promise<void> {
+    if (!this.socketPath) return;
+    await AgentLifecycleManager.unloadCard(this.socketPath, pkcs11LibPath);
+    this.loadedLibs.delete(pkcs11LibPath);
+  }
+
+  /** Forgets every key (the "lock" action) without stopping the agent, so its socket stays valid for open terminals. */
+  public async lockAll(): Promise<void> {
+    const socketPath = this.socketPath;
+    if (!socketPath) return;
+    if (process.platform === 'win32') {
+      for (const lib of this.loadedLibs) {
+        await AgentLifecycleManager.unloadCard(socketPath, lib);
+      }
+    } else {
+      await execFileAsync('ssh-add', ['-D'], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } }).catch(() => {
+        // Best-effort: nothing loaded, or the agent already went away.
+      });
+    }
+    this.loadedLibs.clear();
+  }
+
+  /** Stops the agent and its askpass server and removes the socket. Safe to call repeatedly. */
+  public async shutdown(): Promise<void> {
+    const pid = this.pid;
+    if (process.platform === 'win32' && this.socketPath) {
+      await this.lockAll();
+    }
+    const { socketPath, askpass } = this;
+    this.pid = 0;
+    this.socketPath = null;
+    this.askpass = null;
+    this.loadedLibs.clear();
+    await askpass?.stop().catch(() => {});
+    if (pid > 0) {
+      AgentLifecycleManager.killPrivateAgent(pid);
+      if (socketPath) await fs.promises.unlink(socketPath).catch(() => {});
+    }
+  }
+}

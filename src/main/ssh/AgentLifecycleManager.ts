@@ -280,7 +280,10 @@ export class AgentLifecycleManager {
    * Windows, which reuses the shared system agent service rather than
    * spawning its own process.
    */
-  public static async spawnPrivateAgent(extraEnv?: Record<string, string>): Promise<{ pid: number; socketPath: string }> {
+  public static async spawnPrivateAgent(
+    extraEnv?: Record<string, string>,
+    options?: { socketPath?: string }
+  ): Promise<{ pid: number; socketPath: string }> {
     if (process.platform === 'win32') {
       const pipe = '\\\\.\\pipe\\openssh-ssh-agent';
       if (await this.probeSocket(pipe)) {
@@ -292,7 +295,10 @@ export class AgentLifecycleManager {
       );
     }
 
-    const { stdout } = await execFileAsync('ssh-agent', ['-s'], {
+    // `-a` pins the socket to a caller-chosen path (the app-wide agent needs a stable one); the
+    // default random path under the user's agent/tmp directory is used otherwise.
+    const agentArgs = options?.socketPath ? ['-a', options.socketPath, '-s'] : ['-s'];
+    const { stdout } = await execFileAsync('ssh-agent', agentArgs, {
       env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
     const sockMatch = stdout.match(/SSH_AUTH_SOCK=([^;]+);/);
