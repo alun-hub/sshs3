@@ -30,13 +30,17 @@ for (const file of docFiles) {
 if (fs.existsSync(targetSiteDir)) {
   console.log(`\nSyncing screenshots to site...`);
   const srcScreenshots = path.join(rootDir, 'docs', 'screenshots');
+  // The landing page references /img/<name>, the generated docs pages /img/docs/<name>: keep both in step.
   const destScreenshots = path.resolve(targetSiteDir, '..', 'img');
+  const destDocsScreenshots = path.join(destScreenshots, 'docs');
   if (fs.existsSync(srcScreenshots) && fs.existsSync(destScreenshots)) {
+    fs.mkdirSync(destDocsScreenshots, { recursive: true });
     const images = fs.readdirSync(srcScreenshots).filter(f => f.endsWith('.png') || f.endsWith('.svg'));
     for (const img of images) {
       fs.copyFileSync(path.join(srcScreenshots, img), path.join(destScreenshots, img));
+      fs.copyFileSync(path.join(srcScreenshots, img), path.join(destDocsScreenshots, img));
     }
-    console.log(`Synced ${images.length} images to ${destScreenshots}`);
+    console.log(`Synced ${images.length} images to ${destScreenshots} and ${destDocsScreenshots}`);
   }
   console.log(`✅ Documentation source and site assets are in sync.`);
 } else {
