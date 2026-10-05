@@ -70,8 +70,9 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
       continue;
     }
     // ssh_config directives are "Key value" or "Key=value", optionally
-    // preceded by whitespace; keys are case-insensitive.
-    const directive = trimmed.split(/[\s=]+/, 1)[0]?.toLowerCase();
+    // preceded by whitespace; keys are case-insensitive. OpenSSH also accepts a
+    // double-quoted keyword ("ProxyCommand" cmd), so quotes are stripped before the lookup.
+    const directive = trimmed.split(/[\s=]+/, 1)[0]?.replace(/["']/g, '').toLowerCase();
     if (directive && BLOCKED_SSH_DIRECTIVES.has(directive)) {
       removedLines.push(line);
       continue;

@@ -379,4 +379,13 @@ describe('sanitizeSshConfigBody path quoting (non-Windows safety)', () => {
     );
     expect(body.split('\n').some((l) => l.trim().startsWith('ProxyCommand'))).toBe(false);
   });
+
+  it('sanitizer also blocks quoted directive keywords', () => {
+    const { body, removedLines } = sanitizeSshConfigBody(
+      ['Host a', '    "ProxyCommand" evil', "    'LocalCommand' evil", '    "Port" 22'].join('\n')
+    );
+    expect(removedLines).toHaveLength(2);
+    expect(body).toContain('"Port" 22');
+    expect(body).not.toMatch(/evil/);
+  });
 });
