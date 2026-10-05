@@ -1675,7 +1675,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-xs text-txt-muted leading-tight">
                           Enter the PIN once per {IS_WINDOWS ? 'card' : 'card or key'}, shared by every terminal and profile using it, for as long as
                           the app runs. Most convenient, least strict — anything in the app can use the {IS_WINDOWS ? 'card' : 'card/key'} until
-                          you quit or lock it manually below.{IS_WINDOWS ? ' On Windows the card is held by the shared ssh-agent service, so other programs using that agent can use it too.' : ''}
+                          you quit or lock it manually below.{IS_WINDOWS ? ' On Windows the card is held by the shared ssh-agent service, so other programs using that agent can use it too.' : ' Everything unlocked lives in one app-wide ssh-agent, which local terminals use (Settings → Local Terminal SSH Agent) — also tabs opened before you unlocked.'}
                         </span>
                       </label>
                     </div>
@@ -1683,8 +1683,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {smartcardAuthMode === 'agent-global' && (
                       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">
                         <p className="text-xs text-amber-300/90 leading-tight">
-                          {IS_WINDOWS ? 'Cached smartcards stay' : 'Cached smartcard and security key agents stay'} unlocked until the app quits. Use the lock icon in the top bar
-                          to lock them on demand without quitting.
+                          {IS_WINDOWS ? 'Cached smartcards stay' : 'Cached smartcards and security keys stay'} unlocked until the app quits. Use the lock icon in the top bar
+                          to lock them on demand without quitting{IS_WINDOWS ? '' : ' (the agent keeps running, so open terminals keep working once you unlock again)'}.
                         </p>
                         <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary border-t border-amber-500/20 pt-2.5">
                           <input

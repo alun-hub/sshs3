@@ -714,6 +714,32 @@ describe('IpcBridge', () => {
         readCertsSpy.mockRestore();
       });
 
+      it('does not load (or prompt for) a second module that exposes a card already in the agent', async () => {
+        const second = '/usr/lib/libykcs11.so';
+        const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockImplementation(async (lib) =>
+          // p11-kit-proxy exposes the card's auth key; libykcs11 exposes the same key plus another one.
+          lib === pkcs11LibPath
+            ? new Map([[certDetails.fingerprint, certDetails]])
+            : new Map([
+                [certDetails.fingerprint, certDetails],
+                ['SHA256:second', { ...certDetails, fingerprint: 'SHA256:second' }],
+              ])
+        );
+        fakeAppAgent.addPkcs11.mockImplementation(async () => {
+          fakeAppAgent.identities = [identity];
+        });
+
+        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        const socket = await (bridge as any).getOrLoadGlobalSmartcardAgent(second, () => Promise.resolve('1234'));
+
+        expect(fakeAppAgent.addPkcs11).toHaveBeenCalledTimes(1);
+        expect(socket).toBe('/tmp/app-agent.sock');
+        expect((bridge as any).globalCards.get(second).fingerprints).toEqual(
+          new Set([certDetails.fingerprint, 'SHA256:second'])
+        );
+        readCertsSpy.mockRestore();
+      });
+
       it('groups the single app agent\'s identities per card and puts security keys under FIDO2', async () => {
         const otherIdentity = { bits: '256', fingerprint: 'SHA256:other', comment: 'other card', keyType: 'ECDSA' };
         const skIdentity = { bits: '256', fingerprint: 'SHA256:sk', comment: 'sk', keyType: 'ED25519-SK' };

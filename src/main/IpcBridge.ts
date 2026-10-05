@@ -2004,6 +2004,18 @@ export class IpcBridge {
       }
       await this.appAgent.ensure();
       const before = new Set((await this.appAgent.list()).map((i) => i.fingerprint));
+      // The same physical card is often reachable through several modules (p11-kit-proxy proxies
+      // libykcs11, OpenSC, …). If one of this module's keys is already in the agent, loading it again
+      // would prompt for the PIN a second time and open a second PKCS#11 session against the same
+      // token (which most readers reject), for keys the agent already holds.
+      const alreadyLoaded = Array.from(certs.keys()).filter((fingerprint) => before.has(fingerprint));
+      if (alreadyLoaded.length > 0) {
+        console.log(
+          `[smartcard] getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
+        );
+        this.globalCards.set(pkcs11LibPath, { fingerprints: new Set(certs.keys()) });
+        return await this.appAgent.ensure();
+      }
       await this.addSmartcardToAppAgentWithPresence(
         pkcs11LibPath,
         pinHandler,
