@@ -220,6 +220,27 @@ describe('TabBar Component', () => {
       expect(await screen.findByText(/Nothing to unlock/)).toBeInTheDocument();
     });
 
+    it('shows neither button while the cached list is still loading', async () => {
+      renderWithSmartcard({
+        onUnlockSmartcard: vi.fn(),
+        onListCachedSmartcards: () => new Promise(() => {}),
+      });
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.queryByTestId('smartcard-unlock-now-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('smartcard-lock-all-btn')).not.toBeInTheDocument();
+    });
+
+    it('reports a failed lock instead of leaving an unhandled rejection', async () => {
+      renderWithSmartcard({
+        onListCachedSmartcards: () => Promise.resolve([{ pkcs11LibPath: '/usr/lib/opensc-pkcs11.so', identities: [] }]),
+        onLockSmartcard: () => Promise.reject(new Error('agent gone')),
+      });
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      fireEvent.click(await screen.findByTestId('smartcard-lock-all-btn'));
+      expect(await screen.findByText('Could not lock the smartcards')).toBeInTheDocument();
+    });
+
     it('hides Unlock Now when no unlock handler is provided', () => {
       renderWithSmartcard();
       fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));

@@ -2188,9 +2188,13 @@ export class IpcBridge {
     // decides whether an unlock was started, same as before — callers of this IPC handler don't
     // wait for the PIN to actually be entered, only concurrent session creation does.
     let resolveGuard!: () => void;
-    const guardPromise = new Promise<void>((resolve) => {
+    const ownGuard = new Promise<void>((resolve) => {
       resolveGuard = resolve;
     });
+    // An unlock that is still waiting for the PIN must keep gating terminal/SFTP creation even if
+    // another unlock request (e.g. clicking Unlock Now again) finishes sooner: chain, don't replace.
+    const previousGuard = this.startupUnlockPromise;
+    const guardPromise = previousGuard ? Promise.all([previousGuard, ownGuard]).then(() => undefined) : ownGuard;
     this.startupUnlockPromise = guardPromise;
     void guardPromise.finally(() => {
       if (this.startupUnlockPromise === guardPromise) {
@@ -2219,6 +2223,8 @@ export class IpcBridge {
     onUnlockStarted: (unlockPromise: Promise<void>) => void,
     force = false
   ): Promise<{ started: boolean }> {
+    // An explicit retry must not be refused by the cooldown a just-failed (wrong/cancelled PIN) attempt set.
+    if (force) this.globalSmartcardAgentFailures.clear();
     const settings = await this.settingsStore.getSettings();
     if ((!settings.smartcardUnlockAtStartup && !force) || (settings.smartcardAuthMode ?? 'always-prompt') !== 'agent-global') {
       return { started: false };

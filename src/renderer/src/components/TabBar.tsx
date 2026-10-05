@@ -73,6 +73,26 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [lockingSmartcard, setLockingSmartcard] = useState(false);
   const [unlockingSmartcard, setUnlockingSmartcard] = useState(false);
   const [lockFeedback, setLockFeedback] = useState<string | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    },
+    []
+  );
+  /** Shows the message `action` resolves to for a few seconds (or `failure` if it rejects), then runs `done`. */
+  const runWithFeedback = async (action: Promise<string>, failure: string, done: () => void): Promise<void> => {
+    setLockFeedback(null);
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    try {
+      setLockFeedback(await action);
+    } catch {
+      setLockFeedback(failure);
+    } finally {
+      done();
+      feedbackTimerRef.current = setTimeout(() => setLockFeedback(null), 4000);
+    }
+  };
 
   const [isSmartcardMenuOpen, setIsSmartcardMenuOpen] = useState(false);
   const smartcardMenuRef = useRef<HTMLDivElement>(null);
@@ -421,29 +441,24 @@ export const TabBar: React.FC<TabBarProps> = ({
                   </ul>
                 )}
 
-                {/* One toggle: Lock while something is unlocked, Unlock when nothing is. */}
-                {cachedAgents && cachedAgents.length === 0 && onUnlockSmartcard && (
+                {/* One toggle: Lock while something is unlocked, Unlock when nothing is. Hidden while the list loads. */}
+                {!loadingCachedAgents && cachedAgents && cachedAgents.length === 0 && onUnlockSmartcard && (
                   <button
                     type="button"
                     data-testid="smartcard-unlock-now-btn"
                     disabled={unlockingSmartcard}
                     onClick={() => {
                       setUnlockingSmartcard(true);
-                      setLockFeedback(null);
-                      void onUnlockSmartcard()
-                        .then(({ started }) => {
-                          setLockFeedback(
-                            started
-                              ? 'Unlocking — enter your PIN when asked'
-                              : 'Nothing to unlock: no smartcard or security key detected, or already unlocked'
-                          );
+                      void runWithFeedback(
+                        onUnlockSmartcard().then(({ started }) => {
                           setIsSmartcardMenuOpen(false);
-                        })
-                        .catch(() => setLockFeedback('Could not start the unlock'))
-                        .finally(() => {
-                          setUnlockingSmartcard(false);
-                          setTimeout(() => setLockFeedback(null), 4000);
-                        });
+                          return started
+                            ? 'Unlocking — enter your PIN when asked'
+                            : 'Nothing to unlock: already unlocked or being unlocked, or no smartcard/security key found (if several PKCS#11 drivers are installed, pick one in Settings)';
+                        }),
+                        'Could not start the unlock',
+                        () => setUnlockingSmartcard(false)
+                      );
                     }}
                     className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition-colors disabled:opacity-40"
                   >
@@ -452,28 +467,24 @@ export const TabBar: React.FC<TabBarProps> = ({
                   </button>
                 )}
 
-                {cachedAgents && cachedAgents.length > 0 && (
+                {!loadingCachedAgents && cachedAgents && cachedAgents.length > 0 && (
                   <button
                     type="button"
                     data-testid="smartcard-lock-all-btn"
                     disabled={lockingSmartcard}
                     onClick={() => {
                       setLockingSmartcard(true);
-                      setLockFeedback(null);
-                      void onLockSmartcard?.()
-                        .then(({ locked }) => {
-                          setLockFeedback(
-                            locked > 0
-                              ? `Smartcard cache cleared — ${locked} cached agent${locked === 1 ? '' : 's'} locked`
-                              : 'No cached smartcard agents to clear'
-                          );
+                      void runWithFeedback(
+                        (onLockSmartcard?.() ?? Promise.resolve({ locked: 0 })).then(({ locked }) => {
                           setCachedAgents([]);
                           setIsSmartcardMenuOpen(false);
-                        })
-                        .finally(() => {
-                          setLockingSmartcard(false);
-                          setTimeout(() => setLockFeedback(null), 4000);
-                        });
+                          return locked > 0
+                            ? `Smartcard cache cleared — ${locked} cached agent${locked === 1 ? '' : 's'} locked`
+                            : 'No cached smartcard agents to clear';
+                        }),
+                        'Could not lock the smartcards',
+                        () => setLockingSmartcard(false)
+                      );
                     }}
                     className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
                   >

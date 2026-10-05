@@ -613,6 +613,48 @@ describe('IpcBridge', () => {
         readCertsSpy.mockRestore();
       });
 
+      it('the on-demand Unlock ignores the cooldown a just-failed attempt set', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: false, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockResolvedValue(new Map());
+        fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {}));
+        (bridge as any).globalSmartcardAgentFailures.set('/usr/lib/opensc-pkcs11.so', Date.now());
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: true });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fakeAppAgent.addPkcs11).toHaveBeenCalledTimes(1);
+
+        detectSpy.mockRestore();
+        readCertsSpy.mockRestore();
+      });
+
+      it('a second unlock request does not release the guard that a pending PIN prompt still holds', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: false, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockResolvedValue(new Map());
+        fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {})); // PIN prompt never answered
+
+        await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW);
+        await new Promise((resolve) => setImmediate(resolve));
+        // Same card again while the first is still loading: nothing new to start...
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: false });
+
+        // ...and terminals/SFTP created now must still wait for the first prompt.
+        let released = false;
+        void (bridge as any).startupUnlockPromise.then(() => {
+          released = true;
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(released).toBe(false);
+
+        detectSpy.mockRestore();
+        readCertsSpy.mockRestore();
+      });
+
       it('the on-demand Unlock still does nothing outside agent-global mode', async () => {
         mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'always-prompt' });
         expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: false });
