@@ -49,6 +49,11 @@ import {
 
 const lifecycle = vi.mocked(AgentLifecycleManager);
 
+// The Unix behavior (0700 directories, unix sockets, symlinks, modes) can't be exercised on a Windows host;
+// the Windows branch has its own tests below, which run everywhere.
+const onWindowsHost = process.platform === 'win32';
+const unixIt = it.skipIf(onWindowsHost);
+
 describe('AppAgent', () => {
   const origEnv = { ...process.env };
   const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
@@ -85,7 +90,7 @@ describe('AppAgent', () => {
     fs.rmSync(runtimeDir, { recursive: true, force: true });
   });
 
-  it('starts one agent on a stable socket in a private directory, sharing concurrent starts', async () => {
+  unixIt('starts one agent on a stable socket in a private directory, sharing concurrent starts', async () => {
     const agent = new AppAgent();
     const [a, b] = await Promise.all([agent.ensure(), agent.ensure()]);
 
@@ -100,7 +105,7 @@ describe('AppAgent', () => {
     expect(agent.getSocketPath()).toBe(a);
   });
 
-  it('reuses a running agent without respawning', async () => {
+  unixIt('reuses a running agent without respawning', async () => {
     const agent = new AppAgent();
     const first = await agent.ensure();
     lifecycle.probeSocket.mockResolvedValue(true);
@@ -108,7 +113,7 @@ describe('AppAgent', () => {
     expect(lifecycle.spawnPrivateAgent).toHaveBeenCalledTimes(1);
   });
 
-  it('restarts a dead agent, cleans up and notifies the owner', async () => {
+  unixIt('restarts a dead agent, cleans up and notifies the owner', async () => {
     const agent = new AppAgent();
     const onExit = vi.fn();
     agent.setOnExit(onExit);
@@ -124,14 +129,14 @@ describe('AppAgent', () => {
     expect(second).toBe(first);
   });
 
-  it('refuses a socket directory that others can access', async () => {
+  unixIt('refuses a socket directory that others can access', async () => {
     fs.mkdirSync(dir, { mode: 0o755 });
     fs.chmodSync(dir, 0o755);
     await expect(new AppAgent().ensure()).rejects.toThrow(/accessible by group\/others/);
     expect(lifecycle.spawnPrivateAgent).not.toHaveBeenCalled();
   });
 
-  it('refuses a socket directory that is a symlink', async () => {
+  unixIt('refuses a socket directory that is a symlink', async () => {
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-elsewhere-'));
     fs.symlinkSync(elsewhere, dir);
     try {
@@ -141,14 +146,14 @@ describe('AppAgent', () => {
     }
   });
 
-  it('refuses to replace a non-socket file at the socket path', async () => {
+  unixIt('refuses to replace a non-socket file at the socket path', async () => {
     fs.mkdirSync(dir, { mode: 0o700 });
     fs.writeFileSync(path.join(dir, 'agent.sock'), 'precious');
     await expect(new AppAgent().ensure()).rejects.toThrow(/not a socket/);
     expect(fs.readFileSync(path.join(dir, 'agent.sock'), 'utf8')).toBe('precious');
   });
 
-  it('removes a stale socket and takes agent.sock', async () => {
+  unixIt('removes a stale socket and takes agent.sock', async () => {
     fs.mkdirSync(dir, { mode: 0o700 });
     const sockPath = path.join(dir, 'agent.sock');
     const server = net.createServer();
@@ -165,7 +170,7 @@ describe('AppAgent', () => {
     }
   });
 
-  it('uses a pid-suffixed socket when another live instance owns agent.sock', async () => {
+  unixIt('uses a pid-suffixed socket when another live instance owns agent.sock', async () => {
     fs.mkdirSync(dir, { mode: 0o700 });
     const primary = path.join(dir, 'agent.sock');
     const server = net.createServer();
@@ -178,7 +183,7 @@ describe('AppAgent', () => {
     }
   });
 
-  it('routes agent-raised prompts to the handlers set by the owner', async () => {
+  unixIt('routes agent-raised prompts to the handlers set by the owner', async () => {
     const agent = new AppAgent();
     await agent.ensure();
     const { options } = askpassInstances[0];
@@ -193,7 +198,7 @@ describe('AppAgent', () => {
     expect(onPresence).toHaveBeenCalledWith('Confirm user presence');
   });
 
-  it('adds a PKCS#11 key to the agent without involving the agent\'s own askpass server, and tracks the library', async () => {
+  unixIt('adds a PKCS#11 key to the agent without involving the agent\'s own askpass server, and tracks the library', async () => {
     const agent = new AppAgent();
     const ownerPrompt = vi.fn().mockResolvedValue('owner');
     agent.setHandlers({ promptHandler: ownerPrompt });
@@ -234,20 +239,20 @@ describe('AppAgent', () => {
       return { agent, ownerPrompt, server: askpassInstances[0] as any };
     };
 
-    it('replays the PIN entered at load for a signature prompt, so only the touch is needed', async () => {
+    unixIt('replays the PIN entered at load for a signature prompt, so only the touch is needed', async () => {
       const { ownerPrompt, server } = await loadedAgent('123456');
       expect(await server.options.promptHandler(sigPrompt)).toBe('123456');
       expect(ownerPrompt).not.toHaveBeenCalled();
     });
 
-    it('never replays it for PIV or account-password prompts', async () => {
+    unixIt('never replays it for PIV or account-password prompts', async () => {
       const { ownerPrompt, server } = await loadedAgent('123456');
       await server.options.promptHandler('Enter passphrase for PKCS#11: ');
       await server.options.promptHandler("alun@host's password: ");
       expect(ownerPrompt).toHaveBeenCalledTimes(2);
     });
 
-    it('stops replaying and asks the user when the PIN is requested again right away (it was wrong)', async () => {
+    unixIt('stops replaying and asks the user when the PIN is requested again right away (it was wrong)', async () => {
       const { ownerPrompt, server } = await loadedAgent('123456');
       expect(await server.options.promptHandler(sigPrompt)).toBe('123456');
       expect(await server.options.promptHandler(sigPrompt)).toBe('from-user');
@@ -255,7 +260,7 @@ describe('AppAgent', () => {
       expect(ownerPrompt).toHaveBeenCalledTimes(2);
     });
 
-    it('forgets the PIN when locked, and never remembers one from a failed load', async () => {
+    unixIt('forgets the PIN when locked, and never remembers one from a failed load', async () => {
       const { agent, ownerPrompt, server } = await loadedAgent('123456');
       await agent.lockAll();
       expect(await server.options.promptHandler(sigPrompt)).toBe('from-user');
@@ -274,7 +279,7 @@ describe('AppAgent', () => {
     });
   });
 
-  it('keeps the agent when an add fails; adds run one at a time', async () => {
+  unixIt('keeps the agent when an add fails; adds run one at a time', async () => {
     const agent = new AppAgent();
     await agent.ensure();
     lifecycle.probeSocket.mockResolvedValue(true); // agent stays alive between adds
@@ -308,7 +313,7 @@ describe('AppAgent', () => {
       return Buffer.concat([len, a, Buffer.from(tag)]);
     };
 
-    it('writes only the requested keys as private .pub files, with the real fingerprint math', async () => {
+    unixIt('writes only the requested keys as private .pub files, with the real fingerprint math', async () => {
       const piv = blobFor('ecdsa-sha2-nistp256', 'piv');
       const sk = blobFor('sk-ssh-ed25519@openssh.com', 'fido');
       vi.mocked(getAgentIdentities).mockResolvedValue([
@@ -329,7 +334,7 @@ describe('AppAgent', () => {
       expect(line.trim().split('\n')).toHaveLength(1);
     });
 
-    it('returns nothing when the agent is not running, nothing is requested, or on Windows', async () => {
+    unixIt('returns nothing when the agent is not running, nothing is requested, or on Windows', async () => {
       const agent = new AppAgent();
       expect(await agent.writePublicKeyFiles(['SHA256:x'])).toEqual([]);
       await agent.ensure();
@@ -338,7 +343,7 @@ describe('AppAgent', () => {
       expect(await agent.writePublicKeyFiles(['SHA256:x'])).toEqual([]);
     });
 
-    it('removes the key files on shutdown', async () => {
+    unixIt('removes the key files on shutdown', async () => {
       const piv = blobFor('ssh-ed25519', 'k');
       vi.mocked(getAgentIdentities).mockResolvedValue([{ keyBlob: piv, comment: 'k' }] as any);
       const agent = new AppAgent();
@@ -349,7 +354,7 @@ describe('AppAgent', () => {
     });
   });
 
-  it('lists identities from the agent, and nothing before it started', async () => {
+  unixIt('lists identities from the agent, and nothing before it started', async () => {
     const agent = new AppAgent();
     expect(await agent.list()).toEqual([]);
     const sock = await agent.ensure();
@@ -358,7 +363,7 @@ describe('AppAgent', () => {
     expect(listAgentIdentities).toHaveBeenCalledWith(sock);
   });
 
-  it('lockAll runs ssh-add -D against the agent socket on Unix and keeps the agent running', async () => {
+  unixIt('lockAll runs ssh-add -D against the agent socket on Unix and keeps the agent running', async () => {
     const agent = new AppAgent();
     const sock = await agent.ensure();
     await agent.lockAll();
@@ -370,14 +375,14 @@ describe('AppAgent', () => {
     expect(agent.getSocketPath()).toBe(sock);
   });
 
-  it('remove evicts one library via ssh-add -e', async () => {
+  unixIt('remove evicts one library via ssh-add -e', async () => {
     const agent = new AppAgent();
     const sock = await agent.ensure();
     await agent.remove('/usr/lib/libykcs11.so');
     expect(lifecycle.unloadCard).toHaveBeenCalledWith(sock, '/usr/lib/libykcs11.so');
   });
 
-  it('shutdown stops askpass, kills the agent and removes the socket; calling it again is harmless', async () => {
+  unixIt('shutdown stops askpass, kills the agent and removes the socket; calling it again is harmless', async () => {
     const agent = new AppAgent();
     const sock = await agent.ensure();
     expect(fs.existsSync(sock)).toBe(true);

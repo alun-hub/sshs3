@@ -118,6 +118,10 @@ class MockWebContents {
   }
 }
 
+const hostPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+/** The app-agent code paths under test are Linux/macOS-only (on Windows the agent is the shared OpenSSH service). */
+const pretendUnix = () => Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+
 function makeFakeAppAgent() {
   const socketPath = '/tmp/app-agent.sock';
   const fake = {
@@ -140,6 +144,9 @@ function makeFakeAppAgent() {
 
 describe('IpcBridge', () => {
   let fakeAppAgent: ReturnType<typeof makeFakeAppAgent>;
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', hostPlatform);
+  });
   let syncAgentBlockSpy: ReturnType<typeof vi.fn>;
   let mockIpc: MockIpcMain;
   let mockWebContents: MockWebContents;
@@ -428,6 +435,7 @@ describe('IpcBridge', () => {
       };
 
       it('points unlocked PIV and FIDO2 profiles at the app agent, and removes the block on lock and dispose', async () => {
+        pretendUnix();
         mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
         mockProfileStore.getProfiles.mockResolvedValue({
           ssh: [
@@ -496,6 +504,7 @@ describe('IpcBridge', () => {
     });
 
     it('local shell terminals point SSH_AUTH_SOCK at the app agent under agent-global, even while it is empty', async () => {
+      pretendUnix();
       mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
 
       await mockIpc.invoke(IPC_CHANNELS.TERMINAL_CREATE, { local: true, ptyOptions: { cols: 80, rows: 24 } });
