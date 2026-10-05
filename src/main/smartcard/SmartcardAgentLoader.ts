@@ -65,7 +65,7 @@ export function isTextlessExitFailure(err: unknown): boolean {
 export function execWithPresenceDetection(
   bin: string,
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; timeoutMs: number },
+  opts: { env: NodeJS.ProcessEnv; timeoutMs: number; onOutput?: (text: string) => void },
   onPresenceRequested?: () => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -99,6 +99,7 @@ export function execWithPresenceDetection(
       const text = chunk.toString();
       console.log(`${logPrefix} [${streamName}]: ${JSON.stringify(text)}`);
       fullOutput += text;
+      opts.onOutput?.(text);
       if (presenceSignaled) return;
       presenceCheckBuf += text;
       if (PRESENCE_HINT_PATTERNS.some((re) => re.test(presenceCheckBuf))) {
@@ -166,6 +167,24 @@ export async function listAgentIdentities(socketPath: string): Promise<AgentIden
   return identities;
 }
 
+/**
+ * An already-running agent to add identities to, instead of spawning a throwaway one (see AppAgent).
+ * The agent is never killed here, even if the add fails — it may hold other keys.
+ */
+export interface AgentTarget {
+  pid: number;
+  socketPath: string;
+  /**
+   * The agent's long-lived askpass server. For the duration of the add its prompt/presence handlers
+   * are replaced with this load's; the caller must restore its own afterwards. When absent (the shared
+   * Windows service can't have an askpass env injected) a temporary server is used and stopped here.
+   */
+  askpassServer?: AskpassServer;
+}
+
+/** Output of a refused/failed `ssh-add` that nevertheless exits 0 (seen with "agent refused operation"). */
+const ADD_FAILURE_OUTPUT = /refused|fail|error|cannot|unable|invalid/i;
+
 export interface LoadIntoPrivateAgentOptions {
   retries?: number;
   retryDelayMs?: number;
@@ -231,9 +250,11 @@ export interface LoadIntoPrivateAgentOptions {
 async function runAddIntoPrivateAgent(
   addArgs: string[],
   promptHandler: AskpassPromptHandler,
-  options?: LoadIntoPrivateAgentOptions
+  options?: LoadIntoPrivateAgentOptions,
+  target?: AgentTarget
 ): Promise<LoadedSmartcardAgent> {
-  const keepAlive = options?.keepAskpassAliveForAgentLifetime ?? false;
+  // With a target agent the caller owns the agent and its askpass server's lifetime.
+  const keepAlive = !target && (options?.keepAskpassAliveForAgentLifetime ?? false);
   const logPrefix = `[smartcard] runAddIntoPrivateAgent(${addArgs.join(' ')})`;
 
   // Caches the PIN for the duration of THIS load's own retry loop only (so the user isn't asked
@@ -282,14 +303,26 @@ async function runAddIntoPrivateAgent(
     return inFlightPrompt;
   };
 
-  const askpassServer = new AskpassServer({
-    promptHandler: cachingPromptHandler,
-    onPresence: () => options?.onPresenceRequested?.(),
-  });
-  await askpassServer.start();
-  const { pid, socketPath } = await AgentLifecycleManager.spawnPrivateAgent(
-    keepAlive ? askpassServer.getEnv() : undefined
-  );
+  const sharedAskpass = target?.askpassServer;
+  const askpassServer =
+    sharedAskpass ??
+    new AskpassServer({
+      promptHandler: cachingPromptHandler,
+      onPresence: () => options?.onPresenceRequested?.(),
+    });
+  if (sharedAskpass) {
+    sharedAskpass.setPromptHandler(cachingPromptHandler);
+    sharedAskpass.setOnPresence(() => options?.onPresenceRequested?.());
+  } else {
+    await askpassServer.start();
+  }
+  const { pid, socketPath } =
+    target ?? (await AgentLifecycleManager.spawnPrivateAgent(keepAlive ? askpassServer.getEnv() : undefined));
+  // A shared agent may already hold other identities, so "the list is non-empty" proves nothing about
+  // this add: remember what was there to tell new identities apart.
+  const knownFingerprints = target
+    ? new Set((await listAgentIdentities(socketPath)).map((i) => i.fingerprint))
+    : undefined;
 
   const retries = options?.retries ?? 3;
   const retryDelayMs = options?.retryDelayMs ?? 1200;
@@ -313,14 +346,21 @@ async function runAddIntoPrivateAgent(
     }
 
     let lastErr: unknown;
+    let attemptOutput = '';
     for (let attempt = 0; attempt <= retries + maxPinAttempts; attempt++) {
       console.log(`${logPrefix}: attempt ${attempt + 1}`);
       try {
         // See Pkcs11Lock's doc comment: this is the one moment this process actually opens a
         // PKCS#11/FIDO2 session against the token, so it must never race a concurrent load for
         // a different session, or the global agent's cert read, against the same physical card.
+        attemptOutput = '';
         await withPkcs11Lock(() =>
-          execWithPresenceDetection(sshAddBin, addArgs, { env, timeoutMs: 60000 }, options?.onPresenceRequested)
+          execWithPresenceDetection(
+            sshAddBin,
+            addArgs,
+            { env, timeoutMs: 60000, onOutput: (text) => (attemptOutput += text) },
+            options?.onPresenceRequested
+          )
         );
         lastErr = undefined;
       } catch (err) {
@@ -333,7 +373,20 @@ async function runAddIntoPrivateAgent(
       // ssh-add's exit code isn't reliable when the card add is refused
       // (observed exiting 0 despite reporting "agent refused operation"), so
       // verify directly against the agent rather than trusting it.
-      const listRes = await execFileAsync(sshAddBin, ['-l'], { env }).catch(() => ({ stdout: '' }));
+      if (knownFingerprints) {
+        const now = await listAgentIdentities(socketPath);
+        const gotNewIdentity = now.some((i) => !knownFingerprints.has(i.fingerprint));
+        // Re-adding a key the agent already holds adds nothing new; accept that only if ssh-add itself
+        // reported no problem.
+        const alreadyLoaded = !lastErr && !ADD_FAILURE_OUTPUT.test(attemptOutput) && now.length > 0;
+        if (gotNewIdentity || alreadyLoaded) {
+          lastErr = undefined;
+          break;
+        }
+      }
+      const listRes = knownFingerprints
+        ? { stdout: '' }
+        : await execFileAsync(sshAddBin, ['-l'], { env }).catch(() => ({ stdout: '' }));
       // On Windows the "private" agent is really the single shared ssh-agent service, which can
       // already hold unrelated identities (e.g. a PIV key loaded earlier) — so a non-empty `-l`
       // proves nothing about *this* `-K` call, and would hide a real failure (observed: "Provider
@@ -411,11 +464,13 @@ async function runAddIntoPrivateAgent(
     }
     if (lastErr) throw lastErr;
   } catch (err) {
-    AgentLifecycleManager.killPrivateAgent(pid);
-    if (keepAlive) await askpassServer.stop();
+    if (!target) {
+      AgentLifecycleManager.killPrivateAgent(pid);
+      if (keepAlive) await askpassServer.stop();
+    }
     throw err;
   } finally {
-    if (!keepAlive) {
+    if (!keepAlive && !sharedAskpass) {
       await askpassServer.stop();
     }
   }
@@ -459,4 +514,26 @@ export async function loadFido2ResidentKeysIntoPrivateAgent(
   options?: LoadIntoPrivateAgentOptions
 ): Promise<LoadedSmartcardAgent> {
   return runAddIntoPrivateAgent(['-K'], promptHandler, { emptyFailureMeansNoIdentities: true, ...options });
+}
+
+/**
+ * Adds a PKCS#11 module's PIV key to an agent that is already running (see `AgentTarget`) instead of
+ * spawning a private one. Same retry/PIN/presence behavior as `loadSmartcardIntoPrivateAgent`.
+ */
+export async function addSmartcardToAgent(
+  target: AgentTarget,
+  pkcs11LibPath: string,
+  promptHandler: AskpassPromptHandler,
+  options?: LoadIntoPrivateAgentOptions
+): Promise<LoadedSmartcardAgent> {
+  return runAddIntoPrivateAgent(['-s', pkcs11LibPath], promptHandler, options, target);
+}
+
+/** Adds every FIDO2 resident credential on the connected security key to an already-running agent. */
+export async function addFido2ResidentKeysToAgent(
+  target: AgentTarget,
+  promptHandler: AskpassPromptHandler,
+  options?: LoadIntoPrivateAgentOptions
+): Promise<LoadedSmartcardAgent> {
+  return runAddIntoPrivateAgent(['-K'], promptHandler, { emptyFailureMeansNoIdentities: true, ...options }, target);
 }

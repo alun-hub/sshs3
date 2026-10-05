@@ -5,7 +5,14 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
 import { AskpassServer, type AskpassPromptHandler } from '../smartcard/AskpassServer';
-import { listAgentIdentities, type AgentIdentity } from '../smartcard/SmartcardAgentLoader';
+import {
+  listAgentIdentities,
+  addSmartcardToAgent,
+  addFido2ResidentKeysToAgent,
+  type AgentIdentity,
+  type AgentTarget,
+  type LoadIntoPrivateAgentOptions,
+} from '../smartcard/SmartcardAgentLoader';
 
 const execFileAsync = promisify(execFile);
 
@@ -71,6 +78,11 @@ export class AppAgent {
   private loadedLibs = new Set<string>();
   private handlers: AppAgentHandlers = {};
   private onExit?: () => void;
+  private addQueue: Promise<unknown> = Promise.resolve();
+
+  private delegatePrompt: AskpassPromptHandler = (prompt, retry) =>
+    this.handlers.promptHandler?.(prompt, retry) ?? '';
+  private delegatePresence = (prompt: string): void => this.handlers.onPresence?.(prompt);
 
   /** Handlers used for prompts the agent raises after keys were loaded; can be changed at any time. */
   public setHandlers(handlers: AppAgentHandlers): void {
@@ -126,8 +138,8 @@ export class AppAgent {
     }
 
     const askpass = new AskpassServer({
-      promptHandler: (prompt, retry) => this.handlers.promptHandler?.(prompt, retry) ?? '',
-      onPresence: (prompt) => this.handlers.onPresence?.(prompt),
+      promptHandler: this.delegatePrompt,
+      onPresence: this.delegatePresence,
     });
     await askpass.start();
     try {
@@ -177,6 +189,40 @@ export class AppAgent {
       if (socketPath) await fs.promises.unlink(socketPath).catch(() => {});
     }
     this.onExit?.();
+  }
+
+  /** Loads a PKCS#11 module's key into the agent (PIN via `promptHandler`), starting the agent if needed. */
+  public async addPkcs11(
+    pkcs11LibPath: string,
+    promptHandler: AskpassPromptHandler,
+    options?: LoadIntoPrivateAgentOptions
+  ): Promise<void> {
+    await this.runAdd((target) => addSmartcardToAgent(target, pkcs11LibPath, promptHandler, options));
+    this.noteLoadedLibrary(pkcs11LibPath);
+  }
+
+  /** Loads the connected security key's FIDO2 resident credentials into the agent. */
+  public async addFido2Resident(promptHandler: AskpassPromptHandler, options?: LoadIntoPrivateAgentOptions): Promise<void> {
+    await this.runAdd((target) => addFido2ResidentKeysToAgent(target, promptHandler, options));
+  }
+
+  /**
+   * Adds are serialized: they temporarily swap the shared askpass server's handlers, and most readers
+   * only allow one PKCS#11/FIDO2 transaction at a time anyway.
+   */
+  private runAdd(add: (target: AgentTarget) => Promise<unknown>): Promise<unknown> {
+    const task = this.addQueue.then(async () => {
+      const socketPath = await this.ensure();
+      const askpass = this.askpass ?? undefined;
+      try {
+        return await add({ pid: this.pid, socketPath, askpassServer: askpass });
+      } finally {
+        askpass?.setPromptHandler(this.delegatePrompt);
+        askpass?.setOnPresence(this.delegatePresence);
+      }
+    });
+    this.addQueue = task.catch(() => {});
+    return task;
   }
 
   public async list(): Promise<AgentIdentity[]> {

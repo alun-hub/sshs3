@@ -14,7 +14,11 @@ vi.mock('../../src/main/ssh/AgentLifecycleManager', () => ({
     unloadCard: vi.fn(),
   },
 }));
-vi.mock('../../src/main/smartcard/SmartcardAgentLoader', () => ({ listAgentIdentities: vi.fn() }));
+vi.mock('../../src/main/smartcard/SmartcardAgentLoader', () => ({
+  listAgentIdentities: vi.fn(),
+  addSmartcardToAgent: vi.fn(),
+  addFido2ResidentKeysToAgent: vi.fn(),
+}));
 
 const askpassInstances: Array<{ options: any; start: any; stop: any; getEnv: any }> = [];
 vi.mock('../../src/main/smartcard/AskpassServer', () => ({
@@ -22,6 +26,8 @@ vi.mock('../../src/main/smartcard/AskpassServer', () => ({
     start = vi.fn().mockResolvedValue({ port: 0, scriptPath: '/fake/askpass.sh' });
     stop = vi.fn().mockResolvedValue(undefined);
     getEnv = vi.fn().mockReturnValue({ SSH_ASKPASS: '/fake/askpass.sh', SSH_ASKPASS_REQUIRE: 'force' });
+    setPromptHandler = vi.fn();
+    setOnPresence = vi.fn();
     constructor(public options: any) {
       askpassInstances.push(this as any);
     }
@@ -30,7 +36,11 @@ vi.mock('../../src/main/smartcard/AskpassServer', () => ({
 
 import { AppAgent, resolveAppAgentDir } from '../../src/main/ssh/AppAgent';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
-import { listAgentIdentities } from '../../src/main/smartcard/SmartcardAgentLoader';
+import {
+  listAgentIdentities,
+  addSmartcardToAgent,
+  addFido2ResidentKeysToAgent,
+} from '../../src/main/smartcard/SmartcardAgentLoader';
 
 const lifecycle = vi.mocked(AgentLifecycleManager);
 
@@ -173,6 +183,61 @@ describe('AppAgent', () => {
     expect(await options.promptHandler('Enter PIN:', undefined)).toBe('123456');
     options.onPresence('Confirm user presence');
     expect(onPresence).toHaveBeenCalledWith('Confirm user presence');
+  });
+
+  it('adds a PKCS#11 key to the agent, then restores the owner\'s askpass handlers and tracks the library', async () => {
+    const agent = new AppAgent();
+    const ownerPrompt = vi.fn().mockResolvedValue('owner');
+    agent.setHandlers({ promptHandler: ownerPrompt });
+    vi.mocked(addSmartcardToAgent).mockImplementation(async (target) => {
+      // While adding, the loader owns the server's handlers.
+      (target.askpassServer as any).setPromptHandler(() => 'loader');
+      return { pid: target.pid, socketPath: target.socketPath };
+    });
+
+    await agent.addPkcs11('/usr/lib/libykcs11.so', async () => '123456');
+
+    const [target, lib] = vi.mocked(addSmartcardToAgent).mock.calls[0];
+    expect(lib).toBe('/usr/lib/libykcs11.so');
+    expect(target).toMatchObject({ pid: 4000, socketPath: path.join(dir, 'agent.sock') });
+    expect(target.askpassServer).toBeDefined();
+    // Restored: the shared server asks the owner again.
+    const server = askpassInstances[0] as any;
+    expect(server.setPromptHandler).toHaveBeenCalledTimes(2); // loader's own call + restore
+    const restored = server.setPromptHandler.mock.calls[1][0];
+    await restored('Enter PIN:');
+    expect(ownerPrompt).toHaveBeenCalled();
+
+    // Tracked for Windows-style eviction.
+    await agent.remove('/usr/lib/libykcs11.so');
+    expect(lifecycle.unloadCard).toHaveBeenCalled();
+  });
+
+  it('restores the askpass handlers and keeps the agent when an add fails; adds run one at a time', async () => {
+    const agent = new AppAgent();
+    await agent.ensure();
+    lifecycle.probeSocket.mockResolvedValue(true); // agent stays alive between adds
+    const order: string[] = [];
+    vi.mocked(addSmartcardToAgent).mockImplementationOnce(async () => {
+      order.push('first-start');
+      await new Promise((r) => setTimeout(r, 20));
+      order.push('first-end');
+      throw new Error('wrong PIN');
+    });
+    vi.mocked(addFido2ResidentKeysToAgent).mockImplementationOnce(async (target) => {
+      order.push('second');
+      return { pid: target.pid, socketPath: target.socketPath };
+    });
+
+    const first = agent.addPkcs11('/lib.so', async () => '1');
+    const second = agent.addFido2Resident(async () => '1');
+    await expect(first).rejects.toThrow('wrong PIN');
+    await second;
+
+    expect(order).toEqual(['first-start', 'first-end', 'second']);
+    expect(lifecycle.killPrivateAgent).not.toHaveBeenCalled();
+    expect(agent.getSocketPath()).not.toBeNull();
+    expect((askpassInstances[0] as any).setPromptHandler.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('lists identities from the agent, and nothing before it started', async () => {
