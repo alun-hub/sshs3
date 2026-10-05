@@ -83,7 +83,8 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │       │   ├── TerminalView.tsx# xterm.js terminal instance & FitAddon
 │   │       │   └── Tunnels/        # Independent SSH port-forwarding management dashboard
 │   │       └── lib/
-│   │           └── format.ts       # Byte/speed formatting, date formatters, path utils
+│   │           ├── format.ts       # Byte/speed formatting, date formatters, path utils
+│   │           └── spatialNavigation.ts # 2D keyboard navigation (Ctrl+Shift+Arrows) for panes, overlays and menus
 │   └── shared/                     # Types shared between main and renderer
 │       └── types/
 │           ├── dotfiles.ts         # Dotfiles sync pool contracts

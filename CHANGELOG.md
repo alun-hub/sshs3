@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- 2D spatial keyboard navigation (Ctrl+Shift+Arrows) across tabs, terminal splits, file manager panes, modals, menus, landing view and unconnected panes; Enter activates, Escape closes/backs out
+- local terminals inherit the system/login-shell ssh-agent (setting: Local Terminal SSH Agent)
+- saved SSH profiles are kept in the sshs3-managed block of `~/.ssh/config` (setting: Keep ~/.ssh/config in sync; on by default)
+
+### Fixed
+- Enter/Escape inside a modal were swallowed while the tab bar had keyboard focus
+- focus returns to the opener when a top-level modal closes
+- concurrent `~/.ssh/config` writes are serialized; failures are logged; profile fields can no longer inject extra directive lines
+
 ## [0.96.22] - 2026-10-04
 
 ### Added
