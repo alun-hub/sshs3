@@ -1,157 +1,157 @@
-# Connection Manager & Profiles (Komplett Referenshandbok)
+# Connection Manager & Profiles (Complete Reference)
 
-Connection Managern är centralnavet i **sshs3** för att skapa, redigera, gruppera och säkra alla dina anslutningsmål: SSH-servrar, lokala terminaler, Kubernetes-kluster och S3-kompatibel molnlagring.
+The Connection Manager is the hub of **sshs3** for creating, editing, grouping and securing all your connection targets: SSH servers, local terminals, Kubernetes clusters and S3-compatible cloud storage.
 
-### SSH-agent i lokala terminaler
+### SSH Agent in Local Terminals
 
-Under **Settings → Local Terminal SSH Agent** väljer du hur `SSH_AUTH_SOCK` sätts i lokala skalflikar:
+Under **Settings → Local Terminal SSH Agent** you choose how `SSH_AUTH_SOCK` is set in local shell tabs:
 
-| Val | Beteende |
+| Option | Behavior |
 |---|---|
-| **Auto** (standard) | Använder i ordning: en upplåst smartcard-agent (Global PIN-cache), appens egen agent om den redan körs, systemets/login-skalets agent, och annars startas en egen agent. |
-| **System Only** | Använder bara systemets/login-skalets `SSH_AUTH_SOCK` om den finns. Appen startar ingen agent och använder inte smartcard-agenten. |
-| **Disabled** | Ingen `SSH_AUTH_SOCK` sätts i terminalen. |
+| **Auto** (default) | Uses, in order: an unlocked smartcard agent (Global PIN cache), the app's own agent if it is already running, the system / login-shell agent, and otherwise starts an agent of its own. |
+| **System Only** | Uses only the system / login-shell `SSH_AUTH_SOCK`, if there is one. The app starts no agent and does not use the smartcard agent. |
+| **Disabled** | No `SSH_AUTH_SOCK` is set in the terminal. |
 
-Ändringen gäller nya terminalflikar; redan öppna flikar behåller sin miljö.
+The change applies to new terminal tabs; tabs that are already open keep their environment.
 
-### `~/.ssh/config` hålls synkad med dina profiler
+### `~/.ssh/config` Stays in Sync with Your Profiles
 
-sshs3 skriver ett eget, markerat block i `~/.ssh/config` utifrån dina SSH-profiler (värd, port, användare, nyckelfil, ProxyJump m.m.). Därför fungerar `ssh <profilnamn>` och tab-komplettering i vilken terminal som helst på samma sätt som i appen. Blocket uppdateras vid start och när du sparar, raderar eller importerar en SSH-profil. Allt utanför blocket lämnas orört, lösenord och lösenfraser skrivs aldrig dit, och direktiv som kan köra kod (`ProxyCommand`, `LocalCommand`, `Match`, `Include` m.fl.) filtreras bort. Du kan stänga av funktionen under **Settings → Keep `~/.ssh/config` in sync with saved SSH profiles**.
+sshs3 writes its own marked block into `~/.ssh/config` from your SSH profiles (host, port, user, key file, ProxyJump and so on). That is why `ssh <profile-name>` and tab completion work in any terminal exactly as they do in the app. The block is updated at startup and whenever you save, delete or import an SSH profile. Everything outside the block is left untouched, passwords and passphrases are never written there, and directives that can execute code (`ProxyCommand`, `LocalCommand`, `Match`, `Include` and others) are filtered out. You can turn the feature off under **Settings → Keep `~/.ssh/config` in sync with saved SSH profiles**.
 
-**Upplåsta kort fungerar i alla terminaler (Linux/macOS).** När PIN-cachen är *Global* och ett smartcard eller en FIDO2-nyckel är upplåst i appen lägger sshs3 också till ett andra, rent lokalt block (`# BEGIN sshs3-agent … # END sshs3-agent`, synkas aldrig). Det pekar de värdarna på appens agent, så ett vanligt `ssh <profilnamn>` i valfri terminal (även i IDE:er och andra terminalprogram) signerar med den upplåsta nyckeln utan ny PIN-fråga. Låser du kortet, avslutar appen eller lämnar Global-läget tas blocket bort, och `ssh` frågar då själv efter PIN via profilens `PKCS11Provider`. Om appen kraschar kan blocket ligga kvar mot en död socket tills sshs3 startas igen (det städas vid start).
-
----
-
-## 1. Översikt över Profiltyper
-
-sshs3 stöder fyra grundläggande profiltyper:
-
-1. **SSH-profiler**: Anslutningar via systemets egna OpenSSH-binär (`node-pty`) till Linux-, UNIX-, BSD- och Windows-värdar med stöd för SFTP och bakgrundstunnlar.
-2. **Lokala skalprofiler**: Kör terminaler direkt på din lokala dator (`$SHELL` på Linux/macOS; PowerShell, `pwsh`, CMD eller WSL på Windows) med automatiskt integrerad `SSH_AUTH_SOCK` (se [SSH-agent i lokala terminaler](#ssh-agent-i-lokala-terminaler)).
-3. **Kubernetes-profiler**: Direkt koppling mot kontexter, namnrymder, poddar och containrar i `~/.kube/config` eller via OpenShift `oc login`.
-4. **S3-lagringsprofiler**: Moln- och objektlagring mot AWS S3, Cloudflare R2, MinIO, Wasabi och Backblaze B2.
+**Unlocked cards work in every terminal (Linux/macOS).** When PIN caching is *Global* and a smartcard or FIDO2 key is unlocked in the app, sshs3 also adds a second, purely local block (`# BEGIN sshs3-agent … # END sshs3-agent`, never synced). It points those hosts at the app's agent, so a plain `ssh <profile-name>` in any terminal (including IDEs and other terminal programs) signs with the unlocked key without another PIN prompt. If you lock the card, quit the app or leave Global mode, the block is removed and `ssh` asks for the PIN itself via the profile's `PKCS11Provider`. If the app crashes, the block can stay behind pointing at a dead socket until sshs3 is started again (it is cleaned up at startup).
 
 ---
 
-## 2. SSH-profilformuläret: Komplett Fältreferens
+## 1. Overview of Profile Types
 
-När du klickar på **New Profile** (eller redigerar en befintlig SSH-profil) visas profilformuläret:
+sshs3 supports four basic profile types:
 
-![SSH Profilformulär](/img/docs/profile-new-ssh.png)
+1. **SSH profiles**: Connections through the system's own OpenSSH binary (`node-pty`) to Linux, UNIX, BSD and Windows hosts, with SFTP and background tunnel support.
+2. **Local shell profiles**: Run terminals directly on your local computer (`$SHELL` on Linux/macOS; PowerShell, `pwsh`, CMD or WSL on Windows) with an automatically integrated `SSH_AUTH_SOCK` (see [SSH Agent in Local Terminals](#ssh-agent-in-local-terminals)).
+3. **Kubernetes profiles**: Direct connection to contexts, namespaces, pods and containers in `~/.kube/config` or via OpenShift `oc login`.
+4. **S3 storage profiles**: Cloud and object storage against AWS S3, Cloudflare R2, MinIO, Wasabi and Backblaze B2.
 
-### 2.1 Grundläggande Egenskaper (General)
+---
 
-| Fältnamn | Standardvärde | Syfte & Beskrivning | Begränsningar & Kantfall |
+## 2. The SSH Profile Form: Complete Field Reference
+
+When you click **New Profile** (or edit an existing SSH profile), the profile form opens:
+
+![SSH profile form](/img/docs/profile-new-ssh.png)
+
+### 2.1 Basic Properties (General)
+
+| Field | Default | Purpose & Description | Limits & Edge Cases |
 | :--- | :--- | :--- | :--- |
-| **Profile Name** | `e.g. Production Server` | Ett läsbart visningsnamn för profilen som visas i anslutningslistan, flikar och delade paneler. | Får inte vara tomt. Specialtecken tillåts, men korta och tydliga namn rekommenderas för att inte klippa fliktitlar. |
-| **Group / Folder** | *Tomt* (Valfritt) | Grupperar profiler i trädstrukturen i Connection Managern (t.ex. `Production`, `Staging`, `Kunder/Kund-A`). | Undermappar kan skapas med snedstreck (`/`). Om fältet lämnas tomt placeras profilen på rotnivån. |
-| **Hostname / IP** | *Obligatoriskt* | Fjärrvärdens FQDN (t.ex. `web01.corp.internal`) eller IPv4/IPv6-adress. | Måste kunna slås upp via DNS eller vara nåbar via IP. Vid ProxyJump är detta värdnamnet som bastionen når. |
-| **Port** | `22` | TCP-porten för SSH-demonen på målvärden. | Heltal mellan 1 och 65535. Standard är alltid 22. |
-| **Username** | *Obligatoriskt* | Användarnamnet för inloggningen på fjärrvärden (t.ex. `ubuntu`, `root`, `deploy`). | Följer standard POSIX-regler för användarnamn. |
-| **Initial SFTP Path** | *Tomt* (Valfritt) | Standardkatalog som filhanteraren automatiskt öppnar vid SFTP-anslutning (t.ex. `/var/www` eller `/home/user`). | Om sökvägen inte existerar på fjärrservern faller filhanteraren automatiskt tillbaka till användarens hemkatalog. |
+| **Profile Name** | `e.g. Production Server` | A readable display name for the profile, shown in the connection list, tabs and split panes. | Must not be empty. Special characters are allowed, but short, clear names are recommended so tab titles are not truncated. |
+| **Group / Folder** | *Empty* (optional) | Groups profiles in the tree in the Connection Manager (for example `Production`, `Staging`, `Customers/Customer-A`). | Subfolders are created with a slash (`/`). If the field is left empty, the profile is placed at the root level. |
+| **Hostname / IP** | *Required* | The remote host's FQDN (for example `web01.corp.internal`) or IPv4/IPv6 address. | Must resolve through DNS or be reachable by IP. With ProxyJump this is the hostname as the bastion reaches it. |
+| **Port** | `22` | The TCP port of the SSH daemon on the target host. | Integer between 1 and 65535. The default is always 22. |
+| **Username** | *Required* | The username for logging in to the remote host (for example `ubuntu`, `root`, `deploy`). | Follows standard POSIX username rules. |
+| **Initial SFTP Path** | *Empty* (optional) | The default directory the file manager opens automatically on an SFTP connection (for example `/var/www` or `/home/user`). | If the path does not exist on the remote server, the file manager automatically falls back to the user's home directory. |
 
 ---
 
-### 2.2 Autentiseringsmetoder (`authType`)
+### 2.2 Authentication Methods (`authType`)
 
-sshs3 stöder fem separata autentiseringsmetoder i rullgardinsmenyn **Authentication**:
+sshs3 supports five separate authentication methods in the **Authentication** drop-down:
 
-#### A. Password (Lösenord)
-- **Syfte**: Standardautentisering med lösenord. Krävs även av SFTP om inte nyckelbaserad inloggning används.
-- **Hur den används**: Ange lösenordet i inmatningsfältet. Lösenordet krypteras i OS Keychain (Linux Secret Service / Windows DPAPI / macOS Keychain).
-- **Begränsningar**: Om lösenordsfältet lämnas tomt kommer du att uppmanas att ange lösenordet interaktivt i terminalen vid anslutning. Interaktiv lösenordsinloggning stöds inte av den bakgrundsbaserade prestandabalken (Performance Bar) på Windows.
+#### A. Password
+- **Purpose**: Standard password authentication. Also required by SFTP unless key-based login is used.
+- **How it is used**: Enter the password in the input field. The password is encrypted in the OS keychain (Linux Secret Service / Windows DPAPI / macOS Keychain).
+- **Limits**: If the password field is left empty, you are prompted to enter the password interactively in the terminal when connecting. Interactive password login is not supported by the background-based Performance Bar on Windows.
 
-#### B. SSH Key (Privat Nyckelfil)
-![SSH Key Autentisering](/img/docs/profile-auth-privatekey.png)
-- **Syfte**: Asymmetrisk nyckelautentisering med privat nyckel sparad på disk.
-- **Hur den används**: Klicka på **Browse…** för att välja din privata nyckelfil (t.ex. `~/.ssh/id_ed25519` eller `~/.ssh/id_rsa`). Om nyckeln är krypterad med en lösenfras kan denna anges i fältet **Passphrase**.
-- **Begränsningar**: Filen måste vara läsbar av den lokala användaren. Lösenfrasen sparas krypterad i systemets nyckelring.
+#### B. SSH Key (Private Key File)
+![SSH key authentication](/img/docs/profile-auth-privatekey.png)
+- **Purpose**: Asymmetric key authentication with a private key stored on disk.
+- **How it is used**: Click **Browse…** to select your private key file (for example `~/.ssh/id_ed25519` or `~/.ssh/id_rsa`). If the key is encrypted with a passphrase, it can be entered in the **Passphrase** field.
+- **Limits**: The file must be readable by the local user. The passphrase is stored encrypted in the system keyring.
 
 #### C. SSH Agent
-- **Syfte**: Återanvänder nycklar som redan är upplåsta i din lokala `ssh-agent` eller Windows OpenSSH Authentication Agent.
-- **Hur den används**: Välj "SSH Agent". Inga lösenord eller nyckelsökvägar behöver anges i profilen.
-- **Begränsningar**: Kräver att en agent körs i operativsystemet och att nyckeln redan har lagts till (`ssh-add`). Om agenten inte har nyckeln laddad nekas inloggningen.
+- **Purpose**: Reuses keys that are already unlocked in your local `ssh-agent` or the Windows OpenSSH Authentication Agent.
+- **How it is used**: Select "SSH Agent". No passwords or key paths need to be entered in the profile.
+- **Limits**: Requires an agent to be running in the operating system and the key to have been added already (`ssh-add`). If the agent does not have the key loaded, the login is denied.
 
 #### D. Smartcard (PKCS#11)
-![Smartcard PKCS#11 Autentisering](/img/docs/profile-auth-smartcard.png)
-- **Syfte**: Hårdvaruautentisering med smartcard eller YubiKey PIV via ett PKCS#11-kryptografiskt bibliotek.
-- **Hur den används**: sshs3 söker automatiskt igenom kända bibliotekssökvägar och visar snabbknappar:
-  - **p11-kit** (`p11-kit-proxy.so`): Standardval på Linux; proxar alla registrerade tokens i systemet.
-  - **YubiKey (`libykcs11`)**: Direktbibliotek för YubiKey PIV (`libykcs11.so` / `libykcs11.dll`).
-  - **OpenSC (`opensc-pkcs11.so` / `opensc-pkcs11.dll`)**: Generell öppen drivrutin för de flesta smartcards.
-  - **Net iD**: Stöd för företags- och myndighetskort.
-- **Begränsningar**: Biblioteksfilen måste finnas installerad lokalt på datorn. PIN-kod cachas enligt den valda policyn (Always Prompt, Once Per Terminal Connection eller Global) och skrivs aldrig till disk.
+![Smartcard PKCS#11 authentication](/img/docs/profile-auth-smartcard.png)
+- **Purpose**: Hardware authentication with a smartcard or YubiKey PIV through a PKCS#11 cryptographic library.
+- **How it is used**: sshs3 automatically scans known library paths and shows quick buttons:
+  - **p11-kit** (`p11-kit-proxy.so`): The default on Linux; proxies all registered tokens in the system.
+  - **YubiKey (`libykcs11`)**: Direct library for YubiKey PIV (`libykcs11.so` / `libykcs11.dll`).
+  - **OpenSC (`opensc-pkcs11.so` / `opensc-pkcs11.dll`)**: General open-source driver for most smartcards.
+  - **Net iD**: Support for corporate and government cards.
+- **Limits**: The library file must be installed locally on the computer. The PIN is cached according to the selected policy (Always Prompt, Once Per Terminal Connection or Global) and is never written to disk.
 
-#### E. FIDO2 / Security Key (Hårdvarunyckel)
-![FIDO2 Hårdvarunyckel](/img/docs/profile-auth-fido2.png)
-- **Syfte**: Maskinvaru-autentisering med FIDO2/WebAuthn-nycklar (t.ex. YubiKey 5-serien).
-- **Hur den används**:
-  - **Discoverable / Resident Credentials**: Läs in inbyggda resident-nycklar direkt från ansluten säkerhetsnyckel med knappen **Scan Security Key**.
-  - **Key File**: Välj en genererad `id_ed25519_sk`- eller `id_ecdsa_sk`-fil på disken.
-  - **Inbyggd Nyckelgenerator**: Klicka på **Generate FIDO2 Key** för att skapa en ny FIDO2-nyckel direkt i appen med val för typ (`ed25519-sk` vs `ecdsa-sk`), resident credential (`-O resident`) och användarverifiering (`-O verify-required`).
-- **Begränsningar**: Fjärrserverns OpenSSH-demon måste vara minst version 8.2 för att stödja FIDO2-kryptografiska algoritmer. Vid inloggning krävs fysisk beröring av nyckeln när **Touch-Presence Banner** visas.
+#### E. FIDO2 / Security Key (Hardware Key)
+![FIDO2 hardware key](/img/docs/profile-auth-fido2.png)
+- **Purpose**: Hardware authentication with FIDO2/WebAuthn keys (for example the YubiKey 5 series).
+- **How it is used**:
+  - **Discoverable / Resident Credentials**: Load built-in resident keys directly from the connected security key with the **Scan Security Key** button.
+  - **Key File**: Select a generated `id_ed25519_sk` or `id_ecdsa_sk` file on disk.
+  - **Built-in key generator**: Click **Generate FIDO2 Key** to create a new FIDO2 key directly in the app, with options for type (`ed25519-sk` vs `ecdsa-sk`), resident credential (`-O resident`) and user verification (`-O verify-required`).
+- **Limits**: The remote server's OpenSSH daemon must be at least version 8.2 to support FIDO2 cryptographic algorithms. When logging in, a physical touch of the key is required when the **Touch-Presence Banner** is shown.
 
 ---
 
-### 2.3 Access Check & Nyckelinstallation (`ssh-copy-id` GUI)
+### 2.3 Access Check & Key Installation (`ssh-copy-id` GUI)
 
-Längst ner i profilformuläret finns sektionen **Access**:
+At the bottom of the profile form is the **Access** section:
 
-![Access Check och Nyckelinstallation](/img/docs/profile-install-key-modal.png)
+![Access check and key installation](/img/docs/profile-install-key-modal.png)
 
 - **Test Connection / Access Check Timeline**:
-  En 5-stegs visuell tidslinje som testar hela anslutningskedjan:
-  1. `Reach Host`: TCP-uppkoppling till IP/port (inkl. via ProxyJump).
-  2. `Host Key`: Verifierar att serverns värdnyckel stämmer med `known_hosts`.
-  3. `Login Methods`: Frågar sshd tyst vilka inloggningsmetoder som tillåts (lösenord, publickey, etc.) utan att kräva PIN eller beröring.
-  4. `Key Installed`: Undersöker om den valda publika nyckeln finns i `~/.ssh/authorized_keys`.
-  5. `Login Works`: Testar faktisk inloggning.
+  A 5-step visual timeline that tests the whole connection chain:
+  1. `Reach Host`: TCP connection to the IP/port (including via ProxyJump).
+  2. `Host Key`: Verifies that the server's host key matches `known_hosts`.
+  3. `Login Methods`: Quietly asks sshd which login methods are allowed (password, publickey and so on) without requiring a PIN or a touch.
+  4. `Key Installed`: Checks whether the selected public key is in `~/.ssh/authorized_keys`.
+  5. `Login Works`: Tests an actual login.
 - **Install Key…**:
-  Installerar en eller flera valda publika nycklar direkt i serverns `~/.ssh/authorized_keys` i en enda session. Sätter automatiskt `0700` på `~/.ssh` och `0600` på `authorized_keys`.
+  Installs one or more selected public keys directly into the server's `~/.ssh/authorized_keys` in a single session. Automatically sets `0700` on `~/.ssh` and `0600` on `authorized_keys`.
 - **Copy Command**:
-  Genererar ett läsbart skalskript med ett klick för servrar som inte kan nås direkt från din arbetsstation.
+  Generates a readable shell script with one click, for servers that cannot be reached directly from your workstation.
 
 ---
 
-### 2.4 Avancerade SSH-alternativ (Advanced SSH Options)
+### 2.4 Advanced SSH Options
 
-Genom att expandera sektionen **Advanced SSH Options** får du tillgång till finkorniga nätverks- och protokollparametrar:
+Expanding the **Advanced SSH Options** section gives you access to fine-grained network and protocol parameters:
 
-![Avancerade SSH-alternativ](/img/docs/profile-advanced-options.png)
+![Advanced SSH options](/img/docs/profile-advanced-options.png)
 
-| Fält / Alternativ | Standard | Syfte & Beskrivning | Begränsningar |
+| Field / Option | Default | Purpose & Description | Limits |
 | :--- | :--- | :--- | :--- |
-| **Agent Forwarding (`-A`)** | Av | Vidarebefordrar din lokala SSH-agent till fjärrvärden så att du kan hoppa vidare till andra servrar utan att kopiera privata nycklar. | **Säkerhetsvarning**: Aktivera endast på servrar du litar på. En administratör på fjärrvärden kan temporärt komma åt din lokala agent via den exponerade socketslingan. |
-| **X11 Forwarding (`-Y`)** | Av | Vidarebefordrar X11-fönster från grafiska Linux-program till din lokala skärm. | På Windows startar appen automatiskt den medföljande VcXsrv-servern. På Linux krävs en lokal `$DISPLAY` (X11 eller XWayland). |
-| **Custom X11 Display** | *Tomt* (Auto) | Manuell skärmidentifierare (t.ex. `127.0.0.1:0.0` på Windows eller `:0` på Linux). | Överskrider automatisk detektering. |
-| **Compression (`-C`)** | Av | Aktiverar gzip-komprimering av SSH-trafik. | Förbättrar prestanda över långsamma mobiluppkopplingar, men kan öka CPU-belastningen på snabba gigabit-nätverk. |
-| **ServerAliveInterval** | `0` (Av) | Skickar periodiska keepalive-paket till servern (i sekunder) för att förhindra att brandväggar och NAT stänger inaktiva anslutningar. | Värde i sekunder (t.ex. `30` eller `60`). 0 stänger av funktionen. |
-| **Custom Ciphers** | *System default* | Begränsar tillåtna krypteringsalgoritmer (t.ex. `chacha20-poly1305@openssh.com,aes256-gcm@openssh.com`). | Algoritmerna måste stödjas av både klientens och serverns OpenSSH-binärer. |
-| **KEX Algorithms** | *System default* | Begränsar godkända nyckelutbytesalgoritmer (t.ex. `curve25519-sha256,diffie-hellman-group16-sha512`). | Används vid hårda säkerhetskrav eller vid anslutning till äldre hårdvara. |
-| **MAC Algorithms** | *System default* | Begränsar Message Authentication Codes (t.ex. `hmac-sha2-512-etm@openssh.com`). | Endast relevant för icke-AEAD ciphers. |
-| **Custom SSH Arguments** | *Tomt* | Fria `-o Option=Value`-parametrar som skickas rakt in i `ssh`-kommandot. | Felaktiga flaggor kan göra att OpenSSH vägrar starta. |
-| **Dotfiles Pool Sync** | *Av* | Kopplar profilen till en dotfile-pool för automatisk miljöinläsning vid start. | Kräver att Dotfiles Pool är aktiverad i appens inställningar. |
+| **Agent Forwarding (`-A`)** | Off | Forwards your local SSH agent to the remote host so you can hop on to other servers without copying private keys. | **Security warning**: Enable only on servers you trust. An administrator on the remote host can temporarily access your local agent through the exposed socket. |
+| **X11 Forwarding (`-Y`)** | Off | Forwards X11 windows from graphical Linux programs to your local screen. | On Windows the app automatically starts the bundled VcXsrv server. On Linux a local `$DISPLAY` (X11 or XWayland) is required. |
+| **Custom X11 Display** | *Empty* (auto) | Manual display identifier (for example `127.0.0.1:0.0` on Windows or `:0` on Linux). | Overrides automatic detection. |
+| **Compression (`-C`)** | Off | Enables gzip compression of SSH traffic. | Improves performance over slow mobile connections, but can increase CPU load on fast gigabit networks. |
+| **ServerAliveInterval** | `0` (off) | Sends periodic keepalive packets to the server (in seconds) to prevent firewalls and NAT from closing idle connections. | Value in seconds (for example `30` or `60`). 0 turns the feature off. |
+| **Custom Ciphers** | *System default* | Restricts the allowed encryption algorithms (for example `chacha20-poly1305@openssh.com,aes256-gcm@openssh.com`). | The algorithms must be supported by both the client's and the server's OpenSSH binaries. |
+| **KEX Algorithms** | *System default* | Restricts the accepted key exchange algorithms (for example `curve25519-sha256,diffie-hellman-group16-sha512`). | Used for strict security requirements or when connecting to older hardware. |
+| **MAC Algorithms** | *System default* | Restricts Message Authentication Codes (for example `hmac-sha2-512-etm@openssh.com`). | Only relevant for non-AEAD ciphers. |
+| **Custom SSH Arguments** | *Empty* | Free-form `-o Option=Value` parameters passed straight to the `ssh` command. | Incorrect flags can make OpenSSH refuse to start. |
+| **Dotfiles Pool Sync** | *Off* | Links the profile to a dotfile pool for automatic environment loading at startup. | Requires the Dotfiles Pool to be enabled in the app settings. |
 
 ---
 
-## 3. S3-profilformuläret: Komplett Fältreferens
+## 3. The S3 Profile Form: Complete Field Reference
 
-Klicka på fliken **S3 Object Storage** och därefter **New Profile** för att konfigurera en objektlagringsprofil:
+Click the **S3 Object Storage** tab and then **New Profile** to configure an object storage profile:
 
-![S3 Profilformulär](/img/docs/s3-profile-form.png)
+![S3 profile form](/img/docs/s3-profile-form.png)
 
-| Fältnamn | Standardvärde | Syfte & Beskrivning | Begränsningar |
+| Field | Default | Purpose & Description | Limits |
 | :--- | :--- | :--- | :--- |
-| **Profile Name** | `e.g. Backup Bucket` | Visningsnamn i trädlistan och filhanteraren. | Får inte vara tomt. |
-| **Group / Folder** | *Tomt* (Valfritt) | Undermapp för att strukturera molnkonton och miljöer. | Valfritt. |
-| **Region** | `us-east-1` | AWS- eller molnregion (t.ex. `eu-north-1`, `auto` för Cloudflare R2, eller `us-east-1` för MinIO). | Måste matcha bucketens faktiska region. |
-| **Endpoint URL** | *Tomt* (AWS) | Anpassad S3-endpoint för MinIO, R2, Wasabi eller lokal Ceph-kluster (t.ex. `https://s3.wasabisys.com` eller `http://localhost:9000`). | Lämnas tomt om du använder officiella Amazon Web Services (AWS). |
-| **Initial Path** | *Tomt* (`/`) | Öppnar automatiskt en specifik bucket eller virtuell mapp (t.ex. `my-bucket/logs/`). | Måste vara en giltig sökväg. |
-| **Access Key ID** | *Obligatoriskt vid statisk auth* | Statisk åtkomstnyckel för S3 IAM-användaren. | Sparas krypterat i OS Keychain. |
-| **Secret Access Key** | *Obligatoriskt vid statisk auth* | Hemlig åtkomstnyckel för S3 IAM-användaren. | Sparas krypterat i OS Keychain. |
-| **Session Token** | *Tomt* (Valfritt) | Temporär säkerhetstoken (STS) vid temporära credentials. | Upphör att gälla när STS-sessionen löper ut. |
-| **Path-style addressing** | På | Tvingar anrop i formatet `endpoint/bucket/key` istället för virtuell hosting `bucket.endpoint/key`. | **Kritiskt för MinIO**, Ceph och lokala Docker-containrar där DNS-subdomäner inte pekar mot rätt IP. |
-| **Use SSL/TLS** | På | Krypterar all S3-datatrafik med HTTPS. | Kan stängas av för lokal utveckling mot `http://localhost:9000`. |
-| **Allow self-signed certs** | Av | Tillåter självsignerade TLS-certifikat på privata MinIO-servrar. | Ska endast användas i interna labbmiljöer. |
-| **Server-Side Encryption** | `None` | Kryptering vid lagring på servern: `None`, `SSE-S3 (AES256)` eller `SSE-KMS`. | Vid SSE-KMS krävs att rätt KMS Key ID är konfigurerat på servern. |
-| **Outgoing Proxy** | Av | Slussar all S3 API-trafik via en HTTP- eller SOCKS5-proxy. | Stöder användarnamn och lösenord för proxyn. |
+| **Profile Name** | `e.g. Backup Bucket` | Display name in the tree list and the file manager. | Must not be empty. |
+| **Group / Folder** | *Empty* (optional) | Subfolder for structuring cloud accounts and environments. | Optional. |
+| **Region** | `us-east-1` | AWS or cloud region (for example `eu-north-1`, `auto` for Cloudflare R2, or `us-east-1` for MinIO). | Must match the bucket's actual region. |
+| **Endpoint URL** | *Empty* (AWS) | Custom S3 endpoint for MinIO, R2, Wasabi or a local Ceph cluster (for example `https://s3.wasabisys.com` or `http://localhost:9000`). | Leave empty if you use official Amazon Web Services (AWS). |
+| **Initial Path** | *Empty* (`/`) | Automatically opens a specific bucket or virtual folder (for example `my-bucket/logs/`). | Must be a valid path. |
+| **Access Key ID** | *Required for static auth* | Static access key for the S3 IAM user. | Stored encrypted in the OS keychain. |
+| **Secret Access Key** | *Required for static auth* | Secret access key for the S3 IAM user. | Stored encrypted in the OS keychain. |
+| **Session Token** | *Empty* (optional) | Temporary security token (STS) for temporary credentials. | Expires when the STS session expires. |
+| **Path-style addressing** | On | Forces requests in the `endpoint/bucket/key` format instead of virtual hosting `bucket.endpoint/key`. | **Critical for MinIO**, Ceph and local Docker containers where DNS subdomains do not point to the right IP. |
+| **Use SSL/TLS** | On | Encrypts all S3 data traffic with HTTPS. | Can be turned off for local development against `http://localhost:9000`. |
+| **Allow self-signed certs** | Off | Allows self-signed TLS certificates on private MinIO servers. | Should only be used in internal lab environments. |
+| **Server-Side Encryption** | `None` | Encryption at rest on the server: `None`, `SSE-S3 (AES256)` or `SSE-KMS`. | With SSE-KMS the correct KMS Key ID must be configured on the server. |
+| **Outgoing Proxy** | Off | Routes all S3 API traffic through an HTTP or SOCKS5 proxy. | Supports a username and password for the proxy. |

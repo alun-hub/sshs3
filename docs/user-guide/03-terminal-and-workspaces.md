@@ -1,87 +1,87 @@
-# Terminal, Flikar & Arbetsytor
+# Terminal, Tabs & Workspaces
 
-Terminalupplevelsen i **sshs3** är byggd för professionella administratörer och utvecklare som arbetar intensivt med många samtidiga sessioner och komplexa kommandon.
-
----
-
-## 1. Native OpenSSH-Kärna vs. JS-Reimplementationer
-
-Många webb- och Electron-baserade terminaler använder egna JavaScript- eller WASM-bibliotek för att hantera SSH-protokollet, vilket ofta leder till subtila buggar i terminalemulering, felaktiga radbrytningar eller bristande stöd för moderna OpenSSH-funktioner.
-
-sshs3 kör **ditt operativsystems genuina OpenSSH-binär** (`ssh`) via `node-pty`:
-- **100% kompatibilitet med `~/.ssh/config`**: Alla direktiv (`Host`, `ProxyJump`, `CertificateFile`, `SendEnv`, `IdentityFile`) fungerar exakt likadant som i ditt vanliga CLI-skal.
-- **Systemets SSH-agenter**: Fungerar sömlöst med `ssh-agent`, GnuPG, 1Password och YubiKey PIV.
-- **Escape-sekvenser & Färgstöd**: Fullt stöd för TrueColor (24-bitars färger), OSC-koder och musinteraktion i program som `tmux`, `vim`, `htop` och `lazygit`.
+The terminal experience in **sshs3** is built for professional administrators and developers who work intensively with many simultaneous sessions and complex commands.
 
 ---
 
-## 2. Terminalergonomi & Urklippshantering
+## 1. Native OpenSSH Core vs. JS Reimplementations
 
-### 2.1 Urklipp & Markering (Clipboard Workflow)
-- **Copy on Select (Kopiera vid markering)**: När du markerar text i terminalfönstret kopieras den automatiskt till operativsystemets urklippshanterare utan att du behöver trycka något kortkommando.
-- **Klistra in**: <kbd>Shift+Insert</kbd> klistrar in den senaste posten i urklippshistoriken (annars systemets urklipp), och mittenklick klistrar in den senaste posten. Systemets vanliga klistra-in-kommando fungerar också.
-- **Högerklick**: med Copy on Select påslaget öppnas urklippshistoriken (se 2.2). Paneler delas via panelens verktygsfält eller genvägarna <kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>.
+Many web- and Electron-based terminals use their own JavaScript or WASM libraries to handle the SSH protocol, which often leads to subtle bugs in terminal emulation, incorrect line wrapping or missing support for modern OpenSSH features.
 
-### 2.2 Urklippshistorik (<kbd>Ctrl+Shift+R</kbd>)
-När **Copy on Select** är påslaget sparas varje markering i en krypterad, sökbar historik (OS-nyckelringen; bara i minnet om ingen nyckelring finns).
-- <kbd>Shift+Insert</kbd> och mittenklick klistrar in den senaste posten.
-- Högerklick eller <kbd>Ctrl+Shift+R</kbd> öppnar historiken: sök, bläddra med piltangenterna och tryck <kbd>Enter</kbd> för att klistra in.
-- Omfång (alla värdar eller per anslutning) och "töm vid avslut" ställs in under Settings.
+sshs3 runs **your operating system's genuine OpenSSH binary** (`ssh`) through `node-pty`:
+- **100% compatibility with `~/.ssh/config`**: All directives (`Host`, `ProxyJump`, `CertificateFile`, `SendEnv`, `IdentityFile`) work exactly as they do in your regular CLI shell.
+- **The system's SSH agents**: Works seamlessly with `ssh-agent`, GnuPG, 1Password and YubiKey PIV.
+- **Escape sequences & color support**: Full support for TrueColor (24-bit colors), OSC codes and mouse interaction in programs such as `tmux`, `vim`, `htop` and `lazygit`.
 
-### 2.3 Sökning i Terminalens Textbuffert (<kbd>Ctrl+Shift+S</kbd>)
-Tryck <kbd>Ctrl+Shift+S</kbd> för att öppna sökfältet i den fokuserade terminalpanelen:
-- Söker igenom hela terminalhistoriken (upp till de rader som konfigurerats i inställningarna).
-- Markerad text används som sökord. Träffräknare visar t.ex. `3/6`.
-- <kbd>Enter</kbd> går till nästa träff, <kbd>Shift+Enter</kbd> till föregående, <kbd>Esc</kbd> stänger.
-- Träffarna färgas efter temat (röda i Breeze, gula/orange i ljust och mörkt). Att bläddra mellan träffar kopierar inget till urklipp.
+---
 
-### 2.4 Klickbara länkar och filsökvägar
-Håll ned <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> på macOS) och klicka:
-- **URL:er** (`http://`, `https://`) öppnas i standardwebbläsaren, i terminaler och Kubernetes-loggar.
-- **Filsökvägar** (`/var/log/syslog`, `~/notes.md`, `/srv/app.py:42:7`) öppnar mappen i en ny SFTP-flik. Gäller SSH-terminaler. Terminalen kan inte skilja fil från mapp: en sökväg utan avslutande `/` öppnar sin föräldramapp, och `~/` antas betyda `/home/<användare>` (`/root` för root).
+## 2. Terminal Ergonomics & Clipboard Handling
 
-### 2.5 Kopiera senaste kommandots utdata (<kbd>Ctrl+Shift+G</kbd>)
-Kopierar det senaste kommandots utskrift till urklipp (och till urklippshistoriken om Copy on Select är på).
-- Exakt i skal som skickar OSC 133-promptmarkörer (fish, samt zsh/bash med skalintegration).
-- Annars härleds utdata ur dina Enter-tryckningar. Med en flerradig prompt kan promptens första rad följa med.
+### 2.1 Clipboard & Selection (Clipboard Workflow)
+- **Copy on Select**: When you select text in the terminal window it is copied automatically to the operating system's clipboard manager, with no keyboard shortcut needed.
+- **Paste**: <kbd>Shift+Insert</kbd> pastes the latest entry in the clipboard history (otherwise the system clipboard), and a middle click pastes the latest entry. The system's regular paste command works too.
+- **Right click**: with Copy on Select on, this opens the clipboard history (see 2.2). Panes are split from the pane toolbar or with the <kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd> shortcuts.
+
+### 2.2 Clipboard History (<kbd>Ctrl+Shift+R</kbd>)
+When **Copy on Select** is on, every selection is saved in an encrypted, searchable history (the OS keyring; in memory only if no keyring is available).
+- <kbd>Shift+Insert</kbd> and a middle click paste the latest entry.
+- A right click or <kbd>Ctrl+Shift+R</kbd> opens the history: search, browse with the arrow keys and press <kbd>Enter</kbd> to paste.
+- Scope (all hosts or per connection) and "clear on exit" are set under Settings.
+
+### 2.3 Searching the Terminal Scrollback (<kbd>Ctrl+Shift+S</kbd>)
+Press <kbd>Ctrl+Shift+S</kbd> to open the search bar in the focused terminal pane:
+- Searches the whole terminal history (up to the number of lines configured in the settings).
+- Selected text is used as the search term. A match counter shows, for example, `3/6`.
+- <kbd>Enter</kbd> goes to the next match, <kbd>Shift+Enter</kbd> to the previous one, <kbd>Esc</kbd> closes.
+- Matches are colored according to the theme (red in Breeze, yellow/orange in light and dark). Moving between matches copies nothing to the clipboard.
+
+### 2.4 Clickable Links and File Paths
+Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on macOS) and click:
+- **URLs** (`http://`, `https://`) open in the default web browser, in terminals and Kubernetes logs.
+- **File paths** (`/var/log/syslog`, `~/notes.md`, `/srv/app.py:42:7`) open the folder in a new SFTP tab. Applies to SSH terminals. The terminal cannot tell a file from a folder: a path without a trailing `/` opens its parent folder, and `~/` is assumed to mean `/home/<user>` (`/root` for root).
+
+### 2.5 Copy the Last Command's Output (<kbd>Ctrl+Shift+G</kbd>)
+Copies the output of the last command to the clipboard (and to the clipboard history if Copy on Select is on).
+- Exact in shells that send OSC 133 prompt markers (fish, and zsh/bash with shell integration).
+- Otherwise the output is derived from your Enter key presses. With a multi-line prompt, the first line of the prompt may be included.
 
 ### 2.6 Snippets (<kbd>Ctrl+Shift+L</kbd>)
-En sökbar palett med sparade kommandon:
-- <kbd>Enter</kbd> skriver in kommandot, <kbd>Ctrl+Enter</kbd> skriver in och kör det. Flerradiga snippets klistras in som en paste.
-- **New** skapar ett snippet; penna och papperskorg redigerar och tar bort. Ett snippet kan begränsas till den aktuella anslutningen.
-- Variabler: `{{host}}`, `{{user}}`, `{{date}}` (format `yyyy-mm-dd HH:mm`).
-- Snippets sparas **okrypterat** i `snippets.json` i appens datamapp. Lägg aldrig lösenord eller tokens i dem.
+A searchable palette of saved commands:
+- <kbd>Enter</kbd> types the command, <kbd>Ctrl+Enter</kbd> types and runs it. Multi-line snippets are pasted as a single paste.
+- **New** creates a snippet; the pencil and trash icons edit and delete. A snippet can be limited to the current connection.
+- Variables: `{{host}}`, `{{user}}`, `{{date}}` (format `yyyy-mm-dd HH:mm`).
+- Snippets are stored **unencrypted** in `snippets.json` in the app's data folder. Never put passwords or tokens in them.
 
-### 2.7 Dynamisk Textskalning (Zoom)
-Under presentationer, möten eller vid arbete på högupplösta 4K-skärmar kan teckenstorleken skalas ögonblickligen:
-- <kbd>Ctrl++</kbd>: Ökar teckenstorleken med 1 px.
-- <kbd>Ctrl+-</kbd>: Minskar teckenstorleken med 1 px.
-- <kbd>Ctrl+0</kbd>: Återställer teckenstorleken till standardvärdet från inställningarna.
-
----
-
-## 3. Konsole-Style Rekursiva Split-Paneler
-
-sshs3 implementerar samma split-träd-arkitektur som KDE:s Konsole (`ViewSplitter`), vilket möjliggör obegränsad horisontell och vertikal uppdelning:
-
-![Split Paneler i Terminalen](/img/split-terminal.png)
-
-### 3.1 Navigering & Storleksändring
-- **Dra i delningsbalkarna**: Placera muspekaren mellan två paneler för att dra och anpassa panelernas bredd och höjd.
-- **Tangentbordsnavigering**:
-  - <kbd>Ctrl+Shift+N</kbd>: Flyttar fokus till **nästa panel** i trädet.
-  - <kbd>Ctrl+Shift+P</kbd>: Flyttar fokus till **föregående panel**.
-  - <kbd>Ctrl+Shift+Pilar</kbd>: Flyttar fokus **spatialt** till panelen i pilens riktning. <kbd>↑</kbd> från en översta panel går till flikfältet (där <kbd>←</kbd>/<kbd>→</kbd> byter flik och <kbd>↓</kbd> eller <kbd>Enter</kbd> går tillbaka in).
-- **Paneloberoende**:
-  - Varje panel har en egen miniverktygsrad och anslutningsväljare. Du kan ha en fjärr-SSH-session i vänstra panelen, ett lokalt bash-skal i den övre högra och en Kubernetes container exec i den nedre högra.
-  - Att stänga en panel (<kbd>Ctrl+Shift+W</kbd>) avbryter aldrig intilliggande sessioner; trädet kollapsar mjukt och ger utrymme till de återstående panelerna.
-- **Unsplit**: Klicka på unsplit-ikonen i panelens verktygsrad för att maximera den aktiva panelen till 100% och stänga alla andra split-paneler i fliken.
+### 2.7 Dynamic Text Scaling (Zoom)
+During presentations, meetings or when working on high-resolution 4K screens, the font size can be scaled instantly:
+- <kbd>Ctrl++</kbd>: Increases the font size by 1 px.
+- <kbd>Ctrl+-</kbd>: Decreases the font size by 1 px.
+- <kbd>Ctrl+0</kbd>: Resets the font size to the default from the settings.
 
 ---
 
-## 4. Sessionsbeständighet (Session Persistence)
+## 3. Konsole-Style Recursive Split Panes
 
-När du stänger sshs3 sparas din aktuella arbetsyta automatiskt:
-- Alla öppna flikar och deras split-panellayouter bevaras.
-- Arbetskataloger för lokala skal återställs vid nästa start.
-- Om applikationen startas om efter en mjukvaruuppdatering öppnas dina fönster och anslutningar i exakt samma tillstånd.
+sshs3 implements the same split-tree architecture as KDE's Konsole (`ViewSplitter`), which allows unlimited horizontal and vertical splitting:
+
+![Split panes in the terminal](/img/split-terminal.png)
+
+### 3.1 Navigation & Resizing
+- **Drag the splitters**: Place the mouse pointer between two panes to drag and adjust the panes' width and height.
+- **Keyboard navigation**:
+  - <kbd>Ctrl+Shift+N</kbd>: Moves focus to the **next pane** in the tree.
+  - <kbd>Ctrl+Shift+P</kbd>: Moves focus to the **previous pane**.
+  - <kbd>Ctrl+Shift+Arrows</kbd>: Moves focus **spatially** to the pane in the direction of the arrow. <kbd>↑</kbd> from a top pane goes to the tab bar (where <kbd>←</kbd>/<kbd>→</kbd> switch tab and <kbd>↓</kbd> or <kbd>Enter</kbd> go back in).
+- **Pane independence**:
+  - Each pane has its own mini toolbar and connection picker. You can have a remote SSH session in the left pane, a local bash shell in the upper right and a Kubernetes container exec in the lower right.
+  - Closing a pane (<kbd>Ctrl+Shift+W</kbd>) never interrupts adjacent sessions; the tree collapses smoothly and gives room to the remaining panes.
+- **Unsplit**: Click the unsplit icon in the pane toolbar to maximize the active pane to 100% and close all other split panes in the tab.
+
+---
+
+## 4. Session Persistence
+
+When you close sshs3, your current workspace is saved automatically:
+- All open tabs and their split-pane layouts are preserved.
+- Working directories for local shells are restored at the next start.
+- If the application is restarted after a software update, your windows and connections open in exactly the same state.

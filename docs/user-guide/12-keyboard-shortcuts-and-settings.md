@@ -1,158 +1,158 @@
-# Inställningar & Tangentbordsgenvägar (Komplett Referenshandbok)
+# Settings & Keyboard Shortcuts (Complete Reference)
 
-Detta kapitel innehåller en fullständig genomgång av samtliga inställningsflikar i sshs3, hur de konfigureras, deras tekniska begränsningar samt en komplett referenstabell över alla kortkommandon i applikationen.
-
----
-
-## 1. Globala Inställningar (Settings Modal)
-
-Öppna inställningsfönstret via kugghjulsikonen i det övre verktygsfältet eller med snabbkommandot <kbd>Ctrl+,</kbd>.
-
-![Inställningsöversikt](/img/docs/settings-overview.png)
-
-Inställningarna är indelade i sju specialiserade paneler:
+This chapter contains a complete walkthrough of all the settings tabs in sshs3, how they are configured, their technical limits, and a complete reference table of all keyboard shortcuts in the application.
 
 ---
 
-### 1.1 General & Appearance (Allmänt & Utseende)
-- **Tema (Theme)**: Välj mellan **Dark** (standard mörkt slate-tema), **Light** (ljust grått tema), **Breeze** (KDE-inspirerat tema med cyan-detaljer), eller **System** (följer operativsystemets mörka/ljusa läge).
-- **Confirm Before Quit**: Om detta är aktiverat varnar appen om du försöker stänga fönstret medan du har aktiva terminalsessioner eller pågående filöverföringar i bakgrunden.
-- **Automatic Updates**: Slår på eller av automatisk bakgrundskontroll mot GitHub Releases var 6:e timme.
+## 1. Global Settings (Settings Modal)
+
+Open the settings window through the gear icon in the top toolbar or with the shortcut <kbd>Ctrl+,</kbd>.
+
+![Settings overview](/img/docs/settings-overview.png)
+
+The settings are divided into seven specialized panels:
+
+---
+
+### 1.1 General & Appearance
+- **Theme**: Choose between **Dark** (the default dark slate theme), **Light** (a light gray theme), **Breeze** (a KDE-inspired theme with cyan accents), or **System** (follows the operating system's dark/light mode).
+- **Confirm Before Quit**: If enabled, the app warns you if you try to close the window while you have active terminal sessions or file transfers running in the background.
+- **Automatic Updates**: Turns the automatic background check against GitHub Releases, every 6 hours, on or off.
   > [!NOTE]
-  > **Air-Gap Switch**: Sätt miljövariabeln `SSHS3_DISABLE_UPDATES=1` i operativsystemet för att helt låsa denna inställning och stänga av all nätverkstrafik för uppdateringar.
+  > **Air-Gap Switch**: Set the environment variable `SSHS3_DISABLE_UPDATES=1` in the operating system to lock this setting completely and turn off all update network traffic.
 
 ---
 
 ### 1.2 Terminal
-![Terminalinställningar](/img/docs/settings-terminal.png)
+![Terminal settings](/img/docs/settings-terminal.png)
 
-| Inställning | Standardvärde | Syfte & Beskrivning | Begränsningar |
+| Setting | Default | Purpose & Description | Limits |
 | :--- | :--- | :--- | :--- |
-| **Font Family** | Monospace-stack (välj förinställning eller egen) | Typsnittet som används för att rendera text och symboler i terminalen. | Kräver ett monospaced (fast teckenbredd) typsnitt. Proportionella typsnitt gör att markörpositioner förskjuts. |
-| **Font Size** | `13 px` | Grundstorleken för text i terminalpaneler. | Kan justeras dynamiskt per flik med <kbd>Ctrl++</kbd> och <kbd>Ctrl+-</kbd>. |
-| **Cursor Style** | `Block` | Markörens utseende: **Block**, **Underline** (understreck) eller **Bar** (vertikal linje). | Visas i aktiv panel. |
-| **Scrollback Buffer** | `5000 rader` | Hur många rader historik som bevaras i minnet för varje terminalpanel. | Högre värden (t.ex. 50 000 rader) använder mer RAM-minne per öppen panel. |
-| **Copy text automatically on selection** | `Av` | Kopierar varje markering till urklipp och sparar den i den krypterade urklippshistoriken. | Historiken kräver OS-nyckelring för att sparas på disk, annars bara i minnet. |
-| **Clipboard history scope** | `Global` | Delad historik för alla värdar, eller separat historik per anslutning. | Gäller bara när Copy on Select är på. |
-| **Empty clipboard history on exit** | `Av` | Tömmer urklippshistoriken när appen avslutas (och vid nästa start om den kraschade). | |
-| **On Logout / Session End** | `Reconnect` | Vad som händer när en session avslutas: återanslut, stäng fliken eller behåll den. | |
-| **Local Terminal SSH Agent** | `Auto` | Hur `SSH_AUTH_SOCK` sätts i lokala skalflikar: **Auto** (upplåst appagent under Global PIN-cache, annars systemets/login-skalets agent, annars en egen), **System Only** (bara systemets agent, startar ingen) eller **Disabled** (ingen). | Gäller nya flikar. Se kapitel 2. |
+| **Font Family** | Monospace stack (choose a preset or your own) | The typeface used to render text and symbols in the terminal. | Requires a monospaced (fixed character width) typeface. Proportional typefaces make cursor positions shift. |
+| **Font Size** | `13 px` | The base size of text in terminal panes. | Can be adjusted dynamically per tab with <kbd>Ctrl++</kbd> and <kbd>Ctrl+-</kbd>. |
+| **Cursor Style** | `Block` | The look of the cursor: **Block**, **Underline** or **Bar** (vertical line). | Shown in the active pane. |
+| **Scrollback Buffer** | `5000 lines` | How many lines of history are kept in memory for each terminal pane. | Higher values (for example 50,000 lines) use more RAM per open pane. |
+| **Copy text automatically on selection** | `Off` | Copies every selection to the clipboard and saves it in the encrypted clipboard history. | The history requires the OS keyring to be saved to disk, otherwise it is kept in memory only. |
+| **Clipboard history scope** | `Global` | Shared history for all hosts, or a separate history per connection. | Applies only when Copy on Select is on. |
+| **Empty clipboard history on exit** | `Off` | Empties the clipboard history when the app quits (and at the next start if it crashed). | |
+| **On Logout / Session End** | `Reconnect` | What happens when a session ends: reconnect, close the tab or keep it. | |
+| **Local Terminal SSH Agent** | `Auto` | How `SSH_AUTH_SOCK` is set in local shell tabs: **Auto** (the unlocked app agent under Global PIN caching, otherwise the system / login-shell agent, otherwise one of its own), **System Only** (only the system agent, starts none) or **Disabled** (none). | Applies to new tabs. See chapter 2. |
 
 ---
 
-### 1.3 Performance (Prestandabalken)
-![Prestandainställningar](/img/docs/settings-performance.png)
+### 1.3 Performance (The Performance Bar)
+![Performance settings](/img/docs/settings-performance.png)
 
-- **Enable Performance Bar**: Slår på eller av den direktsända telemetribalken ovanför terminalerna. (Avstängd som standard för att garantera noll overhead).
+- **Enable Performance Bar**: Turns the live telemetry bar above the terminals on or off. (Off by default to guarantee zero overhead.)
 - **Layout Mode**:
-  - `Compact Text`: Rena textvärden (t.ex. `CPU: 12% | RAM: 3.4/16 GB | Ping: 14ms`).
-  - `Bars`: Färgkodade mätbalkar som ändrar färg dynamiskt från grönt till gult och rött vid hög belastning.
-  - `Sparklines`: Miniatyrdiagram i realtid som visar de senaste mätpunkterna som linjegrafer.
-- **Sampling Interval**: Välj uppdateringsintervall: `2s`, `5s`, `10s` eller `30s`. På Windows begränsas intervallet automatiskt till minst 10s för att undvika onödig TCP-trafik.
-- **Mätvärdesurval**: Bocka för exakt vilka parametrar som ska visas i listen: CPU, minne, load, swap, nätverk in/ut, disk I/O, iowait, steal, processantal, per-kärna CPU och latens/ping.
+  - `Compact Text`: Plain text values (for example `CPU: 12% | RAM: 3.4/16 GB | Ping: 14ms`).
+  - `Bars`: Color-coded gauges that dynamically change color from green to yellow and red under high load.
+  - `Sparklines`: Real-time miniature charts showing the latest measurement points as line graphs.
+- **Sampling Interval**: Choose the update interval: `2s`, `5s`, `10s` or `30s`. On Windows the interval is automatically limited to at least 10s to avoid unnecessary TCP traffic.
+- **Metric selection**: Tick exactly which parameters should be shown in the bar: CPU, memory, load, swap, network in/out, disk I/O, iowait, steal, process count, per-core CPU and latency/ping.
 
 ---
 
-### 1.4 Files & Storage (Filhanteraren)
-![Filhanterarens inställningar](/img/docs/settings-files.png)
+### 1.4 Files & Storage (The File Manager)
+![File manager settings](/img/docs/settings-files.png)
 
-- **Show Hidden Files**: Visa eller dölj filer och mappar som börjar med en punkt (`.`).
-- **Concurrent Transfers**: Antal samtidiga filöverföringsjobb i överföringskön (standard: 3). Högre värden ger snabbare överföring av många småfiler, men kan mätta nätverket.
-- **Default Conflict Action**: Standardåtgärd vid filkollisioner: **Ask** (fråga varje gång), **Overwrite** (skriv över), **Skip** (hoppa över) eller **Resume** (återuppta).
-- **Preserve Timestamps**: Bevarar ursprungliga ändringstidsstämplar (`mtime`) på filer vid ned- och uppladdning (stöds över SFTP och lokal disk).
+- **Show Hidden Files**: Show or hide files and folders that start with a dot (`.`).
+- **Concurrent Transfers**: The number of simultaneous file transfer jobs in the transfer queue (default: 3). Higher values give faster transfer of many small files, but can saturate the network.
+- **Default Conflict Action**: The default action on file collisions: **Ask** (ask every time), **Overwrite**, **Skip** or **Resume**.
+- **Preserve Timestamps**: Preserves the original modification timestamps (`mtime`) of files on download and upload (supported over SFTP and local disk).
 
 ---
 
-### 1.5 Synchronization (Fjärrsynkronisering & Dotfiles)
-![Synkroniseringsinställningar](/img/docs/settings-sync.png)
+### 1.5 Synchronization (Remote Sync & Dotfiles)
+![Synchronization settings](/img/docs/settings-sync.png)
 
 - **Remote Profile Sync ("Own Your Data")**:
-  - Synkroniserar dina krypterade profiler mot din egen S3-bucket eller privata SSH-server.
-  - All data krypteras lokalt på din maskin med **AES-256-GCM** innan den lämnar datorn.
-  - Konfigurera synktarget och huvudlösenord för valvet.
-- **Keep `~/.ssh/config` in sync with saved SSH profiles** (på som standard): håller sshs3:s markerade block i `~/.ssh/config` uppdaterat vid start och när du sparar, raderar eller importerar en SSH-profil, så `ssh <profilnamn>` fungerar i vilken terminal som helst. Endast sshs3:s eget block ändras. Se kapitel 2.
+  - Synchronizes your encrypted profiles against your own S3 bucket or private SSH server.
+  - All data is encrypted locally on your machine with **AES-256-GCM** before it leaves the computer.
+  - Configure the sync target and the master password for the vault.
+- **Keep `~/.ssh/config` in sync with saved SSH profiles** (on by default): keeps sshs3's marked block in `~/.ssh/config` up to date at startup and whenever you save, delete or import an SSH profile, so `ssh <profile-name>` works in any terminal. Only sshs3's own block is changed. See chapter 2.
 - **Dotfiles Pool Manager**:
-  - Hantera din samling av gemensamma `.bashrc`, `.vimrc`, skript och profilfiler som kan laddas upp temporärt vid inloggning på valfria servrar.
+  - Manage your collection of shared `.bashrc`, `.vimrc`, scripts and profile files that can be uploaded temporarily when logging in to any servers.
 
 ---
 
-### 1.6 Security & Smartcard (Säkerhet & Hårdvarunycklar)
-![Säkerhetsinställningar](/img/docs/settings-security.png)
+### 1.6 Security & Smartcard (Security & Hardware Keys)
+![Security settings](/img/docs/settings-security.png)
 
 - **PIN Caching Policy**:
-  - `Always Prompt (Default)`: Ingen cachning mellan anslutningar; återanslutning frågar efter PIN igen.
-  - `Once Per Terminal Connection`: PIN anges en gång i en privat, appstyrd `ssh-agent` som delas av terminalfliken och dess dotfiles-sync. Agenten stängs när terminalen kopplar ned.
-  - `Global (App Lifetime)`: PIN anges en gång per kort och delas av alla terminaler och profiler så länge appen körs, tills du avslutar eller låser. Alla upplåsta smartcards och FIDO2-nycklar ligger i *en* appgemensam ssh-agent. Kortikonen i toppraden växlar mellan **Lock All Now** och **Unlock Now**. Bekvämast men minst strikt. Se kapitel 8.
-- **Preferred PKCS#11 Library**: Välj vilket bibliotek som ska prioriteras vid autoupptäckt: `p11-kit` (standard), `YubiKey libykcs11`, `OpenSC` eller `Net iD`.
-- **Master Password Vault**: Fallback-kryptering med AES-256-GCM om operativsystemets inbyggda nyckelring (Secret Service / DPAPI) inte är tillgänglig.
+  - `Always Prompt (Default)`: No caching between connections; reconnecting asks for the PIN again.
+  - `Once Per Terminal Connection`: The PIN is entered once into a private, app-managed `ssh-agent` shared by the terminal tab and its dotfiles sync. The agent is closed when the terminal disconnects.
+  - `Global (App Lifetime)`: The PIN is entered once per card and shared by all terminals and profiles for as long as the app runs, until you quit or lock. All unlocked smartcards and FIDO2 keys live in *one* app-wide ssh-agent. The card icon in the top bar toggles between **Lock All Now** and **Unlock Now**. Most convenient but least strict. See chapter 8.
+- **Preferred PKCS#11 Library**: Choose which library to prioritize in auto-detection: `p11-kit` (default), `YubiKey libykcs11`, `OpenSC` or `Net iD`.
+- **Master Password Vault**: Fallback encryption with AES-256-GCM if the operating system's built-in keyring (Secret Service / DPAPI) is not available.
 
 ---
 
-### 1.7 Git & GitHub (Utvecklarnycklar & Git-konfiguration)
-Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och kryptografisk commit-signering:
+### 1.7 Git & GitHub (Developer Keys & Git Configuration)
+A centralized dashboard for developer keys, Git providers and cryptographic commit signing:
 
 - **Developer SSH Keys & Git Providers**:
-  - Samlar alla upptäckta publika nycklar från `~/.ssh`, operativsystemets aktiva SSH-agent samt den globala smartcard-cachen (YubiKey/PIV/FIDO2).
-  - **Copy**: Kopierar den publika nyckelsträngen direkt till urklipp.
-  - **GitHub / GitLab**: Öppnar respektive leverantörs SSH-nyckelinställningar i webbläsaren med nyckelnamnet ifyllt och kopierar automatiskt nyckeltexten till urklipp så att den är redo att klistras in (<kbd>Ctrl+V</kbd>).
-  - **Sign Active / Git Sign**: Väljer och konfigurerar den valda nyckeln som aktiv signeringsnyckel i `~/.gitconfig` med ett enda klick.
+  - Collects all discovered public keys from `~/.ssh`, the operating system's active SSH agent and the global smartcard cache (YubiKey/PIV/FIDO2).
+  - **Copy**: Copies the public key string directly to the clipboard.
+  - **GitHub / GitLab**: Opens the respective provider's SSH key settings in the browser with the key name filled in and automatically copies the key text to the clipboard so it is ready to paste (<kbd>Ctrl+V</kbd>).
+  - **Sign Active / Git Sign**: Selects and configures the chosen key as the active signing key in `~/.gitconfig` with a single click.
 - **Git Commit Signing (`~/.gitconfig`)**:
-  - Visar aktivt signeringsformat (`ssh`) och aktiv publik nyckel.
-  - **Automatic Signing (`commit.gpgsign`)**: Slå på eller av global automatisk signering av alla commits.
-  - **allowed_signers**: Uppdaterar automatiskt `~/.ssh/allowed_signers` så att lokala signaturer kan verifieras utan felmeddelanden.
-  - **Change Key / Custom Key**: Möjlighet att manuellt klistra in valfri SSH-publiknyckel eller nyckelsökväg.
+  - Shows the active signing format (`ssh`) and the active public key.
+  - **Automatic Signing (`commit.gpgsign`)**: Turn global automatic signing of all commits on or off.
+  - **allowed_signers**: Automatically updates `~/.ssh/allowed_signers` so local signatures can be verified without error messages.
+  - **Change Key / Custom Key**: The ability to manually paste any SSH public key or key path.
 - **SFTP & File Manager Git Integration**:
-  - Reglage för att aktivera eller inaktivera Git-integrationen i filhanteraren (standard: påslagen).
-  - När den är avstängd utförs ingen bakgrundspolling av git-status över SFTP eller lokala mappar, och verktygsfältet hålls rent.
+  - A toggle to enable or disable the Git integration in the file manager (default: on).
+  - When it is off, no background polling of git status is done over SFTP or local folders, and the toolbar is kept clean.
 - **Lookup Public Keys (`username.keys`)**:
-  - Slå upp och inspektera publika nycklar för valfritt användarnamn på GitHub, GitLab eller privat GitLab-instans via deras officiella `.keys`-slutpunkter.
+  - Look up and inspect public keys for any username on GitHub, GitLab or a private GitLab instance through their official `.keys` endpoints.
 
 ---
 
-## 2. Komplett Referenstabell över Tangentbordsgenvägar
+## 2. Complete Keyboard Shortcut Reference
 
-![Kortkommandon](/img/docs/settings-shortcuts.png)
+![Keyboard shortcuts](/img/docs/settings-shortcuts.png)
 
-### Terminal & Paneler (Split-Panes)
+### Terminal & Panes (Split Panes)
 
-| Genväg | Åtgärd | Beskrivning |
+| Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| <kbd>Ctrl+Shift+D</kbd> | **Dela Vertikalt (Höger)** | Delar aktiv panel på mitten och placerar en ny panel till höger. |
-| <kbd>Ctrl+Shift+E</kbd> | **Dela Horisontellt (Ner)** | Delar aktiv panel på mitten och placerar en ny panel nedanför. |
-| <kbd>Ctrl+Shift+N</kbd> | **Nästa Panel** | Flyttar tangentbordsfokus framåt till nästa panel i trädet. |
-| <kbd>Ctrl+Shift+P</kbd> | **Föregående Panel** | Flyttar tangentbordsfokus bakåt till föregående panel. |
-| <kbd>Ctrl+Shift+←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | **Navigera** | Flyttar fokus spatialt mellan split-paneler, flikar, filhanterarens paneler, menyer och dialoger. <kbd>↑</kbd> från översta panelen går till flikfältet och <kbd>↓</kbd> därifrån tillbaka in. Kan ändras under *Keyboard Shortcuts* (Navigate Left/Right/Up/Down). |
-| <kbd>Ctrl+Shift+T</kbd> | **Ny Terminal** | Öppnar en ny terminalflik. |
-| <kbd>Ctrl+Shift+F</kbd> | **Ny Filhanterare** | Öppnar en ny filhanterarflik. |
-| <kbd>Ctrl+Shift+O</kbd> | **Connection Manager** | Öppnar sparade profiler och anslutningar. |
-| <kbd>Ctrl+W</kbd> | **Stäng Flik** | Stänger hela den aktiva fliken och alla dess split-paneler. |
-| <kbd>Ctrl+Tab</kbd> | **Nästa Flik** | Växlar till nästa öppna flik. |
-| <kbd>Ctrl+Shift+Tab</kbd> | **Föregående Flik** | Växlar till föregående öppen flik. |
-| <kbd>Ctrl+Shift+S</kbd> | **Sök i Terminal** | Öppnar sökfältet för att söka i terminalens textbuffert. |
-| <kbd>Ctrl+Shift+R</kbd> | **Urklippshistorik** | Öppnar den krypterade historiken över terminalmarkeringar (kräver Copy on Select). |
-| <kbd>Ctrl+Shift+G</kbd> | **Kopiera Senaste Utdata** | Kopierar det senaste kommandots utskrift. |
-| <kbd>Ctrl+Shift+L</kbd> | **Snippets** | Öppnar paletten med sparade kommandon. |
-| <kbd>Ctrl++</kbd> | **Zooma In** | Ökar teckenstorleken i den aktiva terminalen. |
-| <kbd>Ctrl+-</kbd> | **Zooma Ut** | Minskar teckenstorleken i den aktiva terminalen. |
-| <kbd>Ctrl+0</kbd> | **Återställ Zoom** | Återställer teckenstorleken till standardvärdet. |
+| <kbd>Ctrl+Shift+D</kbd> | **Split Vertically (Right)** | Splits the active pane in the middle and places a new pane on the right. |
+| <kbd>Ctrl+Shift+E</kbd> | **Split Horizontally (Down)** | Splits the active pane in the middle and places a new pane below. |
+| <kbd>Ctrl+Shift+N</kbd> | **Next Pane** | Moves keyboard focus forward to the next pane in the tree. |
+| <kbd>Ctrl+Shift+P</kbd> | **Previous Pane** | Moves keyboard focus back to the previous pane. |
+| <kbd>Ctrl+Shift+←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | **Navigate** | Moves focus spatially between split panes, tabs, file manager panes, menus and dialogs. <kbd>↑</kbd> from the top pane goes to the tab bar and <kbd>↓</kbd> goes back in from there. Can be changed under *Keyboard Shortcuts* (Navigate Left/Right/Up/Down). |
+| <kbd>Ctrl+Shift+T</kbd> | **New Terminal** | Opens a new terminal tab. |
+| <kbd>Ctrl+Shift+F</kbd> | **New File Manager** | Opens a new file manager tab. |
+| <kbd>Ctrl+Shift+O</kbd> | **Connection Manager** | Opens saved profiles and connections. |
+| <kbd>Ctrl+W</kbd> | **Close Tab** | Closes the whole active tab and all its split panes. |
+| <kbd>Ctrl+Tab</kbd> | **Next Tab** | Switches to the next open tab. |
+| <kbd>Ctrl+Shift+Tab</kbd> | **Previous Tab** | Switches to the previous open tab. |
+| <kbd>Ctrl+Shift+S</kbd> | **Search in Terminal** | Opens the search bar to search the terminal's text buffer. |
+| <kbd>Ctrl+Shift+R</kbd> | **Clipboard History** | Opens the encrypted history of terminal selections (requires Copy on Select). |
+| <kbd>Ctrl+Shift+G</kbd> | **Copy Last Output** | Copies the output of the last command. |
+| <kbd>Ctrl+Shift+L</kbd> | **Snippets** | Opens the palette of saved commands. |
+| <kbd>Ctrl++</kbd> | **Zoom In** | Increases the font size in the active terminal. |
+| <kbd>Ctrl+-</kbd> | **Zoom Out** | Decreases the font size in the active terminal. |
+| <kbd>Ctrl+0</kbd> | **Reset Zoom** | Resets the font size to the default. |
 
-### Filhanteraren
+### The File Manager
 
-| Genväg | Åtgärd | Beskrivning |
+| Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| <kbd>Ctrl+F</kbd> | **Sök Filer** | Öppnar filfilteringslisten i aktiv panel. Stöder rekursiv sökning och jokertecken (`*`, `?`). |
-| <kbd>F5</kbd> / <kbd>Ctrl+R</kbd> | **Uppdatera** | Läser in innehållet i den aktiva katalogen på nytt. |
-| <kbd>Ctrl+S</kbd> | **Spara Fjärrfil** | I den inbyggda texteditorn: sparar ändringarna direkt tillbaka till servern. |
-| <kbd>Delete</kbd> | **Ta Bort** | Raderar markerade filer eller mappar efter bekräftelse. |
-| <kbd>F2</kbd> | **Byt Namn** | Byt namn på den markerade filen. |
+| <kbd>Ctrl+F</kbd> | **Search Files** | Opens the file filter bar in the active pane. Supports recursive search and wildcards (`*`, `?`). |
+| <kbd>F5</kbd> / <kbd>Ctrl+R</kbd> | **Refresh** | Reloads the contents of the active directory. |
+| <kbd>Ctrl+S</kbd> | **Save Remote File** | In the built-in text editor: saves the changes directly back to the server. |
+| <kbd>Delete</kbd> | **Delete** | Deletes the selected files or folders after confirmation. |
+| <kbd>F2</kbd> | **Rename** | Renames the selected file. |
 
-### Tangentbordsstyrning utan mus
-Appen går att använda helt utan mus: <kbd>Ctrl+Shift+Piltangenter</kbd> navigerar, <kbd>Enter</kbd> utför det som är markerat (öppnar mappar, startar anslutningar, slår på och av kryssrutor) och <kbd>Escape</kbd> stänger menyer och dialoger och ger fokus tillbaka till det du kom från. I en dialog flyttar <kbd>Ctrl+Shift+Pilar</kbd> mellan fält och knappar, även när markören står i ett textfält.
+### Keyboard Control Without a Mouse
+The app can be used entirely without a mouse: <kbd>Ctrl+Shift+Arrow keys</kbd> navigate, <kbd>Enter</kbd> performs whatever is selected (opens folders, starts connections, toggles checkboxes) and <kbd>Escape</kbd> closes menus and dialogs and returns focus to where you came from. In a dialog, <kbd>Ctrl+Shift+Arrows</kbd> move between fields and buttons, even when the cursor is in a text field.
 
-### Globala Applikationskommandon
+### Global Application Commands
 
-| Genväg | Åtgärd | Beskrivning |
+| Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| <kbd>Ctrl+Shift+K</kbd> | **Sök i Filer** | Innehållssökning över lokal disk, SFTP och S3. |
-| <kbd>Ctrl+,</kbd> | **Inställningar** | Öppnar inställningsdialogen. |
-| <kbd>Ctrl+Q</kbd> | **Avsluta sshs3** | Stänger applikationen (kontrollerar aktiva överföringar först). |
+| <kbd>Ctrl+Shift+K</kbd> | **Search in Files** | Content search across local disk, SFTP and S3. |
+| <kbd>Ctrl+,</kbd> | **Settings** | Opens the settings dialog. |
+| <kbd>Ctrl+Q</kbd> | **Quit sshs3** | Closes the application (checks active transfers first). |
