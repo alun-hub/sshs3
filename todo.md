@@ -28,6 +28,13 @@ Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta 
 - **Automatiska uppdateringar är avstängda på Windows** — `electron-updater` är
   inkopplad (se #29), men Windows-bygget är osignerat så updatern kan inte verifiera
   utgivaren (`win.publisherName`), bara sha512 från `latest.yml`.
+- **`PKCS11Provider`/`SecurityKeyProvider` i synkad `extraOptions` är medvetet inte spärrade** —
+  beslut 2026-10-05. Synkdata är AES-256-GCM-krypterad och autentiserad (nyckel via scrypt från
+  huvudlösenordet), så en manipulerad fil i SFTP/S3 avvisas; ingen extra SHA-256-koll behövs. Att
+  spärra direktiven i `BLOCKED_SSH_DIRECTIVES` skulle även strippa lokalt genererade
+  smartcard-rader ur `~/.ssh/config`. Kvarvarande risk: en komprometterad egen klient kan pusha
+  en skadlig `extraOptions`. `pkcs11LibPath` är redan device-local (synkas aldrig). Ta upp igen
+  bara om hotbilden ändras (t.ex. delad synk-källa mellan flera användare).
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
