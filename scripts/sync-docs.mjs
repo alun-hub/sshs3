@@ -19,8 +19,8 @@ if (!fs.existsSync(docsUserGuideDir)) {
   process.exit(1);
 }
 
-const docFiles = fs.readdirSync(docsUserGuideDir).filter(f => f.endsWith('.md')).sort();
-console.log(`Found ${docFiles.length} markdown guide chapters:`);
+const docFiles = fs.readdirSync(docsUserGuideDir).filter(f => f.endsWith('.md') && f !== 'README.md').sort();
+console.log(`Found ${docFiles.length} documentation pages:`);
 for (const file of docFiles) {
   const filePath = path.join(docsUserGuideDir, file);
   const stats = fs.statSync(filePath);

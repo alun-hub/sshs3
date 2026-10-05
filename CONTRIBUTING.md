@@ -74,10 +74,10 @@ Before writing new features or modifying IPC interfaces, please read [`ARCHITECT
 
 ### User Documentation & Guides (`docs.sshs3.com`)
 
-User documentation is maintained in Markdown under [`docs/user-guide/`](docs/user-guide/) and published to [docs.sshs3.com](https://docs.sshs3.com).
-- Any PR introducing or changing user-facing functionality (new shortcuts, connection options, file manager features, settings, etc.) **must update or add to the relevant chapter** in `docs/user-guide/`.
+User documentation is maintained in Markdown under [`docs/user-guide/`](docs/user-guide/) — the **single source**, in English, written next to the code it describes (see its [README](docs/user-guide/README.md) for the page registry, conventions and writing rules). It is rendered and published to [docs.sshs3.com](https://docs.sshs3.com) by the site repo's build.
+- Any PR introducing or changing user-facing functionality (new shortcuts, connection options, file manager features, settings, etc.) **must update or add to the relevant page** in `docs/user-guide/`. Verify button and setting names against the UI and `src/shared/types/settings.ts`.
 - Validate documentation locally using `npm run docs:sync`.
-- Changes merged to `master` automatically trigger validation and deployment via `.github/workflows/deploy-docs.yml`.
+- Merging to `master` only validates the documentation (`.github/workflows/deploy-docs.yml`). It goes live with `scripts/deploy-site.sh`, which `scripts/deploy.sh` runs automatically after a release when `docs/` (or `ipc.ts`/`settings.ts`) changed; it can also be run on its own.
 
 ---
 

@@ -10,13 +10,13 @@
 #   1. Refuse if the site checkout has uncommitted work outside the generated paths (docs content,
 #      templates and scripts are authored by hand and must be committed first).
 #   2. Sync screenshots from docs/screenshots into the site (scripts/sync-docs.mjs).
-#   3. Rebuild the docs (`npm run build:docs` in the site: extracts the IPC channels and keyboard
-#      shortcuts from THIS checkout's source, then renders content/docs/*.md through the templates).
+#   3. Rebuild the docs (`npm run build:docs` in the site: reads docs/user-guide/*.md and extracts the IPC
+#      channels and keyboard shortcuts from THIS checkout, then renders them through the site templates).
 #   4. Validate the generated pages (`npm run validate:links`).
 #   5. Commit the generated paths, push the site repo, and `wrangler deploy`.
 #
-# The English docs in sshs3-site/content/docs are NOT generated from docs/user-guide (Swedish); they are
-# maintained by hand there. Only screenshots, shortcuts and IPC channels flow in automatically.
+# The documentation text is docs/user-guide/*.md in THIS repo (single source); the site repo holds only the
+# page registry, templates and the build. Screenshots, keyboard shortcuts and IPC channels flow in too.
 #
 # Environment: SSHS3_SITE_DIR overrides the site checkout (default: ../sshs3-site).
 
@@ -71,7 +71,7 @@ git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1 || fail "branch '${branch}' ha
 if [[ "$DRY_RUN" == "true" ]]; then
   echo -e "${YELLOW}[DRY RUN] sshs3-site (${SITE_DIR}, branch ${branch}) would:${RESET}"
   echo "  1. sync screenshots from ${REPO_ROOT}/docs/screenshots (public/img and public/img/docs)"
-  echo "  2. npm run build:docs   (IPC channels + shortcuts read from ${REPO_ROOT})"
+  echo "  2. npm run build:docs   (docs/user-guide, IPC channels and shortcuts read from ${REPO_ROOT})"
   echo "  3. npm run validate:links"
   echo "  4. commit ${GENERATED_PATHS[*]} if changed, push '${branch}'"
   echo "  5. npx wrangler deploy  -> sshs3.com, www.sshs3.com, docs.sshs3.com"
