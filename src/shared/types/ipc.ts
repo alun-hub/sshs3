@@ -99,6 +99,7 @@ export const IPC_CHANNELS = {
   SMARTCARD_LOCK_ALL: 'smartcard:lock-all',
   SMARTCARD_LIST_CACHED: 'smartcard:list-cached',
   SMARTCARD_UNLOCK_AT_STARTUP: 'smartcard:unlock-at-startup',
+  SMARTCARD_UNLOCK_NOW: 'smartcard:unlock-now',
   SMARTCARD_STARTUP_UNLOCK_STATUS: 'smartcard:startup-unlock-status',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
@@ -476,6 +477,8 @@ export interface MultiSSHApi {
   smartcardListCached(): Promise<CachedSmartcardAgent[]>;
   /** Called once on renderer startup; a no-op unless 'agent-global' PIN caching + the startup-unlock setting are both on and exactly one PKCS#11 library is detected. */
   smartcardUnlockAtStartup(): Promise<{ started: boolean }>;
+  /** The top-bar "Unlock" action: same as the startup unlock but on demand, regardless of the startup-unlock setting (still only in 'agent-global' mode). */
+  smartcardUnlockNow(): Promise<{ started: boolean }>;
   /** Fired asynchronously once the startup unlock kicked off by smartcardUnlockAtStartup finishes, reporting whether the PIN was accepted. */
   onSmartcardStartupUnlockStatus(callback: (event: SmartcardStartupUnlockStatusEvent) => void): () => void;
   onAskpassPrompt(callback: (event: AskpassPromptEvent) => void): () => void;

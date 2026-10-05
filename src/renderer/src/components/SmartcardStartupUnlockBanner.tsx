@@ -37,10 +37,10 @@ export const SmartcardStartupUnlockBanner: React.FC = () => {
           <KeyRound className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold text-txt-primary">Startup unlock failed</div>
+          <div className="text-xs font-semibold text-txt-primary">Unlock failed</div>
           <p className="mt-0.5 text-xs text-txt-muted">
-            {label} could not be unlocked at startup ({status.error ?? 'unknown error'}). You&apos;ll be
-            prompted again the next time it&apos;s needed.
+            {label} could not be unlocked ({status.error ?? 'unknown error'}). You&apos;ll be prompted again the
+            next time it&apos;s needed, or you can retry from the lock icon in the top bar.
           </p>
         </div>
         <button

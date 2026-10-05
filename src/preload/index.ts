@@ -173,6 +173,8 @@ export const api: MultiSSHApi = {
 
   smartcardUnlockAtStartup: (): Promise<{ started: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP),
+  smartcardUnlockNow: (): Promise<{ started: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW),
 
   onSmartcardStartupUnlockStatus: (
     callback: (event: SmartcardStartupUnlockStatusEvent) => void

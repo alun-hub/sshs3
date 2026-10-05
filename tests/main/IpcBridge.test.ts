@@ -596,6 +596,28 @@ describe('IpcBridge', () => {
         expect(res).toEqual({ started: false });
       });
 
+      it('the on-demand Unlock runs even when the "unlock at startup" setting is off', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: false, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockResolvedValue(new Map());
+        fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {}));
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP)).toEqual({ started: false });
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: true });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fakeAppAgent.addPkcs11).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function), expect.any(Object));
+
+        detectSpy.mockRestore();
+        readCertsSpy.mockRestore();
+      });
+
+      it('the on-demand Unlock still does nothing outside agent-global mode', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'always-prompt' });
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: false });
+      });
+
       it('does nothing when PIN caching mode is not agent-global', async () => {
         mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'always-prompt' });
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);

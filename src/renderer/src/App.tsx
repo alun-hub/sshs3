@@ -1134,6 +1134,7 @@ export const App: React.FC = () => {
             onOpenDirSyncProfiles={() => openTopLevelModal(() => setDirSyncProfilesOpen(true))}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
             onLockSmartcard={() => window.multissh?.smartcardLockAll() ?? Promise.resolve({ locked: 0 })}
+            onUnlockSmartcard={() => window.multissh?.smartcardUnlockNow?.() ?? Promise.resolve({ started: false })}
             onListCachedSmartcards={() => window.multissh?.smartcardListCached() ?? Promise.resolve([])}
           />
         </div>

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
@@ -171,5 +172,49 @@ describe('TabBar Component', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('new-terminal-btn')).not.toBeInTheDocument();
+  });
+
+  describe('cached smartcard identities menu', () => {
+    const renderWithSmartcard = (props: Partial<React.ComponentProps<typeof TabBar>> = {}) =>
+      render(
+        <TabBar
+          tabs={sampleTabs}
+          activeTabId="tab-1"
+          onSelectTab={vi.fn()}
+          onCloseTab={vi.fn()}
+          onNewTab={vi.fn()}
+          showLockSmartcardButton
+          onListCachedSmartcards={() => Promise.resolve([])}
+          onLockSmartcard={() => Promise.resolve({ locked: 0 })}
+          {...props}
+        />
+      );
+
+    it('offers Unlock Now next to Lock All Now, and reports when something was started', async () => {
+      const onUnlockSmartcard = vi.fn().mockResolvedValue({ started: true });
+      renderWithSmartcard({ onUnlockSmartcard });
+
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      expect(screen.getByText('Lock All Now')).toBeInTheDocument();
+      fireEvent.click(await screen.findByTestId('smartcard-unlock-now-btn'));
+
+      expect(onUnlockSmartcard).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('Unlocking — enter your PIN when asked')).toBeInTheDocument();
+    });
+
+    it('tells the user when there was nothing to unlock', async () => {
+      renderWithSmartcard({ onUnlockSmartcard: vi.fn().mockResolvedValue({ started: false }) });
+
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      fireEvent.click(await screen.findByTestId('smartcard-unlock-now-btn'));
+
+      expect(await screen.findByText(/Nothing to unlock/)).toBeInTheDocument();
+    });
+
+    it('hides Unlock Now when no unlock handler is provided', () => {
+      renderWithSmartcard();
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      expect(screen.queryByTestId('smartcard-unlock-now-btn')).not.toBeInTheDocument();
+    });
   });
 });

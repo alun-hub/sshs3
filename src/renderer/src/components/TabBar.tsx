@@ -8,6 +8,8 @@ import {
   Server,
   Settings,
   Unlock,
+  Lock,
+  KeyRound,
   Loader2,
   CreditCard,
   FolderSync,
@@ -43,6 +45,8 @@ export interface TabBarProps {
   /** Shown only when Settings > Security > Smartcard PIN Caching is set to 'Global (App Lifetime)'. */
   showLockSmartcardButton?: boolean;
   onLockSmartcard?: () => Promise<{ locked: number }>;
+  /** Unlocks the cards/keys that aren't cached yet (prompts for the PIN); resolves once detection has decided whether anything was started. */
+  onUnlockSmartcard?: () => Promise<{ started: boolean }>;
   onListCachedSmartcards?: () => Promise<CachedSmartcardAgent[]>;
 }
 
@@ -60,12 +64,14 @@ export const TabBar: React.FC<TabBarProps> = ({
   onOpenTunnels,
   showLockSmartcardButton,
   onLockSmartcard,
+  onUnlockSmartcard,
   onListCachedSmartcards,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [lockingSmartcard, setLockingSmartcard] = useState(false);
+  const [unlockingSmartcard, setUnlockingSmartcard] = useState(false);
   const [lockFeedback, setLockFeedback] = useState<string | null>(null);
 
   const [isSmartcardMenuOpen, setIsSmartcardMenuOpen] = useState(false);
@@ -415,6 +421,36 @@ export const TabBar: React.FC<TabBarProps> = ({
                   </ul>
                 )}
 
+                {onUnlockSmartcard && (
+                  <button
+                    type="button"
+                    data-testid="smartcard-unlock-now-btn"
+                    disabled={unlockingSmartcard}
+                    onClick={() => {
+                      setUnlockingSmartcard(true);
+                      setLockFeedback(null);
+                      void onUnlockSmartcard()
+                        .then(({ started }) => {
+                          setLockFeedback(
+                            started
+                              ? 'Unlocking — enter your PIN when asked'
+                              : 'Nothing to unlock: no smartcard or security key detected, or already unlocked'
+                          );
+                          setIsSmartcardMenuOpen(false);
+                        })
+                        .catch(() => setLockFeedback('Could not start the unlock'))
+                        .finally(() => {
+                          setUnlockingSmartcard(false);
+                          setTimeout(() => setLockFeedback(null), 4000);
+                        });
+                    }}
+                    className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition-colors disabled:opacity-40"
+                  >
+                    {unlockingSmartcard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                    Unlock Now
+                  </button>
+                )}
+
                 <button
                   type="button"
                   disabled={lockingSmartcard || !cachedAgents || cachedAgents.length === 0}
@@ -436,12 +472,12 @@ export const TabBar: React.FC<TabBarProps> = ({
                         setTimeout(() => setLockFeedback(null), 4000);
                       });
                   }}
-                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+                  className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
                 >
                   {lockingSmartcard ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Unlock className="h-3.5 w-3.5" />
+                    <Lock className="h-3.5 w-3.5" />
                   )}
                   Lock All Now
                 </button>

@@ -672,6 +672,10 @@ export class IpcBridge {
       return this.maybeUnlockSmartcardAtStartup();
     });
 
+    this.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW, async () => {
+      return this.maybeUnlockSmartcardAtStartup({ force: true });
+    });
+
     this.registerHandler(
       IPC_CHANNELS.HOSTKEY_RESPOND,
       async (_event, id: string, trust: boolean) => {
@@ -2172,7 +2176,7 @@ export class IpcBridge {
    * Concurrent terminal session restorations await this startup unlock so that
    * multiple connections never race against the physical security key hardware.
    */
-  private async maybeUnlockSmartcardAtStartup(): Promise<{ started: boolean }> {
+  private async maybeUnlockSmartcardAtStartup(options: { force?: boolean } = {}): Promise<{ started: boolean }> {
     // Assign the guard promise synchronously, before any awaits, so a concurrent restored
     // terminal session's TERMINAL_CREATE (which awaits `this.startupUnlockPromise` at line
     // ~395) always has something to wait on from the very first tick of this call — closing
@@ -2199,7 +2203,7 @@ export class IpcBridge {
       return await this.runSmartcardStartupUnlockWork((unlockPromise) => {
         unlockKickedOff = true;
         void unlockPromise.finally(resolveGuard);
-      });
+      }, options.force);
     } finally {
       if (!unlockKickedOff) {
         resolveGuard();
@@ -2207,11 +2211,16 @@ export class IpcBridge {
     }
   }
 
+  /**
+   * `force` is the on-demand "Unlock" action (top bar): it runs the same detection and unlock as the
+   * startup flow but doesn't require the "unlock at startup" setting — the user asked for it now.
+   */
   private async runSmartcardStartupUnlockWork(
-    onUnlockStarted: (unlockPromise: Promise<void>) => void
+    onUnlockStarted: (unlockPromise: Promise<void>) => void,
+    force = false
   ): Promise<{ started: boolean }> {
     const settings = await this.settingsStore.getSettings();
-    if (!settings.smartcardUnlockAtStartup || (settings.smartcardAuthMode ?? 'always-prompt') !== 'agent-global') {
+    if ((!settings.smartcardUnlockAtStartup && !force) || (settings.smartcardAuthMode ?? 'always-prompt') !== 'agent-global') {
       return { started: false };
     }
 
