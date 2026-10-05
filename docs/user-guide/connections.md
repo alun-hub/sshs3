@@ -64,6 +64,12 @@ Eliminate password compromises and enforce Zero Trust security using hardware-ba
 
 #### 🛠️ How to Use
 - **FIDO2 Resident Credentials**: Select FIDO2 and tick **Use a resident (discoverable) credential stored on the device**. No key file is needed: the app loads whatever resident credentials are on the connected security key when you connect. It scans the key automatically; click **Re-scan connected security key** after swapping keys. (Not available on Windows, whose OpenSSH build cannot read resident keys; use a key file there.)
+- **Create a new FIDO2 key**: Under the FIDO2 settings expand **Generate a key now** (**Generate a new key on this security key**), then choose:
+  - **Key Type**: **ED25519-SK (recommended)** or **ECDSA-SK (older keys / firmware)**.
+  - **Output Path**: where the key file is written (for example `~/.ssh/id_ed25519_sk`).
+  - **Resident (discoverable) — no file needed to authenticate later**: stores the credential on the key itself (not available on Windows).
+  - **Require PIN + touch on every use (recommended)**: the key then asks for its PIN and a touch on every signature (`verify-required`).
+  Click **Generate Key** and touch the key when prompted.
 - **Smartcard (PKCS#11)**: Select Smartcard and click **Scan** next to the library field. The app scans the standard library paths and lists the **Detected modules on system** to pick from.
 
 #### ⚠️ Limitations & Caveats
@@ -72,7 +78,7 @@ Eliminate password compromises and enforce Zero Trust security using hardware-ba
 
 #### ⚙️ Technical Internals & Architecture
 Built on **Zero Private Key Extraction**. Key bytes never traverse Node.js or Chromium heaps. At connection time, sshs3 configures OpenSSH CLI arguments:
-- FIDO2: `-i ~/.ssh/id_ed25519_sk` or resident credential lookup via `SecurityKeyProvider`.
+- FIDO2: `-i ~/.ssh/id_ed25519_sk` for a key file; resident credentials are loaded into the `ssh-agent` with `ssh-add -K` (PIN and touch via the app's own dialogs) and the connection authenticates through that agent.
 - Smartcard: `-o PKCS11Provider=<library-path>` coupled with the app's internal `AskpassServer`, delivering user PINs over an isolated Unix domain socket.
 
 ---

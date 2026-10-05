@@ -17,7 +17,15 @@ Replace vulnerable JavaScript SSH libraries with the operating system's native O
 1. Launch the file manager via <kbd>Ctrl+Shift+F</kbd> or double-click an SFTP profile.
 2. Navigate via keyboard (<kbd>Tab</kbd> switches active pane, <kbd>Enter</kbd> enters directories or opens files, <kbd>Backspace</kbd> ascends to parent folder).
 3. Drag and drop files between panes or directly from your workstation's desktop.
-4. Manage permissions via right-click → **Permissions (chmod)** with octal (e.g. `0755`, `0644`) and symbolic checkboxes.
+4. Manage permissions via right-click → **Change Permissions (chmod)...** with octal (e.g. `0755`, `0644`) and symbolic checkboxes. Tick **Apply recursively to underlying files and folders** to apply the mode to everything inside a selected folder.
+
+### Search in Files (<kbd>Ctrl+Shift+K</kbd>)
+
+Opens **Search in Files** for the active pane's source: local disk, SFTP or S3.
+- Choose **Literal** or **Regex**, and tick **Case sensitive** if needed.
+- Narrow the search with **Include:** and **Exclude:** globs (for example `*.log, *.csv` and `*.min.js`).
+- Matches stream in as they are found; select one to preview the surrounding lines, and use **Jump to file in pane** to open its location.
+- The search stops at 500 matches (**Result limit reached — narrow your search to see more.**). On local disk, files larger than 50 MB are skipped, and on S3 objects larger than 10 MB; unreadable entries (sockets, system-protected files) are reported as warnings.
 
 ### Keyboard Ergonomics & Spatial Navigation
 
@@ -56,7 +64,7 @@ The file manager is designed to be fully operable without a mouse:
 ```bash
 ssh <args from SmartcardDetector> -o BatchMode=no -s -- [user@]host sftp
 ```
-- `SftpPacketProtocol` processes binary SFTP v3 packets (`SSH_FXP_INIT`, `SSH_FXP_OPEN`, `SSH_FXP_READ`, etc.).
+- `SftpPacketProtocol` processes binary SFTP v3 packets (`SSH_FXP_INIT`, `SSH_FXP_OPEN`, `SSH_FXP_READ`, etc.) and rejects any packet larger than 16 MB, protecting against faulty or hostile servers.
 - `SftpStreams` delivers `ReadableStream` and `WritableStream` with Node.js backpressure management, preventing memory exhaustion over saturated links.
 - Hardware token touch prompts and smartcard PIN requests are handled transparently via the app's `AskpassServer`.
 

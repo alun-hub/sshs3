@@ -61,10 +61,11 @@ To protect smartcards and PIN-protected hardware keys against unauthorized physi
 - **Lifecycle**: The agent process is killed when the terminal disconnects, and reconnecting asks again. Automatic reconnects after a dropped connection reuse the open agent while active.
 
 ### C. Global (App Lifetime) — Full SSO for Terminal & External CLI
-- **Single App-Wide Agent (`AppAgent`)**: All unlocked smartcards and FIDO2 keys reside in **one app-wide `ssh-agent`** on a stable socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock` or `/tmp/sshs3-agent-<uid>/agent.sock`, restricted to permissions `0700`).
+- **Single App-Wide Agent (`AppAgent`)**: All unlocked smartcards and FIDO2 keys reside in **one app-wide `ssh-agent`** on a stable socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock`, or `<tmpdir>/sshs3-<uid>/agent.sock` when `XDG_RUNTIME_DIR` is not set; the directory is created with `0700` and refused if it is not owned by you or is accessible to others).
 - **Dynamic Lock/Unlock Toggle**: A smartcard icon in the top toolbar indicates cached status and features an interactive toggle:
   - **Lock All Now**: Prompts the agent to flush all loaded cryptographic keys immediately (`ssh-add -D`) without terminating or changing the socket.
   - **Unlock Now**: Prompts for your PIN to reload keys back into the agent without restarting the application.
+- **FIDO2 PIN and touch**: A FIDO2 key created with **Require PIN + touch on every use** asks for its PIN and a touch on every signature. The PIN you enter when unlocking is kept in memory only (never on disk) and reused for those signatures until you lock, so connecting asks only for the touch. It is cleared on **Lock All Now**, on quit and if the agent restarts, and it is never replayed twice in a row: if the key asks again right away (the PIN was wrong or changed) you are asked instead, so a wrong PIN cannot use up the authenticator's retries.
 - **Card Isolation & Touch Protection (`IdentitiesOnly`)**: When sshs3 connects to a server using the agent, it locks the session strictly to that specific profile's card (`IdentitiesOnly` plus public key file). Remote servers never see other loaded keys, and FIDO2 security keys do not receive spurious touch requests!
 - **Local Shells & External CLI Superpower**: Local shell tabs automatically receive this stable socket via `SSH_AUTH_SOCK`. Because the socket path is stable, shells opened *before* unlocking a card immediately work once unlocked! Furthermore, sshs3 injects a temporary local-only block into your `~/.ssh/config`:
 
@@ -101,4 +102,4 @@ Select your preferred policy under *Settings → Security & Smartcard*. Enter yo
 | `Smartcard module not found` | PKCS#11 library package missing in operating system | Install `p11-kit` (`sudo apt install p11-kit` or `sudo dnf install p11-kit`). |
 | `PIN locked / CKR_PIN_LOCKED` | Incorrect PIN entered too many times | Card is locked. Unlock using your PUK code via your card provider's utility (e.g. Net iD Client). |
 | Touch banner does not disappear | OpenSSH timeout occurred or missed signal | Touch the YubiKey immediately when it flashes. Verify the key is securely seated in USB. |
-| Login asks for PIN despite Global Caching | Terminal tab was opened before Global Caching started | Restart the application or open a fresh tab to inherit the active `AppAgent` socket. |
+| Login asks for PIN despite Global Caching | The local tab was opened before PIN caching was switched to Global (a shell's environment is fixed when it starts), or **Settings → Terminal → Local Terminal SSH Agent** is **System Only** / **Disabled** | Open a fresh tab, and keep **Local Terminal SSH Agent** on **Auto** so the tab receives the `AppAgent` socket. |

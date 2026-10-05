@@ -11,21 +11,21 @@
 <!-- tabs:start -->
 <!-- tab:RHEL, Rocky & Fedora (.rpm) -->
 ```bash
-sudo dnf install -y https://github.com/alun-hub/sshs3/releases/download/v0.96.22/sshs3-0.96.22.x86_64.rpm
+sudo dnf install -y https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/sshs3-{{APP_VERSION}}.x86_64.rpm
 sshs3
 ```
 <!-- tab:Debian & Ubuntu (.deb) -->
 ```bash
-curl -LO https://github.com/alun-hub/sshs3/releases/download/v0.96.22/sshs3_0.96.22_amd64.deb && sudo apt install -y ./sshs3_0.96.22_amd64.deb
+curl -LO https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/sshs3_{{APP_VERSION}}_amd64.deb && sudo apt install -y ./sshs3_{{APP_VERSION}}_amd64.deb
 sshs3
 ```
 <!-- tab:Portable Linux (AppImage) -->
 ```bash
-curl -LO https://github.com/alun-hub/sshs3/releases/download/v0.96.22/sshs3-0.96.22.AppImage && chmod +x sshs3-0.96.22.AppImage && ./sshs3-0.96.22.AppImage
+curl -LO https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/sshs3-{{APP_VERSION}}.AppImage && chmod +x sshs3-{{APP_VERSION}}.AppImage && ./sshs3-{{APP_VERSION}}.AppImage
 ```
 <!-- tab:Microsoft Windows (.exe) -->
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/alun-hub/sshs3/releases/download/v0.96.22/sshs3-Setup-0.96.22.exe" -OutFile "sshs3-Setup-0.96.22.exe"; Start-Process ".\sshs3-Setup-0.96.22.exe"
+Invoke-WebRequest -Uri "https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/sshs3-Setup-{{APP_VERSION}}.exe" -OutFile "sshs3-Setup-{{APP_VERSION}}.exe"; Start-Process ".\sshs3-Setup-{{APP_VERSION}}.exe"
 ```
 <!-- tabs:end -->
 
@@ -40,6 +40,7 @@ Provide hassle-free deployment across standard enterprise server fleets and engi
 1. Download and install using your system's package manager.
 2. On Linux, a desktop shortcut (`/usr/share/applications/sshs3.desktop`), app icons, and a CLI symlink (`/usr/bin/sshs3`) are provisioned automatically.
 3. On Windows, the installer bundles a self-contained, portable build of VcXsrv, allowing immediate execution of remote Linux GUI applications over SSH (`ssh -Y`) without separate setup.
+4. **Portable Windows builds** (the portable `.exe` and the ZIP) keep all profiles and settings next to the executable instead of in `%APPDATA%\sshs3`: the portable `.exe` uses `<exe-dir>\data`, and the ZIP does too as soon as a `data` folder exists beside `sshs3.exe`. This keeps the data with the program (for example on a USB drive) and separate from any installed copy.
 
 #### ⚠️ Limitations & Caveats
 - **Ubuntu 24.04+ AppImage**: Ubuntu 24.04 and newer omit `libfuse2` by default. If running the AppImage fails, install the compatibility library: `sudo apt install libfuse2t64`.
@@ -59,7 +60,7 @@ Packaged via `electron-builder` using configurations in `electron-builder.json`.
 Every release asset is accompanied by SHA-256 checksums and GitHub Actions build provenance attestations.
 
 ```bash
-curl -LO https://github.com/alun-hub/sshs3/releases/download/v0.96.22/SHA256SUMS
+curl -LO https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -71,11 +72,11 @@ Verify that installed binaries were deterministically generated in an isolated G
 #### 🛠️ How to Use
 Verify the cryptographic build provenance attestation using the GitHub CLI (`gh`):
 ```bash
-gh attestation verify sshs3_0.96.22_amd64.deb --repo alun-hub/sshs3
+gh attestation verify sshs3_{{APP_VERSION}}_amd64.deb --repo alun-hub/sshs3
 ```
 For RPM packages:
 ```bash
-gh attestation verify sshs3-0.96.22.x86_64.rpm --repo alun-hub/sshs3
+gh attestation verify sshs3-{{APP_VERSION}}.x86_64.rpm --repo alun-hub/sshs3
 ```
 
 #### ⚠️ Limitations & Caveats

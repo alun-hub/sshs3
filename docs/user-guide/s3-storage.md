@@ -42,6 +42,15 @@ When connecting to MinIO, Wasabi, Cloudflare R2, or internal Ceph clusters:
   > [!IMPORTANT]
   > For MinIO, private IP addresses, and custom endpoints, **Path-Style Addressing is mandatory**. It forces API requests in the format `endpoint/bucket/object` rather than virtual-hosted requests (`bucket.endpoint/object`), preventing DNS resolution failures on non-routable domains.
 
+### D. Connection Security & Encryption Options
+Also in the S3 profile form:
+- **Use SSL/TLS**: Encrypts S3 traffic with HTTPS (turn it off only for local development such as `http://localhost:9000`).
+- **Allow self-signed certificates**: Accepts self-signed TLS certificates, for private MinIO servers in internal lab environments.
+- **Server-side encryption**: Ask the server to encrypt objects at rest with **SSE-S3 (AES256)** or **SSE-KMS**. For SSE-KMS you can enter a **KMS Key ID**; leave it blank to use the bucket's default key.
+- **Outgoing Proxy (HTTP / SOCKS)**: Route all S3 API traffic through a proxy.
+
+Uploads go through the AWS SDK's managed upload, which splits large files into parts automatically.
+
 ### Feature: AWS SSO OIDC Device Flow
 
 #### 🎯 Purpose
