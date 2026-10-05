@@ -392,6 +392,7 @@ sshs3 wouldn't exist without these projects:
 | **Split Horizontally** | `Ctrl+Shift+E` | Splits the active pane into two rows |
 | **Next Split Pane** | `Ctrl+Shift+N` | Focuses the next split pane in the active tab |
 | **Previous Split Pane** | `Ctrl+Shift+P` | Focuses the previous split pane in the active tab |
+| **Navigate Left / Right / Up / Down** | `Ctrl+Shift+Arrows` | Moves focus spatially between split panes, tabs, file manager panes, menus and dialogs (Up from the top goes to the tab bar, Down goes back in) |
 | **Clipboard History** | `Ctrl+Shift+R` | Opens the encrypted terminal selection history |
 | **Search in Terminal** | `Ctrl+Shift+S` | Opens the search bar in the focused terminal |
 | **Copy Last Command Output** | `Ctrl+Shift+G` | Copies the output of the previous command |
@@ -399,6 +400,8 @@ sshs3 wouldn't exist without these projects:
 | **Search in Files** | `Ctrl+Shift+K` | Opens file content search across local/SFTP/S3 panes |
 
 *(All shortcuts are rebindable under Settings → Keyboard Shortcuts.)*
+
+The app is built to be usable without a mouse: `Ctrl+Shift+Arrows` navigates, `Enter` activates (opens folders, connects, toggles checkboxes, runs the focused action) and `Escape` closes menus and dialogs and gives focus back to where you came from.
 
 ---
 

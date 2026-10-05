@@ -17,12 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - startup unlock loads the PIV card before the FIDO2 key
 - under Global PIN caching, unlocked smartcards and FIDO2 keys now also work for a plain `ssh <alias>` in any terminal: a local-only block in `~/.ssh/config` (never synced, removed on lock/quit) points those hosts at the app agent with `IdentitiesOnly` and the card's public key, so no PIN prompt
 - a PKCS#11 module that exposes a card already unlocked through another module (e.g. libykcs11 after p11-kit-proxy) is no longer loaded again, so there is no second PIN prompt or PKCS#11 session
-
 - the lock button in the cached smartcard identities menu toggles: **Lock All Now** while something is unlocked, **Unlock Now** when nothing is, so you can unlock again after locking without restarting the app (works regardless of the "unlock at startup" setting)
 
 ### Fixed
 - Enter/Escape inside a modal were swallowed while the tab bar had keyboard focus
 - focus returns to the opener when a top-level modal closes
+- keyboard focus in the file manager: Ctrl+Shift+Arrows now actually focus the file list (inactive tabs no longer swallow it, the pane wrapper isn't focusable), and focus stays in the list after opening a folder with Enter
 - a FIDO2 key's per-signature PIN prompt through the app agent was labelled "Smartcard / PIV"; it is now a FIDO2 prompt, and the PIN entered when the keys were unlocked is reused for signatures (only the touch is asked for) until the keys are locked
 - concurrent `~/.ssh/config` writes are serialized; failures are logged; profile fields can no longer inject extra directive lines
 

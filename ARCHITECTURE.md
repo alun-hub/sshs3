@@ -65,7 +65,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── update/                 # Auto-update polling & state machine (UpdateService, electron-updater)
 │   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
 │   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, SSHTunnelManager, AgentLifecycle
-│   │   │                           # (+ AppAgent: app-wide ssh-agent with a stable socket, planned for Global PIN caching, todo #70)
+│   │   │                           # (+ AppAgent: the one app-wide ssh-agent (stable socket, askpass server, lock/unlock) that holds every unlocked smartcard/FIDO2 key under Global PIN caching)
 │   │   ├── storage/                # Local, SFTP, S3, and K8s Pod Storage Providers & Registry
 │   │   │   └── sftp/               # OpenSSH-based SFTP engine (protocol, streams, process, adapter)
 │   │   ├── terminal/               # K8s container exec PTY & live log streaming managers

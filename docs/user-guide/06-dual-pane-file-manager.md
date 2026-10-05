@@ -51,6 +51,9 @@ När en fil med samma namn redan finns i målkatalogen öppnas konfliktfönstret
 
 ---
 
+### 3.2b Tangentbordsnavigering
+<kbd>Ctrl+Shift+←</kbd>/<kbd>→</kbd> växlar mellan vänster och höger panel, <kbd>↑</kbd> går till flikfältet och <kbd>↓</kbd> tillbaka till den aktiva panelens fillista. I listan flyttar <kbd>↑</kbd>/<kbd>↓</kbd> markeringen, <kbd>Enter</kbd> öppnar mappen eller filen (fokus stannar kvar i listan) och <kbd>Escape</kbd> rensar markeringen.
+
 ### 3.3 Rekursiv Filsökning & Jokertecken (<kbd>Ctrl+F</kbd>)
 Tryck <kbd>Ctrl+F</kbd> i valfri panel för att öppna sökfältet:
 

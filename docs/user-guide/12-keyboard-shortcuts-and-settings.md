@@ -36,6 +36,7 @@ Inställningarna är indelade i sju specialiserade paneler:
 | **Clipboard history scope** | `Global` | Delad historik för alla värdar, eller separat historik per anslutning. | Gäller bara när Copy on Select är på. |
 | **Empty clipboard history on exit** | `Av` | Tömmer urklippshistoriken när appen avslutas (och vid nästa start om den kraschade). | |
 | **On Logout / Session End** | `Reconnect` | Vad som händer när en session avslutas: återanslut, stäng fliken eller behåll den. | |
+| **Local Terminal SSH Agent** | `Auto` | Hur `SSH_AUTH_SOCK` sätts i lokala skalflikar: **Auto** (upplåst appagent under Global PIN-cache, annars systemets/login-skalets agent, annars en egen), **System Only** (bara systemets agent, startar ingen) eller **Disabled** (ingen). | Gäller nya flikar. Se kapitel 2. |
 
 ---
 
@@ -69,6 +70,7 @@ Inställningarna är indelade i sju specialiserade paneler:
   - Synkroniserar dina krypterade profiler mot din egen S3-bucket eller privata SSH-server.
   - All data krypteras lokalt på din maskin med **AES-256-GCM** innan den lämnar datorn.
   - Konfigurera synktarget och huvudlösenord för valvet.
+- **Keep `~/.ssh/config` in sync with saved SSH profiles** (på som standard): håller sshs3:s markerade block i `~/.ssh/config` uppdaterat vid start och när du sparar, raderar eller importerar en SSH-profil, så `ssh <profilnamn>` fungerar i vilken terminal som helst. Endast sshs3:s eget block ändras. Se kapitel 2.
 - **Dotfiles Pool Manager**:
   - Hantera din samling av gemensamma `.bashrc`, `.vimrc`, skript och profilfiler som kan laddas upp temporärt vid inloggning på valfria servrar.
 
@@ -80,7 +82,7 @@ Inställningarna är indelade i sju specialiserade paneler:
 - **PIN Caching Policy**:
   - `Always Prompt (Default)`: Ingen cachning mellan anslutningar; återanslutning frågar efter PIN igen.
   - `Once Per Terminal Connection`: PIN anges en gång i en privat, appstyrd `ssh-agent` som delas av terminalfliken och dess dotfiles-sync. Agenten stängs när terminalen kopplar ned.
-  - `Global (App Lifetime)`: PIN anges en gång per kort och delas av alla terminaler och profiler så länge appen körs, tills du avslutar eller låser. Bekvämast men minst strikt.
+  - `Global (App Lifetime)`: PIN anges en gång per kort och delas av alla terminaler och profiler så länge appen körs, tills du avslutar eller låser. Alla upplåsta smartcards och FIDO2-nycklar ligger i *en* appgemensam ssh-agent. Kortikonen i toppraden växlar mellan **Lock All Now** och **Unlock Now**. Bekvämast men minst strikt. Se kapitel 8.
 - **Preferred PKCS#11 Library**: Välj vilket bibliotek som ska prioriteras vid autoupptäckt: `p11-kit` (standard), `YubiKey libykcs11`, `OpenSC` eller `Net iD`.
 - **Master Password Vault**: Fallback-kryptering med AES-256-GCM om operativsystemets inbyggda nyckelring (Secret Service / DPAPI) inte är tillgänglig.
 
@@ -119,6 +121,7 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 | <kbd>Ctrl+Shift+E</kbd> | **Dela Horisontellt (Ner)** | Delar aktiv panel på mitten och placerar en ny panel nedanför. |
 | <kbd>Ctrl+Shift+N</kbd> | **Nästa Panel** | Flyttar tangentbordsfokus framåt till nästa panel i trädet. |
 | <kbd>Ctrl+Shift+P</kbd> | **Föregående Panel** | Flyttar tangentbordsfokus bakåt till föregående panel. |
+| <kbd>Ctrl+Shift+←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | **Navigera** | Flyttar fokus spatialt mellan split-paneler, flikar, filhanterarens paneler, menyer och dialoger. <kbd>↑</kbd> från översta panelen går till flikfältet och <kbd>↓</kbd> därifrån tillbaka in. Kan ändras under *Keyboard Shortcuts* (Navigate Left/Right/Up/Down). |
 | <kbd>Ctrl+Shift+T</kbd> | **Ny Terminal** | Öppnar en ny terminalflik. |
 | <kbd>Ctrl+Shift+F</kbd> | **Ny Filhanterare** | Öppnar en ny filhanterarflik. |
 | <kbd>Ctrl+Shift+O</kbd> | **Connection Manager** | Öppnar sparade profiler och anslutningar. |
@@ -142,6 +145,9 @@ Centraliserad instrumentpanel för utvecklarnycklar, Git-leverantörer och krypt
 | <kbd>Ctrl+S</kbd> | **Spara Fjärrfil** | I den inbyggda texteditorn: sparar ändringarna direkt tillbaka till servern. |
 | <kbd>Delete</kbd> | **Ta Bort** | Raderar markerade filer eller mappar efter bekräftelse. |
 | <kbd>F2</kbd> | **Byt Namn** | Byt namn på den markerade filen. |
+
+### Tangentbordsstyrning utan mus
+Appen går att använda helt utan mus: <kbd>Ctrl+Shift+Piltangenter</kbd> navigerar, <kbd>Enter</kbd> utför det som är markerat (öppnar mappar, startar anslutningar, slår på och av kryssrutor) och <kbd>Escape</kbd> stänger menyer och dialoger och ger fokus tillbaka till det du kom från. I en dialog flyttar <kbd>Ctrl+Shift+Pilar</kbd> mellan fält och knappar, även när markören står i ett textfält.
 
 ### Globala Applikationskommandon
 

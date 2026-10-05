@@ -71,6 +71,7 @@ sshs3 implementerar samma split-träd-arkitektur som KDE:s Konsole (`ViewSplitte
 - **Tangentbordsnavigering**:
   - <kbd>Ctrl+Shift+N</kbd>: Flyttar fokus till **nästa panel** i trädet.
   - <kbd>Ctrl+Shift+P</kbd>: Flyttar fokus till **föregående panel**.
+  - <kbd>Ctrl+Shift+Pilar</kbd>: Flyttar fokus **spatialt** till panelen i pilens riktning. <kbd>↑</kbd> från en översta panel går till flikfältet (där <kbd>←</kbd>/<kbd>→</kbd> byter flik och <kbd>↓</kbd> eller <kbd>Enter</kbd> går tillbaka in).
 - **Paneloberoende**:
   - Varje panel har en egen miniverktygsrad och anslutningsväljare. Du kan ha en fjärr-SSH-session i vänstra panelen, ett lokalt bash-skal i den övre högra och en Kubernetes container exec i den nedre högra.
   - Att stänga en panel (<kbd>Ctrl+Shift+W</kbd>) avbryter aldrig intilliggande sessioner; trädet kollapsar mjukt och ger utrymme till de återstående panelerna.
