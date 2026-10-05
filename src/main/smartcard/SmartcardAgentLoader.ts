@@ -170,16 +170,16 @@ export async function listAgentIdentities(socketPath: string): Promise<AgentIden
 /**
  * An already-running agent to add identities to, instead of spawning a throwaway one (see AppAgent).
  * The agent is never killed here, even if the add fails — it may hold other keys.
+ *
+ * Load-time PIN/touch prompts come from the `ssh-add` process itself (agents for PIV are spawned without
+ * any askpass environment and still load fine), so each add gets its own temporary askpass server in
+ * `ssh-add`'s environment and never touches the agent's own askpass server. That server answers prompts
+ * the agent raises *later* (e.g. a `verify-required` FIDO2 signature) and must keep belonging to the
+ * agent's owner: otherwise such a prompt arriving mid-load would get this load's PIN.
  */
 export interface AgentTarget {
   pid: number;
   socketPath: string;
-  /**
-   * The agent's long-lived askpass server. For the duration of the add its prompt/presence handlers
-   * are replaced with this load's; the caller must restore its own afterwards. When absent (the shared
-   * Windows service can't have an askpass env injected) a temporary server is used and stopped here.
-   */
-  askpassServer?: AskpassServer;
 }
 
 /** Output of a refused/failed `ssh-add` that nevertheless exits 0 (seen with "agent refused operation"). */
@@ -253,7 +253,7 @@ async function runAddIntoPrivateAgent(
   options?: LoadIntoPrivateAgentOptions,
   target?: AgentTarget
 ): Promise<LoadedSmartcardAgent> {
-  // With a target agent the caller owns the agent and its askpass server's lifetime.
+  // With a target agent the caller owns the agent; this add's own askpass server is always stopped below.
   const keepAlive = !target && (options?.keepAskpassAliveForAgentLifetime ?? false);
   const logPrefix = `[smartcard] runAddIntoPrivateAgent(${addArgs.join(' ')})`;
 
@@ -303,19 +303,11 @@ async function runAddIntoPrivateAgent(
     return inFlightPrompt;
   };
 
-  const sharedAskpass = target?.askpassServer;
-  const askpassServer =
-    sharedAskpass ??
-    new AskpassServer({
-      promptHandler: cachingPromptHandler,
-      onPresence: () => options?.onPresenceRequested?.(),
-    });
-  if (sharedAskpass) {
-    sharedAskpass.setPromptHandler(cachingPromptHandler);
-    sharedAskpass.setOnPresence(() => options?.onPresenceRequested?.());
-  } else {
-    await askpassServer.start();
-  }
+  const askpassServer = new AskpassServer({
+    promptHandler: cachingPromptHandler,
+    onPresence: () => options?.onPresenceRequested?.(),
+  });
+  await askpassServer.start();
   const { pid, socketPath } =
     target ?? (await AgentLifecycleManager.spawnPrivateAgent(keepAlive ? askpassServer.getEnv() : undefined));
   // A shared agent may already hold other identities, so "the list is non-empty" proves nothing about
@@ -470,7 +462,7 @@ async function runAddIntoPrivateAgent(
     }
     throw err;
   } finally {
-    if (!keepAlive && !sharedAskpass) {
+    if (!keepAlive) {
       await askpassServer.stop();
     }
   }

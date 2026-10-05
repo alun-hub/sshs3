@@ -2123,23 +2123,7 @@ export class IpcBridge {
     }
 
     const unlockPromise = (async () => {
-      // 1. FIDO2 resident keys unlock first (if configured and not yet active)
-      if (hasFido2 && !this.globalSmartcardAgents.has('__fido2__') && !this.globalSmartcardAgentLoads.has('__fido2__')) {
-        try {
-          console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
-          await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
-          this.sendSmartcardStartupUnlockStatus({ kind: 'fido2', status: 'unlocked' });
-        } catch (err) {
-          console.warn('[fido2] Startup unlock failed or cancelled:', err);
-          this.sendSmartcardStartupUnlockStatus({
-            kind: 'fido2',
-            status: 'error',
-            error: this.describeFido2StartupError(err),
-          });
-        }
-      }
-
-      // 2. Smartcard / PIV unlock second (if detected and not yet active)
+      // 1. Smartcard / PIV unlock first (if detected and not yet active)
       if (hasSmartcard && pathsNeedingUnlock.length > 0) {
         try {
           console.log(
@@ -2179,6 +2163,24 @@ export class IpcBridge {
           }
         } catch (err) {
           console.warn('[smartcard] Startup unlock failed or cancelled:', err);
+        }
+      }
+
+      // 2. FIDO2 resident keys unlock last (if configured and not yet active). A FIDO2 key that needs
+      // PIN+touch per signature (verify-required) can only be asked for one once it is in the agent, so
+      // loading it after the PIV card keeps those prompts out of the way of the PIV load.
+      if (hasFido2 && !this.globalSmartcardAgents.has('__fido2__') && !this.globalSmartcardAgentLoads.has('__fido2__')) {
+        try {
+          console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
+          await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
+          this.sendSmartcardStartupUnlockStatus({ kind: 'fido2', status: 'unlocked' });
+        } catch (err) {
+          console.warn('[fido2] Startup unlock failed or cancelled:', err);
+          this.sendSmartcardStartupUnlockStatus({
+            kind: 'fido2',
+            status: 'error',
+            error: this.describeFido2StartupError(err),
+          });
         }
       }
     })();

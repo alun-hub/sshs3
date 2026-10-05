@@ -54,13 +54,6 @@ const list = (...fps: string[]) => ({
     : 'The agent has no identities.\n',
 });
 
-const makeShared = () => ({
-  setPromptHandler: vi.fn(),
-  setOnPresence: vi.fn(),
-  getEnv: vi.fn().mockReturnValue({ SSH_ASKPASS: '/shared/askpass.sh' }),
-  stop: vi.fn().mockResolvedValue(undefined),
-});
-
 describe('adding identities to an already-running agent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,11 +63,10 @@ describe('adding identities to an already-running agent', () => {
     spawnScript = () => ({ stderr: 'Card added: /usr/lib/libykcs11.so\n', code: 0 });
   });
 
-  it('runs ssh-add against the target socket without spawning or killing an agent', async () => {
-    const shared = makeShared();
+  it('runs ssh-add against the target socket with its own askpass server, without spawning or killing an agent', async () => {
     execQueue.push(list('aaa'), list('aaa', 'bbb')); // before, after
     const res = await addSmartcardToAgent(
-      { pid: 77, socketPath: '/run/sshs3/agent.sock', askpassServer: shared as any },
+      { pid: 77, socketPath: '/run/sshs3/agent.sock' },
       '/usr/lib/libykcs11.so',
       async () => '123456',
       { retries: 0 }
@@ -84,53 +76,49 @@ describe('adding identities to an already-running agent', () => {
     expect(AgentLifecycleManager.killPrivateAgent).not.toHaveBeenCalled();
     expect(spawnCalls[0].args).toEqual(['-s', '/usr/lib/libykcs11.so']);
     expect(spawnCalls[0].env.SSH_AUTH_SOCK).toBe('/run/sshs3/agent.sock');
-    expect(spawnCalls[0].env.SSH_ASKPASS).toBe('/shared/askpass.sh');
-    expect(shared.setPromptHandler).toHaveBeenCalled();
-    expect(shared.stop).not.toHaveBeenCalled();
+    // The add prompts through a server of its own (in ssh-add's environment) that is gone afterwards.
+    expect(spawnCalls[0].env.SSH_ASKPASS).toBe('/tmp/askpass.sh');
+    expect(tempServers).toHaveLength(1);
+    expect(tempServers[0].start).toHaveBeenCalled();
+    expect(tempServers[0].stop).toHaveBeenCalled();
     expect(res).toMatchObject({ pid: 77, socketPath: '/run/sshs3/agent.sock' });
   });
 
   it('does not mistake the existing identities for a successful add', async () => {
-    const shared = makeShared();
     spawnScript = () => ({ stderr: 'agent refused operation\n', code: 0 });
     execQueue.push(list('aaa')); // unchanged before and after
     await expect(
       addSmartcardToAgent(
-        { pid: 77, socketPath: '/s.sock', askpassServer: shared as any },
+        { pid: 77, socketPath: '/s.sock' },
         '/lib.so',
         async () => '000000',
         { retries: 0, maxPinAttempts: 1 }
       )
     ).rejects.toThrow();
     expect(AgentLifecycleManager.killPrivateAgent).not.toHaveBeenCalled();
-    expect(shared.stop).not.toHaveBeenCalled();
+    expect(tempServers[0].stop).toHaveBeenCalled();
   });
 
   it('accepts re-adding a key the agent already holds when ssh-add reports no problem', async () => {
     execQueue.push(list('aaa'));
     await expect(
-      addSmartcardToAgent({ pid: 1, socketPath: '/s.sock', askpassServer: makeShared() as any }, '/lib.so', async () => '1', {
+      addSmartcardToAgent({ pid: 1, socketPath: '/s.sock' }, '/lib.so', async () => '1', {
         retries: 0,
       })
     ).resolves.toBeDefined();
   });
 
-  it('uses a temporary askpass server and stops it when the target has none (Windows service)', async () => {
+  it('works against the shared Windows service pipe too', async () => {
     execQueue.push(list(), list('aaa'));
-    await addSmartcardToAgent({ pid: 0, socketPath: '\\\\.\\pipe\\openssh-ssh-agent' }, '/lib.so', async () => '1', {
-      retries: 0,
-    });
-    expect(tempServers).toHaveLength(1);
-    expect(tempServers[0].start).toHaveBeenCalled();
+    await addSmartcardToAgent({ pid: 0, socketPath: '\\\\.\\pipe\\openssh-ssh-agent' }, '/lib.so', async () => '1', { retries: 0 });
     expect(tempServers[0].stop).toHaveBeenCalled();
-    expect(AgentLifecycleManager.spawnPrivateAgent).not.toHaveBeenCalled();
   });
 
   it('adds FIDO2 resident keys with -K and treats a textless failure as "no resident credentials"', async () => {
     spawnScript = () => ({ code: 1 });
     execQueue.push(list());
     await expect(
-      addFido2ResidentKeysToAgent({ pid: 1, socketPath: '/s.sock', askpassServer: makeShared() as any }, async () => '1', {
+      addFido2ResidentKeysToAgent({ pid: 1, socketPath: '/s.sock' }, async () => '1', {
         retries: 0,
       })
     ).resolves.toBeDefined();

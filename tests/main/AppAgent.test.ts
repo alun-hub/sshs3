@@ -185,27 +185,25 @@ describe('AppAgent', () => {
     expect(onPresence).toHaveBeenCalledWith('Confirm user presence');
   });
 
-  it('adds a PKCS#11 key to the agent, then restores the owner\'s askpass handlers and tracks the library', async () => {
+  it('adds a PKCS#11 key to the agent without involving the agent\'s own askpass server, and tracks the library', async () => {
     const agent = new AppAgent();
     const ownerPrompt = vi.fn().mockResolvedValue('owner');
     agent.setHandlers({ promptHandler: ownerPrompt });
-    vi.mocked(addSmartcardToAgent).mockImplementation(async (target) => {
-      // While adding, the loader owns the server's handlers.
-      (target.askpassServer as any).setPromptHandler(() => 'loader');
-      return { pid: target.pid, socketPath: target.socketPath };
-    });
+    vi.mocked(addSmartcardToAgent).mockImplementation(async (target) => ({
+      pid: target.pid,
+      socketPath: target.socketPath,
+    }));
 
     await agent.addPkcs11('/usr/lib/libykcs11.so', async () => '123456');
 
     const [target, lib] = vi.mocked(addSmartcardToAgent).mock.calls[0];
     expect(lib).toBe('/usr/lib/libykcs11.so');
-    expect(target).toMatchObject({ pid: 4000, socketPath: path.join(dir, 'agent.sock') });
-    expect(target.askpassServer).toBeDefined();
-    // Restored: the shared server asks the owner again.
+    expect(target).toEqual({ pid: 4000, socketPath: path.join(dir, 'agent.sock') });
+    // Signature-time prompts keep going to the owner: the shared server's handlers are never swapped.
     const server = askpassInstances[0] as any;
-    expect(server.setPromptHandler).toHaveBeenCalledTimes(2); // loader's own call + restore
-    const restored = server.setPromptHandler.mock.calls[1][0];
-    await restored('Enter PIN:');
+    expect(server.setPromptHandler).not.toHaveBeenCalled();
+    expect(server.setOnPresence).not.toHaveBeenCalled();
+    await server.options.promptHandler('Enter PIN for authenticator:');
     expect(ownerPrompt).toHaveBeenCalled();
 
     // Tracked for Windows-style eviction.
@@ -213,7 +211,7 @@ describe('AppAgent', () => {
     expect(lifecycle.unloadCard).toHaveBeenCalled();
   });
 
-  it('restores the askpass handlers and keeps the agent when an add fails; adds run one at a time', async () => {
+  it('keeps the agent when an add fails; adds run one at a time', async () => {
     const agent = new AppAgent();
     await agent.ensure();
     lifecycle.probeSocket.mockResolvedValue(true); // agent stays alive between adds
@@ -237,7 +235,6 @@ describe('AppAgent', () => {
     expect(order).toEqual(['first-start', 'first-end', 'second']);
     expect(lifecycle.killPrivateAgent).not.toHaveBeenCalled();
     expect(agent.getSocketPath()).not.toBeNull();
-    expect((askpassInstances[0] as any).setPromptHandler.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('lists identities from the agent, and nothing before it started', async () => {

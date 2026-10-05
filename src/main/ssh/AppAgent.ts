@@ -207,19 +207,14 @@ export class AppAgent {
   }
 
   /**
-   * Adds are serialized: they temporarily swap the shared askpass server's handlers, and most readers
-   * only allow one PKCS#11/FIDO2 transaction at a time anyway.
+   * Adds are serialized: most readers only allow one PKCS#11/FIDO2 transaction at a time. Each add
+   * prompts through its own askpass server (see AgentTarget), so the agent's askpass server — which
+   * answers signature-time prompts — is never involved and keeps using this owner's handlers.
    */
   private runAdd(add: (target: AgentTarget) => Promise<unknown>): Promise<unknown> {
     const task = this.addQueue.then(async () => {
       const socketPath = await this.ensure();
-      const askpass = this.askpass ?? undefined;
-      try {
-        return await add({ pid: this.pid, socketPath, askpassServer: askpass });
-      } finally {
-        askpass?.setPromptHandler(this.delegatePrompt);
-        askpass?.setOnPresence(this.delegatePresence);
-      }
+      return add({ pid: this.pid, socketPath });
     });
     this.addQueue = task.catch(() => {});
     return task;
