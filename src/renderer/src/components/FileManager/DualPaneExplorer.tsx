@@ -74,7 +74,9 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       const side = (e as CustomEvent<PaneSide>).detail;
       if (side === 'left' || side === 'right') {
         setActiveSide(side);
-        document.querySelector<HTMLElement>(`[data-testid="file-pane-${side}"]`)?.focus();
+        // The pane wrapper isn't focusable; the list inside it owns the arrow-key handling.
+        const pane = document.querySelector<HTMLElement>(`[data-testid="file-pane-${side}"]`);
+        (pane?.querySelector<HTMLElement>('[data-file-list="true"]') ?? pane)?.focus();
       }
     };
     window.addEventListener(FILEMANAGER_FOCUS_SIDE_EVENT, handleFocusSide);

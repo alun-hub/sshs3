@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DualPaneExplorer } from '../../src/renderer/src/components/FileManager/DualPaneExplorer';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
+import { FILEMANAGER_FOCUS_SIDE_EVENT } from '../../src/renderer/src/components/FileManager/types';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
 describe('DualPaneExplorer SFTP default start path', () => {
@@ -87,5 +88,21 @@ describe('DualPaneExplorer SFTP default start path', () => {
     await waitFor(() => {
       expect(screen.getByText('html')).toBeInTheDocument();
     });
+  });
+
+  it('focus-side event focuses the list inside the pane so arrow keys work', async () => {
+    render(
+      <ConfirmProvider>
+        <DualPaneExplorer />
+      </ConfirmProvider>
+    );
+    const pane = await screen.findByTestId('file-pane-right');
+    const list = pane.querySelector<HTMLElement>('[data-file-list="true"]')!;
+    expect(list).toBeTruthy();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'right' }));
+    });
+    expect(document.activeElement).toBe(list);
   });
 });

@@ -607,6 +607,7 @@ export const FileList: React.FC<FileListProps> = ({
       <div
         ref={containerRef}
         tabIndex={0}
+        data-file-list="true"
         className="flex-1 overflow-y-auto [scrollbar-gutter:stable] outline-none focus:ring-1 focus:ring-inset focus:ring-sky-500/40"
         onMouseDown={() => containerRef.current?.focus({ preventScroll: true })}
         onKeyDown={handleContainerKeyDown}
