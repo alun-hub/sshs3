@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.25] - 2026-10-05
+
+### Fixed
+- the test suite no longer fails on Windows hosts (the app-agent tests assumed POSIX behavior); v0.96.24 could not be built because the Release workflow runs the tests on Windows too
+
+### Changed
+- the user documentation text now lives only in `docs/user-guide` (the same pages that are published on docs.sshs3.com); the site repo reads it from this repo when it is built
+
 ## [0.96.24] - 2026-10-05
 
 ### Changed
