@@ -1019,4 +1019,46 @@ describe('compareWithRemote', () => {
       await fs.rm(harness.dir, { recursive: true, force: true });
     }
   });
+
+  it('syncAgentBlockToLocalSshConfig adds, updates and removes the local agent block without touching the managed block', async () => {
+    const harness = await makeHarness(generateSalt(), generateSalt());
+    try {
+      await harness.profileStore.saveSSH({ id: 'sc', name: 'card', host: 'c.example.com', username: 'u', authType: 'smartcard' });
+      await harness.sync.syncProfilesToLocalSshConfig();
+      const managedBefore = (await fs.readFile(harness.sshConfigPath, 'utf8')).split('# BEGIN sshs3-managed')[1];
+
+      const entry = { alias: 'card', agentSocket: '/run/user/1000/sshs3/agent.sock', identityFiles: ['/run/user/1000/sshs3/keys/a.pub'] };
+      await harness.sync.syncAgentBlockToLocalSshConfig([entry]);
+      const withAgent = await fs.readFile(harness.sshConfigPath, 'utf8');
+      expect(withAgent).toContain('IdentityAgent /run/user/1000/sshs3/agent.sock');
+      expect(withAgent.indexOf('BEGIN sshs3-agent')).toBeLessThan(withAgent.indexOf('BEGIN sshs3-managed'));
+      expect(withAgent.split('# BEGIN sshs3-managed')[1]).toBe(managedBefore);
+
+      // Idempotent, and a managed-block rewrite keeps the agent block.
+      await harness.sync.syncAgentBlockToLocalSshConfig([entry]);
+      expect(await fs.readFile(harness.sshConfigPath, 'utf8')).toBe(withAgent);
+
+      await harness.sync.syncAgentBlockToLocalSshConfig(null);
+      expect(await fs.readFile(harness.sshConfigPath, 'utf8')).not.toContain('sshs3-agent');
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('syncAgentBlockToLocalSshConfig removes the block when auto-sync of ~/.ssh/config is turned off', async () => {
+    const harness = await makeHarness(generateSalt(), generateSalt());
+    try {
+      await harness.profileStore.saveSSH({ id: 'sc', name: 'card', host: 'c.example.com', username: 'u', authType: 'smartcard' });
+      await harness.sync.syncProfilesToLocalSshConfig();
+      const entry = { alias: 'card', agentSocket: '/s.sock', identityFiles: ['/k.pub'] };
+      await harness.sync.syncAgentBlockToLocalSshConfig([entry]);
+      expect(await fs.readFile(harness.sshConfigPath, 'utf8')).toContain('sshs3-agent');
+
+      await harness.settingsStore.saveSettings({ autoSyncLocalSshConfig: false });
+      await harness.sync.syncAgentBlockToLocalSshConfig([entry]);
+      expect(await fs.readFile(harness.sshConfigPath, 'utf8')).not.toContain('sshs3-agent');
+    } finally {
+      await fs.rm(harness.dir, { recursive: true, force: true });
+    }
+  });
 });

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Global (App Lifetime)** PIN caching now keeps every unlocked smartcard and FIDO2 key in **one** app-wide ssh-agent with a stable socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock`) instead of one agent per card. Local terminals always point at it (so a card unlocked later works in already-open tabs), the lock icon makes the agent forget its keys without restarting it, and Remote Profile Sync picks the right card's key. The app's own SSH/SFTP connections through it are pinned to the profile's card with `IdentitiesOnly` and a public key file
 - startup unlock loads the PIV card before the FIDO2 key
+- under Global PIN caching, unlocked smartcards and FIDO2 keys now also work for a plain `ssh <alias>` in any terminal: a local-only block in `~/.ssh/config` (never synced, removed on lock/quit) points those hosts at the app agent with `IdentitiesOnly` and the card's public key, so no PIN prompt
 - a PKCS#11 module that exposes a card already unlocked through another module (e.g. libykcs11 after p11-kit-proxy) is no longer loaded again, so there is no second PIN prompt or PKCS#11 session
 
 ### Fixed

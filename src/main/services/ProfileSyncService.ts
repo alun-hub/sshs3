@@ -19,6 +19,9 @@ import {
   parseManagedSshConfigBlock,
   writeManagedSshConfigBlock,
   buildManagedSshConfigBlockFromProfiles,
+  buildAgentSshConfigBody,
+  writeAgentSshConfigBlock,
+  type AgentHostEntry,
   type KnownHostsConflict,
   type ManagedSshConfigBlock,
 } from './SshNativeFileMerger';
@@ -1166,6 +1169,26 @@ export class ProfileSyncService {
       await this.syncProfilesToLocalSshConfig();
     } catch (err) {
       console.warn('[sshs3] Failed to sync profiles to ~/.ssh/config:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  /**
+   * Writes (or, with null/empty `entries`, removes) the local-only agent block that makes plain
+   * `ssh <alias>` use the keys unlocked in the app agent — see writeAgentSshConfigBlock. Never touches the
+   * managed block (which is what gets synced) and honors the `autoSyncLocalSshConfig` setting (off ⇒
+   * the block is removed). Failures are logged, not thrown: this is a convenience, never fatal.
+   */
+  public async syncAgentBlockToLocalSshConfig(entries: AgentHostEntry[] | null): Promise<void> {
+    try {
+      const settings = await this.settingsStore.getSettings();
+      const wanted = settings.autoSyncLocalSshConfig === false ? null : entries;
+      await this.enqueueSshConfigWrite(async () => {
+        const current = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+        const updated = writeAgentSshConfigBlock(current, wanted ? buildAgentSshConfigBody(wanted) : null);
+        if (updated !== current) await this.writeLocalFile(this.sshConfigPath, updated);
+      });
+    } catch (err) {
+      console.warn('[sshs3] Failed to update the agent block in ~/.ssh/config:', err instanceof Error ? err.message : err);
     }
   }
 

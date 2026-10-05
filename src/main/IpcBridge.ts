@@ -11,6 +11,7 @@ import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
+import { assignHostAliases, type AgentHostEntry } from './services/SshNativeFileMerger';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard/WindowsAgentPath';
 import {
@@ -272,6 +273,7 @@ export class IpcBridge {
   private appAgent = new AppAgent();
   /** pkcs11LibPath or '__fido2__' -> what that unlocked card/key contributed to the app agent (its key fingerprints), so keys can be attributed to a card. */
   private globalCards = new Map<string, { fingerprints: Set<string> }>();
+  private agentConfigRefresh: Promise<void> = Promise.resolve();
   /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each prompt separately. */
   private globalSmartcardAgentLoads = new Map<string, Promise<string>>();
   private globalSmartcardAgentFailures = new Map<string, number>();
@@ -386,6 +388,7 @@ export class IpcBridge {
     this.appAgent.setOnExit(() => {
       this.globalCards.clear();
       this.globalSmartcardCerts.clear();
+      this.refreshAgentSshConfig();
     });
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
@@ -1294,6 +1297,7 @@ export class IpcBridge {
         await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
         this.scheduleAutoSync();
         void this.profileSyncService.autoSyncLocalSshConfig();
+        this.refreshAgentSshConfig();
       }
     );
 
@@ -1304,6 +1308,7 @@ export class IpcBridge {
         await this.storageRegistry.disconnect?.(`sftp-${id}`);
         this.scheduleAutoSync();
         void this.profileSyncService.autoSyncLocalSshConfig();
+        this.refreshAgentSshConfig();
       }
     );
 
@@ -1447,6 +1452,7 @@ export class IpcBridge {
         this.scheduleAutoSync();
         if (sshList.length > 0) {
           void this.profileSyncService.autoSyncLocalSshConfig();
+          this.refreshAgentSshConfig();
         }
         return { count };
       }
@@ -1867,6 +1873,7 @@ export class IpcBridge {
       this.globalCards.set('__fido2__', {
         fingerprints: new Set(identities.filter((i) => /-SK$/i.test(i.keyType)).map((i) => i.fingerprint)),
       });
+      this.refreshAgentSshConfig();
       return socketPath;
     })();
     this.globalSmartcardAgentLoads.set('__fido2__', loadPromise);
@@ -2014,6 +2021,7 @@ export class IpcBridge {
           `[smartcard] getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
         );
         this.globalCards.set(pkcs11LibPath, { fingerprints: new Set(certs.keys()) });
+        this.refreshAgentSshConfig();
         return await this.appAgent.ensure();
       }
       await this.addSmartcardToAppAgentWithPresence(
@@ -2035,6 +2043,7 @@ export class IpcBridge {
         if (fingerprints.size === 0) nonSecurityKeys.forEach((i) => fingerprints.add(i.fingerprint));
       }
       this.globalCards.set(pkcs11LibPath, { fingerprints });
+      this.refreshAgentSshConfig();
       return socketPath;
     })();
     this.globalSmartcardAgentLoads.set(pkcs11LibPath, loadPromise);
@@ -2063,6 +2072,49 @@ export class IpcBridge {
       'Touch your YubiKey / smartcard to confirm'
     );
     return this.appAgent.addPkcs11(pkcs11LibPath, promptHandler, { onPresenceRequested, onPresenceCleared });
+  }
+
+  /**
+   * Keeps the local agent block in ~/.ssh/config (see writeAgentSshConfigBlock) in step with what is
+   * unlocked, so a plain `ssh <alias>` in any terminal uses the app agent instead of asking for the
+   * card's PIN itself. Serialized, fire-and-forget, never throws.
+   */
+  public refreshAgentSshConfig(): void {
+    this.agentConfigRefresh = this.agentConfigRefresh
+      .then(async () => {
+        await this.profileSyncService.syncAgentBlockToLocalSshConfig(await this.buildAgentHostEntries());
+      })
+      .catch((err) => console.warn('[app-agent] could not refresh the ~/.ssh/config agent block:', err));
+  }
+
+  /**
+   * Hosts to point at the app agent: SSH profiles whose card (PIV library, or FIDO2 resident key) is
+   * unlocked in it. Null (⇒ block removed) unless 'agent-global' mode is on and the agent holds a card.
+   * Not on Windows (shared OpenSSH service, no key selection there).
+   */
+  private async buildAgentHostEntries(): Promise<AgentHostEntry[] | null> {
+    if (process.platform === 'win32') return null;
+    const settings = await this.settingsStore.getSettings().catch(() => null);
+    const socketPath = this.appAgent.getSocketPath();
+    if (settings?.smartcardAuthMode !== 'agent-global' || !socketPath || this.globalCards.size === 0) return null;
+
+    const { ssh } = await this.profileStore.getProfiles();
+    const aliases = assignHostAliases(ssh);
+    const entries: AgentHostEntry[] = [];
+    for (const profile of ssh) {
+      const cardKey =
+        profile.authType === 'smartcard' && profile.pkcs11LibPath
+          ? profile.pkcs11LibPath
+          : profile.authType === 'fido2' && profile.fido2Resident
+            ? '__fido2__'
+            : undefined;
+      const card = cardKey ? this.globalCards.get(cardKey) : undefined;
+      const alias = aliases.get(profile.id);
+      if (!card || !alias) continue;
+      const identityFiles = await this.appAgent.writePublicKeyFiles(card.fingerprints);
+      if (identityFiles.length > 0) entries.push({ alias, agentSocket: socketPath, identityFiles });
+    }
+    return entries;
   }
 
   /**
@@ -2362,6 +2414,7 @@ export class IpcBridge {
     this.globalCards.clear();
     this.globalSmartcardCerts.clear();
     this.globalSmartcardAgentFailures.clear();
+    this.refreshAgentSshConfig();
     return count;
   }
 
@@ -2662,6 +2715,7 @@ export class IpcBridge {
       async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
         const saved = await this.settingsStore.saveSettings(settings);
         if (settings.autoSyncLocalSshConfig === true) void this.profileSyncService.autoSyncLocalSshConfig();
+        if ('autoSyncLocalSshConfig' in settings || 'smartcardAuthMode' in settings) this.refreshAgentSshConfig();
         this.scheduleAutoSync();
         return saved;
       }
@@ -3112,6 +3166,7 @@ export class IpcBridge {
     void this.appAgent.remove(pkcs11LibPath);
     this.globalCards.delete(pkcs11LibPath);
     this.globalSmartcardCerts.delete(pkcs11LibPath);
+    this.refreshAgentSshConfig();
   }
 
   /**
@@ -4701,6 +4756,9 @@ export class IpcBridge {
     }
     this.globalCards.clear();
     this.globalSmartcardCerts.clear();
+    // The socket is about to disappear: take the agent block out of ~/.ssh/config first.
+    await this.agentConfigRefresh;
+    await this.profileSyncService.syncAgentBlockToLocalSshConfig(null).catch(() => {});
     await this.appAgent.shutdown();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();

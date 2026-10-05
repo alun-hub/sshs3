@@ -140,6 +140,7 @@ function makeFakeAppAgent() {
 
 describe('IpcBridge', () => {
   let fakeAppAgent: ReturnType<typeof makeFakeAppAgent>;
+  let syncAgentBlockSpy: ReturnType<typeof vi.fn>;
   let mockIpc: MockIpcMain;
   let mockWebContents: MockWebContents;
   let mockPtyManager: any;
@@ -257,6 +258,10 @@ describe('IpcBridge', () => {
 
     fakeAppAgent = makeFakeAppAgent();
     (bridge as any).appAgent = fakeAppAgent;
+    // The default ProfileSyncService would read/write the developer's real ~/.ssh/config.
+    syncAgentBlockSpy = vi.fn().mockResolvedValue(undefined);
+    (bridge as any).profileSyncService.syncAgentBlockToLocalSshConfig = syncAgentBlockSpy;
+    (bridge as any).profileSyncService.autoSyncLocalSshConfig = vi.fn().mockResolvedValue(undefined);
     bridge.register();
   });
 
@@ -415,6 +420,58 @@ describe('IpcBridge', () => {
         expect.anything()
       );
       readCertsSpy.mockRestore();
+    });
+
+    describe('local ~/.ssh/config agent block', () => {
+      const flush = async () => {
+        await (bridge as any).agentConfigRefresh;
+      };
+
+      it('points unlocked PIV and FIDO2 profiles at the app agent, and removes the block on lock and dispose', async () => {
+        mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
+        mockProfileStore.getProfiles.mockResolvedValue({
+          ssh: [
+            { id: 'p1', name: 'piv host', host: 'a.example.com', username: 'u', authType: 'smartcard', pkcs11LibPath: '/usr/lib/opensc-pkcs11.so' },
+            { id: 'p2', name: 'fido host', host: 'b.example.com', username: 'u', authType: 'fido2', fido2Resident: true },
+            { id: 'p3', name: 'password host', host: 'c.example.com', username: 'u', authType: 'password' },
+            { id: 'p4', name: 'locked card', host: 'd.example.com', username: 'u', authType: 'smartcard', pkcs11LibPath: '/usr/lib/other.so' },
+          ],
+          s3: [],
+        });
+        fakeAppAgent.writePublicKeyFiles.mockImplementation(async (fps: Iterable<string>) => [`/k/${[...fps][0]}.pub`]);
+        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:piv']) });
+        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+
+        bridge.refreshAgentSshConfig();
+        await flush();
+
+        const entries = syncAgentBlockSpy.mock.calls.at(-1)![0];
+        expect(entries).toEqual([
+          { alias: 'piv-host', agentSocket: '/tmp/app-agent.sock', identityFiles: ['/k/SHA256:piv.pub'] },
+          { alias: 'fido-host', agentSocket: '/tmp/app-agent.sock', identityFiles: ['/k/SHA256:sk.pub'] },
+        ]);
+
+        await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
+        await flush();
+        expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).toBeNull();
+
+        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        bridge.refreshAgentSshConfig();
+        await flush();
+        expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).not.toBeNull();
+
+        await bridge.dispose();
+        expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).toBeNull();
+        mockProfileStore.getProfiles.mockResolvedValue({ ssh: [], s3: [] });
+      });
+
+      it('writes no block outside agent-global mode', async () => {
+        mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'always-prompt' });
+        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        bridge.refreshAgentSshConfig();
+        await flush();
+        expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).toBeNull();
+      });
     });
 
     it('throws when creating terminal without config', async () => {

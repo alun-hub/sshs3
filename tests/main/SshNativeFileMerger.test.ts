@@ -6,6 +6,9 @@ import {
   mergeKnownHosts,
   sanitizeSshConfigBody,
   buildManagedSshConfigBlockFromProfiles,
+  assignHostAliases,
+  buildAgentSshConfigBody,
+  writeAgentSshConfigBlock,
 } from '../../src/main/services/SshNativeFileMerger';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -387,5 +390,87 @@ describe('sanitizeSshConfigBody path quoting (non-Windows safety)', () => {
     expect(removedLines).toHaveLength(2);
     expect(body).toContain('"Port" 22');
     expect(body).not.toMatch(/evil/);
+  });
+});
+
+describe('SshNativeFileMerger — local agent block', () => {
+  const managed = (body = 'Host card\n    HostName card.example.com\n    PKCS11Provider /usr/lib/opensc-pkcs11.so') =>
+    writeManagedSshConfigBlock('Host mine\n  HostName mine.example.com\n', { updatedAt: '2026-01-01T00:00:00.000Z', body });
+  const entry = { alias: 'card', agentSocket: '/run/user/1000/sshs3/agent.sock', identityFiles: ['/run/user/1000/sshs3/keys/aa.pub'] };
+
+  it('uses the same Host alias the managed block gets (incl. collisions)', () => {
+    const profiles = [
+      profile({ id: 'b', name: 'prod web', host: 'b.example.com', username: 'u' }),
+      profile({ id: 'a', name: 'prod web', host: 'a.example.com', username: 'u' }),
+    ];
+    const aliases = assignHostAliases(profiles);
+    const { body } = buildManagedSshConfigBlockFromProfiles(profiles, null, '2026-01-01T00:00:00.000Z');
+    for (const alias of aliases.values()) expect(body).toContain(`Host ${alias}\n`);
+    expect(new Set(aliases.values()).size).toBe(2);
+  });
+
+  it('builds fixed-template overrides: agent, the card\'s key files, IdentitiesOnly and PKCS11Provider none', () => {
+    expect(buildAgentSshConfigBody([entry])).toBe(
+      [
+        'Host card',
+        '    IdentityAgent /run/user/1000/sshs3/agent.sock',
+        '    IdentityFile /run/user/1000/sshs3/keys/aa.pub',
+        '    IdentitiesOnly yes',
+        '    PKCS11Provider none',
+      ].join('\n')
+    );
+    expect(buildAgentSshConfigBody([])).toBe('');
+    expect(buildAgentSshConfigBody([{ ...entry, identityFiles: [] }])).toBe('');
+  });
+
+  it('quotes paths with spaces, escapes %, and cannot be used to inject another directive', () => {
+    const body = buildAgentSshConfigBody([
+      { alias: 'card', agentSocket: '/tmp/my dir/agent.sock', identityFiles: ['/tmp/100%/k.pub\n    ProxyCommand evil'] },
+    ]);
+    expect(body).toContain('IdentityAgent "/tmp/my dir/agent.sock"');
+    expect(body).toContain('%%');
+    expect(body.split('\n').some((l) => l.trim().startsWith('ProxyCommand'))).toBe(false);
+  });
+
+  it('inserts the block directly before the managed block, replaces it, and removes it again', () => {
+    const base = managed();
+    const withBlock = writeAgentSshConfigBlock(base, buildAgentSshConfigBody([entry]));
+
+    expect(withBlock.indexOf('BEGIN sshs3-agent')).toBeGreaterThan(withBlock.indexOf('Host mine'));
+    expect(withBlock.indexOf('END sshs3-agent')).toBeLessThan(withBlock.indexOf('BEGIN sshs3-managed'));
+    expect(withBlock).toContain('IdentityAgent /run/user/1000/sshs3/agent.sock');
+
+    const replaced = writeAgentSshConfigBlock(withBlock, buildAgentSshConfigBody([{ ...entry, alias: 'other' }]));
+    expect(replaced.match(/BEGIN sshs3-agent/g)).toHaveLength(1);
+    expect(replaced).toContain('Host other');
+    expect(replaced).not.toContain('Host card\n    IdentityAgent');
+
+    expect(writeAgentSshConfigBlock(replaced, null)).toBe(base);
+    expect(writeAgentSshConfigBlock(base, '')).toBe(base);
+  });
+
+  it('never touches the managed block (so its sync timestamp and body stay as they were)', () => {
+    const base = managed();
+    const before = parseManagedSshConfigBlock(base)!;
+    const after = parseManagedSshConfigBlock(writeAgentSshConfigBlock(base, buildAgentSshConfigBody([entry])))!;
+    expect(after).toEqual(before);
+    // and a later managed-block rewrite keeps the agent block
+    const rewritten = writeManagedSshConfigBlock(writeAgentSshConfigBlock(base, buildAgentSshConfigBody([entry])), {
+      updatedAt: '2026-02-01T00:00:00.000Z',
+      body: 'Host card\n    HostName changed.example.com',
+    });
+    expect(rewritten).toContain('BEGIN sshs3-agent');
+    expect(rewritten).toContain('changed.example.com');
+  });
+
+  it('adds nothing when there is no managed block to override', () => {
+    const original = 'Host mine\n  HostName mine.example.com\n';
+    expect(writeAgentSshConfigBlock(original, buildAgentSshConfigBody([entry]))).toBe(original);
+  });
+
+  it('IdentityAgent is still stripped from a *synced* block (the agent block is local-only)', () => {
+    const { body, removedLines } = sanitizeSshConfigBody('Host x\n    IdentityAgent /tmp/evil.sock\n    Port 22');
+    expect(removedLines).toHaveLength(1);
+    expect(body).not.toContain('IdentityAgent');
   });
 });

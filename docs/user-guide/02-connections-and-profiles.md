@@ -18,6 +18,8 @@ Under **Settings → Local Terminal SSH Agent** väljer du hur `SSH_AUTH_SOCK` s
 
 sshs3 skriver ett eget, markerat block i `~/.ssh/config` utifrån dina SSH-profiler (värd, port, användare, nyckelfil, ProxyJump m.m.). Därför fungerar `ssh <profilnamn>` och tab-komplettering i vilken terminal som helst på samma sätt som i appen. Blocket uppdateras vid start och när du sparar, raderar eller importerar en SSH-profil. Allt utanför blocket lämnas orört, lösenord och lösenfraser skrivs aldrig dit, och direktiv som kan köra kod (`ProxyCommand`, `LocalCommand`, `Match`, `Include` m.fl.) filtreras bort. Du kan stänga av funktionen under **Settings → Keep `~/.ssh/config` in sync with saved SSH profiles**.
 
+**Upplåsta kort fungerar i alla terminaler (Linux/macOS).** När PIN-cachen är *Global* och ett smartcard eller en FIDO2-nyckel är upplåst i appen lägger sshs3 också till ett andra, rent lokalt block (`# BEGIN sshs3-agent … # END sshs3-agent`, synkas aldrig). Det pekar de värdarna på appens agent, så ett vanligt `ssh <profilnamn>` i valfri terminal (även i IDE:er och andra terminalprogram) signerar med den upplåsta nyckeln utan ny PIN-fråga. Låser du kortet, avslutar appen eller lämnar Global-läget tas blocket bort, och `ssh` frågar då själv efter PIN via profilens `PKCS11Provider`. Om appen kraschar kan blocket ligga kvar mot en död socket tills sshs3 startas igen (det städas vid start).
+
 ---
 
 ## 1. Översikt över Profiltyper
