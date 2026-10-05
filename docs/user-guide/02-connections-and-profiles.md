@@ -2,6 +2,22 @@
 
 Connection Managern är centralnavet i **sshs3** för att skapa, redigera, gruppera och säkra alla dina anslutningsmål: SSH-servrar, lokala terminaler, Kubernetes-kluster och S3-kompatibel molnlagring.
 
+### SSH-agent i lokala terminaler
+
+Under **Settings → Local Terminal SSH Agent** väljer du hur `SSH_AUTH_SOCK` sätts i lokala skalflikar:
+
+| Val | Beteende |
+|---|---|
+| **Auto** (standard) | Använder i ordning: en upplåst smartcard-agent (Global PIN-cache), appens egen agent om den redan körs, systemets/login-skalets agent, och annars startas en egen agent. |
+| **System Only** | Använder bara systemets/login-skalets `SSH_AUTH_SOCK` om den finns. Appen startar ingen agent och använder inte smartcard-agenten. |
+| **Disabled** | Ingen `SSH_AUTH_SOCK` sätts i terminalen. |
+
+Ändringen gäller nya terminalflikar; redan öppna flikar behåller sin miljö.
+
+### `~/.ssh/config` hålls synkad med dina profiler
+
+sshs3 skriver ett eget, markerat block i `~/.ssh/config` utifrån dina SSH-profiler (värd, port, användare, nyckelfil, ProxyJump m.m.). Därför fungerar `ssh <profilnamn>` och tab-komplettering i vilken terminal som helst på samma sätt som i appen. Blocket uppdateras vid start och när du sparar, raderar eller importerar en SSH-profil. Allt utanför blocket lämnas orört, lösenord och lösenfraser skrivs aldrig dit, och direktiv som kan köra kod (`ProxyCommand`, `LocalCommand`, `Match`, `Include` m.fl.) filtreras bort. Du kan stänga av funktionen under **Settings → Keep `~/.ssh/config` in sync with saved SSH profiles**.
+
 ---
 
 ## 1. Översikt över Profiltyper
@@ -9,7 +25,7 @@ Connection Managern är centralnavet i **sshs3** för att skapa, redigera, grupp
 sshs3 stöder fyra grundläggande profiltyper:
 
 1. **SSH-profiler**: Anslutningar via systemets egna OpenSSH-binär (`node-pty`) till Linux-, UNIX-, BSD- och Windows-värdar med stöd för SFTP och bakgrundstunnlar.
-2. **Lokala skalprofiler**: Kör terminaler direkt på din lokala dator (`$SHELL` på Linux/macOS; PowerShell, `pwsh`, CMD eller WSL på Windows) med automatiskt integrerad `SSH_AUTH_SOCK`.
+2. **Lokala skalprofiler**: Kör terminaler direkt på din lokala dator (`$SHELL` på Linux/macOS; PowerShell, `pwsh`, CMD eller WSL på Windows) med automatiskt integrerad `SSH_AUTH_SOCK` (se [SSH-agent i lokala terminaler](#ssh-agent-i-lokala-terminaler)).
 3. **Kubernetes-profiler**: Direkt koppling mot kontexter, namnrymder, poddar och containrar i `~/.kube/config` eller via OpenShift `oc login`.
 4. **S3-lagringsprofiler**: Moln- och objektlagring mot AWS S3, Cloudflare R2, MinIO, Wasabi och Backblaze B2.
 
