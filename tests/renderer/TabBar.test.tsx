@@ -190,16 +190,25 @@ describe('TabBar Component', () => {
         />
       );
 
-    it('offers Unlock Now next to Lock All Now, and reports when something was started', async () => {
+    it('is one toggle: Unlock Now when nothing is cached, Lock All Now when something is', async () => {
       const onUnlockSmartcard = vi.fn().mockResolvedValue({ started: true });
-      renderWithSmartcard({ onUnlockSmartcard });
+      const { unmount } = renderWithSmartcard({ onUnlockSmartcard });
 
       fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
-      expect(screen.getByText('Lock All Now')).toBeInTheDocument();
       fireEvent.click(await screen.findByTestId('smartcard-unlock-now-btn'));
-
+      expect(screen.queryByTestId('smartcard-lock-all-btn')).not.toBeInTheDocument();
       expect(onUnlockSmartcard).toHaveBeenCalledTimes(1);
       expect(await screen.findByText('Unlocking — enter your PIN when asked')).toBeInTheDocument();
+      unmount();
+
+      renderWithSmartcard({
+        onUnlockSmartcard,
+        onListCachedSmartcards: () =>
+          Promise.resolve([{ pkcs11LibPath: '/usr/lib/opensc-pkcs11.so', identities: [] }]),
+      });
+      fireEvent.click(screen.getByTestId('quick-lock-smartcard-btn'));
+      expect(await screen.findByTestId('smartcard-lock-all-btn')).toBeInTheDocument();
+      expect(screen.queryByTestId('smartcard-unlock-now-btn')).not.toBeInTheDocument();
     });
 
     it('tells the user when there was nothing to unlock', async () => {

@@ -421,7 +421,8 @@ export const TabBar: React.FC<TabBarProps> = ({
                   </ul>
                 )}
 
-                {onUnlockSmartcard && (
+                {/* One toggle: Lock while something is unlocked, Unlock when nothing is. */}
+                {cachedAgents && cachedAgents.length === 0 && onUnlockSmartcard && (
                   <button
                     type="button"
                     data-testid="smartcard-unlock-now-btn"
@@ -451,36 +452,39 @@ export const TabBar: React.FC<TabBarProps> = ({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  disabled={lockingSmartcard || !cachedAgents || cachedAgents.length === 0}
-                  onClick={() => {
-                    setLockingSmartcard(true);
-                    setLockFeedback(null);
-                    void onLockSmartcard?.()
-                      .then(({ locked }) => {
-                        setLockFeedback(
-                          locked > 0
-                            ? `Smartcard cache cleared — ${locked} cached agent${locked === 1 ? '' : 's'} locked`
-                            : 'No cached smartcard agents to clear'
-                        );
-                        setCachedAgents([]);
-                        setIsSmartcardMenuOpen(false);
-                      })
-                      .finally(() => {
-                        setLockingSmartcard(false);
-                        setTimeout(() => setLockFeedback(null), 4000);
-                      });
-                  }}
-                  className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
-                >
-                  {lockingSmartcard ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Lock className="h-3.5 w-3.5" />
-                  )}
-                  Lock All Now
-                </button>
+                {cachedAgents && cachedAgents.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="smartcard-lock-all-btn"
+                    disabled={lockingSmartcard}
+                    onClick={() => {
+                      setLockingSmartcard(true);
+                      setLockFeedback(null);
+                      void onLockSmartcard?.()
+                        .then(({ locked }) => {
+                          setLockFeedback(
+                            locked > 0
+                              ? `Smartcard cache cleared — ${locked} cached agent${locked === 1 ? '' : 's'} locked`
+                              : 'No cached smartcard agents to clear'
+                          );
+                          setCachedAgents([]);
+                          setIsSmartcardMenuOpen(false);
+                        })
+                        .finally(() => {
+                          setLockingSmartcard(false);
+                          setTimeout(() => setLockFeedback(null), 4000);
+                        });
+                    }}
+                    className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+                  >
+                    {lockingSmartcard ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Lock className="h-3.5 w-3.5" />
+                    )}
+                    Lock All Now
+                  </button>
+                )}
               </div>
             )}
           </div>
