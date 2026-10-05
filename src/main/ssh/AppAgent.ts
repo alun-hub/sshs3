@@ -18,6 +18,10 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/** "Enter PIN and confirm user presence for ED25519-SK key SHA256:…" — a FIDO2 signature asking for its PIN. */
+const FIDO2_SIGNATURE_PIN_PROMPT = /\bPIN\b.*(-SK\b|authenticator|security key|user presence)/i;
+const FIDO2_PIN_REPLAY_WINDOW_MS = 3000;
+
 /** sun_path is 104 bytes on macOS/BSD and 108 on Linux; stay below both. */
 const MAX_UNIX_SOCKET_PATH = 100;
 
@@ -87,8 +91,27 @@ export class AppAgent {
   private onExit?: () => void;
   private addQueue: Promise<unknown> = Promise.resolve();
 
-  private delegatePrompt: AskpassPromptHandler = (prompt, retry) =>
-    this.handlers.promptHandler?.(prompt, retry) ?? '';
+  /**
+   * The PIN entered when the FIDO2 keys were loaded, kept in memory only until the keys are locked.
+   * A `verify-required` key asks for PIN + touch on every signature; replaying this PIN means only the
+   * touch is needed (what the per-card FIDO2 agent did before).
+   */
+  private fido2Pin: string | undefined;
+  private lastFido2PinReplay = 0;
+
+  private delegatePrompt: AskpassPromptHandler = (prompt, retry) => {
+    if (this.fido2Pin !== undefined && FIDO2_SIGNATURE_PIN_PROMPT.test(prompt)) {
+      const now = Date.now();
+      if (now - this.lastFido2PinReplay > FIDO2_PIN_REPLAY_WINDOW_MS) {
+        this.lastFido2PinReplay = now;
+        return this.fido2Pin;
+      }
+      // Asked again right after a replay: the PIN was wrong (or changed). Never keep replaying it —
+      // that would burn the authenticator's PIN retries — ask the user instead.
+      this.fido2Pin = undefined;
+    }
+    return this.handlers.promptHandler?.(prompt, retry) ?? '';
+  };
   private delegatePresence = (prompt: string): void => this.handlers.onPresence?.(prompt);
 
   /** Handlers used for prompts the agent raises after keys were loaded; can be changed at any time. */
@@ -190,6 +213,7 @@ export class AppAgent {
     this.socketPath = null;
     this.askpass = null;
     this.loadedLibs.clear();
+    this.fido2Pin = undefined;
     await askpass?.stop().catch(() => {});
     if (pid > 0) {
       AgentLifecycleManager.killPrivateAgent(pid);
@@ -210,7 +234,12 @@ export class AppAgent {
 
   /** Loads the connected security key's FIDO2 resident credentials into the agent. */
   public async addFido2Resident(promptHandler: AskpassPromptHandler, options?: LoadIntoPrivateAgentOptions): Promise<void> {
-    await this.runAdd((target) => addFido2ResidentKeysToAgent(target, promptHandler, options));
+    let enteredPin: string | undefined;
+    await this.runAdd((target) =>
+      addFido2ResidentKeysToAgent(target, promptHandler, { ...options, onPinEntered: (pin) => (enteredPin = pin) })
+    );
+    // Only remember a PIN that actually unlocked the keys.
+    if (enteredPin) this.fido2Pin = enteredPin;
   }
 
   /**
@@ -269,6 +298,7 @@ export class AppAgent {
 
   /** Forgets every key (the "lock" action) without stopping the agent, so its socket stays valid for open terminals. */
   public async lockAll(): Promise<void> {
+    this.fido2Pin = undefined;
     const socketPath = this.socketPath;
     if (!socketPath) return;
     if (process.platform === 'win32') {
@@ -294,6 +324,7 @@ export class AppAgent {
     this.socketPath = null;
     this.askpass = null;
     this.loadedLibs.clear();
+    this.fido2Pin = undefined;
     await askpass?.stop().catch(() => {});
     if (pid > 0) {
       AgentLifecycleManager.killPrivateAgent(pid);

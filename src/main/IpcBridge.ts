@@ -16,6 +16,7 @@ import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard
 import {
   loadSmartcardIntoPrivateAgent,
   loadFido2ResidentKeysIntoPrivateAgent,
+  pinPromptKind,
 } from './smartcard/SmartcardAgentLoader';
 import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './smartcard/AskpassServer';
@@ -369,7 +370,7 @@ export class IpcBridge {
       promptHandler: (prompt, retry) =>
         this.promptForPinDirect(
           prompt.trim(),
-          /authenticator|security key|fido/i.test(prompt) ? 'fido2' : 'smartcard',
+          pinPromptKind(prompt),
           'App ssh-agent',
           retry
         ),

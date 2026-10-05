@@ -5,6 +5,7 @@ import path from 'node:path';
 import net from 'node:net';
 import {
   execWithPresenceDetection,
+  pinPromptKind,
   isTextlessExitFailure,
   loadFido2ResidentKeysIntoPrivateAgent,
 } from '../../src/main/smartcard/SmartcardAgentLoader';
@@ -285,5 +286,18 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
       await askpassServer?.stop();
       AgentLifecycleManager.killPrivateAgent(pid);
     }
+  });
+});
+
+describe('pinPromptKind', () => {
+  it('recognises FIDO2 prompts, including the per-signature one for a verify-required key', () => {
+    expect(pinPromptKind('Enter PIN and confirm user presence for ED25519-SK key SHA256:abc: ')).toBe('fido2');
+    expect(pinPromptKind('Enter PIN for authenticator: ')).toBe('fido2');
+    expect(pinPromptKind('Confirm user presence for key ECDSA-SK SHA256:abc')).toBe('fido2');
+  });
+
+  it('treats everything else as a smartcard prompt', () => {
+    expect(pinPromptKind('Enter passphrase for PKCS#11: ')).toBe('smartcard');
+    expect(pinPromptKind('Enter PIN for PIV_II (PIV Card Holder pin): ')).toBe('smartcard');
   });
 });

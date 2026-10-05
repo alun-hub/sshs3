@@ -182,6 +182,15 @@ export interface AgentTarget {
   socketPath: string;
 }
 
+/**
+ * Which kind of secret an askpass prompt is asking for, to label the PIN dialog: a FIDO2 security key
+ * (e.g. "Enter PIN and confirm user presence for ED25519-SK key SHA256:…", "Enter PIN for
+ * authenticator:") or a PIV smartcard ("Enter passphrase for PKCS#11:").
+ */
+export function pinPromptKind(prompt: string): 'fido2' | 'smartcard' {
+  return /authenticator|security key|fido|-SK\b|user presence/i.test(prompt) ? 'fido2' : 'smartcard';
+}
+
 /** Output of a refused/failed `ssh-add` that nevertheless exits 0 (seen with "agent refused operation"). */
 const ADD_FAILURE_OUTPUT = /refused|fail|error|cannot|unable|invalid/i;
 
@@ -207,6 +216,8 @@ export interface LoadIntoPrivateAgentOptions {
    * always has real, non-empty diagnostic text.
    */
   emptyFailureMeansNoIdentities?: boolean;
+  /** Called with each PIN/passphrase the user enters for this load (not for server account passwords). */
+  onPinEntered?: (pin: string) => void;
   /**
    * Keeps the Askpass server backing this load running (and wires its env
    * into the spawned agent PROCESS itself, not just this one load call)
@@ -291,6 +302,7 @@ async function runAddIntoPrivateAgent(
         const pin = await promptHandler(prompt, retryContext);
         if (!isAccountPasswordPrompt) {
           cachedPin = pin;
+          options?.onPinEntered?.(pin);
         }
         if (/presence|touch/i.test(prompt)) {
           options?.onPresenceRequested?.();

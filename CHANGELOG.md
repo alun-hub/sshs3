@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Enter/Escape inside a modal were swallowed while the tab bar had keyboard focus
 - focus returns to the opener when a top-level modal closes
+- a FIDO2 key's per-signature PIN prompt through the app agent was labelled "Smartcard / PIV"; it is now a FIDO2 prompt, and the PIN entered when the keys were unlocked is reused for signatures (only the touch is asked for) until the keys are locked
 - concurrent `~/.ssh/config` writes are serialized; failures are logged; profile fields can no longer inject extra directive lines
 
 ## [0.96.22] - 2026-10-04

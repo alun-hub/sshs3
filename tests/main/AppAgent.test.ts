@@ -60,6 +60,9 @@ describe('AppAgent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks keeps queued mockImplementationOnce values; drop any a test left behind.
+    vi.mocked(addSmartcardToAgent).mockReset();
+    vi.mocked(addFido2ResidentKeysToAgent).mockReset();
     askpassInstances.length = 0;
     runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-appagent-'));
     process.env = { ...origEnv, XDG_RUNTIME_DIR: runtimeDir };
@@ -214,6 +217,61 @@ describe('AppAgent', () => {
     // Tracked for Windows-style eviction.
     await agent.remove('/usr/lib/libykcs11.so');
     expect(lifecycle.unloadCard).toHaveBeenCalled();
+  });
+
+  describe('FIDO2 signature PIN', () => {
+    const sigPrompt = 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc: ';
+
+    const loadedAgent = async (pin: string | null) => {
+      const agent = new AppAgent();
+      const ownerPrompt = vi.fn().mockResolvedValue('from-user');
+      agent.setHandlers({ promptHandler: ownerPrompt });
+      vi.mocked(addFido2ResidentKeysToAgent).mockImplementationOnce(async (target, _prompt, options) => {
+        if (pin) options?.onPinEntered?.(pin);
+        return { pid: target.pid, socketPath: target.socketPath };
+      });
+      await agent.addFido2Resident(async () => pin ?? '');
+      return { agent, ownerPrompt, server: askpassInstances[0] as any };
+    };
+
+    it('replays the PIN entered at load for a signature prompt, so only the touch is needed', async () => {
+      const { ownerPrompt, server } = await loadedAgent('123456');
+      expect(await server.options.promptHandler(sigPrompt)).toBe('123456');
+      expect(ownerPrompt).not.toHaveBeenCalled();
+    });
+
+    it('never replays it for PIV or account-password prompts', async () => {
+      const { ownerPrompt, server } = await loadedAgent('123456');
+      await server.options.promptHandler('Enter passphrase for PKCS#11: ');
+      await server.options.promptHandler("alun@host's password: ");
+      expect(ownerPrompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops replaying and asks the user when the PIN is requested again right away (it was wrong)', async () => {
+      const { ownerPrompt, server } = await loadedAgent('123456');
+      expect(await server.options.promptHandler(sigPrompt)).toBe('123456');
+      expect(await server.options.promptHandler(sigPrompt)).toBe('from-user');
+      expect(await server.options.promptHandler(sigPrompt)).toBe('from-user');
+      expect(ownerPrompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('forgets the PIN when locked, and never remembers one from a failed load', async () => {
+      const { agent, ownerPrompt, server } = await loadedAgent('123456');
+      await agent.lockAll();
+      expect(await server.options.promptHandler(sigPrompt)).toBe('from-user');
+      expect(ownerPrompt).toHaveBeenCalledTimes(1);
+
+      const failing = new AppAgent();
+      const owner2 = vi.fn().mockResolvedValue('from-user');
+      failing.setHandlers({ promptHandler: owner2 });
+      vi.mocked(addFido2ResidentKeysToAgent).mockImplementationOnce(async (_t, _p, options) => {
+        options?.onPinEntered?.('000000');
+        throw new Error('wrong PIN');
+      });
+      await expect(failing.addFido2Resident(async () => '000000')).rejects.toThrow();
+      const server2 = askpassInstances[askpassInstances.length - 1] as any;
+      expect(await server2.options.promptHandler(sigPrompt)).toBe('from-user');
+    });
   });
 
   it('keeps the agent when an add fails; adds run one at a time', async () => {
