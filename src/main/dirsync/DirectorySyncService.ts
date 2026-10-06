@@ -9,9 +9,9 @@ export type ScanSide = 'source' | 'target';
 export type ScanProgressCallback = (side: ScanSide, filesCount: number, currentItem: string) => void;
 
 function isNotFoundError(err: unknown): boolean {
-  const e = err as { code?: unknown; message?: unknown } | null;
-  if (e?.code === 'ENOENT' || e?.code === 'NoSuchKey' || e?.code === 2) return true;
-  return typeof e?.message === 'string' && /no such file|not found|does not exist|ENOENT|NoSuchKey/i.test(e.message);
+  // Codes only: matching message text would also accept e.g. "bucket does not exist" or "network path not found".
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ENOENT' || code === 'NoSuchKey' || code === 2;
 }
 
 /** True when `relativePath` is one of `skipped` or lies below one of them. */

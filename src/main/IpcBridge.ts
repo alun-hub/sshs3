@@ -3704,7 +3704,7 @@ export class IpcBridge {
             createHostVerifier({
               host: config.host,
               port,
-                onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
+              onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
             })
           );
           await provider.ensureConnected();

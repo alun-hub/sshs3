@@ -125,12 +125,12 @@ export class FileEditorService {
     }
 
     // Saving re-encodes the text as UTF-8, so a file that isn't valid UTF-8 (e.g. ISO-8859-1)
-    // would come back with U+FFFD in place of the original bytes. `stream: true` tolerates a
-    // multi-byte sequence cut off by the size limit.
+    // would come back with U+FFFD in place of the original bytes. `stream` is set only for a truncated read, where the
+    // size limit may have cut a multi-byte sequence in half.
     let notUtf8 = false;
     if (!isBinary) {
       try {
-        new TextDecoder('utf-8', { fatal: true }).decode(fullBuffer, { stream: true });
+        new TextDecoder('utf-8', { fatal: true }).decode(fullBuffer, { stream: truncated });
       } catch {
         notUtf8 = true;
       }
