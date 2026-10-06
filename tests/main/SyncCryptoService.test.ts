@@ -102,6 +102,19 @@ describe('SyncCryptoService', () => {
     expect(() => fresh.decrypt('credentials', encrypted, 'wrong-password')).toThrow(SyncDecryptionError);
   });
 
+  it('does not stay unlocked after a failed bootstrap decrypt with a wrong password', () => {
+    const owner = new SyncCryptoService(FAST_PARAMS);
+    owner.unlock('credentials', 'right-password', generateSalt());
+    const encrypted = owner.encrypt('credentials', 'secret');
+
+    const fresh = new SyncCryptoService(FAST_PARAMS);
+    expect(() => fresh.decrypt('credentials', encrypted, 'wrong-password')).toThrow(SyncDecryptionError);
+    expect(fresh.isUnlocked('credentials')).toBe(false);
+
+    expect(fresh.decrypt('credentials', encrypted, 'right-password')).toBe('secret');
+    expect(fresh.isUnlocked('credentials')).toBe(true);
+  });
+
   it('throws SyncDecryptionError for a truncated/corrupt file', () => {
     const salt = generateSalt();
     service.unlock('topology', 'pw', salt);

@@ -160,6 +160,10 @@ export class SyncCryptoService {
     const group = CATEGORY_TO_GROUP[category];
     let key: Buffer;
     const cached = this.keys.get(group);
+    // A key derived from a password supplied here is only cached once the
+    // auth tag verifies — otherwise a wrong password would leave the group
+    // "unlocked" with a bad key.
+    let derived: CachedKey | undefined;
     if (cached) {
       key = cached.key;
     } else {
@@ -167,7 +171,7 @@ export class SyncCryptoService {
         throw new SyncLockedError(group);
       }
       key = deriveKey(password, salt, this.scryptParams);
-      this.keys.set(group, { key, salt: Buffer.from(salt) });
+      derived = { key, salt: Buffer.from(salt) };
     }
 
     try {
@@ -175,6 +179,7 @@ export class SyncCryptoService {
       decipher.setAAD(Buffer.from(category, 'utf8'));
       decipher.setAuthTag(authTag);
       const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      if (derived) this.keys.set(group, derived);
       return plaintext.toString('utf8');
     } catch {
       // Wrong password and a swapped/corrupted file both fail GCM auth-tag

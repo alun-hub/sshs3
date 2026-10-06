@@ -3,7 +3,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
-import { BLOCKED_SSH_DIRECTIVES } from '../ssh/blockedSshDirectives';
+import { BLOCKED_SSH_DIRECTIVES, BLOCKED_SSH_EXTRA_OPTION_DIRECTIVES, isValidSshOptionKeyword } from '../ssh/blockedSshDirectives';
 
 export interface DetectOptions {
   customPaths?: Array<{ name: string; path: string; platform: 'linux' | 'win32' }>;
@@ -412,7 +412,14 @@ export class SmartcardDetector {
         const trimmedKey = key.trim();
         const trimmedVal = String(value).trim();
         if (!trimmedKey || !trimmedVal) continue;
-        if (BLOCKED_SSH_DIRECTIVES.has(trimmedKey.toLowerCase())) {
+        // ssh splits `-o` at the first whitespace/'=', so a key like "ProxyCommand cmd #" would
+        // otherwise slip past the blocklist lookup while still being parsed as ProxyCommand.
+        if (!isValidSshOptionKeyword(trimmedKey)) {
+          console.warn(`[smartcard] buildSSHArguments: blocked malformed SSH option name "${trimmedKey}"`);
+          continue;
+        }
+        const lowerKey = trimmedKey.toLowerCase();
+        if (BLOCKED_SSH_DIRECTIVES.has(lowerKey) || BLOCKED_SSH_EXTRA_OPTION_DIRECTIVES.has(lowerKey)) {
           console.warn(`[smartcard] buildSSHArguments: blocked dangerous SSH option "${trimmedKey}"`);
           continue;
         }

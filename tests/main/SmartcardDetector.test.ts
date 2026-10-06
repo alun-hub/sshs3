@@ -340,6 +340,32 @@ describe('SmartcardDetector', () => {
     // arrive from a synced/imported profile, so directives that grant
     // command execution or silently disable host-key verification must
     // never reach the ssh command line, even via this generic passthrough.
+    it('blocks extraOptions keys that smuggle a directive via whitespace, quotes or "="', () => {
+      const config: SSHConnectionConfig = {
+        id: 'opt-3',
+        name: 'Smuggled Options Host',
+        host: 'custom.host',
+        username: 'root',
+        authType: 'password',
+        extraOptions: {
+          'ProxyCommand touch /tmp/pwned #': 'x',
+          '"ProxyCommand"': 'touch /tmp/pwned',
+          'ProxyCommand=touch /tmp/pwned #': 'x',
+          SecurityKeyProvider: '/tmp/evil.so',
+          PKCS11Provider: '/tmp/evil.so',
+          XAuthLocation: '/tmp/evil',
+          ProxyJump: 'attacker.example.com',
+          ServerAliveInterval: '60',
+        },
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      const optionArgs = args.filter((_, i) => args[i - 1] === '-o');
+
+      expect(optionArgs).toContain('ServerAliveInterval=60');
+      expect(optionArgs.filter((a) => /pwned|evil|attacker/i.test(a))).toEqual([]);
+    });
+
     it('blocks dangerous extraOptions directives instead of passing them through', () => {
       const config: SSHConnectionConfig = {
         id: 'opt-2',

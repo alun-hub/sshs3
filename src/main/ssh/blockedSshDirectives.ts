@@ -29,4 +29,21 @@ export const BLOCKED_SSH_DIRECTIVES = new Set([
   'globalknownhostsfile',
   'hostbasedauthentication',
   'identityagent',
+  // Load an arbitrary local library into ssh / spawn a local helper.
+  'securitykeyprovider',
+  'xauthlocation',
 ]);
+
+/**
+ * Additionally blocked in a profile's free-form `extraOptions` only. They are
+ * legitimate in a user's `~/.ssh/config` (so not in the shared list above), but
+ * the app sets both itself — from `pkcs11LibPath` and the profile's jump host —
+ * so a value arriving via `extraOptions` can only be an override from untrusted
+ * data: a library loaded into ssh, or a hop through an attacker-chosen host.
+ */
+export const BLOCKED_SSH_EXTRA_OPTION_DIRECTIVES = new Set(['pkcs11provider', 'proxyjump']);
+
+/** A bare ssh option keyword: letters/digits only, so it cannot smuggle a second token (`Key value`), `=` or quotes. */
+export function isValidSshOptionKeyword(key: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9]*$/.test(key);
+}

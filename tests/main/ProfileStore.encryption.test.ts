@@ -49,6 +49,34 @@ describe('ProfileStore encryption', () => {
     }
   });
 
+  it('keeps undecryptable ciphertext on disk when another mutation persists while the keyring is unavailable', async () => {
+    const store = new ProfileStore(storePath);
+    await store.saveSSH({
+      id: 'ssh-1',
+      name: 'Prod',
+      host: 'prod.example.com',
+      username: 'admin',
+      authType: 'password',
+      password: 'super-secret',
+    });
+    const before = JSON.parse(await fs.readFile(storePath, 'utf-8')).ssh[0].password;
+
+    mockIsEncryptionAvailable.mockReturnValue(false);
+    await store.saveFolder('Work');
+    const after = JSON.parse(await fs.readFile(storePath, 'utf-8')).ssh[0].password;
+    expect(after).toBe(before);
+
+    mockIsEncryptionAvailable.mockReturnValue(true);
+    expect((await store.getProfiles()).ssh[0].password).toBe('super-secret');
+  });
+
+  it('copies an unparsable profiles.json aside before overwriting it', async () => {
+    await fs.writeFile(storePath, '{ not json', 'utf-8');
+    const store = new ProfileStore(storePath);
+    await store.saveFolder('Work');
+    expect(await fs.readFile(`${storePath}.corrupt`, 'utf-8')).toBe('{ not json');
+  });
+
   it('stores SSH password/passphrase encrypted on disk and decrypts on read', async () => {
     const store = new ProfileStore(storePath);
     const config: SSHConnectionConfig = {

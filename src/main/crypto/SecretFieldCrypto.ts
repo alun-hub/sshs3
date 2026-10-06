@@ -24,6 +24,11 @@ export function isEncryptionAvailable(): boolean {
   }
 }
 
+/** True for a value stored as safeStorage ciphertext (as opposed to plaintext). */
+export function isEncryptedSecret(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(ENC_PREFIX);
+}
+
 export function encryptSecretValue(value: string): string {
   if (!value) return value;
   if (!isEncryptionAvailable()) {

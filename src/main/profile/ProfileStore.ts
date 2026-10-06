@@ -4,7 +4,7 @@ import os from 'node:os';
 import { app } from 'electron';
 import type { SSHConnectionConfig, SSHTunnelConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
-import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
+import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
 function defaultTunnelName(tunnel: SSHTunnelConfig): string {
@@ -257,10 +257,67 @@ export class ProfileStore {
     });
   }
 
+  /**
+   * Reads the current file's raw entries by id, so persist() can keep secrets that
+   * could not be decrypted (locked/unavailable keyring, file moved between machines).
+   * Those load as '' and would otherwise be overwritten with '' on the next save,
+   * destroying the ciphertext for good. An unparsable file is copied aside first
+   * since getProfilesIncludingTombstones() reports it as empty.
+   */
+  private async readRawEntries(): Promise<Map<string, Record<string, any>>> {
+    const byId = new Map<string, Record<string, any>>();
+    let raw: string;
+    try {
+      raw = await fs.readFile(this.filePath, 'utf-8');
+    } catch {
+      return byId;
+    }
+    try {
+      const data = JSON.parse(raw);
+      for (const list of [data.ssh, data.s3]) {
+        if (!Array.isArray(list)) continue;
+        for (const entry of list) {
+          if (entry && typeof entry.id === 'string') byId.set(entry.id, entry);
+        }
+      }
+    } catch {
+      try {
+        await fs.writeFile(`${this.filePath}.corrupt`, raw, { encoding: 'utf-8', mode: 0o600 });
+      } catch {
+        // Best effort only.
+      }
+    }
+    return byId;
+  }
+
+  private keepUndecryptableSecrets<T extends { id: string; proxy?: any }>(
+    entry: T,
+    fields: Array<keyof T>,
+    existing: Map<string, Record<string, any>>
+  ): T {
+    const prev = existing.get(entry.id);
+    if (!prev) return entry;
+    const result: any = { ...entry };
+    const lost = (current: unknown, old: unknown): old is string =>
+      !current && isEncryptedSecret(old) && decryptSecretValue(old) === '';
+    for (const field of fields) {
+      if (lost(result[field], prev[field as string])) result[field] = prev[field as string];
+    }
+    if (result.proxy && prev.proxy && lost(result.proxy.password, prev.proxy.password)) {
+      result.proxy = { ...result.proxy, password: prev.proxy.password };
+    }
+    return result;
+  }
+
   private async persist(data: ProfilesData): Promise<void> {
+    const existing = await this.readRawEntries();
+    const encryptEntry = <T extends { id: string; proxy?: any }>(p: T, fields: Array<keyof T>): T => {
+      const encrypted = transformEntrySecrets(p, fields, encryptSecretValue);
+      return this.keepUndecryptableSecrets(encrypted, fields, existing);
+    };
     const onDisk: ProfilesData = {
-      ssh: data.ssh.map((p) => transformEntrySecrets(p, SSH_SECRET_FIELDS, encryptSecretValue)),
-      s3: data.s3.map((p) => transformEntrySecrets(p, S3_SECRET_FIELDS, encryptSecretValue)),
+      ssh: data.ssh.map((p) => encryptEntry(p, SSH_SECRET_FIELDS)),
+      s3: data.s3.map((p) => encryptEntry(p, S3_SECRET_FIELDS)),
     };
     if (data.folders && data.folders.length > 0) {
       onDisk.folders = data.folders;

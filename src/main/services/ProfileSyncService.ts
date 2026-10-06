@@ -1377,8 +1377,11 @@ export class ProfileSyncService {
     }
 
     const buffer = await this.readProviderFile(provider, remotePath);
+    // Recorded only after a successful decrypt: a failed one (wrong password)
+    // must not make the remote look "already seen" to the push-conflict check.
+    const plaintext = this.cryptoService.decrypt(category, buffer, password);
     this.lastKnownRemoteState.set(category, stat);
-    return this.cryptoService.decrypt(category, buffer, password);
+    return plaintext;
   }
 
   private async readProviderFile(provider: IStorageProvider, remotePath: string): Promise<Buffer> {

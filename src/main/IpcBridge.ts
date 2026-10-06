@@ -64,7 +64,7 @@ import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
-import { SyncCryptoService, generateSalt } from './services/SyncCryptoService';
+import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { importSshConfigFile } from './services/SshConfigImporter';
 import {
@@ -3432,7 +3432,15 @@ export class IpcBridge {
         passwords.credentialsPassword,
         Buffer.from(config.credentialsSaltBase64, 'base64')
       );
-      await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+      try {
+        await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '');
+      } catch (err) {
+        // unlock() only derives keys and never verifies them; a wrong master
+        // password would otherwise stay cached and let the next push encrypt
+        // (and overwrite) the remote data with the wrong key.
+        if (err instanceof SyncDecryptionError) this.syncCryptoService.lock();
+        throw err;
+      }
       // Re-unlocking only pulls, never pushes — any local edits made while
       // locked would otherwise sit unpushed until the user notices and clicks
       // Push manually. Flush them now if auto-sync is on (scheduleAutoSync is
