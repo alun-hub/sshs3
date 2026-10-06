@@ -1,25 +1,17 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { SftpButton } from '../SftpButton';
-import { ProfileRowMenu } from './ProfileRowMenu';
 import {
   Boxes,
-  Cable,
   ChevronDown,
   ChevronRight,
   Clock,
   Cloud,
-  Copy,
   Download,
   Files,
-  Folder,
   FolderPlus,
-  KeyRound,
   Loader2,
-  Pencil,
   Plus,
   Search,
   Server,
-  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -29,13 +21,28 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
+import type { Tab, EditingState } from './types';
+import { SshProfileRow, SshRecentRow } from './SshProfileRows';
+import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
+import {
+  collectFolderNames,
+  filterS3Profiles,
+  filterSshProfiles,
+  folderNamesForTab,
+  groupProfiles,
+  mostRecentlyUsed,
+  parseAdHocTarget,
+} from './connectionGrouping';
+import { ProfileFolderHeader } from './ProfileFolderHeader';
+import { EmptyFolderDropZone } from './EmptyFolderDropZone';
+import { ImportCandidatesModal } from './ImportCandidatesModal';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useConfirm } from '../ConfirmDialog';
 
-export type Tab = 'ssh' | 's3' | 'k8s';
+export type { Tab };
 
 interface ConnectionManagerModalProps {
   open: boolean;
@@ -85,7 +92,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const confirm = useConfirm();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  const [editing, setEditing] = useState<{ type: Tab; config?: SSHConnectionConfig | S3Config } | null>(null);
+  const [editing, setEditing] = useState<EditingState | null>(null);
   const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
   const [installKeyProfile, setInstallKeyProfile] = useState<SSHConnectionConfig | null>(null);
 
@@ -405,151 +412,26 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   const query = searchQuery.trim().toLowerCase();
 
-  // "user@host" or "user@host:port" typed into the search box, on the
-  // SSH/SFTP tab, reads as ad-hoc quick-connect intent rather than a filter.
-  const adHocTarget = useMemo(() => {
-    if (tab !== 'ssh') return null;
-    const m = searchQuery.trim().match(/^([^\s@]+)@([^\s:@]+)(?::(\d{1,5}))?$/);
-    if (!m) return null;
-    return { username: m[1], host: m[2], port: m[3] ? parseInt(m[3], 10) : undefined };
-  }, [tab, searchQuery]);
+  const adHocTarget = useMemo(() => (tab === 'ssh' ? parseAdHocTarget(searchQuery) : null), [tab, searchQuery]);
 
-  const filteredSSH = useMemo(() => {
-    if (!query) return sshProfiles;
-    return sshProfiles.filter(
-      (p) =>
-        p.name.toLowerCase().includes(query) ||
-        p.host.toLowerCase().includes(query) ||
-        p.username.toLowerCase().includes(query) ||
-        (p.group && p.group.toLowerCase().includes(query))
-    );
-  }, [sshProfiles, query]);
+  const filteredSSH = useMemo(() => filterSshProfiles(sshProfiles, query), [sshProfiles, query]);
+  const filteredS3 = useMemo(() => filterS3Profiles(s3Profiles, query), [s3Profiles, query]);
 
-  const filteredS3 = useMemo(() => {
-    if (!query) return s3Profiles;
-    return s3Profiles.filter(
-      (p) =>
-        p.name.toLowerCase().includes(query) ||
-        (p.endpoint && p.endpoint.toLowerCase().includes(query)) ||
-        (p.region && p.region.toLowerCase().includes(query)) ||
-        (p.initialPath && p.initialPath.toLowerCase().includes(query)) ||
-        (p.group && p.group.toLowerCase().includes(query))
-    );
-  }, [s3Profiles, query]);
+  const allFolderNames = useMemo(
+    () => collectFolderNames(folders, sshProfiles, s3Profiles),
+    [folders, sshProfiles, s3Profiles]
+  );
+  const sshFolderNames = useMemo(
+    () => folderNamesForTab('ssh', allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes),
+    [allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes]
+  );
+  const s3FolderNames = useMemo(
+    () => folderNamesForTab('s3', allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes),
+    [allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes]
+  );
 
-  const allFolderNames = useMemo(() => {
-    const set = new Set<string>(folders);
-    for (const p of sshProfiles) {
-      if (p.group?.trim()) set.add(p.group.trim());
-    }
-    for (const p of s3Profiles) {
-      if (p.group?.trim()) set.add(p.group.trim());
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [folders, sshProfiles, s3Profiles]);
-
-  // Folders are one flat, shared list on disk (SSH and S3 profiles both
-  // reference the same `folders` string array) — so a folder created while
-  // organizing S3 buckets shows up, empty, under SSH/SFTP too, and vice
-  // versa. Unless the user opts into sharing (Settings > Files & Storage),
-  // scope each tab to folders that actually hold a profile of its own type;
-  // a brand-new folder with no profiles anywhere yet still shows in both,
-  // since we can't know which type it's "for" until something lands in it.
-  const folderTypeCounts = useMemo(() => {
-    const counts = new Map<string, { ssh: number; s3: number }>();
-    for (const name of allFolderNames) counts.set(name, { ssh: 0, s3: 0 });
-    for (const p of sshProfiles) {
-      const g = p.group?.trim();
-      if (!g) continue;
-      const c = counts.get(g) ?? { ssh: 0, s3: 0 };
-      c.ssh += 1;
-      counts.set(g, c);
-    }
-    for (const p of s3Profiles) {
-      const g = p.group?.trim();
-      if (!g) continue;
-      const c = counts.get(g) ?? { ssh: 0, s3: 0 };
-      c.s3 += 1;
-      counts.set(g, c);
-    }
-    return counts;
-  }, [allFolderNames, sshProfiles, s3Profiles]);
-
-  const sshFolderNames = useMemo(() => {
-    if (shareFoldersAcrossTypes) return allFolderNames;
-    return allFolderNames.filter((name) => {
-      const c = folderTypeCounts.get(name);
-      return !c || c.ssh > 0 || c.s3 === 0;
-    });
-  }, [allFolderNames, folderTypeCounts, shareFoldersAcrossTypes]);
-
-  const s3FolderNames = useMemo(() => {
-    if (shareFoldersAcrossTypes) return allFolderNames;
-    return allFolderNames.filter((name) => {
-      const c = folderTypeCounts.get(name);
-      return !c || c.s3 > 0 || c.ssh === 0;
-    });
-  }, [allFolderNames, folderTypeCounts, shareFoldersAcrossTypes]);
-
-  const groupedSSH = useMemo(() => {
-    const groups: Record<string, SSHConnectionConfig[]> = {};
-    const ungroupedKey = 'Ungrouped';
-
-    for (const f of sshFolderNames) {
-      if (!query || f.toLowerCase().includes(query)) {
-        groups[f] = [];
-      }
-    }
-    groups[ungroupedKey] = [];
-
-    for (const p of filteredSSH) {
-      const g = p.group?.trim() || ungroupedKey;
-      if (!groups[g]) groups[g] = [];
-      groups[g].push(p);
-    }
-
-    return Object.entries(groups)
-      .filter(([name, list]) => {
-        if (query) return list.length > 0 || name.toLowerCase().includes(query);
-        if (name === ungroupedKey && list.length === 0) return false;
-        return true;
-      })
-      .sort(([a], [b]) => {
-        if (a === ungroupedKey) return 1;
-        if (b === ungroupedKey) return -1;
-        return a.localeCompare(b);
-      });
-  }, [filteredSSH, sshFolderNames, query]);
-
-  const groupedS3 = useMemo(() => {
-    const groups: Record<string, S3Config[]> = {};
-    const ungroupedKey = 'Ungrouped';
-
-    for (const f of s3FolderNames) {
-      if (!query || f.toLowerCase().includes(query)) {
-        groups[f] = [];
-      }
-    }
-    groups[ungroupedKey] = [];
-
-    for (const p of filteredS3) {
-      const g = p.group?.trim() || ungroupedKey;
-      if (!groups[g]) groups[g] = [];
-      groups[g].push(p);
-    }
-
-    return Object.entries(groups)
-      .filter(([name, list]) => {
-        if (query) return list.length > 0 || name.toLowerCase().includes(query);
-        if (name === ungroupedKey && list.length === 0) return false;
-        return true;
-      })
-      .sort(([a], [b]) => {
-        if (a === ungroupedKey) return 1;
-        if (b === ungroupedKey) return -1;
-        return a.localeCompare(b);
-      });
-  }, [filteredS3, s3FolderNames, query]);
+  const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, filteredSSH, query), [filteredSSH, sshFolderNames, query]);
+  const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
   // Collapsed state of the "Recently Used" box, remembered per viewer (best effort).
   const [recentCollapsed, setRecentCollapsed] = useState<boolean>(() => {
@@ -571,20 +453,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     });
   }, []);
 
-  // Top 3 recently used
-  const recentSSH = useMemo(() => {
-    return [...sshProfiles]
-      .filter((p) => Boolean(p.lastUsedAt))
-      .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
-      .slice(0, 3);
-  }, [sshProfiles]);
-
-  const recentS3 = useMemo(() => {
-    return [...s3Profiles]
-      .filter((p) => Boolean(p.lastUsedAt))
-      .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
-      .slice(0, 3);
-  }, [s3Profiles]);
+  const recentSSH = useMemo(() => mostRecentlyUsed(sshProfiles), [sshProfiles]);
+  const recentS3 = useMemo(() => mostRecentlyUsed(s3Profiles), [s3Profiles]);
 
   // M12 (code review): only enabled for the list view, not while a form is
   // being edited (`editing` set to a non-null value) — an accidental Escape
@@ -924,76 +794,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       </button>
                       <div className={recentCollapsed ? 'hidden' : 'flex flex-col gap-1.5'}>
                         {recentSSH.map((profile) => (
-                          <div
+                          <SshRecentRow
                             key={`recent-${profile.id}`}
-                            onDoubleClick={() => void handleConnectSSH(profile)}
-                            title="Double-click to connect"
-                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
-                                {profile.forwardAgent && (
-                                  <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-2xs text-amber-400">
-                                    Agent Fwd
-                                  </span>
-                                )}
-                                {profile.group && (
-                                  <span
-                                    title={`In folder "${profile.group}"`}
-                                    className="inline-flex items-center gap-1 rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted"
-                                  >
-                                    <Folder className="h-2.5 w-2.5" />
-                                    {profile.group}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="truncate text-xs text-txt-muted">
-                                {profile.username}@{profile.host}:{profile.port ?? 22} · Last connected:{' '}
-                                {profile.lastUsedAt}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              {onConnectSSH && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleConnectSSH(profile);
-                                  }}
-                                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                                >
-                                  Connect
-                                </button>
-                              )}
-                              {onConnectSFTP && (
-<SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
-)}
-                              {/* UX audit finding #11: this row used to stop at Connect/SFTP
-                                  while the identical profile, shown again below in its folder,
-                                  also had Tunnels/Duplicate/Edit/Delete — same entity, two
-                                  different action sets depending on where you saw it. */}
-                              <button
-                                type="button"
-                                title="Edit Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditing({ type: 'ssh', config: profile });
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-<ProfileRowMenu
-                                items={[
-                                  { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-                                  { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
-                                  { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
-                                  { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
-                                ]}
-                              />
-                            </div>
-                          </div>
+                            profile={profile}
+                            onConnectSSH={onConnectSSH}
+                            onConnectSFTP={onConnectSFTP}
+                            handleConnectSSH={handleConnectSSH}
+                            handleCloneSSH={handleCloneSSH}
+                            handleDeleteSSH={handleDeleteSSH}
+                            setEditing={setEditing}
+                            setInstallKeyProfile={setInstallKeyProfile}
+                            setTunnelsProfile={setTunnelsProfile}
+                          />
                         ))}
                       </div>
                     </div>
@@ -1023,185 +835,48 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       return (
                         <div key={`group-${groupName}`} className="space-y-1.5">
                           {/* Folder Header */}
-                          <div
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.dataTransfer.dropEffect = 'move';
-                              if (dragOverGroup !== groupName) setDragOverGroup(groupName);
-                            }}
-                            onDragLeave={() => {
-                              if (dragOverGroup === groupName) setDragOverGroup(null);
-                            }}
+                          <ProfileFolderHeader
+                            groupName={groupName}
+                            profileCount={profiles.length}
+                            isCollapsed={isCollapsed}
+                            isDragOver={isDragOver}
+                            dragOverGroup={dragOverGroup}
+                            setDragOverGroup={setDragOverGroup}
+                            renamingFolder={renamingFolder}
+                            setRenamingFolder={setRenamingFolder}
+                            renameFolderValue={renameFolderValue}
+                            setRenameFolderValue={setRenameFolderValue}
+                            onToggle={() => toggleGroup(`ssh-${groupName}`)}
                             onDrop={(e) => void handleDropOnGroup(e, groupName)}
-                            className={`flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors ${
-                              isDragOver
-                                ? 'border border-dashed border-sky-400 bg-sky-500/15'
-                                : 'hover:bg-app-surface-hover'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleGroup(`ssh-${groupName}`)}
-                              className="flex flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
-                            >
-                              {isCollapsed ? (
-                                <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
-                              ) : (
-                                <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
-                              )}
-                              <Folder className="h-3.5 w-3.5 text-amber-400" />
-                              {renamingFolder === groupName ? (
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  value={renameFolderValue}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => setRenameFolderValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') void handleCommitRenameFolder(groupName);
-                                    if (e.key === 'Escape') {
-                                      // Stop this local Escape from also
-                                      // bubbling up to the modal's own
-                                      // window-level Escape-to-close handler
-                                      // (M12) — it should only cancel the
-                                      // rename here, not close the dialog.
-                                      e.stopPropagation();
-                                      setRenamingFolder(null);
-                                    }
-                                  }}
-                                  className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
-                                />
-                              ) : (
-                                <span>{groupName}</span>
-                              )}
-                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
-                                {profiles.length}
-                              </span>
-                            </button>
-
-                            {groupName !== 'Ungrouped' && (
-                              <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
-                                <button
-                                  type="button"
-                                  title="Rename folder"
-                                  onClick={() => {
-                                    setRenamingFolder(groupName);
-                                    setRenameFolderValue(groupName);
-                                  }}
-                                  className="rounded p-1 text-txt-muted hover:text-txt-primary transition-colors"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Delete folder (ungroup profiles)"
-                                  onClick={() => void handleDeleteFolder(groupName)}
-                                  className="rounded p-1 text-txt-muted hover:text-red-400 transition-colors"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                            onCommitRename={handleCommitRenameFolder}
+                            onDeleteFolder={handleDeleteFolder}
+                          />
 
                           {/* Folder Content / Cards */}
                           {!isCollapsed && (
                             <div className="flex flex-col gap-1.5 px-2">
                               {profiles.length === 0 ? (
-                                <div
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = 'move';
-                                    if (dragOverGroup !== groupName) setDragOverGroup(groupName);
-                                  }}
-                                  onDragLeave={() => {
-                                    if (dragOverGroup === groupName) setDragOverGroup(null);
-                                  }}
+                                <EmptyFolderDropZone
+                                  groupName={groupName}
+                                  isDragOver={isDragOver}
+                                  dragOverGroup={dragOverGroup}
+                                  setDragOverGroup={setDragOverGroup}
                                   onDrop={(e) => void handleDropOnGroup(e, groupName)}
-                                  className={`rounded-lg border border-dashed py-3 text-center text-xs transition-colors ${
-                                    isDragOver
-                                      ? 'border-sky-400 bg-sky-500/10 text-sky-300'
-                                      : 'border-border-subtle/60 text-txt-muted'
-                                  }`}
-                                >
-                                  Folder is empty — drag profiles here
-                                </div>
+                                />
                               ) : (
                                 profiles.map((profile) => (
-                                  <div
+                                  <SshProfileRow
                                     key={profile.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'ssh', id: profile.id }));
-                                      e.dataTransfer.effectAllowed = 'move';
-                                    }}
-                                    onDoubleClick={() => void handleConnectSSH(profile)}
-                                    title="Double-click to connect (or drag to folder)"
-                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="truncate text-sm text-txt-primary font-medium">
-                                          {profile.name}
-                                        </span>
-                                        {profile.proxyJump && (
-                                          <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
-                                            Jump
-                                          </span>
-                                        )}
-                                        {profile.forwardAgent && (
-                                          <span className="rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-2xs text-amber-400">
-                                            Agent Fwd
-                                          </span>
-                                        )}
-                                        {profile.tunnels && profile.tunnels.length > 0 && (
-                                          <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.2 text-2xs text-indigo-400">
-                                            {profile.tunnels.length} tunnel{profile.tunnels.length > 1 ? 's' : ''}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="truncate text-xs text-txt-muted">
-                                        {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
-                                      </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                      {onConnectSSH && (
-                                        <button
-                                          type="button"
-                                          title="Connect (SSH Terminal)"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void handleConnectSSH(profile);
-                                          }}
-                                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                                        >
-                                          Connect
-                                        </button>
-                                      )}
-                                      {onConnectSFTP && (
-<SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
-)}
-                                      <button
-                                        type="button"
-                                        title="Edit Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditing({ type: 'ssh', config: profile });
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                                      >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-<ProfileRowMenu
-                                        items={[
-                                          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-                                          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
-                                          { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
-                                          { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
-                                        ]}
-                                      />
-                                    </div>
-                                  </div>
+                                    profile={profile}
+                                    onConnectSSH={onConnectSSH}
+                                    onConnectSFTP={onConnectSFTP}
+                                    handleConnectSSH={handleConnectSSH}
+                                    handleCloneSSH={handleCloneSSH}
+                                    handleDeleteSSH={handleDeleteSSH}
+                                    setEditing={setEditing}
+                                    setInstallKeyProfile={setInstallKeyProfile}
+                                    setTunnelsProfile={setTunnelsProfile}
+                                  />
                                 ))
                               )}
                             </div>
@@ -1230,80 +905,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       </button>
                       <div className={recentCollapsed ? 'hidden' : 'flex flex-col gap-1.5'}>
                         {recentS3.map((profile) => (
-                          <div
+                          <S3RecentRow
                             key={`recent-s3-${profile.id}`}
-                            onDoubleClick={() => void handleConnectS3(profile)}
-                            title="Double-click to connect"
-                            className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors cursor-pointer"
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-xs font-medium text-txt-primary">{profile.name}</span>
-                                {profile.group && (
-                                  <span
-                                    title={`In folder "${profile.group}"`}
-                                    className="inline-flex items-center gap-1 rounded bg-app-surface-subtle border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-muted"
-                                  >
-                                    <Folder className="h-2.5 w-2.5" />
-                                    {profile.group}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="truncate text-xs text-txt-muted">
-                                {profile.endpoint || 'AWS S3'} · {profile.region} · Last connected:{' '}
-                                {profile.lastUsedAt}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              {onConnectS3 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleConnectS3(profile);
-                                  }}
-                                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                                >
-                                  Connect
-                                </button>
-                              )}
-                              {/* UX audit finding #11: match the action set this profile gets
-                                  further down in its folder listing. */}
-                              <button
-                                type="button"
-                                title="Duplicate / Clone Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleCloneS3(profile);
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Edit Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditing({ type: 's3', config: profile });
-                                }}
-                                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Delete Profile"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleDeleteS3(profile.id, profile.name);
-                                }}
-                                className="ml-1.5 rounded-lg p-1.5 text-red-400 hover:bg-red-500/15 transition-colors"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
+                            profile={profile}
+                            onConnectS3={onConnectS3}
+                            handleConnectS3={handleConnectS3}
+                            handleCloneS3={handleCloneS3}
+                            handleDeleteS3={handleDeleteS3}
+                            setEditing={setEditing}
+                          />
                         ))}
                       </div>
                     </div>
@@ -1333,176 +943,44 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       return (
                         <div key={`group-s3-${groupName}`} className="space-y-1.5">
                           {/* Folder Header */}
-                          <div
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.dataTransfer.dropEffect = 'move';
-                              if (dragOverGroup !== groupName) setDragOverGroup(groupName);
-                            }}
-                            onDragLeave={() => {
-                              if (dragOverGroup === groupName) setDragOverGroup(null);
-                            }}
+                          <ProfileFolderHeader
+                            groupName={groupName}
+                            profileCount={profiles.length}
+                            isCollapsed={isCollapsed}
+                            isDragOver={isDragOver}
+                            dragOverGroup={dragOverGroup}
+                            setDragOverGroup={setDragOverGroup}
+                            renamingFolder={renamingFolder}
+                            setRenamingFolder={setRenamingFolder}
+                            renameFolderValue={renameFolderValue}
+                            setRenameFolderValue={setRenameFolderValue}
+                            onToggle={() => toggleGroup(`s3-${groupName}`)}
                             onDrop={(e) => void handleDropOnGroup(e, groupName)}
-                            className={`flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors ${
-                              isDragOver
-                                ? 'border border-dashed border-sky-400 bg-sky-500/15'
-                                : 'hover:bg-app-surface-hover'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleGroup(`s3-${groupName}`)}
-                              className="flex flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
-                            >
-                              {isCollapsed ? (
-                                <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
-                              ) : (
-                                <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
-                              )}
-                              <Folder className="h-3.5 w-3.5 text-amber-400" />
-                              {renamingFolder === groupName ? (
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  value={renameFolderValue}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => setRenameFolderValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') void handleCommitRenameFolder(groupName);
-                                    if (e.key === 'Escape') {
-                                      // Stop this local Escape from also
-                                      // bubbling up to the modal's own
-                                      // window-level Escape-to-close handler
-                                      // (M12) — it should only cancel the
-                                      // rename here, not close the dialog.
-                                      e.stopPropagation();
-                                      setRenamingFolder(null);
-                                    }
-                                  }}
-                                  className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
-                                />
-                              ) : (
-                                <span>{groupName}</span>
-                              )}
-                              <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
-                                {profiles.length}
-                              </span>
-                            </button>
-
-                            {groupName !== 'Ungrouped' && (
-                              <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
-                                <button
-                                  type="button"
-                                  title="Rename folder"
-                                  onClick={() => {
-                                    setRenamingFolder(groupName);
-                                    setRenameFolderValue(groupName);
-                                  }}
-                                  className="rounded p-1 text-txt-muted hover:text-txt-primary transition-colors"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Delete folder (ungroup profiles)"
-                                  onClick={() => void handleDeleteFolder(groupName)}
-                                  className="rounded p-1 text-txt-muted hover:text-red-400 transition-colors"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                            onCommitRename={handleCommitRenameFolder}
+                            onDeleteFolder={handleDeleteFolder}
+                          />
 
                           {!isCollapsed && (
                             <div className="flex flex-col gap-1.5 px-2">
                               {profiles.length === 0 ? (
-                                <div
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = 'move';
-                                    if (dragOverGroup !== groupName) setDragOverGroup(groupName);
-                                  }}
-                                  onDragLeave={() => {
-                                    if (dragOverGroup === groupName) setDragOverGroup(null);
-                                  }}
+                                <EmptyFolderDropZone
+                                  groupName={groupName}
+                                  isDragOver={isDragOver}
+                                  dragOverGroup={dragOverGroup}
+                                  setDragOverGroup={setDragOverGroup}
                                   onDrop={(e) => void handleDropOnGroup(e, groupName)}
-                                  className={`rounded-lg border border-dashed py-3 text-center text-xs transition-colors ${
-                                    isDragOver
-                                      ? 'border-sky-400 bg-sky-500/10 text-sky-300'
-                                      : 'border-border-subtle/60 text-txt-muted'
-                                  }`}
-                                >
-                                  Folder is empty — drag profiles here
-                                </div>
+                                />
                               ) : (
                                 profiles.map((profile) => (
-                                  <div
+                                  <S3ProfileRow
                                     key={profile.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 's3', id: profile.id }));
-                                      e.dataTransfer.effectAllowed = 'move';
-                                    }}
-                                    onDoubleClick={() => void handleConnectS3(profile)}
-                                    title="Double-click to connect (or drag to folder)"
-                                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium text-txt-primary">{profile.name}</div>
-                                      <div className="truncate text-xs text-txt-muted">
-                                        {profile.endpoint || 'AWS S3'} · {profile.region}
-                                      </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                      {onConnectS3 && (
-                                        <button
-                                          type="button"
-                                          title="Connect / Browse S3"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void handleConnectS3(profile);
-                                          }}
-                                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                                        >
-                                          Connect
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        title="Duplicate / Clone Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void handleCloneS3(profile);
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                                      >
-                                        <Copy className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title="Edit Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditing({ type: 's3', config: profile });
-                                        }}
-                                        className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                                      >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title="Delete Profile"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void handleDeleteS3(profile.id, profile.name);
-                                        }}
-                                        className="ml-1.5 rounded-lg p-1.5 text-red-400 hover:bg-red-500/15 transition-colors"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
+                                    profile={profile}
+                                    onConnectS3={onConnectS3}
+                                    handleConnectS3={handleConnectS3}
+                                    handleCloneS3={handleCloneS3}
+                                    handleDeleteS3={handleDeleteS3}
+                                    setEditing={setEditing}
+                                  />
                                 ))
                               )}
                             </div>
@@ -1519,106 +997,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
         {/* SSH Config Import Candidates Preview Modal */}
         {importCandidates && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 animate-in fade-in duration-100">
-            <div role="dialog" aria-modal="true" aria-label="Import hosts from SSH config" className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-border-subtle bg-app-surface p-4 shadow-2xl space-y-3">
-              <div className="flex items-center justify-between border-b border-divider pb-2">
-                <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
-                  <Upload className="h-4 w-4" />
-                  <span>Import Hosts from ~/.ssh/config</span>
-                </div>
-                <button aria-label="Close" title="Close"
-                  type="button"
-                  onClick={() => setImportCandidates(null)}
-                  className="rounded p-1 text-txt-muted hover:text-txt-primary"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-txt-muted">Target Folder:</span>
-                  <input
-                    aria-label="Target folder"
-                    type="text"
-                    value={importTargetFolder}
-                    onChange={(e) => setImportTargetFolder(e.target.value)}
-                    placeholder="e.g. Imported"
-                    className="rounded border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 w-32"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCandidateIds(new Set(importCandidates.map((c) => c.id)))}
-                    className="text-xs text-sky-400 hover:underline"
-                  >
-                    Select All
-                  </button>
-                  <span className="text-txt-muted">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCandidateIds(new Set())}
-                    className="text-xs text-txt-muted hover:underline"
-                  >
-                    Deselect All
-                  </button>
-                </div>
-              </div>
-
-              <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border border-border-subtle bg-app-card p-2">
-                {importCandidates.map((candidate) => {
-                  const isChecked = selectedCandidateIds.has(candidate.id);
-                  return (
-                    <label
-                      key={candidate.id}
-                      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-app-surface-hover cursor-pointer text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          const next = new Set(selectedCandidateIds);
-                          if (e.target.checked) next.add(candidate.id);
-                          else next.delete(candidate.id);
-                          setSelectedCandidateIds(next);
-                        }}
-                        className="rounded border-border-subtle text-sky-500 focus:ring-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span className="font-medium text-txt-primary">{candidate.name}</span>
-                        <span className="ml-2 text-txt-muted">
-                          {candidate.username ? `${candidate.username}@` : ''}
-                          {candidate.host}:{candidate.port ?? 22}
-                        </span>
-                      </div>
-                      <span className="rounded bg-app-surface-subtle px-1.5 py-0.5 text-2xs text-txt-muted">
-                        {candidate.authType}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-divider">
-                <button
-                  type="button"
-                  onClick={() => setImportCandidates(null)}
-                  className="rounded-lg px-3 py-1.5 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleConfirmImportCandidates()}
-                  disabled={selectedCandidateIds.size === 0}
-                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-                >
-                  Import {selectedCandidateIds.size} Profile{selectedCandidateIds.size !== 1 ? 's' : ''}
-                </button>
-              </div>
-            </div>
-          </div>
+          <ImportCandidatesModal
+            importCandidates={importCandidates}
+            importTargetFolder={importTargetFolder}
+            setImportTargetFolder={setImportTargetFolder}
+            selectedCandidateIds={selectedCandidateIds}
+            setSelectedCandidateIds={setSelectedCandidateIds}
+            onClose={() => setImportCandidates(null)}
+            onConfirm={handleConfirmImportCandidates}
+          />
         )}
       </div>
     </div>
