@@ -1146,7 +1146,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <div ref={gitMenuRef} className="relative shrink-0">
               <button
                 type="button"
-                title={`Git: ${gitStatus.branch}${gitStatus.isClean ? ' (clean)' : ' (uncommitted changes)'}${gitStatus.ahead ? `, ahead ${gitStatus.ahead}` : ''}${gitStatus.behind ? `, behind ${gitStatus.behind}` : ''}\nClick for Git options (Pull, Web, Clone)`}
+                title={`Git: ${gitStatus.branch}${gitStatus.isClean === true ? ' (clean)' : gitStatus.isClean === false ? ' (uncommitted changes)' : ''}${gitStatus.ahead ? `, ahead ${gitStatus.ahead}` : ''}${gitStatus.behind ? `, behind ${gitStatus.behind}` : ''}\nClick for Git options (Pull, Web, Clone)`}
                 onClick={() => setGitMenuOpen((prev) => !prev)}
                 className="flex items-center gap-1 bg-app-card hover:bg-app-surface border border-border-subtle rounded-md px-1.5 py-0.5 text-2xs text-txt-secondary transition-colors cursor-pointer select-none"
               >
@@ -1156,7 +1156,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   <GitBranch className="h-3 w-3 text-sky-400 shrink-0" />
                 )}
                 <span className="font-medium text-txt-primary max-w-[100px] truncate">{gitStatus.branch}</span>
-                {!gitStatus.isClean && <span className="text-amber-400 font-bold">*</span>}
+                {gitStatus.isClean === false && <span className="text-amber-400 font-bold">*</span>}
                 {Boolean(gitStatus.ahead) && <span className="text-emerald-400 text-2xs">↑{gitStatus.ahead}</span>}
                 {Boolean(gitStatus.behind) && <span className="text-amber-400 text-2xs">↓{gitStatus.behind}</span>}
                 <ChevronDown className="h-3 w-3 text-txt-muted ml-0.5" />
@@ -1169,15 +1169,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <GitBranch className="h-4 w-4 text-sky-400 shrink-0" />
                       <span className="truncate">{gitStatus.branch}</span>
                     </div>
-                    {gitStatus.isClean ? (
+                    {/* Remote repos are not scanned, so cleanliness is unknown (undefined) there. */}
+                    {gitStatus.isClean === true && (
                       <span className="rounded bg-emerald-500/15 text-emerald-400 text-2xs px-1.5 py-0.5 font-medium">Clean</span>
-                    ) : (
+                    )}
+                    {gitStatus.isClean === false && (
                       <span className="rounded bg-amber-500/15 text-amber-400 text-2xs px-1.5 py-0.5 font-medium">Modified</span>
                     )}
                   </div>
 
                   <div className="text-2xs text-txt-muted space-y-0.5">
-                    {!gitStatus.isClean && (
+                    {gitStatus.isClean === false && (
                       <div className="text-amber-300">
                         ● {gitStatus.modifiedCount ?? 0} modified, {gitStatus.untrackedCount ?? 0} untracked
                       </div>

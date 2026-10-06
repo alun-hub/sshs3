@@ -1278,24 +1278,6 @@ export class IpcBridge {
     this.registerHandler(IPC_CHANNELS.TRANSFER_CLEAR_COMPLETED, async (): Promise<void> => {
       this.transferQueue.clearCompleted();
     });
-
-    this.registerHandler(
-      IPC_CHANNELS.START_DRAG,
-      async (event, options: { file: string; icon?: string }) => {
-        try {
-          const webContents = event.sender || this.getWebContents();
-          if (webContents && typeof (webContents as any).startDrag === 'function') {
-            const iconPath = options.icon || path.join(__dirname, '../build/icons/32x32.png');
-            (webContents as any).startDrag({
-              file: options.file,
-              icon: iconPath,
-            });
-          }
-        } catch (err) {
-          console.error('Failed to start native drag:', err);
-        }
-      }
-    );
   }
 
   private registerProfileHandlers(): void {
@@ -2638,7 +2620,10 @@ export class IpcBridge {
           return;
         }
         if (resolution === 'always') {
-          await this.profileStore.saveSSH({ ...config, dotfilesSyncPolicy: 'always' });
+          // `config` is the resolved runtime config (agent socket, resolved jump host, …); persist the
+          // policy on the saved profile instead, so those runtime values never leak into it.
+          const saved = (await this.profileStore.getProfiles()).ssh.find((p) => p.id === config.id);
+          if (saved) await this.profileStore.saveSSH({ ...saved, dotfilesSyncPolicy: 'always' });
         }
       }
       // 'always' policy (either pre-set or just chosen above) falls through and applies silently.
@@ -3841,7 +3826,19 @@ export class IpcBridge {
     this.registerHandler(
       IPC_CHANNELS.GIT_PULL,
       async (_event, directoryPath: string, providerId?: string): Promise<GitOperationResult> => {
-        return await RemoteGitService.pull(directoryPath, providerId);
+        // Remote panes are identified by `sftp-<profileId>`. The connection is resolved from the saved
+        // profile here, never taken from the renderer.
+        let sftpConfig: SSHConnectionConfig | undefined;
+        if (providerId && providerId !== 'local') {
+          const profileId = providerId.startsWith('sftp-') ? providerId.slice('sftp-'.length) : undefined;
+          const profile = profileId
+            ? (await this.profileStore.getProfiles()).ssh.find((p) => p.id === profileId)
+            : undefined;
+          if (profile) {
+            sftpConfig = await this.resolveProxyJumpConfig(await this.restoreSavedSecrets(profile));
+          }
+        }
+        return await RemoteGitService.pull(directoryPath, providerId, sftpConfig);
       }
     );
 

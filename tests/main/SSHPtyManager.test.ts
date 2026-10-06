@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { IPty, IDisposable } from 'node-pty';
+import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import { SSHPtyManager } from '../../src/main/ssh/SSHPtyManager';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
@@ -303,6 +304,31 @@ describe('SSHPtyManager', () => {
 
       await expect(manager.createSession(config)).rejects.toThrow('Spawn process failed');
       spawnSpy.mockRestore();
+    });
+  });
+
+  describe('createSession cleanup', () => {
+    it('stops the askpass server when building the ssh arguments throws', async () => {
+      const { AskpassServer } = await import('../../src/main/smartcard/AskpassServer');
+      const stopSpy = vi.spyOn(AskpassServer.prototype, 'stop');
+      const buildSpy = vi.spyOn(SmartcardDetector, 'buildSSHArguments').mockImplementationOnce(() => {
+        throw new Error('bad config');
+      });
+
+      await expect(
+        manager.createSession({
+          id: 'session-args-fail',
+          name: 'Args Fail',
+          host: 'fail.example.com',
+          username: 'user',
+          authType: 'password',
+          password: 'x', // pragma: allowlist secret
+        })
+      ).rejects.toThrow('bad config');
+
+      expect(stopSpy).toHaveBeenCalled();
+      buildSpy.mockRestore();
+      stopSpy.mockRestore();
     });
   });
 

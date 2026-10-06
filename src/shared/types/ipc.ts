@@ -147,7 +147,6 @@ export const IPC_CHANNELS = {
   TRANSFER_PROGRESS: 'transfer:progress',
   TRANSFER_CONFLICT_PROMPT: 'transfer:conflict-prompt',
   TRANSFER_CONFLICT_RESPOND: 'transfer:conflict-respond',
-  START_DRAG: 'drag:start',
 
   // Quit confirmation (renders the app's own themed dialog instead of a native OS message box)
   QUIT_CONFIRM_PROMPT: 'app:quit-confirm-prompt',
@@ -548,7 +547,6 @@ export interface MultiSSHApi {
   transferClearCompleted(): Promise<void>;
   onTransferProgress(callback: (progress: TransferProgress) => void): () => void;
   getPathForFile?(file: File): string;
-  startDrag?(options: { file: string; icon?: string }): void;
 
   // Profiles
   profilesGet(): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[]; folders?: string[] }>;

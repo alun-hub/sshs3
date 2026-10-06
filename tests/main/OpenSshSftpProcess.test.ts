@@ -104,6 +104,45 @@ describe('OpenSshSftpProcess', () => {
     expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it('removes its control dir and stops askpass when building the ssh arguments throws, and can start again', async () => {
+    const { SmartcardDetector } = await import('../../src/main/smartcard/SmartcardDetector');
+    const { default: fs } = await import('node:fs');
+    const { default: os } = await import('node:os');
+    const leftovers = () => fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('s3m-sftp-')).length;
+    const before = leftovers();
+    const buildSpy = vi.spyOn(SmartcardDetector, 'buildSSHArguments').mockImplementationOnce(() => {
+      throw new Error('bad config');
+    });
+
+    const proc = new OpenSshSftpProcess();
+    const config = {
+      id: 'test-cleanup',
+      host: 'myserver.com',
+      port: 22,
+      username: 'alice',
+      authType: 'password' as const,
+      password: 'secretpassword', // pragma: allowlist secret
+    };
+    await expect(proc.start({ config })).rejects.toThrow('bad config');
+    expect(leftovers()).toBe(before);
+    expect(mockSpawn).not.toHaveBeenCalled();
+
+    // The same instance must be able to start (and later close) again.
+    const second = proc.start({ config });
+    setTimeout(() => {
+      const resp = Buffer.alloc(9);
+      resp.writeUInt32BE(5, 0);
+      resp.writeUInt8(FXP.VERSION, 4);
+      resp.writeUInt32BE(3, 5);
+      mockChild.stdout.write(resp);
+    }, 10);
+    await second;
+    await proc.close();
+    expect(mockChild.kill).toHaveBeenCalled();
+    expect(leftovers()).toBe(before);
+    buildSpy.mockRestore();
+  });
+
   it('detects user presence prompt in stderr and triggers onPresence', async () => {
     const proc = new OpenSshSftpProcess();
     const onPresence = vi.fn();

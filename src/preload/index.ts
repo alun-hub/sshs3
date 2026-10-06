@@ -367,19 +367,6 @@ export const api: MultiSSHApi = {
     }
   },
 
-  startDrag: (options: { file: string; icon?: string }): void => {
-    // The main-process handler is registered with ipcMain.handle (via
-    // registerHandler), which only ever answers ipcRenderer.invoke() calls —
-    // a plain .send() has no listener on the other end and is silently
-    // dropped, so native OS drag-and-drop never actually started (LOW
-    // finding, code review). The caller doesn't need the result, so the
-    // promise is intentionally not awaited/returned; a failure is logged
-    // there rather than thrown here.
-    void ipcRenderer.invoke(IPC_CHANNELS.START_DRAG, options).catch((err) => {
-      console.error('Failed to start native drag:', err);
-    });
-  },
-
   // Profiles
   profilesGet: (): Promise<{ ssh: SSHConnectionConfig[]; s3: S3Config[]; folders?: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILES_GET),

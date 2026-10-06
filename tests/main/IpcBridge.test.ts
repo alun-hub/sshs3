@@ -2258,6 +2258,81 @@ describe('IpcBridge', () => {
     });
   });
 
+  describe('dotfiles sync policy', () => {
+    it("persists 'always' on the saved profile, not on the resolved runtime config", async () => {
+      mockSettingsStore.getSettings.mockResolvedValue({ dotfilesPoolEnabled: true });
+      const savedProfile = {
+        id: 'p1',
+        name: 'Prod',
+        host: 'prod.example.com',
+        username: 'deploy',
+        authType: 'smartcard',
+        pkcs11LibPath: '/usr/lib/opensc.so',
+        poolId: 'pool-1',
+        dotfilesSyncPolicy: 'ask',
+        proxyJumpProfileId: 'jump-1',
+      };
+      mockProfileStore.getProfiles.mockResolvedValue({ ssh: [savedProfile], s3: [] });
+      (bridge as any).dotfilePoolStore = {
+        getPool: vi.fn().mockResolvedValue({ id: 'pool-1', name: 'Pool', files: [{ id: 'f1' }] }),
+      };
+      (bridge as any).dotfileSyncService = {
+        computeDiff: vi.fn().mockResolvedValue({ provider: { disconnect: vi.fn().mockResolvedValue(undefined) }, entries: [{ fileId: 'f1' }] }),
+        applyFiles: vi.fn().mockResolvedValue(undefined),
+      };
+      (bridge as any).promptDotfilesSync = vi.fn().mockResolvedValue('always');
+      mockPtyManager.getSession = vi.fn().mockReturnValue(undefined);
+
+      // The runtime config differs from the saved profile: resolved jump host and a live agent socket.
+      const runtimeConfig = {
+        ...savedProfile,
+        agentPath: '/tmp/agent.sock',
+        proxyJumpProfileId: undefined,
+        proxyJump: 'jump@bastion',
+      };
+      await (bridge as any).runDotfilesSyncCheck('sess-1', runtimeConfig);
+
+      expect(mockProfileStore.saveSSH).toHaveBeenCalledTimes(1);
+      const saved = mockProfileStore.saveSSH.mock.calls[0][0];
+      expect(saved).toMatchObject({ id: 'p1', dotfilesSyncPolicy: 'always', proxyJumpProfileId: 'jump-1' });
+      expect(saved.agentPath).toBeUndefined();
+      expect(saved.proxyJump).toBeUndefined();
+    });
+  });
+
+  describe('Git pull handler', () => {
+    it('resolves the SSH connection of a remote pane from the saved profile', async () => {
+      const { RemoteGitService } = await import('../../src/main/git/RemoteGitService');
+      const pullSpy = vi.spyOn(RemoteGitService, 'pull').mockResolvedValue({ success: true, output: 'ok' });
+      mockProfileStore.getProfiles.mockResolvedValue({
+        ssh: [{ id: 'p1', name: 'Prod', host: 'prod.example.com', username: 'deploy', authType: 'privateKey' }],
+        s3: [],
+      });
+
+      const res = await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/srv/app', 'sftp-p1');
+
+      expect(res).toEqual({ success: true, output: 'ok' });
+      expect(pullSpy).toHaveBeenCalledWith(
+        '/srv/app',
+        'sftp-p1',
+        expect.objectContaining({ id: 'p1', host: 'prod.example.com', username: 'deploy' })
+      );
+      pullSpy.mockRestore();
+    });
+
+    it('passes no connection for local panes or unknown providers', async () => {
+      const { RemoteGitService } = await import('../../src/main/git/RemoteGitService');
+      const pullSpy = vi.spyOn(RemoteGitService, 'pull').mockResolvedValue({ success: true });
+
+      await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/home/me/repo', 'local');
+      await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/srv/app', 'sftp-missing');
+
+      expect(pullSpy).toHaveBeenNthCalledWith(1, '/home/me/repo', 'local', undefined);
+      expect(pullSpy).toHaveBeenNthCalledWith(2, '/srv/app', 'sftp-missing', undefined);
+      pullSpy.mockRestore();
+    });
+  });
+
   describe('File Editor Handlers', () => {
     it('delegates fileRead to fileEditorService', async () => {
       vi.spyOn(bridge.fileEditorService, 'readFile').mockResolvedValue({

@@ -62,6 +62,22 @@ export class OpenSshSftpProcess {
   private config?: SFTPConfig;
 
   public async start(options: OpenSshProcessOptions): Promise<SftpPacketProtocol> {
+    // close() latches `isClosed`; a retry on the same instance after a failed start (or a
+    // later close) must be able to clean up again, otherwise ssh/askpass/temp dir would leak.
+    this.isClosed = false;
+    this.stderrBuffer = '';
+    this.protocol = undefined;
+    try {
+      return await this.startInner(options);
+    } catch (err) {
+      // Anything thrown after the control dir / askpass server were created (e.g. building
+      // the ssh arguments) must not leave them behind.
+      await this.close();
+      throw err;
+    }
+  }
+
+  private async startInner(options: OpenSshProcessOptions): Promise<SftpPacketProtocol> {
     const { config, pinPromptHandler, onPresence, onPresenceCleared, hostKeyPromptHandler } = options;
     this.config = config;
     this.host = config.host;

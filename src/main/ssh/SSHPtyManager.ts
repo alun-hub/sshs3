@@ -588,54 +588,57 @@ export class SSHPtyManager extends EventEmitter {
       askpassEnv = askpassServer.getEnv();
     }
 
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-      TERM: 'xterm-256color',
-      ...askpassEnv,
-      ...SmartcardDetector.buildProxyEnv(config),
-      ...(options?.env || {}),
-    };
-
-    if (config.agentPath) {
-      env.SSH_AUTH_SOCK = config.agentPath;
-    } else if (config.authType === 'smartcard') {
-      delete env.SSH_AUTH_SOCK;
-    }
-
-    if (config.x11Forwarding) {
-      env.DISPLAY =
-        config.x11Display ||
-        process.env.DISPLAY ||
-        (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
-    }
-
     const controlPath =
       process.platform !== 'win32'
         ? path.join(os.tmpdir(), `s3m-${crypto.randomUUID().slice(0, 8)}.sock`)
         : undefined;
-
     let muxRegistryId: string | null = null;
-    if (controlPath) {
-      try {
-        muxRegistryId = await registerEntry({
-          kind: 'ssh-mux',
-          ownerPid: process.pid,
-          controlPath,
-          host: config.host,
-          createdAt: new Date().toISOString(),
-        });
-      } catch {
-        // Best-effort
-      }
-    }
-
-    const filteredConfig = this.withoutConflictingTunnels(config, sessionId);
-    const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
-    const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
-    console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
-
+    let filteredConfig: SSHConnectionConfig;
     let ptyProcess: IPty;
+
+    // Everything from here to the spawn may throw (invalid proxy/tunnel config, argument
+    // building, spawn itself); the askpass server and mux registry entry must not leak then.
     try {
+      const env: Record<string, string> = {
+        ...(process.env as Record<string, string>),
+        TERM: 'xterm-256color',
+        ...askpassEnv,
+        ...SmartcardDetector.buildProxyEnv(config),
+        ...(options?.env || {}),
+      };
+
+      if (config.agentPath) {
+        env.SSH_AUTH_SOCK = config.agentPath;
+      } else if (config.authType === 'smartcard') {
+        delete env.SSH_AUTH_SOCK;
+      }
+
+      if (config.x11Forwarding) {
+        env.DISPLAY =
+          config.x11Display ||
+          process.env.DISPLAY ||
+          (process.platform === 'win32' ? '127.0.0.1:0.0' : ':0');
+      }
+
+      if (controlPath) {
+        try {
+          muxRegistryId = await registerEntry({
+            kind: 'ssh-mux',
+            ownerPid: process.pid,
+            controlPath,
+            host: config.host,
+            createdAt: new Date().toISOString(),
+          });
+        } catch {
+          // Best-effort
+        }
+      }
+
+      filteredConfig = this.withoutConflictingTunnels(config, sessionId);
+      const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
+      const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+      console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
+
       const spawn = getSpawn();
       ptyProcess = spawn(sshBinary, sshArgs, {
         cols,
