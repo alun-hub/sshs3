@@ -798,6 +798,56 @@ describe('IpcBridge', () => {
         mockProfileStore.getProfiles.mockResolvedValue({ ssh: [] });
       });
 
+      it('reads every module\'s certificates before the first card is loaded, and only once each', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        mockProfileStore.getProfiles.mockResolvedValue({
+          ssh: [
+            { id: '1', name: 'A', authType: 'smartcard', pkcs11LibPath: '/usr/lib/opensc-pkcs11.so' } as any,
+            { id: '2', name: 'B', authType: 'smartcard', pkcs11LibPath: '/usr/lib64/libykcs11.so.2' } as any,
+          ],
+        });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+          { name: 'YubiKey (libykcs11)', path: '/usr/lib64/libykcs11.so.2', platform: 'linux', exists: true },
+        ]);
+        const loadSpy = fakeAppAgent.addPkcs11.mockResolvedValue(undefined);
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map());
+
+        await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
+        await (bridge as any).startupUnlockPromise;
+
+        // Reading a module's certificates opens its own session against the token, which breaks the PIN login
+        // of a card the agent already holds; so all reads must come first.
+        expect(readCertsSpy).toHaveBeenCalledTimes(2);
+        const lastRead = Math.max(...readCertsSpy.mock.invocationCallOrder);
+        const firstLoad = Math.min(...loadSpy.mock.invocationCallOrder);
+        expect(lastRead).toBeLessThan(firstLoad);
+        expect((bridge as any).prefetchedSmartcardCerts.size).toBe(0);
+
+        detectSpy.mockRestore();
+        loadSpy.mockRestore();
+        readCertsSpy.mockRestore();
+        mockProfileStore.getProfiles.mockResolvedValue({ ssh: [] });
+      });
+
+      it('does not read ahead for a single module, or while the agent already holds a PKCS#11 card', async () => {
+        const readCertsSpy = vi
+          .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+          .mockResolvedValue(new Map());
+
+        await (bridge as any).prefetchSmartcardCertificates(['/usr/lib/opensc-pkcs11.so']);
+        expect(readCertsSpy).not.toHaveBeenCalled();
+
+        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:abc']) });
+        await (bridge as any).prefetchSmartcardCertificates(['/usr/lib64/libykcs11.so.2', '/usr/lib/other.so']);
+        expect(readCertsSpy).not.toHaveBeenCalled();
+        expect((bridge as any).prefetchedSmartcardCerts.size).toBe(0);
+
+        readCertsSpy.mockRestore();
+      });
+
       it('does not retain any plaintext PIN in memory after startup unlock finishes', async () => {
         expect((bridge as any).cachedGlobalSmartcardPin).toBeUndefined();
       });

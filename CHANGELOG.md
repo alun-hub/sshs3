@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - smartcards with several certificates (e.g. an authentication and a signing certificate on a PIV card) no longer leave every key in the app ssh-agent: only authentication-capable certificates (Key Usage `digitalSignature`; Extended Key Usage `clientAuth`, smartcard logon or any, when present; a certificate that also asserts `nonRepudiation`, like a PIV 9c signing certificate, needs such an Extended Key Usage to count) are attributed to the card, listed in the cached smartcard identities menu and pinned with `IdentitiesOnly`; the other keys are removed from the app agent right after the card is unlocked (Linux/macOS; best effort). If no certificate looks authentication-capable, or the certificates cannot be read, all keys are kept as before, and the key linked for smartcard sync is never removed
 
+### Fixed
+- Global PIN caching with a card reachable through two PKCS#11 modules (e.g. p11-kit-proxy and libykcs11): the second module's certificate read broke the PIN login of the card the agent already held, so every signature failed with "agent refused operation" and ssh fell back to a password. Startup unlock now reads every module's certificates before the first card is loaded
+
 ## [0.96.25] - 2026-10-05
 
 ### Fixed

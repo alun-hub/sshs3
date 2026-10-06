@@ -288,6 +288,14 @@ export class IpcBridge {
    * already proved the card is present and responsive, avoids that race entirely.
    */
   private globalSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
+  /**
+   * pkcs11LibPath -> certificates read ahead of the first `ssh-add -s` of a startup unlock that loads several
+   * modules. Reading a module's certificates opens its own PKCS#11 session against the token, which makes the
+   * token drop the PIN login of any session another process (the agent's ssh-pkcs11-helper) already holds
+   * ("agent refused operation" on the next signature, verified with libykcs11 after p11-kit-proxy). So every
+   * module is read before any card is loaded, and the loader uses these instead of reading again.
+   */
+  private prefetchedSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
   private autoSyncTimer: NodeJS.Timeout | null = null;
   private autoPullTimer: NodeJS.Timeout | null = null;
   private lastSmartcardAutoUnlockAttempt = 0;
@@ -1991,6 +1999,23 @@ export class IpcBridge {
   }
 
   /**
+   * Reads the certificates of several PKCS#11 modules up front (see `prefetchedSmartcardCerts`). Skipped for a
+   * single module, where nothing can be disturbed, and whenever the app agent already holds a PKCS#11 card:
+   * reading now would break that card's session, so the loader falls back to reading as it goes.
+   */
+  private async prefetchSmartcardCertificates(libPaths: string[]): Promise<void> {
+    if (libPaths.length < 2) return;
+    if (Array.from(this.globalCards.keys()).some((key) => key !== '__fido2__')) return;
+    for (const libPath of libPaths) {
+      try {
+        this.prefetchedSmartcardCerts.set(libPath, await readSmartcardCertificates(libPath));
+      } catch (err) {
+        console.warn(`[smartcard] failed to read certificate details for ${libPath}:`, err);
+      }
+    }
+  }
+
+  /**
    * Returns the app agent's socket after making sure the given PKCS#11 library's card is loaded into
    * it (prompting for the PIN once if it isn't). Concurrent callers for the same library share the
    * same in-flight load rather than each prompting separately.
@@ -2047,7 +2072,9 @@ export class IpcBridge {
       // we're never more than one process talking to the token at a time.
       let certs = new Map<string, SmartcardCertificateDetails>();
       try {
-        certs = await readSmartcardCertificates(pkcs11LibPath);
+        const prefetched = this.prefetchedSmartcardCerts.get(pkcs11LibPath);
+        this.prefetchedSmartcardCerts.delete(pkcs11LibPath);
+        certs = prefetched ?? (await readSmartcardCertificates(pkcs11LibPath));
         this.globalSmartcardCerts.set(pkcs11LibPath, certs);
       } catch (err) {
         console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err);
@@ -2380,6 +2407,7 @@ export class IpcBridge {
           };
 
           try {
+            await this.prefetchSmartcardCertificates(pathsNeedingUnlock);
             for (const libPath of pathsNeedingUnlock) {
               try {
                 await this.getOrLoadGlobalSmartcardAgent(libPath, startupPinPrompt);
@@ -2396,6 +2424,7 @@ export class IpcBridge {
             }
           } finally {
             transientPin = null;
+            this.prefetchedSmartcardCerts.clear();
           }
         } catch (err) {
           console.warn('[smartcard] Startup unlock failed or cancelled:', err);
