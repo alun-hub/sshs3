@@ -11,13 +11,6 @@ const IGNORED = {
     'forge for ASN.1/X.509 parsing of Windows cert-store entries and never verifies RSA ' +
     'signatures. No patched node-forge exists. win-ca is required (PowerShell is often locked ' +
     'down on enterprise machines). Dismissed as "not used" in Dependabot alert #11.',
-  'GHSA-ch52-4w7c-c8xp':
-    'http-cache-semantics max-stale handling can disclose cross-user cached responses. Dev-only: ' +
-    'reached via electron-builder > app-builder-lib > @electron/get > got > cacheable-request, ' +
-    'which only downloads Electron binaries on the build machine (absent from `npm ls --omit=dev`, ' +
-    'so it never ships in the app). A build has a single user, so there is no cross-user cache to ' +
-    'leak. Every http-cache-semantics version is affected and no patched release exists ' +
-    '(newer electron-builder, including 26.17.0, still pulls it in). Re-review when electron-builder or got changes.',
 };
 
 const result = spawnSync('npm', ['audit', '--json'], { encoding: 'utf8', shell: process.platform === 'win32' });
