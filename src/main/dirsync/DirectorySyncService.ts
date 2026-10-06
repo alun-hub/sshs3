@@ -69,7 +69,11 @@ export async function buildTree(
 
       // Symlinked directories are listed but never followed: a link back to an ancestor
       // would otherwise expand into phantom entries until the OS gives up (ELOOP).
-      if (entry.isDirectory && !entry.isSymlink) {
+      // Its contents are unknown to the diff, so it is reported as skipped: nothing below it may be
+      // copied as "new" or deleted as "extraneous" on the strength of the other side alone.
+      if (entry.isDirectory && entry.isSymlink) {
+        skipped.push(relativePath);
+      } else if (entry.isDirectory) {
         await walk(childPath, relativePath, false);
       }
     }
@@ -110,6 +114,8 @@ export async function computeDiff(
     const targetEntry = targetMap.get(relativePath);
 
     if (sourceEntry && !targetEntry) {
+      // Under a target folder that could not be read this only means "unknown", not "new".
+      if (isUnderSkipped(relativePath, skippedTarget)) continue;
       entries.push({ relativePath, isDirectory: sourceEntry.isDirectory, status: 'new', sourceEntry });
       counts.new++;
       continue;

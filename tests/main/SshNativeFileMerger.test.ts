@@ -180,6 +180,28 @@ describe('SshNativeFileMerger — generating the managed block from SSH profiles
     expect(body).not.toMatch(/super-secret/);
   });
 
+  it('strips directives outside the managed-block allowlist from a received block', () => {
+    const { body, removedLines } = sanitizeSshConfigBody(
+      [
+        'Host box',
+        '    HostName box.example.com',
+        '    User admin',
+        '    VerifyHostKeyDNS yes',
+        '    CanonicalizeHostname always',
+        '    UpdateHostKeys no',
+        '    Compression yes',
+      ].join('\n')
+    );
+
+    expect(removedLines.map((l) => l.trim())).toEqual([
+      'VerifyHostKeyDNS yes',
+      'CanonicalizeHostname always',
+      'UpdateHostKeys no',
+    ]);
+    expect(body).toContain('HostName box.example.com');
+    expect(body).toContain('Compression yes');
+  });
+
   it('only emits allowlisted extraOptions, so a directive smuggled in via sync never reaches the file', () => {
     const { body } = buildManagedSshConfigBlockFromProfiles(
       [

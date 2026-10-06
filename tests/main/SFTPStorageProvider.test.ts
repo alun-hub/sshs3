@@ -560,6 +560,7 @@ describe('SFTPStorageProvider', () => {
         .mockResolvedValueOnce('moved aside') // new -> backup
         .mockResolvedValueOnce('Successfully renamed'); // old -> new
       mockDelete.mockResolvedValue('Successfully deleted');
+      mockStat.mockResolvedValue({ isDirectory: false, size: 1 });
       const provider = new SFTPStorageProvider(baseConfig);
 
       await provider.rename('/remote/old.txt', '/remote/new.txt');
@@ -571,6 +572,18 @@ describe('SFTPStorageProvider', () => {
       expect(mockDelete).toHaveBeenCalledWith(backup);
     });
 
+    it('should not replace a destination directory without posix-rename', async () => {
+      mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
+      mockRename.mockRejectedValueOnce(new Error('Failure'));
+      mockStat.mockResolvedValue({ isDirectory: true, size: 0 });
+      const provider = new SFTPStorageProvider(baseConfig);
+
+      await expect(provider.rename('/remote/old.txt', '/remote/dir')).rejects.toThrow('Failure');
+
+      expect(mockRename).toHaveBeenCalledTimes(1);
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
     it('should restore the destination when the retried rename also fails', async () => {
       mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
       mockRename
@@ -579,6 +592,7 @@ describe('SFTPStorageProvider', () => {
         .mockRejectedValueOnce(new Error('No such file'))
         .mockResolvedValueOnce('restored');
       mockDelete.mockResolvedValue('Successfully deleted');
+      mockStat.mockResolvedValue({ isDirectory: false, size: 1 });
       const provider = new SFTPStorageProvider(baseConfig);
 
       await expect(provider.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('No such file');

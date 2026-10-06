@@ -1,4 +1,5 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {
   BaseStorageProvider,
   formatDate,
@@ -394,11 +395,20 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       } catch (renameErr) {
         // Standard SFTP v3 rename fails if the destination exists. Move the destination aside
         // rather than deleting it, so a second failure (e.g. the source vanished) can restore it.
-        const backup = `${resolvedNew}.sshs3-rename-${Date.now()}`;
+        let destination: { isDirectory?: boolean } | undefined;
+        try {
+          destination = await this.client.stat(resolvedNew);
+        } catch {
+          throw renameErr; // No destination to replace: the original failure is the real one.
+        }
+        // Never replace a directory (posix-rename wouldn't either); that would silently swap it for a file.
+        if (destination?.isDirectory) throw renameErr;
+
+        const backup = `${resolvedNew}.sshs3-rename-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
         try {
           await this.client.rename(resolvedNew, backup);
         } catch {
-          throw renameErr; // No destination to replace: the original failure is the real one.
+          throw renameErr;
         }
         try {
           await this.client.rename(resolvedOld, resolvedNew);

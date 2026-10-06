@@ -544,7 +544,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const trimmed = newName.trim();
       if (!trimmed || trimmed === entry.name) return;
       // Rename replaces an existing destination on every provider, so refuse instead of silently overwriting it.
-      if (entries.some((e) => e.path !== entry.path && e.name === trimmed)) {
+      if (entries.some((e) => e.path !== entry.path && parentPath(e.path) === parentPath(entry.path) && e.name === trimmed)) {
         setError(`"${trimmed}" already exists in this folder`);
         return;
       }

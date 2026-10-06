@@ -77,3 +77,23 @@ export const ALLOWED_SSH_EXTRA_OPTIONS = new Set([
 export function isAllowedExtraOption(key: string): boolean {
   return ALLOWED_SSH_EXTRA_OPTIONS.has(key.trim().toLowerCase());
 }
+
+/**
+ * The directives a managed `~/.ssh/config` block may contain when it arrives from a sync pull:
+ * exactly what buildSshConfigHostBlock generates, plus the allowlisted extra options. Anything
+ * else (e.g. VerifyHostKeyDNS, CanonicalizeHostname, UpdateHostKeys, or a directive added in a
+ * future OpenSSH release) is stripped, since a blocklist cannot enumerate the dangerous ones.
+ * `proxyjump`, `forwardagent` and `pkcs11provider` are generated from the sender's profiles and
+ * therefore stay accepted here.
+ */
+export const ALLOWED_MANAGED_BLOCK_DIRECTIVES = new Set([
+  'host',
+  'hostname',
+  'port',
+  'user',
+  'identityfile',
+  'pkcs11provider',
+  'proxyjump',
+  'forwardagent',
+  ...ALLOWED_SSH_EXTRA_OPTIONS,
+]);

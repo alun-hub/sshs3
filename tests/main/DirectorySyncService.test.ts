@@ -42,6 +42,37 @@ describe('DirectorySyncService', () => {
     expect([...tree.keys()].sort()).toEqual(['a.txt', 'loop']);
   });
 
+  it('reports a symlinked directory as skipped so nothing below it is copied or deleted', async () => {
+    const source = fakeProvider({
+      '/src': [dir('/src', 'link', { isSymlink: true })],
+    });
+    const target = fakeProvider({
+      '/dst': [dir('/dst', 'link')],
+      '/dst/link': [file('/dst/link', 'keep.txt')],
+    });
+
+    const diff = await computeDiff(source, '/src', target, '/dst');
+
+    expect(diff.skippedPaths.source).toEqual(['link']);
+    expect(diff.entries.filter((e) => e.status === 'only-target')).toEqual([]);
+  });
+
+  it('does not report source entries below an unreadable target folder as new', async () => {
+    const source = fakeProvider({
+      '/src': [dir('/src', 'locked')],
+      '/src/locked': [file('/src/locked', 'a.txt')],
+    });
+    const target = fakeProvider({
+      '/dst': [dir('/dst', 'locked')],
+      '/dst/locked': new Error('EACCES: permission denied'),
+    });
+
+    const diff = await computeDiff(source, '/src', target, '/dst');
+
+    expect(diff.skippedPaths.target).toEqual(['locked']);
+    expect(diff.entries.filter((e) => e.status === 'new')).toEqual([]);
+  });
+
   it('does not report target entries below an unreadable source folder as only-target', async () => {
     const source = fakeProvider({
       '/src': [dir('/src', 'locked'), file('/src', 'a.txt')],

@@ -1,5 +1,9 @@
 import { fingerprintKey } from '../ssh/hostKeyFingerprint';
-import { BLOCKED_SSH_DIRECTIVES, isAllowedExtraOption } from '../ssh/blockedSshDirectives';
+import {
+  ALLOWED_MANAGED_BLOCK_DIRECTIVES,
+  BLOCKED_SSH_DIRECTIVES,
+  isAllowedExtraOption,
+} from '../ssh/blockedSshDirectives';
 import type { KnownHostsConflict } from '../../shared/types/sync';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 
@@ -57,7 +61,7 @@ export interface SanitizeSshConfigBodyResult {
 }
 
 /**
- * Strips any line whose directive is in BLOCKED_SSH_DIRECTIVES from a managed
+ * Strips any line whose directive is blocked, or not in ALLOWED_MANAGED_BLOCK_DIRECTIVES, from a managed
  * block body before it's ever written to disk. Applied only on the
  * receiving end of a sync pull (see writeManagedSshConfigBlock) — the
  * user's own locally-authored content is never touched, only content
@@ -77,7 +81,7 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
     // preceded by whitespace; keys are case-insensitive. OpenSSH also accepts a
     // double-quoted keyword ("ProxyCommand" cmd), so quotes are stripped before the lookup.
     const directive = trimmed.split(/[\s=]+/, 1)[0]?.replace(/["']/g, '').toLowerCase();
-    if (directive && BLOCKED_SSH_DIRECTIVES.has(directive)) {
+    if (directive && (BLOCKED_SSH_DIRECTIVES.has(directive) || !ALLOWED_MANAGED_BLOCK_DIRECTIVES.has(directive))) {
       removedLines.push(line);
       continue;
     }

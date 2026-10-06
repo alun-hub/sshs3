@@ -647,6 +647,7 @@ export class SSHPtyManager extends EventEmitter {
         env,
       });
     } catch (err) {
+      this.sessionOptions.delete(sessionId);
       if (askpassServer) {
         await askpassServer.stop();
       }
