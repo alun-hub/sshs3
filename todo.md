@@ -57,6 +57,16 @@ Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta 
     (gemensam `findExtension(der, oid)`; en felformad Key Usage-OCTET STRING hanteras olika).
     `selectAuthFingerprints` läser sync-konfigen vid varje kortladdning även när inget behöver
     skyddas.
+- **Performance bar samplar per terminalpanel, inte per host** — varje `TerminalView`
+  (flik/split) pollar via `usePerfSamples` med sin egen `sshSessionId`, och varje session har en
+  egen ControlMaster (`s3m-<slump>.sock`). Fyra synliga paneler mot samma host kör alltså
+  `cat /proc/stat /proc/meminfo /proc/loadavg /proc/net/dev` (+ `df`) fyra gånger per intervall,
+  var och en över sin egen anslutning. Pollar bara när panelen är aktiv/synlig och funktionen är
+  på (av som standard), så det märks främst med många parallella rutor och korta intervall (2 s).
+  Möjlig åtgärd: samla samplingen per host (`PerfMetricsService`, nyckel host+port+användare) och
+  dela ett kort cachat `PerfSshRaw` mellan sessionerna; `usePerfSamples` räknar redan deltan lokalt
+  från råa räknare, så renderer-koden behöver nästan inte ändras. Mät först hur många
+  samplingar/min som faktiskt går mot en host med fyra splits.
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
