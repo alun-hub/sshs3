@@ -2,11 +2,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { ipcMain as electronIpcMain, app as electronApp, dialog as electronDialog, shell as electronShell } from 'electron';
+import { ipcMain as electronIpcMain, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
-import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
@@ -14,31 +11,18 @@ import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
 import { assignHostAliases, type AgentHostEntry } from './services/SshNativeFileMerger';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
 import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard/WindowsAgentPath';
-import {
-  loadSmartcardIntoPrivateAgent,
-  loadFido2ResidentKeysIntoPrivateAgent,
-  pinPromptKind,
-} from './smartcard/SmartcardAgentLoader';
+import { loadSmartcardIntoPrivateAgent, loadFido2ResidentKeysIntoPrivateAgent, pinPromptKind } from './smartcard/SmartcardAgentLoader';
 import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './smartcard/AskpassServer';
 import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
-import { SFTPStorageProvider } from './storage/SFTPStorageProvider';
-import { S3StorageProvider } from './storage/S3StorageProvider';
 import { TransferQueue } from './transfer/TransferQueue';
-import {
-  getBaseName,
-  isDirectoryPath,
-  pathExists,
-  resolveNonConflictingPath,
-  joinPaths,
-} from './transfer/TransferPipeline';
+import { getBaseName, isDirectoryPath, pathExists, resolveNonConflictingPath, joinPaths } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
 import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
 import { SnippetStore } from './snippets/SnippetStore';
-import { SNIPPET_MAX_NAME_CHARS } from '../shared/types/snippets';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
@@ -48,7 +32,6 @@ import { buildInstallCommand, parsePublicKeyLine } from './ssh/PublicKeyUtils';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { defaultDotfileRemotePath } from '../shared/dotfilePath';
-import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from './dirsync/DirectorySyncService';
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
@@ -61,105 +44,29 @@ import { SSHTunnelManager } from './services/SSHTunnelManager';
 import { K8sTerminalManager } from './terminal/K8sTerminalManager';
 import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
-import { AwsSsoAuthService, AwsSsoLoginCancelledError } from './aws/AwsSsoAuthService';
+import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { importSshConfigFile } from './services/SshConfigImporter';
-import {
-  getAgentIdentities,
-  signChallengeWithAgent,
-  verifyAgentSignature,
-  deriveSecretFromSignature,
-  getKeyAlgorithm,
-  KEY_DERIVATION_MESSAGE,
-} from './smartcard/SmartcardSyncService';
-import { encryptSecretValue, decryptSecretValue, isEncryptionAvailable } from './crypto/SecretFieldCrypto';
+import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
+import { encryptSecretValue, decryptSecretValue } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
-import { fetchGitPublicKeys } from './git/GitKeyFetcher';
-import { GitConfigService } from './git/GitConfigService';
-import { GitStatusService } from './git/GitStatusService';
-import { RemoteGitService } from './git/RemoteGitService';
-import { DotfileGitImporter } from './dotfiles/DotfileGitImporter';
-import type {
-  ConfigureGitSigningRequest,
-  ConfigureGitSigningResult,
-  DotfilesImportFromGitRequest,
-  DotfilesImportFromGitResult,
-  FetchGitKeysRequest,
-  FetchGitKeysResult,
-  GitCloneRequest,
-  GitOperationResult,
-  GitRepoStatus,
-  GitSigningConfig,
-  TestRemoteGitAccessRequest,
-  TestRemoteGitAccessResult,
-} from '../shared/types/git';
-import type { SearchStartOptions } from '../shared/types/search';
-import {
-  IPC_CHANNELS,
-  type StorageConnectConfig,
-  type HostKeyPromptEvent,
-  type PresencePromptEvent,
-  type PresenceClearEvent,
-  type TransferConflictPromptEvent,
-  type TransferConflictResolution,
-  type QuitConfirmPromptEvent,
-  type AwsSsoPromptEvent,
-  type DirSyncComputeDiffOptions,
-  type DirSyncApplyOptions,
-  type AskpassPromptKind,
-} from '../shared/types/ipc';
-import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
-import type {
-  K8sClusterNode,
-  K8sNamespaceNode,
-  K8sPodNode,
-  K8sTerminalTarget,
-  K8sPodDescription,
-  K8sPortForwardTarget,
-  K8sActivePortForward,
-  K8sDebugTarget,
-  K8sLoginOptions,
-  K8sLoginResult,
-} from '../shared/types/kubernetes';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
+import { IPC_CHANNELS, type StorageConnectConfig, type HostKeyPromptEvent, type PresencePromptEvent, type PresenceClearEvent, type TransferConflictPromptEvent, type TransferConflictResolution, type QuitConfirmPromptEvent, type AskpassPromptKind } from '../shared/types/ipc';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult } from '../shared/types/kubernetes';
 import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
-import type {
-  SSHConnectionConfig,
-  PtyOptions,
-  SSHPtyExitEvent,
-  CachedSmartcardAgent,
-  GenerateFido2KeyRequest,
-  GeneratedFido2Key,
-  Fido2ResidentKey,
-  SSHTunnelConfig,
-  SSHActiveTunnel,
-  LocalPublicKey,
-  ListPublicKeysRequest,
-  InstallPublicKeysRequest,
-  InstallPublicKeysResult,
-  ProbeHostResult,
-  TestLoginResult,
-} from '../shared/types/ssh';
-import type {
-  FileEntry,
-  ObjectMetadata,
-  TransferProgress,
-  S3Config,
-  S3Tag,
-  BucketVersioningInfo,
-  ObjectVersionEntry,
-  SFTPConfig,
-  StorageType,
-} from '../shared/types/storage';
-import type { SessionData } from '../shared/types/session';
-import type { AppSettings } from '../shared/types/settings';
+import type { SSHConnectionConfig, PtyOptions, SSHPtyExitEvent, CachedSmartcardAgent, GenerateFido2KeyRequest, GeneratedFido2Key, Fido2ResidentKey, SSHTunnelConfig, SSHActiveTunnel, LocalPublicKey, ListPublicKeysRequest, InstallPublicKeysRequest, InstallPublicKeysResult, ProbeHostResult, TestLoginResult } from '../shared/types/ssh';
+import type { FileEntry, ObjectMetadata, TransferProgress, S3Config, S3Tag, BucketVersioningInfo, ObjectVersionEntry, SFTPConfig, StorageType } from '../shared/types/storage';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
-
+import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
+import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
+import { registerSearchHandlers } from './ipc/searchHandlers';
+import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
+import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
+import { registerGeneralHandlers } from './ipc/generalHandlers';
+import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
+import { registerGitHandlers } from './ipc/gitHandlers';
 const DISPOSE_STEP_TIMEOUT_MS = 5000;
-
-const execFileAsync = promisify(execFile);
 
 interface PendingAskpassPrompt {
   sessionId?: string;
@@ -246,14 +153,14 @@ export class IpcBridge {
   public readonly sshTunnelManager: SSHTunnelManager;
   private updateService: UpdateService | null = null;
   private confirmQuit: (() => Promise<boolean>) | undefined;
-  private getWebContents: () => Electron.WebContents | null | undefined;
+  public getWebContents: () => Electron.WebContents | null | undefined;
 
   private pendingAskpass = new Map<string, PendingAskpassPrompt>();
   private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
   private pendingQuitConfirms = new Map<string, PendingQuitConfirmPrompt>();
   private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
-  private pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
+  public pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
   private smartcardSessionAgents = new Map<
@@ -434,10 +341,10 @@ export class IpcBridge {
     this.registerTransferHandlers();
     this.registerProfileHandlers();
     this.registerDotfileHandlers();
-    this.registerSessionHandlers();
-    this.registerClipboardHistoryHandlers();
-    this.registerSnippetHandlers();
-    this.registerSettingsHandlers();
+    registerSessionHandlers(this);
+    registerClipboardHistoryHandlers(this);
+    registerSnippetHandlers(this);
+    registerSettingsHandlers(this);
     this.registerSyncHandlers();
     void this.syncConfigStore
       .getConfig()
@@ -447,14 +354,14 @@ export class IpcBridge {
         }
       })
       .catch(() => {});
-    this.registerConnectionTestHandlers();
+    registerConnectionTestHandlers(this);
     this.registerKeyInstallHandlers();
-    this.registerGitHandlers();
-    this.registerAwsSsoHandlers();
-    this.registerFileEditorHandlers();
-    this.registerSearchHandlers();
-    this.registerGeneralHandlers();
-    this.registerDirSyncHandlers();
+    registerGitHandlers(this);
+    registerAwsSsoHandlers(this);
+    registerFileEditorHandlers(this);
+    registerSearchHandlers(this);
+    registerGeneralHandlers(this);
+    registerDirSyncHandlers(this);
     this.registerK8sHandlers();
     this.setupEventListeners();
 
@@ -495,7 +402,7 @@ export class IpcBridge {
     }
   }
 
-  private registerHandler(channel: string, handler: (...args: any[]) => any): void {
+  public registerHandler(channel: string, handler: (...args: any[]) => any): void {
     // async, not a plain arrow function: assertTrustedSender's throw must
     // surface as a rejected promise (what ipcMain.invoke's caller expects)
     // rather than a synchronous exception out of the handle() dispatch.
@@ -1587,7 +1494,7 @@ export class IpcBridge {
    * (see sanitizePaneNode in the renderer) and get a fresh id per terminal, so a saved
    * credential is looked up again here by connection identity. Secrets never leave main.
    */
-  private async restoreSavedSecrets(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+  public async restoreSavedSecrets(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     const needsPassword = config.authType === 'password' && !config.password;
     const needsPassphrase = config.authType === 'privateKey' && !config.passphrase && !!config.privateKeyPath;
     if (!needsPassword && !needsPassphrase) return config;
@@ -1605,7 +1512,7 @@ export class IpcBridge {
     return needsPassword ? { ...config, password: match.password } : { ...config, passphrase: match.passphrase };
   }
 
-  private async resolveProxyJumpConfig<T extends { proxyJumpProfileId?: string; proxyJump?: string }>(
+  public async resolveProxyJumpConfig<T extends { proxyJumpProfileId?: string; proxyJump?: string }>(
     config: T
   ): Promise<T> {
     if (!config.proxyJumpProfileId) return config;
@@ -2682,103 +2589,6 @@ export class IpcBridge {
     }
   }
 
-  private registerSessionHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {
-      return await this.sessionStore.getSession();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.SESSION_SAVE,
-      async (_event, data: SessionData): Promise<void> => {
-        await this.sessionStore.saveSession(data);
-      }
-    );
-  }
-
-  private registerClipboardHistoryHandlers(): void {
-    const isShortString = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max;
-
-    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_LIST, async (_event, hostKey?: unknown) => {
-      if (hostKey !== undefined && !isShortString(hostKey, 1024)) throw new Error('Invalid host key');
-      return await this.clipboardHistoryStore.list(hostKey);
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.CLIPBOARD_HISTORY_ADD,
-      async (_event, text: unknown, hostKey: unknown, hostLabel: unknown): Promise<void> => {
-        if (typeof text !== 'string' || !isShortString(hostKey, 1024) || !isShortString(hostLabel, 1024)) {
-          throw new Error('Invalid clipboard history entry');
-        }
-        await this.clipboardHistoryStore.add(text, hostKey, hostLabel);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_DELETE, async (_event, id: unknown): Promise<void> => {
-      if (!isShortString(id, 128)) throw new Error('Invalid entry id');
-      await this.clipboardHistoryStore.delete(id);
-    });
-
-    this.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_CLEAR, async (): Promise<void> => {
-      await this.clipboardHistoryStore.clear();
-    });
-  }
-
-  private registerSnippetHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.SNIPPETS_LIST, async (_event, hostKey?: unknown) => {
-      if (hostKey !== undefined && (typeof hostKey !== 'string' || hostKey.length > 1024)) {
-        throw new Error('Invalid host key');
-      }
-      return await this.snippetStore.list(hostKey);
-    });
-
-    this.registerHandler(IPC_CHANNELS.SNIPPETS_SAVE, async (_event, input: unknown) => {
-      const s = input as Record<string, unknown> | null;
-      const optionalString = (v: unknown, max: number): boolean =>
-        v === undefined || (typeof v === 'string' && v.length <= max);
-      if (
-        !s ||
-        typeof s.name !== 'string' ||
-        s.name.length > SNIPPET_MAX_NAME_CHARS * 2 ||
-        typeof s.command !== 'string' ||
-        !optionalString(s.id, 128) ||
-        !optionalString(s.hostKey, 1024) ||
-        !optionalString(s.hostLabel, 1024)
-      ) {
-        throw new Error('Invalid snippet');
-      }
-      return await this.snippetStore.save({
-        id: s.id as string | undefined,
-        name: s.name,
-        command: s.command,
-        hostKey: s.hostKey as string | undefined,
-        hostLabel: s.hostLabel as string | undefined,
-      });
-    });
-
-    this.registerHandler(IPC_CHANNELS.SNIPPETS_DELETE, async (_event, id: unknown): Promise<void> => {
-      if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid snippet id');
-      await this.snippetStore.delete(id);
-    });
-  }
-
-  private registerSettingsHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.SETTINGS_GET, async (): Promise<AppSettings> => {
-      return await this.settingsStore.getSettings();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.SETTINGS_SAVE,
-      async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
-        const saved = await this.settingsStore.saveSettings(settings);
-        // autoSync refreshes the agent block itself afterwards (and removes it when turned off).
-        if ('autoSyncLocalSshConfig' in settings) void this.profileSyncService.autoSyncLocalSshConfig();
-        else if ('smartcardAuthMode' in settings) this.refreshAgentSshConfig();
-        this.scheduleAutoSync();
-        return saved;
-      }
-    );
-  }
-
   public scheduleAutoSync(delayMs = 2000): void {
     if (this.autoSyncTimer) {
       clearTimeout(this.autoSyncTimer);
@@ -3640,352 +3450,6 @@ export class IpcBridge {
     });
   }
 
-  private registerConnectionTestHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.CONNECTION_TEST_SSH,
-      async (_event, config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> => {
-        if (!config || !config.host?.trim()) {
-          return { success: false, error: 'Hostname / IP is required' };
-        }
-        if (!config.username?.trim()) {
-          return { success: false, error: 'Username is required' };
-        }
-
-        if (config.authType === 'smartcard') {
-          if (!config.pkcs11LibPath?.trim()) {
-            return { success: false, error: 'PKCS#11 library path is required' };
-          }
-          const valid = await SmartcardDetector.validateLibraryPath(config.pkcs11LibPath);
-          if (!valid) {
-            return { success: false, error: `Smartcard library not found: ${config.pkcs11LibPath}` };
-          }
-          return { success: true };
-        }
-
-        // Like 'smartcard' above, a live connection test is skipped: a real attempt would need
-        // a physical touch (and possibly the resident agent-load dance) that doesn't fit a quick
-        // "Test Connection" click. Only the config shape is validated here.
-        if (config.authType === 'fido2') {
-          if (config.fido2Resident) {
-            return { success: true };
-          }
-          if (!config.privateKeyPath?.trim()) {
-            return { success: false, error: 'A key file is required (or enable "Resident key on device")' };
-          }
-          const exists = await fs
-            .stat(config.privateKeyPath)
-            .then((s) => s.isFile())
-            .catch(() => false);
-          if (!exists) {
-            return { success: false, error: `Key file not found: ${config.privateKeyPath}` };
-          }
-          return { success: true };
-        }
-
-        try {
-          const port = config.port ?? 22;
-          const provider = new SFTPStorageProvider(
-            {
-              id: `test-${crypto.randomUUID()}`,
-              name: 'Test SSH',
-              host: config.host,
-              port,
-              username: config.username,
-              authType: config.authType,
-              password: config.password,
-              privateKeyPath: config.privateKeyPath,
-              passphrase: config.passphrase,
-              agentPath: config.agentPath,
-              agentIdentityFiles: config.agentIdentityFiles,
-              pkcs11LibPath: config.pkcs11LibPath,
-              proxy: config.proxy,
-            },
-            undefined,
-            createHostVerifier({
-              host: config.host,
-              port,
-              onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
-            })
-          );
-          await provider.ensureConnected();
-          await provider.disconnect?.();
-          return { success: true };
-        } catch (err: any) {
-          return {
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
-        }
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.CONNECTION_TEST_S3,
-      async (_event, config: S3Config): Promise<{ success: boolean; error?: string }> => {
-        if (!config || !config.region?.trim()) {
-          return { success: false, error: 'Region is required' };
-        }
-        if (config.authMode === 'sso') {
-          if (!config.sso?.startUrl?.trim() || !config.sso?.accountId?.trim() || !config.sso?.roleName?.trim()) {
-            return { success: false, error: 'Start URL, Account, and Role are required for AWS SSO' };
-          }
-        } else if (!config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
-          return { success: false, error: 'Access Key ID and Secret Access Key are required' };
-        }
-        try {
-          const provider = new S3StorageProvider({
-            ...config,
-            id: `test-${crypto.randomUUID()}`,
-            name: 'Test S3',
-          });
-          await provider.client.send(new ListBucketsCommand({}));
-          return { success: true };
-        } catch (err: any) {
-          return {
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
-        }
-      }
-    );
-  }
-
-  private registerGitHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.GIT_FETCH_PUBLIC_KEYS,
-      async (_event, request: FetchGitKeysRequest): Promise<FetchGitKeysResult> => {
-        return await fetchGitPublicKeys(request);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_GET_SIGNING_CONFIG,
-      async (): Promise<GitSigningConfig> => {
-        return await GitConfigService.getSigningConfig();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_CONFIGURE_SIGNING,
-      async (_event, request: ConfigureGitSigningRequest): Promise<ConfigureGitSigningResult> => {
-        return await GitConfigService.configureSigning(request);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_SET_SIGNING_ENABLED,
-      async (_event, enabled: boolean): Promise<ConfigureGitSigningResult> => {
-        return await GitConfigService.setSigningEnabled(Boolean(enabled));
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_GET_STATUS,
-      async (_event, directoryPath: string, providerId?: string): Promise<GitRepoStatus> => {
-        return await GitStatusService.getStatus(directoryPath, providerId, this.storageRegistry);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_CLONE,
-      async (_event, request: GitCloneRequest): Promise<GitOperationResult> => {
-        if (request.sftpConfig) {
-          const config = await this.restoreSavedSecrets(request.sftpConfig);
-          request.sftpConfig = await this.resolveProxyJumpConfig(config);
-        }
-        return await RemoteGitService.clone(request);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_PULL,
-      async (_event, directoryPath: string, providerId?: string): Promise<GitOperationResult> => {
-        // Remote panes are identified by `sftp-<profileId>`. The connection is resolved from the saved
-        // profile here, never taken from the renderer.
-        let sftpConfig: SSHConnectionConfig | undefined;
-        if (providerId && providerId !== 'local') {
-          const profileId = providerId.startsWith('sftp-') ? providerId.slice('sftp-'.length) : undefined;
-          const profile = profileId
-            ? (await this.profileStore.getProfiles()).ssh.find((p) => p.id === profileId)
-            : undefined;
-          if (profile) {
-            sftpConfig = await this.resolveProxyJumpConfig(await this.restoreSavedSecrets(profile));
-          }
-        }
-        return await RemoteGitService.pull(directoryPath, providerId, sftpConfig);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.GIT_TEST_REMOTE_ACCESS,
-      async (_event, request: TestRemoteGitAccessRequest): Promise<TestRemoteGitAccessResult> => {
-        const config = await this.restoreSavedSecrets(request.config);
-        const resolved = await this.resolveProxyJumpConfig(config);
-        return await RemoteGitService.testRemoteAccess({ ...request, config: resolved });
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.DOTFILES_IMPORT_FROM_GIT,
-      async (_event, request: DotfilesImportFromGitRequest): Promise<DotfilesImportFromGitResult> => {
-        const res = await DotfileGitImporter.importFromGit(request, this.dotfilePoolStore);
-        if (res.success) {
-          this.scheduleAutoSync();
-        }
-        return res;
-      }
-    );
-  }
-
-  /**
-   * Runs the AWS SSO device-authorization flow and resolves once the user
-   * approves it in their browser. Mirrors `promptHostKeyTrust`'s pattern of
-   * leaving a single long-lived `ipcMain.handle` invoke pending, but also
-   * supports cancellation via a separate channel since this wait can be
-   * minutes rather than a single click.
-   */
-  private registerAwsSsoHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.AWS_SSO_LOGIN,
-      async (_event, startUrl: string, region: string): Promise<AwsSsoLoginResult> => {
-        if (!startUrl?.trim() || !region?.trim()) {
-          throw new Error('Start URL and region are required');
-        }
-
-        const id = crypto.randomUUID();
-        const controller = new AbortController();
-        this.pendingAwsSsoLogins.set(id, { cancel: () => controller.abort() });
-
-        try {
-          return await this.awsSsoAuthService.login(startUrl, region, {
-            onPrompt: (prompt) => {
-              const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;
-              if (
-                urlToOpen &&
-                (urlToOpen.startsWith('http://') || urlToOpen.startsWith('https://')) &&
-                electronShell?.openExternal
-              ) {
-                void electronShell.openExternal(urlToOpen).catch(() => {});
-              }
-              const webContents = this.getWebContents();
-              if (webContents && !webContents.isDestroyed?.()) {
-                const event: AwsSsoPromptEvent = { id, ...prompt };
-                webContents.send(IPC_CHANNELS.AWS_SSO_PROMPT, event);
-              }
-            },
-            signal: controller.signal,
-          });
-        } catch (err) {
-          if (err instanceof AwsSsoLoginCancelledError) {
-            throw new Error('AWS SSO login was cancelled', { cause: err });
-          }
-          throw err;
-        } finally {
-          this.pendingAwsSsoLogins.delete(id);
-        }
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, async (_event, id: string) => {
-      const pending = this.pendingAwsSsoLogins.get(id);
-      pending?.cancel();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS,
-      async (_event, accessToken: string, region: string): Promise<AwsSsoAccount[]> => {
-        return await this.awsSsoAuthService.listAccounts(accessToken, region);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.AWS_SSO_LIST_ROLES,
-      async (_event, accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]> => {
-        return await this.awsSsoAuthService.listAccountRoles(accessToken, region, accountId);
-      }
-    );
-  }
-
-  private registerFileEditorHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.FILE_READ,
-      async (_event, providerId: string, remotePath: string, maxBytes?: number) => {
-        return await this.fileEditorService.readFile(
-          this.storageRegistry,
-          providerId,
-          remotePath,
-          maxBytes
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FILE_SAVE,
-      async (_event, providerId: string, remotePath: string, content: string) => {
-        await this.fileEditorService.saveFile(
-          this.storageRegistry,
-          providerId,
-          remotePath,
-          content
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FILE_OPEN_EXTERNAL,
-      async (_event, providerId: string, remotePath: string) => {
-        return await this.fileEditorService.openInExternalEditor(
-          this.storageRegistry,
-          providerId,
-          remotePath,
-          (statusEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.FILE_EXTERNAL_STATUS, statusEvent);
-            }
-          }
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FILE_CLOSE_EXTERNAL,
-      async (_event, sessionToken: string) => {
-        await this.fileEditorService.closeExternalEditor(sessionToken);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FILE_TAIL_START,
-      async (_event, providerId: string, remotePath: string) => {
-        return await this.fileTailService.startTail(
-          this.storageRegistry,
-          providerId,
-          remotePath,
-          (dataEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.FILE_TAIL_DATA, dataEvent);
-            }
-          },
-          (errorEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.FILE_TAIL_ERROR, errorEvent);
-            }
-          }
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FILE_TAIL_STOP,
-      async (_event, tailId: string) => {
-        this.fileTailService.stopTail(tailId);
-      }
-    );
-  }
-
   private registerK8sHandlers(): void {
     this.registerHandler(IPC_CHANNELS.K8S_LIST_CONTEXTS, async (): Promise<K8sClusterNode[]> => {
       return this.k8sDiscoveryService.listContexts();
@@ -4155,63 +3619,7 @@ export class IpcBridge {
     });
   }
 
-  private registerSearchHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.SEARCH_START,
-      async (_event, options: SearchStartOptions) => {
-        return await this.searchOrchestrator.startSearch(
-          this.storageRegistry,
-          options,
-          (resultEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.SEARCH_RESULT, resultEvent);
-            }
-          },
-          (errorEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.SEARCH_ERROR, errorEvent);
-            }
-          },
-          (doneEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.SEARCH_DONE, doneEvent);
-            }
-          },
-          (progressEvent) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.SEARCH_PROGRESS, progressEvent);
-            }
-          }
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.SEARCH_CANCEL,
-      async (_event, searchId: string) => {
-        this.searchOrchestrator.cancelSearch(searchId);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.SEARCH_PREVIEW,
-      async (_event, providerId: string, remotePath: string, lineNumber: number, contextLines: number) => {
-        return await this.searchOrchestrator.previewLines(
-          this.storageRegistry,
-          providerId,
-          remotePath,
-          lineNumber,
-          contextLines
-        );
-      }
-    );
-  }
-
-  private getUpdateService(): UpdateService {
+  public getUpdateService(): UpdateService {
     if (!this.updateService) {
       this.updateService = new UpdateService({
         disabled: process.env.SSHS3_DISABLE_UPDATES === '1',
@@ -4233,159 +3641,13 @@ export class IpcBridge {
     this.getUpdateService().start();
   }
 
-  private registerGeneralHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
-      try {
-        return electronApp.getVersion();
-      } catch {
-        return '0.1.0';
-      }
-    });
-
-    this.registerHandler(IPC_CHANNELS.UPDATE_GET_STATE, async () => this.getUpdateService().getState());
-    this.registerHandler(IPC_CHANNELS.UPDATE_CHECK, async () => this.getUpdateService().check());
-    this.registerHandler(IPC_CHANNELS.UPDATE_DOWNLOAD, async () => this.getUpdateService().download());
-    this.registerHandler(IPC_CHANNELS.UPDATE_INSTALL, async () => {
-      await this.getUpdateService().install();
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_OPEN_EXTERNAL, async (_event, url: string) => {
-      if (url && (url.startsWith('http://') || url.startsWith('https://')) && electronShell?.openExternal) {
-        await electronShell.openExternal(url);
-      }
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_GET_HOMEDIR, async () => {
-      return os.homedir();
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_GET_PLATFORM, async () => {
-      return process.platform;
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_GET_HOSTNAME, async () => {
-      return os.hostname();
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_GET_SECURITY_STATUS, async () => {
-      return { credentialEncryptionAvailable: isEncryptionAvailable() };
-    });
-
-    this.registerHandler(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS, async () => {
-      if (process.platform !== 'win32') {
-        return { pwsh: false, wsl: false, wslDistros: [] };
-      }
-      let pwsh: boolean;
-      let wsl: boolean;
-      let wslDistros: string[];
-      try {
-        await execFileAsync('where', ['pwsh.exe']);
-        pwsh = true;
-      } catch {
-        pwsh = false;
-      }
-      try {
-        await execFileAsync('where', ['wsl.exe']);
-        const { stdout } = await execFileAsync('wsl.exe', ['-l', '-q'], { timeout: 2500 });
-        // Strip null bytes (UTF-16LE decoding artifact in Node utf8 buffer) and BOM
-        const cleaned = stdout.replace(/\0/g, '').replace(/^\uFEFF/, '');
-        const distros = cleaned
-          .split(/\r?\n/)
-          .map((d) => d.trim())
-          .filter(Boolean);
-        wsl = distros.length > 0;
-        wslDistros = distros;
-      } catch {
-        wsl = false;
-        wslDistros = [];
-      }
-      return { pwsh, wsl, wslDistros };
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.APP_CHECK_X11_SERVER,
-      async (_event, displayStr?: string) => {
-        return await XServerManager.isListening(displayStr);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.X11_GET_STATUS,
-      async (_event, customPath?: string, display?: string) => {
-        return await XServerManager.getStatus(customPath, display);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.X11_START_SERVER,
-      async (
-        _event,
-        options?: { customPath?: string; customArgs?: string; display?: string }
-      ) => {
-        return await XServerManager.startServer(options);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.X11_STOP_SERVER, async () => {
-      return await XServerManager.stopServer();
-    });
-
-    this.registerHandler(IPC_CHANNELS.SSH_AGENT_STATUS, async () => {
-      return await AgentLifecycleManager.getStatus();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.DIALOG_OPEN_FILE,
-      async (_event, options?: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
-        const result = await electronDialog.showOpenDialog({
-          title: options?.title,
-          filters: options?.filters,
-          properties: ['openFile'],
-        });
-        if (result.canceled || result.filePaths.length === 0) {
-          return null;
-        }
-        return result.filePaths[0];
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.DIALOG_OPEN_FOLDER,
-      async (_event, options?: { title?: string }) => {
-        const result = await electronDialog.showOpenDialog({
-          title: options?.title,
-          properties: ['openDirectory', 'createDirectory'],
-        });
-        if (result.canceled || result.filePaths.length === 0) {
-          return null;
-        }
-        return result.filePaths[0];
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.DIALOG_SAVE_FILE,
-      async (_event, options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
-        const result = await electronDialog.showSaveDialog({
-          title: options?.title,
-          defaultPath: options?.defaultPath,
-          filters: options?.filters,
-        });
-        if (result.canceled || !result.filePath) {
-          return null;
-        }
-        return result.filePath;
-      }
-    );
-  }
-
   /**
    * The target field always names an existing parent directory (so it stays
    * browsable even when the eventual sync root doesn't exist yet); the
    * source folder's own name is nested under it, mirroring how drag/drop
    * copy (TRANSFER_ADD, above) and most file managers behave.
    */
-  private resolveDirSyncTargetRoot(
+  public resolveDirSyncTargetRoot(
     sourcePath: string,
     targetProviderType: StorageType,
     targetParentPath: string
@@ -4395,113 +3657,6 @@ export class IpcBridge {
       return targetParentPath;
     }
     return joinPaths(targetProviderType, targetParentPath, sourceBaseName);
-  }
-
-  private registerDirSyncHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.DIR_SYNC_COMPUTE_DIFF,
-      async (_event, options: DirSyncComputeDiffOptions): Promise<DirectoryDiffResult> => {
-        if (!options?.sourceProviderId || !options?.targetProviderId) {
-          throw new Error('sourceProviderId and targetProviderId are required for directory sync');
-        }
-        const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
-        if (!sourceProvider) {
-          throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
-        }
-        const targetProvider = this.storageRegistry.get(options.targetProviderId);
-        if (!targetProvider) {
-          throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
-        }
-
-        const targetRoot = this.resolveDirSyncTargetRoot(
-          options.sourcePath,
-          targetProvider.type,
-          options.targetPath
-        );
-
-        return computeDirSyncDiff(
-          sourceProvider,
-          options.sourcePath,
-          targetProvider,
-          targetRoot,
-          (side, filesCount, currentItem) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.DIR_SYNC_SCAN_PROGRESS, { side, filesCount, currentItem });
-            }
-          }
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.DIR_SYNC_APPLY,
-      async (_event, options: DirSyncApplyOptions): Promise<DirectorySyncApplyResult> => {
-        if (!options?.sourceProviderId || !options?.targetProviderId) {
-          throw new Error('sourceProviderId and targetProviderId are required for directory sync apply');
-        }
-        const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
-        if (!sourceProvider) {
-          throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
-        }
-        const targetProvider = this.storageRegistry.get(options.targetProviderId);
-        if (!targetProvider) {
-          throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
-        }
-
-        const targetRoot = this.resolveDirSyncTargetRoot(
-          options.sourcePath,
-          targetProvider.type,
-          options.targetPath
-        );
-
-        const result = await applyDirSync(
-          options.entries ?? [],
-          sourceProvider,
-          targetProvider,
-          targetRoot,
-          { deleteExtraneous: Boolean(options.deleteExtraneous) },
-          (progress) => {
-            const webContents = this.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              webContents.send(IPC_CHANNELS.DIR_SYNC_APPLY_PROGRESS, progress);
-            }
-          }
-        );
-
-        // Piggyback a synthetic "completed" TRANSFER_PROGRESS event so any
-        // open pane auto-refreshes its listing, same as a regular transfer.
-        const webContents = this.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.TRANSFER_PROGRESS, {
-            jobId: 'dirsync-apply',
-            fileName: '',
-            transferredBytes: 0,
-            totalBytes: 0,
-            percentage: 100,
-            bytesPerSecond: 0,
-            status: 'completed',
-          });
-        }
-
-        return result;
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.DIR_SYNC_PROFILE_LIST, async (): Promise<DirectorySyncProfile[]> => {
-      return this.directorySyncProfileStore.list();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.DIR_SYNC_PROFILE_SAVE,
-      async (_event, profile: DirectorySyncProfile): Promise<DirectorySyncProfile> => {
-        return this.directorySyncProfileStore.save(profile);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.DIR_SYNC_PROFILE_DELETE, async (_event, id: string): Promise<void> => {
-      await this.directorySyncProfileStore.delete(id);
-    });
   }
 
   private setupEventListeners(): void {
