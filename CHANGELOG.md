@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.27] - 2026-10-06
+
+### Security
+- Remote profile sync: a wrong master password no longer leaves the sync keys cached as unlocked, so a later push cannot overwrite the remote data with a key that cannot decrypt it; the remote state is only recorded as "seen" after a successful decrypt
+- a profile's free-form SSH options are now an allowlist of harmless connection options (previously a blocklist that could be bypassed with whitespace in the option name, e.g. `ProxyCommand touch x #`); the same allowlist applies to the `~/.ssh/config` managed block and a block received from sync keeps only the directives sshs3 generates
+- a sync pull no longer takes machine-specific fields from other devices (private key path, PKCS#11 library path, agent path, agent identity files, PIN), and the X server path/arguments and smartcard library path settings are no longer pushed or applied
+- the smartcard PIN is no longer written to the sync target's configuration, and saved sessions no longer keep a PIN or a proxy password
+- saved passwords and passphrases are no longer wiped when the OS keyring is unavailable at startup (undecryptable values are kept as they were); an unreadable `profiles.json` is copied to `profiles.json.corrupt` before it is rewritten
+- removed the unused native drag handler, which accepted an arbitrary file path from the renderer, and the unused built-in known_hosts store (OpenSSH has always owned `known_hosts`)
+
+### Fixed
+- the file editor opens files over 5 MB, binary files and files that are not valid UTF-8 read-only, so saving cannot overwrite them with a truncated or re-encoded copy
+- renaming a file onto an existing name is refused; the SFTP rename fallback no longer deletes the destination first and never replaces a directory
+- directory sync: a failing root listing no longer reads as an empty folder (which made the other side look entirely new or extraneous), symlinked folders are skipped and reported, and nothing below an unreadable folder is copied or deleted
+- SFTP uploads of empty files now create the file
+- automatic reconnect gives up after the configured number of attempts instead of looping when the host is still down, a failed reconnect retries or ends the session instead of hanging, and a reconnected session keeps its multiplexing socket
+- remote `git pull` from an SFTP panel works, and remote repositories no longer show as modified
+- "Always sync dotfiles" saves the policy on the stored profile instead of runtime values such as the agent socket
+- ssh/askpass processes and temporary directories are cleaned up when a connection fails early
+- closing the editor after "Tail -f" no longer makes the next file open in tail mode; unsaved Settings edits are kept when settings change in the background (e.g. the font size shortcuts)
+- remaining Swedish messages in the transfer queue and key install dialogs are in English
+
+### Changed
+- internal refactoring with no intended behavior change: `IpcBridge` is split into per-domain handler modules under `src/main/ipc` (each with a narrow host type), the askpass prompt classification is shared, and `App`, `FilePane`, `ConnectionManagerModal` and `SettingsModal` are split into smaller components and hooks; dead code was removed
+
 ## [0.96.26] - 2026-10-06
 
 ### Changed

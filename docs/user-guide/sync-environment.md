@@ -74,6 +74,10 @@ Synchronize connection profiles, credentials, folders, and application settings 
   > Linking a card so it can *derive* the master encryption key directly requires an **RSA or Ed25519** key. These algorithms sign deterministically, producing the exact same wrapping key upon each unlock. **ECDSA cards** (common on PIV/CAC) sign with a random nonce each time and cannot reliably derive static keys; for ECDSA, unlock with master passwords once and use the card for session unlocking.
 - **Tombstones**: Deletions record cryptographic tombstones to prevent purged records from re-appearing after multi-device synchronization.
 
+#### ⚠️ What is never synced
+- Machine-specific fields stay local and are ignored if they arrive from another device: the private key path, PKCS#11 library path, agent path and agent identity files of a profile, plus the settings **X server path**, **X server arguments** and the global smartcard library path. A smartcard PIN is never stored or synced.
+- After a wrong master password the keys are not kept in memory; unlock again with the right password before pushing.
+
 #### ⚙️ Technical Internals & Architecture
 Data is encrypted with **AES-256-GCM** using keys derived via **scrypt** (N=32768, r=8, p=1). Synchronization executes on a per-record basis reconciled by `updatedAt` timestamps, preventing independent edits on two workstations from clobbering each other.
 
@@ -103,7 +107,8 @@ Host prod-db
 
 #### ⚠️ Limitations & Caveats
 - Configurations outside the managed block are left completely untouched.
-- Directives that execute arbitrary shell code (`LocalCommand`, `ProxyCommand` with scripts) are stripped for security before writing.
+- A managed block received from another machine is filtered before it is written: only the directives sshs3 itself generates (`Host`, `HostName`, `Port`, `User`, `IdentityFile`, `PKCS11Provider`, `ProxyJump`, `ForwardAgent`) and a short list of harmless connection options (such as `ServerAliveInterval`, `Compression`, `Ciphers`) are kept. Everything else, including `ProxyCommand`, `LocalCommand`, `Match`, `Include` and host-key related directives, is stripped.
+- A profile's free-form extra SSH options follow the same allowlist, both in this block and on the `ssh` command line sshs3 starts; other options are ignored. Use the profile's own fields for identity files, jump hosts, agent forwarding and X11.
 
 #### ⚙️ Technical Internals & Architecture
 `SshNativeFileMerger` writes atomically using a temporary file (`~/.ssh/config.tmp.PID`) followed by an atomic rename, eliminating file corruption if the process terminates mid-write.

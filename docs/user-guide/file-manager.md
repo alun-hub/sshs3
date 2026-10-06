@@ -111,6 +111,8 @@ When a destination file already exists, sshs3 presents an interactive collision 
 - **Overwrite**: Overwrites the existing destination file.
 - **Skip**: Skips the file and advances the queue.
 - **Rename**: Automatically saves the file under a new name instead of replacing the existing one.
+
+Renaming a file in place (<kbd>F2</kbd>) to a name that already exists in the same folder is refused instead of silently replacing it.
 - **Apply to all remaining conflicts in this transfer**: Applies the chosen action to all subsequent conflicts in the batch.
 
 Under **Settings → Files & Storage → Default Conflict Resolution for File Transfers** you can choose **Ask** (the default), **Overwrite**, **Skip** or **Rename** so the dialog does not appear. Transfers in the queue can be paused, resumed and cancelled.
@@ -138,6 +140,7 @@ Compare a source directory with a target directory (on the same or different ser
 
 #### ⚠️ Limitations & Caveats
 - The sync is one-way, from source to target.
+- Symbolic links to folders are listed but not followed, and a folder that cannot be read (for example permission denied) is reported as skipped. Nothing below a skipped folder is copied or, in mirror mode, deleted, because its real contents are unknown. If the *root* folder of the source or target cannot be listed for any reason other than not existing yet, the comparison stops with an error instead of treating it as empty.
 - Files are compared by size and modification time, with a fixed 2-second tolerance because SFTP and S3 backends truncate timestamps and clocks drift.
 
 #### ⚙️ Technical Internals & Architecture
@@ -159,6 +162,7 @@ Inspect and modify remote files or monitor server logs without launching an exte
 
 #### ⚠️ Limitations & Caveats
 - The built-in editor is optimized for lightweight text/markdown editing without heavy syntax trees. For complex multi-file projects, use External Editor hand-off.
+- Files larger than 5 MB (only the first 5 MB are loaded), binary files and files that are not valid UTF-8 (for example ISO-8859-1) open **read-only**, and the lock button is disabled, so saving can never overwrite the file with a partial or re-encoded copy. Use **Open in External Editor** to change them.
 - External editors must save files in place without breaking filesystem inode watches.
 
 #### ⚙️ Technical Internals & Architecture
