@@ -1,5 +1,5 @@
 import { fingerprintKey } from '../ssh/KnownHostsStore';
-import { BLOCKED_SSH_DIRECTIVES } from '../ssh/blockedSshDirectives';
+import { BLOCKED_SSH_DIRECTIVES, isAllowedExtraOption } from '../ssh/blockedSshDirectives';
 import type { KnownHostsConflict } from '../../shared/types/sync';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 
@@ -208,7 +208,7 @@ function buildSshConfigHostBlock(
     lines.push(`    MACs ${oneLine(profile.macs)}`);
   }
   for (const [key, value] of Object.entries(profile.extraOptions ?? {})) {
-    if (!key.trim() || !value.trim()) continue;
+    if (!key.trim() || !value.trim() || !isAllowedExtraOption(key)) continue;
     lines.push(`    ${oneLine(key)} ${oneLine(value)}`);
   }
 

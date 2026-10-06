@@ -312,6 +312,11 @@ export class ProfileStore {
   private async persist(data: ProfilesData): Promise<void> {
     const existing = await this.readRawEntries();
     const encryptEntry = <T extends { id: string; proxy?: any }>(p: T, fields: Array<keyof T>): T => {
+      // A smartcard/FIDO2 PIN is never written to disk; nothing in the app sets one on a saved profile.
+      if ('pin' in p) {
+        const { pin: _pin, ...withoutPin } = p as T & { pin?: string };
+        p = withoutPin as T;
+      }
       const encrypted = transformEntrySecrets(p, fields, encryptSecretValue);
       return this.keepUndecryptableSecrets(encrypted, fields, existing);
     };

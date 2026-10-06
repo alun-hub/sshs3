@@ -35,15 +35,45 @@ export const BLOCKED_SSH_DIRECTIVES = new Set([
 ]);
 
 /**
- * Additionally blocked in a profile's free-form `extraOptions` only. They are
- * legitimate in a user's `~/.ssh/config` (so not in the shared list above), but
- * the app sets both itself — from `pkcs11LibPath` and the profile's jump host —
- * so a value arriving via `extraOptions` can only be an override from untrusted
- * data: a library loaded into ssh, or a hop through an attacker-chosen host.
+ * The only options a profile's free-form `extraOptions` may carry. Unlike the blocklist
+ * above this is an allowlist: `extraOptions` can arrive from a synced or imported profile
+ * (untrusted), and ssh has far too many directives that run commands, load libraries,
+ * redirect the connection or weaken verification (and new ones appear in every release)
+ * to enumerate the bad ones. Everything here only tunes the connection itself.
+ *
+ * Deliberately absent: anything the app sets itself from first-class profile fields
+ * (identity files, agent, PKCS#11, jump hosts, proxy, control sockets, forwarding, X11) and
+ * anything affecting host-key verification or running commands.
  */
-export const BLOCKED_SSH_EXTRA_OPTION_DIRECTIVES = new Set(['pkcs11provider', 'proxyjump']);
+export const ALLOWED_SSH_EXTRA_OPTIONS = new Set([
+  'serveraliveinterval',
+  'serveralivecountmax',
+  'tcpkeepalive',
+  'compression',
+  'connecttimeout',
+  'connectionattempts',
+  'ipqos',
+  'addressfamily',
+  'ciphers',
+  'macs',
+  'kexalgorithms',
+  'hostkeyalgorithms',
+  'pubkeyacceptedalgorithms',
+  'preferredauthentications',
+  'identitiesonly',
+  'numberofpasswordprompts',
+  'requesttty',
+  'loglevel',
+  'escapechar',
+  'exitonforwardfailure',
+  'hashknownhosts',
+  'visualhostkey',
+  'rekeylimit',
+  'sendenv',
+  'setenv',
+]);
 
-/** A bare ssh option keyword: letters/digits only, so it cannot smuggle a second token (`Key value`), `=` or quotes. */
-export function isValidSshOptionKeyword(key: string): boolean {
-  return /^[A-Za-z][A-Za-z0-9]*$/.test(key);
+/** True when `key` is exactly one allowlisted option name (so "ProxyCommand x #" or quoted names never match). */
+export function isAllowedExtraOption(key: string): boolean {
+  return ALLOWED_SSH_EXTRA_OPTIONS.has(key.trim().toLowerCase());
 }

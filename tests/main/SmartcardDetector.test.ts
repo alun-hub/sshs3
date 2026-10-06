@@ -340,6 +340,30 @@ describe('SmartcardDetector', () => {
     // arrive from a synced/imported profile, so directives that grant
     // command execution or silently disable host-key verification must
     // never reach the ssh command line, even via this generic passthrough.
+    it('ignores options that are not on the extraOptions allowlist, whatever their name', () => {
+      const config: SSHConnectionConfig = {
+        id: 'opt-4',
+        name: 'Allowlist Host',
+        host: 'custom.host',
+        username: 'root',
+        authType: 'password',
+        extraOptions: {
+          ServerAliveInterval: '30',
+          serveralivecountmax: '4',
+          Tunnel: 'yes',
+          PermitRemoteOpen: 'any',
+          ForwardAgent: 'yes',
+          SomeFutureDirective: 'x',
+        },
+      };
+
+      const optionArgs = SmartcardDetector.buildSSHArguments(config).filter((_, i, a) => a[i - 1] === '-o');
+
+      expect(optionArgs).toContain('ServerAliveInterval=30');
+      expect(optionArgs).toContain('serveralivecountmax=4');
+      expect(optionArgs.filter((o) => /Tunnel|PermitRemoteOpen|ForwardAgent|SomeFuture/.test(o))).toEqual([]);
+    });
+
     it('blocks extraOptions keys that smuggle a directive via whitespace, quotes or "="', () => {
       const config: SSHConnectionConfig = {
         id: 'opt-3',

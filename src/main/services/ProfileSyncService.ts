@@ -245,7 +245,7 @@ interface FieldSplitSpec<T> {
 
 const SSH_FIELD_SPLIT: FieldSplitSpec<SSHConnectionConfig> = {
   credentialFields: ['username', 'password', 'passphrase'],
-  excludedFields: ['privateKeyPath', 'pkcs11LibPath', 'agentPath', 'agentIdentityFiles'],
+  excludedFields: ['privateKeyPath', 'pkcs11LibPath', 'agentPath', 'agentIdentityFiles', 'pin'],
   proxyCredentialFields: ['username', 'password'],
 };
 
@@ -254,6 +254,41 @@ const S3_FIELD_SPLIT: FieldSplitSpec<S3Config> = {
   excludedFields: ['customCaPath'],
   proxyCredentialFields: ['username', 'password'],
 };
+
+/**
+ * Removes local-only fields (see FieldSplitSpec.excludedFields) from records received in a pull.
+ * Those fields are never pushed, so a remote copy carrying them can only be planted — and they
+ * point at local files/libraries that get loaded or executed on the next connection.
+ */
+function stripLocalOnlyFields<T extends object>(items: T[], spec: { excludedFields: Array<keyof T> }): T[] {
+  return items.map((item) => {
+    const copy: any = { ...item };
+    for (const field of spec.excludedFields) delete copy[field];
+    return copy as T;
+  });
+}
+
+/**
+ * Settings that name a local executable, library or its arguments. They are machine-specific
+ * and, if taken from a remote copy, would let a compromised sync source choose what the app
+ * launches — so they are neither pushed nor applied from a pull.
+ */
+const LOCAL_ONLY_SETTINGS = ['x11ServerPath', 'x11ServerArgs', 'smartcardLibPath'] as const;
+
+function withoutLocalOnlySettings(settings: AppSettings): AppSettings {
+  const copy: any = { ...settings };
+  for (const key of LOCAL_ONLY_SETTINGS) delete copy[key];
+  return copy as AppSettings;
+}
+
+/** `remote` with the local-only settings taken from `local` instead. */
+function withLocalOnlySettingsFrom(remote: AppSettings, local: AppSettings): AppSettings {
+  const copy: any = withoutLocalOnlySettings(remote);
+  for (const key of LOCAL_ONLY_SETTINGS) {
+    if (local[key] !== undefined) copy[key] = local[key];
+  }
+  return copy as AppSettings;
+}
 
 /** Splits one record into its topology-tier and credentials-tier halves, both keeping `id` so they can be rejoined. */
 function splitFields<T extends { id: string; proxy?: { username?: string; password?: string } }>(
@@ -715,7 +750,7 @@ export class ProfileSyncService {
     await this.encryptAndUpload(provider, 'dotfile-pools', JSON.stringify(dotfilePoolsPayload), remoteFiles);
 
     await this.checkNotChangedRemotely(provider, 'settings', remoteFiles);
-    await this.encryptAndUpload(provider, 'settings', JSON.stringify(settings), remoteFiles);
+    await this.encryptAndUpload(provider, 'settings', JSON.stringify(withoutLocalOnlySettings(settings)), remoteFiles);
 
     await this.checkNotChangedRemotely(provider, 'ssh-native', remoteFiles);
     await this.encryptAndUpload(provider, 'ssh-native', JSON.stringify(sshNativePayload), remoteFiles);
@@ -781,8 +816,8 @@ export class ProfileSyncService {
       const topology: TopologyPayload = topologyRaw ? JSON.parse(topologyRaw) : { ssh: [], s3: [] };
       const credentials: CredentialsPayload = credentialsRaw ? JSON.parse(credentialsRaw) : { ssh: [], s3: [] };
 
-      const remoteSsh = joinById<SSHConnectionConfig>(topology.ssh, credentials.ssh);
-      const remoteS3 = joinById<S3Config>(topology.s3, credentials.s3);
+      const remoteSsh = stripLocalOnlyFields(joinById<SSHConnectionConfig>(topology.ssh, credentials.ssh), SSH_FIELD_SPLIT);
+      const remoteS3 = stripLocalOnlyFields(joinById<S3Config>(topology.s3, credentials.s3), S3_FIELD_SPLIT);
 
       const local = await this.profileStore.getProfilesIncludingTombstones();
       const sshResult = mergeRecords(local.ssh, remoteSsh);
@@ -818,7 +853,9 @@ export class ProfileSyncService {
       const remoteSettings: AppSettings = JSON.parse(settingsRaw);
       const localSettings = await this.settingsStore.getSettings();
       if ((remoteSettings.updatedAt ?? '') > (localSettings.updatedAt ?? '')) {
-        await this.settingsStore.saveSettings(remoteSettings, { preserveTimestamp: true });
+        await this.settingsStore.saveSettings(withLocalOnlySettingsFrom(remoteSettings, localSettings), {
+          preserveTimestamp: true,
+        });
         changedCategories.push('settings');
       }
     }

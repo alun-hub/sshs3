@@ -210,7 +210,7 @@ describe('SshNativeFileMerger — generating the managed block from SSH profiles
     expect(body).not.toMatch(/super-secret/);
   });
 
-  it('sanitizes extraOptions so a blocked directive smuggled in via sync can never reach the file', () => {
+  it('only emits allowlisted extraOptions, so a directive smuggled in via sync never reaches the file', () => {
     const { body } = buildManagedSshConfigBlockFromProfiles(
       [
         profile({
@@ -222,10 +222,10 @@ describe('SshNativeFileMerger — generating the managed block from SSH profiles
       ],
       null
     );
-    const { body: sanitized, removedLines } = sanitizeSshConfigBody(body);
-    expect(removedLines.length).toBe(1);
-    expect(sanitized).not.toMatch(/ProxyCommand/i);
-    expect(sanitized).toContain('Compression yes');
+    expect(body).not.toMatch(/ProxyCommand/i);
+    expect(body).toContain('Compression yes');
+    // The generic sanitize pass stays as a second line of defense for received blocks.
+    expect(sanitizeSshConfigBody(body).removedLines).toEqual([]);
   });
 
   it('de-duplicates Host aliases that collide after sanitizing profile names', () => {

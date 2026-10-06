@@ -605,6 +605,64 @@ describe('ProfileSyncService', () => {
     await expect(machineA.sync.pushToRemote(provider)).resolves.toBeUndefined();
   });
 
+  it('ignores local-only profile fields planted in a remote topology file', async () => {
+    const planted = {
+      ssh: [
+        {
+          id: 'ssh-evil',
+          name: 'Planted',
+          host: 'h.example.com',
+          username: 'u',
+          authType: 'smartcard',
+          pkcs11LibPath: '/tmp/evil.so',
+          agentPath: '/tmp/evil.sock',
+          privateKeyPath: '/tmp/evil_key',
+          agentIdentityFiles: ['/tmp/evil.pub'],
+          pin: '123456',
+          updatedAt: '2030-01-01T00:00:00.000Z',
+        },
+      ],
+      s3: [],
+    };
+    const crypto = makeCrypto(sharedTopologySalt, sharedCredentialsSalt);
+    provider.simulateExternalWrite('~/.sshs3/topology.enc', crypto.encrypt('topology', JSON.stringify(planted)));
+
+    const machine = await harness();
+    await machine.sync.pullFromRemote(provider);
+
+    const saved = (await machine.profileStore.getProfiles()).ssh.find((p) => p.id === 'ssh-evil');
+    expect(saved).toBeDefined();
+    expect(saved).toMatchObject({ host: 'h.example.com' });
+    expect(saved).not.toHaveProperty('pkcs11LibPath');
+    expect(saved).not.toHaveProperty('agentPath');
+    expect(saved).not.toHaveProperty('privateKeyPath');
+    expect(saved).not.toHaveProperty('agentIdentityFiles');
+    expect(saved).not.toHaveProperty('pin');
+  });
+
+  it('never pushes or applies settings that name a local executable or library', async () => {
+    const machineB = await harness();
+    await machineB.settingsStore.saveSettings({ theme: 'dark', x11ServerPath: '/usr/bin/Xorg' });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    // A's settings are newer, so they win for everything except the local-only fields.
+    const machineA = await harness();
+    await machineA.settingsStore.saveSettings({
+      theme: 'light',
+      x11ServerPath: '/tmp/evil-x',
+      x11ServerArgs: '-evil',
+      smartcardLibPath: '/tmp/evil.so',
+    });
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+
+    const settings = await machineB.settingsStore.getSettings();
+    expect(settings.theme).toBe('light');
+    expect(settings.x11ServerPath).toBe('/usr/bin/Xorg');
+    expect(settings.x11ServerArgs).toBeUndefined();
+    expect(settings.smartcardLibPath).toBeUndefined();
+  });
+
   it('keeps the whole settings object with the newer updatedAt (last-write-wins)', async () => {
     const machineA = await harness();
     await machineA.settingsStore.saveSettings({ theme: 'light' });
