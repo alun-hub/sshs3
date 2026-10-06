@@ -25,6 +25,7 @@ import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneNode, PaneOrientation } from '@shared/types/session';
+import { sanitizePaneNode } from '@shared/sessionSanitize';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import { formatDateTime } from './lib/format';
@@ -75,24 +76,6 @@ function normalizeTab(tab: AppTab): AppTab {
   if (tab.type !== 'terminal') return tab;
   if (tab.paneTree) return tab;
   return { ...tab, paneTree: createLeaf(`${tab.id}-root`) };
-}
-
-function sanitizePaneNode(node: PaneNode): PaneNode {
-  if (node.type === 'leaf') {
-    if (!node.config) return node;
-    const { password: _password, passphrase: _passphrase, ...restConfig } = node.config;
-    return {
-      ...node,
-      config: restConfig,
-    };
-  }
-  if (node.type === 'split' && Array.isArray(node.children)) {
-    return {
-      ...node,
-      children: node.children.map(sanitizePaneNode),
-    };
-  }
-  return node;
 }
 
 function sanitizeTabForSession(tab: AppTab): AppTab {

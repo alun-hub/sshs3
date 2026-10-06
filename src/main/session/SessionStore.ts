@@ -2,25 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
-import type { SessionData, PaneNode } from '../../shared/types/session';
-
-function sanitizePaneNode(node: PaneNode): PaneNode {
-  if (node.type === 'leaf') {
-    if (!node.config) return node;
-    const { password: _password, passphrase: _passphrase, ...restConfig } = node.config;
-    return {
-      ...node,
-      config: restConfig,
-    };
-  }
-  if (node.type === 'split' && Array.isArray(node.children)) {
-    return {
-      ...node,
-      children: node.children.map(sanitizePaneNode),
-    };
-  }
-  return node;
-}
+import type { SessionData } from '../../shared/types/session';
+import { sanitizePaneNode } from '../../shared/sessionSanitize';
 
 export function sanitizeSessionData(data: SessionData): SessionData {
   if (!data || !Array.isArray(data.tabs)) {

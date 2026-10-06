@@ -62,7 +62,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [originalContent, setOriginalContent] = useState('');
   const [isBinary, setIsBinary] = useState(false);
   const [truncated, setTruncated] = useState(false);
+  const [notUtf8, setNotUtf8] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  // Saving a partial (truncated), binary or non-UTF-8 read would overwrite the file with damaged content.
+  const saveBlocked = isBinary || truncated || notUtf8;
   const [wordWrap, setWordWrap] = useState(true);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -121,7 +124,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setOriginalContent(res.content);
       setIsBinary(res.isBinary);
       setTruncated(res.truncated);
-      setReadOnly(res.isBinary);
+      setNotUtf8(!!res.notUtf8);
+      setReadOnly(res.isBinary || res.truncated || !!res.notUtf8);
     } catch (err: any) {
       setError(describeIpcError(err, 'Failed to load file content'));
     } finally {
@@ -275,7 +279,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Save file content
   const handleSave = useCallback(async () => {
-    if (!entry || readOnly || saving || tailModeActive) return;
+    if (!entry || readOnly || saving || tailModeActive || saveBlocked) return;
     setSaving(true);
     setError(null);
     try {
@@ -289,7 +293,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [providerId, entry, content, readOnly, saving, tailModeActive, onSaved]);
+  }, [providerId, entry, content, readOnly, saving, tailModeActive, saveBlocked, onSaved]);
 
   // Launch external editor
   const handleOpenExternal = useCallback(async () => {
@@ -631,9 +635,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             {/* Read-only toggle */}
             <button
               type="button"
-              disabled={tailModeActive}
+              disabled={tailModeActive || saveBlocked}
               title={
-                tailModeActive
+                saveBlocked
+                  ? 'This file cannot be edited safely (truncated, binary or not UTF-8)'
+                  : tailModeActive
                   ? 'Read-only during Tail -f mode'
                   : readOnly
                   ? 'Switch to Edit Mode'
@@ -688,7 +694,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             <button
               type="button"
               title="Save changes (Ctrl+S)"
-              disabled={!isDirty || readOnly || saving || loading || tailModeActive}
+              disabled={!isDirty || readOnly || saving || loading || tailModeActive || saveBlocked}
               onClick={() => void handleSave()}
               className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1 text-xs font-semibold text-white shadow-sm hover:bg-sky-400 disabled:opacity-40 transition-colors ml-1"
             >
@@ -873,7 +879,14 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         {truncated && !tailModeActive && (
           <div className="flex items-center gap-1.5 border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-300">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-            <span>File exceeds 5 MB. Displaying the first 5 MB.</span>
+            <span>File exceeds 5 MB. Displaying the first 5 MB (read-only, so the file cannot be overwritten with a partial copy).</span>
+          </div>
+        )}
+
+        {notUtf8 && !isBinary && (
+          <div className="flex items-center gap-1.5 border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>File is not valid UTF-8. Opened read-only to avoid corrupting it on save.</span>
           </div>
         )}
 

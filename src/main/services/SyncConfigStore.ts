@@ -6,7 +6,7 @@ import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SFTPConfig, S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 
-const SFTP_SECRET_FIELDS: Array<keyof SFTPConfig> = ['password', 'passphrase', 'pin'];
+const SFTP_SECRET_FIELDS: Array<keyof SFTPConfig> = ['password', 'passphrase'];
 const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
 
 export interface SyncConfigData {
@@ -43,6 +43,9 @@ export interface SyncConfigData {
 function encryptTarget(target: StorageConnectConfig): StorageConnectConfig {
   const result: StorageConnectConfig = { ...target };
   if (result.sftpConfig) {
+    // A smartcard/FIDO2 PIN is never written to disk, not even encrypted.
+    const { pin: _pin, ...withoutPin } = result.sftpConfig;
+    result.sftpConfig = withoutPin;
     result.sftpConfig = transformEntrySecrets(result.sftpConfig, SFTP_SECRET_FIELDS, encryptSecretValue);
   }
   if (result.s3Config) {

@@ -63,6 +63,32 @@ describe('FileEditorService', () => {
       expect(res.truncated).toBe(false);
     });
 
+    it('flags non-UTF-8 text so the editor can refuse to save it back', async () => {
+      const latin1 = Buffer.from('f\xf6rsta raden', 'latin1');
+      storageRegistry.register({
+        id: 'mock-latin1',
+        name: 'Mock',
+        type: 'sftp' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([latin1])),
+      } as any);
+
+      const res = await service.readFile(storageRegistry, 'mock-latin1', '/latin1.txt');
+      expect(res.isBinary).toBe(false);
+      expect(res.notUtf8).toBe(true);
+    });
+
+    it('does not flag valid UTF-8 (including multi-byte characters) as non-UTF-8', async () => {
+      storageRegistry.register({
+        id: 'mock-utf8',
+        name: 'Mock',
+        type: 'sftp' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([Buffer.from('första åäö', 'utf-8')])),
+      } as any);
+
+      const res = await service.readFile(storageRegistry, 'mock-utf8', '/utf8.txt');
+      expect(res.notUtf8).toBe(false);
+    });
+
     it('detects binary file with null bytes and returns isBinary: true', async () => {
       const binaryData = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01, 0x01, 0x00]);
       const mockProvider = {

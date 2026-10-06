@@ -760,6 +760,8 @@ export interface FileReadResult {
   size: number;
   isBinary: boolean;
   truncated: boolean;
+  /** The content is not valid UTF-8, so saving it back would corrupt the file. */
+  notUtf8?: boolean;
 }
 
 export interface ExternalFileStatusEvent {

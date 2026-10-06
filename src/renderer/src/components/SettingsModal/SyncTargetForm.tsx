@@ -27,7 +27,6 @@ export interface SyncTargetDraft {
   passphrase?: string;
   agentPath?: string;
   pkcs11LibPath?: string;
-  pin?: string;
   proxyJump?: string;
 
   // S3 fields
@@ -85,7 +84,6 @@ export function draftFromTargetConfig(
     draft.passphrase = s.passphrase || '';
     draft.agentPath = s.agentPath || '';
     draft.pkcs11LibPath = s.pkcs11LibPath || '';
-    draft.pin = s.pin || '';
     draft.proxyJump = s.proxyJump || '';
   } else if (target.type === 's3' && target.s3Config) {
     const s = target.s3Config;
@@ -120,7 +118,6 @@ export function buildSyncTarget(draft: SyncTargetDraft): StorageConnectConfig {
         passphrase: draft.passphrase || undefined,
         agentPath: draft.agentPath || undefined,
         pkcs11LibPath: draft.pkcs11LibPath || undefined,
-        pin: draft.pin || undefined,
         proxyJump: draft.proxyJump || undefined,
       },
     };
@@ -296,7 +293,6 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
         passphrase: ssh.passphrase || '',
         agentPath: ssh.agentPath || '',
         pkcs11LibPath: ssh.pkcs11LibPath || '',
-        pin: ssh.pin || '',
         proxyJump: ssh.proxyJump || '',
         remoteBasePath: ssh.initialPath || draft.remoteBasePath || '',
       });
@@ -382,7 +378,6 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
           passphrase: draft.passphrase,
           agentPath: draft.agentPath,
           pkcs11LibPath: draft.pkcs11LibPath,
-          pin: draft.pin,
           proxyJump: draft.proxyJump,
         });
         if (res?.success) {
@@ -686,20 +681,6 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                   </div>
                 </div>
               ) : null}
-
-              <Field label="PIN (optional)">
-                {(id) => (
-                  <input
-                    id={id}
-                    type="password"
-                    disabled={disabled}
-                    autoComplete="new-password"
-                    value={draft.pin ?? ''}
-                    onChange={(e) => set('pin', e.target.value)}
-                    className={inputClass}
-                  />
-                )}
-              </Field>
             </div>
           )}
 

@@ -56,6 +56,38 @@ describe('SessionStore', () => {
     expect(loaded).toBeNull();
   });
 
+  it('also strips the PIN and the proxy password from session data on save', async () => {
+    const data: SessionData = {
+      tabs: [
+        {
+          id: 'tab-1',
+          type: 'terminal',
+          title: 'Prod',
+          paneTree: {
+            type: 'leaf',
+            id: 'p1',
+            config: {
+              id: 'c1',
+              host: 'h',
+              username: 'u',
+              authType: 'smartcard',
+              pin: '123456',
+              proxy: { type: 'http', host: 'proxy', port: 3128, username: 'pu', password: 'proxy-secret' },
+            },
+          },
+        },
+      ],
+      activeTabId: 'tab-1',
+    } as any;
+
+    await store.saveSession(data);
+    const raw = await fs.readFile(sessionFile, 'utf-8');
+
+    expect(raw).not.toContain('123456');
+    expect(raw).not.toContain('proxy-secret');
+    expect(raw).toContain('"host": "proxy"');
+  });
+
   it('strips password and passphrase from session data on save', async () => {
     const dataWithSecrets: SessionData = {
       tabs: [
