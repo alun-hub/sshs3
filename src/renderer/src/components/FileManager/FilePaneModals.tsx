@@ -39,8 +39,8 @@ export interface FilePaneModalsProps {
   presignedOpen: boolean;
   setPresignedOpen: SetFlag;
   editorEntry: FileEntry | null;
-  setEditorEntry: Dispatch<SetStateAction<FileEntry | null>>;
   editorTailMode: boolean;
+  onCloseEditor: () => void;
   newFolderOpen: boolean;
   setNewFolderOpen: SetFlag;
   handleCreateFolderCommit: (name: string) => Promise<void>;
@@ -81,8 +81,8 @@ export const FilePaneModals: React.FC<FilePaneModalsProps> = ({
   presignedOpen,
   setPresignedOpen,
   editorEntry,
-  setEditorEntry,
   editorTailMode,
+  onCloseEditor,
   newFolderOpen,
   setNewFolderOpen,
   handleCreateFolderCommit,
@@ -165,7 +165,7 @@ export const FilePaneModals: React.FC<FilePaneModalsProps> = ({
       sourceType={source.sourceType}
       entry={editorEntry}
       isTailMode={editorTailMode}
-      onClose={() => setEditorEntry(null)}
+      onClose={onCloseEditor}
       onSaved={() => void load()}
     />
 

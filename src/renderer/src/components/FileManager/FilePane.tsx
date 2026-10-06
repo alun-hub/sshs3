@@ -888,8 +888,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
         presignedOpen={presignedOpen}
         setPresignedOpen={setPresignedOpen}
         editorEntry={editorEntry}
-        setEditorEntry={setEditorEntry}
         editorTailMode={editorTailMode}
+        // Tail mode is a one-shot choice from the context menu; every other way of opening the editor must start in normal mode.
+        onCloseEditor={() => {
+          setEditorEntry(null);
+          setEditorTailMode(false);
+        }}
         newFolderOpen={newFolderOpen}
         setNewFolderOpen={setNewFolderOpen}
         handleCreateFolderCommit={handleCreateFolderCommit}

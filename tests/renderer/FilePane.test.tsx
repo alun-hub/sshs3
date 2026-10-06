@@ -6,6 +6,16 @@ import { FilePane } from '../../src/renderer/src/components/FileManager/FilePane
 import { DragDropProvider } from '../../src/renderer/src/components/FileManager/DragDropLayer';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 
+// The real editor needs a lot of IPC; only its open/tail props matter here.
+vi.mock('../../src/renderer/src/components/FileManager/FileEditorModal', () => ({
+  FileEditorModal: (p: { entry: { name: string } | null; isTailMode?: boolean; onClose: () => void }) =>
+    p.entry ? (
+      <div data-testid="editor" data-tail={String(Boolean(p.isTailMode))}>
+        <button onClick={p.onClose}>close-editor</button>
+      </div>
+    ) : null,
+}));
+
 describe('FilePane Home Button', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -233,5 +243,39 @@ describe('FilePane Home Button', () => {
     expect(gitGetStatusMock).not.toHaveBeenCalled();
     expect(screen.queryByText('main')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Git \(Clone repository here\.\.\.\)/i)).not.toBeInTheDocument();
+  });
+
+  it('opens a file in normal mode after an earlier "Tail -f" session was closed', async () => {
+    (window as any).multissh.storageList = vi
+      .fn()
+      .mockResolvedValue([{ name: 'app.log', path: '/var/log/app.log', size: 100, isDirectory: false }]);
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    const row = await screen.findByText('app.log');
+    fireEvent.click(row);
+    fireEvent.contextMenu(row);
+    fireEvent.click(await screen.findByText('Tail -f (Stream Log)'));
+    expect((await screen.findByTestId('editor')).getAttribute('data-tail')).toBe('true');
+
+    fireEvent.click(screen.getByText('close-editor'));
+    expect(screen.queryByTestId('editor')).toBeNull();
+
+    fireEvent.doubleClick(row);
+    expect((await screen.findByTestId('editor')).getAttribute('data-tail')).toBe('false');
   });
 });

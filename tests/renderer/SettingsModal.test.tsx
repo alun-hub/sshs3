@@ -83,6 +83,25 @@ describe('SettingsModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps unsaved edits when currentSettings changes while open, and re-seeds on the next open', () => {
+    const onSave = vi.fn();
+    const props = { onSave, onClose: vi.fn() };
+    const { rerender } = render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} {...props} />);
+
+    fireEvent.click(screen.getByText('Breeze'));
+    // e.g. the font-size shortcut saving new settings in App while the dialog is open
+    rerender(<SettingsModal open={true} currentSettings={{ ...DEFAULT_SETTINGS, terminalFontSize: 18 }} {...props} />);
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'breeze' }));
+
+    rerender(<SettingsModal open={false} currentSettings={{ ...DEFAULT_SETTINGS, terminalFontSize: 18 }} {...props} />);
+    rerender(<SettingsModal open={true} currentSettings={{ ...DEFAULT_SETTINGS, terminalFontSize: 18 }} {...props} />);
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ theme: DEFAULT_SETTINGS.theme, terminalFontSize: 18 })
+    );
+  });
+
   it('calls onClose when Cancel is clicked', () => {
     const onClose = vi.fn();
     const onSave = vi.fn();

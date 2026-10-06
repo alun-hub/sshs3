@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useUpdateState } from '../../lib/useUpdateState';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/types/perf';
 import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppTheme, type SessionExitAction, type SmartcardAuthMode } from '@shared/types/settings';
@@ -126,8 +126,13 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
   // null while unknown (still loading) - only "false" should ever trigger the warning card.
   const [credentialEncryptionAvailable, setCredentialEncryptionAvailable] = useState<boolean | null>(null);
 
+  // Re-seed the draft only when the dialog opens. An external settings change while it is open
+  // (e.g. the font-size shortcuts) must not throw away what the user has edited.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
+    const justOpened = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (justOpened) {
       setActiveCategory('general');
       setTheme(currentSettings.theme);
       setFontSize(currentSettings.terminalFontSize);
