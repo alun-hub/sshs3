@@ -67,6 +67,12 @@ Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta 
   dela ett kort cachat `PerfSshRaw` mellan sessionerna; `usePerfSamples` räknar redan deltan lokalt
   från råa räknare, så renderer-koden behöver nästan inte ändras. Mät först hur många
   samplingar/min som faktiskt går mot en host med fyra splits.
+- **Två medium-fynd i dev-beroenden är avfärdade i Dependabot (2026-10-06, `tolerable_risk`)** —
+  båda är DoS och byggtid-only, inget skickas i appen. Ta om dem när uppströms rör sig:
+  `postcss-selector-parser` <7.1.6 (alert #13) är exakt låst till 6.0.10 av `@tailwindcss/typography`
+  0.5.20 (senaste) — kolla när typography går till 7.x i stället för en major-`overrides`;
+  `sprintf-js` ≤1.1.3 (alert #14, via electron-builder > `@electron/get` > `global-agent` > `roarr`)
+  har ingen fixad version (1.1.3 är senast) — kolla när en patch släpps.
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
