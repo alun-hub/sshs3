@@ -287,6 +287,8 @@ att bygga.
    - **Känt (observerat 2026-10-05):** en ssh-agent hanterar förfrågningar en i taget, så en FIDO2-signatur som väntar på PIN/touch blockerar *alla* andra förfrågningar mot app-agenten (t.ex. Remote Profile Sync-auto-upplåsning med PIV-nyckeln fick "Timed out communicating with ssh-agent"). Följd av en delad agent; åtgärd vore att serialisera appens egna agentanrop mot touch-väntande signaturer eller behålla separata agenter för FIDO2.
    - **Risker:** många nycklar i en agent → server räknar fel (MaxAuthTries 6) tills steg 7; terminalen tappar systemets agent i Global-läget; askpass måste fungera för `verify-required`-nycklar i den delade agenten; PIN får aldrig loggas (loggar visar bara antal tecken).
 
+- [ ] **71. Extrahera smartcard-/FIDO2-agentklustret ur `IpcBridge.ts`** — efter uppdelningen i `src/main/ipc/` (2026-10-06) ligger fortfarande ~1000 rader kvar på klassen: `getOrLoadGlobalSmartcardAgent`/`getOrLoadGlobalFido2Agent`, startupupplåsning, `globalCards`, `smartcardSessionAgents`, `appAgent` och auto-sync-metoderna (`scheduleAutoSync`, `getSyncProvider`, `unlockWithSmartcardInternal`). De delar state med handlers och med ~80 `(bridge as any)`-referenser i `tests/main/IpcBridge*.test.ts`, så nästa steg är en `SmartcardCoordinator`-klass med getters på bridge (eller att skriva om testerna att prata med den direkt). Börja i plan mode; berör askpass/PIN (säkerhetsgranska efteråt).
+
 ## Funktionsanalys: PuTTY, WinSCP & S3 Browser
 
 Sammanställning av vad respektive referensverktyg har som sshs3 saknar idag, och var i roadmapen det adresseras:

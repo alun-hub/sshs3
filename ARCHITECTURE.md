@@ -47,7 +47,8 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ├── src/
 │   ├── main/                       # Electron main process (Node.js)
 │   │   ├── index.ts                # Application lifecycle, window creation, quit hooks
-│   │   ├── IpcBridge.ts            # Central IPC handler registration & event dispatching
+│   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, shared state (pending prompts, agents), prompt & smartcard/agent helpers, auto-sync, dispose
+│   │   ├── ipc/                    # One registerXHandlers(bridge) per domain (terminal, smartcard, storage, transfer, profile, dotfile, sync, k8s, key install, git, …) + ipcHelpers.ts
 │   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
 │   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
 │   │   ├── dirsync/                # Directory diff and synchronization engine
@@ -74,17 +75,21 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   ├── preload/                    # Electron preload script exposing window.multissh
 │   ├── renderer/                   # React frontend
 │   │   └── src/
-│   │       ├── App.tsx             # Root component, keyboard shortcuts, tab views
+│   │       ├── App.tsx             # Root component: layout, top-level modals, tab views
 │   │       ├── components/
-│   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes
-│   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane, ContextMenu, GitCloneModal
+│   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes (ConnectionManagerModal + folder/row/import components, connectionGrouping.ts)
+│   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane (+ FilePaneToolbar, FilePaneFilterBar, FilePaneModals, GitStatusMenu, filePaneContextMenu.ts), GitCloneModal
 │   │       │   ├── K8s/            # Pod inspector, port forward modal, debug container UI
-│   │       │   ├── SettingsModal/  # Preferences, shortcut configuration & GitSettingsPanel
+│   │       │   ├── SettingsModal/  # SettingsModal shell + useSettingsForm (draft state) + one *SettingsSection per category, GitSettingsPanel, SyncSettingsPanel
 │   │       │   ├── TabBar.tsx      # Draggable/closable tab bar
 │   │       │   ├── TerminalView.tsx# xterm.js terminal instance & FitAddon
 │   │       │   └── Tunnels/        # Independent SSH port-forwarding management dashboard
 │   │       └── lib/
 │   │           ├── format.ts       # Byte/speed formatting, date formatters, path utils
+│   │           ├── tabs.ts         # AppTab type and tab normalisation/sanitising helpers
+│   │           ├── useAppKeyboard.ts      # App-wide shortcuts, spatial Ctrl+Shift+Arrow navigation, Enter/Escape in modals
+│   │           ├── useTabActions.ts       # Create/close/split/connect tabs and panes
+│   │           ├── useSessionPersistence.ts # Restore and save the tab session
 │   │           └── spatialNavigation.ts # 2D keyboard navigation (Ctrl+Shift+Arrows) for panes, overlays and menus
 │   └── shared/                     # Types shared between main and renderer
 │       └── types/
@@ -158,8 +163,30 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    - Open [`src/preload/index.ts`](file:///home/alun/sshs3/src/preload/index.ts).
    - Implement the method on `api` using `ipcRenderer.invoke` or `ipcRenderer.on`.
 3. **Main Process Implementation**:
-   - Open [`src/main/IpcBridge.ts`](file:///home/alun/sshs3/src/main/IpcBridge.ts).
-   - Register the handler using `this.registerHandler(IPC_CHANNELS.MY_ACTION, async (...) => { ... })`.
+   - Add the handler to the matching domain file in [`src/main/ipc/`](file:///home/alun/sshs3/src/main/ipc/), inside its `registerXHandlers(bridge)` function, using `bridge.registerHandler(IPC_CHANNELS.MY_ACTION, async (_event, ...) => { ... })`. Services and shared state are reached through `bridge` (the [`IpcBridge`](file:///home/alun/sshs3/src/main/IpcBridge.ts) instance); `registerHandler` also runs the sender check (`assertTrustedSender`), so never call `ipcMain.handle` directly.
+   - A new domain gets its own `ipc/<domain>Handlers.ts` and one call in `IpcBridge.register()` (order matters only for the existing groups).
+
+   | Domain | File |
+   |---|---|
+   | Terminal sessions | `ipc/terminalHandlers.ts` |
+   | Smartcard / host key / FIDO2 prompts | `ipc/smartcardHandlers.ts` |
+   | Storage providers | `ipc/storageHandlers.ts` |
+   | Transfers, quit confirm | `ipc/transferHandlers.ts` |
+   | Saved profiles | `ipc/profileHandlers.ts` |
+   | Dotfile pools | `ipc/dotfileHandlers.ts` |
+   | Profile sync | `ipc/syncHandlers.ts` |
+   | Key install (ssh-copy-id) | `ipc/keyInstallHandlers.ts` |
+   | Connection tests | `ipc/connectionTestHandlers.ts` |
+   | Git | `ipc/gitHandlers.ts` |
+   | AWS SSO | `ipc/awsSsoHandlers.ts` |
+   | File editor / tail | `ipc/fileEditorHandlers.ts` |
+   | Search | `ipc/searchHandlers.ts` |
+   | Kubernetes, perf, tunnels | `ipc/k8sHandlers.ts` |
+   | Directory sync | `ipc/dirSyncHandlers.ts` |
+   | App, updates, X11, dialogs | `ipc/generalHandlers.ts` |
+   | Session, clipboard, snippets, settings | `ipc/appDataHandlers.ts` |
+   - State-free helpers shared by handlers live in `ipc/ipcHelpers.ts`; askpass prompt classification in `ssh/askpassPrompt.ts`.
+   - Not yet extracted from `IpcBridge.ts`: the smartcard/FIDO2 agent lifecycle (`getOrLoadGlobal*Agent`, startup unlock, `globalCards`) and the auto-sync methods. They share state with the handlers and with the tests, so they stay on the class until they get their own coordinator.
 4. **Renderer Usage**:
    - Access via `window.multissh.myAction(...)`.
 
