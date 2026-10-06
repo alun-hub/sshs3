@@ -68,6 +68,7 @@ import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardAgentLoader from '../../src/main/smartcard/SmartcardAgentLoader';
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
+import { fingerprintOfKeyBlob } from '../../src/main/ssh/AppAgent';
 import type { IStorageProvider, FileEntry } from '../../src/shared/types/storage';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -137,6 +138,7 @@ function makeFakeAppAgent() {
     lockAll: vi.fn().mockResolvedValue(undefined),
     shutdown: vi.fn().mockResolvedValue(undefined),
     writePublicKeyFiles: vi.fn().mockResolvedValue([]),
+    removeIdentities: vi.fn().mockResolvedValue(0),
     noteLoadedLibrary: vi.fn(),
   };
   return fake;
@@ -265,6 +267,8 @@ describe('IpcBridge', () => {
 
     fakeAppAgent = makeFakeAppAgent();
     (bridge as any).appAgent = fakeAppAgent;
+    // Never read the developer's real sync config when filtering a card's keys.
+    vi.spyOn(bridge.syncConfigStore, 'getConfig').mockResolvedValue({} as any);
     // The default ProfileSyncService would read/write the developer's real ~/.ssh/config.
     syncAgentBlockSpy = vi.fn().mockResolvedValue(undefined);
     (bridge as any).profileSyncService.syncAgentBlockToLocalSshConfig = syncAgentBlockSpy;
@@ -808,6 +812,7 @@ describe('IpcBridge', () => {
         validFrom: '2024-01-01',
         validTo: '2026-01-01',
         upn: 'test.user@example.com',
+        authCapable: true,
       };
 
       it('reads the certificate once when the card is loaded, then serves it from cache on every list call', async () => {
@@ -854,6 +859,83 @@ describe('IpcBridge', () => {
         }
 
         readCertsSpy.mockRestore();
+      });
+
+      describe('authentication-key filtering', () => {
+        const authDetails = { ...certDetails, fingerprint: 'SHA256:auth', authCapable: true };
+        const signDetails = { ...certDetails, fingerprint: 'SHA256:sign', authCapable: false };
+        const idFor = (fingerprint: string) => ({ bits: '256', fingerprint, comment: fingerprint, keyType: 'ECDSA' });
+
+        const loadWith = async (certs: Array<typeof authDetails>) => {
+          fakeAppAgent.addPkcs11.mockImplementation(async () => {
+            fakeAppAgent.identities = certs.map((c) => idFor(c.fingerprint));
+          });
+          const spy = vi
+            .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
+            .mockResolvedValue(new Map(certs.map((c) => [c.fingerprint, c])));
+          await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+          spy.mockRestore();
+        };
+
+        it('attributes only authentication-capable keys to the card and removes the rest from the agent', async () => {
+          await loadWith([authDetails, signDetails]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
+          expect(fakeAppAgent.removeIdentities).toHaveBeenCalledWith(['SHA256:sign']);
+          // Details of every certificate are still cached (UI/details unchanged).
+          expect((bridge as any).globalSmartcardCerts.get(pkcs11LibPath).size).toBe(2);
+        });
+
+        it('keeps everything, and removes nothing, when no certificate looks authentication-capable', async () => {
+          const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+          await loadWith([signDetails, { ...signDetails, fingerprint: 'SHA256:sign2' }]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+            new Set(['SHA256:sign', 'SHA256:sign2'])
+          );
+          expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
+          warn.mockRestore();
+        });
+
+        it('does not remove anything when every certificate is authentication-capable', async () => {
+          await loadWith([authDetails, { ...authDetails, fingerprint: 'SHA256:auth2' }]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+            new Set(['SHA256:auth', 'SHA256:auth2'])
+          );
+          expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
+        });
+
+        it('keeps the key linked for smartcard sync even when it is not authentication-capable', async () => {
+          const signBlob = Buffer.from('sign-key-blob');
+          const linkedFingerprint = fingerprintOfKeyBlob(signBlob);
+          vi.mocked(bridge.syncConfigStore.getConfig).mockResolvedValue({
+            smartcardSync: { pkcs11LibPath, keyBlobBase64: signBlob.toString('base64') },
+          } as any);
+
+          await loadWith([authDetails, { ...signDetails, fingerprint: linkedFingerprint }]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+            new Set(['SHA256:auth', linkedFingerprint])
+          );
+          expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
+        });
+
+        it('still filters when the sync config cannot be read', async () => {
+          vi.mocked(bridge.syncConfigStore.getConfig).mockRejectedValue(new Error('unreadable'));
+          await loadWith([authDetails, signDetails]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
+        });
+
+        it('lists only the card\'s authentication keys in the cached identities', async () => {
+          await loadWith([authDetails, signDetails]);
+          // The removal itself is best-effort; even if the signing key lingers in the agent it is not shown.
+          fakeAppAgent.identities = [idFor('SHA256:auth'), idFor('SHA256:sign')];
+
+          const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
+          expect(res.map((r: any) => r.identities.map((i: any) => i.fingerprint))).toEqual([['SHA256:auth']]);
+        });
       });
 
       it('does not load (or prompt for) a second module that exposes a card already in the agent', async () => {

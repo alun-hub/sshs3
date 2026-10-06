@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.26] - 2026-10-06
+
+### Changed
+- smartcards with several certificates (e.g. an authentication and a signing certificate on a PIV card) no longer leave every key in the app ssh-agent: only authentication-capable certificates (Key Usage `digitalSignature`, and Extended Key Usage `clientAuth`, smartcard logon or any, when present) are attributed to the card, listed in the cached smartcard identities menu and pinned with `IdentitiesOnly`; the other keys are removed from the app agent right after the card is unlocked (Linux/macOS; best effort). If no certificate looks authentication-capable, or the certificates cannot be read, all keys are kept as before, and the key linked for smartcard sync is never removed
+
 ## [0.96.25] - 2026-10-05
 
 ### Fixed

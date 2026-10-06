@@ -354,6 +354,72 @@ describe('AppAgent', () => {
     });
   });
 
+  describe('removeIdentities', () => {
+    const blobFor = (algo: string, tag: string) => {
+      const a = Buffer.from(algo);
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(a.length, 0);
+      return Buffer.concat([len, a, Buffer.from(tag)]);
+    };
+
+    unixIt('runs ssh-add -d with a public key file for each unwanted key only, then deletes the file', async () => {
+      const auth = blobFor('ecdsa-sha2-nistp256', 'auth');
+      const sign = blobFor('ecdsa-sha2-nistp256', 'sign');
+      vi.mocked(getAgentIdentities).mockResolvedValue([
+        { keyBlob: auth, comment: 'auth' },
+        { keyBlob: sign, comment: 'sign' },
+      ] as any);
+      const seen: Array<{ args: string[]; line: string; sock: string }> = [];
+      vi.mocked(mockedExecFile).mockImplementation(((...args: any[]) => {
+        const [cmd, argv, opts] = args;
+        if (cmd === 'ssh-add' && argv[0] === '-d') {
+          seen.push({ args: argv, line: fs.readFileSync(argv[1], 'utf8'), sock: opts.env.SSH_AUTH_SOCK });
+        }
+        args[args.length - 1](null, { stdout: '', stderr: '' });
+      }) as any);
+
+      const agent = new AppAgent();
+      const sock = await agent.ensure();
+      const removed = await agent.removeIdentities([fingerprintOfKeyBlob(sign)]);
+
+      expect(removed).toBe(1);
+      expect(seen).toHaveLength(1);
+      expect(seen[0].sock).toBe(sock);
+      expect(seen[0].line).toBe(`ecdsa-sha2-nistp256 ${sign.toString('base64')}\n`);
+      expect(fs.existsSync(seen[0].args[1])).toBe(false);
+    });
+
+    unixIt('keeps going and does not throw when one removal fails', async () => {
+      const a = blobFor('ssh-ed25519', 'a');
+      const b = blobFor('ssh-ed25519', 'b');
+      vi.mocked(getAgentIdentities).mockResolvedValue([
+        { keyBlob: a, comment: 'a' },
+        { keyBlob: b, comment: 'b' },
+      ] as any);
+      let calls = 0;
+      vi.mocked(mockedExecFile).mockImplementation(((...args: any[]) => {
+        calls++;
+        args[args.length - 1](calls === 1 ? new Error('agent refused operation') : null, { stdout: '', stderr: '' });
+      }) as any);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const agent = new AppAgent();
+      await agent.ensure();
+      await expect(agent.removeIdentities([fingerprintOfKeyBlob(a), fingerprintOfKeyBlob(b)])).resolves.toBe(1);
+      expect(calls).toBe(2);
+    });
+
+    unixIt('does nothing when the agent is not running, nothing is given, or on Windows', async () => {
+      const agent = new AppAgent();
+      expect(await agent.removeIdentities(['SHA256:x'])).toBe(0);
+      await agent.ensure();
+      expect(await agent.removeIdentities([])).toBe(0);
+      setPlatform('win32');
+      expect(await agent.removeIdentities(['SHA256:x'])).toBe(0);
+      expect(vi.mocked(mockedExecFile).mock.calls.some((c) => c[1]?.[0] === '-d')).toBe(false);
+    });
+  });
+
   unixIt('lists identities from the agent, and nothing before it started', async () => {
     const agent = new AppAgent();
     expect(await agent.list()).toEqual([]);

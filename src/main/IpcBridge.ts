@@ -1951,6 +1951,38 @@ export class IpcBridge {
   }
 
   /**
+   * Which of a card's certificates (by SSH fingerprint) this app may use and offer: the
+   * authentication-capable ones. Never an empty set while the card has certificates — if none look
+   * authentication-capable the heuristic is not trusted and every certificate is kept, as before. A key
+   * already linked for smartcard sync is always kept, since sync unlock must keep finding it.
+   */
+  private async selectAuthFingerprints(certs: Map<string, SmartcardCertificateDetails>): Promise<Set<string>> {
+    const auth = new Set<string>();
+    for (const [fingerprint, details] of certs) {
+      if (details.authCapable) auth.add(fingerprint);
+    }
+    if (auth.size === 0) {
+      if (certs.size > 0) {
+        console.warn('[smartcard] no authentication-capable certificate found on the card; keeping all of them');
+      }
+      return new Set(certs.keys());
+    }
+    const linkedKey = await this.linkedSyncKeyFingerprint();
+    if (linkedKey && certs.has(linkedKey)) auth.add(linkedKey);
+    return auth;
+  }
+
+  /** SSH fingerprint of the key linked for smartcard sync, if any. */
+  private async linkedSyncKeyFingerprint(): Promise<string | undefined> {
+    try {
+      const blob = (await this.syncConfigStore.getConfig()).smartcardSync?.keyBlobBase64;
+      return blob ? fingerprintOfKeyBlob(Buffer.from(blob, 'base64')) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Returns the app agent's socket after making sure the given PKCS#11 library's card is loaded into
    * it (prompting for the PIN once if it isn't). Concurrent callers for the same library share the
    * same in-flight load rather than each prompting separately.
@@ -2019,11 +2051,12 @@ export class IpcBridge {
       // would prompt for the PIN a second time and open a second PKCS#11 session against the same
       // token (which most readers reject), for keys the agent already holds.
       const alreadyLoaded = Array.from(certs.keys()).filter((fingerprint) => before.has(fingerprint));
+      const authFingerprints = await this.selectAuthFingerprints(certs);
       if (alreadyLoaded.length > 0) {
         console.log(
           `[smartcard] getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
         );
-        this.globalCards.set(pkcs11LibPath, { fingerprints: new Set(certs.keys()) });
+        this.globalCards.set(pkcs11LibPath, { fingerprints: authFingerprints });
         this.refreshAgentSshConfig();
         return await this.appAgent.ensure();
       }
@@ -2033,9 +2066,16 @@ export class IpcBridge {
         typeof sessionIdOrPinPrompt === 'string' ? sessionIdOrPinPrompt : undefined
       );
       const socketPath = await this.appAgent.ensure();
-      // Which keys are this card's: its certificates' fingerprints; if those couldn't be read, whatever
-      // this add contributed (excluding security keys, which belong to FIDO2).
-      const fingerprints = new Set(certs.keys());
+      // `ssh-add -s` loads every key the module exposes; drop the ones that must not be used or offered
+      // (signing, key management, …) now, rather than leaving them in the shared agent.
+      const unwanted = Array.from(certs.keys()).filter((fingerprint) => !authFingerprints.has(fingerprint));
+      if (unwanted.length > 0) {
+        const removed = await this.appAgent.removeIdentities(unwanted);
+        console.log(`[smartcard] ${pkcs11LibPath}: removed ${removed} of ${unwanted.length} non-authentication key(s) from the app agent`);
+      }
+      // Which keys are this card's: its authentication certificates' fingerprints; if the certificates
+      // couldn't be read, whatever this add contributed (excluding security keys, which belong to FIDO2).
+      const fingerprints = new Set(authFingerprints);
       if (fingerprints.size === 0) {
         const nonSecurityKeys = (await this.appAgent.list()).filter((i) => !/-SK$/i.test(i.keyType));
         for (const i of nonSecurityKeys) {

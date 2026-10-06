@@ -71,6 +71,7 @@ describe('SmartcardCertificateReader', () => {
       validFrom: '2026-01-01',
       validTo: '2027-01-01',
       fingerprint: 'SHA256:abc123test',
+      authCapable: true,
     });
 
     mockExecFile.mockImplementation((_file, _args, _options, cb) => {
@@ -92,6 +93,7 @@ describe('SmartcardCertificateReader', () => {
       validFrom: '2026-01-01',
       validTo: '2027-01-01',
       fingerprint: 'SHA256:multiline',
+      authCapable: true,
     });
 
     mockExecFile.mockImplementation((_file, _args, _options, cb) => {
@@ -133,6 +135,7 @@ describe('SmartcardCertificateReader', () => {
       validFrom: '2026-01-01',
       validTo: '2027-01-01',
       fingerprint: 'SHA256:survivor',
+      authCapable: true,
     });
 
     mockExecFile.mockImplementation((_file, _args, _options, cb) => {
@@ -192,6 +195,7 @@ Certificate Object, type = X.509 cert
       validFrom: '2026-01-01',
       validTo: '2027-01-01',
       fingerprint: 'SHA256:win123',
+      authCapable: true,
     });
 
     const certs = await readSmartcardCertificates('C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll');

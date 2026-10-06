@@ -285,6 +285,41 @@ export class AppAgent {
     return files;
   }
 
+  /**
+   * Evicts the agent keys with the given fingerprints (`ssh-add -d` with the key's public half), leaving
+   * every other key loaded. Used to drop keys a card contributed that must not be offered (e.g. signing
+   * certificates). Best-effort: returns how many were removed, and a failure for one key never stops the
+   * rest. Unix only — on Windows the agent is the shared system service and nothing is evicted here.
+   */
+  public async removeIdentities(fingerprints: Iterable<string>): Promise<number> {
+    const unwanted = new Set(fingerprints);
+    if (!this.socketPath || process.platform === 'win32' || unwanted.size === 0) return 0;
+
+    return (await this.runAdd(async ({ socketPath }) => {
+      const dir = path.join(resolveAppAgentDir(), 'keys');
+      await ensureSecureDir(path.dirname(dir));
+      await ensureSecureDir(dir);
+
+      let removed = 0;
+      for (const identity of await getAgentIdentities(socketPath)) {
+        if (!unwanted.has(fingerprintOfKeyBlob(identity.keyBlob))) continue;
+        const name = crypto.createHash('sha256').update(identity.keyBlob).digest('hex').slice(0, 32);
+        const file = path.join(dir, `remove-${name}.pub`);
+        const line = `${getKeyAlgorithm(identity.keyBlob)} ${identity.keyBlob.toString('base64')}\n`;
+        try {
+          await fs.promises.writeFile(file, line, { mode: 0o600 });
+          await execFileAsync('ssh-add', ['-d', file], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } });
+          removed++;
+        } catch (err) {
+          console.warn('[app-agent] could not remove an unwanted identity from the agent:', (err as Error).message);
+        } finally {
+          await fs.promises.rm(file, { force: true }).catch(() => {});
+        }
+      }
+      return removed;
+    })) as number;
+  }
+
   public async list(): Promise<AgentIdentity[]> {
     return this.socketPath ? listAgentIdentities(this.socketPath) : [];
   }

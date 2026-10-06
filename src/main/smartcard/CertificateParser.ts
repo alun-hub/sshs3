@@ -10,10 +10,23 @@ export interface SmartcardCertificateDetails {
   validTo: string;
   /** Microsoft UPN (User Principal Name) from the Subject Alternative Name extension, if present (common on PIV/CAC/SITHS cards). */
   upn?: string;
+  /**
+   * Whether the certificate may be used to authenticate (Key Usage digitalSignature and, if an Extended
+   * Key Usage is present, clientAuth / smartcard logon / anyEKU). False for signing-only (nonRepudiation),
+   * key-management and similar certificates, which must not be offered as SSH identities.
+   */
+  authCapable: boolean;
 }
 
 const SAN_OID = '2.5.29.17';
 const UPN_OID = '1.3.6.1.4.1.311.20.2.3';
+const KEY_USAGE_OID = '2.5.29.15';
+/** Extended Key Usage values that allow client authentication. */
+const AUTH_EKU_OIDS = new Set([
+  '1.3.6.1.5.5.7.3.2', // id-kp-clientAuth
+  '1.3.6.1.4.1.311.20.2.2', // Microsoft smartcard logon
+  '2.5.29.37.0', // anyExtendedKeyUsage
+]);
 
 // --- Minimal definite-length DER/BER TLV reader --------------------------------------------
 // X.509 certificates always use definite-length DER encoding, so a full BER parser isn't needed.
@@ -112,6 +125,52 @@ export function extractUpnFromCertificateDer(der: Buffer): string | undefined {
   return undefined;
 }
 
+/**
+ * Whether a certificate may be used for authentication. Node exposes only the Extended Key Usage list
+ * (as `keyUsage`), not the basic Key Usage bits, so the latter are decoded from the raw DER here.
+ * An absent extension places no restriction, and anything that cannot be decoded counts as capable:
+ * a parser problem must never hide a card's only usable key.
+ */
+export function isAuthCapableCertificate(x509: X509Certificate, der: Buffer): boolean {
+  try {
+    const keyUsageBits = readKeyUsageFirstByte(der);
+    // digitalSignature is bit 0, the most significant bit of the first byte.
+    if (keyUsageBits !== undefined && (keyUsageBits & 0x80) === 0) return false;
+    const eku = x509.keyUsage;
+    if (eku && eku.length > 0 && !eku.some((oid) => AUTH_EKU_OIDS.has(oid))) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+/** First content byte of the Key Usage BIT STRING, or undefined when the extension is absent. */
+function readKeyUsageFirstByte(der: Buffer): number | undefined {
+  const cert = readTlv(der, 0);
+  const tbs = readTlv(der, cert.start);
+  for (const field of iterateChildren(der, tbs.start, tbs.end)) {
+    if (field.tag !== 0xa3) continue; // [3] EXPLICIT extensions
+    const extSeq = readTlv(der, field.start);
+    for (const ext of iterateChildren(der, extSeq.start, extSeq.end)) {
+      const children = iterateChildren(der, ext.start, ext.end);
+      const oidTlv = children.next().value;
+      if (!oidTlv || oidTlv.tag !== 0x06) continue;
+      if (decodeOid(der, oidTlv.start, oidTlv.end) !== KEY_USAGE_OID) continue;
+
+      let valueTlv = children.next().value; // optional BOOLEAN critical, then OCTET STRING
+      if (valueTlv && valueTlv.tag === 0x01) valueTlv = children.next().value;
+      if (!valueTlv || valueTlv.tag !== 0x04) return undefined;
+
+      const bitString = readTlv(der, valueTlv.start);
+      // BIT STRING content: one "unused bits" octet, then the flag octets. An empty flag set grants nothing.
+      if (bitString.tag !== 0x03) throw new Error('malformed Key Usage');
+      return bitString.end - bitString.start > 1 ? der[bitString.start + 1] : 0;
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 // --- SSH fingerprint of a certificate's public key ------------------------------------------
 // Lets us match a certificate (read directly from the PKCS#11 token) back to the identity
 // `ssh-add -l` reports for the same key pair, without relying on CKA_ID/label conventions
@@ -192,6 +251,7 @@ export function parseCertificateDer(der: Buffer): SmartcardCertificateDetails | 
       validFrom: x509.validFrom,
       validTo: x509.validTo,
       upn: extractUpnFromCertificateDer(der),
+      authCapable: isAuthCapableCertificate(x509, der),
     };
   } catch {
     return undefined;
