@@ -2,6 +2,7 @@ import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from '../dir
 import { IPC_CHANNELS, type DirSyncComputeDiffOptions, type DirSyncApplyOptions } from '../../shared/types/ipc';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../../shared/types/dirsync';
 import type { IpcBridge } from '../IpcBridge';
+import { resolveDirSyncTargetRoot } from './ipcHelpers';
 
 export function registerDirSyncHandlers(bridge: IpcBridge): void {
   bridge.registerHandler(
@@ -19,7 +20,7 @@ export function registerDirSyncHandlers(bridge: IpcBridge): void {
         throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
       }
 
-      const targetRoot = bridge.resolveDirSyncTargetRoot(
+      const targetRoot = resolveDirSyncTargetRoot(
         options.sourcePath,
         targetProvider.type,
         options.targetPath
@@ -55,7 +56,7 @@ export function registerDirSyncHandlers(bridge: IpcBridge): void {
         throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
       }
 
-      const targetRoot = bridge.resolveDirSyncTargetRoot(
+      const targetRoot = resolveDirSyncTargetRoot(
         options.sourcePath,
         targetProvider.type,
         options.targetPath

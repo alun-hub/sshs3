@@ -3,6 +3,7 @@ import { ipcMain as electronIpcMain } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
+import { describeFido2StartupError, paneTreeHasAuthType } from './ipc/ipcHelpers';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
 import { assignHostAliases, type AgentHostEntry } from './services/SshNativeFileMerger';
@@ -13,7 +14,6 @@ import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReade
 import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { TransferQueue } from './transfer/TransferQueue';
-import { getBaseName, joinPaths } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
 import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
@@ -45,7 +45,7 @@ import { IPC_CHANNELS, type StorageConnectConfig, type HostKeyPromptEvent, type 
 import type { K8sActivePortForward } from '../shared/types/kubernetes';
 import type { DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type { SSHConnectionConfig, SSHPtyExitEvent, CachedSmartcardAgent, SSHActiveTunnel } from '../shared/types/ssh';
-import type { TransferProgress, SFTPConfig, StorageType } from '../shared/types/storage';
+import type { TransferProgress, SFTPConfig } from '../shared/types/storage';
 import type { ProfileSyncStatus } from '../shared/types/sync';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
@@ -1232,32 +1232,6 @@ export class IpcBridge {
     }
   }
 
-  /**
-   * 'agent-global' PIN caching + the opt-in "unlock at startup" setting: prompts
-   * for the smartcard PIN and loads it into the app-lifetime agent immediately,
-   * instead of waiting for the first connection that needs it — so by the time
-   * the user opens their first terminal (SSH or local shell) the card is
-   * already usable. Only acts when there's exactly one *unambiguous* card to
-   * unlock: if p11-kit (which itself proxies every other registered PKCS#11
-   * module — see the README's recommendation to prefer it) is among the
-   * detected libraries, it's used regardless of what else was also found,
-   * since e.g. p11-kit-proxy.so and opensc-pkcs11.so coexisting on the same
-   * system is normal and both ultimately reach the same physical token, not
-   * two different cards. Otherwise falls back to "exactly one candidate";
-   * with zero or several non-p11-kit candidates there's no single card to
-   * guess at, so it's left to the normal per-connection flow.
-   */
-  private paneTreeHasAuthType(node: unknown, authType: string): boolean {
-    if (!node || typeof node !== 'object') return false;
-    const n = node as Record<string, any>;
-    if (n.type === 'leaf') {
-      return n.config?.authType === authType;
-    }
-    if (Array.isArray(n.children)) {
-      return n.children.some((child) => this.paneTreeHasAuthType(child, authType));
-    }
-    return false;
-  }
 
   /**
    * 'agent-global' PIN caching + the opt-in "unlock at startup" setting: prompts
@@ -1350,8 +1324,8 @@ export class IpcBridge {
       const session = await this.sessionStore.getSession();
       if (session?.tabs) {
         for (const tab of session.tabs) {
-          if (this.paneTreeHasAuthType(tab.paneTree, 'fido2')) hasFido2 = true;
-          if (this.paneTreeHasAuthType(tab.paneTree, 'smartcard')) hasSmartcard = true;
+          if (paneTreeHasAuthType(tab.paneTree, 'fido2')) hasFido2 = true;
+          if (paneTreeHasAuthType(tab.paneTree, 'smartcard')) hasSmartcard = true;
         }
       }
     } catch {
@@ -1459,7 +1433,7 @@ export class IpcBridge {
           this.sendSmartcardStartupUnlockStatus({
             kind: 'fido2',
             status: 'error',
-            error: this.describeFido2StartupError(err),
+            error: describeFido2StartupError(err),
           });
         }
       }
@@ -1682,31 +1656,6 @@ export class IpcBridge {
     }
   }
 
-  /**
-   * `ssh-add -K` (load FIDO2 *resident/discoverable* credentials) reports "Provider \"internal\"
-   * returned failure -1" / "Unable to load resident keys: invalid format" whenever the
-   * authenticator's own CTAP2 stack returns FIDO_ERR_PIN_AUTH_BLOCKED — verified directly with
-   * `ssh-add -v -K`, which prints that exact libfido2 error code for this failure. That's a
-   * device-side safety lockout (CTAP2 blocks further PIN verification until the key is unplugged
-   * and reconnected, after a few failed/rapid PIN submissions in the current power cycle) — it is
-   * NOT the persistent PIN-retry counter (`ykman fido info` still showed all attempts remaining
-   * while this reproduced), so it is unrelated to whether the PIN typed was actually correct, and
-   * unplugging/reconnecting the key is the only way to clear it — retrying in-app cannot help.
-   */
-  private describeFido2StartupError(err: unknown): string {
-    const message = err instanceof Error ? err.message : String(err);
-    if (/provider "internal" returned failure -1/i.test(message) && /invalid format/i.test(message)) {
-      if (process.platform === 'win32') {
-        // The Linux-verified PIN_AUTH_BLOCKED cause above was not confirmed on Windows: the same
-        // message persisted after unplugging/reconnecting and entering the PIN once. Windows also
-        // blocks direct HID access to FIDO devices for non-elevated processes, which the built-in
-        // provider needs to enumerate resident keys — so don't claim a cause we haven't proven.
-        return 'Windows could not read the resident keys from the security key (ssh-add -K failed with "Provider internal returned failure -1"). If you already unplugged and reconnected the key and entered the PIN once, this is likely because reading resident credentials needs direct access to the device, which Windows only allows for an elevated (Administrator) process. Resident-key login may need sshs3 started as Administrator, or a key file instead.';
-      }
-      return 'This security key has temporarily blocked PIN verification (likely after a few failed or rapid attempts) and needs to be unplugged and reconnected before it will accept a PIN again. This is not a wrong PIN.';
-    }
-    return message;
-  }
 
   private sendSmartcardStartupUnlockStatus(event: {
     kind: 'smartcard' | 'fido2';
@@ -2133,23 +2082,6 @@ export class IpcBridge {
     this.getUpdateService().start();
   }
 
-  /**
-   * The target field always names an existing parent directory (so it stays
-   * browsable even when the eventual sync root doesn't exist yet); the
-   * source folder's own name is nested under it, mirroring how drag/drop
-   * copy (TRANSFER_ADD, above) and most file managers behave.
-   */
-  public resolveDirSyncTargetRoot(
-    sourcePath: string,
-    targetProviderType: StorageType,
-    targetParentPath: string
-  ): string {
-    const sourceBaseName = getBaseName(sourcePath);
-    if (!sourceBaseName) {
-      return targetParentPath;
-    }
-    return joinPaths(targetProviderType, targetParentPath, sourceBaseName);
-  }
 
   private setupEventListeners(): void {
     this.onPtyData = ({ sessionId, data }) => {
