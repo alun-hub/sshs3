@@ -399,14 +399,21 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       try {
         await this.client.rename(resolvedOld, resolvedNew);
       } catch (renameErr) {
-        // Standard SFTP v3 rename fails if destination exists.
-        // Attempt delete of destination and retry rename.
+        // Standard SFTP v3 rename fails if the destination exists. Move the destination aside
+        // rather than deleting it, so a second failure (e.g. the source vanished) can restore it.
+        const backup = `${resolvedNew}.sshs3-rename-${Date.now()}`;
         try {
-          await this.client.delete(resolvedNew);
-          await this.client.rename(resolvedOld, resolvedNew);
+          await this.client.rename(resolvedNew, backup);
         } catch {
-          throw renameErr;
+          throw renameErr; // No destination to replace: the original failure is the real one.
         }
+        try {
+          await this.client.rename(resolvedOld, resolvedNew);
+        } catch (retryErr) {
+          await this.client.rename(backup, resolvedNew).catch(() => {});
+          throw retryErr;
+        }
+        await this.client.delete(backup).catch(() => {});
       }
     });
   }

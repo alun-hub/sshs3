@@ -8,6 +8,17 @@ const MTIME_TOLERANCE_MS = 2000;
 export type ScanSide = 'source' | 'target';
 export type ScanProgressCallback = (side: ScanSide, filesCount: number, currentItem: string) => void;
 
+function isNotFoundError(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  if (e?.code === 'ENOENT' || e?.code === 'NoSuchKey' || e?.code === 2) return true;
+  return typeof e?.message === 'string' && /no such file|not found|does not exist|ENOENT|NoSuchKey/i.test(e.message);
+}
+
+/** True when `relativePath` is one of `skipped` or lies below one of them. */
+function isUnderSkipped(relativePath: string, skipped: string[]): boolean {
+  return skipped.some((p) => relativePath === p || relativePath.startsWith(`${p}/`));
+}
+
 /**
  * Recursively walks a directory tree via provider.list(), building a flat
  * Map<relativePath, FileEntry> keyed by POSIX-style relative path (relative
@@ -27,15 +38,20 @@ export async function buildTree(
     let entries: FileEntry[];
     try {
       entries = await provider.list(currentPath);
-    } catch {
+    } catch (err) {
       // The root not existing yet is normal (e.g. a brand-new nested sync
       // target) and shouldn't be reported as a problem — it's simply empty.
+      // Any other failure at the root (broken connection, permission denied)
+      // must abort: treating the tree as empty would make the other side look
+      // entirely new / entirely extraneous.
       // A subdirectory that *was* listed a moment ago failing to read
       // (permission denied, transient disappearance, etc.) is a real
       // anomaly, so only those get surfaced to the user as skipped.
-      if (!isRoot) {
-        skipped.push(relPrefix || currentPath);
+      if (isRoot) {
+        if (isNotFoundError(err)) return;
+        throw err;
       }
+      skipped.push(relPrefix || currentPath);
       return;
     }
 
@@ -51,7 +67,9 @@ export async function buildTree(
       state.count++;
       onScanProgress?.(state.count, relativePath);
 
-      if (entry.isDirectory) {
+      // Symlinked directories are listed but never followed: a link back to an ancestor
+      // would otherwise expand into phantom entries until the OS gives up (ELOOP).
+      if (entry.isDirectory && !entry.isSymlink) {
         await walk(childPath, relativePath, false);
       }
     }
@@ -98,6 +116,8 @@ export async function computeDiff(
     }
 
     if (!sourceEntry && targetEntry) {
+      // Under a source folder that could not be read this only means "unknown", not "extraneous".
+      if (isUnderSkipped(relativePath, skippedSource)) continue;
       entries.push({ relativePath, isDirectory: targetEntry.isDirectory, status: 'only-target', targetEntry });
       counts.onlyTarget++;
       continue;

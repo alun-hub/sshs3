@@ -553,18 +553,39 @@ describe('SFTPStorageProvider', () => {
       expect(mockRename).toHaveBeenCalledWith('/remote/old.txt', '/remote/new.txt');
     });
 
-    it('should delete destination and retry rename if rename fails due to existing file', async () => {
+    it('should move the destination aside, retry the rename, then delete the backup', async () => {
       mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
       mockRename
-        .mockRejectedValueOnce(new Error('Failure'))
-        .mockResolvedValueOnce('Successfully renamed');
+        .mockRejectedValueOnce(new Error('Failure')) // old -> new (destination exists)
+        .mockResolvedValueOnce('moved aside') // new -> backup
+        .mockResolvedValueOnce('Successfully renamed'); // old -> new
       mockDelete.mockResolvedValue('Successfully deleted');
       const provider = new SFTPStorageProvider(baseConfig);
 
       await provider.rename('/remote/old.txt', '/remote/new.txt');
 
-      expect(mockDelete).toHaveBeenCalledWith('/remote/new.txt');
-      expect(mockRename).toHaveBeenCalledTimes(2);
+      const backup = mockRename.mock.calls[1][1] as string;
+      expect(mockRename.mock.calls[1][0]).toBe('/remote/new.txt');
+      expect(backup).toMatch(/^\/remote\/new\.txt\.sshs3-rename-/);
+      expect(mockRename).toHaveBeenNthCalledWith(3, '/remote/old.txt', '/remote/new.txt');
+      expect(mockDelete).toHaveBeenCalledWith(backup);
+    });
+
+    it('should restore the destination when the retried rename also fails', async () => {
+      mockPosixRename.mockRejectedValue(new Error('Extension not supported'));
+      mockRename
+        .mockRejectedValueOnce(new Error('Failure'))
+        .mockResolvedValueOnce('moved aside')
+        .mockRejectedValueOnce(new Error('No such file'))
+        .mockResolvedValueOnce('restored');
+      mockDelete.mockResolvedValue('Successfully deleted');
+      const provider = new SFTPStorageProvider(baseConfig);
+
+      await expect(provider.rename('/remote/old.txt', '/remote/new.txt')).rejects.toThrow('No such file');
+
+      const backup = mockRename.mock.calls[1][1] as string;
+      expect(mockRename).toHaveBeenNthCalledWith(4, backup, '/remote/new.txt');
+      expect(mockDelete).not.toHaveBeenCalled();
     });
   });
 

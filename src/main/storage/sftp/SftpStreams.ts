@@ -162,7 +162,21 @@ export class SftpWriteStream extends Writable {
   }
 
   public override _final(callback: (error?: Error | null) => void): void {
-    void this.closeHandle().then(() => callback());
+    void (async () => {
+      try {
+        // A zero-byte stream never reaches _write, so the file would otherwise never be created.
+        if (!this.handle && !this.isOpening) {
+          this.handle = await this.protocol.open(this.remotePath, this.openFlags, {
+            mode: this.options?.mode,
+          });
+        }
+        await this.closeHandle();
+        callback();
+      } catch (err: any) {
+        await this.closeHandle();
+        callback(err);
+      }
+    })();
   }
 
   public override _destroy(err: Error | null, callback: (err?: Error | null) => void): void {

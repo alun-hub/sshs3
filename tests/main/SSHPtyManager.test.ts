@@ -579,6 +579,98 @@ describe('SSHPtyManager', () => {
 
       vi.useRealTimers();
     });
+
+    it('gives up after maxReconnectAttempts when each reconnected ssh dies right away', async () => {
+      vi.useFakeTimers();
+      const config: SSHConnectionConfig = {
+        id: 'sess-flap',
+        name: 'Flap',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+        autoReconnect: true,
+        maxReconnectAttempts: 2,
+        reconnectDelayMs: 50,
+      };
+      await manager.createSession(config);
+      const exitSpy = vi.fn();
+      manager.on('exit', exitSpy);
+
+      mockPtyInstances[0].emitExit(255);
+      await vi.advanceTimersByTimeAsync(60);
+      expect(mockPtyInstances).toHaveLength(2);
+      mockPtyInstances[1].emitExit(255);
+      await vi.advanceTimersByTimeAsync(60);
+      expect(mockPtyInstances).toHaveLength(3);
+      mockPtyInstances[2].emitExit(255);
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(60);
+      expect(mockPtyInstances).toHaveLength(3);
+
+      vi.useRealTimers();
+    });
+
+    it('restores the retry budget once a reconnected session has stayed up', async () => {
+      vi.useFakeTimers();
+      const config: SSHConnectionConfig = {
+        id: 'sess-stable',
+        name: 'Stable',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+        autoReconnect: true,
+        maxReconnectAttempts: 1,
+        reconnectDelayMs: 50,
+      };
+      await manager.createSession(config);
+      const exitSpy = vi.fn();
+      manager.on('exit', exitSpy);
+
+      mockPtyInstances[0].emitExit(255);
+      await vi.advanceTimersByTimeAsync(60);
+      await vi.advanceTimersByTimeAsync(31_000);
+      mockPtyInstances[1].emitExit(255);
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(mockPtyInstances).toHaveLength(3);
+      expect(exitSpy).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('emits exit when the reconnect spawn itself fails on the last attempt', async () => {
+      vi.useFakeTimers();
+      const config: SSHConnectionConfig = {
+        id: 'sess-spawnfail',
+        name: 'SpawnFail',
+        host: 'host.local',
+        username: 'tester',
+        authType: 'password',
+        autoReconnect: true,
+        maxReconnectAttempts: 2,
+        reconnectDelayMs: 50,
+      };
+      await manager.createSession(config);
+      const exitSpy = vi.fn();
+      manager.on('exit', exitSpy);
+
+      const ptyMod: any = await import('node-pty');
+      ptyMod.spawn.mockImplementationOnce(() => {
+        throw new Error('spawn failed');
+      });
+      ptyMod.spawn.mockImplementationOnce(() => {
+        throw new Error('spawn failed');
+      });
+
+      mockPtyInstances[0].emitExit(255);
+      await vi.advanceTimersByTimeAsync(60);
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
   });
 
   describe('createShellSession', () => {

@@ -91,6 +91,9 @@ export class InternalSSHPtySession implements SSHPtySession {
   private reconnecting: boolean = false;
   private reconnectAttempts: number = 0;
   private reconnectTimer?: NodeJS.Timeout;
+  private reconnectStableTimer?: NodeJS.Timeout;
+  /** A reconnected session must stay up this long before its retry budget is restored. */
+  private static readonly RECONNECT_STABLE_MS = 30_000;
 
   private scrollbackChunks: string[] = [];
   private scrollbackLength: number = 0;
@@ -156,6 +159,10 @@ export class InternalSSHPtySession implements SSHPtySession {
   }
 
   private handlePtyExit(event: { exitCode: number; signal?: number }): void {
+    if (this.reconnectStableTimer) {
+      clearTimeout(this.reconnectStableTimer);
+      this.reconnectStableTimer = undefined;
+    }
     const shouldReconnect =
       !this.disposed &&
       Boolean(this.config.autoReconnect) &&
@@ -181,7 +188,14 @@ export class InternalSSHPtySession implements SSHPtySession {
           const success = await this.manager.reconnectSession(this);
           if (success) {
             this.reconnecting = false;
-            this.reconnectAttempts = 0;
+            // A successful spawn is not a successful connection: ssh may exit seconds later
+            // (host still down). Only restore the retry budget once the session has stayed
+            // up, otherwise maxReconnectAttempts would never be reached.
+            this.reconnectStableTimer = setTimeout(() => {
+              this.reconnectAttempts = 0;
+              this.reconnectStableTimer = undefined;
+            }, InternalSSHPtySession.RECONNECT_STABLE_MS);
+            this.reconnectStableTimer.unref?.();
             const okMsg = `\r\n\x1b[32m[sshs3: reconnected successfully]\x1b[0m\r\n`;
             this.appendScrollback(okMsg);
             for (const listener of this.dataListeners) listener(okMsg);
@@ -193,18 +207,9 @@ export class InternalSSHPtySession implements SSHPtySession {
           // Fall through to retry or exit
         }
 
-        if (this.reconnectAttempts >= maxAttempts) {
-          this.reconnecting = false;
-          for (const listener of this.exitListeners) {
-            listener(event);
-          }
-          this.manager.emit('exit', {
-            sessionId: this.sessionId,
-            exitCode: event.exitCode,
-            signal: event.signal,
-          });
-          void this.cleanup();
-        }
+        // Spawn failed: count it as another dropped connection — retry, or give up and emit exit.
+        this.reconnecting = false;
+        this.handlePtyExit(event);
       }, delay);
       return;
     }
@@ -239,6 +244,10 @@ export class InternalSSHPtySession implements SSHPtySession {
   }
 
   public kill(signal?: string): void {
+    if (this.reconnectStableTimer) {
+      clearTimeout(this.reconnectStableTimer);
+      this.reconnectStableTimer = undefined;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
@@ -269,6 +278,10 @@ export class InternalSSHPtySession implements SSHPtySession {
 
   public dispose(): Promise<void> {
     if (this.cleanupPromise) return this.cleanupPromise;
+    if (this.reconnectStableTimer) {
+      clearTimeout(this.reconnectStableTimer);
+      this.reconnectStableTimer = undefined;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
@@ -477,7 +490,9 @@ export class SSHPtyManager extends EventEmitter {
     }
 
     const filteredConfig = this.withoutConflictingTunnels(config, session.sessionId);
-    const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig);
+    // Same ControlPath as the original connection, so features using the mux socket
+    // (`-S`: perf sampling, dotfiles sync) keep working after a reconnect.
+    const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, session.controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
     console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
 
