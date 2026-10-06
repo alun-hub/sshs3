@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   describeFido2StartupError,
   paneTreeHasAuthType,
@@ -38,9 +38,23 @@ describe('ipcHelpers', () => {
   });
 
   describe('describeFido2StartupError', () => {
-    it('explains the blocked-PIN case instead of showing the raw ssh-add message', () => {
-      const msg = describeFido2StartupError(new Error('Provider "internal" returned failure -1: invalid format'));
-      expect(msg).not.toMatch(/failure -1/);
+    const RAW = 'Provider "internal" returned failure -1: invalid format';
+    const setPlatform = (value: string) => Object.defineProperty(process, 'platform', { value, configurable: true });
+    const realPlatform = process.platform;
+    afterEach(() => setPlatform(realPlatform));
+
+    it('explains the blocked-PIN case on Linux instead of showing the raw ssh-add message', () => {
+      setPlatform('linux');
+      const msg = describeFido2StartupError(new Error(RAW));
+      expect(msg).not.toBe(RAW);
+      expect(msg).toMatch(/unplugged and reconnected/);
+    });
+
+    it('does not claim a cause it has not proven on Windows', () => {
+      setPlatform('win32');
+      const msg = describeFido2StartupError(new Error(RAW));
+      expect(msg).not.toBe(RAW);
+      expect(msg).toMatch(/Administrator/);
     });
 
     it('passes any other error message through', () => {
