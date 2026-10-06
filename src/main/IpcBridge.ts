@@ -1,25 +1,19 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
-import { ipcMain as electronIpcMain, dialog as electronDialog } from 'electron';
+import { ipcMain as electronIpcMain } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
-import { classifyAskpassPrompt, isPasswordPrompt } from './ssh/askpassPrompt';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
 import { assignHostAliases, type AgentHostEntry } from './services/SshNativeFileMerger';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
-import { applyWindowsAgentPathFix, getWindowsAgentPathStatus } from './smartcard/WindowsAgentPath';
 import { loadSmartcardIntoPrivateAgent, loadFido2ResidentKeysIntoPrivateAgent, pinPromptKind } from './smartcard/SmartcardAgentLoader';
-import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from './smartcard/Fido2KeyManager';
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './smartcard/AskpassServer';
 import { readSmartcardCertificates } from './smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from './smartcard/CertificateParser';
 import { StorageRegistry } from './storage/StorageRegistry';
 import { TransferQueue } from './transfer/TransferQueue';
-import { getBaseName, isDirectoryPath, pathExists, resolveNonConflictingPath, joinPaths } from './transfer/TransferPipeline';
+import { getBaseName, joinPaths } from './transfer/TransferPipeline';
 import { ProfileStore } from './profile/ProfileStore';
 import { SessionStore } from './session/SessionStore';
 import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
@@ -27,18 +21,13 @@ import { SnippetStore } from './snippets/SnippetStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
-import { installPublicKeys, probeHost, testLogin, verifyKeyLogin } from './ssh/KeyInstallService';
-import { listFilePublicKeys, listAgentPublicKeys, dedupeKeys } from './ssh/PublicKeyDiscovery';
-import { buildInstallCommand, parsePublicKeyLine } from './ssh/PublicKeyUtils';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
-import { defaultDotfileRemotePath } from '../shared/dotfilePath';
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
 import { K8sDiscoveryService } from './services/K8sDiscoveryService';
-import { loginWithToken } from './services/K8sAuthService';
 import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { SSHTunnelManager } from './services/SSHTunnelManager';
@@ -49,16 +38,15 @@ import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
-import { importSshConfigFile } from './services/SshConfigImporter';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
-import { encryptSecretValue, decryptSecretValue } from './crypto/SecretFieldCrypto';
+import { decryptSecretValue } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
 import { IPC_CHANNELS, type StorageConnectConfig, type HostKeyPromptEvent, type PresencePromptEvent, type PresenceClearEvent, type TransferConflictPromptEvent, type TransferConflictResolution, type QuitConfirmPromptEvent, type AskpassPromptKind } from '../shared/types/ipc';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult } from '../shared/types/kubernetes';
-import type { DotfilePool, DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
-import type { SSHConnectionConfig, PtyOptions, SSHPtyExitEvent, CachedSmartcardAgent, GenerateFido2KeyRequest, GeneratedFido2Key, Fido2ResidentKey, SSHTunnelConfig, SSHActiveTunnel, LocalPublicKey, ListPublicKeysRequest, InstallPublicKeysRequest, InstallPublicKeysResult, ProbeHostResult, TestLoginResult } from '../shared/types/ssh';
-import type { FileEntry, ObjectMetadata, TransferProgress, S3Config, S3Tag, BucketVersioningInfo, ObjectVersionEntry, SFTPConfig, StorageType } from '../shared/types/storage';
-import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
+import type { K8sActivePortForward } from '../shared/types/kubernetes';
+import type { DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
+import type { SSHConnectionConfig, SSHPtyExitEvent, CachedSmartcardAgent, SSHActiveTunnel } from '../shared/types/ssh';
+import type { TransferProgress, SFTPConfig, StorageType } from '../shared/types/storage';
+import type { ProfileSyncStatus } from '../shared/types/sync';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
@@ -67,6 +55,15 @@ import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerGeneralHandlers } from './ipc/generalHandlers';
 import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
 import { registerGitHandlers } from './ipc/gitHandlers';
+import { registerTerminalHandlers } from './ipc/terminalHandlers';
+import { registerSmartcardHandlers } from './ipc/smartcardHandlers';
+import { registerStorageHandlers } from './ipc/storageHandlers';
+import { registerTransferHandlers } from './ipc/transferHandlers';
+import { registerProfileHandlers } from './ipc/profileHandlers';
+import { registerDotfileHandlers } from './ipc/dotfileHandlers';
+import { registerK8sHandlers } from './ipc/k8sHandlers';
+import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
+import { registerSyncHandlers } from './ipc/syncHandlers';
 const DISPOSE_STEP_TIMEOUT_MS = 5000;
 
 interface PendingAskpassPrompt {
@@ -148,7 +145,7 @@ export class IpcBridge {
   public readonly k8sDiscoveryService: K8sDiscoveryService;
   public readonly k8sDebugService: K8sDebugService;
   public readonly k8sTerminalManager: K8sTerminalManager;
-  private readonly perfMetricsService: PerfMetricsService;
+  public readonly perfMetricsService: PerfMetricsService;
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
   public readonly sshTunnelManager: SSHTunnelManager;
@@ -156,15 +153,15 @@ export class IpcBridge {
   private confirmQuit: (() => Promise<boolean>) | undefined;
   public getWebContents: () => Electron.WebContents | null | undefined;
 
-  private pendingAskpass = new Map<string, PendingAskpassPrompt>();
-  private pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
-  private pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
-  private pendingQuitConfirms = new Map<string, PendingQuitConfirmPrompt>();
-  private pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
+  public pendingAskpass = new Map<string, PendingAskpassPrompt>();
+  public pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
+  public pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
+  public pendingQuitConfirms = new Map<string, PendingQuitConfirmPrompt>();
+  public pendingDotfilesSyncPrompts = new Map<string, PendingDotfilesSyncPrompt>();
   public pendingAwsSsoLogins = new Map<string, PendingAwsSsoLogin>();
   private handlers = new Set<string>();
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
-  private smartcardSessionAgents = new Map<
+  public smartcardSessionAgents = new Map<
     string,
     { pid: number; socketPath: string } & (
       | { kind: 'pkcs11'; pkcs11LibPath: string }
@@ -175,14 +172,14 @@ export class IpcBridge {
    * The one app-wide ssh-agent for 'agent-global' mode (see AppAgent): every unlocked smartcard and
    * FIDO2 key lives in it, so a local shell can use all of them through a single SSH_AUTH_SOCK.
    */
-  private appAgent = new AppAgent();
+  public appAgent = new AppAgent();
   /** pkcs11LibPath or '__fido2__' -> what that unlocked card/key contributed to the app agent (its key fingerprints), so keys can be attributed to a card. */
-  private globalCards = new Map<string, { fingerprints: Set<string> }>();
+  public globalCards = new Map<string, { fingerprints: Set<string> }>();
   private agentConfigRefresh: Promise<void> = Promise.resolve();
   /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each prompt separately. */
   private globalSmartcardAgentLoads = new Map<string, Promise<string>>();
   private globalSmartcardAgentFailures = new Map<string, number>();
-  private startupUnlockPromise?: Promise<void>;
+  public startupUnlockPromise?: Promise<void>;
   /**
    * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
    * global agent, instead of on every "cached smartcard identities" dropdown open. Re-reading on
@@ -336,17 +333,17 @@ export class IpcBridge {
   }
 
   public register(): void {
-    this.registerTerminalHandlers();
-    this.registerSmartcardHandlers();
-    this.registerStorageHandlers();
-    this.registerTransferHandlers();
-    this.registerProfileHandlers();
-    this.registerDotfileHandlers();
+    registerTerminalHandlers(this);
+    registerSmartcardHandlers(this);
+    registerStorageHandlers(this);
+    registerTransferHandlers(this);
+    registerProfileHandlers(this);
+    registerDotfileHandlers(this);
     registerSessionHandlers(this);
     registerClipboardHistoryHandlers(this);
     registerSnippetHandlers(this);
     registerSettingsHandlers(this);
-    this.registerSyncHandlers();
+    registerSyncHandlers(this);
     void this.syncConfigStore
       .getConfig()
       .then((config) => {
@@ -356,14 +353,14 @@ export class IpcBridge {
       })
       .catch(() => {});
     registerConnectionTestHandlers(this);
-    this.registerKeyInstallHandlers();
+    registerKeyInstallHandlers(this);
     registerGitHandlers(this);
     registerAwsSsoHandlers(this);
     registerFileEditorHandlers(this);
     registerSearchHandlers(this);
     registerGeneralHandlers(this);
     registerDirSyncHandlers(this);
-    this.registerK8sHandlers();
+    registerK8sHandlers(this);
     this.setupEventListeners();
 
     if (process.platform === 'win32') {
@@ -412,229 +409,6 @@ export class IpcBridge {
       return handler(event, ...args);
     });
     this.handlers.add(channel);
-  }
-
-  private registerTerminalHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.TERMINAL_CREATE,
-      async (
-        _event,
-        options: { config?: SSHConnectionConfig; local?: boolean; ptyOptions?: PtyOptions }
-      ) => {
-        if (!options || (!options.config && !options.local)) {
-          throw new Error('Connection config is required to create terminal');
-        }
-
-        if (this.startupUnlockPromise) {
-          try {
-            await this.startupUnlockPromise;
-          } catch {
-            // Ignore error; terminal session proceeds and prompts if needed
-          }
-        }
-
-        let config = options.config;
-        if (!options.local && config) {
-          config = await this.restoreSavedSecrets(config);
-          config = await this.resolveProxyJumpConfig(config);
-          config = await this.prepareSmartcardConfig(config);
-          config = await this.prepareFido2Config(config);
-
-          if (config.x11Forwarding && process.platform === 'win32') {
-            try {
-              const settings = await this.settingsStore.getSettings();
-              if (settings.x11ServerMode !== 'manual') {
-                await XServerManager.ensureRunning({
-                  customPath: settings.x11ServerPath,
-                  customArgs: settings.x11ServerArgs,
-                  display: config.x11Display,
-                });
-              }
-            } catch {
-              // Ignore failure to launch X server; SSH will still connect
-            }
-          }
-        }
-
-        let ptyOptions = options.ptyOptions;
-        if (options.local) {
-          const settings = await this.settingsStore.getSettings().catch(() => null);
-          const agentMode = settings?.localTerminalAgentMode ?? 'auto';
-          if (agentMode === 'auto' || agentMode === 'app-managed') {
-            const globalAgentSocket = await this.resolveLocalShellAgentSocket(settings?.smartcardAuthMode);
-            if (globalAgentSocket) {
-              ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
-            }
-          }
-        }
-
-        const session = options.local
-          ? await this.sshPtyManager.createShellSession(ptyOptions)
-          : await this.sshPtyManager.createSession(config!, ptyOptions);
-
-        if (!options.local && config) {
-          // Fire-and-forget: never let the dotfiles check delay or fail the
-          // terminal session itself, and give the PTY a moment to become
-          // interactive before a second connection competes for the network.
-          const resolvedConfig = config;
-          const sessionId = session.sessionId;
-          setTimeout(() => {
-            void this.runDotfilesSyncCheck(sessionId, resolvedConfig).catch(() => {});
-          }, 1500);
-        }
-
-        return { sessionId: session.sessionId };
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.TERMINAL_WRITE,
-      async (_event, sessionId: string, data: string) => {
-        this.sshPtyManager.write(sessionId, data);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.TERMINAL_RESIZE,
-      async (_event, sessionId: string, cols: number, rows: number) => {
-        this.sshPtyManager.resize(sessionId, cols, rows);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.TERMINAL_KILL,
-      async (_event, sessionId: string) => {
-        this.sshPtyManager.kill(sessionId);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.TERMINAL_RECONNECT,
-      async (_event, sessionId: string) => {
-        const session = this.sshPtyManager.getSession(sessionId);
-        if (session && session.reconnect) {
-          return await session.reconnect();
-        }
-        return false;
-      }
-    );
-  }
-
-  private registerSmartcardHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_DETECT, async () => {
-      return await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
-    });
-
-    // Only modules the app itself detected may be acted on: the fix edits the *system* PATH, so an
-    // arbitrary renderer-supplied path must never reach it.
-    const requireDetectedLib = async (libPath: string): Promise<string> => {
-      const detected = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
-      const match = detected.find((l) => l.path.toLowerCase() === String(libPath).toLowerCase());
-      if (!match) throw new Error('Not a detected smartcard library.');
-      return match.path;
-    };
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_AGENT_PATH_STATUS, async (_event, libPath: string) => {
-      if (process.platform !== 'win32') return { applicable: false, needsFix: false };
-      try {
-        return await getWindowsAgentPathStatus(await requireDetectedLib(libPath));
-      } catch {
-        return { applicable: false, needsFix: false };
-      }
-    });
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_AGENT_PATH_FIX, async (_event, libPath: string) => {
-      const libDir = path.dirname(await requireDetectedLib(libPath));
-      await applyWindowsAgentPathFix(libDir);
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.SMARTCARD_VALIDATE,
-      async (_event, libPath: string) => {
-        const valid = await SmartcardDetector.validateLibraryPath(libPath);
-        if (valid) {
-          return { valid: true };
-        }
-        return { valid: false, error: 'Library file not found or invalid' };
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.ASKPASS_SUBMIT_PIN,
-      async (_event, id: string, pin: string) => {
-        const prompt = this.pendingAskpass.get(id);
-        if (!prompt) {
-          throw new Error(`Askpass prompt with id "${id}" not found or expired`);
-        }
-        this.pendingAskpass.delete(id);
-        prompt.callback(pin);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_LOCK_ALL, async () => {
-      return { locked: await this.lockAllGlobalSmartcardAgents() };
-    });
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_LIST_CACHED, async () => {
-      return this.listGlobalSmartcardAgents();
-    });
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP, async () => {
-      return this.maybeUnlockSmartcardAtStartup();
-    });
-
-    this.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW, async () => {
-      return this.maybeUnlockSmartcardAtStartup({ force: true });
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.HOSTKEY_RESPOND,
-      async (_event, id: string, trust: boolean) => {
-        const prompt = this.pendingHostKeyPrompts.get(id);
-        if (!prompt) {
-          throw new Error(`Host key prompt with id "${id}" not found or expired`);
-        }
-        this.pendingHostKeyPrompts.delete(id);
-        prompt.callback(Boolean(trust));
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FIDO2_GENERATE_KEY,
-      async (_event, options: GenerateFido2KeyRequest): Promise<GeneratedFido2Key> => {
-        const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
-          undefined,
-          'Touch your security key to authorize the new SSH key'
-        );
-        return generateFido2Key({
-          ...options,
-          promptHandler: (prompt) => this.promptForPinDirect(prompt, 'fido2'),
-          onPresenceRequested,
-          onPresenceCleared,
-        });
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FIDO2_LIST_RESIDENT_KEYS,
-      async (): Promise<Fido2ResidentKey[]> => {
-        const { onPresenceRequested, onPresenceCleared } = this.makePresenceNotifier(
-          undefined,
-          'Touch your security key to read its stored SSH keys'
-        );
-        return listFido2ResidentKeys(
-          (prompt) => this.promptForPinDirect(prompt, 'fido2'),
-          { onPresenceRequested, onPresenceCleared }
-        );
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.FIDO2_DELETE_RESIDENT_KEY,
-      async (_event, credentialId: string): Promise<void> => {
-        return deleteFido2ResidentKey(credentialId, (prompt) => this.promptForPinDirect(prompt, 'fido2'));
-      }
-    );
   }
 
   /**
@@ -703,7 +477,7 @@ export class IpcBridge {
    * directly, so the banner appears consistently regardless of which flow
    * (interactive connect, background sync, vault unlock/link) triggered it.
    */
-  private loadSmartcardIntoPrivateAgentWithPresence(
+  public loadSmartcardIntoPrivateAgentWithPresence(
     pkcs11LibPath: string,
     promptHandler: AskpassPromptHandler,
     sessionId?: string
@@ -722,7 +496,7 @@ export class IpcBridge {
    * key/card — PIV smartcards (`loadSmartcardIntoPrivateAgentWithPresence`)
    * and FIDO2 resident-key discovery/generation alike.
    */
-  private makePresenceNotifier(
+  public makePresenceNotifier(
     sessionId: string | undefined,
     message: string
   ): { onPresenceRequested: () => void; onPresenceCleared: () => void } {
@@ -797,235 +571,7 @@ export class IpcBridge {
     });
   }
 
-  private registerStorageHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_CONNECT,
-      async (_event, config: StorageConnectConfig) => {
-        let resolvedConfig = config;
-        if (config.type === 'sftp' && this.startupUnlockPromise) {
-          try {
-            await this.startupUnlockPromise;
-          } catch {
-            // Ignore startup unlock errors during background connect
-          }
-        }
-        if (config.type === 'sftp' && config.sftpConfig && !this.storageRegistry.has(config.id)) {
-          let sftpConfig = await this.resolveProxyJumpConfig(config.sftpConfig);
-          sftpConfig = await this.prepareSftpSmartcardConfig(sftpConfig, config.id);
-          sftpConfig = await this.prepareFido2SftpConfig(sftpConfig, config.id);
-          resolvedConfig = { ...config, sftpConfig };
-        }
-        await this.storageRegistry.getOrCreate(resolvedConfig);
-        return { id: config.id };
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_DISCONNECT,
-      async (_event, providerId: string) => {
-        await this.storageRegistry.disconnect(providerId);
-        this.cleanupSmartcardSessionAgent(providerId);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_LIST,
-      async (_event, providerId: string, remotePath: string, force?: boolean): Promise<FileEntry[]> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        return await (provider as any).list(remotePath, { force });
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_STAT,
-      async (_event, providerId: string, remotePath: string): Promise<FileEntry> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        return await provider.stat(remotePath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_CREATE_FOLDER,
-      async (_event, providerId: string, remotePath: string): Promise<void> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        await provider.createFolder(remotePath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_DELETE,
-      async (_event, providerId: string, remotePath: string, isDirectory: boolean): Promise<void> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        await provider.delete(remotePath, isDirectory);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_RENAME,
-      async (_event, providerId: string, oldPath: string, newPath: string): Promise<void> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        await provider.rename(oldPath, newPath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_CHMOD,
-      async (_event, providerId: string, remotePath: string, mode: number | string): Promise<void> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        if (typeof provider.chmod !== 'function') {
-          throw new Error(`Storage provider "${providerId}" does not support chmod`);
-        }
-        await provider.chmod(remotePath, mode);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_SET_METADATA,
-      async (_event, providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        if (typeof provider.setMetadata !== 'function') {
-          throw new Error(`Storage provider "${providerId}" does not support metadata updates`);
-        }
-        await provider.setMetadata(remotePath, metadata);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_TAGS,
-      async (_event, providerId: string, remotePath: string): Promise<S3Tag[]> => {
-        const provider = this.requireS3Capability(providerId, 'getTags');
-        return await provider.getTags!(remotePath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_SET_TAGS,
-      async (_event, providerId: string, remotePath: string, tags: S3Tag[]): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'setTags');
-        await provider.setTags!(remotePath, tags);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_BUCKET_POLICY,
-      async (_event, providerId: string, bucketPath: string): Promise<string | null> => {
-        const provider = this.requireS3Capability(providerId, 'getBucketPolicy');
-        return await provider.getBucketPolicy!(bucketPath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_SET_BUCKET_POLICY,
-      async (_event, providerId: string, bucketPath: string, policy: string | null): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'setBucketPolicy');
-        await provider.setBucketPolicy!(bucketPath, policy);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_BUCKET_CORS,
-      async (_event, providerId: string, bucketPath: string): Promise<string | null> => {
-        const provider = this.requireS3Capability(providerId, 'getBucketCors');
-        return await provider.getBucketCors!(bucketPath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_SET_BUCKET_CORS,
-      async (_event, providerId: string, bucketPath: string, corsJson: string | null): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'setBucketCors');
-        await provider.setBucketCors!(bucketPath, corsJson);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_BUCKET_VERSIONING,
-      async (_event, providerId: string, bucketPath: string): Promise<BucketVersioningInfo> => {
-        const provider = this.requireS3Capability(providerId, 'getBucketVersioning');
-        return await provider.getBucketVersioning!(bucketPath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_SET_BUCKET_VERSIONING,
-      async (_event, providerId: string, bucketPath: string, enabled: boolean): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'setBucketVersioning');
-        await provider.setBucketVersioning!(bucketPath, enabled);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_LIST_OBJECT_VERSIONS,
-      async (_event, providerId: string, remotePath: string): Promise<ObjectVersionEntry[]> => {
-        const provider = this.requireS3Capability(providerId, 'listObjectVersions');
-        return await provider.listObjectVersions!(remotePath);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_DELETE_OBJECT_VERSION,
-      async (_event, providerId: string, remotePath: string, versionId: string): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'deleteObjectVersion');
-        await provider.deleteObjectVersion!(remotePath, versionId);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_RESTORE_OBJECT_VERSION,
-      async (_event, providerId: string, remotePath: string, versionId: string): Promise<void> => {
-        const provider = this.requireS3Capability(providerId, 'restoreObjectVersion');
-        await provider.restoreObjectVersion!(remotePath, versionId);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_PRESIGNED_URL,
-      async (_event, providerId: string, remotePath: string, expiresInSeconds: number): Promise<string> => {
-        const provider = this.requireS3Capability(providerId, 'getPresignedUrl');
-        return await provider.getPresignedUrl!(remotePath, expiresInSeconds);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.STORAGE_GET_HOMEDIR,
-      async (_event, providerId: string): Promise<string> => {
-        const provider = this.storageRegistry.get(providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${providerId}`);
-        }
-        if (typeof provider.getHomeDir === 'function') {
-          return await provider.getHomeDir();
-        }
-        if (provider.type === 'local') {
-          return os.homedir();
-        }
-        return '/';
-      }
-    );
-  }
-
-  private requireS3Capability<K extends keyof import('../shared/types/storage').IStorageProvider>(
+  public requireS3Capability<K extends keyof import('../shared/types/storage').IStorageProvider>(
     providerId: string,
     capability: K
   ): import('../shared/types/storage').IStorageProvider {
@@ -1037,422 +583,6 @@ export class IpcBridge {
       throw new Error(`Storage provider "${providerId}" does not support "${String(capability)}"`);
     }
     return provider;
-  }
-
-  private registerTransferHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.TRANSFER_ADD,
-      async (
-        _event,
-        options: {
-          sourceProviderId: string;
-          sourcePath: string;
-          targetProviderId: string;
-          targetPath: string;
-          conflictPolicy?: TransferConflictResolution;
-          verifyIntegrity?: boolean;
-          verifyChecksum?: boolean | 'sha256' | 'md5';
-          expectedChecksum?: string;
-        }
-      ): Promise<{
-        jobId: string | null;
-        skipped?: boolean;
-        resolvedPolicy?: TransferConflictResolution;
-        appliedToAll?: boolean;
-      }> => {
-        if (!options?.sourceProviderId || !options?.targetProviderId) {
-          throw new Error('sourceProviderId and targetProviderId are required for transfer');
-        }
-        const sourceProvider = this.storageRegistry.get(options.sourceProviderId);
-        if (!sourceProvider) {
-          throw new Error(`Source storage provider not found: ${options.sourceProviderId}`);
-        }
-        const targetProvider = this.storageRegistry.get(options.targetProviderId);
-        if (!targetProvider) {
-          throw new Error(`Target storage provider not found: ${options.targetProviderId}`);
-        }
-
-        let isDirectory = false;
-        let totalBytes: number | undefined;
-        try {
-          const srcStat = await sourceProvider.stat(options.sourcePath);
-          isDirectory = Boolean(srcStat.isDirectory);
-          totalBytes = srcStat.size;
-        } catch {
-          // ignore error if stat not available
-        }
-
-        let resolvedTargetPath = options.targetPath;
-        const sourceBaseName = getBaseName(options.sourcePath);
-        if (sourceBaseName && (await isDirectoryPath(targetProvider, resolvedTargetPath))) {
-          resolvedTargetPath = joinPaths(targetProvider.type, resolvedTargetPath, sourceBaseName);
-        }
-
-        let resolvedPolicy: TransferConflictResolution | undefined;
-        let appliedToAll = false;
-
-        if (await pathExists(targetProvider, resolvedTargetPath)) {
-          const requestedPolicy = options.conflictPolicy ?? 'ask';
-          if (requestedPolicy === 'ask') {
-            const response = await this.promptTransferConflict({
-              sourcePath: options.sourcePath,
-              targetPath: resolvedTargetPath,
-              fileName: sourceBaseName || resolvedTargetPath,
-              isDirectory,
-            });
-            resolvedPolicy = response.resolution;
-            appliedToAll = response.applyToAll;
-          } else {
-            resolvedPolicy = requestedPolicy;
-          }
-
-          if (resolvedPolicy === 'skip') {
-            return { jobId: null, skipped: true, resolvedPolicy, appliedToAll };
-          }
-          if (resolvedPolicy === 'rename') {
-            resolvedTargetPath = await resolveNonConflictingPath(
-              targetProvider,
-              targetProvider.type,
-              resolvedTargetPath
-            );
-          }
-          // 'overwrite' proceeds with resolvedTargetPath unchanged.
-        }
-
-        const settings = await this.settingsStore.getSettings();
-        const verifyIntegrity = options.verifyIntegrity ?? settings.verifyTransferIntegrity ?? true;
-
-        const job = this.transferQueue.addJob({
-          sourceProvider,
-          sourcePath: options.sourcePath,
-          targetProvider,
-          targetPath: resolvedTargetPath,
-          isDirectory,
-          totalBytes,
-          verifyIntegrity,
-          verifyChecksum: options.verifyChecksum,
-          expectedChecksum: options.expectedChecksum,
-        });
-
-        return { jobId: job.id, resolvedPolicy, appliedToAll };
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND,
-      async (_event, id: string, resolution: TransferConflictResolution, applyToAll: boolean) => {
-        const prompt = this.pendingTransferConflicts.get(id);
-        if (!prompt) {
-          throw new Error(`Transfer conflict prompt with id "${id}" not found or expired`);
-        }
-        this.pendingTransferConflicts.delete(id);
-        prompt.callback(resolution, Boolean(applyToAll));
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.QUIT_CONFIRM_RESPOND,
-      async (_event, id: string, proceed: boolean) => {
-        const prompt = this.pendingQuitConfirms.get(id);
-        if (!prompt) {
-          throw new Error(`Quit confirm prompt with id "${id}" not found or expired`);
-        }
-        this.pendingQuitConfirms.delete(id);
-        prompt.callback(Boolean(proceed));
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.TRANSFER_PAUSE, async (_event, jobId: string) => {
-      this.transferQueue.pauseJob(jobId);
-    });
-
-    this.registerHandler(IPC_CHANNELS.TRANSFER_RESUME, async (_event, jobId: string) => {
-      this.transferQueue.resumeJob(jobId);
-    });
-
-    this.registerHandler(IPC_CHANNELS.TRANSFER_CANCEL, async (_event, jobId: string) => {
-      this.transferQueue.cancelJob(jobId);
-    });
-
-    this.registerHandler(IPC_CHANNELS.TRANSFER_GET_JOBS, async (): Promise<TransferProgress[]> => {
-      return this.transferQueue.getJobs().map((j) => j.progress);
-    });
-
-    this.registerHandler(IPC_CHANNELS.TRANSFER_CLEAR_COMPLETED, async (): Promise<void> => {
-      this.transferQueue.clearCompleted();
-    });
-  }
-
-  private registerProfileHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.PROFILES_GET, async () => {
-      return await this.profileStore.getProfiles();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_SAVE_SSH,
-      async (_event, config: SSHConnectionConfig) => {
-        await this.profileStore.saveSSH(config);
-        // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
-        await this.storageRegistry.disconnect?.(`sftp-${config.id}`);
-        this.scheduleAutoSync();
-        void this.profileSyncService.autoSyncLocalSshConfig();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_DELETE_SSH,
-      async (_event, id: string) => {
-        await this.profileStore.deleteSSH(id);
-        await this.storageRegistry.disconnect?.(`sftp-${id}`);
-        this.scheduleAutoSync();
-        void this.profileSyncService.autoSyncLocalSshConfig();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_SAVE_S3,
-      async (_event, config: S3Config) => {
-        await this.profileStore.saveS3(config);
-        // The file manager caches one live provider per profile id; drop it so the next connect uses the edited settings.
-        await this.storageRegistry.disconnect?.(`s3-${config.id}`);
-        this.scheduleAutoSync();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_DELETE_S3,
-      async (_event, id: string) => {
-        await this.profileStore.deleteS3(id);
-        await this.storageRegistry.disconnect?.(`s3-${id}`);
-        this.scheduleAutoSync();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_SAVE_FOLDER,
-      async (_event, name: string) => {
-        await this.profileStore.saveFolder(name);
-        this.scheduleAutoSync();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_DELETE_FOLDER,
-      async (_event, name: string, deleteProfiles?: boolean) => {
-        await this.profileStore.deleteFolder(name, Boolean(deleteProfiles));
-        this.scheduleAutoSync();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_RENAME_FOLDER,
-      async (_event, oldName: string, newName: string) => {
-        await this.profileStore.renameFolder(oldName, newName);
-        this.scheduleAutoSync();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_IMPORT_SSH_CONFIG,
-      async () => {
-        // No caller-supplied path (H4, code review): always the real
-        // ~/.ssh/config, never an arbitrary path an untrusted renderer
-        // could name.
-        return await importSshConfigFile();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_EXPORT_JSON,
-      async () => {
-        // Always resolved via the save dialog (H4, code review) — never a
-        // caller-supplied path, which would let an untrusted renderer
-        // overwrite an arbitrary file on disk.
-        const dateStr = new Date().toISOString().slice(0, 10);
-        const result = await electronDialog.showSaveDialog({
-          title: 'Export Profiles',
-          defaultPath: `sshs3-profiles-${dateStr}.json`,
-          filters: [{ name: 'JSON Files', extensions: ['json'] }],
-        });
-        if (result.canceled || !result.filePath) return null;
-        const exportPath = result.filePath;
-
-        const profiles = await this.profileStore.getProfiles();
-        const exportData = {
-          version: 1,
-          exportedAt: new Date().toISOString(),
-          folders: profiles.folders || [],
-          ssh: profiles.ssh.map((p) => {
-            const { password: _pw, passphrase: _pp, ...rest } = p;
-            if (rest.proxy && 'password' in rest.proxy) {
-              const { password: _proxyPw, ...proxyRest } = rest.proxy;
-              return { ...rest, proxy: proxyRest };
-            }
-            return rest;
-          }),
-          s3: profiles.s3.map((p) => {
-            const { secretAccessKey: _sec, sessionToken: _tok, ...rest } = p;
-            if (rest.proxy && 'password' in rest.proxy) {
-              const { password: _proxyPw, ...proxyRest } = rest.proxy;
-              return { ...rest, proxy: proxyRest };
-            }
-            return rest;
-          }),
-        };
-
-        await fs.writeFile(exportPath, JSON.stringify(exportData, null, 2), 'utf-8');
-        return { count: profiles.ssh.length + profiles.s3.length, filePath: exportPath };
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILES_IMPORT_JSON,
-      async () => {
-        // Always resolved via the open dialog (H4, code review) — never a
-        // caller-supplied path, which would let an untrusted renderer read
-        // an arbitrary file on disk and have it parsed/merged as profiles.
-        const result = await electronDialog.showOpenDialog({
-          title: 'Import Profiles JSON',
-          filters: [{ name: 'JSON Files', extensions: ['json'] }],
-          properties: ['openFile'],
-        });
-        if (result.canceled || result.filePaths.length === 0) return { count: 0 };
-        const importPath = result.filePaths[0];
-
-        const content = await fs.readFile(importPath, 'utf-8');
-        const parsed = JSON.parse(content);
-        const sshList = Array.isArray(parsed.ssh) ? parsed.ssh : [];
-        const s3List = Array.isArray(parsed.s3) ? parsed.s3 : [];
-        const foldersList = Array.isArray(parsed.folders) ? parsed.folders : [];
-
-        let count = 0;
-        for (const f of foldersList) {
-          if (typeof f === 'string' && f.trim()) {
-            await this.profileStore.saveFolder(f.trim()).catch(() => {});
-          }
-        }
-        for (const ssh of sshList) {
-          if (ssh && typeof ssh === 'object' && ssh.host) {
-            const id = ssh.id || crypto.randomUUID();
-            await this.profileStore.saveSSH({ ...ssh, id });
-            count++;
-          }
-        }
-        for (const s3 of s3List) {
-          if (s3 && typeof s3 === 'object' && s3.name) {
-            const id = s3.id || crypto.randomUUID();
-            await this.profileStore.saveS3({ ...s3, id });
-            count++;
-          }
-        }
-
-        this.scheduleAutoSync();
-        if (sshList.length > 0) {
-          void this.profileSyncService.autoSyncLocalSshConfig();
-        }
-        return { count };
-      }
-    );
-  }
-
-  private registerDotfileHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_GET, async (): Promise<DotfilePool[]> => {
-      return await this.dotfilePoolStore.getPools();
-    });
-
-    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_SAVE, async (_event, pool: DotfilePool) => {
-      await this.dotfilePoolStore.savePool(pool);
-      this.scheduleAutoSync();
-    });
-
-    this.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_DELETE, async (_event, id: string) => {
-      await this.dotfilePoolStore.deletePool(id);
-      this.scheduleAutoSync();
-    });
-
-    this.registerHandler(IPC_CHANNELS.DOTFILES_OPEN_FOLDER, async (_event, poolId: string) => {
-      return await this.dotfilePoolStore.openPoolFolder(poolId);
-    });
-
-    this.registerHandler(IPC_CHANNELS.DOTFILES_SELECT_FILES, async () => {
-      const result = await electronDialog.showOpenDialog({
-        title: 'Select files to add to the pool',
-        defaultPath: os.homedir(),
-        properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
-      });
-      if (result.canceled || result.filePaths.length === 0) {
-        return [];
-      }
-      return await this.dotfilePoolStore.importLocalFiles(result.filePaths);
-    });
-
-    // Re-reads local source files of pooled entries (status check / Refresh).
-    // Files that are missing or no longer importable are simply absent.
-    this.registerHandler(IPC_CHANNELS.DOTFILES_READ_SOURCES, async (_event, paths: string[]) => {
-      if (!Array.isArray(paths) || paths.length > 500 || !paths.every((p) => typeof p === 'string')) {
-        throw new Error('Invalid source path list');
-      }
-      return await this.dotfilePoolStore.importLocalFiles(paths);
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.DOTFILES_ADD_FROM_STORAGE,
-      async (
-        _event,
-        options: {
-          poolId: string;
-          providerId: string;
-          filePath: string;
-          targetRemotePath?: string;
-        }
-      ) => {
-        const provider = this.storageRegistry.get(options.providerId);
-        if (!provider) {
-          throw new Error(`Storage provider not found: ${options.providerId}`);
-        }
-        const stream = await provider.createReadStream(options.filePath);
-        const chunks: Buffer[] = [];
-        const content = await new Promise<string>((resolve, reject) => {
-          stream.on('data', (c: Buffer) => chunks.push(c));
-          stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-          stream.on('error', reject);
-        });
-
-        let mode: string | undefined;
-        try {
-          const stat = await provider.stat(options.filePath);
-          if (stat.permissions) {
-            mode = stat.permissions;
-          }
-        } catch {
-          // Ignore stat error
-        }
-
-        const remotePath =
-          options.targetRemotePath || defaultDotfileRemotePath(options.filePath, os.homedir());
-
-        const added = await this.dotfilePoolStore.addFileToPool(options.poolId, {
-          remotePath,
-          content,
-          mode,
-          sourcePath: provider.type === 'local' ? options.filePath : undefined,
-        });
-        this.scheduleAutoSync();
-        return added;
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.DOTFILES_SYNC_RESPOND,
-      async (_event, id: string, resolution: DotfilesSyncResolution) => {
-        const prompt = this.pendingDotfilesSyncPrompts.get(id);
-        if (!prompt) {
-          throw new Error(`Dotfiles sync prompt with id "${id}" not found or expired`);
-        }
-        this.pendingDotfilesSyncPrompts.delete(id);
-        prompt.callback(resolution);
-      }
-    );
   }
 
   /**
@@ -1527,7 +657,7 @@ export class IpcBridge {
     return withResolvedProxyJump(config, (id) => byId.get(id));
   }
 
-  private async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+  public async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
       return config;
     }
@@ -1584,7 +714,7 @@ export class IpcBridge {
    * A non-resident 'fido2' profile (privateKeyPath set) is a no-op here —
    * OpenSSH's own `-i` handling already deals with `-sk` key files natively.
    */
-  private async prepareFido2Config(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+  public async prepareFido2Config(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
       return config;
     }
@@ -1609,7 +739,7 @@ export class IpcBridge {
    * already open ("agent refused operation"), since most PIV/CAC readers allow only one
    * transaction at a time.
    */
-  private async prepareSftpSmartcardConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
+  public async prepareSftpSmartcardConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
     if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
       return config;
     }
@@ -1633,7 +763,7 @@ export class IpcBridge {
    * (often via a different library than the one the card was unlocked with) — surfacing a second
    * PIN prompt whose answer then fell through to a password prompt and failed.
    */
-  private async getSyncProvider(target: StorageConnectConfig): ReturnType<StorageRegistry["getOrCreate"]> {
+  public async getSyncProvider(target: StorageConnectConfig): ReturnType<StorageRegistry["getOrCreate"]> {
     // Windows-only: Linux keeps creating the sync provider straight from its saved config.
     if (process.platform !== 'win32' || target.type !== 'sftp' || !target.sftpConfig || this.storageRegistry.has(target.id)) {
       return await this.storageRegistry.getOrCreate(target);
@@ -1656,7 +786,7 @@ export class IpcBridge {
   }
 
   /** Same rationale as prepareFido2Config, applied to an SFTP connection (see prepareSftpSmartcardConfig). */
-  private async prepareFido2SftpConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
+  public async prepareFido2SftpConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
     if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
       return config;
     }
@@ -1905,7 +1035,7 @@ export class IpcBridge {
    * it (prompting for the PIN once if it isn't). Concurrent callers for the same library share the
    * same in-flight load rather than each prompting separately.
    */
-  private async getOrLoadGlobalSmartcardAgent(
+  public async getOrLoadGlobalSmartcardAgent(
     pkcs11LibPath: string,
     sessionIdOrPinPrompt: string | AskpassPromptHandler,
     promptLabel?: string
@@ -2091,7 +1221,7 @@ export class IpcBridge {
    * Windows the app agent is the shared system service, so only hand it out once a card is cached.
    * Undefined in every other mode, or if the agent can't be started (the shell then keeps the default).
    */
-  private async resolveLocalShellAgentSocket(smartcardAuthMode: string | undefined): Promise<string | undefined> {
+  public async resolveLocalShellAgentSocket(smartcardAuthMode: string | undefined): Promise<string | undefined> {
     if (smartcardAuthMode !== 'agent-global') return undefined;
     if (process.platform === 'win32' && this.globalCards.size === 0) return undefined;
     try {
@@ -2136,7 +1266,7 @@ export class IpcBridge {
    * Concurrent terminal session restorations await this startup unlock so that
    * multiple connections never race against the physical security key hardware.
    */
-  private async maybeUnlockSmartcardAtStartup(options: { force?: boolean } = {}): Promise<{ started: boolean }> {
+  public async maybeUnlockSmartcardAtStartup(options: { force?: boolean } = {}): Promise<{ started: boolean }> {
     // Assign the guard promise synchronously, before any awaits, so a concurrent restored
     // terminal session's TERMINAL_CREATE (which awaits `this.startupUnlockPromise` at line
     // ~395) always has something to wait on from the very first tick of this call — closing
@@ -2345,7 +1475,7 @@ export class IpcBridge {
    * see resolveSmartcardAgentPath), whether that session was a terminal (PTY exit) or a file
    * manager SFTP connection (STORAGE_DISCONNECT).
    */
-  private cleanupSmartcardSessionAgent(sessionId: string): void {
+  public cleanupSmartcardSessionAgent(sessionId: string): void {
     if (this.activePresenceSessions.has(sessionId)) {
       this.activePresenceSessions.delete(sessionId);
       const webContents = this.getWebContents();
@@ -2389,7 +1519,7 @@ export class IpcBridge {
    * running, so its socket stays valid for terminals that are already open. Returns how many cards
    * were cached.
    */
-  private async lockAllGlobalSmartcardAgents(): Promise<number> {
+  public async lockAllGlobalSmartcardAgents(): Promise<number> {
     const count = this.globalCards.size;
     await this.appAgent.lockAll();
     this.globalCards.clear();
@@ -2409,7 +1539,7 @@ export class IpcBridge {
    * from a cache populated once at load time rather than a fresh PKCS#11
    * read on every call.
    */
-  private async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
+  public async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
     if (this.globalCards.size === 0) return [];
     // One agent holds every card, so attribute each identity to the card that contributed it.
     const identities = await this.appAgent.list();
@@ -2447,7 +1577,7 @@ export class IpcBridge {
    * both a pool and a policy — see AppSettings.dotfilesPoolEnabled and
    * SSHConnectionConfig.dotfilesSyncPolicy.
    */
-  private async runDotfilesSyncCheck(sessionId: string, config: SSHConnectionConfig): Promise<void> {
+  public async runDotfilesSyncCheck(sessionId: string, config: SSHConnectionConfig): Promise<void> {
     console.log(
       `[smartcard] runDotfilesSyncCheck: firing for session ${sessionId}, poolId=${config.poolId}, policy=${config.dotfilesSyncPolicy}, agentPath=${config.agentPath ?? '(none — will load its own if smartcard)'}`
     );
@@ -2620,7 +1750,7 @@ export class IpcBridge {
    * and click "Pull" themselves. Runs only while auto-sync is enabled — see
    * stopAutoPullTimer() for where it's torn down.
    */
-  private startAutoPullTimer(): void {
+  public startAutoPullTimer(): void {
     this.stopAutoPullTimer();
     this.autoPullTimer = setInterval(() => {
       void this.runAutoPull();
@@ -2629,7 +1759,7 @@ export class IpcBridge {
     this.autoPullTimer.unref?.();
   }
 
-  private stopAutoPullTimer(): void {
+  public stopAutoPullTimer(): void {
     if (this.autoPullTimer) {
       clearInterval(this.autoPullTimer);
       this.autoPullTimer = null;
@@ -2705,7 +1835,7 @@ export class IpcBridge {
     }
   }
 
-  private async buildSyncStatus(): Promise<ProfileSyncStatus> {
+  public async buildSyncStatus(): Promise<ProfileSyncStatus> {
     const config = await this.syncConfigStore.getConfig();
     return {
       configured: !!config.target,
@@ -2734,265 +1864,6 @@ export class IpcBridge {
     };
   }
 
-  private registerSyncHandlers(): void {
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_SETUP,
-      async (_event, payload: { target: StorageConnectConfig; remoteBasePath?: string }) => {
-        const target = payload?.target;
-        if (!target || !target.id || !target.name) {
-          throw new Error('A sync target with an id and name is required');
-        }
-        if (target.type !== 'sftp' && target.type !== 's3') {
-          throw new Error('Remote profile sync only supports an SFTP or S3 target');
-        }
-        if (target.type === 's3' && !payload.remoteBasePath?.trim()) {
-          throw new Error('An S3 target requires a bucket (optionally "bucket/prefix") to sync to');
-        }
-        await this.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
-        await this.storageRegistry.disconnect?.(target.id);
-        await this.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
-        // The (app-lifetime) ProfileSyncService instance otherwise keeps comparing
-        // against whatever remote state it last observed on the *previous* target.
-        this.profileSyncService.resetRemoteState();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_ENABLE,
-      async (
-        _event,
-        passwords: { topologyPassword: string; credentialsPassword: string }
-      ): Promise<ProfileSyncStatus> => {
-        if (!passwords?.topologyPassword || !passwords?.credentialsPassword) {
-          throw new Error('Both the topology and credentials master passwords are required');
-        }
-        return await this.unlockSyncInternal(passwords);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.PROFILE_SYNC_PUSH, async (): Promise<ProfileSyncStatus> => {
-      const config = await this.syncConfigStore.getConfig();
-      if (!config.target) {
-        throw new Error('Configure a sync target first (profile-sync:setup)');
-      }
-      const provider = await this.getSyncProvider(config.target);
-      await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
-      await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
-      return await this.buildSyncStatus();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_PULL,
-      async (
-        _event,
-        passwords?: { topologyPassword?: string; credentialsPassword?: string }
-      ): Promise<ProfileSyncPullResult & ProfileSyncStatus> => {
-        const config = await this.syncConfigStore.getConfig();
-        if (!config.target) {
-          throw new Error('Configure a sync target first (profile-sync:setup)');
-        }
-        const provider = await this.getSyncProvider(config.target);
-
-        const result = await this.profileSyncService.pullFromRemote(provider, config.remoteBasePath ?? '', {
-          topology: passwords?.topologyPassword,
-          credentials: passwords?.credentialsPassword,
-        });
-
-        // Bootstrap on a fresh machine: persist whichever salt(s) this pull
-        // just learned from the downloaded files, without touching a salt
-        // that was already known (e.g. only one of the two passwords was
-        // supplied this time).
-        const topologySalt = this.syncCryptoService.getSalt('topology');
-        const credentialsSalt = this.syncCryptoService.getSalt('credentials');
-        if ((topologySalt && !config.topologySaltBase64) || (credentialsSalt && !config.credentialsSaltBase64)) {
-          await this.syncConfigStore.setSalts({
-            topologySalt: !config.topologySaltBase64 ? topologySalt : undefined,
-            credentialsSalt: !config.credentialsSaltBase64 ? credentialsSalt : undefined,
-          });
-        }
-
-        await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
-        const status = await this.buildSyncStatus();
-        return { ...result, ...status };
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.PROFILE_SYNC_STATUS, async (): Promise<ProfileSyncStatus> => {
-      return await this.buildSyncStatus();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_COMPARE,
-      async (): Promise<SyncComparisonResult> => {
-        const config = await this.syncConfigStore.getConfig();
-        if (!config.target) {
-          throw new Error('Configure a sync target first (profile-sync:setup)');
-        }
-        const provider = await this.getSyncProvider(config.target);
-        return await this.profileSyncService.compareWithRemote(provider, config.remoteBasePath ?? '');
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC,
-      async (_event, enabled: boolean): Promise<ProfileSyncStatus> => {
-        await this.syncConfigStore.setAutoSync(Boolean(enabled));
-        if (enabled) {
-          this.scheduleAutoSync(500);
-          this.startAutoPullTimer();
-        } else {
-          this.stopAutoPullTimer();
-        }
-        return await this.buildSyncStatus();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_UNLOCK_SMARTCARD,
-      async (_event, options?: { pkcs11LibPath?: string; pin?: string }): Promise<ProfileSyncStatus> => {
-        return await this.unlockWithSmartcardInternal(options);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_LINK_SMARTCARD,
-      async (
-        _event,
-        options: {
-          pkcs11LibPath: string;
-          pin?: string;
-          passwords?: { topologyPassword: string; credentialsPassword: string };
-        }
-      ): Promise<ProfileSyncStatus> => {
-        const pinHandler = async (_prompt: string, retry?: AskpassPromptRetryContext) => {
-          if (options.pin && !retry) return options.pin;
-          return await this.promptForPinDirect(
-            'Enter your smartcard PIN to link this card to Remote Profile Sync:',
-            'smartcard',
-            undefined,
-            retry
-          );
-        };
-
-        const settings = await this.settingsStore.getSettings();
-        const mode = settings.smartcardAuthMode ?? 'always-prompt';
-
-        let socketPath: string;
-        let privateAgentPid: number | undefined;
-
-        if (this.globalCards.has(options.pkcs11LibPath)) {
-          socketPath = await this.appAgent.ensure();
-        } else if (mode === 'agent-global') {
-          socketPath = await this.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
-        } else {
-          const agent = await this.loadSmartcardIntoPrivateAgentWithPresence(options.pkcs11LibPath, pinHandler);
-          socketPath = agent.socketPath;
-          privateAgentPid = agent.pid;
-        }
-
-        try {
-          const identities = this.identitiesForLibrary(
-            await getAgentIdentities(socketPath),
-            options.pkcs11LibPath,
-            privateAgentPid === undefined
-          );
-          if (identities.length === 0) {
-            throw new Error('No smartcard identities/certificates found on the card');
-          }
-          const chosen = identities[0];
-          const challenge = crypto.randomBytes(32);
-          const sig = await signChallengeWithAgent(socketPath, chosen.keyBlob, challenge);
-          const verified = verifyAgentSignature(chosen.keyBlob, challenge, sig);
-          if (!verified) {
-            throw new Error('Failed to verify cryptographic signature from smartcard');
-          }
-
-          const hasExplicitPasswords = Boolean(
-            options.passwords?.topologyPassword && options.passwords?.credentialsPassword
-          );
-          if (!hasExplicitPasswords && getKeyAlgorithm(chosen.keyBlob).startsWith('ecdsa-sha2-')) {
-            // No saved passwords to fall back on, so unlocking would have to
-            // derive a "stable" secret straight from a fresh card signature
-            // every time — but ECDSA signing is non-deterministic on most
-            // PKCS#11 tokens (a fresh hardware nonce per signature), so that
-            // derived secret would differ on every unlock and could never
-            // decrypt data pushed under an earlier one. Refuse rather than
-            // risk silently locking the user out of their own synced data.
-            throw new Error(
-              'This smartcard uses an ECDSA key, which most PKCS#11 modules sign non-deterministically — sshs3 cannot derive a stable sync key from it alone. Unlock Remote Profile Sync with your master passwords first (Settings > Sync), then link this smartcard to save them.'
-            );
-          }
-
-          let wrappedPasswordsEncrypted: string | undefined;
-          if (options.passwords?.topologyPassword && options.passwords?.credentialsPassword) {
-            wrappedPasswordsEncrypted = encryptSecretValue(JSON.stringify(options.passwords));
-            if (!this.syncCryptoService.isUnlocked('topology') || !this.syncCryptoService.isUnlocked('credentials')) {
-              await this.unlockSyncInternal(options.passwords);
-            }
-          }
-
-          await this.syncConfigStore.setSmartcardSync({
-            pkcs11LibPath: options.pkcs11LibPath,
-            keyComment: chosen.comment,
-            keyBlobBase64: chosen.keyBlob.toString('base64'),
-            keyFingerprint: crypto.createHash('sha256').update(chosen.keyBlob).digest('hex'),
-            wrappedPasswordsEncrypted,
-          });
-
-          return await this.buildSyncStatus();
-        } catch (err) {
-          this.forgetGlobalCardAfterFailure(options.pkcs11LibPath, privateAgentPid);
-          throw err;
-        } finally {
-          if (privateAgentPid !== undefined) {
-            void AgentLifecycleManager.unloadCard(socketPath, options.pkcs11LibPath);
-            AgentLifecycleManager.killPrivateAgent(privateAgentPid);
-          }
-        }
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_UNLINK_SMARTCARD,
-      async (): Promise<ProfileSyncStatus> => {
-        await this.syncConfigStore.setSmartcardSync(undefined);
-        return await this.buildSyncStatus();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.PROFILE_SYNC_WIPE,
-      async (): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }> => {
-        const config = await this.syncConfigStore.getConfig();
-        const remoteWipeErrors: string[] = [];
-
-        if (config.target) {
-          try {
-            const provider = await this.getSyncProvider(config.target);
-            const result = await this.profileSyncService.wipeRemote(provider, config.remoteBasePath ?? '');
-            remoteWipeErrors.push(...result.errors);
-          } catch (err: any) {
-            // The remote may simply be unreachable (e.g. the user wants to reset
-            // sync from a machine that can no longer connect) — local config is
-            // still cleared below regardless, and the error is surfaced instead
-            // of blocking the reset entirely.
-            remoteWipeErrors.push(err?.message || String(err));
-          }
-          await this.storageRegistry.disconnect?.(config.target.id);
-        }
-        await this.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
-
-        this.syncCryptoService.lock();
-        await this.syncConfigStore.clear();
-        this.profileSyncService.resetRemoteState();
-        this.stopAutoPullTimer();
-
-        const status = await this.buildSyncStatus();
-        return { ...status, remoteWipeErrors };
-      }
-    );
-  }
-
   /**
    * The global agent cache is keyed by PKCS#11 library path, but one physical card is often
    * reachable through several modules (e.g. OpenSC's opensc-pkcs11.dll and onepin-opensc-pkcs11.dll
@@ -3018,7 +1889,7 @@ export class IpcBridge {
    * identity it is given, and a key from another card would derive the wrong sync secret. A private
    * per-session agent only ever holds this one card's keys, so it is returned untouched.
    */
-  private identitiesForLibrary<T extends { keyBlob: Buffer }>(
+  public identitiesForLibrary<T extends { keyBlob: Buffer }>(
     identities: T[],
     pkcs11LibPath: string,
     fromAppAgent: boolean
@@ -3029,7 +1900,7 @@ export class IpcBridge {
   }
 
   /** After a failed sync link/unlock: drop the card's keys from the app agent (never the agent itself). */
-  private forgetGlobalCardAfterFailure(pkcs11LibPath: string, privateAgentPid: number | undefined): void {
+  public forgetGlobalCardAfterFailure(pkcs11LibPath: string, privateAgentPid: number | undefined): void {
     if (!this.globalCards.has(pkcs11LibPath) || privateAgentPid !== undefined) return;
     void this.appAgent.remove(pkcs11LibPath);
     this.globalCards.delete(pkcs11LibPath);
@@ -3046,7 +1917,7 @@ export class IpcBridge {
    * auto-unlock — either way the PIN is requested through the same in-app
    * dialog (promptForPinDirect), never silently.
    */
-  private async unlockWithSmartcardInternal(
+  public async unlockWithSmartcardInternal(
     options?: { pkcs11LibPath?: string; pin?: string },
     unlockOptions?: { skipAutoSyncSchedule?: boolean }
   ): Promise<ProfileSyncStatus> {
@@ -3182,7 +2053,7 @@ export class IpcBridge {
     }
   }
 
-  private async unlockSyncInternal(
+  public async unlockSyncInternal(
     passwords: { topologyPassword: string; credentialsPassword: string },
     options?: { skipAutoSyncSchedule?: boolean }
   ): Promise<ProfileSyncStatus> {
@@ -3238,380 +2109,6 @@ export class IpcBridge {
 
     await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
     return await this.buildSyncStatus();
-  }
-
-  /**
-   * ssh-copy-id: listar installerbara publika nycklar, probar hosten och lägger nycklarna i
-   * `authorized_keys`. Fungerar på en osparad profil (formuläret skickar hela configen, på samma sätt som
-   * TERMINAL_CREATE och CONNECTION_TEST_SSH redan gör, så det ger ingen ny förmåga). Configen valideras och
-   * `agentPath` nollas, eftersom main själv sätter den; nyckelraderna valideras om innan de når ssh.
-   */
-  private registerKeyInstallHandlers(): void {
-    const MAX_KEYS = 50;
-    const AUTH_TYPES = new Set(['password', 'privateKey', 'smartcard', 'agent', 'fido2']);
-    const LOGIN_METHODS = new Set(['auto', 'password', 'profile', 'smartcard', 'agent']);
-
-    /** Validerar och normaliserar en config från renderern; kastar vid ogiltig form. */
-    const resolveDraft = async (raw: unknown): Promise<SSHConnectionConfig> => {
-      const c = raw as Partial<SSHConnectionConfig> | undefined;
-      if (
-        !c ||
-        typeof c.host !== 'string' ||
-        !c.host.trim() ||
-        typeof c.username !== 'string' ||
-        !c.username.trim() ||
-        typeof c.authType !== 'string' ||
-        !AUTH_TYPES.has(c.authType) ||
-        (c.port !== undefined && (!Number.isInteger(c.port) || c.port < 1 || c.port > 65535))
-      ) {
-        throw new Error('A host, a user name and a valid login method are required');
-      }
-      if (c.authType === 'smartcard' && !c.pkcs11LibPath?.trim()) {
-        throw new Error('A PKCS#11 library is required for smartcard login');
-      }
-      if (c.authType === 'fido2' && !c.fido2Resident && !c.privateKeyPath?.trim()) {
-        throw new Error('A key file is required for FIDO2 login (or use a resident key)');
-      }
-      let config: SSHConnectionConfig = { ...(c as SSHConnectionConfig), agentPath: undefined };
-      config = await this.restoreSavedSecrets(config);
-      return this.resolveProxyJumpConfig(config);
-    };
-
-    /** Laddar kortets/säkerhetsnyckelns agent (PIN/touch). Anropas först när profilens egen inloggning behövs. */
-    const prepareHardware = async (config: SSHConnectionConfig, agentId: string): Promise<SSHConnectionConfig> => {
-      let prepared = (await this.prepareSftpSmartcardConfig(config as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
-      prepared = (await this.prepareFido2SftpConfig(prepared as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
-      return prepared;
-    };
-
-    this.registerHandler(
-      IPC_CHANNELS.SSH_LIST_PUBLIC_KEYS,
-      async (_event, request?: ListPublicKeysRequest): Promise<LocalPublicKey[]> => {
-        let profile: SSHConnectionConfig | undefined;
-        if (request?.config?.host && request?.config?.username && request?.config?.authType) {
-          try {
-            profile = await resolveDraft(request.config);
-          } catch {
-            // Draft resolution optional for global key discovery
-          }
-        }
-        const lists = [
-          await listFilePublicKeys(profile?.privateKeyPath),
-          await listAgentPublicKeys('agent', 'Cached key'),
-        ];
-
-        // The app-wide agent ('agent-global' PIN caching) holds every unlocked smartcard and FIDO2 key.
-        const appSocket = this.globalCards.size > 0 ? this.appAgent.getSocketPath() : null;
-        if (appSocket) {
-          const keys = await listAgentPublicKeys('smartcard', 'Smartcard key', appSocket);
-          lists.push(
-            keys.map((k) => (k.type.startsWith('sk-') ? { ...k, source: 'fido2' as const, label: 'Security key' } : k))
-          );
-        }
-
-        // Query ALL active session agents
-        for (const entry of this.smartcardSessionAgents.values()) {
-          lists.push(
-            await listAgentPublicKeys(
-              entry.kind === 'fido2' ? 'fido2' : 'smartcard',
-              entry.kind === 'fido2' ? 'Security key' : 'Smartcard key',
-              entry.socketPath
-            )
-          );
-        }
-
-        const wantsCard = profile?.authType === 'smartcard' && !!profile?.pkcs11LibPath;
-        const wantsFido = profile?.authType === 'fido2' && !!profile?.fido2Resident;
-        const cached = lists.some((l) => l.some((k) => k.source === 'smartcard' || k.source === 'fido2'));
-
-        if (!cached && request?.includeHardware && (wantsCard || wantsFido) && profile) {
-          const installId = `keylist-${crypto.randomUUID()}`;
-          try {
-            const config = await prepareHardware(profile, installId);
-            if (!config.agentPath) {
-              // The loaders swallow their own errors (see resolveFido2AgentPath); don't let that look like "nothing happened".
-              throw new Error(
-                wantsCard
-                  ? 'Could not read the smartcard. Check that it is inserted and the PIN is correct, then try again.'
-                  : 'Could not read the security key. Check that it is plugged in, touch it when it blinks, and try again.'
-              );
-            }
-            lists.push(
-              await listAgentPublicKeys(wantsCard ? 'smartcard' : 'fido2', wantsCard ? 'Smartcard key' : 'Security key', config.agentPath)
-            );
-          } finally {
-            this.cleanupSmartcardSessionAgent(installId);
-          }
-        }
-        return dedupeKeys(...lists);
-      }
-    );
-
-    /** Gemensamma prompt-handlers (PIN/lösen/värdnyckel/touch) för probe, test och installation. */
-    const promptHandlersFor = (profile: SSHConnectionConfig, installId: string, presenceMessage: string) => {
-      const label = profile.name || profile.host;
-      const presence = this.makePresenceNotifier(installId, presenceMessage);
-      return {
-        pinPromptHandler: (prompt: string) => {
-          const text = prompt.trim();
-          return this.promptForPinDirect(text, classifyAskpassPrompt(text, profile.authType), `SSH: ${label}`);
-        },
-        hostKeyPromptHandler: (info: HostKeyPromptInfo) => this.promptHostKeyTrust(info),
-        onPresence: () => presence.onPresenceRequested(),
-        onPresenceCleared: () => presence.onPresenceCleared(),
-      };
-    };
-
-    this.registerHandler(
-      IPC_CHANNELS.SSH_PROBE_HOST,
-      async (_event, config: SSHConnectionConfig): Promise<ProbeHostResult> => {
-        const profile = await resolveDraft(config);
-        const installId = `keyprobe-${crypto.randomUUID()}`;
-        return probeHost(profile, promptHandlersFor(profile, installId, 'Touch your security key'));
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.SSH_TEST_LOGIN,
-      async (_event, config: SSHConnectionConfig): Promise<TestLoginResult> => {
-        const profile = await resolveDraft(config);
-        const installId = `keytest-${crypto.randomUUID()}`;
-        try {
-          const prepared = await prepareHardware(profile, installId);
-          return await testLogin(
-            prepared,
-            promptHandlersFor(profile, installId, `Touch your security key to log in to ${profile.name || profile.host}`)
-          );
-        } finally {
-          this.cleanupSmartcardSessionAgent(installId);
-        }
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.SSH_INSTALL_PUBLIC_KEYS,
-      async (_event, request: InstallPublicKeysRequest): Promise<InstallPublicKeysResult> => {
-        if (
-          !request ||
-          !Array.isArray(request.publicKeys) ||
-          request.publicKeys.length === 0 ||
-          request.publicKeys.length > MAX_KEYS ||
-          request.publicKeys.some((k) => typeof k !== 'string' || k.length > 2000) ||
-          (request.loginMethod !== undefined && !LOGIN_METHODS.has(request.loginMethod)) ||
-          (request.serverMethods !== undefined &&
-            (!Array.isArray(request.serverMethods) || request.serverMethods.some((m) => typeof m !== 'string')))
-        ) {
-          throw new Error(`Between 1 and ${MAX_KEYS} public keys are required`);
-        }
-        const profile = await resolveDraft(request.config);
-        const installId = `keyinstall-${crypto.randomUUID()}`;
-        const label = profile.name || profile.host;
-
-        try {
-          const outcome = await installPublicKeys({
-            config: profile,
-            publicKeys: request.publicKeys,
-            loginMethod: request.loginMethod,
-            installsOwnKeyOnly: request.installsOwnKeyOnly === true,
-            serverMethods: request.serverMethods,
-            prepareProfileConfig: (c) => prepareHardware(c, installId),
-            ...promptHandlersFor(profile, installId, `Touch your security key to install the key on ${label}`),
-          });
-
-          // Verifiera nycklar som har en oskyddad privat nyckelfil lokalt; allt annat lämnas som "okänt".
-          const fileKeys = outcome.success ? await listFilePublicKeys(profile.privateKeyPath) : [];
-          const results = await Promise.all(
-            outcome.results.map(async (r) => {
-              if (!outcome.success || (r.status !== 'installed' && r.status !== 'present')) return r;
-              const local = fileKeys.find((k) => k.fingerprint === r.fingerprint);
-              const parsed = local ? parsePublicKeyLine(local.line) : null;
-              if (!local?.privateKeyPath || !parsed) return r;
-              const verified = await verifyKeyLogin(profile, local.privateKeyPath, parsed.type);
-              return verified === undefined ? r : { ...r, verified };
-            })
-          );
-          return { ...outcome, results };
-        } finally {
-          this.cleanupSmartcardSessionAgent(installId);
-        }
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.SSH_BUILD_INSTALL_COMMAND, async (_event, publicKeys: string[]): Promise<string> => {
-      if (!Array.isArray(publicKeys) || publicKeys.length === 0 || publicKeys.length > MAX_KEYS) {
-        throw new Error(`Between 1 and ${MAX_KEYS} public keys are required`);
-      }
-      return buildInstallCommand(publicKeys);
-    });
-  }
-
-  private registerK8sHandlers(): void {
-    this.registerHandler(IPC_CHANNELS.K8S_LIST_CONTEXTS, async (): Promise<K8sClusterNode[]> => {
-      return this.k8sDiscoveryService.listContexts();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_LIST_NAMESPACES,
-      async (_event, contextName: string): Promise<K8sNamespaceNode[]> => {
-        return await this.k8sDiscoveryService.listNamespaces(contextName);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_LIST_PODS,
-      async (_event, contextName: string, namespace: string): Promise<K8sPodNode[]> => {
-        return await this.k8sDiscoveryService.listPods(contextName, namespace);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.K8S_RELOAD, async (): Promise<void> => {
-      this.k8sDiscoveryService.reload();
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_LOGIN,
-      async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
-        const result = await loginWithToken(options);
-        this.k8sDiscoveryService.reload();
-        const webContents = this.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
-        }
-        return result;
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_TERMINAL_CREATE,
-      async (
-        _event,
-        target: K8sTerminalTarget,
-        options?: { cols?: number; rows?: number }
-      ): Promise<{ sessionId: string }> => {
-        const sessionId = await this.k8sTerminalManager.createSession(target, options);
-        return { sessionId };
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.K8S_TERMINAL_WRITE, async (_event, sessionId: string, data: string) => {
-      this.k8sTerminalManager.write(sessionId, data);
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_TERMINAL_RESIZE,
-      async (_event, sessionId: string, cols: number, rows: number) => {
-        this.k8sTerminalManager.resize(sessionId, cols, rows);
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.K8S_TERMINAL_KILL, async (_event, sessionId: string) => {
-      this.k8sTerminalManager.kill(sessionId);
-    });
-
-    // Performance bar. The renderer only sends a session id / pod target; host and mux socket are resolved here.
-    this.registerHandler(IPC_CHANNELS.PERF_SSH_SAMPLE, async (_event, sessionId: unknown) =>
-      this.perfMetricsService.sampleSsh(sessionId)
-    );
-    this.registerHandler(IPC_CHANNELS.PERF_LOCAL_SAMPLE, async () => this.perfMetricsService.sampleLocal());
-    this.registerHandler(IPC_CHANNELS.PERF_K8S_SAMPLE, async (_event, target: unknown) =>
-      this.perfMetricsService.sampleK8s(target)
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_LOG_START,
-      async (
-        _event,
-        target: K8sTerminalTarget,
-        options?: { tailLines?: number; timestamps?: boolean; previous?: boolean }
-      ): Promise<{ sessionId: string }> => {
-        const sessionId = await this.k8sLogManager.startFollow(target, options);
-        return { sessionId };
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.K8S_LOG_STOP, async (_event, sessionId: string) => {
-      this.k8sLogManager.stop(sessionId);
-    });
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_POD_DESCRIBE,
-      async (
-        _event,
-        contextName: string,
-        namespace: string,
-        podName: string
-      ): Promise<K8sPodDescription> => {
-        return await this.k8sDiscoveryService.describePod(contextName, namespace, podName);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_PORT_FORWARD_START,
-      async (_event, target: K8sPortForwardTarget): Promise<K8sActivePortForward> => {
-        return await this.k8sPortForwardManager.startPortForward(target);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_PORT_FORWARD_STOP,
-      async (_event, id: string): Promise<boolean> => {
-        return await this.k8sPortForwardManager.stopPortForward(id);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_PORT_FORWARD_LIST,
-      async (): Promise<K8sActivePortForward[]> => {
-        return this.k8sPortForwardManager.listActive();
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.K8S_DEBUG_ATTACH,
-      async (_event, target: K8sDebugTarget): Promise<{ containerName: string }> => {
-        return await this.k8sDebugService.attachEphemeralContainer(target);
-      }
-    );
-
-    this.registerHandler(
-      IPC_CHANNELS.SSH_TUNNEL_START,
-      async (
-        _event,
-        rawConfig: SSHConnectionConfig,
-        tunnel: SSHTunnelConfig
-      ): Promise<SSHActiveTunnel> => {
-        // Same as terminal/SFTP sessions: pre-load a PKCS#11/FIDO2 resident credential
-        // into a private agent so the ssh child just points IdentityAgent at it, rather
-        // than needing an interactive PIN/passphrase for every standalone tunnel.
-        let config = await this.resolveProxyJumpConfig(rawConfig);
-        config = await this.prepareSmartcardConfig(config);
-        config = await this.prepareFido2Config(config);
-        const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
-        return await this.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {
-          const isPassword = isPasswordPrompt(rawPrompt);
-          const promptText = isPassword
-            ? rawPrompt.trim()
-            : `Enter the passphrase/PIN to connect via SSH to ${hostLabel}:`;
-          return this.promptForPinDirect(
-            promptText,
-            isPassword ? 'password' : 'smartcard',
-            isPassword ? `SSH: ${hostLabel}` : `Smartcard: ${hostLabel}`
-          );
-        });
-      }
-    );
-
-    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_STOP, async (_event, id: string): Promise<boolean> => {
-      return await this.sshTunnelManager.stopTunnel(id);
-    });
-
-    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_LIST, async (): Promise<SSHActiveTunnel[]> => {
-      return this.sshTunnelManager.listActive();
-    });
-
-    this.registerHandler(IPC_CHANNELS.SSH_TUNNEL_CHECK_PORT, async (_event, port: number): Promise<boolean> => {
-      return await this.sshTunnelManager.isPortFree(port);
-    });
   }
 
   public getUpdateService(): UpdateService {
