@@ -1972,11 +1972,19 @@ export class IpcBridge {
     return auth;
   }
 
-  /** SSH fingerprint of the key linked for smartcard sync, if any. */
+  /**
+   * SSH fingerprint of the key linked for smartcard sync, if any. Links store the key blob and its
+   * sha256 in hex; an older link may only have the latter, which is the same digest as the SSH
+   * fingerprint (base64, no padding).
+   */
   private async linkedSyncKeyFingerprint(): Promise<string | undefined> {
     try {
-      const blob = (await this.syncConfigStore.getConfig()).smartcardSync?.keyBlobBase64;
-      return blob ? fingerprintOfKeyBlob(Buffer.from(blob, 'base64')) : undefined;
+      const link = (await this.syncConfigStore.getConfig()).smartcardSync;
+      if (link?.keyBlobBase64) return fingerprintOfKeyBlob(Buffer.from(link.keyBlobBase64, 'base64'));
+      if (link?.keyFingerprint && /^[0-9a-f]{64}$/i.test(link.keyFingerprint)) {
+        return `SHA256:${Buffer.from(link.keyFingerprint, 'hex').toString('base64').replace(/=+$/, '')}`;
+      }
+      return undefined;
     } catch {
       return undefined;
     }

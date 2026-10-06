@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
 
@@ -919,6 +920,33 @@ describe('IpcBridge', () => {
             new Set(['SHA256:auth', linkedFingerprint])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
+        });
+
+        it('also protects a key linked by an older sync link that only stored keyFingerprint', async () => {
+          const signBlob = Buffer.from('legacy-sign-key-blob');
+          const linkedFingerprint = fingerprintOfKeyBlob(signBlob);
+          vi.mocked(bridge.syncConfigStore.getConfig).mockResolvedValue({
+            smartcardSync: {
+              pkcs11LibPath,
+              keyFingerprint: createHash('sha256').update(signBlob).digest('hex'),
+            },
+          } as any);
+
+          await loadWith([authDetails, { ...signDetails, fingerprint: linkedFingerprint }]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+            new Set(['SHA256:auth', linkedFingerprint])
+          );
+          expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
+        });
+
+        it('ignores a malformed keyFingerprint instead of protecting a wrong key', async () => {
+          vi.mocked(bridge.syncConfigStore.getConfig).mockResolvedValue({
+            smartcardSync: { pkcs11LibPath, keyFingerprint: 'not-hex' },
+          } as any);
+          await loadWith([authDetails, signDetails]);
+
+          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
         });
 
         it('still filters when the sync config cannot be read', async () => {

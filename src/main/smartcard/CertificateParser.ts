@@ -21,6 +21,9 @@ export interface SmartcardCertificateDetails {
 const SAN_OID = '2.5.29.17';
 const UPN_OID = '1.3.6.1.4.1.311.20.2.3';
 const KEY_USAGE_OID = '2.5.29.15';
+/** Bits of the first Key Usage octet (bit 0 is the most significant). */
+const KU_DIGITAL_SIGNATURE = 0x80;
+const KU_NON_REPUDIATION = 0x40;
 /** Extended Key Usage values that allow client authentication. */
 const AUTH_EKU_OIDS = new Set([
   '1.3.6.1.5.5.7.3.2', // id-kp-clientAuth
@@ -128,16 +131,25 @@ export function extractUpnFromCertificateDer(der: Buffer): string | undefined {
 /**
  * Whether a certificate may be used for authentication. Node exposes only the Extended Key Usage list
  * (as `keyUsage`), not the basic Key Usage bits, so the latter are decoded from the raw DER here.
+ *
+ * - Key Usage, when present, must include digitalSignature.
+ * - Extended Key Usage, when present, must include clientAuth, smartcard logon or anyEKU.
+ * - A certificate that also asserts nonRepudiation (contentCommitment) is a signing certificate (a PIV
+ *   9c certificate has digitalSignature + nonRepudiation and usually no EKU), so it only counts as
+ *   authentication-capable when an EKU says so explicitly.
+ *
  * An absent extension places no restriction, and anything that cannot be decoded counts as capable:
  * a parser problem must never hide a card's only usable key.
  */
 export function isAuthCapableCertificate(x509: X509Certificate, der: Buffer): boolean {
   try {
     const keyUsageBits = readKeyUsageFirstByte(der);
-    // digitalSignature is bit 0, the most significant bit of the first byte.
-    if (keyUsageBits !== undefined && (keyUsageBits & 0x80) === 0) return false;
+    if (keyUsageBits !== undefined && (keyUsageBits & KU_DIGITAL_SIGNATURE) === 0) return false;
     const eku = x509.keyUsage;
-    if (eku && eku.length > 0 && !eku.some((oid) => AUTH_EKU_OIDS.has(oid))) return false;
+    const hasEku = !!eku && eku.length > 0;
+    const ekuAllowsAuth = hasEku && eku.some((oid) => AUTH_EKU_OIDS.has(oid));
+    if (hasEku && !ekuAllowsAuth) return false;
+    if (keyUsageBits !== undefined && (keyUsageBits & KU_NON_REPUDIATION) !== 0 && !ekuAllowsAuth) return false;
     return true;
   } catch {
     return true;
