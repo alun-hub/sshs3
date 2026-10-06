@@ -5,6 +5,7 @@ import os from 'node:os';
 import { ipcMain as electronIpcMain, dialog as electronDialog } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
+import { classifyAskpassPrompt, isPasswordPrompt } from './ssh/askpassPrompt';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { AppAgent, fingerprintOfKeyBlob } from './ssh/AppAgent';
@@ -3283,12 +3284,6 @@ export class IpcBridge {
       return prepared;
     };
 
-    const kindFor = (authType: string, text: string): AskpassPromptKind | undefined => {
-      const isPassword = /password/i.test(text) && !/pin|passphrase/i.test(text);
-      const isFido2 = authType === 'fido2' || /authenticator|security key|yubikey|fido|sk-/i.test(text);
-      return isPassword ? 'password' : isFido2 ? 'fido2' : /passphrase/i.test(text) ? undefined : 'smartcard';
-    };
-
     this.registerHandler(
       IPC_CHANNELS.SSH_LIST_PUBLIC_KEYS,
       async (_event, request?: ListPublicKeysRequest): Promise<LocalPublicKey[]> => {
@@ -3359,7 +3354,7 @@ export class IpcBridge {
       return {
         pinPromptHandler: (prompt: string) => {
           const text = prompt.trim();
-          return this.promptForPinDirect(text, kindFor(profile.authType, text), `SSH: ${label}`);
+          return this.promptForPinDirect(text, classifyAskpassPrompt(text, profile.authType), `SSH: ${label}`);
         },
         hostKeyPromptHandler: (info: HostKeyPromptInfo) => this.promptHostKeyTrust(info),
         onPresence: () => presence.onPresenceRequested(),
@@ -3593,7 +3588,7 @@ export class IpcBridge {
         config = await this.prepareFido2Config(config);
         const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
         return await this.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {
-          const isPassword = /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
+          const isPassword = isPasswordPrompt(rawPrompt);
           const promptText = isPassword
             ? rawPrompt.trim()
             : `Enter the passphrase/PIN to connect via SSH to ${hostLabel}:`;

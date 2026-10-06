@@ -55,6 +55,7 @@ function getSpawn(): typeof nodePty.spawn {
 }
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
+import { describeAskpassPrompt } from './askpassPrompt';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
@@ -550,31 +551,13 @@ export class SSHPtyManager extends EventEmitter {
             return config.passphrase;
           }
           if (this.listenerCount('askpass') > 0) {
-            const isPassword = /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
-            const isFido2 =
-              config.authType === 'fido2' ||
-              /authenticator|security key|yubikey|fido|sk-/i.test(rawPrompt);
-            const isPassphrase = !isPassword && !isFido2 && /passphrase/i.test(rawPrompt);
-            const kind: AskpassPromptKind | undefined = isPassword
-              ? 'password'
-              : isFido2
-                ? 'fido2'
-                : isPassphrase
-                  ? undefined
-                  : 'smartcard';
-
-            const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
-            const promptText = isPassword
-              ? rawPrompt.trim()
-              : isFido2
-                ? rawPrompt.trim() || `Enter PIN for security key to connect via SSH to ${hostLabel}:`
-                : `Enter your smartcard PIN to connect via SSH to ${hostLabel}:`;
+            const { kind, prompt: promptText, context } = describeAskpassPrompt(rawPrompt, config);
             return new Promise<string>((resolve) => {
               this.emit('askpass', {
                 sessionId,
                 prompt: promptText,
                 kind,
-                context: isPassword ? `SSH: ${hostLabel}` : isFido2 ? `FIDO2: ${hostLabel}` : `Smartcard: ${hostLabel}`,
+                context,
                 retry,
                 callback: (resolvedPin: string) => resolve(resolvedPin),
               });
