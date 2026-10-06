@@ -10,7 +10,10 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerConnectionTestHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type ConnectionTestHost = Pick<IpcBridge, 'promptHostKeyTrust' | 'registerHandler'>;
+
+export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.CONNECTION_TEST_SSH,
     async (_event, config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> => {

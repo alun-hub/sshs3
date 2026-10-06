@@ -8,9 +8,12 @@ import { XServerManager } from '../x11/XServerManager';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
 
+/** The part of IpcBridge this handler group may use. */
+export type GeneralHost = Pick<IpcBridge, 'getUpdateService' | 'registerHandler'>;
+
 const execFileAsync = promisify(execFile);
 
-export function registerGeneralHandlers(bridge: IpcBridge): void {
+export function registerGeneralHandlers(bridge: GeneralHost): void {
   bridge.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
     try {
       return electronApp.getVersion();

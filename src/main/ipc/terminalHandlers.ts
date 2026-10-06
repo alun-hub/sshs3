@@ -3,7 +3,13 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig, PtyOptions } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerTerminalHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type TerminalHost = Pick<
+  IpcBridge,
+  'prepareFido2Config' | 'prepareSmartcardConfig' | 'registerHandler' | 'resolveLocalShellAgentSocket' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'sshPtyManager' | 'startupUnlockPromise'
+>;
+
+export function registerTerminalHandlers(bridge: TerminalHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.TERMINAL_CREATE,
     async (

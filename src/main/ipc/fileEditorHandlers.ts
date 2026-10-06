@@ -1,7 +1,13 @@
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerFileEditorHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type FileEditorHost = Pick<
+  IpcBridge,
+  'fileEditorService' | 'fileTailService' | 'getWebContents' | 'registerHandler' | 'storageRegistry'
+>;
+
+export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_READ,
     async (_event, providerId: string, remotePath: string, maxBytes?: number) => {

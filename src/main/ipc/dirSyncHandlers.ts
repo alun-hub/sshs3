@@ -2,9 +2,15 @@ import { computeDiff as computeDirSyncDiff, apply as applyDirSync } from '../dir
 import { IPC_CHANNELS, type DirSyncComputeDiffOptions, type DirSyncApplyOptions } from '../../shared/types/ipc';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../../shared/types/dirsync';
 import type { IpcBridge } from '../IpcBridge';
+
+/** The part of IpcBridge this handler group may use. */
+export type DirSyncHost = Pick<
+  IpcBridge,
+  'directorySyncProfileStore' | 'getWebContents' | 'registerHandler' | 'storageRegistry'
+>;
 import { resolveDirSyncTargetRoot } from './ipcHelpers';
 
-export function registerDirSyncHandlers(bridge: IpcBridge): void {
+export function registerDirSyncHandlers(bridge: DirSyncHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.DIR_SYNC_COMPUTE_DIFF,
     async (_event, options: DirSyncComputeDiffOptions): Promise<DirectoryDiffResult> => {

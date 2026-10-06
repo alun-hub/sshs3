@@ -6,7 +6,13 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { GenerateFido2KeyRequest, GeneratedFido2Key, Fido2ResidentKey } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerSmartcardHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type SmartcardHost = Pick<
+  IpcBridge,
+  'listGlobalSmartcardAgents' | 'lockAllGlobalSmartcardAgents' | 'makePresenceNotifier' | 'maybeUnlockSmartcardAtStartup' | 'pendingAskpass' | 'pendingHostKeyPrompts' | 'promptForPinDirect' | 'registerHandler'
+>;
+
+export function registerSmartcardHandlers(bridge: SmartcardHost): void {
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_DETECT, async () => {
     return await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
   });

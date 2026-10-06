@@ -7,7 +7,13 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerProfileHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type ProfileHost = Pick<
+  IpcBridge,
+  'profileStore' | 'profileSyncService' | 'registerHandler' | 'scheduleAutoSync' | 'storageRegistry'
+>;
+
+export function registerProfileHandlers(bridge: ProfileHost): void {
   bridge.registerHandler(IPC_CHANNELS.PROFILES_GET, async () => {
     return await bridge.profileStore.getProfiles();
   });

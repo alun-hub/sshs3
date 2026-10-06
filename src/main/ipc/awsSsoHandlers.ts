@@ -5,6 +5,12 @@ import { IPC_CHANNELS, type AwsSsoPromptEvent } from '../../shared/types/ipc';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../../shared/types/aws';
 import type { IpcBridge } from '../IpcBridge';
 
+/** The part of IpcBridge this handler group may use. */
+export type AwsSsoHost = Pick<
+  IpcBridge,
+  'awsSsoAuthService' | 'getWebContents' | 'pendingAwsSsoLogins' | 'registerHandler'
+>;
+
 /**
  * Runs the AWS SSO device-authorization flow and resolves once the user
  * approves it in their browser. Mirrors `promptHostKeyTrust`'s pattern of
@@ -12,7 +18,7 @@ import type { IpcBridge } from '../IpcBridge';
  * supports cancellation via a separate channel since this wait can be
  * minutes rather than a single click.
  */
-export function registerAwsSsoHandlers(bridge: IpcBridge): void {
+export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LOGIN,
     async (_event, startUrl: string, region: string): Promise<AwsSsoLoginResult> => {

@@ -2,7 +2,13 @@ import type { SearchStartOptions } from '../../shared/types/search';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerSearchHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type SearchHost = Pick<
+  IpcBridge,
+  'getWebContents' | 'registerHandler' | 'searchOrchestrator' | 'storageRegistry'
+>;
+
+export function registerSearchHandlers(bridge: SearchHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.SEARCH_START,
     async (_event, options: SearchStartOptions) => {

@@ -153,6 +153,9 @@ export class IpcBridge {
   private confirmQuit: (() => Promise<boolean>) | undefined;
   public getWebContents: () => Electron.WebContents | null | undefined;
 
+  // The members below are public only so the handler groups in src/main/ipc can reach them. Each group
+  // declares the exact subset it uses as a Pick<IpcBridge, ...> (see ipc/*Handlers.ts), and
+  // tests/main/ipcHostAccess.test.ts pins which groups may touch the prompt maps and agent state.
   public pendingAskpass = new Map<string, PendingAskpassPrompt>();
   public pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   public pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();

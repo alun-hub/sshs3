@@ -9,13 +9,19 @@ import type { SSHConnectionConfig, LocalPublicKey, ListPublicKeysRequest, Instal
 import type { SFTPConfig } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 
+/** The part of IpcBridge this handler group may use. */
+export type KeyInstallHost = Pick<
+  IpcBridge,
+  'appAgent' | 'cleanupSmartcardSessionAgent' | 'globalCards' | 'makePresenceNotifier' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'smartcardSessionAgents'
+>;
+
 /**
  * ssh-copy-id: listar installerbara publika nycklar, probar hosten och lägger nycklarna i
  * `authorized_keys`. Fungerar på en osparad profil (formuläret skickar hela configen, på samma sätt som
  * TERMINAL_CREATE och CONNECTION_TEST_SSH redan gör, så det ger ingen ny förmåga). Configen valideras och
  * `agentPath` nollas, eftersom main själv sätter den; nyckelraderna valideras om innan de når ssh.
  */
-export function registerKeyInstallHandlers(bridge: IpcBridge): void {
+export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
   const MAX_KEYS = 50;
   const AUTH_TYPES = new Set(['password', 'privateKey', 'smartcard', 'agent', 'fido2']);
   const LOGIN_METHODS = new Set(['auto', 'password', 'profile', 'smartcard', 'agent']);

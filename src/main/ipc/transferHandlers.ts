@@ -3,7 +3,13 @@ import { IPC_CHANNELS, type TransferConflictResolution } from '../../shared/type
 import type { TransferProgress } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerTransferHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type TransferHost = Pick<
+  IpcBridge,
+  'pendingQuitConfirms' | 'pendingTransferConflicts' | 'promptTransferConflict' | 'registerHandler' | 'settingsStore' | 'storageRegistry' | 'transferQueue'
+>;
+
+export function registerTransferHandlers(bridge: TransferHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.TRANSFER_ADD,
     async (

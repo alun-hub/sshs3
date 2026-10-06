@@ -4,7 +4,13 @@ import type { SessionData } from '../../shared/types/session';
 import type { AppSettings } from '../../shared/types/settings';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerSessionHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type AppDataHost = Pick<
+  IpcBridge,
+  'clipboardHistoryStore' | 'profileSyncService' | 'refreshAgentSshConfig' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
+>;
+
+export function registerSessionHandlers(bridge: AppDataHost): void {
   bridge.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {
     return await bridge.sessionStore.getSession();
   });
@@ -17,7 +23,7 @@ export function registerSessionHandlers(bridge: IpcBridge): void {
   );
 }
 
-export function registerClipboardHistoryHandlers(bridge: IpcBridge): void {
+export function registerClipboardHistoryHandlers(bridge: AppDataHost): void {
   const isShortString = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max;
 
   bridge.registerHandler(IPC_CHANNELS.CLIPBOARD_HISTORY_LIST, async (_event, hostKey?: unknown) => {
@@ -45,7 +51,7 @@ export function registerClipboardHistoryHandlers(bridge: IpcBridge): void {
   });
 }
 
-export function registerSnippetHandlers(bridge: IpcBridge): void {
+export function registerSnippetHandlers(bridge: AppDataHost): void {
   bridge.registerHandler(IPC_CHANNELS.SNIPPETS_LIST, async (_event, hostKey?: unknown) => {
     if (hostKey !== undefined && (typeof hostKey !== 'string' || hostKey.length > 1024)) {
       throw new Error('Invalid host key');
@@ -83,7 +89,7 @@ export function registerSnippetHandlers(bridge: IpcBridge): void {
   });
 }
 
-export function registerSettingsHandlers(bridge: IpcBridge): void {
+export function registerSettingsHandlers(bridge: AppDataHost): void {
   bridge.registerHandler(IPC_CHANNELS.SETTINGS_GET, async (): Promise<AppSettings> => {
     return await bridge.settingsStore.getSettings();
   });

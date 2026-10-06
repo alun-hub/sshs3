@@ -8,7 +8,13 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerGitHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type GitHost = Pick<
+  IpcBridge,
+  'dotfilePoolStore' | 'profileStore' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'storageRegistry'
+>;
+
+export function registerGitHandlers(bridge: GitHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.GIT_FETCH_PUBLIC_KEYS,
     async (_event, request: FetchGitKeysRequest): Promise<FetchGitKeysResult> => {

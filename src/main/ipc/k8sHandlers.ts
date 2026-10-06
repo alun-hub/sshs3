@@ -5,7 +5,13 @@ import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K
 import type { SSHConnectionConfig, SSHTunnelConfig, SSHActiveTunnel } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerK8sHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type K8sHost = Pick<
+  IpcBridge,
+  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sTerminalManager' | 'perfMetricsService' | 'prepareFido2Config' | 'prepareSmartcardConfig' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'sshTunnelManager'
+>;
+
+export function registerK8sHandlers(bridge: K8sHost): void {
   bridge.registerHandler(IPC_CHANNELS.K8S_LIST_CONTEXTS, async (): Promise<K8sClusterNode[]> => {
     return bridge.k8sDiscoveryService.listContexts();
   });

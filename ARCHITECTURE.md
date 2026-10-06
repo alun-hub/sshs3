@@ -163,7 +163,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    - Open [`src/preload/index.ts`](file:///home/alun/sshs3/src/preload/index.ts).
    - Implement the method on `api` using `ipcRenderer.invoke` or `ipcRenderer.on`.
 3. **Main Process Implementation**:
-   - Add the handler to the matching domain file in [`src/main/ipc/`](file:///home/alun/sshs3/src/main/ipc/), inside its `registerXHandlers(bridge)` function, using `bridge.registerHandler(IPC_CHANNELS.MY_ACTION, async (_event, ...) => { ... })`. Services and shared state are reached through `bridge` (the [`IpcBridge`](file:///home/alun/sshs3/src/main/IpcBridge.ts) instance); `registerHandler` also runs the sender check (`assertTrustedSender`), so never call `ipcMain.handle` directly.
+   - Add the handler to the matching domain file in [`src/main/ipc/`](file:///home/alun/sshs3/src/main/ipc/), inside its `registerXHandlers(bridge)` function, using `bridge.registerHandler(IPC_CHANNELS.MY_ACTION, async (_event, ...) => { ... })`. Services and shared state are reached through `bridge` (the [`IpcBridge`](file:///home/alun/sshs3/src/main/IpcBridge.ts) instance), typed as that file's own `XHost = Pick<IpcBridge, ...>` so a group only sees the members it uses (add the member to the `Pick` when you need a new one; `tests/main/ipcHostAccess.test.ts` guards who may touch the PIN-prompt maps and agent state); `registerHandler` also runs the sender check (`assertTrustedSender`), so never call `ipcMain.handle` directly.
    - A new domain gets its own `ipc/<domain>Handlers.ts` and one call in `IpcBridge.register()` (order matters only for the existing groups).
 
    | Domain | File |

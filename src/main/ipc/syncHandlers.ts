@@ -7,7 +7,13 @@ import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc'
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../../shared/types/sync';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerSyncHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type SyncHost = Pick<
+  IpcBridge,
+  'appAgent' | 'buildSyncStatus' | 'forgetGlobalCardAfterFailure' | 'getOrLoadGlobalSmartcardAgent' | 'getSyncProvider' | 'globalCards' | 'identitiesForLibrary' | 'loadSmartcardIntoPrivateAgentWithPresence' | 'profileSyncService' | 'promptForPinDirect' | 'registerHandler' | 'scheduleAutoSync' | 'settingsStore' | 'startAutoPullTimer' | 'stopAutoPullTimer' | 'storageRegistry' | 'syncConfigStore' | 'syncCryptoService' | 'unlockSyncInternal' | 'unlockWithSmartcardInternal'
+>;
+
+export function registerSyncHandlers(bridge: SyncHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.PROFILE_SYNC_SETUP,
     async (_event, payload: { target: StorageConnectConfig; remoteBasePath?: string }) => {

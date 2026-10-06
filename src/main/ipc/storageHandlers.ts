@@ -3,7 +3,13 @@ import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc'
 import type { FileEntry, ObjectMetadata, S3Tag, BucketVersioningInfo, ObjectVersionEntry } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerStorageHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type StorageHost = Pick<
+  IpcBridge,
+  'cleanupSmartcardSessionAgent' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig' | 'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'startupUnlockPromise' | 'storageRegistry'
+>;
+
+export function registerStorageHandlers(bridge: StorageHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.STORAGE_CONNECT,
     async (_event, config: StorageConnectConfig) => {

@@ -5,7 +5,13 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { DotfilePool, DotfilesSyncResolution } from '../../shared/types/dotfiles';
 import type { IpcBridge } from '../IpcBridge';
 
-export function registerDotfileHandlers(bridge: IpcBridge): void {
+/** The part of IpcBridge this handler group may use. */
+export type DotfileHost = Pick<
+  IpcBridge,
+  'dotfilePoolStore' | 'pendingDotfilesSyncPrompts' | 'registerHandler' | 'scheduleAutoSync' | 'storageRegistry'
+>;
+
+export function registerDotfileHandlers(bridge: DotfileHost): void {
   bridge.registerHandler(IPC_CHANNELS.DOTFILES_POOLS_GET, async (): Promise<DotfilePool[]> => {
     return await bridge.dotfilePoolStore.getPools();
   });
