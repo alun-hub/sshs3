@@ -35,6 +35,28 @@ Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta 
   smartcard-rader ur `~/.ssh/config`. Kvarvarande risk: en komprometterad egen klient kan pusha
   en skadlig `extraOptions`. `pkcs11LibPath` är redan device-local (synkas aldrig). Ta upp igen
   bara om hotbilden ändras (t.ex. delad synk-källa mellan flera användare).
+- **Smartcard-filtret (auth-certifikat, 0.96.26) har kända luckor** — från kodgranskningen
+  2026-10-06. Filtret ligger i `getOrLoadGlobalSmartcardAgent` (`IpcBridge.ts`) och
+  `AppAgent.removeIdentities`.
+  - Filtrerar bara *agent-global*. Per-session-agenter (`loadSmartcardIntoPrivateAgentWithPresence`)
+    och sync-länkning/-upplåsning via privat agent laddar fortfarande alla nycklar (kan ge
+    `MaxAuthTries`-fel). Samma urval (`selectAuthFingerprints`) bör användas där.
+  - En länkad sync-nyckel som inte är auth-capable läggs i samma mängd som styr pinning
+    (`globalCards[..].fingerprints`) och erbjuds därför mot servrar och syns i identitetslistan.
+    Behöver en separat "behåll men erbjud inte"-mängd; sync-valet (`identitiesForLibrary`) använder
+    den mängd som idag är gemensam.
+  - Ny sync-länkning tar `identities[0]` ur den filtrerade listan, så vald nyckel kan skilja sig från
+    förr; två moduler för samma kort (p11-kit-proxy/OpenSC) kan ge olika ordning. Överväg att
+    sortera deterministiskt eller låta användaren välja nyckel vid länkning.
+  - Windows: `removeIdentities` gör inget (delad agenttjänst) och ingen `IdentitiesOnly`-pinning
+    finns där, så signeringsnycklar kan fortfarande erbjudas. Ett misslyckat `ssh-add -d` loggas
+    bara (`removed 0 of N`) utan synlig signal för användaren.
+  - Städning: `removeIdentities` dubblerar mappsetup och `.pub`-rad från `writePublicKeyFiles`
+    (dela hjälpare) och kör ett `ssh-add -d` per nyckel i `addQueue`; ett anrop med flera filer
+    räcker. `readKeyUsageFirstByte` dubblerar DER-loopen i `extractUpnFromCertificateDer`
+    (gemensam `findExtension(der, oid)`; en felformad Key Usage-OCTET STRING hanteras olika).
+    `selectAuthFingerprints` läser sync-konfigen vid varje kortladdning även när inget behöver
+    skyddas.
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
 
 ## Prioriterad funktionslista
