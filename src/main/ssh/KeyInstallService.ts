@@ -220,7 +220,7 @@ function toPasswordConfig(config: SSHConnectionConfig): SSHConnectionConfig {
 
 function lastErrorLines(stderr: string, code: number | null): string {
   // stderr kan innehålla ssh-diagnostik men aldrig lösen/PIN (de går via askpass, inte stdin).
-  return stderr.trim().split('\n').slice(-3).join(' ').trim() || `ssh avslutades med kod ${code}`;
+  return stderr.trim().split('\n').slice(-3).join(' ').trim() || `ssh exited with code ${code}`;
 }
 
 /** Bygger inloggningsconfig för ett steg; bara kort/FIDO2-steg laddar maskinvaruagenten (PIN/touch). */
@@ -258,7 +258,7 @@ export async function installPublicKeys(options: KeyInstallOptions): Promise<Key
     p ? { fingerprint: p.fingerprint, status: 'unknown' } : { fingerprint: '', status: 'invalid' }
   );
   if (valid.length === 0) {
-    return { success: false, error: 'Ingen giltig publik nyckel att installera', results };
+    return { success: false, error: 'No valid public key to install', results };
   }
 
   const order = chooseLoginOrder({

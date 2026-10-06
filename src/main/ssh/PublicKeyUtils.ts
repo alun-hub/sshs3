@@ -87,10 +87,10 @@ function shQuote(s: string): string {
 export function buildInstallCommand(publicKeys: string[]): string {
   const parsed = publicKeys.map((k) => {
     const p = parsePublicKeyLine(k);
-    if (!p) throw new Error('Ogiltig publik nyckel');
+    if (!p) throw new Error('Invalid public key');
     return p;
   });
-  if (parsed.length === 0) throw new Error('Ingen nyckel vald');
+  if (parsed.length === 0) throw new Error('No key selected');
   const noun = parsed.length === 1 ? 'key' : 'keys';
   return [
     `# Adds ${parsed.length} public ${noun} to ~/.ssh/authorized_keys (same as ssh-copy-id). Nothing else is changed.`,

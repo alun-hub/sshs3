@@ -432,7 +432,7 @@ export class TransferQueue extends EventEmitter {
         err.name === 'AbortError'
       ) {
         job.progress.status = 'cancelled';
-        job.progress.statusMessage = 'Avbruten';
+        job.progress.statusMessage = 'Cancelled';
         this.emit('progress', job.progress, job);
         this.emit('cancelled', job);
         context.resolveWait(job);
@@ -440,7 +440,7 @@ export class TransferQueue extends EventEmitter {
         job.progress.status = 'failed';
         job.error = err?.message || String(err);
         job.progress.error = job.error;
-        job.progress.statusMessage = 'Misslyckades';
+        job.progress.statusMessage = 'Failed';
         this.emit('progress', job.progress, job);
         this.emit('failed', job, err);
         context.resolveWait(job);
