@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   isPrivateOrBlockedHost,
   buildGitKeysUrl,
-  buildGitKeysInstallCommands,
   fetchGitPublicKeys,
 } from '../../src/main/git/GitKeyFetcher';
 
@@ -75,16 +74,6 @@ describe('GitKeyFetcher', () => {
 
     it('throws when custom host is missing', () => {
       expect(() => buildGitKeysUrl('custom', 'devuser')).toThrow(/custom host is required/);
-    });
-  });
-
-  describe('buildGitKeysInstallCommands', () => {
-    it('produces cross-platform bash and powershell install one-liners', () => {
-      const { bash, powershell } = buildGitKeysInstallCommands('https://github.com/alice.keys');
-      expect(bash).toContain('curl -fsSL https://github.com/alice.keys');
-      expect(bash).toContain('authorized_keys');
-      expect(powershell).toContain('Invoke-WebRequest -Uri "https://github.com/alice.keys"');
-      expect(powershell).toContain('authorized_keys');
     });
   });
 

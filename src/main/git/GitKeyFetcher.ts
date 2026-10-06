@@ -77,13 +77,6 @@ export function buildGitKeysUrl(provider: GitKeyProvider, username: string, cust
   throw new Error(`Unsupported Git provider: ${provider}`);
 }
 
-export function buildGitKeysInstallCommands(url: string): { bash: string; powershell: string } {
-  return {
-    bash: `curl -fsSL ${url} | (mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys)`,
-    powershell: `if (!(Test-Path $HOME\\.ssh)) { New-Item -ItemType Directory -Path $HOME\\.ssh }; (Invoke-WebRequest -Uri "${url}").Content | Out-File -Append -Encoding ascii -FilePath $HOME\\.ssh\\authorized_keys`,
-  };
-}
-
 export async function fetchGitPublicKeys(request: FetchGitKeysRequest): Promise<FetchGitKeysResult> {
   const username = request.username?.trim();
   if (!username) {

@@ -5,8 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   verifyAgentSignature,
-  wrapMasterPasswords,
-  unwrapMasterPasswords,
   getKeyAlgorithm,
   deriveSecretFromSignature,
   KEY_DERIVATION_MESSAGE,
@@ -419,50 +417,5 @@ describe.skipIf(process.platform === 'win32')('sendAgentMessage, getAgentIdentit
     );
 
     server.close();
-  });
-});
-
-describe('wrapMasterPasswords / unwrapMasterPasswords (M1)', () => {
-  const passwords = { topologyPassword: 'topo-secret', credentialsPassword: 'creds-secret' };
-
-  it('round-trips the wrapped passwords with the correct secret', () => {
-    const secret = crypto.randomBytes(32).toString('hex');
-    const wrapped = wrapMasterPasswords(secret, passwords);
-
-    expect(unwrapMasterPasswords(secret, wrapped)).toEqual(passwords);
-  });
-
-  it('fails to unwrap with an incorrect secret', () => {
-    const secret = crypto.randomBytes(32).toString('hex');
-    const wrongSecret = crypto.randomBytes(32).toString('hex');
-    const wrapped = wrapMasterPasswords(secret, passwords);
-
-    expect(() => unwrapMasterPasswords(wrongSecret, wrapped)).toThrow();
-  });
-
-  it('rejects a truncated GCM auth tag (tag length is pinned to 16 bytes)', () => {
-    const secret = crypto.randomBytes(32).toString('hex');
-    const wrapped = wrapMasterPasswords(secret, passwords);
-    const shortTag = Buffer.from(wrapped.tag, 'base64').subarray(0, 4).toString('base64');
-
-    expect(() => unwrapMasterPasswords(secret, { ...wrapped, tag: shortTag })).toThrow();
-  });
-
-  it('derives the wrapping key via HKDF-SHA256 with the documented info string, not raw SHA-256', () => {
-    const secret = crypto.randomBytes(32).toString('hex');
-    const rawSha256Key = crypto.createHash('sha256').update(secret).digest();
-    const hkdfKey = Buffer.from(crypto.hkdfSync('sha256', secret, '', 'sshs3-smartcard-wrap-v1', 32));
-
-    expect(hkdfKey.equals(rawSha256Key)).toBe(false);
-
-    const wrapped = wrapMasterPasswords(secret, passwords);
-    const iv = Buffer.from(wrapped.iv, 'base64');
-    const tag = Buffer.from(wrapped.tag, 'base64');
-    const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
-
-    const decipher = crypto.createDecipheriv('aes-256-gcm', hkdfKey, iv);
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
-    expect(JSON.parse(plaintext)).toEqual(passwords);
   });
 });

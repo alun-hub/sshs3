@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Readable, Writable } from 'node:stream';
-import { DotfileSyncService, resolveRemotePath } from '../../src/main/dotfiles/DotfileSyncService';
-import type { SFTPStorageProvider } from '../../src/main/storage/SFTPStorageProvider';
+import {
+  DotfileSyncService,
+  resolveRemotePath,
+  type IDotfileTransport,
+} from '../../src/main/dotfiles/DotfileSyncService';
 import type { DotfilePool, DotfilePoolFile } from '../../src/shared/types/dotfiles';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -43,7 +45,14 @@ describe('DotfileSyncService', () => {
 
   describe('computeDiff and applyFiles', () => {
     let service: DotfileSyncService;
-    let mockProvider: Partial<SFTPStorageProvider>;
+
+    const config: SSHConnectionConfig = {
+      id: 'c1',
+      name: 'gnarg',
+      host: 'gnarg',
+      username: 'alun',
+      authType: 'agent',
+    };
 
     beforeEach(() => {
       service = new DotfileSyncService();
@@ -55,116 +64,51 @@ describe('DotfileSyncService', () => {
         '/home/alun/.zshrc': 'export OLD=DIFF',
         // .vimrc is missing on remote
       };
-
-      mockProvider = {
-        ensureConnected: vi.fn().mockResolvedValue(undefined),
+      const transport: IDotfileTransport = {
         getHomeDir: vi.fn().mockResolvedValue('/home/alun'),
-        createReadStream: vi.fn((remotePath: string) => {
-          if (remoteFiles[remotePath] !== undefined) {
-            return Readable.from([Buffer.from(remoteFiles[remotePath], 'utf-8')]);
-          }
-          const errStream = new Readable({
-            read() {
-              this.destroy(new Error('No such file'));
-            },
-          });
-          return errStream;
-        }) as any,
+        readRemoteFile: vi.fn(async (remotePath: string) => {
+          if (remoteFiles[remotePath] === undefined) throw new Error('No such file');
+          return Buffer.from(remoteFiles[remotePath], 'utf-8');
+        }),
+        writeRemoteFile: vi.fn(),
       };
-
-      (service as any).createProvider = vi.fn().mockReturnValue(mockProvider);
 
       const pool: DotfilePool = {
         id: 'pool-1',
         name: 'My Pool',
         files: [
-          {
-            id: 'f1',
-            remotePath: '~/.bashrc',
-            content: 'export FOO=MATCH', // identical
-          },
-          {
-            id: 'f2',
-            remotePath: '~/.zshrc',
-            content: 'export NEW=DIFF', // changed
-          },
-          {
-            id: 'f3',
-            remotePath: '~/.vimrc',
-            content: 'set number', // missing on remote
-          },
+          { id: 'f1', remotePath: '~/.bashrc', content: 'export FOO=MATCH' }, // identical
+          { id: 'f2', remotePath: '~/.zshrc', content: 'export NEW=DIFF' }, // changed
+          { id: 'f3', remotePath: '~/.vimrc', content: 'set number' }, // missing on remote
         ],
       };
 
-      const config: SSHConnectionConfig = {
-        id: 'c1',
-        name: 'gnarg',
-        host: 'gnarg',
-        username: 'alun',
-        authType: 'agent',
-      };
-
-      const diff = await service.computeDiff(config, pool);
+      const diff = await service.computeDiff(config, pool, { transport });
 
       // f1 is identical so it should NOT be in diff.entries
       expect(diff.entries).toHaveLength(2);
-
-      const zshEntry = diff.entries.find((e) => e.fileId === 'f2');
-      expect(zshEntry).toBeDefined();
-      expect(zshEntry?.reason).toBe('different');
-
-      const vimEntry = diff.entries.find((e) => e.fileId === 'f3');
-      expect(vimEntry).toBeDefined();
-      expect(vimEntry?.reason).toBe('missing');
+      expect(diff.entries.find((e) => e.fileId === 'f2')?.reason).toBe('different');
+      expect(diff.entries.find((e) => e.fileId === 'f3')?.reason).toBe('missing');
+      expect(diff.provider).toBe(transport);
     });
 
-    it('applies files by writing to resolved path and atomically renaming', async () => {
-      const writtenData: Record<string, string> = {};
-      const renamed: { oldPath: string; newPath: string }[] = [];
-      const chmodded: { path: string; mode: string }[] = [];
-
-      mockProvider = {
+    it('applies files by writing each one to its resolved path with its mode', async () => {
+      const writeRemoteFile = vi.fn().mockResolvedValue(undefined);
+      const transport: IDotfileTransport = {
         getHomeDir: vi.fn().mockResolvedValue('/home/alun'),
-        createFolder: vi.fn().mockResolvedValue(undefined),
-        createWriteStream: vi.fn((targetPath: string) => {
-          const chunks: Buffer[] = [];
-          const ws = new Writable({
-            write(chunk, _encoding, callback) {
-              chunks.push(chunk);
-              callback();
-            },
-          });
-          ws.on('finish', () => {
-            writtenData[targetPath] = Buffer.concat(chunks).toString('utf-8');
-          });
-          return ws;
-        }) as any,
-        rename: vi.fn(async (oldPath: string, newPath: string) => {
-          renamed.push({ oldPath, newPath });
-        }),
-        chmod: vi.fn(async (targetPath: string, mode: string) => {
-          chmodded.push({ path: targetPath, mode });
-        }),
+        readRemoteFile: vi.fn(),
+        writeRemoteFile,
       };
-
       const files: DotfilePoolFile[] = [
-        {
-          id: 'f1',
-          remotePath: '~/.bashrc',
-          content: 'export FOO=BAR',
-          mode: '644',
-        },
+        { id: 'f1', remotePath: '~/.bashrc', content: 'export FOO=BAR', mode: '644' },
+        { id: 'f2', remotePath: '../../../etc/cron.d/pwned', content: 'x' },
       ];
 
-      await service.applyFiles(mockProvider as SFTPStorageProvider, files);
+      await service.applyFiles(transport, files);
 
-      expect(renamed).toHaveLength(1);
-      expect(renamed[0].oldPath).toBe('/home/alun/.bashrc.sshs3.tmp');
-      expect(renamed[0].newPath).toBe('/home/alun/.bashrc');
-
-      expect(chmodded).toHaveLength(1);
-      expect(chmodded[0].path).toBe('/home/alun/.bashrc');
-      expect(chmodded[0].mode).toBe('644');
+      expect(writeRemoteFile).toHaveBeenNthCalledWith(1, '/home/alun/.bashrc', 'export FOO=BAR', '644');
+      // A pool entry that tries to escape the home directory is clamped inside it.
+      expect(writeRemoteFile).toHaveBeenNthCalledWith(2, '/home/alun/pwned', 'x', undefined);
     });
   });
 });

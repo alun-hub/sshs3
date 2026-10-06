@@ -1,4 +1,4 @@
-import { fingerprintKey } from '../ssh/KnownHostsStore';
+import { fingerprintKey } from '../ssh/hostKeyFingerprint';
 import { BLOCKED_SSH_DIRECTIVES, isAllowedExtraOption } from '../ssh/blockedSshDirectives';
 import type { KnownHostsConflict } from '../../shared/types/sync';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
@@ -328,29 +328,6 @@ export function writeAgentSshConfigBlock(fileContent: string, body: string | nul
   if (managedIdx === -1) return fileContent;
   const before = fileContent.slice(0, managedIdx);
   return `${before}${before.endsWith('\n') || before === '' ? '' : '\n'}${blockText}\n${fileContent.slice(managedIdx)}`;
-}
-
-export interface SshConfigMergeResult {
-  merged: string;
-  changed: boolean;
-}
-
-/**
- * Merges a downloaded `~/.ssh/config` managed block into the local file.
- * Whichever side's block has the newer `updatedAt` wins wholesale (the
- * block is small and hand-edited as a unit, unlike the JSON per-record
- * stores) — never touches anything outside the markers.
- */
-export function mergeSshConfigBlocks(localContent: string, remoteContent: string): SshConfigMergeResult {
-  const remoteBlock = parseManagedSshConfigBlock(remoteContent);
-  if (!remoteBlock) {
-    return { merged: localContent, changed: false };
-  }
-  const localBlock = parseManagedSshConfigBlock(localContent);
-  if (localBlock && localBlock.updatedAt >= remoteBlock.updatedAt) {
-    return { merged: localContent, changed: false };
-  }
-  return { merged: writeManagedSshConfigBlock(localContent, remoteBlock), changed: true };
 }
 
 export interface KnownHostsMergeResult {

@@ -41,7 +41,6 @@ import { SnippetStore } from './snippets/SnippetStore';
 import { SNIPPET_MAX_NAME_CHARS } from '../shared/types/snippets';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
-import { KnownHostsStore } from './ssh/KnownHostsStore';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { installPublicKeys, probeHost, testLogin, verifyKeyLogin } from './ssh/KeyInstallService';
 import { listFilePublicKeys, listAgentPublicKeys, dedupeKeys } from './ssh/PublicKeyDiscovery';
@@ -193,7 +192,6 @@ export interface IpcBridgeOptions {
   storageRegistry?: StorageRegistry;
   transferQueue?: TransferQueue;
   profileStore?: ProfileStore;
-  knownHostsStore?: KnownHostsStore;
   sessionStore?: SessionStore;
   clipboardHistoryStore?: ClipboardHistoryStore;
   snippetStore?: SnippetStore;
@@ -225,7 +223,6 @@ export class IpcBridge {
   public readonly storageRegistry: StorageRegistry;
   public readonly transferQueue: TransferQueue;
   public readonly profileStore: ProfileStore;
-  public readonly knownHostsStore: KnownHostsStore;
   public readonly sessionStore: SessionStore;
   public readonly clipboardHistoryStore: ClipboardHistoryStore;
   public readonly snippetStore: SnippetStore;
@@ -340,7 +337,6 @@ export class IpcBridge {
             .listActive()
             .some((t) => t.connectionId === connectionId && t.tunnel.id === tunnelId),
       });
-    this.knownHostsStore = options.knownHostsStore ?? new KnownHostsStore();
     this.storageRegistry =
       options.storageRegistry ??
       new StorageRegistry({
@@ -348,7 +344,6 @@ export class IpcBridge {
           createHostVerifier({
             host,
             port,
-            knownHosts: this.knownHostsStore,
             onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
           }),
         sftpPresenceFactory: (cfg) => {
@@ -2574,29 +2569,9 @@ export class IpcBridge {
       'Touch your security key to sync dotfiles...'
     );
 
-    const hostVerifier = createHostVerifier({
-      host: config.host,
-      port: config.port ?? 22,
-      knownHosts: this.knownHostsStore,
-      onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
-    });
-
-    const pinPromptHandler =
-      config.authType === 'smartcard' && config.pkcs11LibPath
-        ? () =>
-            this.sshPtyManager.promptForPin(
-              sessionId,
-              `Enter your smartcard PIN to sync dotfiles with ${config.name || config.host}:`,
-              'smartcard',
-              `Dotfiles Sync: ${config.name || config.host}`
-            )
-        : undefined;
-
     let provider: Awaited<ReturnType<DotfileSyncService['computeDiff']>>['provider'] | undefined;
     try {
       const diff = await this.dotfileSyncService.computeDiff(config, pool, {
-        hostVerifier,
-        pinPromptHandler,
         controlPath,
         onPresence: onPresenceRequested,
         onPresenceCleared,
@@ -3729,8 +3704,7 @@ export class IpcBridge {
             createHostVerifier({
               host: config.host,
               port,
-              knownHosts: this.knownHostsStore,
-              onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
+                onUnknownOrChanged: (info) => this.promptHostKeyTrust(info),
             })
           );
           await provider.ensureConnected();

@@ -72,7 +72,7 @@ describe('SessionStore', () => {
               username: 'u',
               authType: 'smartcard',
               pin: '123456',
-              proxy: { type: 'http', host: 'proxy', port: 3128, username: 'pu', password: 'proxy-secret' },
+              proxy: { type: 'http', host: 'proxy', port: 3128, username: 'pu', password: 'proxy-secret' }, // pragma: allowlist secret
             },
           },
         },

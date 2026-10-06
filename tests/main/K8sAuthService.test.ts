@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
+import { parseOcLoginCommand } from '../../src/shared/ocLogin';
 import {
-  parseOcLoginCommand,
   formatClusterNames,
   loginWithToken,
 } from '../../src/main/services/K8sAuthService';

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   parseManagedSshConfigBlock,
   writeManagedSshConfigBlock,
-  mergeSshConfigBlocks,
   mergeKnownHosts,
   sanitizeSshConfigBody,
   buildManagedSshConfigBlockFromProfiles,
@@ -137,35 +136,6 @@ describe('SshNativeFileMerger — ssh config managed block', () => {
 
     const parsed = parseManagedSshConfigBlock(result);
     expect(parsed?.body).not.toMatch(/ProxyCommand/i);
-  });
-
-  it('merge: remote block wins when it is newer', () => {
-    const local = writeManagedSshConfigBlock('', { updatedAt: '2026-01-01T00:00:00.000Z', body: 'Host local\n  HostName local.example.com' });
-    const remote = writeManagedSshConfigBlock('', { updatedAt: '2026-02-01T00:00:00.000Z', body: 'Host remote\n  HostName remote.example.com' });
-
-    const { merged, changed } = mergeSshConfigBlocks(local, remote);
-    expect(changed).toBe(true);
-    expect(merged).toContain('Host remote');
-    expect(merged).not.toContain('Host local');
-  });
-
-  it('merge: local block wins when it is newer or equal, and nothing changes', () => {
-    const local = writeManagedSshConfigBlock('', { updatedAt: '2026-05-01T00:00:00.000Z', body: 'Host local\n  HostName local.example.com' });
-    const remote = writeManagedSshConfigBlock('', { updatedAt: '2026-01-01T00:00:00.000Z', body: 'Host remote\n  HostName remote.example.com' });
-
-    const { merged, changed } = mergeSshConfigBlocks(local, remote);
-    expect(changed).toBe(false);
-    expect(merged).toBe(local);
-  });
-
-  it('merge: local file with no managed block yet adopts the remote block', () => {
-    const local = 'Host myown\n  HostName myown.example.com\n';
-    const remote = writeManagedSshConfigBlock('', { updatedAt: '2026-01-01T00:00:00.000Z', body: 'Host remote\n  HostName remote.example.com' });
-
-    const { merged, changed } = mergeSshConfigBlocks(local, remote);
-    expect(changed).toBe(true);
-    expect(merged).toContain('Host myown');
-    expect(merged).toContain('Host remote');
   });
 });
 

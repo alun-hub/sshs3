@@ -15,7 +15,7 @@ import type {
   StorageType,
   WriteStreamOptions,
 } from '../../shared/types/storage';
-import type { SshHostVerifierFn } from '../ssh/HostKeyVerifier';
+import type { SshHostVerifier } from '../ssh/HostKeyVerifier';
 
 /**
  * Parses permissions into an octal permission string (e.g. "755").
@@ -120,7 +120,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   constructor(
     config: SFTPConfig,
     client?: ISftpBackendClient | any,
-    hostVerifier?: SshHostVerifierFn,
+    hostVerifier?: SshHostVerifier,
     pinPromptHandler?: (prompt: string) => Promise<string> | string,
     presence?: { onPresence?: (prompt: string) => void; onPresenceCleared?: () => void }
   ) {
@@ -149,9 +149,6 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     if (typeof client.setMaxListeners === 'function') {
       client.setMaxListeners(100);
     }
-    if (client.client && typeof client.client.setMaxListeners === 'function') {
-      client.client.setMaxListeners(100);
-    }
     try {
       client.removeListener('close', this.onLifecycleCleanup);
       client.removeListener('end', this.onLifecycleCleanup);
@@ -169,12 +166,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
    * Deduplicates concurrent connection attempts.
    */
   public async ensureConnected(): Promise<void> {
-    const rawClient = (this.client as any).client;
-    const sock = rawClient?._sock;
-    const socketDead = sock && (sock.destroyed || !sock.writable);
-    const sftpMissing = (this.client as any).sftp === null;
-
-    if (this.isConnected && !socketDead && !sftpMissing) {
+    // A dropped connection resets `isConnected` through the client's close/end/error events.
+    if (this.isConnected) {
       return;
     }
     if (this.connectionPromise) {
@@ -262,8 +255,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     }
     await this.ensureConnected();
     try {
-      if (typeof (this.client as any).realPath === 'function') {
-        const real = await (this.client as any).realPath('.');
+      if (typeof this.client.realPath === 'function') {
+        const real = await this.client.realPath('.');
         if (real && real.startsWith('/') && (real !== '/' || this.config.username === 'root')) {
           this.cachedHomeDir = real;
           return real;
@@ -387,9 +380,9 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       const resolvedNew = await this.resolveRemotePath(newPath);
 
       // Try posixRename first (OpenSSH extension: atomic rename overwriting destination)
-      if (typeof (this.client as any).posixRename === 'function') {
+      if (typeof this.client.posixRename === 'function') {
         try {
-          await (this.client as any).posixRename(resolvedOld, resolvedNew);
+          await this.client.posixRename(resolvedOld, resolvedNew);
           return;
         } catch {
           // Fall back if server doesn't support the OpenSSH extension
@@ -457,8 +450,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   ): Promise<void> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-      if (typeof (this.client as any).put === 'function') {
-        await (this.client as any).put(
+      if (typeof this.client.put === 'function') {
+        await this.client.put(
           Buffer.isBuffer(data) ? data : Buffer.from(data),
           resolved,
           { mode: options?.mode }
@@ -477,8 +470,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   async readFile(remotePath: string): Promise<Buffer> {
     return this.executeWithReconnect(async () => {
       const resolved = await this.resolveRemotePath(remotePath);
-      if (typeof (this.client as any).get === 'function') {
-        const res = await (this.client as any).get(resolved);
+      if (typeof this.client.get === 'function') {
+        const res = await this.client.get(resolved);
         return Buffer.isBuffer(res) ? res : Buffer.from(res as any);
       }
       const stream = await this.createReadStream(remotePath);
@@ -507,28 +500,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       const resolved = await this.resolveRemotePath(remotePath);
       const epochSeconds = Math.floor(mtimeMs / 1000);
 
-      // Support OpenSshSftpClientAdapter directly
-      if (typeof (this.client as any).setstat === 'function') {
-        await (this.client as any).setstat(resolved, {
-          atime: epochSeconds,
-          mtime: epochSeconds,
-        });
-        return;
-      }
-
-      // Backward compatibility with rawSftp
-      const rawSftp = (this.client as any).sftp;
-      if (rawSftp && typeof rawSftp.setstat === 'function') {
-        await new Promise<void>((resolve, reject) => {
-          rawSftp.setstat(
-            resolved,
-            { atime: epochSeconds, mtime: epochSeconds },
-            (err: Error | undefined) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+      if (typeof this.client.setstat === 'function') {
+        await this.client.setstat(resolved, { atime: epochSeconds, mtime: epochSeconds });
         return;
       }
 
@@ -538,33 +511,15 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
 
   public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
     await this.ensureConnected();
-    if (typeof (this.client as any).exec === 'function') {
-      return await (this.client as any).exec(cmd);
-    }
-    const rawSsh = (this.client as any).client;
-    if (rawSsh && typeof rawSsh.exec === 'function') {
-      return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
-        rawSsh.exec(cmd, (err: any, stream: any) => {
-          if (err) return reject(err);
-          const outChunks: Buffer[] = [];
-          const errChunks: Buffer[] = [];
-          stream.on('data', (d: Buffer) => outChunks.push(d));
-          stream.stderr?.on('data', (d: Buffer) => errChunks.push(d));
-          stream.on('close', () => {
-            resolve({
-              stdout: Buffer.concat(outChunks),
-              stderr: Buffer.concat(errChunks).toString('utf-8'),
-            });
-          });
-        });
-      });
+    if (typeof this.client.exec === 'function') {
+      return await this.client.exec(cmd);
     }
     throw new Error('This SFTP connection does not support running remote commands');
   }
 
   public createExecStream(cmd: string): NodeJS.ReadableStream {
-    if (typeof (this.client as any).createExecStream === 'function') {
-      return (this.client as any).createExecStream(cmd);
+    if (typeof this.client.createExecStream === 'function') {
+      return this.client.createExecStream(cmd);
     }
     throw new Error('createExecStream is not supported by this SFTP connection');
   }

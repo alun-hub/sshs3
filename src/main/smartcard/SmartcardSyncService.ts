@@ -6,12 +6,6 @@ export interface AgentIdentity {
   comment: string;
 }
 
-export interface WrappedSyncPasswords {
-  ciphertext: string;
-  iv: string;
-  tag: string;
-}
-
 /**
  * Communicates with an SSH agent over a Unix domain socket or Windows named pipe
  * using the standard OpenSSH agent wire protocol.
@@ -179,56 +173,6 @@ export function getKeyAlgorithm(keyBlob: Buffer): string {
   } catch {
     return 'unknown';
   }
-}
-
-/**
- * Derives the AES-256-GCM wrapping key from the smartcard secret via
- * HKDF-SHA256, with a domain-separating info string, rather than raw
- * SHA-256 (which has no domain separation and would collide with any
- * other place that happens to hash the same secret).
- */
-function deriveWrapKey(smartcardSecret: string): Buffer {
-  return Buffer.from(crypto.hkdfSync('sha256', smartcardSecret, '', 'sshs3-smartcard-wrap-v1', 32));
-}
-
-/**
- * Encrypts master passwords with a key derived from the smartcard secret.
- */
-export function wrapMasterPasswords(
-  smartcardSecret: string,
-  passwords: { topologyPassword: string; credentialsPassword: string }
-): WrappedSyncPasswords {
-  const key = deriveWrapKey(smartcardSecret);
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const plaintext = JSON.stringify(passwords);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  return {
-    ciphertext: ciphertext.toString('base64'),
-    iv: iv.toString('base64'),
-    tag: tag.toString('base64'),
-  };
-}
-
-/**
- * Decrypts master passwords using the smartcard secret.
- */
-export function unwrapMasterPasswords(
-  smartcardSecret: string,
-  wrapped: WrappedSyncPasswords
-): { topologyPassword: string; credentialsPassword: string } {
-  const key = deriveWrapKey(smartcardSecret);
-  const iv = Buffer.from(wrapped.iv, 'base64');
-  const tag = Buffer.from(wrapped.tag, 'base64');
-  const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
-
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
-  decipher.setAuthTag(tag);
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
-
-  return JSON.parse(plaintext);
 }
 
 function derEncodeInteger(buf: Buffer): Buffer {

@@ -1,5 +1,3 @@
-import { KnownHostsStore, fingerprintKey, readKeyType } from './KnownHostsStore';
-
 export interface HostKeyPromptInfo {
   host: string;
   port: number;
@@ -9,69 +7,25 @@ export interface HostKeyPromptInfo {
   status: 'unknown' | 'mismatch';
 }
 
-export type SshHostVerifierFn = ((key: Buffer, verify: (matches: boolean) => void) => void) & {
-  /**
-   * Trust prompt for transports where OpenSSH does the key exchange itself (SFTP via `ssh -s sftp`)
-   * and only hands us the fingerprint from its own confirmation prompt.
-   */
-  hostKeyPrompt?: (info: HostKeyPromptInfo) => Promise<boolean>;
-  host?: string;
-  port?: number;
-};
+/**
+ * Host key trust for SFTP/SSH transports. OpenSSH does the key exchange itself and keeps
+ * `~/.ssh/known_hosts` up to date; the app only answers its "continue connecting?" question
+ * (via askpass) by showing `hostKeyPrompt` to the user. There is no known_hosts handling of
+ * our own: an absent `hostKeyPrompt` means the question is answered "no" (fail closed).
+ */
+export interface SshHostVerifier {
+  host: string;
+  port: number;
+  /** Prompts the user (trust-on-first-use dialog) and resolves to whether they chose to trust the key. */
+  hostKeyPrompt: (info: HostKeyPromptInfo) => Promise<boolean>;
+}
 
 export interface CreateHostVerifierOptions {
   host: string;
   port: number;
-  knownHosts: KnownHostsStore;
-  /** Prompts the user (TOFU dialog) and resolves to whether they chose to trust the key. */
   onUnknownOrChanged: (info: HostKeyPromptInfo) => Promise<boolean>;
 }
 
-/**
- * Builds a `hostVerifier` callback that checks a presented host key
- * against known_hosts, auto-accepting an exact match and asking the caller
- * to prompt the user (trust-on-first-use) for an unknown or changed key.
- * Accepted new/changed keys are persisted to known_hosts so future
- * connections to the same host are silently accepted.
- */
-export function createHostVerifier(options: CreateHostVerifierOptions): SshHostVerifierFn {
-  const { host, port, knownHosts, onUnknownOrChanged } = options;
-
-  const verifier: SshHostVerifierFn = (key: Buffer, verify: (matches: boolean) => void) => {
-    void (async () => {
-      try {
-        const status = await knownHosts.checkHost(host, port, key);
-        if (status === 'match') {
-          verify(true);
-          return;
-        }
-
-        const trusted = await onUnknownOrChanged({
-          host,
-          port,
-          keyType: readKeyType(key),
-          fingerprint: fingerprintKey(key),
-          status,
-        });
-
-        if (trusted) {
-          try {
-            await knownHosts.addHostKey(host, port, key);
-          } catch {
-            // Persisting the trust decision failed (e.g. read-only home dir)
-            // - still honor the user's choice for this connection attempt.
-          }
-        }
-        verify(trusted);
-      } catch {
-        // Fail closed: any unexpected error verifying the host key rejects
-        // the connection rather than silently accepting it.
-        verify(false);
-      }
-    })();
-  };
-  verifier.hostKeyPrompt = onUnknownOrChanged;
-  verifier.host = host;
-  verifier.port = port;
-  return verifier;
+export function createHostVerifier(options: CreateHostVerifierOptions): SshHostVerifier {
+  return { host: options.host, port: options.port, hostKeyPrompt: options.onUnknownOrChanged };
 }
