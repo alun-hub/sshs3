@@ -336,6 +336,14 @@ if [[ "$DO_SITE" == "true" && ! -d "$SITE_DIR/.git" ]]; then
   DO_SITE=false
 fi
 
+# 4d. Reminder (never blocks): the user guide (docs/user-guide, published on docs.sshs3.com) is written by
+# hand, so a release with app changes but no guide changes since the last tag may have undocumented behavior.
+if [[ -n "$LAST_TAG_FOR_SITE" ]] \
+  && [[ -n "$(git diff --name-only "$LAST_TAG_FOR_SITE" -- src)" ]] \
+  && [[ -z "$(git diff --name-only "$LAST_TAG_FOR_SITE" -- docs/user-guide)" ]]; then
+  echo -e "${YELLOW}Reminder: src/ changed since ${LAST_TAG_FOR_SITE} but docs/user-guide did not. Do the user-facing changes need documenting?${RESET}"
+fi
+
 # 5. Format commit message
 if [[ -z "$COMMIT_MSG" ]]; then
   FINAL_COMMIT_MSG="chore: release ${TAG}"
