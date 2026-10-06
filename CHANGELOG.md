@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.28] - 2026-10-06
+
+### Fixed
+- the test suite no longer fails on Windows hosts (a new test of the FIDO2 startup error message assumed the Linux wording); v0.96.27 could not be built because the Release workflow runs the tests on Windows too
+
 ## [0.96.27] - 2026-10-06
 
 ### Security
