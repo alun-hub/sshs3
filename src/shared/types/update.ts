@@ -4,6 +4,7 @@ export type UpdateStatus =
   | 'available'
   | 'downloading'
   | 'ready'
+  | 'installing'
   | 'up-to-date'
   | 'error'
   | 'unsupported';

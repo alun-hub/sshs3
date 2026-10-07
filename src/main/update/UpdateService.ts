@@ -50,6 +50,11 @@ export interface UpdateServiceOptions {
   send: (state: UpdateState) => void;
   initialDelayMs?: number;
   pollIntervalMs?: number;
+  /**
+   * How long to let the renderer paint the "installing" state before the
+   * synchronous installer blocks the main process. Defaults to 300 ms; 0 skips the wait.
+   */
+  paintDelayMs?: number;
 }
 
 /** Reduces an updater error to one short line; never forwards stacks or raw payloads. */
@@ -165,6 +170,12 @@ export class UpdateService {
     this.installing = true;
     try {
       if (this.options.confirmQuit && !(await this.options.confirmQuit())) return;
+      // electron-updater runs the package manager synchronously (spawnSync), which
+      // freezes the main process; show the installing overlay first so the window
+      // doesn't hang on the closing confirmation dialog.
+      this.setState({ status: 'installing', error: undefined });
+      const paintDelay = this.options.paintDelayMs ?? 300;
+      if (paintDelay > 0) await new Promise((resolve) => setTimeout(resolve, paintDelay));
       this.updater.quitAndInstall(false, true);
     } finally {
       this.installing = false;
@@ -173,7 +184,7 @@ export class UpdateService {
 
   private isBusy(): boolean {
     const { status } = this.state;
-    return status === 'checking' || status === 'downloading' || status === 'ready';
+    return status === 'checking' || status === 'downloading' || status === 'ready' || status === 'installing';
   }
 
   private async backgroundCheck(): Promise<void> {
@@ -200,9 +211,11 @@ export class UpdateService {
     updater.on('update-downloaded', (info) =>
       this.setState({ status: 'ready', version: info.version, progress: undefined })
     );
-    updater.on('error', (err) =>
-      this.setState({ status: 'error', error: sanitizeUpdateError(err), progress: undefined })
-    );
+    updater.on('error', (err) => {
+      // A failed or cancelled install (e.g. dismissed polkit prompt) keeps the downloaded update retryable.
+      const status = this.state.status === 'installing' ? 'ready' : 'error';
+      this.setState({ status, error: sanitizeUpdateError(err), progress: undefined });
+    });
   }
 
   private setState(patch: Partial<UpdateState>): void {

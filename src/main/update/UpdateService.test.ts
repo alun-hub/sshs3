@@ -28,6 +28,7 @@ function create(opts: Partial<ConstructorParameters<typeof UpdateService>[0]> = 
     getAutoCheck: () => true,
     send,
     platform: 'linux',
+    paintDelayMs: 0,
     ...opts,
   });
   return { updater, send, service };
@@ -80,6 +81,18 @@ describe('UpdateService', () => {
     await service.install();
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
     expect(send).toHaveBeenCalled();
+  });
+
+  it('shows the installing state before quitAndInstall and recovers to ready on failure', async () => {
+    const { updater, service, send } = create();
+    updater.emit('update-downloaded', { version: '2.0.0' });
+    updater.quitAndInstall.mockImplementationOnce(() => {
+      expect(service.getState().status).toBe('installing');
+      updater.emit('error', new Error('polkit dismissed'));
+    });
+    await service.install();
+    expect(service.getState()).toMatchObject({ status: 'ready', error: 'polkit dismissed' });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ status: 'installing' }));
   });
 
   it('does not download or install out of order', async () => {

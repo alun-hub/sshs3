@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, X } from 'lucide-react';
+import { Download, Loader2, X } from 'lucide-react';
 import { useUpdateState } from '../lib/useUpdateState';
 
 /**
@@ -10,6 +10,27 @@ import { useUpdateState } from '../lib/useUpdateState';
 export const UpdateBanner: React.FC = () => {
   const state = useUpdateState();
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+
+  if (state?.status === 'installing') {
+    return (
+      <div
+        role="alert"
+        aria-live="assertive"
+        data-testid="update-installing"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      >
+        <div className="flex items-center gap-3 rounded-xl border border-border-subtle bg-app-card px-5 py-4 shadow-2xl">
+          <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
+          <div>
+            <div className="text-sm font-semibold text-txt-primary">Installing sshs3 {state.version}…</div>
+            <p className="mt-0.5 text-xs text-txt-muted">
+              The app will restart automatically. You may be asked for your password.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const key = state ? `${state.version}:${state.status}` : null;
   if (!state || !state.version || key === dismissedKey) return null;
@@ -31,7 +52,8 @@ export const UpdateBanner: React.FC = () => {
             {state.status === 'available' &&
               (state.error ? `${state.error}. You can try again.` : `You are running ${state.currentVersion}.`)}
             {state.status === 'downloading' && `Downloading… ${state.progress ?? 0}%`}
-            {state.status === 'ready' && 'Downloaded. Restart to finish updating.'}
+            {state.status === 'ready' &&
+              (state.error ? `${state.error}. You can try again.` : 'Downloaded. Restart to finish updating.')}
           </p>
           <div className="mt-2.5 flex gap-1.5">
             {state.status === 'available' && (
