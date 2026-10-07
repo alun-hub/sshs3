@@ -183,7 +183,7 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
     writePublicKeyFiles: vi.fn().mockResolvedValue([]),
     noteLoadedLibrary: vi.fn(),
   };
-  (bridge as any).appAgent = appAgent;
+  (bridge as any).smartcard.appAgent = appAgent;
   bridge.register();
 
   return { bridge, ipc, dir, settingsStore, syncConfigStore, syncCryptoService, appAgent };

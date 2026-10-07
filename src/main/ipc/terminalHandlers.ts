@@ -6,7 +6,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type TerminalHost = Pick<
   IpcBridge,
-  'prepareFido2Config' | 'prepareSmartcardConfig' | 'registerHandler' | 'resolveLocalShellAgentSocket' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'sshPtyManager' | 'startupUnlockPromise'
+  'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'smartcard' | 'sshPtyManager'
 >;
 
 export function registerTerminalHandlers(bridge: TerminalHost): void {
@@ -20,9 +20,9 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         throw new Error('Connection config is required to create terminal');
       }
 
-      if (bridge.startupUnlockPromise) {
+      if (bridge.smartcard.startupUnlockPromise) {
         try {
-          await bridge.startupUnlockPromise;
+          await bridge.smartcard.startupUnlockPromise;
         } catch {
           // Ignore error; terminal session proceeds and prompts if needed
         }
@@ -32,8 +32,8 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
       if (!options.local && config) {
         config = await bridge.restoreSavedSecrets(config);
         config = await bridge.resolveProxyJumpConfig(config);
-        config = await bridge.prepareSmartcardConfig(config);
-        config = await bridge.prepareFido2Config(config);
+        config = await bridge.smartcard.prepareSmartcardConfig(config);
+        config = await bridge.smartcard.prepareFido2Config(config);
 
         if (config.x11Forwarding && process.platform === 'win32') {
           try {
@@ -56,7 +56,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         const settings = await bridge.settingsStore.getSettings().catch(() => null);
         const agentMode = settings?.localTerminalAgentMode ?? 'auto';
         if (agentMode === 'auto' || agentMode === 'app-managed') {
-          const globalAgentSocket = await bridge.resolveLocalShellAgentSocket(settings?.smartcardAuthMode);
+          const globalAgentSocket = await bridge.smartcard.resolveLocalShellAgentSocket(settings?.smartcardAuthMode);
           if (globalAgentSocket) {
             ptyOptions = { ...ptyOptions, env: { SSH_AUTH_SOCK: globalAgentSocket, ...ptyOptions?.env } };
           }

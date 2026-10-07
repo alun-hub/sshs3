@@ -4,7 +4,10 @@ import path from 'node:path';
 
 const IPC_DIR = path.join(__dirname, '../../src/main/ipc');
 
-/** Members holding PIN prompts, agent state or cached card data: only the listed handler groups may use them. */
+/**
+ * Members holding PIN prompts, agent state or cached card data: only the listed handler groups may use them.
+ * The agent state lives on `bridge.smartcard` (SmartcardCoordinator), so both spellings are matched.
+ */
 const GUARDED: Record<string, string[]> = {
   pendingAskpass: ['smartcardHandlers'],
   pendingHostKeyPrompts: ['smartcardHandlers'],
@@ -34,7 +37,7 @@ describe('ipc handler groups only see the part of IpcBridge they need', () => {
   it('keeps the prompt maps and agent state within their owning handler groups', () => {
     for (const [member, owners] of Object.entries(GUARDED)) {
       const users = handlerFiles()
-        .filter((file) => new RegExp(`\\bbridge\\.${member}\\b`).test(fs.readFileSync(path.join(IPC_DIR, file), 'utf-8')))
+        .filter((file) => new RegExp(`\\bbridge\\.(?:smartcard\\.)?${member}\\b`).test(fs.readFileSync(path.join(IPC_DIR, file), 'utf-8')))
         .map((file) => file.replace('.ts', ''));
       for (const user of users) {
         expect(owners, `${member} is used by ${user}`).toContain(user);

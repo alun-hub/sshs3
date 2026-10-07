@@ -6,7 +6,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
   IpcBridge,
-  'cleanupSmartcardSessionAgent' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig' | 'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'startupUnlockPromise' | 'storageRegistry'
+  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'smartcard' | 'storageRegistry'
 >;
 
 export function registerStorageHandlers(bridge: StorageHost): void {
@@ -14,17 +14,17 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     IPC_CHANNELS.STORAGE_CONNECT,
     async (_event, config: StorageConnectConfig) => {
       let resolvedConfig = config;
-      if (config.type === 'sftp' && bridge.startupUnlockPromise) {
+      if (config.type === 'sftp' && bridge.smartcard.startupUnlockPromise) {
         try {
-          await bridge.startupUnlockPromise;
+          await bridge.smartcard.startupUnlockPromise;
         } catch {
           // Ignore startup unlock errors during background connect
         }
       }
       if (config.type === 'sftp' && config.sftpConfig && !bridge.storageRegistry.has(config.id)) {
         let sftpConfig = await bridge.resolveProxyJumpConfig(config.sftpConfig);
-        sftpConfig = await bridge.prepareSftpSmartcardConfig(sftpConfig, config.id);
-        sftpConfig = await bridge.prepareFido2SftpConfig(sftpConfig, config.id);
+        sftpConfig = await bridge.smartcard.prepareSftpSmartcardConfig(sftpConfig, config.id);
+        sftpConfig = await bridge.smartcard.prepareFido2SftpConfig(sftpConfig, config.id);
         resolvedConfig = { ...config, sftpConfig };
       }
       await bridge.storageRegistry.getOrCreate(resolvedConfig);
@@ -36,7 +36,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     IPC_CHANNELS.STORAGE_DISCONNECT,
     async (_event, providerId: string) => {
       await bridge.storageRegistry.disconnect(providerId);
-      bridge.cleanupSmartcardSessionAgent(providerId);
+      bridge.smartcard.cleanupSmartcardSessionAgent(providerId);
     }
   );
 

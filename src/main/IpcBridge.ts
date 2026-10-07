@@ -614,15 +614,15 @@ export class IpcBridge {
       // Same physical card as an already-unlocked terminal/startup agent: reuse it rather than
       // opening a second PKCS#11 session (the card's PIV keys are the same whichever library
       // loaded them).
-      const unlockedSocket = Array.from(this.globalCards.keys()).some((key) => key !== '__fido2__')
-        ? this.appAgent.getSocketPath()
+      const unlockedSocket = Array.from(this.smartcard.globalCards.keys()).some((key) => key !== '__fido2__')
+        ? this.smartcard.appAgent.getSocketPath()
         : null;
       if (unlockedSocket) {
         sftpConfig = { ...sftpConfig, agentPath: unlockedSocket };
       }
     }
-    sftpConfig = await this.prepareSftpSmartcardConfig(sftpConfig, target.id);
-    sftpConfig = await this.prepareFido2SftpConfig(sftpConfig, target.id);
+    sftpConfig = await this.smartcard.prepareSftpSmartcardConfig(sftpConfig, target.id);
+    sftpConfig = await this.smartcard.prepareFido2SftpConfig(sftpConfig, target.id);
     return await this.storageRegistry.getOrCreate({ ...target, sftpConfig });
   }
 
@@ -641,7 +641,7 @@ export class IpcBridge {
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
     if (config.authType === 'smartcard' && config.pkcs11LibPath && !config.agentPath) {
-      const lastFailedAt = this.globalSmartcardAgentFailures.get(config.pkcs11LibPath);
+      const lastFailedAt = this.smartcard.globalSmartcardAgentFailures.get(config.pkcs11LibPath);
       if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
         console.log(
           `[smartcard] runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
@@ -936,24 +936,24 @@ export class IpcBridge {
     // Windows only: there several PKCS#11 modules for one card (opensc-pkcs11 / onepin-opensc-pkcs11 /
     // libykcs11) share the single system agent; other platforms keep the plain per-library cache lookup.
     const sameCardSocket =
-      process.platform !== 'win32' || this.globalCards.has(libPath) || mode !== 'agent-global'
+      process.platform !== 'win32' || this.smartcard.globalCards.has(libPath) || mode !== 'agent-global'
         ? undefined
-        : await this.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
+        : await this.smartcard.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
 
-    if (this.globalCards.has(libPath)) {
-      socketPath = await this.appAgent.ensure();
+    if (this.smartcard.globalCards.has(libPath)) {
+      socketPath = await this.smartcard.appAgent.ensure();
     } else if (sameCardSocket) {
       socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
-      socketPath = await this.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
+      socketPath = await this.smartcard.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
     } else {
-      const agent = await this.loadSmartcardIntoPrivateAgentWithPresence(libPath, pinHandler);
+      const agent = await this.smartcard.loadSmartcardIntoPrivateAgentWithPresence(libPath, pinHandler);
       socketPath = agent.socketPath;
       privateAgentPid = agent.pid;
     }
 
     try {
-      const identities = this.identitiesForLibrary(
+      const identities = this.smartcard.identitiesForLibrary(
         await getAgentIdentities(socketPath),
         libPath,
         privateAgentPid === undefined && !sameCardSocket
@@ -1019,7 +1019,7 @@ export class IpcBridge {
 
       return await this.unlockSyncInternal({ topologyPassword, credentialsPassword }, unlockOptions);
     } catch (err) {
-      this.forgetGlobalCardAfterFailure(libPath, privateAgentPid);
+      this.smartcard.forgetGlobalCardAfterFailure(libPath, privateAgentPid);
       throw err;
     } finally {
       if (privateAgentPid !== undefined) {
@@ -1110,119 +1110,6 @@ export class IpcBridge {
   }
 
 
-
-  // ---- Temporary delegates to SmartcardCoordinator (removed when callers use bridge.smartcard directly) ----
-  public prepareSmartcardConfig(...args: Parameters<SmartcardCoordinator['prepareSmartcardConfig']>): ReturnType<SmartcardCoordinator['prepareSmartcardConfig']> {
-    return this.smartcard.prepareSmartcardConfig(...args);
-  }
-  public prepareFido2Config(...args: Parameters<SmartcardCoordinator['prepareFido2Config']>): ReturnType<SmartcardCoordinator['prepareFido2Config']> {
-    return this.smartcard.prepareFido2Config(...args);
-  }
-  public prepareSftpSmartcardConfig(...args: Parameters<SmartcardCoordinator['prepareSftpSmartcardConfig']>): ReturnType<SmartcardCoordinator['prepareSftpSmartcardConfig']> {
-    return this.smartcard.prepareSftpSmartcardConfig(...args);
-  }
-  public prepareFido2SftpConfig(...args: Parameters<SmartcardCoordinator['prepareFido2SftpConfig']>): ReturnType<SmartcardCoordinator['prepareFido2SftpConfig']> {
-    return this.smartcard.prepareFido2SftpConfig(...args);
-  }
-  public agentIdentityFilesFor(...args: Parameters<SmartcardCoordinator['agentIdentityFilesFor']>): ReturnType<SmartcardCoordinator['agentIdentityFilesFor']> {
-    return this.smartcard.agentIdentityFilesFor(...args);
-  }
-  public resolveSmartcardAgentPath(...args: Parameters<SmartcardCoordinator['resolveSmartcardAgentPath']>): ReturnType<SmartcardCoordinator['resolveSmartcardAgentPath']> {
-    return this.smartcard.resolveSmartcardAgentPath(...args);
-  }
-  public resolveFido2AgentPath(...args: Parameters<SmartcardCoordinator['resolveFido2AgentPath']>): ReturnType<SmartcardCoordinator['resolveFido2AgentPath']> {
-    return this.smartcard.resolveFido2AgentPath(...args);
-  }
-  public getOrLoadGlobalSmartcardAgent(...args: Parameters<SmartcardCoordinator['getOrLoadGlobalSmartcardAgent']>): ReturnType<SmartcardCoordinator['getOrLoadGlobalSmartcardAgent']> {
-    return this.smartcard.getOrLoadGlobalSmartcardAgent(...args);
-  }
-  public getOrLoadGlobalFido2Agent(...args: Parameters<SmartcardCoordinator['getOrLoadGlobalFido2Agent']>): ReturnType<SmartcardCoordinator['getOrLoadGlobalFido2Agent']> {
-    return this.smartcard.getOrLoadGlobalFido2Agent(...args);
-  }
-  public selectAuthFingerprints(...args: Parameters<SmartcardCoordinator['selectAuthFingerprints']>): ReturnType<SmartcardCoordinator['selectAuthFingerprints']> {
-    return this.smartcard.selectAuthFingerprints(...args);
-  }
-  public linkedSyncKeyFingerprint(...args: Parameters<SmartcardCoordinator['linkedSyncKeyFingerprint']>): ReturnType<SmartcardCoordinator['linkedSyncKeyFingerprint']> {
-    return this.smartcard.linkedSyncKeyFingerprint(...args);
-  }
-  public prefetchSmartcardCertificates(...args: Parameters<SmartcardCoordinator['prefetchSmartcardCertificates']>): ReturnType<SmartcardCoordinator['prefetchSmartcardCertificates']> {
-    return this.smartcard.prefetchSmartcardCertificates(...args);
-  }
-  public addSmartcardToAppAgentWithPresence(...args: Parameters<SmartcardCoordinator['addSmartcardToAppAgentWithPresence']>): ReturnType<SmartcardCoordinator['addSmartcardToAppAgentWithPresence']> {
-    return this.smartcard.addSmartcardToAppAgentWithPresence(...args);
-  }
-  public loadSmartcardIntoPrivateAgentWithPresence(...args: Parameters<SmartcardCoordinator['loadSmartcardIntoPrivateAgentWithPresence']>): ReturnType<SmartcardCoordinator['loadSmartcardIntoPrivateAgentWithPresence']> {
-    return this.smartcard.loadSmartcardIntoPrivateAgentWithPresence(...args);
-  }
-  public refreshAgentSshConfig(...args: Parameters<SmartcardCoordinator['refreshAgentSshConfig']>): ReturnType<SmartcardCoordinator['refreshAgentSshConfig']> {
-    return this.smartcard.refreshAgentSshConfig(...args);
-  }
-  public buildAgentHostEntries(...args: Parameters<SmartcardCoordinator['buildAgentHostEntries']>): ReturnType<SmartcardCoordinator['buildAgentHostEntries']> {
-    return this.smartcard.buildAgentHostEntries(...args);
-  }
-  public resolveLocalShellAgentSocket(...args: Parameters<SmartcardCoordinator['resolveLocalShellAgentSocket']>): ReturnType<SmartcardCoordinator['resolveLocalShellAgentSocket']> {
-    return this.smartcard.resolveLocalShellAgentSocket(...args);
-  }
-  public maybeUnlockSmartcardAtStartup(...args: Parameters<SmartcardCoordinator['maybeUnlockSmartcardAtStartup']>): ReturnType<SmartcardCoordinator['maybeUnlockSmartcardAtStartup']> {
-    return this.smartcard.maybeUnlockSmartcardAtStartup(...args);
-  }
-  public runSmartcardStartupUnlockWork(...args: Parameters<SmartcardCoordinator['runSmartcardStartupUnlockWork']>): ReturnType<SmartcardCoordinator['runSmartcardStartupUnlockWork']> {
-    return this.smartcard.runSmartcardStartupUnlockWork(...args);
-  }
-  public cleanupSmartcardSessionAgent(...args: Parameters<SmartcardCoordinator['cleanupSmartcardSessionAgent']>): ReturnType<SmartcardCoordinator['cleanupSmartcardSessionAgent']> {
-    return this.smartcard.cleanupSmartcardSessionAgent(...args);
-  }
-  public lockAllGlobalSmartcardAgents(...args: Parameters<SmartcardCoordinator['lockAllGlobalSmartcardAgents']>): ReturnType<SmartcardCoordinator['lockAllGlobalSmartcardAgents']> {
-    return this.smartcard.lockAllGlobalSmartcardAgents(...args);
-  }
-  public listGlobalSmartcardAgents(...args: Parameters<SmartcardCoordinator['listGlobalSmartcardAgents']>): ReturnType<SmartcardCoordinator['listGlobalSmartcardAgents']> {
-    return this.smartcard.listGlobalSmartcardAgents(...args);
-  }
-  public findCachedGlobalAgentHoldingKey(...args: Parameters<SmartcardCoordinator['findCachedGlobalAgentHoldingKey']>): ReturnType<SmartcardCoordinator['findCachedGlobalAgentHoldingKey']> {
-    return this.smartcard.findCachedGlobalAgentHoldingKey(...args);
-  }
-  public identitiesForLibrary<T extends { keyBlob: Buffer }>(identities: T[], pkcs11LibPath: string, fromAppAgent: boolean): T[] {
-    return this.smartcard.identitiesForLibrary(identities, pkcs11LibPath, fromAppAgent);
-  }
-  public forgetGlobalCardAfterFailure(...args: Parameters<SmartcardCoordinator['forgetGlobalCardAfterFailure']>): ReturnType<SmartcardCoordinator['forgetGlobalCardAfterFailure']> {
-    return this.smartcard.forgetGlobalCardAfterFailure(...args);
-  }
-  public sendSmartcardStartupUnlockStatus(...args: Parameters<SmartcardCoordinator['sendSmartcardStartupUnlockStatus']>): ReturnType<SmartcardCoordinator['sendSmartcardStartupUnlockStatus']> {
-    return this.smartcard.sendSmartcardStartupUnlockStatus(...args);
-  }
-  public get smartcardSessionAgents() {
-    return this.smartcard.smartcardSessionAgents;
-  }
-  public get appAgent() {
-    return this.smartcard.appAgent;
-  }
-  public set appAgent(value: SmartcardCoordinator['appAgent']) {
-    this.smartcard.appAgent = value;
-  }
-  public get globalCards() {
-    return this.smartcard.globalCards;
-  }
-  public get agentConfigRefresh() {
-    return this.smartcard.agentConfigRefresh;
-  }
-  public get globalSmartcardAgentLoads() {
-    return this.smartcard.globalSmartcardAgentLoads;
-  }
-  public get globalSmartcardAgentFailures() {
-    return this.smartcard.globalSmartcardAgentFailures;
-  }
-  public get startupUnlockPromise() {
-    return this.smartcard.startupUnlockPromise;
-  }
-  public set startupUnlockPromise(value: SmartcardCoordinator['startupUnlockPromise']) {
-    this.smartcard.startupUnlockPromise = value;
-  }
-  public get globalSmartcardCerts() {
-    return this.smartcard.globalSmartcardCerts;
-  }
-  public get prefetchedSmartcardCerts() {
-    return this.smartcard.prefetchedSmartcardCerts;
-  }
   private setupEventListeners(): void {
     this.onPtyData = ({ sessionId, data }) => {
       if (sessionId && this.activePresenceSessions.has(sessionId)) {
@@ -1263,7 +1150,7 @@ export class IpcBridge {
       }
 
       // Tear down any private smartcard agent that was pre-loaded for this session.
-      this.cleanupSmartcardSessionAgent(sessionId);
+      this.smartcard.cleanupSmartcardSessionAgent(sessionId);
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
@@ -1546,15 +1433,15 @@ export class IpcBridge {
     // remaining per-session ('agent-per-session' mode) private agent explicitly,
     // in addition to the global ones, or their ssh-agent processes and sockets
     // under ~/.ssh/agent leak past app quit.
-    for (const sessionId of Array.from(this.smartcardSessionAgents.keys())) {
-      this.cleanupSmartcardSessionAgent(sessionId);
+    for (const sessionId of Array.from(this.smartcard.smartcardSessionAgents.keys())) {
+      this.smartcard.cleanupSmartcardSessionAgent(sessionId);
     }
-    this.globalCards.clear();
-    this.globalSmartcardCerts.clear();
+    this.smartcard.globalCards.clear();
+    this.smartcard.globalSmartcardCerts.clear();
     // The socket is about to disappear: take the agent block out of ~/.ssh/config first.
-    await this.agentConfigRefresh;
+    await this.smartcard.agentConfigRefresh;
     await this.profileSyncService.syncAgentBlockToLocalSshConfig(null).catch(() => {});
-    await this.appAgent.shutdown();
+    await this.smartcard.appAgent.shutdown();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();

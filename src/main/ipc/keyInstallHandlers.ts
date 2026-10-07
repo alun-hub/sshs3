@@ -12,7 +12,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type KeyInstallHost = Pick<
   IpcBridge,
-  'appAgent' | 'cleanupSmartcardSessionAgent' | 'globalCards' | 'makePresenceNotifier' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'smartcardSessionAgents'
+  'makePresenceNotifier' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'smartcard'
 >;
 
 /**
@@ -54,8 +54,8 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
 
   /** Laddar kortets/säkerhetsnyckelns agent (PIN/touch). Anropas först när profilens egen inloggning behövs. */
   const prepareHardware = async (config: SSHConnectionConfig, agentId: string): Promise<SSHConnectionConfig> => {
-    let prepared = (await bridge.prepareSftpSmartcardConfig(config as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
-    prepared = (await bridge.prepareFido2SftpConfig(prepared as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
+    let prepared = (await bridge.smartcard.prepareSftpSmartcardConfig(config as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
+    prepared = (await bridge.smartcard.prepareFido2SftpConfig(prepared as unknown as SFTPConfig, agentId)) as unknown as SSHConnectionConfig;
     return prepared;
   };
 
@@ -76,7 +76,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
       ];
 
       // The app-wide agent ('agent-global' PIN caching) holds every unlocked smartcard and FIDO2 key.
-      const appSocket = bridge.globalCards.size > 0 ? bridge.appAgent.getSocketPath() : null;
+      const appSocket = bridge.smartcard.globalCards.size > 0 ? bridge.smartcard.appAgent.getSocketPath() : null;
       if (appSocket) {
         const keys = await listAgentPublicKeys('smartcard', 'Smartcard key', appSocket);
         lists.push(
@@ -85,7 +85,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
       }
 
       // Query ALL active session agents
-      for (const entry of bridge.smartcardSessionAgents.values()) {
+      for (const entry of bridge.smartcard.smartcardSessionAgents.values()) {
         lists.push(
           await listAgentPublicKeys(
             entry.kind === 'fido2' ? 'fido2' : 'smartcard',
@@ -115,7 +115,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
             await listAgentPublicKeys(wantsCard ? 'smartcard' : 'fido2', wantsCard ? 'Smartcard key' : 'Security key', config.agentPath)
           );
         } finally {
-          bridge.cleanupSmartcardSessionAgent(installId);
+          bridge.smartcard.cleanupSmartcardSessionAgent(installId);
         }
       }
       return dedupeKeys(...lists);
@@ -158,7 +158,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
           promptHandlersFor(profile, installId, `Touch your security key to log in to ${profile.name || profile.host}`)
         );
       } finally {
-        bridge.cleanupSmartcardSessionAgent(installId);
+        bridge.smartcard.cleanupSmartcardSessionAgent(installId);
       }
     }
   );
@@ -207,7 +207,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
         );
         return { ...outcome, results };
       } finally {
-        bridge.cleanupSmartcardSessionAgent(installId);
+        bridge.smartcard.cleanupSmartcardSessionAgent(installId);
       }
     }
   );

@@ -7,7 +7,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type AppDataHost = Pick<
   IpcBridge,
-  'clipboardHistoryStore' | 'profileSyncService' | 'refreshAgentSshConfig' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
+  'clipboardHistoryStore' | 'profileSyncService' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'smartcard' | 'snippetStore'
 >;
 
 export function registerSessionHandlers(bridge: AppDataHost): void {
@@ -100,7 +100,7 @@ export function registerSettingsHandlers(bridge: AppDataHost): void {
       const saved = await bridge.settingsStore.saveSettings(settings);
       // autoSync refreshes the agent block itself afterwards (and removes it when turned off).
       if ('autoSyncLocalSshConfig' in settings) void bridge.profileSyncService.autoSyncLocalSshConfig();
-      else if ('smartcardAuthMode' in settings) bridge.refreshAgentSshConfig();
+      else if ('smartcardAuthMode' in settings) bridge.smartcard.refreshAgentSshConfig();
       bridge.scheduleAutoSync();
       return saved;
     }

@@ -8,7 +8,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type K8sHost = Pick<
   IpcBridge,
-  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sTerminalManager' | 'perfMetricsService' | 'prepareFido2Config' | 'prepareSmartcardConfig' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'sshTunnelManager'
+  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'smartcard' | 'sshTunnelManager'
 >;
 
 export function registerK8sHandlers(bridge: K8sHost): void {
@@ -150,8 +150,8 @@ export function registerK8sHandlers(bridge: K8sHost): void {
       // into a private agent so the ssh child just points IdentityAgent at it, rather
       // than needing an interactive PIN/passphrase for every standalone tunnel.
       let config = await bridge.resolveProxyJumpConfig(rawConfig);
-      config = await bridge.prepareSmartcardConfig(config);
-      config = await bridge.prepareFido2Config(config);
+      config = await bridge.smartcard.prepareSmartcardConfig(config);
+      config = await bridge.smartcard.prepareFido2Config(config);
       const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
       return await bridge.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {
         const isPassword = isPasswordPrompt(rawPrompt);

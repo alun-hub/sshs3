@@ -9,7 +9,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type SmartcardHost = Pick<
   IpcBridge,
-  'listGlobalSmartcardAgents' | 'lockAllGlobalSmartcardAgents' | 'makePresenceNotifier' | 'maybeUnlockSmartcardAtStartup' | 'pendingAskpass' | 'pendingHostKeyPrompts' | 'promptForPinDirect' | 'registerHandler'
+  'makePresenceNotifier' | 'pendingAskpass' | 'pendingHostKeyPrompts' | 'promptForPinDirect' | 'registerHandler' | 'smartcard'
 >;
 
 export function registerSmartcardHandlers(bridge: SmartcardHost): void {
@@ -64,19 +64,19 @@ export function registerSmartcardHandlers(bridge: SmartcardHost): void {
   );
 
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_LOCK_ALL, async () => {
-    return { locked: await bridge.lockAllGlobalSmartcardAgents() };
+    return { locked: await bridge.smartcard.lockAllGlobalSmartcardAgents() };
   });
 
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_LIST_CACHED, async () => {
-    return bridge.listGlobalSmartcardAgents();
+    return bridge.smartcard.listGlobalSmartcardAgents();
   });
 
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP, async () => {
-    return bridge.maybeUnlockSmartcardAtStartup();
+    return bridge.smartcard.maybeUnlockSmartcardAtStartup();
   });
 
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW, async () => {
-    return bridge.maybeUnlockSmartcardAtStartup({ force: true });
+    return bridge.smartcard.maybeUnlockSmartcardAtStartup({ force: true });
   });
 
   bridge.registerHandler(

@@ -10,7 +10,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type SyncHost = Pick<
   IpcBridge,
-  'appAgent' | 'buildSyncStatus' | 'forgetGlobalCardAfterFailure' | 'getOrLoadGlobalSmartcardAgent' | 'getSyncProvider' | 'globalCards' | 'identitiesForLibrary' | 'loadSmartcardIntoPrivateAgentWithPresence' | 'profileSyncService' | 'promptForPinDirect' | 'registerHandler' | 'scheduleAutoSync' | 'settingsStore' | 'startAutoPullTimer' | 'stopAutoPullTimer' | 'storageRegistry' | 'syncConfigStore' | 'syncCryptoService' | 'unlockSyncInternal' | 'unlockWithSmartcardInternal'
+  'buildSyncStatus' | 'getSyncProvider' | 'profileSyncService' | 'promptForPinDirect' | 'registerHandler' | 'scheduleAutoSync' | 'settingsStore' | 'smartcard' | 'startAutoPullTimer' | 'stopAutoPullTimer' | 'storageRegistry' | 'syncConfigStore' | 'syncCryptoService' | 'unlockSyncInternal' | 'unlockWithSmartcardInternal'
 >;
 
 export function registerSyncHandlers(bridge: SyncHost): void {
@@ -159,18 +159,18 @@ export function registerSyncHandlers(bridge: SyncHost): void {
       let socketPath: string;
       let privateAgentPid: number | undefined;
 
-      if (bridge.globalCards.has(options.pkcs11LibPath)) {
-        socketPath = await bridge.appAgent.ensure();
+      if (bridge.smartcard.globalCards.has(options.pkcs11LibPath)) {
+        socketPath = await bridge.smartcard.appAgent.ensure();
       } else if (mode === 'agent-global') {
-        socketPath = await bridge.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
+        socketPath = await bridge.smartcard.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
       } else {
-        const agent = await bridge.loadSmartcardIntoPrivateAgentWithPresence(options.pkcs11LibPath, pinHandler);
+        const agent = await bridge.smartcard.loadSmartcardIntoPrivateAgentWithPresence(options.pkcs11LibPath, pinHandler);
         socketPath = agent.socketPath;
         privateAgentPid = agent.pid;
       }
 
       try {
-        const identities = bridge.identitiesForLibrary(
+        const identities = bridge.smartcard.identitiesForLibrary(
           await getAgentIdentities(socketPath),
           options.pkcs11LibPath,
           privateAgentPid === undefined
@@ -220,7 +220,7 @@ export function registerSyncHandlers(bridge: SyncHost): void {
 
         return await bridge.buildSyncStatus();
       } catch (err) {
-        bridge.forgetGlobalCardAfterFailure(options.pkcs11LibPath, privateAgentPid);
+        bridge.smartcard.forgetGlobalCardAfterFailure(options.pkcs11LibPath, privateAgentPid);
         throw err;
       } finally {
         if (privateAgentPid !== undefined) {

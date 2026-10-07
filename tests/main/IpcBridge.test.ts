@@ -267,7 +267,7 @@ describe('IpcBridge', () => {
     });
 
     fakeAppAgent = makeFakeAppAgent();
-    (bridge as any).appAgent = fakeAppAgent;
+    (bridge as any).smartcard.appAgent = fakeAppAgent;
     // Never read the developer's real sync config when filtering a card's keys.
     vi.spyOn(bridge.syncConfigStore, 'getConfig').mockResolvedValue({} as any);
     // The default ProfileSyncService would read/write the developer's real ~/.ssh/config.
@@ -436,7 +436,7 @@ describe('IpcBridge', () => {
 
     describe('local ~/.ssh/config agent block', () => {
       const flush = async () => {
-        await (bridge as any).agentConfigRefresh;
+        await (bridge as any).smartcard.agentConfigRefresh;
       };
 
       it('points unlocked PIV and FIDO2 profiles at the app agent, and removes the block on lock and dispose', async () => {
@@ -452,10 +452,10 @@ describe('IpcBridge', () => {
           s3: [],
         });
         fakeAppAgent.writePublicKeyFiles.mockImplementation(async (fps: Iterable<string>) => [`/k/${[...fps][0]}.pub`]);
-        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:piv']) });
-        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        (bridge as any).smartcard.globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:piv']) });
+        (bridge as any).smartcard.globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
 
-        bridge.refreshAgentSshConfig();
+        bridge.smartcard.refreshAgentSshConfig();
         await flush();
 
         const entries = syncAgentBlockSpy.mock.calls.at(-1)![0];
@@ -468,8 +468,8 @@ describe('IpcBridge', () => {
         await flush();
         expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).toBeNull();
 
-        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
-        bridge.refreshAgentSshConfig();
+        (bridge as any).smartcard.globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        bridge.smartcard.refreshAgentSshConfig();
         await flush();
         expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).not.toBeNull();
 
@@ -480,7 +480,7 @@ describe('IpcBridge', () => {
 
       it('refreshes the block after every managed-block sync, including a remote pull', async () => {
         mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'agent-global' });
-        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        (bridge as any).smartcard.globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
         syncAgentBlockSpy.mockClear();
 
         // ProfileSyncService calls this hook from autoSyncLocalSshConfig (profile edits and pulls alike).
@@ -492,8 +492,8 @@ describe('IpcBridge', () => {
 
       it('writes no block outside agent-global mode', async () => {
         mockSettingsStore.getSettings = vi.fn().mockResolvedValue({ smartcardAuthMode: 'always-prompt' });
-        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
-        bridge.refreshAgentSshConfig();
+        (bridge as any).smartcard.globalCards.set('__fido2__', { fingerprints: new Set(['SHA256:sk']) });
+        bridge.smartcard.refreshAgentSshConfig();
         await flush();
         expect(syncAgentBlockSpy.mock.calls.at(-1)![0]).toBeNull();
       });
@@ -634,7 +634,7 @@ describe('IpcBridge', () => {
         ]);
         const readCertsSpy = vi.spyOn(SmartcardCertificateReader, 'readSmartcardCertificates').mockResolvedValue(new Map());
         fakeAppAgent.addPkcs11.mockImplementation(() => new Promise(() => {}));
-        (bridge as any).globalSmartcardAgentFailures.set('/usr/lib/opensc-pkcs11.so', Date.now());
+        (bridge as any).smartcard.globalSmartcardAgentFailures.set('/usr/lib/opensc-pkcs11.so', Date.now());
 
         expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_NOW)).toEqual({ started: true });
         await new Promise((resolve) => setImmediate(resolve));
@@ -659,7 +659,7 @@ describe('IpcBridge', () => {
 
         // ...and terminals/SFTP created now must still wait for the first prompt.
         let released = false;
-        void (bridge as any).startupUnlockPromise.then(() => {
+        void (bridge as any).smartcard.startupUnlockPromise.then(() => {
           released = true;
         });
         await new Promise((resolve) => setImmediate(resolve));
@@ -754,7 +754,7 @@ describe('IpcBridge', () => {
         const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
           { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
         ]);
-        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
+        (bridge as any).smartcard.globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
 
         const loadSpy = fakeAppAgent.addPkcs11;
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
@@ -787,7 +787,7 @@ describe('IpcBridge', () => {
         expect(res).toEqual({ started: true });
 
         // Await the startup unlock background task
-        await (bridge as any).startupUnlockPromise;
+        await (bridge as any).smartcard.startupUnlockPromise;
 
         expect(loadSpy).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so', expect.any(Function), expect.any(Object));
         expect(loadSpy).toHaveBeenCalledWith('/usr/lib64/libykcs11.so.2', expect.any(Function), expect.any(Object));
@@ -816,7 +816,7 @@ describe('IpcBridge', () => {
           .mockResolvedValue(new Map());
 
         await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
-        await (bridge as any).startupUnlockPromise;
+        await (bridge as any).smartcard.startupUnlockPromise;
 
         // Reading a module's certificates opens its own session against the token, which breaks the PIN login
         // of a card the agent already holds; so all reads must come first.
@@ -824,7 +824,7 @@ describe('IpcBridge', () => {
         const lastRead = Math.max(...readCertsSpy.mock.invocationCallOrder);
         const firstLoad = Math.min(...loadSpy.mock.invocationCallOrder);
         expect(lastRead).toBeLessThan(firstLoad);
-        expect((bridge as any).prefetchedSmartcardCerts.size).toBe(0);
+        expect((bridge as any).smartcard.prefetchedSmartcardCerts.size).toBe(0);
 
         detectSpy.mockRestore();
         loadSpy.mockRestore();
@@ -837,13 +837,13 @@ describe('IpcBridge', () => {
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map());
 
-        await (bridge as any).prefetchSmartcardCertificates(['/usr/lib/opensc-pkcs11.so']);
+        await (bridge as any).smartcard.prefetchSmartcardCertificates(['/usr/lib/opensc-pkcs11.so']);
         expect(readCertsSpy).not.toHaveBeenCalled();
 
-        (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:abc']) });
-        await (bridge as any).prefetchSmartcardCertificates(['/usr/lib64/libykcs11.so.2', '/usr/lib/other.so']);
+        (bridge as any).smartcard.globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set(['SHA256:abc']) });
+        await (bridge as any).smartcard.prefetchSmartcardCertificates(['/usr/lib64/libykcs11.so.2', '/usr/lib/other.so']);
         expect(readCertsSpy).not.toHaveBeenCalled();
-        expect((bridge as any).prefetchedSmartcardCerts.size).toBe(0);
+        expect((bridge as any).smartcard.prefetchedSmartcardCerts.size).toBe(0);
 
         readCertsSpy.mockRestore();
       });
@@ -874,12 +874,12 @@ describe('IpcBridge', () => {
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
 
-        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        await (bridge as any).smartcard.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
 
         expect(readCertsSpy).toHaveBeenCalledTimes(1);
         expect(readCertsSpy).toHaveBeenCalledWith(pkcs11LibPath);
         // The card is attributed its certificate's key, so identities can be grouped per card.
-        expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set([identity.fingerprint]));
+        expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set([identity.fingerprint]));
 
         fakeAppAgent.list.mockClear();
         const first = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
@@ -924,24 +924,24 @@ describe('IpcBridge', () => {
           const spy = vi
             .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
             .mockResolvedValue(new Map(certs.map((c) => [c.fingerprint, c])));
-          await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+          await (bridge as any).smartcard.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
           spy.mockRestore();
         };
 
         it('attributes only authentication-capable keys to the card and removes the rest from the agent', async () => {
           await loadWith([authDetails, signDetails]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
           expect(fakeAppAgent.removeIdentities).toHaveBeenCalledWith(['SHA256:sign']);
           // Details of every certificate are still cached (UI/details unchanged).
-          expect((bridge as any).globalSmartcardCerts.get(pkcs11LibPath).size).toBe(2);
+          expect((bridge as any).smartcard.globalSmartcardCerts.get(pkcs11LibPath).size).toBe(2);
         });
 
         it('keeps everything, and removes nothing, when no certificate looks authentication-capable', async () => {
           const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
           await loadWith([signDetails, { ...signDetails, fingerprint: 'SHA256:sign2' }]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(
             new Set(['SHA256:sign', 'SHA256:sign2'])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
@@ -951,7 +951,7 @@ describe('IpcBridge', () => {
         it('does not remove anything when every certificate is authentication-capable', async () => {
           await loadWith([authDetails, { ...authDetails, fingerprint: 'SHA256:auth2' }]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(
             new Set(['SHA256:auth', 'SHA256:auth2'])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
@@ -966,7 +966,7 @@ describe('IpcBridge', () => {
 
           await loadWith([authDetails, { ...signDetails, fingerprint: linkedFingerprint }]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(
             new Set(['SHA256:auth', linkedFingerprint])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
@@ -984,7 +984,7 @@ describe('IpcBridge', () => {
 
           await loadWith([authDetails, { ...signDetails, fingerprint: linkedFingerprint }]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(
             new Set(['SHA256:auth', linkedFingerprint])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
@@ -996,14 +996,14 @@ describe('IpcBridge', () => {
           } as any);
           await loadWith([authDetails, signDetails]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
         });
 
         it('still filters when the sync config cannot be read', async () => {
           vi.mocked(bridge.syncConfigStore.getConfig).mockRejectedValue(new Error('unreadable'));
           await loadWith([authDetails, signDetails]);
 
-          expect((bridge as any).globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
+          expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(new Set(['SHA256:auth']));
         });
 
         it('lists only the card\'s authentication keys in the cached identities', async () => {
@@ -1031,12 +1031,12 @@ describe('IpcBridge', () => {
           fakeAppAgent.identities = [identity];
         });
 
-        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
-        const socket = await (bridge as any).getOrLoadGlobalSmartcardAgent(second, () => Promise.resolve('1234'));
+        await (bridge as any).smartcard.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        const socket = await (bridge as any).smartcard.getOrLoadGlobalSmartcardAgent(second, () => Promise.resolve('1234'));
 
         expect(fakeAppAgent.addPkcs11).toHaveBeenCalledTimes(1);
         expect(socket).toBe('/tmp/app-agent.sock');
-        expect((bridge as any).globalCards.get(second).fingerprints).toEqual(
+        expect((bridge as any).smartcard.globalCards.get(second).fingerprints).toEqual(
           new Set([certDetails.fingerprint, 'SHA256:second'])
         );
         readCertsSpy.mockRestore();
@@ -1046,9 +1046,9 @@ describe('IpcBridge', () => {
         const otherIdentity = { bits: '256', fingerprint: 'SHA256:other', comment: 'other card', keyType: 'ECDSA' };
         const skIdentity = { bits: '256', fingerprint: 'SHA256:sk', comment: 'sk', keyType: 'ED25519-SK' };
         fakeAppAgent.identities = [identity, otherIdentity, skIdentity];
-        (bridge as any).globalCards.set(pkcs11LibPath, { fingerprints: new Set([identity.fingerprint]) });
-        (bridge as any).globalCards.set('/usr/lib/other.so', { fingerprints: new Set([otherIdentity.fingerprint]) });
-        (bridge as any).globalCards.set('__fido2__', { fingerprints: new Set([skIdentity.fingerprint]) });
+        (bridge as any).smartcard.globalCards.set(pkcs11LibPath, { fingerprints: new Set([identity.fingerprint]) });
+        (bridge as any).smartcard.globalCards.set('/usr/lib/other.so', { fingerprints: new Set([otherIdentity.fingerprint]) });
+        (bridge as any).smartcard.globalCards.set('__fido2__', { fingerprints: new Set([skIdentity.fingerprint]) });
 
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LIST_CACHED);
 
@@ -1064,12 +1064,12 @@ describe('IpcBridge', () => {
           .spyOn(SmartcardCertificateReader, 'readSmartcardCertificates')
           .mockResolvedValue(new Map([[certDetails.fingerprint, certDetails]]));
 
-        await (bridge as any).getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
-        expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(true);
+        await (bridge as any).smartcard.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, () => Promise.resolve('1234'));
+        expect((bridge as any).smartcard.globalSmartcardCerts.has(pkcs11LibPath)).toBe(true);
 
         await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_LOCK_ALL);
-        expect((bridge as any).globalSmartcardCerts.has(pkcs11LibPath)).toBe(false);
-        expect((bridge as any).globalCards.size).toBe(0);
+        expect((bridge as any).smartcard.globalSmartcardCerts.has(pkcs11LibPath)).toBe(false);
+        expect((bridge as any).smartcard.globalCards.size).toBe(0);
 
         readCertsSpy.mockRestore();
       });
@@ -1814,21 +1814,21 @@ describe('IpcBridge', () => {
       // One 'agent-per-session' agent left tracked when the app quits (never reaped because the
       // PTY-exit listener that normally drives cleanupSmartcardSessionAgent() is detached before
       // killAll() runs), plus a card cached in the app-wide 'agent-global' agent.
-      (bridge as any).smartcardSessionAgents.set('session-1', {
+      (bridge as any).smartcard.smartcardSessionAgents.set('session-1', {
         pid: 4242,
         socketPath: '/tmp/session-agent.sock',
         kind: 'pkcs11',
         pkcs11LibPath: '/usr/lib/opensc-pkcs11.so',
       });
-      (bridge as any).globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
+      (bridge as any).smartcard.globalCards.set('/usr/lib/opensc-pkcs11.so', { fingerprints: new Set() });
 
       await bridge.dispose();
 
       expect(killSpy).toHaveBeenCalledWith(4242);
       expect(unloadSpy).toHaveBeenCalledWith('/tmp/session-agent.sock', '/usr/lib/opensc-pkcs11.so');
       expect(fakeAppAgent.shutdown).toHaveBeenCalledTimes(1);
-      expect((bridge as any).smartcardSessionAgents.size).toBe(0);
-      expect((bridge as any).globalCards.size).toBe(0);
+      expect((bridge as any).smartcard.smartcardSessionAgents.size).toBe(0);
+      expect((bridge as any).smartcard.globalCards.size).toBe(0);
 
       killSpy.mockRestore();
       unloadSpy.mockRestore();
