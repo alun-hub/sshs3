@@ -162,6 +162,42 @@ describe('SmartcardCoordinator', () => {
     });
   });
 
+  describe('dispose waits for card eviction', () => {
+    it('does not shut the app agent down before a pending unloadCard has finished', async () => {
+      const calls: string[] = [];
+      const { coordinator } = build(calls);
+      let finishUnload!: () => void;
+      vi.spyOn(AgentLifecycleManager, 'unloadCard').mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishUnload = () => {
+              calls.push('unloadCard:done');
+              resolve();
+            };
+          })
+      );
+      vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});
+      (coordinator as any).smartcardSessionAgents.set('sess-1', {
+        pid: 0,
+        socketPath: '\\\\.\\pipe\\openssh-ssh-agent',
+        kind: 'pkcs11',
+        pkcs11LibPath: LIB,
+      });
+
+      let disposed = false;
+      const pending = coordinator.dispose().then(() => {
+        disposed = true;
+      });
+      await new Promise((r) => setTimeout(r, 10));
+      expect(disposed).toBe(false);
+      expect(calls).not.toContain('appAgent.shutdown');
+
+      finishUnload();
+      await pending;
+      expect(calls.indexOf('appAgent.shutdown')).toBeGreaterThan(calls.indexOf('unloadCard:done'));
+    });
+  });
+
   it('lists the session agents without exposing the entries', () => {
     const { coordinator } = build();
     (coordinator as any).smartcardSessionAgents.set('a', { pid: 1, socketPath: '/tmp/a.sock', kind: 'fido2' });

@@ -18,6 +18,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/** Upper bound for one `ssh-add` eviction call, which app quit waits on. */
+const EVICT_TIMEOUT_MS = 3000;
+
 /** "Enter PIN and confirm user presence for ED25519-SK key SHA256:…" — a FIDO2 signature asking for its PIN. */
 const FIDO2_SIGNATURE_PIN_PROMPT = /\bPIN\b.*(-SK\b|authenticator|security key|user presence)/i;
 const FIDO2_PIN_REPLAY_WINDOW_MS = 3000;
@@ -241,16 +244,21 @@ export class AppAgent {
       // Windows: the agent is the shared system service, which also holds keys we didn't load. FIDO2 keys
       // have no library to `ssh-add -e` by, so remember exactly which identities this load added.
       const before = process.platform === 'win32' ? await this.identityBlobs(target.socketPath) : null;
-      const result = await addFido2ResidentKeysToAgent(target, promptHandler, {
-        ...options,
-        onPinEntered: (pin) => (enteredPin = pin),
-      });
-      if (before) {
-        for (const [fp, blob] of await this.identityBlobs(target.socketPath)) {
-          if (!before.has(fp)) this.loadedKeys.set(fp, blob);
+      try {
+        return await addFido2ResidentKeysToAgent(target, promptHandler, {
+          ...options,
+          onPinEntered: (pin) => (enteredPin = pin),
+        });
+      } finally {
+        // Also when the load fails part-way: keys it already added must still be evicted on lock/quit.
+        // Best-effort attribution: a key another process adds to the shared agent in this window is
+        // recorded too, and would be evicted with ours.
+        if (before) {
+          for (const [fp, blob] of await this.identityBlobs(target.socketPath)) {
+            if (!before.has(fp)) this.loadedKeys.set(fp, blob);
+          }
         }
       }
-      return result;
     });
     // Only remember a PIN that actually unlocked the keys.
     if (enteredPin) this.fido2Pin = enteredPin;
@@ -382,7 +390,11 @@ export class AppAgent {
       const file = path.join(os.tmpdir(), `sshs3-evict-${crypto.randomUUID()}.pub`);
       try {
         await fs.promises.writeFile(file, `${getKeyAlgorithm(blob)} ${blob.toString('base64')}\n`);
-        await execFileAsync('ssh-add.exe', ['-d', file], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } });
+        // Bounded: quit waits for this, and a stopped/hung agent service must not keep the app from exiting.
+        await execFileAsync('ssh-add.exe', ['-d', file], {
+          env: { ...process.env, SSH_AUTH_SOCK: socketPath },
+          timeout: EVICT_TIMEOUT_MS,
+        });
       } catch (err) {
         console.warn('[app-agent] could not evict an identity from the agent:', (err as Error).message);
       } finally {

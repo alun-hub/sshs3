@@ -39,7 +39,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     IPC_CHANNELS.STORAGE_DISCONNECT,
     async (_event, providerId: string) => {
       await bridge.storageRegistry.disconnect(providerId);
-      bridge.smartcard.cleanupSmartcardSessionAgent(providerId);
+      void bridge.smartcard.cleanupSmartcardSessionAgent(providerId);
     }
   );
 

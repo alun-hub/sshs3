@@ -377,6 +377,8 @@ export class AgentLifecycleManager {
     try {
       await execFileAsync(sshAddBin, ['-e', pkcs11LibPath], {
         env: { ...process.env, SSH_AUTH_SOCK: socketPath },
+        // App quit waits for this; an unresponsive agent must not hold the app open.
+        timeout: 3000,
       });
     } catch {
       // Best-effort: nothing loaded, agent unreachable, etc.

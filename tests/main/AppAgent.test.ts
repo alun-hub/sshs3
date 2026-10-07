@@ -488,5 +488,64 @@ describe('AppAgent', () => {
       await agent.shutdown();
       expect(lifecycle.killPrivateAgent).not.toHaveBeenCalled();
     });
+
+    describe('FIDO2 keys in the shared agent', () => {
+      const keyBlob = (n: number): Buffer => {
+        const type = Buffer.from('ssh-ed25519');
+        const b = Buffer.alloc(4 + type.length + 4 + 32);
+        b.writeUInt32BE(type.length, 0);
+        type.copy(b, 4);
+        b.writeUInt32BE(32, 4 + type.length);
+        b.fill(n, 8 + type.length);
+        return b;
+      };
+      const identity = (n: number) => ({ keyBlob: keyBlob(n), comment: `k${n}` });
+      const sshAddDeletes = () =>
+        vi.mocked(mockedExecFile).mock.calls.filter((c) => c[0] === 'ssh-add.exe' && (c[1] as string[])[0] === '-d');
+
+      it('evicts only the identities the FIDO2 load added, leaving the others in the agent', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([identity(1)] as any).mockResolvedValueOnce([identity(1), identity(2)] as any);
+        vi.mocked(addFido2ResidentKeysToAgent).mockResolvedValue(undefined as any);
+
+        await agent.addFido2Resident(vi.fn());
+        await agent.lockAll();
+
+        const deletes = sshAddDeletes();
+        expect(deletes).toHaveLength(1);
+        expect(((deletes[0][2] as any).timeout as number) > 0).toBe(true);
+        expect(vi.mocked(mockedExecFile).mock.calls.some((c) => (c[1] as string[])?.[0] === '-D')).toBe(false);
+      });
+
+      it('still records keys added before a failed load, so they are evicted on lock', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(3)] as any);
+        vi.mocked(addFido2ResidentKeysToAgent).mockRejectedValue(new Error('touch timed out'));
+
+        await expect(agent.addFido2Resident(vi.fn())).rejects.toThrow('touch timed out');
+        await agent.lockAll();
+
+        expect(sshAddDeletes()).toHaveLength(1);
+      });
+
+      it('keeps going when one eviction fails and does not evict twice', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(4), identity(5)] as any);
+        vi.mocked(addFido2ResidentKeysToAgent).mockResolvedValue(undefined as any);
+        await agent.addFido2Resident(vi.fn());
+
+        vi.mocked(mockedExecFile).mockImplementationOnce(((...args: any[]) => {
+          args[args.length - 1](new Error('timed out'));
+        }) as any);
+        await agent.lockAll();
+        expect(sshAddDeletes()).toHaveLength(2);
+
+        await agent.lockAll();
+        expect(sshAddDeletes()).toHaveLength(2);
+      });
+    });
   });
 });

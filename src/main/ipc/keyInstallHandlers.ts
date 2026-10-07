@@ -121,7 +121,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
             await listAgentPublicKeys(wantsCard ? 'smartcard' : 'fido2', wantsCard ? 'Smartcard key' : 'Security key', config.agentPath)
           );
         } finally {
-          bridge.smartcard.cleanupSmartcardSessionAgent(installId);
+          void bridge.smartcard.cleanupSmartcardSessionAgent(installId);
         }
       }
       return dedupeKeys(...lists);
@@ -164,7 +164,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
           promptHandlersFor(profile, installId, `Touch your security key to log in to ${profile.name || profile.host}`)
         );
       } finally {
-        bridge.smartcard.cleanupSmartcardSessionAgent(installId);
+        void bridge.smartcard.cleanupSmartcardSessionAgent(installId);
       }
     }
   );
@@ -213,7 +213,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
         );
         return { ...outcome, results };
       } finally {
-        bridge.smartcard.cleanupSmartcardSessionAgent(installId);
+        void bridge.smartcard.cleanupSmartcardSessionAgent(installId);
       }
     }
   );

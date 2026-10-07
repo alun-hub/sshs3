@@ -1148,7 +1148,7 @@ export class IpcBridge {
       }
 
       // Tear down any private smartcard agent that was pre-loaded for this session.
-      this.smartcard.cleanupSmartcardSessionAgent(sessionId);
+      void this.smartcard.cleanupSmartcardSessionAgent(sessionId);
 
       const webContents = this.getWebContents();
       if (webContents && !webContents.isDestroyed?.()) {
