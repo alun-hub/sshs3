@@ -13,10 +13,10 @@ describe('redact', () => {
   });
 
   it('masks private keys, bearer tokens, URL credentials and KEY=value secrets', () => {
-    const pem = '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA\n-----END OPENSSH PRIVATE KEY-----';
-    const text = `${pem} Bearer abcdefgh12345 https://bob:hunter2@example.com SSHS3_PROXY_PASSWORD=hunter2 AKIAABCDEFGHIJKLMNOP`;
+    const pem = '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA\n-----END OPENSSH PRIVATE KEY-----';  // pragma: allowlist secret -- synthetic fixture for the redaction test
+    const text = `${pem} Bearer abcdefgh12345 https://bob:hunter2@example.com SSHS3_PROXY_PASSWORD=hunter2 AKIAABCDEFGHIJKLMNOP`;  // pragma: allowlist secret -- synthetic fixture for the redaction test
     const out = redactString(text);
-    for (const secret of ['b3BlbnNzaA', 'abcdefgh12345', 'hunter2', 'AKIAABCDEFGHIJKLMNOP']) {
+    for (const secret of ['b3BlbnNzaA', 'abcdefgh12345', 'hunter2', 'AKIAABCDEFGHIJKLMNOP']) {  // pragma: allowlist secret -- synthetic fixture for the redaction test
       expect(out).not.toContain(secret);
     }
   });
