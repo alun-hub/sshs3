@@ -80,8 +80,11 @@ describe('FileSink', () => {
     await sink.flush();
     const files = fs.readdirSync(path.join(dir, 'logs')).sort();
     expect(files).toEqual(['sshs3.log', 'sshs3.log.1', 'sshs3.log.2']);
-    expect(fs.statSync(path.join(dir, 'logs', 'sshs3.log')).mode & 0o777).toBe(0o600);
-    expect(fs.statSync(path.join(dir, 'logs')).mode & 0o777).toBe(0o700);
+    // POSIX permission bits are not meaningful on Windows (reported as 0666/0777).
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(path.join(dir, 'logs', 'sshs3.log')).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(path.join(dir, 'logs')).mode & 0o777).toBe(0o700);
+    }
     expect((await sink.tail(2)).at(-1)).toContain('line-11');
   });
 });
