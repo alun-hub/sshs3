@@ -45,7 +45,7 @@ export interface SmartcardDeps {
 
 export class SmartcardCoordinator {
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
-  public smartcardSessionAgents = new Map<
+  private smartcardSessionAgents = new Map<
     string,
     { pid: number; socketPath: string } & (
       | { kind: 'pkcs11'; pkcs11LibPath: string }
@@ -57,19 +57,19 @@ export class SmartcardCoordinator {
    * The one app-wide ssh-agent for 'agent-global' mode (see AppAgent): every unlocked smartcard and
    * FIDO2 key lives in it, so a local shell can use all of them through a single SSH_AUTH_SOCK.
    */
-  public appAgent = new AppAgent();
+  private appAgent = new AppAgent();
 
   /** pkcs11LibPath or '__fido2__' -> what that unlocked card/key contributed to the app agent (its key fingerprints), so keys can be attributed to a card. */
-  public globalCards = new Map<string, { fingerprints: Set<string> }>();
+  private globalCards = new Map<string, { fingerprints: Set<string> }>();
 
-  public agentConfigRefresh: Promise<void> = Promise.resolve();
+  private agentConfigRefresh: Promise<void> = Promise.resolve();
 
   /** pkcs11LibPath or '__fido2__' -> in-flight load, so concurrent connections to the same card don't each prompt separately. */
-  public globalSmartcardAgentLoads = new Map<string, Promise<string>>();
+  private globalSmartcardAgentLoads = new Map<string, Promise<string>>();
 
-  public globalSmartcardAgentFailures = new Map<string, number>();
+  private globalSmartcardAgentFailures = new Map<string, number>();
 
-  public startupUnlockPromise?: Promise<void>;
+  private startupUnlockPromise?: Promise<void>;
 
   /**
    * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
@@ -80,7 +80,7 @@ export class SmartcardCoordinator {
    * whole process instead of returning a clean error. Reading once, right after `ssh-add -s`
    * already proved the card is present and responsive, avoids that race entirely.
    */
-  public globalSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
+  private globalSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
 
   /**
    * pkcs11LibPath -> certificates read ahead of the first `ssh-add -s` of a startup unlock that loads several
@@ -89,7 +89,7 @@ export class SmartcardCoordinator {
    * ("agent refused operation" on the next signature, verified with libykcs11 after p11-kit-proxy). So every
    * module is read before any card is loaded, and the loader uses these instead of reading again.
    */
-  public prefetchedSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
+  private prefetchedSmartcardCerts = new Map<string, Map<string, SmartcardCertificateDetails>>();
 
   constructor(private readonly deps: SmartcardDeps) {
     // Prompts the app agent itself raises later (e.g. a verify-required FIDO2 signature) — loads
@@ -111,6 +111,70 @@ export class SmartcardCoordinator {
       this.globalSmartcardCerts.clear();
       this.refreshAgentSshConfig();
     });
+  }
+
+  // ---- Read-only facade for handlers and IpcBridge: the state above stays private ----
+
+  /** Waits for a startup unlock that is still in flight; a failure is ignored (callers prompt again if they must). */
+  public async awaitStartupUnlock(): Promise<void> {
+    if (!this.startupUnlockPromise) return;
+    try {
+      await this.startupUnlockPromise;
+    } catch {
+      // The connection proceeds and prompts for the PIN itself if it needs to.
+    }
+  }
+
+  public hasStartupUnlock(): boolean {
+    return this.startupUnlockPromise !== undefined;
+  }
+
+  /** True when this card/key (pkcs11LibPath or '__fido2__') is unlocked in the app agent. */
+  public hasGlobalCard(libPath: string): boolean {
+    return this.globalCards.has(libPath);
+  }
+
+  /** The app agent's socket when a PIV/PKCS#11 card (not just a FIDO2 key) is unlocked in it, else null. */
+  public unlockedPivSocket(): string | null {
+    return Array.from(this.globalCards.keys()).some((key) => key !== '__fido2__')
+      ? this.appAgent.getSocketPath()
+      : null;
+  }
+
+  /** The app agent's socket when any card or key is unlocked in it, else null. */
+  public appAgentSocketIfUnlocked(): string | null {
+    return this.globalCards.size > 0 ? this.appAgent.getSocketPath() : null;
+  }
+
+  /** Starts the app agent if needed and returns its socket. */
+  public ensureAppAgent(): Promise<string> {
+    return this.appAgent.ensure();
+  }
+
+  /** The private per-session agents ('agent-per-session' mode) that are currently alive. */
+  public listSessionAgents(): Array<{ kind: 'pkcs11' | 'fido2'; socketPath: string }> {
+    return Array.from(this.smartcardSessionAgents.values()).map((entry) => ({
+      kind: entry.kind,
+      socketPath: entry.socketPath,
+    }));
+  }
+
+  /** When loading this card into the app agent last failed (ms since epoch), for the retry cooldown. */
+  public lastLoadFailureAt(libPath: string): number | undefined {
+    return this.globalSmartcardAgentFailures.get(libPath);
+  }
+
+  /** App quit: ends every per-session agent, forgets the cards and takes the agent block out of ~/.ssh/config before the socket goes away. */
+  public async dispose(): Promise<void> {
+    for (const sessionId of Array.from(this.smartcardSessionAgents.keys())) {
+      this.cleanupSmartcardSessionAgent(sessionId);
+    }
+    this.globalCards.clear();
+    this.globalSmartcardCerts.clear();
+    // The socket is about to disappear: take the agent block out of ~/.ssh/config first.
+    await this.agentConfigRefresh;
+    await this.deps.syncAgentBlock(null).catch(() => {});
+    await this.appAgent.shutdown();
   }
 
   public async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {

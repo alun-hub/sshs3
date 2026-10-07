@@ -614,9 +614,7 @@ export class IpcBridge {
       // Same physical card as an already-unlocked terminal/startup agent: reuse it rather than
       // opening a second PKCS#11 session (the card's PIV keys are the same whichever library
       // loaded them).
-      const unlockedSocket = Array.from(this.smartcard.globalCards.keys()).some((key) => key !== '__fido2__')
-        ? this.smartcard.appAgent.getSocketPath()
-        : null;
+      const unlockedSocket = this.smartcard.unlockedPivSocket();
       if (unlockedSocket) {
         sftpConfig = { ...sftpConfig, agentPath: unlockedSocket };
       }
@@ -641,7 +639,7 @@ export class IpcBridge {
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
     if (config.authType === 'smartcard' && config.pkcs11LibPath && !config.agentPath) {
-      const lastFailedAt = this.smartcard.globalSmartcardAgentFailures.get(config.pkcs11LibPath);
+      const lastFailedAt = this.smartcard.lastLoadFailureAt(config.pkcs11LibPath);
       if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
         console.log(
           `[smartcard] runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
@@ -936,12 +934,12 @@ export class IpcBridge {
     // Windows only: there several PKCS#11 modules for one card (opensc-pkcs11 / onepin-opensc-pkcs11 /
     // libykcs11) share the single system agent; other platforms keep the plain per-library cache lookup.
     const sameCardSocket =
-      process.platform !== 'win32' || this.smartcard.globalCards.has(libPath) || mode !== 'agent-global'
+      process.platform !== 'win32' || this.smartcard.hasGlobalCard(libPath) || mode !== 'agent-global'
         ? undefined
         : await this.smartcard.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
 
-    if (this.smartcard.globalCards.has(libPath)) {
-      socketPath = await this.smartcard.appAgent.ensure();
+    if (this.smartcard.hasGlobalCard(libPath)) {
+      socketPath = await this.smartcard.ensureAppAgent();
     } else if (sameCardSocket) {
       socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
@@ -1433,15 +1431,7 @@ export class IpcBridge {
     // remaining per-session ('agent-per-session' mode) private agent explicitly,
     // in addition to the global ones, or their ssh-agent processes and sockets
     // under ~/.ssh/agent leak past app quit.
-    for (const sessionId of Array.from(this.smartcard.smartcardSessionAgents.keys())) {
-      this.smartcard.cleanupSmartcardSessionAgent(sessionId);
-    }
-    this.smartcard.globalCards.clear();
-    this.smartcard.globalSmartcardCerts.clear();
-    // The socket is about to disappear: take the agent block out of ~/.ssh/config first.
-    await this.smartcard.agentConfigRefresh;
-    await this.profileSyncService.syncAgentBlockToLocalSshConfig(null).catch(() => {});
-    await this.smartcard.appAgent.shutdown();
+    await this.smartcard.dispose();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();
     await XServerManager.stopServer();

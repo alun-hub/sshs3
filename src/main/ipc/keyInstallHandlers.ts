@@ -76,7 +76,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
       ];
 
       // The app-wide agent ('agent-global' PIN caching) holds every unlocked smartcard and FIDO2 key.
-      const appSocket = bridge.smartcard.globalCards.size > 0 ? bridge.smartcard.appAgent.getSocketPath() : null;
+      const appSocket = bridge.smartcard.appAgentSocketIfUnlocked();
       if (appSocket) {
         const keys = await listAgentPublicKeys('smartcard', 'Smartcard key', appSocket);
         lists.push(
@@ -85,7 +85,7 @@ export function registerKeyInstallHandlers(bridge: KeyInstallHost): void {
       }
 
       // Query ALL active session agents
-      for (const entry of bridge.smartcard.smartcardSessionAgents.values()) {
+      for (const entry of bridge.smartcard.listSessionAgents()) {
         lists.push(
           await listAgentPublicKeys(
             entry.kind === 'fido2' ? 'fido2' : 'smartcard',

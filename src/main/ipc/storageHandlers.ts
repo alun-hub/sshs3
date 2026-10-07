@@ -14,12 +14,9 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     IPC_CHANNELS.STORAGE_CONNECT,
     async (_event, config: StorageConnectConfig) => {
       let resolvedConfig = config;
-      if (config.type === 'sftp' && bridge.smartcard.startupUnlockPromise) {
-        try {
-          await bridge.smartcard.startupUnlockPromise;
-        } catch {
-          // Ignore startup unlock errors during background connect
-        }
+      if (config.type === 'sftp') {
+        // A startup unlock error does not block a background connect.
+        await bridge.smartcard.awaitStartupUnlock();
       }
       if (config.type === 'sftp' && config.sftpConfig && !bridge.storageRegistry.has(config.id)) {
         let sftpConfig = await bridge.resolveProxyJumpConfig(config.sftpConfig);

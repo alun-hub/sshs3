@@ -20,13 +20,8 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         throw new Error('Connection config is required to create terminal');
       }
 
-      if (bridge.smartcard.startupUnlockPromise) {
-        try {
-          await bridge.smartcard.startupUnlockPromise;
-        } catch {
-          // Ignore error; terminal session proceeds and prompts if needed
-        }
-      }
+      // A startup unlock error does not block the session; it proceeds and prompts if needed.
+      await bridge.smartcard.awaitStartupUnlock();
 
       let config = options.config;
       if (!options.local && config) {
