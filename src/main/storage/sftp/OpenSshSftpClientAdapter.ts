@@ -23,6 +23,7 @@ export interface ISftpBackendClient extends EventEmitter {
   chmod(path: string, mode: number): Promise<void>;
   setstat?(path: string, attrs: any): Promise<void>;
   realPath(path: string): Promise<string>;
+  statvfs?(path: string): Promise<{ totalBytes: number; freeBytes: number }>;
   end(): Promise<void>;
   exec?(cmd: string): Promise<{ stdout: Buffer; stderr: string }>;
   createExecStream?(cmd: string): NodeJS.ReadableStream;
@@ -108,6 +109,11 @@ export class OpenSshSftpClientAdapter extends EventEmitter implements ISftpBacke
       mode: s.mode,
       permissions: s.mode ? (s.mode & 0o777).toString(8).padStart(3, '0') : undefined,
     };
+  }
+
+  public async statvfs(remotePath: string): Promise<{ totalBytes: number; freeBytes: number }> {
+    if (!this.protocol) throw new Error('Not connected');
+    return await this.protocol.statvfs(remotePath);
   }
 
   public async realPath(remotePath: string): Promise<string> {

@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
-import type { FileEntry, ObjectMetadata, S3Tag, BucketVersioningInfo, ObjectVersionEntry } from '../../shared/types/storage';
+import type { FileEntry, ObjectMetadata, S3Tag, BucketVersioningInfo, ObjectVersionEntry, SpaceInfo, VolumeInfo } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
@@ -236,6 +236,34 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         return os.homedir();
       }
       return '/';
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_GET_SPACE,
+    async (_event, providerId: string, remotePath: string): Promise<SpaceInfo | undefined> => {
+      if (typeof providerId !== 'string' || typeof remotePath !== 'string') {
+        throw new Error('Invalid arguments');
+      }
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      return typeof provider.getSpace === 'function' ? await provider.getSpace(remotePath) : undefined;
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_LIST_VOLUMES,
+    async (_event, providerId: string): Promise<VolumeInfo[]> => {
+      if (typeof providerId !== 'string') {
+        throw new Error('Invalid arguments');
+      }
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      return typeof provider.listVolumes === 'function' ? await provider.listVolumes() : [];
     }
   );
 }

@@ -281,4 +281,28 @@ describe('SftpStreams', () => {
 
     expect(Buffer.concat(chunks).toString()).toBe('StreamContent');
   });
+
+  it('reads filesystem space via statvfs@openssh.com', async () => {
+    const promise = protocol.statvfs('/data');
+    clientOut.once('data', (data: Buffer) => {
+      expect(data.readUInt8(4)).toBe(FXP.EXTENDED);
+      const reqId = data.readUInt32BE(5);
+      const nameLen = data.readUInt32BE(9);
+      expect(data.subarray(13, 13 + nameLen).toString()).toBe('statvfs@openssh.com');
+
+      // f_bsize, f_frsize, f_blocks, f_bfree, f_bavail, f_files, f_ffree, f_favail, f_fsid, f_flag, f_namemax
+      const fields = [4096n, 1024n, 1000n, 400n, 300n, 0n, 0n, 0n, 0n, 0n, 255n];
+      const body = Buffer.alloc(fields.length * 8);
+      fields.forEach((v, i) => body.writeBigUInt64BE(v, i * 8));
+      const resp = Buffer.alloc(4 + 1 + 4 + body.length);
+      resp.writeUInt32BE(1 + 4 + body.length, 0);
+      resp.writeUInt8(FXP.EXTENDED_REPLY, 4);
+      resp.writeUInt32BE(reqId, 5);
+      body.copy(resp, 9);
+      clientIn.write(resp);
+    });
+
+    // total = blocks * frsize, free = bavail (what a non-root user can use) * frsize
+    expect(await promise).toEqual({ totalBytes: 1000 * 1024, freeBytes: 300 * 1024 });
+  });
 });

@@ -89,6 +89,10 @@ export interface IStorageProvider {
    */
   getChecksum?(remotePath: string, algorithm?: 'sha256' | 'md5'): Promise<string | undefined>;
   getHomeDir?(): Promise<string>;
+  /** Free/total space of the filesystem holding `remotePath` (like `df <path>`). Undefined when unsupported. */
+  getSpace?(remotePath: string): Promise<SpaceInfo | undefined>;
+  /** Mounted volumes / drives with their fill level (local provider only). */
+  listVolumes?(): Promise<VolumeInfo[]>;
   disconnect?(): Promise<void>;
   // S3-specific administration (buckets & objects)
   getTags?(remotePath: string): Promise<S3Tag[]>;
@@ -103,6 +107,17 @@ export interface IStorageProvider {
   deleteObjectVersion?(remotePath: string, versionId: string): Promise<void>;
   restoreObjectVersion?(remotePath: string, versionId: string): Promise<void>;
   getPresignedUrl?(remotePath: string, expiresInSeconds: number): Promise<string>;
+}
+
+export interface SpaceInfo {
+  totalBytes: number;
+  freeBytes: number;
+}
+
+export interface VolumeInfo extends SpaceInfo {
+  /** Root to navigate to: "C:\" on Windows, the mount point elsewhere. */
+  path: string;
+  label: string;
 }
 
 // SFTP runs over the system OpenSSH client (`ssh -s sftp`), so all auth types — including 'fido2'

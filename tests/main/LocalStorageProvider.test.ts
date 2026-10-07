@@ -467,6 +467,35 @@ describe('LocalStorageProvider', () => {
     });
   });
 
+  describe('disk space', () => {
+    it('getSpace reports total and free bytes for a directory', async () => {
+      const space = await provider.getSpace(testDir);
+      expect(space).toBeDefined();
+      expect(space!.totalBytes).toBeGreaterThan(0);
+      expect(space!.freeBytes).toBeGreaterThanOrEqual(0);
+      expect(space!.freeBytes).toBeLessThanOrEqual(space!.totalBytes);
+    });
+
+    it('getSpace returns undefined for a missing path', async () => {
+      expect(await provider.getSpace(path.join(testDir, 'nope'))).toBeUndefined();
+    });
+
+    it('listVolumes returns at least one volume with sane numbers', async () => {
+      const volumes = await provider.listVolumes();
+      expect(volumes.length).toBeGreaterThan(0);
+      for (const v of volumes) {
+        expect(v.path).toBeTruthy();
+        expect(v.totalBytes).toBeGreaterThan(0);
+        expect(v.freeBytes).toBeLessThanOrEqual(v.totalBytes);
+      }
+      if (process.platform === 'win32') {
+        expect(volumes.every((v) => /^[A-Z]:\\$/.test(v.path))).toBe(true);
+      } else {
+        expect(volumes.some((v) => v.path === '/')).toBe(true);
+      }
+    });
+  });
+
   describe('disconnect', () => {
     it('should gracefully resolve disconnect', async () => {
       await expect(provider.disconnect()).resolves.toBeUndefined();

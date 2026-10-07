@@ -19,6 +19,12 @@ Replace vulnerable JavaScript SSH libraries with the operating system's native O
 3. Drag and drop files between panes or directly from your workstation's desktop.
 4. Manage permissions via right-click → **Change Permissions (chmod)...** with octal (e.g. `0755`, `0644`) and symbolic checkboxes. Tick **Apply recursively to underlying files and folders** to apply the mode to everything inside a selected folder.
 
+### Drives, Volumes & Free Space
+
+The disk icon at the right of the pane toolbar shows how much space is free where you are (the equivalent of `df <path>`) as a fill bar plus a "NN GB free" label.
+- **Local panes:** click it to list every drive (Windows: `C:`, `D:`, ...) or mounted filesystem (Linux/macOS) with its fill level, and pick one to jump to its root. Offline network drives are skipped rather than freezing the list. **Up one level** from a drive root stays on that drive.
+- **SFTP panes:** shows the free space of the filesystem holding the current folder. It needs a server with the `statvfs@openssh.com` extension (OpenSSH servers have it); otherwise the indicator is hidden. A remote list of all mounts is in the [Performance Bar](performance-bar.md).
+
 ### Search in Files (<kbd>Ctrl+Shift+K</kbd>)
 
 Opens **Search in Files** for the active pane's source: local disk, SFTP or S3.

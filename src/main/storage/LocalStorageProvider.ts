@@ -10,7 +10,9 @@ import {
 } from './StorageProvider';
 import type {
   FileEntry,
+  SpaceInfo,
   StorageType,
+  VolumeInfo,
   WriteStreamOptions,
 } from '../../shared/types/storage';
 
@@ -31,6 +33,39 @@ function formatPermissions(mode: number): string {
     return (mode & 0o200) === 0 ? 'Read-only' : '';
   }
   return (mode & 0o777).toString(8).padStart(3, '0');
+}
+
+/** Filesystem types that are never worth listing as a volume (Linux /proc/self/mounts). */
+const PSEUDO_FS = new Set([
+  'proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'cgroup', 'cgroup2', 'pstore', 'bpf', 'debugfs',
+  'tracefs', 'securityfs', 'configfs', 'fusectl', 'mqueue', 'hugetlbfs', 'autofs', 'binfmt_misc',
+  'overlay', 'squashfs', 'efivarfs', 'ramfs', 'nsfs', 'rpc_pipefs', 'fuse.gvfsd-fuse', 'fuse.portal',
+]);
+
+/** A drive that is offline (disconnected network share, empty card reader) can block statfs for a long time. */
+const STATFS_TIMEOUT_MS = 2000;
+
+async function spaceOf(dir: string): Promise<SpaceInfo | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const st = await Promise.race([
+      fsp.statfs(dir),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('statfs timeout')), STATFS_TIMEOUT_MS);
+      }),
+    ]);
+    if (!st.blocks) return undefined;
+    return { totalBytes: st.blocks * st.bsize, freeBytes: st.bavail * st.bsize };
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** /proc/self/mounts escapes space, tab, newline and backslash as octal (\040). */
+function unescapeMount(s: string): string {
+  return s.replace(/\\([0-7]{3})/g, (_, oct: string) => String.fromCharCode(parseInt(oct, 8)));
 }
 
 /** Max concurrent stat() calls while listing a directory (bounded to stay clear of EMFILE). */
@@ -287,6 +322,52 @@ export class LocalStorageProvider extends BaseStorageProvider {
 
   async getHomeDir(): Promise<string> {
     return os.homedir();
+  }
+
+  async getSpace(remotePath: string): Promise<SpaceInfo | undefined> {
+    return spaceOf(this.resolvePath(remotePath));
+  }
+
+  /** Windows drive letters, or real mounted filesystems on Linux/macOS, each with free/total space. */
+  async listVolumes(): Promise<VolumeInfo[]> {
+    let candidates: Array<{ path: string; label: string }> = [];
+    if (process.platform === 'win32') {
+      candidates = Array.from({ length: 26 }, (_, i) => {
+        const letter = String.fromCharCode(65 + i);
+        return { path: `${letter}:\\`, label: `${letter}:` };
+      });
+    } else if (process.platform === 'darwin') {
+      candidates = [{ path: '/', label: '/' }];
+      try {
+        for (const name of await fsp.readdir('/Volumes')) {
+          candidates.push({ path: `/Volumes/${name}`, label: name });
+        }
+      } catch {
+        // No /Volumes: root only
+      }
+    } else {
+      try {
+        const seen = new Set<string>();
+        for (const line of (await fsp.readFile('/proc/self/mounts', 'utf-8')).split('\n')) {
+          const [device, mountRaw, fsType] = line.split(' ');
+          if (!device || !mountRaw || PSEUDO_FS.has(fsType)) continue;
+          if (device.startsWith('/dev/loop') || mountRaw.startsWith('/snap/')) continue;
+          const mount = unescapeMount(mountRaw);
+          if (seen.has(mount)) continue;
+          seen.add(mount);
+          candidates.push({ path: mount, label: mount });
+        }
+      } catch {
+        candidates = [{ path: '/', label: '/' }];
+      }
+    }
+    const spaces = await Promise.all(candidates.map((c) => spaceOf(c.path)));
+    const volumes: VolumeInfo[] = [];
+    candidates.forEach((c, i) => {
+      const space = spaces[i];
+      if (space) volumes.push({ ...c, ...space });
+    });
+    return volumes;
   }
 
   async disconnect(): Promise<void> {

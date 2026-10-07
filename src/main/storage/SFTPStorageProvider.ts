@@ -13,6 +13,7 @@ import type {
   FileEntry,
   IStorageProvider,
   SFTPConfig,
+  SpaceInfo,
   StorageType,
   WriteStreamOptions,
 } from '../../shared/types/storage';
@@ -270,6 +271,19 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       this.config.username === 'root' ? '/root' : `/home/${this.config.username || 'user'}`;
     this.cachedHomeDir = fallback;
     return fallback;
+  }
+
+  /** `df <path>` equivalent via statvfs@openssh.com; undefined if the server doesn't support it. */
+  public async getSpace(remotePath: string): Promise<SpaceInfo | undefined> {
+    if (typeof this.client.statvfs !== 'function') return undefined;
+    return this.executeWithReconnect(async () => {
+      try {
+        return await this.client.statvfs!(await this.resolveRemotePath(remotePath));
+      } catch (err: any) {
+        if (this.isConnectionDropError(err)) throw err;
+        return undefined;
+      }
+    });
   }
 
   public async resolveRemotePath(remotePath: string): Promise<string> {

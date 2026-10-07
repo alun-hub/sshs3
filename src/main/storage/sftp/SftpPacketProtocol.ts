@@ -517,6 +517,35 @@ export class SftpPacketProtocol extends EventEmitter {
     });
   }
 
+  /** statvfs@openssh.com: filesystem space for the filesystem containing `remotePath` (the server's `df <path>`). */
+  public async statvfs(remotePath: string): Promise<{ totalBytes: number; freeBytes: number }> {
+    const extName = Buffer.from('statvfs@openssh.com', 'utf-8');
+    const pathBuf = Buffer.from(remotePath, 'utf-8');
+    const reply = await this.sendRequest<Buffer>(FXP.EXTENDED, (reqId) => {
+      const b = Buffer.alloc(1 + 4 + 4 + extName.length + 4 + pathBuf.length);
+      let o = 0;
+      b.writeUInt8(FXP.EXTENDED, o);
+      o += 1;
+      b.writeUInt32BE(reqId, o);
+      o += 4;
+      b.writeUInt32BE(extName.length, o);
+      o += 4;
+      extName.copy(b, o);
+      o += extName.length;
+      b.writeUInt32BE(pathBuf.length, o);
+      o += 4;
+      pathBuf.copy(b, o);
+      return b;
+    });
+    // Reply: f_bsize, f_frsize, f_blocks, f_bfree, f_bavail, ... (all uint64, big-endian).
+    if (reply.length < 40) throw new Error('Malformed statvfs reply');
+    const frsize = Number(reply.readBigUInt64BE(8)) || Number(reply.readBigUInt64BE(0));
+    return {
+      totalBytes: Number(reply.readBigUInt64BE(16)) * frsize,
+      freeBytes: Number(reply.readBigUInt64BE(32)) * frsize,
+    };
+  }
+
   public async realpath(remotePath: string): Promise<string> {
     const res = await this.sendRequest<SftpNameEntry[]>(FXP.REALPATH, (reqId) => {
       const pathBuf = Buffer.from(remotePath, 'utf-8');

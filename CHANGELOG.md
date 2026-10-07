@@ -162,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Drives, volumes and free space in the file manager.** Local panes get a drive picker (Windows drive letters, Linux/macOS mounts) with a fill bar per volume; local and SFTP panes show free space for the current folder (SFTP via `statvfs@openssh.com`).
 - **Git & GitHub / GitLab integration hub (`Settings → Git & GitHub`).**
   - **Developer SSH Keys:** Centralized discovery of public keys across `~/.ssh`, active SSH agents, and unlocked smartcard/FIDO2 hardware caches. Includes one-click copy to clipboard and one-click direct browser registration on GitHub (`/settings/ssh/new`) and GitLab (`/-/user_settings/ssh_keys`).
   - **Cryptographic SSH Git commit signing (`~/.gitconfig`):** Inspect active signing format and key, toggle `commit.gpgsign`, configure signing key with one-click "Git Sign" / "Sign Active", automatically update `~/.ssh/allowed_signers` for local signature verification, and enter custom signing keys.

@@ -22,9 +22,12 @@ export function parentPath(currentPath: string): string {
   if (!currentPath || currentPath === '/') return '/';
   const sep = currentPath.includes('\\') && !currentPath.includes('/') ? '\\' : '/';
   const trimmed = currentPath.endsWith(sep) ? currentPath.slice(0, -1) : currentPath;
+  // A Windows drive root ("C:\") is its own parent; "C:" alone would mean the drive's current directory.
+  if (/^[a-zA-Z]:$/.test(trimmed)) return `${trimmed}\\`;
   const idx = trimmed.lastIndexOf(sep);
   if (idx <= 0) return sep;
-  return trimmed.slice(0, idx);
+  const parent = trimmed.slice(0, idx);
+  return /^[a-zA-Z]:$/.test(parent) ? `${parent}\\` : parent;
 }
 
 export function pathSegments(currentPath: string): { label: string; path: string }[] {

@@ -28,6 +28,8 @@ import type {
   S3Tag,
   BucketVersioningInfo,
   ObjectVersionEntry,
+  SpaceInfo,
+  VolumeInfo,
 } from './storage';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoDevicePrompt, AwsSsoLoginResult } from './aws';
 import type { SessionData } from './session';
@@ -136,6 +138,8 @@ export const IPC_CHANNELS = {
   STORAGE_RESTORE_OBJECT_VERSION: 'storage:restore-object-version',
   STORAGE_GET_PRESIGNED_URL: 'storage:get-presigned-url',
   STORAGE_GET_HOMEDIR: 'storage:get-homedir',
+  STORAGE_GET_SPACE: 'storage:get-space',
+  STORAGE_LIST_VOLUMES: 'storage:list-volumes',
 
   // Transfer
   TRANSFER_ADD: 'transfer:add',
@@ -528,6 +532,8 @@ export interface MultiSSHApi {
   storageRestoreObjectVersion(providerId: string, remotePath: string, versionId: string): Promise<void>;
   storageGetPresignedUrl(providerId: string, remotePath: string, expiresInSeconds: number): Promise<string>;
   storageGetHomeDir(providerId: string): Promise<string>;
+  storageGetSpace(providerId: string, remotePath: string): Promise<SpaceInfo | undefined>;
+  storageListVolumes(providerId: string): Promise<VolumeInfo[]>;
 
   // Transfer
   transferAdd(options: {

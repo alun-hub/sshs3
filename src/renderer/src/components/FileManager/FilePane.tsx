@@ -738,6 +738,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* Pane Action Toolbar */}
       <FilePaneToolbar
         sourceType={source.sourceType}
+        providerId={source.providerId}
         currentPath={currentPath}
         selectedCount={selectedPaths.size}
         firstSelected={selectedEntries[0]}

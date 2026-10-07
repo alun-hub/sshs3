@@ -82,6 +82,8 @@ import type {
   S3Tag,
   BucketVersioningInfo,
   ObjectVersionEntry,
+  SpaceInfo,
+  VolumeInfo,
 } from '../shared/types/storage';
 import type { SessionData } from '../shared/types/session';
 import type { ClipboardHistoryEntry } from '../shared/types/clipboard';
@@ -324,6 +326,12 @@ export const api: MultiSSHApi = {
 
   storageGetHomeDir: (providerId: string): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_HOMEDIR, providerId),
+
+  storageGetSpace: (providerId: string, remotePath: string): Promise<SpaceInfo | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_SPACE, providerId, remotePath),
+
+  storageListVolumes: (providerId: string): Promise<VolumeInfo[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LIST_VOLUMES, providerId),
 
   // Transfer
   transferAdd: (options: {

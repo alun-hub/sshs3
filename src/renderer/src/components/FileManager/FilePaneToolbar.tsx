@@ -4,10 +4,12 @@ import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, FolderPlus, Home,
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
 import { Breadcrumbs } from './Breadcrumbs';
+import { DiskSpaceMenu } from './DiskSpaceMenu';
 import type { SourceType } from './types';
 
 interface FilePaneToolbarProps {
   sourceType: SourceType;
+  providerId: string;
   currentPath: string;
   selectedCount: number;
   firstSelected: FileEntry | undefined;
@@ -37,6 +39,7 @@ interface FilePaneToolbarProps {
 /** Navigation buttons, breadcrumbs and the file action groups above the file list. */
 export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   sourceType,
+  providerId,
   currentPath,
   selectedCount,
   firstSelected,
@@ -111,6 +114,15 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
     <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
 
     {children}
+
+    {(sourceType === 'local' || sourceType === 'sftp') && (
+      <DiskSpaceMenu
+        providerId={providerId}
+        canListVolumes={sourceType === 'local'}
+        currentPath={currentPath}
+        onNavigate={onPathChange}
+      />
+    )}
 
     <div className="h-4 w-px bg-border-subtle/80 shrink-0 mx-0.5" />
 
