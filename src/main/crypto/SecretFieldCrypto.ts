@@ -1,4 +1,6 @@
 import { safeStorage } from 'electron';
+import { createLogger } from '../log';
+const cryptoLog = createLogger('crypto');
 
 /**
  * Shared helpers for at-rest encryption of individual secret fields (e.g. a
@@ -42,7 +44,7 @@ export function encryptSecretValue(value: string): string {
     // still threw. Log it so this doesn't look identical to the normal
     // no-keyring fallback above — falling through to plaintext rather than
     // losing the value, but a real bug here should be visible.
-    console.warn('Encrypting a secret field failed unexpectedly; storing it as plaintext instead:', err);
+    cryptoLog.warn('Encrypting a secret field failed unexpectedly; storing it as plaintext instead:', err);
     return value;
   }
 }
@@ -65,11 +67,11 @@ export function decryptSecretValue(value: string): string {
     try {
       return safeStorage.decryptString(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'));
     } catch (err) {
-      console.warn('Failed to decrypt a stored secret field; treating it as unavailable:', err);
+      cryptoLog.warn('Failed to decrypt a stored secret field; treating it as unavailable:', err);
       return '';
     }
   }
-  console.warn('Stored secret field is encrypted but no OS keyring is available to decrypt it; treating as unavailable.');
+  cryptoLog.warn('Stored secret field is encrypted but no OS keyring is available to decrypt it; treating as unavailable.');
   return '';
 }
 

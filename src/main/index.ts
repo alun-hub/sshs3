@@ -9,6 +9,7 @@ import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { applyLoginShellEnv } from './ssh/LoginShellEnv';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
+import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
 
 app.setName('sshs3');
 if (process.platform === 'linux') {
@@ -49,6 +50,23 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Only the instance that owns the single-instance lock writes the log file.
+if (hasSingleInstanceLock && process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+  configureLogging({ dir: app.getPath('logs'), mirrorToConsole: !app.isPackaged });
+}
+const log = createLogger('app');
+const quitLog = createLogger('quit');
+log.info('starting', {
+  version: app.getVersion(),
+  electron: process.versions.electron,
+  platform: process.platform,
+  arch: process.arch,
+  pid: process.pid,
+  packaged: app.isPackaged,
+  // Only whether it was inherited, never the surrounding environment: relaunch after an update inherits it.
+  inheritedSshAuthSock: process.env.SSH_AUTH_SOCK ?? null,
+});
+
 // Some Linux GPU drivers crash Chromium's GPU process (see the "Linux GPU crash" fix). Rather than
 // disabling hardware acceleration for every Linux user unconditionally — which forces all
 // compositing, including CSS blur/backdrop-filter used throughout the UI, onto the CPU and makes
@@ -62,10 +80,9 @@ if (process.platform === 'linux' && fs.existsSync(gpuCrashMarkerPath)) {
 }
 
 app.on('child-process-gone', (_event, details) => {
+  log.warn('child process gone', { type: details.type, reason: details.reason, exitCode: details.exitCode });
   if (details.type === 'GPU') {
-    console.warn(
-      `[sshs3] GPU process exited (reason: ${details.reason}, exitCode: ${details.exitCode}). Continuing with software rendering.`
-    );
+    log.warn('GPU process exited; continuing with software rendering');
     if (process.platform === 'linux') {
       try {
         fs.writeFileSync(gpuCrashMarkerPath, '');
@@ -97,14 +114,18 @@ process.on('uncaughtException', (err) => {
   // Gracefully log undici/HTTP2 stream termination and transient socket aborts
   // instead of crashing Electron with an unexpected error dialog.
   if (err instanceof TypeError && err.message === 'terminated') {
-    console.warn('[sshs3] Ignored stream termination error:', err);
+    log.warn('ignored stream termination error', err);
     return;
   }
   if (err && typeof err === 'object' && 'code' in err && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
-    console.warn('[sshs3] Ignored transient socket error:', err);
+    log.warn('ignored transient socket error', err);
     return;
   }
-  console.error('[sshs3] Uncaught exception in main process:', err);
+  log.error('uncaught exception in main process', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('unhandled promise rejection in main process', reason);
 });
 
 let mainWindow: BrowserWindow | null = null;
@@ -282,6 +303,10 @@ async function initializeApp(): Promise<void> {
     confirmQuit,
   });
   ipcBridge.register();
+  void ipcBridge.settingsStore
+    .getSettings()
+    .then((settings) => setLogLevel(resolveLogLevel(settings.logLevel)))
+    .catch(() => {});
   splash?.setProgress(55, 'Creating window…');
   // A previous run may have crashed before it could empty the clipboard history on exit.
   void ipcBridge.clearClipboardHistoryIfConfigured().catch(() => {});
@@ -300,15 +325,15 @@ async function initializeApp(): Promise<void> {
     // Syncs the managed block, then (via onLocalSshConfigSynced) clears any agent block a crashed run left behind.
     ipcBridge.profileSyncService.autoSyncLocalSshConfig(),
   ]).catch((err) => {
-    console.warn('[sshs3] Background initialization error:', err);
+    log.warn('background initialization error', err);
   });
 
   void AgentLifecycleManager.ensureAgent();
 
   if (!isEncryptionAvailable()) {
-    console.warn(
-      '[sshs3] No OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
-        'saved credentials will be stored in PLAINTEXT on disk instead of encrypted.'
+    log.warn(
+      'no OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
+        'saved credentials will be stored in PLAINTEXT on disk instead of encrypted'
     );
   }
 }
@@ -322,9 +347,13 @@ app.whenReady().then(() => {
 app.on('before-quit', (event) => {
   if (!hasSingleInstanceLock) return;
   if (!isQuitting) {
+    quitLog.info('before-quit: confirming and disposing');
     event.preventDefault();
     void (async () => {
-      if (!(await confirmQuit())) return;
+      if (!(await confirmQuit())) {
+        quitLog.info('quit cancelled by user');
+        return;
+      }
       isQuitting = true;
       if (ipcBridge) {
         try {
@@ -334,6 +363,9 @@ app.on('before-quit', (event) => {
         }
         ipcBridge = null;
         AgentLifecycleManager.killAllPrivateAgents();
+        quitLog.info('dispose finished; quitting');
+        // Bounded so a stuck disk can never block quit (or the relaunch that follows an update).
+        await Promise.race([flushLogs(), new Promise((resolve) => setTimeout(resolve, 1000))]);
         app.quit();
       } else {
         AgentLifecycleManager.killAllPrivateAgents();
@@ -346,6 +378,7 @@ app.on('before-quit', (event) => {
 app.on('will-quit', () => {
   if (!hasSingleInstanceLock) return;
   AgentLifecycleManager.killAllPrivateAgents();
+  quitLog.info('will-quit');
 });
 
 app.on('window-all-closed', () => {

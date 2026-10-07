@@ -1,3 +1,4 @@
+import { captureLogs } from './helpers/captureLogs';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const { mockEncryptString, mockDecryptString, mockIsEncryptionAvailable } = vi.hoisted(() => {
@@ -94,25 +95,25 @@ describe('encryptSecretValue (M2)', () => {
 
   it('stores as plaintext without warning when no OS keyring is available', () => {
     mockIsEncryptionAvailable.mockReturnValue(false);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = captureLogs();
 
     const result = encryptSecretValue('super-secret');
 
     expect(result).toBe('super-secret');
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
+    expect(warnSpy.lines).toHaveLength(0);
+    warnSpy.restore();
   });
 
   it('falls through to plaintext AND warns when encryptString throws unexpectedly', () => {
     mockEncryptString.mockImplementationOnce(() => {
       throw new Error('keyring locked');
     });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = captureLogs();
 
     const result = encryptSecretValue('super-secret');
 
     expect(result).toBe('super-secret');
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    warnSpy.mockRestore();
+    expect(warnSpy.lines).toHaveLength(1);
+    warnSpy.restore();
   });
 });

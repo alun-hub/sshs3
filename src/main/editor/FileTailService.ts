@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
 import { quoteShellArg } from '../search/shellQuote';
+import { createLogger } from '../log';
+const filetailserviceLog = createLogger('FileTailService');
 
 export interface FileTailDataEvent {
   tailId: string;
@@ -73,7 +75,7 @@ export class FileTailService {
       }
       initialContent = text;
     } catch (err: any) {
-      console.error('[FileTailService] Error reading initial content:', err);
+      filetailserviceLog.error('Error reading initial content:', err);
     }
 
     const tailId = crypto.randomUUID();
@@ -145,7 +147,7 @@ export class FileTailService {
           }
         }
       } catch (sftpErr) {
-        console.warn('[FileTailService] SFTP tail command execution failed, falling back to polling:', sftpErr);
+        filetailserviceLog.warn('SFTP tail command execution failed, falling back to polling:', sftpErr);
         startedSftpTail = false;
       }
     }

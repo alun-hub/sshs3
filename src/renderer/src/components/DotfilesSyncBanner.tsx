@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { FileCode, X } from 'lucide-react';
 import type { DotfilesSyncPromptEvent, DotfilesSyncStatusEvent } from '@shared/types/dotfiles';
+import { createRendererLogger } from '../lib/log';
+const log = createRendererLogger('DotfilesSyncBanner');
 
 /**
  * Global, non-blocking banner for the dotfiles pool "ask" policy. Deliberately
@@ -42,7 +44,7 @@ export const DotfilesSyncBanner: React.FC = () => {
     try {
       await window.multissh?.respondDotfilesSyncPrompt?.(id, resolution);
     } catch (err) {
-      console.error('Failed to respond to dotfiles sync prompt:', err);
+      log.error('Failed to respond to dotfiles sync prompt:', err);
     }
   };
 

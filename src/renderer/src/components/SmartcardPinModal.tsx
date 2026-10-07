@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, ShieldCheck, Cpu, Lock, Server, Layers, FolderSync } from 'lucide-react';
 import type { AskpassPromptKind } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
+import { createRendererLogger } from '../lib/log';
+const log = createRendererLogger('SmartcardPinModal');
 
 export interface AskpassPromptItem {
   id: string;
@@ -236,7 +238,7 @@ export const SmartcardPinModal: React.FC = () => {
       try {
         await window.multissh.submitAskpassPin(promptId, submittedPin);
       } catch (err) {
-        console.error('Failed to submit askpass PIN:', err);
+        log.error('Failed to submit askpass PIN:', err);
       }
     }
   };
@@ -256,7 +258,7 @@ export const SmartcardPinModal: React.FC = () => {
       try {
         await window.multissh.submitAskpassPin(promptId, '');
       } catch (err) {
-        console.error('Failed to cancel askpass PIN:', err);
+        log.error('Failed to cancel askpass PIN:', err);
       }
     }
   };

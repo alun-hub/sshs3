@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ShieldAlert, ShieldQuestion } from 'lucide-react';
 import type { HostKeyPromptEvent } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
+import { createRendererLogger } from '../lib/log';
+const log = createRendererLogger('HostKeyTrustModal');
 
 export const HostKeyTrustModal: React.FC = () => {
   const [prompts, setPrompts] = useState<HostKeyPromptEvent[]>([]);
@@ -30,7 +32,7 @@ export const HostKeyTrustModal: React.FC = () => {
       try {
         await window.multissh.respondHostKeyPrompt(promptId, trust);
       } catch (err) {
-        console.error('Failed to respond to host key prompt:', err);
+        log.error('Failed to respond to host key prompt:', err);
       }
     }
   };

@@ -1,4 +1,5 @@
 import type { UpdateState } from './update';
+import type { LogLevel } from './log';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from './perf';
 import type {
   SSHConnectionConfig,
@@ -271,6 +272,9 @@ export const IPC_CHANNELS = {
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
+  LOG_WRITE: 'log:write',
+  LOG_OPEN_FOLDER: 'log:open-folder',
+  LOG_GET_DIAGNOSTICS: 'log:get-diagnostics',
   UPDATE_STATE: 'update:state',
   APP_GET_HOMEDIR: 'app:get-homedir',
   APP_GET_PLATFORM: 'app:get-platform',
@@ -724,6 +728,11 @@ export interface MultiSSHApi {
   checkForUpdates(): Promise<UpdateState>;
   downloadUpdate(): Promise<UpdateState>;
   installUpdate(): Promise<void>;
+  /** Renderer diagnostics into the main-process log (masked and rate-limited there). */
+  writeLog(level: LogLevel, scope: string, message: string, ctx?: unknown): Promise<void>;
+  openLogFolder(): Promise<void>;
+  /** Version/OS header plus the most recent (already masked) log lines, for bug reports. */
+  getDiagnostics(): Promise<string>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   getHomeDir(): Promise<string>;
   getPlatform(): Promise<'win32' | 'darwin' | 'linux' | string>;

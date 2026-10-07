@@ -10,6 +10,8 @@ import { SftpPacketProtocol } from './SftpPacketProtocol';
 import type { HostKeyPromptInfo } from '../../ssh/HostKeyVerifier';
 import type { SFTPConfig } from '../../../shared/types/storage';
 import type { SSHConnectionConfig } from '../../../shared/types/ssh';
+import { createLogger } from '../../log';
+const sftpLog = createLogger('sftp');
 
 export interface OpenSshProcessOptions {
   config: SFTPConfig;
@@ -153,7 +155,7 @@ export class OpenSshSftpProcess {
       env.SSH_AUTH_SOCK = config.agentPath;
     }
 
-    console.log(`[sftp] spawning ${sshBinary} ${sshArgs.join(' ')}`);
+    sftpLog.info(`spawning ${sshBinary} ${sshArgs.join(' ')}`);
     const child = spawn(sshBinary, sshArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
@@ -163,7 +165,7 @@ export class OpenSshSftpProcess {
     child.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf-8');
       this.stderrBuffer = (this.stderrBuffer + text).slice(-4096);
-      console.log(`[sftp] ssh stderr: ${JSON.stringify(text.slice(0, 500))}`);
+      sftpLog.info(`ssh stderr: ${JSON.stringify(text.slice(0, 500))}`);
 
       if (/confirm user presence|touch (your )?security key/i.test(text)) {
         if (onPresence) onPresence(text.trim());
@@ -172,11 +174,11 @@ export class OpenSshSftpProcess {
 
     const exitPromise = new Promise<never>((_, reject) => {
       child.once('error', (err) => {
-        console.log(`[sftp] ssh spawn error: ${err.message}`);
+        sftpLog.info(`ssh spawn error: ${err.message}`);
         reject(err);
       });
       child.once('exit', (code, signal) => {
-        console.log(`[sftp] ssh exited code=${code} signal=${signal}`);
+        sftpLog.info(`ssh exited code=${code} signal=${signal}`);
         const detail = this.stderrBuffer.trim() || `exit code ${code}${signal ? `, signal ${signal}` : ''}`;
         reject(new Error(`OpenSSH process terminated: ${detail}`));
       });
@@ -193,7 +195,7 @@ export class OpenSshSftpProcess {
     try {
       await Promise.race([protocol.init(), exitPromise]);
       exitPromise.catch(() => {});
-      console.log('[sftp] SFTP subsystem ready (protocol version negotiated)');
+      sftpLog.info('SFTP subsystem ready (protocol version negotiated)');
       onPresenceCleared?.();
     } catch (err: any) {
       // If ssh died first, the protocol only sees a closed pipe; surface ssh's own stderr instead.

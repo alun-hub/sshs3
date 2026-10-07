@@ -14,6 +14,8 @@ import { isElementVisible } from '../../lib/spatialNavigation';
 import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('DualPaneExplorer');
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
   left: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
@@ -126,7 +128,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
                 };
               } catch (err) {
-                console.warn('Could not auto-reconnect S3 pane on startup:', err);
+                log.warn('Could not auto-reconnect S3 pane on startup:', err);
               }
             }
           }
@@ -181,7 +183,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   path: path || defaultHome,
                 };
               } catch (err) {
-                console.warn('Could not auto-reconnect SFTP pane on startup:', err);
+                log.warn('Could not auto-reconnect SFTP pane on startup:', err);
               }
             }
           }
@@ -211,7 +213,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   path: savedPane.path || session?.lastPaths?.[savedPane.providerId] || '/',
                 };
               } catch (err) {
-                console.warn('Could not auto-reconnect K8s pane on startup:', err);
+                log.warn('Could not auto-reconnect K8s pane on startup:', err);
               }
             }
           }
@@ -407,7 +409,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       try {
         await window.multissh.profilesSaveSSH?.({ ...config, password: entered });
       } catch (saveErr) {
-        console.warn('Could not save password to profile:', saveErr);
+        log.warn('Could not save password to profile:', saveErr);
       }
     }
     await connectPaneToSSH(config, entered);

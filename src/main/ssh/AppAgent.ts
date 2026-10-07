@@ -15,6 +15,8 @@ import {
   type AgentTarget,
   type LoadIntoPrivateAgentOptions,
 } from '../smartcard/SmartcardAgentLoader';
+import { createLogger } from '../log';
+const appAgentLog = createLogger('app-agent');
 
 const execFileAsync = promisify(execFile);
 
@@ -153,7 +155,7 @@ export class AppAgent {
       if (await AgentLifecycleManager.probeSocket(this.socketPath)) {
         return this.socketPath;
       }
-      console.warn('[app-agent] agent is no longer reachable; restarting');
+      appAgentLog.warn('agent is no longer reachable; restarting');
       await this.discardDeadAgent();
     }
 
@@ -184,7 +186,7 @@ export class AppAgent {
       this.pid = pid;
       this.socketPath = socketPath;
       this.askpass = askpass;
-      console.log(`[app-agent] started pid=${pid}, socket=${socketPath}`);
+      appAgentLog.info(`started pid=${pid}, socket=${socketPath}`);
       return socketPath;
     } catch (err) {
       await askpass.stop().catch(() => {});
@@ -333,7 +335,7 @@ export class AppAgent {
           await execFileAsync('ssh-add', ['-d', file], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } });
           removed++;
         } catch (err) {
-          console.warn('[app-agent] could not remove an unwanted identity from the agent:', (err as Error).message);
+          appAgentLog.warn('could not remove an unwanted identity from the agent:', (err as Error).message);
         } finally {
           await fs.promises.rm(file, { force: true }).catch(() => {});
         }
@@ -396,7 +398,7 @@ export class AppAgent {
           timeout: EVICT_TIMEOUT_MS,
         });
       } catch (err) {
-        console.warn('[app-agent] could not evict an identity from the agent:', (err as Error).message);
+        appAgentLog.warn('could not evict an identity from the agent:', (err as Error).message);
       } finally {
         await fs.promises.rm(file, { force: true }).catch(() => {});
       }

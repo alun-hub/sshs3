@@ -5,6 +5,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import * as AgentRegistry from '../ssh/AgentRegistry';
+import { createLogger } from '../log';
+const askpassLog = createLogger('askpass');
 
 /** Carried on a re-prompt after a wrong PIN, so the UI can show "Incorrect PIN, 2 attempts left" inline instead of failing silently. */
 export interface AskpassPromptRetryContext {
@@ -268,8 +270,7 @@ export class AskpassServer extends EventEmitter {
             (/^confirm user presence/i.test(prompt) && !/pin|password|passphrase/i.test(prompt));
 
           if (isPurePresence) {
-            console.log(
-              `[askpass] received pure presence notification (promptType="${promptType}", prompt="${prompt}") - resolving immediately without prompting for PIN`
+            askpassLog.info(`received pure presence notification (promptType="${promptType}", prompt="${prompt}") - resolving immediately without prompting for PIN`
             );
             this.emit('presence', prompt);
             this.onPresence?.(prompt);
@@ -296,22 +297,21 @@ export class AskpassServer extends EventEmitter {
     // concurrent askpass flows racing for the same single modal queue).
     if (this.promptHandler) {
       const answer = await this.promptHandler(prompt);
-      console.log(`[askpass] resolved prompt "${prompt}" -> ${answer ? `${answer.length} char(s)` : '(empty)'}`);
+      askpassLog.info(`resolved prompt "${prompt}" -> ${answer ? `${answer.length} char(s)` : '(empty)'}`);
       return answer;
     }
 
     if (this.listenerCount('prompt') > 0) {
       return new Promise<string>((resolve) => {
         this.emit('prompt', prompt, (response: string) => {
-          console.log(
-            `[askpass] resolved prompt "${prompt}" -> ${response ? `${response.length} char(s)` : '(empty)'}`
+          askpassLog.info(`resolved prompt "${prompt}" -> ${response ? `${response.length} char(s)` : '(empty)'}`
           );
           resolve(response);
         });
       });
     }
 
-    console.log(`[askpass] resolved prompt "${prompt}" -> (empty, no handler registered)`);
+    askpassLog.info(`resolved prompt "${prompt}" -> (empty, no handler registered)`);
     return '';
   }
 

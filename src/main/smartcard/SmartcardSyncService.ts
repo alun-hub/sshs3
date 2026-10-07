@@ -1,5 +1,7 @@
 import net from 'node:net';
 import crypto from 'node:crypto';
+import { createLogger } from '../log';
+const smartcardSyncLog = createLogger('smartcard-sync');
 
 export interface AgentIdentity {
   keyBlob: Buffer;
@@ -307,10 +309,10 @@ export function verifyAgentSignature(
     // password) — accepting an unrecognized algorithm without actually
     // verifying anything would let a malicious SSH_AUTH_SOCK hand over
     // attacker-controlled bytes as if they were a verified signature.
-    console.warn(`Unsupported key algorithm for signature verification: ${algo}`);
+    smartcardSyncLog.warn(`Unsupported key algorithm for signature verification: ${algo}`);
     return false;
   } catch (err) {
-    console.warn('Failed to verify agent signature cryptographically:', err);
+    smartcardSyncLog.warn('Failed to verify agent signature cryptographically:', err);
     return false;
   }
 }

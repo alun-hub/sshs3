@@ -6,6 +6,8 @@ import {
 } from '../ssh/blockedSshDirectives';
 import type { KnownHostsConflict } from '../../shared/types/sync';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
+import { createLogger } from '../log';
+const sshs3Log = createLogger('sshs3');
 
 export type { KnownHostsConflict };
 
@@ -119,8 +121,7 @@ export function parseManagedSshConfigBlock(fileContent: string): ManagedSshConfi
 export function writeManagedSshConfigBlock(fileContent: string, block: ManagedSshConfigBlock): string {
   const { body: safeBody, removedLines } = sanitizeSshConfigBody(block.body);
   if (removedLines.length > 0) {
-    console.warn(
-      `[sshs3] Remote Profile Sync: refused to write ${removedLines.length} disallowed ssh_config directive(s) ` +
+    sshs3Log.warn(`Remote Profile Sync: refused to write ${removedLines.length} disallowed ssh_config directive(s) ` +
         `synced from remote into ~/.ssh/config (would allow code execution from any future "ssh" invocation): ` +
         removedLines.map((l) => JSON.stringify(l.trim())).join(', ')
     );

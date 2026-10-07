@@ -65,5 +65,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
     },
+  },
+  {
+    // Everything in the main process goes through src/main/log so it is levelled, masked and persisted.
+    files: ['src/main/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: { 'no-console': 'error' },
   }
 );

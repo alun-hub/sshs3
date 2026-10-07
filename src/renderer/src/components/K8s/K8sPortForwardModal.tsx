@@ -18,6 +18,8 @@ import type {
 import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('K8sPortForwardModal');
 
 interface K8sPortForwardModalProps {
   initialTarget?: {
@@ -109,7 +111,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     window.multissh
       .k8sListPortForwards()
       .then(setActiveForwards)
-      .catch((err) => console.error('Failed to list active port forwards:', err));
+      .catch((err) => log.error('Failed to list active port forwards:', err));
 
     const unsubscribe = window.multissh.onK8sPortForwardEvent((forwards) => {
       setActiveForwards(forwards);
@@ -167,7 +169,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
       await window.multissh.k8sStopPortForward(id);
       setActiveForwards((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
-      console.error('Failed to stop port forward:', err);
+      log.error('Failed to stop port forward:', err);
     } finally {
       setStoppingId(null);
     }

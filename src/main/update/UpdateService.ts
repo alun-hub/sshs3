@@ -1,10 +1,12 @@
 import { app } from 'electron';
 import electronUpdater from 'electron-updater';
+import { createLogger } from '../log';
 import type { UpdateState, UpdateUnsupportedReason } from '../../shared/types/update';
 
 const INITIAL_CHECK_DELAY_MS = 30_000;
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MAX_ERROR_LENGTH = 200;
+const log = createLogger('update');
 
 interface UpdateInfoLike {
   version: string;
@@ -20,6 +22,8 @@ export interface UpdaterLike {
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;
   allowDowngrade: boolean;
+  /** electron-updater's own diagnostics (download, install command, relaunch) go here. */
+  logger?: unknown;
   on(event: 'checking-for-update', cb: () => void): unknown;
   on(event: 'update-available', cb: (info: UpdateInfoLike) => void): unknown;
   on(event: 'update-not-available', cb: () => void): unknown;
@@ -104,6 +108,14 @@ export class UpdateService {
     updater.autoInstallOnAppQuit = true;
     updater.allowPrerelease = false;
     updater.allowDowngrade = false;
+    const updaterLog = createLogger('updater');
+    const text = (m: unknown): string => (typeof m === 'string' ? m : m instanceof Error ? m.message : JSON.stringify(m));
+    updater.logger = {
+      info: (m: unknown) => updaterLog.info(text(m)),
+      warn: (m: unknown) => updaterLog.warn(text(m)),
+      error: (m: unknown) => updaterLog.error(text(m)),
+      debug: (m: unknown) => updaterLog.debug(text(m)),
+    };
     this.attach(updater);
     this.updater = updater;
   }
@@ -176,6 +188,7 @@ export class UpdateService {
       this.setState({ status: 'installing', error: undefined });
       const paintDelay = this.options.paintDelayMs ?? 300;
       if (paintDelay > 0) await new Promise((resolve) => setTimeout(resolve, paintDelay));
+      log.info('quitAndInstall', { version: this.state.version });
       this.updater.quitAndInstall(false, true);
     } finally {
       this.installing = false;
@@ -219,7 +232,11 @@ export class UpdateService {
   }
 
   private setState(patch: Partial<UpdateState>): void {
+    const previous = this.state.status;
     this.state = { ...this.state, ...patch };
+    if (previous !== this.state.status || patch.error) {
+      log.info('state', { from: previous, to: this.state.status, version: this.state.version, error: patch.error });
+    }
     this.options.send(this.getState());
   }
 }

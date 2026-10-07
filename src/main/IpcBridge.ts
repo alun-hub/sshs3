@@ -48,6 +48,7 @@ import { registerSearchHandlers } from './ipc/searchHandlers';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerGeneralHandlers } from './ipc/generalHandlers';
+import { registerLogHandlers } from './ipc/logHandlers';
 import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
 import { registerGitHandlers } from './ipc/gitHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
@@ -59,6 +60,11 @@ import { registerDotfileHandlers } from './ipc/dotfileHandlers';
 import { registerK8sHandlers } from './ipc/k8sHandlers';
 import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
 import { registerSyncHandlers } from './ipc/syncHandlers';
+import { createLogger } from './log';
+const ipcLog = createLogger('ipc');
+const sshLog = createLogger('ssh');
+const smartcardLog = createLogger('smartcard');
+const autosyncLog = createLogger('AutoSync');
 const DISPOSE_STEP_TIMEOUT_MS = 5000;
 
 interface PendingAskpassPrompt {
@@ -309,6 +315,7 @@ export class IpcBridge {
     registerFileEditorHandlers(this);
     registerSearchHandlers(this);
     registerGeneralHandlers(this);
+    registerLogHandlers(this);
     registerDirSyncHandlers(this);
     registerK8sHandlers(this);
     this.setupEventListeners();
@@ -590,8 +597,7 @@ export class IpcBridge {
     const profiles = await this.profileStore.getProfiles();
     const byId = new Map(profiles.ssh.map((p) => [p.id, p]));
     if (!byId.has(config.proxyJumpProfileId)) {
-      console.warn(
-        `[ssh] ProxyJump profile ${config.proxyJumpProfileId} not found; connecting ${config.proxyJump ? 'via the manual proxyJump string' : 'WITHOUT a jump host'}`
+      sshLog.warn(`ProxyJump profile ${config.proxyJumpProfileId} not found; connecting ${config.proxyJump ? 'via the manual proxyJump string' : 'WITHOUT a jump host'}`
       );
     }
     return withResolvedProxyJump(config, (id) => byId.get(id));
@@ -633,15 +639,13 @@ export class IpcBridge {
    * SSHConnectionConfig.dotfilesSyncPolicy.
    */
   public async runDotfilesSyncCheck(sessionId: string, config: SSHConnectionConfig): Promise<void> {
-    console.log(
-      `[smartcard] runDotfilesSyncCheck: firing for session ${sessionId}, poolId=${config.poolId}, policy=${config.dotfilesSyncPolicy}, agentPath=${config.agentPath ?? '(none — will load its own if smartcard)'}`
+    smartcardLog.info(`runDotfilesSyncCheck: firing for session ${sessionId}, poolId=${config.poolId}, policy=${config.dotfilesSyncPolicy}, agentPath=${config.agentPath ?? '(none — will load its own if smartcard)'}`
     );
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
     if (config.authType === 'smartcard' && config.pkcs11LibPath && !config.agentPath) {
       if (this.smartcard.isInLoadCooldown(config.pkcs11LibPath)) {
-        console.log(
-          `[smartcard] runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
+        smartcardLog.info(`runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
         );
         return;
       }
@@ -756,7 +760,7 @@ export class IpcBridge {
         await this.syncConfigStore.setLastSyncAt(new Date().toISOString());
         await this.pushSyncStatusToRenderer();
       } catch (err) {
-        console.warn('[AutoSync] Background push failed:', err);
+        autosyncLog.warn('Background push failed:', err);
       }
     }, delayMs);
   }
@@ -800,13 +804,12 @@ export class IpcBridge {
         // No interactive flow for a conflict discovered by a background pull
         // (the user may not even have Settings open) — surfaced in the log
         // instead; the conflict itself is never auto-resolved either way.
-        console.warn(
-          `[AutoSync] Background pull found ${result.sshNativeConflicts.length} known_hosts conflict(s), left unapplied.`
+        autosyncLog.warn(`Background pull found ${result.sshNativeConflicts.length} known_hosts conflict(s), left unapplied.`
         );
       }
       await this.pushSyncStatusToRenderer();
     } catch (err) {
-      console.warn('[AutoSync] Background pull failed:', err);
+      autosyncLog.warn('Background pull failed:', err);
     }
   }
 
@@ -847,7 +850,7 @@ export class IpcBridge {
       );
       return this.syncCryptoService.isUnlocked('topology') && this.syncCryptoService.isUnlocked('credentials');
     } catch (err) {
-      console.warn('[AutoSync] Automatic smartcard unlock failed:', err);
+      autosyncLog.warn('Automatic smartcard unlock failed:', err);
       return false;
     }
   }
@@ -1281,13 +1284,13 @@ export class IpcBridge {
         Promise.resolve().then(step),
         new Promise<void>((resolve) => {
           timer = setTimeout(() => {
-            console.warn(`IpcBridge.dispose: ${label} did not finish within ${DISPOSE_STEP_TIMEOUT_MS} ms`);
+            ipcLog.warn(`IpcBridge.dispose: ${label} did not finish within ${DISPOSE_STEP_TIMEOUT_MS} ms`);
             resolve();
           }, DISPOSE_STEP_TIMEOUT_MS);
         }),
       ]);
     } catch (err) {
-      console.warn(`IpcBridge.dispose: ${label} failed:`, err instanceof Error ? err.message : err);
+      ipcLog.warn(`IpcBridge.dispose: ${label} failed:`, err instanceof Error ? err.message : err);
     } finally {
       if (timer) clearTimeout(timer);
     }

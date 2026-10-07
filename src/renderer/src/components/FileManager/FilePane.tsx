@@ -22,6 +22,8 @@ import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursive
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { DEFAULT_SHORTCUTS } from '@shared/types/settings';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('FilePane');
 
 interface FilePaneProps {
   side: PaneSide;
@@ -150,7 +152,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         }
       }
     } catch (err) {
-      console.warn('Could not navigate to home directory:', err);
+      log.warn('Could not navigate to home directory:', err);
       if (source.sourceType === 'sftp') {
         onPathChange('/home/user');
       }

@@ -8,6 +8,8 @@ import type {
   K8sPortForwardTarget,
   K8sActivePortForward,
 } from '../../shared/types/kubernetes';
+import { createLogger } from '../log';
+const k8sportforwardLog = createLogger('K8sPortForward');
 
 interface ActiveSession {
   id: string;
@@ -76,7 +78,7 @@ export class K8sPortForwardManager extends EventEmitter {
       errStream.on('error', () => cleanup());
       errStream.on('data', (errChunk) => {
         const msg = errChunk.toString().trim();
-        console.warn(`[K8sPortForward] Pod ${target.podName}:${target.containerPort} error:`, msg);
+        k8sportforwardLog.warn(`Pod ${target.podName}:${target.containerPort} error:`, msg);
         const currentSession = this.sessions.get(id);
         if (currentSession) {
           currentSession.error = msg;

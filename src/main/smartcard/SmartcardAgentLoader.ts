@@ -3,6 +3,8 @@ import { promisify } from 'node:util';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
 import { AskpassServer, type AskpassPromptHandler, type AskpassPromptRetryContext } from './AskpassServer';
 import { withPkcs11Lock } from './Pkcs11Lock';
+import { createLogger } from '../log';
+const agentLoaderLog = createLogger('agent-loader');
 
 const execFileAsync = promisify(execFile);
 
@@ -70,9 +72,9 @@ export function execWithPresenceDetection(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const logPrefix = `[exec] ${bin} ${args.join(' ')}`;
-    console.log(`${logPrefix}: spawning (pid pending), timeout=${opts.timeoutMs}ms`);
+    agentLoaderLog.info(`${logPrefix}: spawning (pid pending), timeout=${opts.timeoutMs}ms`);
     const child = spawn(bin, args, { env: opts.env });
-    console.log(`${logPrefix}: spawned pid=${child.pid}`);
+    agentLoaderLog.info(`${logPrefix}: spawned pid=${child.pid}`);
     // None of our callers ever have interactive input to feed a child (PIN/touch both go through
     // Askpass/the device itself, never stdin) — but some OpenSSH tools fall back to an interactive
     // "Overwrite? (y/n)" stdin prompt in cases we don't otherwise detect (e.g. ssh-keygen finding a
@@ -91,13 +93,13 @@ export function execWithPresenceDetection(
     let fullOutput = '';
 
     const timer = setTimeout(() => {
-      console.warn(`${logPrefix}: timed out after ${opts.timeoutMs}ms, killing pid=${child.pid}`);
+      agentLoaderLog.warn(`${logPrefix}: timed out after ${opts.timeoutMs}ms, killing pid=${child.pid}`);
       child.kill();
     }, opts.timeoutMs);
 
     const checkForPresenceHint = (streamName: 'stdout' | 'stderr') => (chunk: Buffer): void => {
       const text = chunk.toString();
-      console.log(`${logPrefix} [${streamName}]: ${JSON.stringify(text)}`);
+      agentLoaderLog.debug(`${logPrefix} [${streamName}]: ${JSON.stringify(text)}`);
       fullOutput += text;
       opts.onOutput?.(text);
       if (presenceSignaled) return;
@@ -111,7 +113,7 @@ export function execWithPresenceDetection(
     child.stderr?.on('data', checkForPresenceHint('stderr'));
 
     child.on('error', (err) => {
-      console.warn(`${logPrefix}: process error event:`, err);
+      agentLoaderLog.warn(`${logPrefix}: process error event:`, err);
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -119,7 +121,7 @@ export function execWithPresenceDetection(
     });
 
     child.on('close', (code) => {
-      console.log(`${logPrefix}: closed with code ${code}`);
+      agentLoaderLog.info(`${logPrefix}: closed with code ${code}`);
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -284,17 +286,17 @@ async function runAddIntoPrivateAgent(
     // If OpenSSH is asking for a server/account password (e.g. "user@host's password:"), never supply the key PIN.
     const isAccountPasswordPrompt = /password/i.test(prompt) && !/pin|passphrase/i.test(prompt);
     if (!isAccountPasswordPrompt && cachedPin !== undefined) {
-      console.log(`${logPrefix}: reusing already-entered PIN for a retry (prompt: "${prompt}")`);
+      agentLoaderLog.info(`${logPrefix}: reusing already-entered PIN for a retry (prompt: "${prompt}")`);
       if (/presence|touch/i.test(prompt)) {
         options?.onPresenceRequested?.();
       }
       return cachedPin;
     }
     if (inFlightPrompt) {
-      console.log(`${logPrefix}: awaiting in-flight PIN prompt (prompt: "${prompt}")`);
+      agentLoaderLog.info(`${logPrefix}: awaiting in-flight PIN prompt (prompt: "${prompt}")`);
       return inFlightPrompt;
     }
-    console.log(`${logPrefix}: asking for a fresh PIN (prompt: "${prompt}")`);
+    agentLoaderLog.info(`${logPrefix}: asking for a fresh PIN (prompt: "${prompt}")`);
     const retryContext = pendingRetryContext;
     pendingRetryContext = undefined;
     inFlightPrompt = (async () => {
@@ -352,7 +354,7 @@ async function runAddIntoPrivateAgent(
     let lastErr: unknown;
     let attemptOutput = '';
     for (let attempt = 0; attempt <= retries + maxPinAttempts; attempt++) {
-      console.log(`${logPrefix}: attempt ${attempt + 1}`);
+      agentLoaderLog.info(`${logPrefix}: attempt ${attempt + 1}`);
       try {
         // See Pkcs11Lock's doc comment: this is the one moment this process actually opens a
         // PKCS#11/FIDO2 session against the token, so it must never race a concurrent load for
@@ -368,7 +370,7 @@ async function runAddIntoPrivateAgent(
         );
         lastErr = undefined;
       } catch (err) {
-        console.warn(`${logPrefix}: attempt ${attempt + 1} failed:`, err);
+        agentLoaderLog.warn(`${logPrefix}: attempt ${attempt + 1} failed:`, err);
         lastErr = err;
       } finally {
         options?.onPresenceCleared?.();
@@ -403,7 +405,7 @@ async function runAddIntoPrivateAgent(
       }
 
       if (options?.emptyFailureMeansNoIdentities && (!lastErr || isTextlessExitFailure(lastErr))) {
-        console.log(
+        agentLoaderLog.info(
           `${logPrefix}: treating success/textless failure with no identities as "no resident credentials on this device", not an error`
         );
         lastErr = undefined;
@@ -415,7 +417,7 @@ async function runAddIntoPrivateAgent(
       }
 
       if (cachedPin === '') {
-        console.log(`${logPrefix}: giving up (user cancelled)`);
+        agentLoaderLog.info(`${logPrefix}: giving up (user cancelled)`);
         break;
       }
 
@@ -442,10 +444,10 @@ async function runAddIntoPrivateAgent(
       if (isWrongPinError) {
         pinAttempts++;
         if (pinAttempts >= maxPinAttempts) {
-          console.warn(`${logPrefix}: giving up after ${pinAttempts} wrong PIN attempts`);
+          agentLoaderLog.warn(`${logPrefix}: giving up after ${pinAttempts} wrong PIN attempts`);
           break;
         }
-        console.warn(`${logPrefix}: wrong PIN (attempt ${pinAttempts}/${maxPinAttempts}), re-prompting`);
+        agentLoaderLog.warn(`${logPrefix}: wrong PIN (attempt ${pinAttempts}/${maxPinAttempts}), re-prompting`);
         cachedPin = undefined;
         pendingRetryContext = {
           error: 'Incorrect PIN. Please try again.',
@@ -456,12 +458,12 @@ async function runAddIntoPrivateAgent(
       }
 
       if (isFatalNonRetryableError) {
-        console.warn(`${logPrefix}: non-retryable error encountered: ${errMsg}`);
+        agentLoaderLog.warn(`${logPrefix}: non-retryable error encountered: ${errMsg}`);
         break;
       }
 
       if (attempt >= retries) {
-        console.log(`${logPrefix}: giving up (out of retries)`);
+        agentLoaderLog.info(`${logPrefix}: giving up (out of retries)`);
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));

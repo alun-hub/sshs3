@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
+import { createLogger } from '../log';
+const smartcardLog = createLogger('smartcard');
 
 export interface DetectOptions {
   customPaths?: Array<{ name: string; path: string; platform: 'linux' | 'win32' }>;
@@ -254,8 +256,7 @@ export class SmartcardDetector {
 
     // Smartcard authentication
     if (config.authType === 'smartcard' && config.pkcs11LibPath) {
-      console.log(
-        `[smartcard] buildSSHArguments: authType=smartcard, agentPath=${config.agentPath ?? '(none — using direct -I)'}`
+      smartcardLog.info(`buildSSHArguments: authType=smartcard, agentPath=${config.agentPath ?? '(none — using direct -I)'}`
       );
       if (config.agentPath) {
         // A private agent was pre-loaded with the smartcard's key (agent-per-session
@@ -416,11 +417,11 @@ export class SmartcardDetector {
         // ALLOWED_SSH_EXTRA_OPTIONS). Exact option names only, so a key such as
         // "ProxyCommand touch x #" (ssh splits `-o` at the first whitespace/'=') never matches.
         if (!isAllowedExtraOption(trimmedKey)) {
-          console.warn(`[smartcard] buildSSHArguments: ignored SSH option not on the allowlist "${trimmedKey}"`);
+          smartcardLog.warn(`buildSSHArguments: ignored SSH option not on the allowlist "${trimmedKey}"`);
           continue;
         }
         if (/[\r\n]/.test(trimmedKey) || /[\r\n]/.test(trimmedVal)) {
-          console.warn(`[smartcard] buildSSHArguments: blocked SSH option with newline "${trimmedKey}"`);
+          smartcardLog.warn(`buildSSHArguments: blocked SSH option with newline "${trimmedKey}"`);
           continue;
         }
         args.push('-o', `${trimmedKey}=${trimmedVal}`);

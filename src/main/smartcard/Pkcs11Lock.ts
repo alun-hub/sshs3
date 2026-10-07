@@ -1,4 +1,6 @@
 let queue: Promise<unknown> = Promise.resolve();
+import { createLogger } from '../log';
+const pkcs11LockLog = createLogger('pkcs11-lock');
 
 /**
  * Serializes every native PKCS#11-touching operation sshs3 itself performs — the cert-reading
@@ -39,8 +41,7 @@ const WATCHDOG_TIMEOUT_MS = 180_000;
 function withWatchdog<T>(promise: Promise<T>, callId: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      console.error(
-        `[pkcs11-lock] #${callId}: watchdog fired after ${WATCHDOG_TIMEOUT_MS}ms without ` +
+      pkcs11LockLog.error(`#${callId}: watchdog fired after ${WATCHDOG_TIMEOUT_MS}ms without ` +
           `resolving — releasing the queue for the next caller; the original operation may ` +
           `still be running in the background.`
       );
@@ -61,15 +62,15 @@ function withWatchdog<T>(promise: Promise<T>, callId: number): Promise<T> {
 
 export function withPkcs11Lock<T>(fn: () => Promise<T>): Promise<T> {
   const callId = nextCallId++;
-  console.log(`[pkcs11-lock] #${callId}: queued`);
+  pkcs11LockLog.info(`#${callId}: queued`);
   const run = () => {
-    console.log(`[pkcs11-lock] #${callId}: acquired, running`);
+    pkcs11LockLog.info(`#${callId}: acquired, running`);
     return withWatchdog(fn(), callId);
   };
   const result = queue.then(run, run);
   result.then(
-    () => console.log(`[pkcs11-lock] #${callId}: released (ok)`),
-    () => console.log(`[pkcs11-lock] #${callId}: released (error)`)
+    () => pkcs11LockLog.info(`#${callId}: released (ok)`),
+    () => pkcs11LockLog.info(`#${callId}: released (error)`)
   );
   queue = result.then(
     () => undefined,

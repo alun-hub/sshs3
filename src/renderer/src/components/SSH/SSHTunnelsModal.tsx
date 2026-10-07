@@ -17,6 +17,8 @@ import { formatDateTime, describeIpcError } from '../../lib/format';
 import { SSHTunnelWizard } from './SSHTunnelWizard';
 import { useConfirm } from '../ConfirmDialog';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('SSHTunnelsModal');
 
 interface SSHTunnelsModalProps {
   connection: SSHConnectionConfig;
@@ -65,7 +67,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     window.multissh
       .sshTunnelList()
       .then(setActiveTunnels)
-      .catch((err) => console.error('Failed to list active tunnels:', err));
+      .catch((err) => log.error('Failed to list active tunnels:', err));
 
     const unsubscribe = window.multissh.onSshTunnelEvent(setActiveTunnels);
     return () => unsubscribe();

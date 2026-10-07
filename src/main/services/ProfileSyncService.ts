@@ -381,6 +381,8 @@ import type {
   SyncComparisonResult,
   CategoryComparison,
 } from '../../shared/types/sync';
+import { createLogger } from '../log';
+const sshs3Log = createLogger('sshs3');
 
 export type PullResult = ProfileSyncPullResult;
 
@@ -1207,7 +1209,7 @@ export class ProfileSyncService {
       if (settings.autoSyncLocalSshConfig === false) return;
       await this.syncProfilesToLocalSshConfig();
     } catch (err) {
-      console.warn('[sshs3] Failed to sync profiles to ~/.ssh/config:', err instanceof Error ? err.message : err);
+      sshs3Log.warn('Failed to sync profiles to ~/.ssh/config:', err instanceof Error ? err.message : err);
     } finally {
       // Whatever depends on the managed block (the local agent block) is refreshed *after* it, in order.
       this.onLocalSshConfigSynced?.();
@@ -1230,7 +1232,7 @@ export class ProfileSyncService {
         if (updated !== current) await this.writeLocalFile(this.sshConfigPath, updated);
       });
     } catch (err) {
-      console.warn('[sshs3] Failed to update the agent block in ~/.ssh/config:', err instanceof Error ? err.message : err);
+      sshs3Log.warn('Failed to update the agent block in ~/.ssh/config:', err instanceof Error ? err.message : err);
     }
   }
 

@@ -5,6 +5,8 @@ import tls from 'node:tls';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
+import { createLogger } from '../log';
+const trustStoreLog = createLogger('trust-store');
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
@@ -41,7 +43,7 @@ export class SystemTrustStore {
         process.env.NODE_EXTRA_CA_CERTS = this.cachedBundlePath;
       }
     } catch (err) {
-      console.warn('SystemTrustStore: failed to load system CA certificates:', err);
+      trustStoreLog.warn('SystemTrustStore: failed to load system CA certificates:', err);
     } finally {
       this.isInitialized = true;
     }
@@ -96,7 +98,7 @@ export class SystemTrustStore {
         process.env.NODE_EXTRA_CA_CERTS = this.cachedBundlePath;
       }
     } catch (err) {
-      console.warn('SystemTrustStore: failed to sync load system CA certificates:', err);
+      trustStoreLog.warn('SystemTrustStore: failed to sync load system CA certificates:', err);
     } finally {
       this.isInitialized = true;
     }
@@ -162,7 +164,7 @@ export class SystemTrustStore {
       });
       return list.filter((c) => typeof c === 'string' && c.trim().length > 0);
     } catch (err) {
-      console.warn('SystemTrustStore: win-ca native CryptoAPI extraction failed:', err);
+      trustStoreLog.warn('SystemTrustStore: win-ca native CryptoAPI extraction failed:', err);
       return [];
     }
   }
@@ -244,7 +246,7 @@ export class SystemTrustStore {
         }
       }
     } catch (err) {
-      console.warn('SystemTrustStore: PowerShell cert extraction fallback failed:', err);
+      trustStoreLog.warn('SystemTrustStore: PowerShell cert extraction fallback failed:', err);
     }
   }
 

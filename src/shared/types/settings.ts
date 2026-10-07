@@ -1,3 +1,4 @@
+import type { LogLevel } from './log';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from './kubernetes';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from './perf';
 
@@ -110,6 +111,8 @@ export interface AppSettings {
   sessionExitAction?: SessionExitAction;
   /** Show a confirmation dialog before quitting the app (closing the window or Cmd/Ctrl+Q). Off by default. */
   confirmBeforeQuit?: boolean;
+  /** Minimum level written to the log file (see src/main/log). SSHS3_LOG_LEVEL overrides it. Default 'info'. */
+  logLevel?: LogLevel;
   /** Periodically check GitHub Releases for a new version (nothing is downloaded without a click). On by default. */
   autoCheckUpdates?: boolean;
   /** Windows only: Mode for local X11 server: 'manual' (external), 'auto' (start automatically when X11 session opens), 'always' (start on app launch) */
@@ -173,6 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   perfMetricsIntervalSec: 5,
   sessionExitAction: 'reconnect',
   confirmBeforeQuit: false,
+  logLevel: 'info',
   autoCheckUpdates: true,
   smartcardAuthMode: 'always-prompt',
   smartcardUnlockAtStartup: false,

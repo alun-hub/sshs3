@@ -1,3 +1,4 @@
+import { captureLogs } from './helpers/captureLogs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
@@ -938,14 +939,14 @@ describe('IpcBridge', () => {
         });
 
         it('keeps everything, and removes nothing, when no certificate looks authentication-capable', async () => {
-          const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+          const warn = captureLogs();
           await loadWith([signDetails, { ...signDetails, fingerprint: 'SHA256:sign2' }]);
 
           expect((bridge as any).smartcard.globalCards.get(pkcs11LibPath).fingerprints).toEqual(
             new Set(['SHA256:sign', 'SHA256:sign2'])
           );
           expect(fakeAppAgent.removeIdentities).not.toHaveBeenCalled();
-          warn.mockRestore();
+          warn.restore();
         });
 
         it('does not remove anything when every certificate is authentication-capable', async () => {
@@ -1785,16 +1786,16 @@ describe('IpcBridge', () => {
   describe('Disposal', () => {
     it('disposeStep swallows a rejecting step and never blocks on a hanging one', async () => {
       vi.useFakeTimers();
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warn = captureLogs();
       try {
         const step = (bridge as any).disposeStep.bind(bridge);
         await expect(step('failing', () => Promise.reject(new Error('boom')))).resolves.toBeUndefined();
         const hang = step('hanging', () => new Promise<void>(() => {}));
         await vi.advanceTimersByTimeAsync(5000);
         await expect(hang).resolves.toBeUndefined();
-        expect(warn).toHaveBeenCalledTimes(2);
+        expect(warn.lines).toHaveLength(2);
       } finally {
-        warn.mockRestore();
+        warn.restore();
         vi.useRealTimers();
       }
     });

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Check, Cloud, Copy, Loader2 } from 'lucide-react';
 import type { AwsSsoPromptEvent } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
+import { createRendererLogger } from '../lib/log';
+const log = createRendererLogger('AwsSsoLoginModal');
 
 export const AwsSsoLoginModal: React.FC = () => {
   const [prompts, setPrompts] = useState<AwsSsoPromptEvent[]>([]);
@@ -32,7 +34,7 @@ export const AwsSsoLoginModal: React.FC = () => {
       await navigator.clipboard.writeText(value);
       setCopied(kind);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      log.error('Failed to copy to clipboard:', err);
     }
   };
 
@@ -47,7 +49,7 @@ export const AwsSsoLoginModal: React.FC = () => {
       try {
         await window.multissh.awsSsoCancelLogin(promptId);
       } catch (err) {
-        console.error('Failed to cancel AWS SSO login:', err);
+        log.error('Failed to cancel AWS SSO login:', err);
       }
     }
   };

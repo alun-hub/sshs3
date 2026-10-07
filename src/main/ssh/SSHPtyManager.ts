@@ -56,7 +56,10 @@ function getSpawn(): typeof nodePty.spawn {
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
 import { describeAskpassPrompt } from './askpassPrompt';
+import { listAgentPublicKeys } from './PublicKeyDiscovery';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
+import { createLogger } from '../log';
+const sshLog = createLogger('ssh');
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
@@ -160,6 +163,7 @@ export class InternalSSHPtySession implements SSHPtySession {
   }
 
   private handlePtyExit(event: { exitCode: number; signal?: number }): void {
+    sshLog.info('ssh exited', { sessionId: this.sessionId, exitCode: event.exitCode, signal: event.signal ?? null });
     if (this.reconnectStableTimer) {
       clearTimeout(this.reconnectStableTimer);
       this.reconnectStableTimer = undefined;
@@ -495,7 +499,7 @@ export class SSHPtyManager extends EventEmitter {
     // (`-S`: perf sampling, dotfiles sync) keep working after a reconnect.
     const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, session.controlPath);
     const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
-    console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
+    sshLog.info(`spawning ${sshBinary} ${sshArgs.join(' ')}`);
 
     try {
       const spawn = getSpawn();
@@ -544,6 +548,19 @@ export class SSHPtyManager extends EventEmitter {
           this.emit('presence', { sessionId, prompt });
         },
         promptHandler: async (rawPrompt: string, retry?: AskpassPromptRetryContext) => {
+          // Kind only, never the answer. A 'password' prompt on a key-based profile means ssh could not
+          // authenticate with the agent and fell back to asking for the account password.
+          const promptKind = describeAskpassPrompt(rawPrompt, config).kind ?? 'passphrase';
+          const savedAnswer = Boolean(
+            (config.authType === 'password' && config.password) || config.passphrase
+          );
+          sshLog.info('askpass prompt', {
+            sessionId,
+            kind: promptKind,
+            authType: config.authType,
+            answeredFrom: savedAnswer ? 'saved' : 'ui',
+            retry: Boolean(retry),
+          });
           if (config.authType === 'password' && config.password) {
             return config.password;
           }
@@ -620,7 +637,23 @@ export class SSHPtyManager extends EventEmitter {
       filteredConfig = this.withoutConflictingTunnels(config, sessionId);
       const sshArgs = SmartcardDetector.buildSSHArguments(filteredConfig, controlPath);
       const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
-      console.log(`[ssh] spawning ${sshBinary} ${sshArgs.join(' ')}`);
+      sshLog.info(`spawning ${sshBinary} ${sshArgs.join(' ')}`);
+      sshLog.info('connect', {
+        sessionId,
+        host: config.host,
+        port: config.port,
+        authType: config.authType,
+        agentSocket: env.SSH_AUTH_SOCK ?? null,
+        agentSocketPresent: env.SSH_AUTH_SOCK ? fs.existsSync(env.SSH_AUTH_SOCK) : null,
+        agentSource: config.agentPath ? 'profile' : env.SSH_AUTH_SOCK ? 'inherited' : 'none',
+        savedAuth: Boolean(config.password || config.passphrase),
+      });
+      if (env.SSH_AUTH_SOCK) {
+        // Fire and forget: how many identities the agent offered at connect time (count only, no key material).
+        void listAgentPublicKeys('agent', 'agent', env.SSH_AUTH_SOCK)
+          .then((keys) => sshLog.info('agent identities at connect', { sessionId, count: keys.length }))
+          .catch(() => {});
+      }
 
       const spawn = getSpawn();
       ptyProcess = spawn(sshBinary, sshArgs, {

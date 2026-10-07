@@ -1,3 +1,4 @@
+import type { LogLevel } from '@shared/types/log';
 import React, { useState, useEffect, useRef } from 'react';
 import { useUpdateState } from '../../lib/useUpdateState';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/types/perf';
@@ -47,6 +48,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
   const [confirmBeforeQuit, setConfirmBeforeQuit] = useState<boolean>(
     currentSettings.confirmBeforeQuit ?? false
   );
+  const [logLevel, setLogLevel] = useState<LogLevel>(currentSettings.logLevel ?? 'info');
   const [defaultNewTab, setDefaultNewTab] = useState<'terminal' | 'filemanager'>(
     currentSettings.defaultNewTabType
   );
@@ -148,6 +150,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       setPerfIntervalSec(currentSettings.perfMetricsIntervalSec ?? 5);
       setSessionExitAction(currentSettings.sessionExitAction ?? 'reconnect');
       setConfirmBeforeQuit(currentSettings.confirmBeforeQuit ?? false);
+      setLogLevel(currentSettings.logLevel ?? 'info');
       setAutoCheckUpdates(currentSettings.autoCheckUpdates ?? true);
       setDefaultNewTab(currentSettings.defaultNewTabType);
       setDefaultConflictPolicy(currentSettings.defaultConflictPolicy ?? 'ask');
@@ -272,6 +275,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       perfMetricsIntervalSec: perfIntervalSec,
       sessionExitAction,
       confirmBeforeQuit,
+      logLevel,
       autoCheckUpdates,
       defaultNewTabType: defaultNewTab,
       defaultConflictPolicy,
@@ -357,6 +361,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     setAutoCheckUpdates,
     confirmBeforeQuit,
     setConfirmBeforeQuit,
+    logLevel,
+    setLogLevel,
     defaultNewTab,
     setDefaultNewTab,
     defaultConflictPolicy,

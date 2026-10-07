@@ -1,4 +1,5 @@
 import { SNIPPET_MAX_NAME_CHARS } from '../../shared/types/snippets';
+import { resolveLogLevel, setLogLevel } from '../log/Logger';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SessionData } from '../../shared/types/session';
 import type { AppSettings } from '../../shared/types/settings';
@@ -101,6 +102,7 @@ export function registerSettingsHandlers(bridge: AppDataHost): void {
     IPC_CHANNELS.SETTINGS_SAVE,
     async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
       const saved = await bridge.settingsStore.saveSettings(settings);
+      if ('logLevel' in settings) setLogLevel(resolveLogLevel(saved.logLevel));
       // autoSync refreshes the agent block itself afterwards (and removes it when turned off).
       if ('autoSyncLocalSshConfig' in settings) void bridge.profileSyncService.autoSyncLocalSshConfig();
       else if ('smartcardAuthMode' in settings) bridge.smartcard.refreshAgentSshConfig();

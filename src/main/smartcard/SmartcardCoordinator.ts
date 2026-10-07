@@ -17,6 +17,10 @@ import type { SettingsStore } from '../settings/SettingsStore';
 import type { ProfileStore } from '../profile/ProfileStore';
 import type { SessionStore } from '../session/SessionStore';
 import type { SyncConfigStore } from '../services/SyncConfigStore';
+import { createLogger } from '../log';
+const appAgentLog = createLogger('app-agent');
+const smartcardLog = createLogger('smartcard');
+const fido2Log = createLogger('fido2');
 
 /** What the coordinator needs from the rest of the app; it never imports IpcBridge. */
 export interface SmartcardDeps {
@@ -309,7 +313,7 @@ export class SmartcardCoordinator {
       const files = await this.appAgent.writePublicKeyFiles(card.fingerprints);
       return files.length > 0 ? { agentIdentityFiles: files } : {};
     } catch (err) {
-      console.warn('[app-agent] could not write identity files; the connection will offer all agent keys:', err);
+      appAgentLog.warn('could not write identity files; the connection will offer all agent keys:', err);
       return {};
     }
   }
@@ -332,7 +336,7 @@ export class SmartcardCoordinator {
       try {
         return await this.getOrLoadGlobalSmartcardAgent(pkcs11LibPath, sessionId, promptLabel);
       } catch (err) {
-        console.warn(
+        smartcardLog.warn(
           'SmartcardCoordinator: failed to load smartcard into the global agent, falling back to per-connection prompts:',
           err
         );
@@ -349,20 +353,19 @@ export class SmartcardCoordinator {
       return undefined;
     }
 
-    console.log(`[smartcard] resolveSmartcardAgentPath: starting shared-agent preload for session ${sessionId}`);
+    smartcardLog.info(`resolveSmartcardAgentPath: starting shared-agent preload for session ${sessionId}`);
     try {
       const { pid, socketPath } = await this.loadSmartcardIntoPrivateAgentWithPresence(
         pkcs11LibPath,
         () => this.deps.sshPtyManager.promptForPin(sessionId, `Enter your smartcard PIN to ${promptLabel}:`, 'smartcard', promptLabel),
         sessionId
       );
-      console.log(
-        `[smartcard] resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
+      smartcardLog.info(`resolveSmartcardAgentPath: shared agent loaded OK for session ${sessionId}, pid=${pid}, socket=${socketPath}`
       );
       this.smartcardSessionAgents.set(sessionId, { pid, socketPath, kind: 'pkcs11', pkcs11LibPath });
       return socketPath;
     } catch (err) {
-      console.warn(
+      smartcardLog.warn(
         'SmartcardCoordinator: failed to load smartcard into a private session agent, falling back to per-connection prompts:',
         err
       );
@@ -386,7 +389,7 @@ export class SmartcardCoordinator {
       try {
         return await this.getOrLoadGlobalFido2Agent(sessionId, promptLabel, pinPromptKind);
       } catch (err) {
-        console.warn(
+        smartcardLog.warn(
           'SmartcardCoordinator: failed to load FIDO2 resident keys into the global agent, falling back to per-connection prompts:',
           err
         );
@@ -398,7 +401,7 @@ export class SmartcardCoordinator {
       return undefined;
     }
 
-    console.log(`[fido2] resolveFido2AgentPath: starting shared-agent preload for session ${sessionId}`);
+    fido2Log.info(`resolveFido2AgentPath: starting shared-agent preload for session ${sessionId}`);
     const { onPresenceRequested, onPresenceCleared } = this.deps.makePresenceNotifier(
       sessionId,
       'Touch your security key to connect'
@@ -413,7 +416,7 @@ export class SmartcardCoordinator {
       this.smartcardSessionAgents.set(sessionId, { pid, socketPath, kind: 'fido2', askpassServer });
       return socketPath;
     } catch (err) {
-      console.warn('SmartcardCoordinator: failed to load FIDO2 resident keys into a private session agent:', err);
+      smartcardLog.warn('SmartcardCoordinator: failed to load FIDO2 resident keys into a private session agent:', err);
       return undefined;
     }
   }
@@ -430,22 +433,22 @@ export class SmartcardCoordinator {
   ): Promise<string> {
     const unlockedSocket = await this.getUnlockedCardSocket(pkcs11LibPath);
     if (unlockedSocket) {
-      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: reusing the app agent for ${pkcs11LibPath}`);
+      smartcardLog.info(`getOrLoadGlobalSmartcardAgent: reusing the app agent for ${pkcs11LibPath}`);
       return unlockedSocket;
     }
 
     if (this.isInLoadCooldown(pkcs11LibPath)) {
-      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: skipping load for ${pkcs11LibPath} (failed recently)`);
+      smartcardLog.info(`getOrLoadGlobalSmartcardAgent: skipping load for ${pkcs11LibPath} (failed recently)`);
       throw new Error(`Smartcard load for ${pkcs11LibPath} failed recently; cooling down`);
     }
 
     const inFlight = this.globalSmartcardAgentLoads.get(pkcs11LibPath);
     if (inFlight) {
-      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: awaiting in-flight load for ${pkcs11LibPath}`);
+      smartcardLog.info(`getOrLoadGlobalSmartcardAgent: awaiting in-flight load for ${pkcs11LibPath}`);
       return await inFlight;
     }
 
-    console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loading ${pkcs11LibPath} into the app agent`);
+    smartcardLog.info(`getOrLoadGlobalSmartcardAgent: loading ${pkcs11LibPath} into the app agent`);
     const pinHandler =
       typeof sessionIdOrPinPrompt === 'function'
         ? sessionIdOrPinPrompt
@@ -476,7 +479,7 @@ export class SmartcardCoordinator {
         certs = prefetched ?? (await readSmartcardCertificates(pkcs11LibPath));
         this.globalSmartcardCerts.set(pkcs11LibPath, certs);
       } catch (err) {
-        console.warn(`[smartcard] failed to read certificate details for ${pkcs11LibPath}:`, err);
+        smartcardLog.warn(`failed to read certificate details for ${pkcs11LibPath}:`, err);
       }
       await this.ensureAgent();
       const before = new Set((await this.appAgent.list()).map((i) => i.fingerprint));
@@ -487,8 +490,7 @@ export class SmartcardCoordinator {
       const alreadyLoaded = Array.from(certs.keys()).filter((fingerprint) => before.has(fingerprint));
       const authFingerprints = await this.selectAuthFingerprints(certs);
       if (alreadyLoaded.length > 0) {
-        console.log(
-          `[smartcard] getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
+        smartcardLog.info(`getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
         );
         this.globalCards.set(pkcs11LibPath, { fingerprints: authFingerprints });
         this.refreshAgentSshConfig();
@@ -505,7 +507,7 @@ export class SmartcardCoordinator {
       const unwanted = Array.from(certs.keys()).filter((fingerprint) => !authFingerprints.has(fingerprint));
       if (unwanted.length > 0) {
         const removed = await this.appAgent.removeIdentities(unwanted);
-        console.log(`[smartcard] ${pkcs11LibPath}: removed ${removed} of ${unwanted.length} non-authentication key(s) from the app agent`);
+        smartcardLog.info(`${pkcs11LibPath}: removed ${removed} of ${unwanted.length} non-authentication key(s) from the app agent`);
       }
       // Which keys are this card's: its authentication certificates' fingerprints; if the certificates
       // couldn't be read, whatever this add contributed (excluding security keys, which belong to FIDO2).
@@ -528,7 +530,7 @@ export class SmartcardCoordinator {
     try {
       const socketPath = await loadPromise;
       this.globalSmartcardAgentFailures.delete(pkcs11LibPath);
-      console.log(`[smartcard] getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, socket=${socketPath}`);
+      smartcardLog.info(`getOrLoadGlobalSmartcardAgent: loaded OK for ${pkcs11LibPath}, socket=${socketPath}`);
       return socketPath;
     } catch (err) {
       this.globalSmartcardAgentFailures.set(pkcs11LibPath, Date.now());
@@ -550,22 +552,22 @@ export class SmartcardCoordinator {
   ): Promise<string> {
     const unlockedSocket = await this.getUnlockedCardSocket(FIDO2_KEY);
     if (unlockedSocket) {
-      console.log('[fido2] getOrLoadGlobalFido2Agent: reusing the app agent');
+      fido2Log.info('getOrLoadGlobalFido2Agent: reusing the app agent');
       return unlockedSocket;
     }
 
     if (this.isInLoadCooldown(FIDO2_KEY)) {
-      console.log('[fido2] getOrLoadGlobalFido2Agent: skipping load (failed recently)');
+      fido2Log.info('getOrLoadGlobalFido2Agent: skipping load (failed recently)');
       throw new Error('FIDO2 agent load failed recently; cooling down');
     }
 
     const inFlight = this.globalSmartcardAgentLoads.get(FIDO2_KEY);
     if (inFlight) {
-      console.log('[fido2] getOrLoadGlobalFido2Agent: awaiting in-flight load');
+      fido2Log.info('getOrLoadGlobalFido2Agent: awaiting in-flight load');
       return await inFlight;
     }
 
-    console.log('[fido2] getOrLoadGlobalFido2Agent: loading FIDO2 resident keys into the app agent');
+    fido2Log.info('getOrLoadGlobalFido2Agent: loading FIDO2 resident keys into the app agent');
     const { onPresenceRequested, onPresenceCleared } = this.deps.makePresenceNotifier(
       sessionId,
       'Touch your security key to connect'
@@ -589,7 +591,7 @@ export class SmartcardCoordinator {
     try {
       const socketPath = await loadPromise;
       this.globalSmartcardAgentFailures.delete(FIDO2_KEY);
-      console.log(`[fido2] getOrLoadGlobalFido2Agent: loaded OK, socket=${socketPath}`);
+      fido2Log.info(`getOrLoadGlobalFido2Agent: loaded OK, socket=${socketPath}`);
       return socketPath;
     } catch (err) {
       this.globalSmartcardAgentFailures.set(FIDO2_KEY, Date.now());
@@ -612,7 +614,7 @@ export class SmartcardCoordinator {
     }
     if (auth.size === 0) {
       if (certs.size > 0) {
-        console.warn('[smartcard] no authentication-capable certificate found on the card; keeping all of them');
+        smartcardLog.warn('no authentication-capable certificate found on the card; keeping all of them');
       }
       return new Set(certs.keys());
     }
@@ -651,7 +653,7 @@ export class SmartcardCoordinator {
       try {
         this.prefetchedSmartcardCerts.set(libPath, await readSmartcardCertificates(libPath));
       } catch (err) {
-        console.warn(`[smartcard] failed to read certificate details for ${libPath}:`, err);
+        smartcardLog.warn(`failed to read certificate details for ${libPath}:`, err);
       }
     }
   }
@@ -702,7 +704,7 @@ export class SmartcardCoordinator {
       .then(async () => {
         await this.deps.syncAgentBlock(await this.buildAgentHostEntries());
       })
-      .catch((err) => console.warn('[app-agent] could not refresh the ~/.ssh/config agent block:', err));
+      .catch((err) => appAgentLog.warn('could not refresh the ~/.ssh/config agent block:', err));
   }
 
   /**
@@ -752,7 +754,7 @@ export class SmartcardCoordinator {
     try {
       return await this.ensureAgent();
     } catch (err) {
-      console.warn('[app-agent] could not start for a local shell; using the default agent:', err);
+      appAgentLog.warn('could not start for a local shell; using the default agent:', err);
       return undefined;
     }
   }
@@ -901,8 +903,7 @@ export class SmartcardCoordinator {
       // 1. Smartcard / PIV unlock first (if detected and not yet active)
       if (hasSmartcard && pathsNeedingUnlock.length > 0) {
         try {
-          console.log(
-            `[smartcard] Startup unlock: loading Smartcard into global agent for ${pathsNeedingUnlock.join(', ')}...`
+          smartcardLog.info(`Startup unlock: loading Smartcard into global agent for ${pathsNeedingUnlock.join(', ')}...`
           );
           let transientPin: string | null = null;
           const startupPinPrompt = async (_prompt: string, retry?: AskpassPromptRetryContext) => {
@@ -925,7 +926,7 @@ export class SmartcardCoordinator {
                 await this.getOrLoadGlobalSmartcardAgent(libPath, startupPinPrompt);
                 this.sendSmartcardStartupUnlockStatus({ kind: 'smartcard', status: 'unlocked', libPath });
               } catch (err) {
-                console.warn(`[smartcard] Startup unlock failed for ${libPath}:`, err);
+                smartcardLog.warn(`Startup unlock failed for ${libPath}:`, err);
                 this.sendSmartcardStartupUnlockStatus({
                   kind: 'smartcard',
                   status: 'error',
@@ -939,7 +940,7 @@ export class SmartcardCoordinator {
             this.prefetchedSmartcardCerts.clear();
           }
         } catch (err) {
-          console.warn('[smartcard] Startup unlock failed or cancelled:', err);
+          smartcardLog.warn('Startup unlock failed or cancelled:', err);
         }
       }
 
@@ -948,11 +949,11 @@ export class SmartcardCoordinator {
       // loading it after the PIV card keeps those prompts out of the way of the PIV load.
       if (hasFido2 && !this.globalCards.has(FIDO2_KEY) && !this.globalSmartcardAgentLoads.has(FIDO2_KEY)) {
         try {
-          console.log('[fido2] Startup unlock: loading FIDO2 resident keys into global agent...');
+          fido2Log.info('Startup unlock: loading FIDO2 resident keys into global agent...');
           await this.getOrLoadGlobalFido2Agent('startup', 'Startup: Global Agent Cache', 'direct');
           this.sendSmartcardStartupUnlockStatus({ kind: 'fido2', status: 'unlocked' });
         } catch (err) {
-          console.warn('[fido2] Startup unlock failed or cancelled:', err);
+          fido2Log.warn('Startup unlock failed or cancelled:', err);
           this.sendSmartcardStartupUnlockStatus({
             kind: 'fido2',
             status: 'error',
@@ -997,7 +998,7 @@ export class SmartcardCoordinator {
         // just this session's credentials from that shared agent. They stay loaded until
         // the ssh-agent service itself is restarted. Non-Windows doesn't hit this: each
         // session gets its own freshly-spawned agent process, torn down below.
-        console.warn(
+        smartcardLog.warn(
           `SmartcardCoordinator: session ${sessionId}'s FIDO2 resident credentials remain loaded in the shared Windows ssh-agent service (no per-credential eviction implemented yet)`
         );
       }

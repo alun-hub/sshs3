@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Copy, FileWarning, SkipForward } from 'lucide-react';
 import type { TransferConflictPromptEvent, TransferConflictResolution } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
+import { createRendererLogger } from '../lib/log';
+const log = createRendererLogger('TransferConflictModal');
 
 export const TransferConflictModal: React.FC = () => {
   const [prompts, setPrompts] = useState<TransferConflictPromptEvent[]>([]);
@@ -52,7 +54,7 @@ export const TransferConflictModal: React.FC = () => {
       try {
         await window.multissh.respondTransferConflict(promptId, resolution, applied);
       } catch (err) {
-        console.error('Failed to respond to transfer conflict prompt:', err);
+        log.error('Failed to respond to transfer conflict prompt:', err);
       }
     }
   };

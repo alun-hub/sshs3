@@ -17,6 +17,8 @@ import type { DotfileImportedFile } from '@shared/types/dotfiles';
 import { DotfilePoolFileTable, type DotfileSourceStatus } from './DotfilePoolFileTable';
 import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('DotfilePoolManagerModal');
 
 interface DotfilePoolManagerModalProps {
   open: boolean;
@@ -274,7 +276,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
     try {
       await window.multissh.dotfilePoolOpenFolder(draft.id);
     } catch (err) {
-      console.error('Failed to open pool folder:', err);
+      log.error('Failed to open pool folder:', err);
     }
   };
 

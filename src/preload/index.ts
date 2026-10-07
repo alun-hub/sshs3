@@ -1,4 +1,5 @@
 import type { UpdateState } from '../shared/types/update';
+import type { LogLevel } from '../shared/types/log';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   IPC_CHANNELS,
@@ -869,6 +870,13 @@ export const api: MultiSSHApi = {
   downloadUpdate: (): Promise<UpdateState> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
 
   installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+
+  writeLog: (level: LogLevel, scope: string, message: string, ctx?: unknown): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.LOG_WRITE, level, scope, message, ctx),
+
+  openLogFolder: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.LOG_OPEN_FOLDER),
+
+  getDiagnostics: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.LOG_GET_DIAGNOSTICS),
 
   onUpdateState: (callback: (state: UpdateState) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state);

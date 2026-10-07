@@ -17,6 +17,8 @@ Access the preferences dialog via the gear icon in the top toolbar or via the ke
 - **Confirm before quitting the app**: Warns if active terminal sessions or background file transfers are in progress when closing the window.
 - **Check for updates automatically**: Checks GitHub Releases in the background every 6 hours; **Check now**, **Download** and **Restart and install** are explicit actions. Locked off when `SSHS3_DISABLE_UPDATES=1` is set.
 
+- **Logging**: Sets how much sshs3 writes to its local log file (**Errors only**, **Warnings**, **Normal**, **Debug**). **Open log folder** shows the files (`sshs3.log`, rotated at 5 MB, last 5 kept); **Copy diagnostics** copies the version, OS and the most recent log lines for a bug report. PINs, passwords and keys are never written. Start the app with `SSHS3_LOG_LEVEL=debug` to override the setting.
+
 ### 1.2 Terminal
 ![Terminal Settings](/img/docs/settings-terminal.png)
 - **Terminal Font Size** and **Terminal Font Family**, with a **Terminal Live Preview**.

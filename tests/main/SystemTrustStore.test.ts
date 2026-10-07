@@ -1,3 +1,4 @@
+import { captureLogs } from './helpers/captureLogs';
 import tls from 'node:tls';
 import fs from 'node:fs';
 
@@ -123,26 +124,20 @@ describe('SystemTrustStore', () => {
 
   it.skipIf(process.platform === 'win32')('handles error in init() gracefully without throwing', async () => {
     vi.spyOn(SystemTrustStore as any, 'loadLinuxCertificates').mockRejectedValue(new Error('disk failure'));
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = captureLogs();
 
     await expect(SystemTrustStore.init()).resolves.toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('SystemTrustStore: failed to load system CA certificates:'),
-      expect.any(Error)
-    );
+    expect(warnSpy.text()).toContain('SystemTrustStore: failed to load system CA certificates:');
   });
 
   it.skipIf(process.platform === 'win32')('handles error in initSync() gracefully without throwing', () => {
     vi.spyOn(SystemTrustStore as any, 'loadLinuxCertificatesSync').mockImplementation(() => {
       throw new Error('sync failure');
     });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = captureLogs();
 
     expect(() => SystemTrustStore.initSync()).not.toThrow();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('SystemTrustStore: failed to sync load system CA certificates:'),
-      expect.any(Error)
-    );
+    expect(warnSpy.text()).toContain('SystemTrustStore: failed to sync load system CA certificates:');
   });
 
   describe('Windows certificate store handling', () => {
@@ -207,14 +202,11 @@ describe('SystemTrustStore', () => {
       mockExecFileImpl = (_file: string, _args: any, callback: any) => {
         callback(new Error('PowerShell execution policy blocked'));
       };
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = captureLogs();
 
       await SystemTrustStore.init();
       expect(SystemTrustStore.getCAs()).toEqual([]);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('PowerShell cert extraction fallback failed:'),
-        expect.any(Error)
-      );
+      expect(warnSpy.text()).toContain('PowerShell cert extraction fallback failed:');
     });
 
     it('handles Windows sync initialization with cache and native certs', () => {
@@ -240,7 +232,7 @@ describe('SystemTrustStore', () => {
 
     it('returns empty array when fetchWindowsCertificatesNative encounters an error', () => {
       // win-ca mock error
-      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      captureLogs();
       const result = SystemTrustStore.fetchWindowsCertificatesNative();
       expect(Array.isArray(result)).toBe(true);
     });

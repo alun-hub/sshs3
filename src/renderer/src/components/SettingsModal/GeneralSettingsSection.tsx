@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Terminal, Monitor, Moon, Sun, Sliders, FolderTree } from 'lucide-react';
 import type { SettingsForm } from './useSettingsForm';
 
@@ -11,10 +11,24 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
     setAutoCheckUpdates,
     confirmBeforeQuit,
     setConfirmBeforeQuit,
+    logLevel,
+    setLogLevel,
     defaultNewTab,
     setDefaultNewTab,
     updateState,
   } = form;
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+
+  const copyDiagnostics = async (): Promise<void> => {
+    try {
+      const text = await window.multissh?.getDiagnostics();
+      if (text) await navigator.clipboard.writeText(text);
+      setDiagnosticsCopied(true);
+      window.setTimeout(() => setDiagnosticsCopied(false), 2000);
+    } catch {
+      setDiagnosticsCopied(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -194,6 +208,44 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
               </button>
             )}
         </div>
+      </div>
+
+      {/* Logging */}
+      <div className="space-y-2 pt-2 border-t border-divider">
+        <label htmlFor="log-level" className="text-xs font-medium text-txt-primary">
+          Logging
+        </label>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <select
+            id="log-level"
+            value={logLevel}
+            onChange={(e) => setLogLevel(e.target.value as typeof logLevel)}
+            className="rounded border border-border-subtle bg-app-surface px-2 py-1 text-txt-primary focus:border-sky-500 focus:outline-none"
+          >
+            <option value="error">Errors only</option>
+            <option value="warn">Warnings</option>
+            <option value="info">Normal</option>
+            <option value="debug">Debug (verbose)</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => void window.multissh?.openLogFolder()}
+            className="rounded border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+          >
+            Open log folder
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyDiagnostics()}
+            className="rounded border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+          >
+            {diagnosticsCopied ? 'Copied' : 'Copy diagnostics'}
+          </button>
+        </div>
+        <p className="text-xs text-txt-muted">
+          Logs are stored locally and PINs, passwords and keys are never written. Use Debug while reproducing a
+          problem, then copy the diagnostics for a bug report.
+        </p>
       </div>
     </div>
   );

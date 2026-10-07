@@ -33,6 +33,8 @@ import { MasterPasswordDialog } from './MasterPasswordDialog';
 import { Button } from '../ui/Button';
 import { formatSyncError } from '../../lib/syncErrors';
 import { formatDateTime as formatDateTimeCanonical } from '../../lib/dateFormat';
+import { createRendererLogger } from '../../lib/log';
+const log = createRendererLogger('SyncSettingsPanel');
 
 function formatRelative(iso?: string): string {
   if (!iso) return 'Never';
@@ -300,7 +302,7 @@ export const SyncSettingsPanel: React.FC = () => {
         try {
           await handleLinkSmartcard(passwords);
         } catch (linkErr: any) {
-          console.error('Failed to link smartcard after enabling sync:', linkErr);
+          log.error('Failed to link smartcard after enabling sync:', linkErr);
         }
       }
 

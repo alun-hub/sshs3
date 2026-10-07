@@ -5,8 +5,10 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { parseCertificateDer, type SmartcardCertificateDetails } from './CertificateParser';
 import { withPkcs11Lock } from './Pkcs11Lock';
+import { createLogger } from '../log';
+const smartcardCertLog = createLogger('smartcard-cert');
 
-const log = (...args: unknown[]) => console.warn('[smartcard-cert]', ...args);
+const log = (...args: unknown[]) => smartcardCertLog.warn('', ...args);
 const execFileAsync = promisify(execFile);
 
 /** Same resolution `proxyCli.cjs` uses (see SmartcardDetector's proxy handling): `__dirname` is

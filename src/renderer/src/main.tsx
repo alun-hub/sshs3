@@ -6,6 +6,9 @@ import '@fontsource/fira-code/400.css'
 import '@fontsource/fira-code/700.css'
 import App from './App'
 import './index.css'
+import { installGlobalErrorLogging } from './lib/log'
+
+installGlobalErrorLogging()
 
 // Guarantee dropEffect is set to 'copy' during drag operations across the entire application window
 const handleGlobalDragOver = (e: DragEvent): void => {
