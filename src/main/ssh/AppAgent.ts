@@ -87,6 +87,8 @@ export class AppAgent {
   private askpass: AskpassServer | null = null;
   private ensuring: Promise<string> | null = null;
   private loadedLibs = new Set<string>();
+  /** Windows only: fingerprint -> key blob of identities we added to the shared agent without a PKCS#11 library (FIDO2). */
+  private loadedKeys = new Map<string, Buffer>();
   private handlers: AppAgentHandlers = {};
   private onExit?: () => void;
   private addQueue: Promise<unknown> = Promise.resolve();
@@ -235,9 +237,21 @@ export class AppAgent {
   /** Loads the connected security key's FIDO2 resident credentials into the agent. */
   public async addFido2Resident(promptHandler: AskpassPromptHandler, options?: LoadIntoPrivateAgentOptions): Promise<void> {
     let enteredPin: string | undefined;
-    await this.runAdd((target) =>
-      addFido2ResidentKeysToAgent(target, promptHandler, { ...options, onPinEntered: (pin) => (enteredPin = pin) })
-    );
+    await this.runAdd(async (target) => {
+      // Windows: the agent is the shared system service, which also holds keys we didn't load. FIDO2 keys
+      // have no library to `ssh-add -e` by, so remember exactly which identities this load added.
+      const before = process.platform === 'win32' ? await this.identityBlobs(target.socketPath) : null;
+      const result = await addFido2ResidentKeysToAgent(target, promptHandler, {
+        ...options,
+        onPinEntered: (pin) => (enteredPin = pin),
+      });
+      if (before) {
+        for (const [fp, blob] of await this.identityBlobs(target.socketPath)) {
+          if (!before.has(fp)) this.loadedKeys.set(fp, blob);
+        }
+      }
+      return result;
+    });
     // Only remember a PIN that actually unlocked the keys.
     if (enteredPin) this.fido2Pin = enteredPin;
   }
@@ -340,12 +354,42 @@ export class AppAgent {
       for (const lib of this.loadedLibs) {
         await AgentLifecycleManager.unloadCard(socketPath, lib);
       }
+      await this.evictLoadedKeys(socketPath);
     } else {
       await execFileAsync('ssh-add', ['-D'], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } }).catch(() => {
         // Best-effort: nothing loaded, or the agent already went away.
       });
     }
     this.loadedLibs.clear();
+    this.loadedKeys.clear();
+  }
+
+  private async identityBlobs(socketPath: string): Promise<Map<string, Buffer>> {
+    const blobs = new Map<string, Buffer>();
+    try {
+      for (const identity of await getAgentIdentities(socketPath)) {
+        blobs.set(fingerprintOfKeyBlob(identity.keyBlob), identity.keyBlob);
+      }
+    } catch {
+      // Agent unreachable: nothing to record.
+    }
+    return blobs;
+  }
+
+  /** Windows: `ssh-add -d` each identity recorded in `loadedKeys`, leaving everything else in the shared agent. Best-effort. */
+  private async evictLoadedKeys(socketPath: string): Promise<void> {
+    for (const blob of this.loadedKeys.values()) {
+      const file = path.join(os.tmpdir(), `sshs3-evict-${crypto.randomUUID()}.pub`);
+      try {
+        await fs.promises.writeFile(file, `${getKeyAlgorithm(blob)} ${blob.toString('base64')}\n`);
+        await execFileAsync('ssh-add.exe', ['-d', file], { env: { ...process.env, SSH_AUTH_SOCK: socketPath } });
+      } catch (err) {
+        console.warn('[app-agent] could not evict an identity from the agent:', (err as Error).message);
+      } finally {
+        await fs.promises.rm(file, { force: true }).catch(() => {});
+      }
+    }
+    this.loadedKeys.clear();
   }
 
   /** Stops the agent and its askpass server and removes the socket. Safe to call repeatedly. */

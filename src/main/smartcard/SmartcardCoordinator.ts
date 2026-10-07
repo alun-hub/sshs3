@@ -192,9 +192,7 @@ export class SmartcardCoordinator {
   /** App quit: ends every per-session agent, forgets the cards and takes the agent block out of ~/.ssh/config before the socket goes away. */
   public async dispose(): Promise<void> {
     this.disposed = true;
-    for (const sessionId of Array.from(this.smartcardSessionAgents.keys())) {
-      this.cleanupSmartcardSessionAgent(sessionId);
-    }
+    await Promise.all(Array.from(this.smartcardSessionAgents.keys(), (id) => this.cleanupSmartcardSessionAgent(id)));
     this.globalCards.clear();
     this.globalSmartcardCerts.clear();
     // The socket is about to disappear: take the agent block out of ~/.ssh/config first.
@@ -974,15 +972,17 @@ export class SmartcardCoordinator {
    * see resolveSmartcardAgentPath), whether that session was a terminal (PTY exit) or a file
    * manager SFTP connection (STORAGE_DISCONNECT).
    */
-  public cleanupSmartcardSessionAgent(sessionId: string): void {
+  public cleanupSmartcardSessionAgent(sessionId: string): Promise<void> {
     this.deps.clearPresence(sessionId);
     const entry = this.smartcardSessionAgents.get(sessionId);
-    if (entry === undefined) return;
+    if (entry === undefined) return Promise.resolve();
     this.smartcardSessionAgents.delete(sessionId);
+    let evicted: Promise<void> = Promise.resolve();
     if (entry.kind === 'pkcs11') {
       // Evict just this card first — killPrivateAgent() is a no-op on Windows
       // (the socket is the shared system agent service, not a process we own).
-      void AgentLifecycleManager.unloadCard(entry.socketPath, entry.pkcs11LibPath);
+      // Returned so app quit can await it before the process exits.
+      evicted = AgentLifecycleManager.unloadCard(entry.socketPath, entry.pkcs11LibPath);
     } else {
       // See loadFido2ResidentKeysIntoPrivateAgent's keepAskpassAliveForAgentLifetime: this
       // session's agent was given its own long-lived Askpass server so a *later* signature
@@ -1003,6 +1003,7 @@ export class SmartcardCoordinator {
       }
     }
     AgentLifecycleManager.killPrivateAgent(entry.pid);
+    return evicted;
   }
 
   /**
