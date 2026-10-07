@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.30] - 2026-10-07
+
+### Added
+- **Drives, volumes and free space in the file manager.** Local panes get a drive picker (Windows drive letters, Linux/macOS mounts) with a fill bar per volume; local and SFTP panes show free space for the current folder (SFTP via `statvfs@openssh.com`).
+
+### Fixed
+- Windows: quitting now waits for the card eviction and also removes the FIDO2 keys the app loaded from the shared OpenSSH agent (other keys in it are left alone); keys added before a failed or cancelled FIDO2 load are evicted too, and each `ssh-add` eviction is capped at 3 s so an unresponsive agent cannot keep the app from exiting
+- Windows file manager: "Up one level" from a top-level folder now goes to the drive root (`C:\`), not `C:`, and a drive root stays on its drive
+
 ## [0.96.29] - 2026-10-07
 
 ### Fixed
@@ -162,7 +171,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Drives, volumes and free space in the file manager.** Local panes get a drive picker (Windows drive letters, Linux/macOS mounts) with a fill bar per volume; local and SFTP panes show free space for the current folder (SFTP via `statvfs@openssh.com`).
 - **Git & GitHub / GitLab integration hub (`Settings → Git & GitHub`).**
   - **Developer SSH Keys:** Centralized discovery of public keys across `~/.ssh`, active SSH agents, and unlocked smartcard/FIDO2 hardware caches. Includes one-click copy to clipboard and one-click direct browser registration on GitHub (`/settings/ssh/new`) and GitLab (`/-/user_settings/ssh_keys`).
   - **Cryptographic SSH Git commit signing (`~/.gitconfig`):** Inspect active signing format and key, toggle `commit.gpgsign`, configure signing key with one-click "Git Sign" / "Sign Active", automatically update `~/.ssh/allowed_signers` for local signature verification, and enter custom signing keys.
