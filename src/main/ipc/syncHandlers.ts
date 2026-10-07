@@ -159,8 +159,9 @@ export function registerSyncHandlers(bridge: SyncHost): void {
       let socketPath: string;
       let privateAgentPid: number | undefined;
 
-      if (bridge.smartcard.hasGlobalCard(options.pkcs11LibPath)) {
-        socketPath = await bridge.smartcard.ensureAppAgent();
+      const unlockedSocket = await bridge.smartcard.getUnlockedCardSocket(options.pkcs11LibPath);
+      if (unlockedSocket) {
+        socketPath = unlockedSocket;
       } else if (mode === 'agent-global') {
         socketPath = await bridge.smartcard.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
       } else {

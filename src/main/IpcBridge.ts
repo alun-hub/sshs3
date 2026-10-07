@@ -639,8 +639,7 @@ export class IpcBridge {
     if (!config.poolId || !config.dotfilesSyncPolicy) return;
 
     if (config.authType === 'smartcard' && config.pkcs11LibPath && !config.agentPath) {
-      const lastFailedAt = this.smartcard.lastLoadFailureAt(config.pkcs11LibPath);
-      if (lastFailedAt && Date.now() - lastFailedAt < 30000) {
+      if (this.smartcard.isInLoadCooldown(config.pkcs11LibPath)) {
         console.log(
           `[smartcard] runDotfilesSyncCheck: skipping dotfiles sync for ${sessionId} (smartcard load failed recently)`
         );
@@ -933,13 +932,14 @@ export class IpcBridge {
 
     // Windows only: there several PKCS#11 modules for one card (opensc-pkcs11 / onepin-opensc-pkcs11 /
     // libykcs11) share the single system agent; other platforms keep the plain per-library cache lookup.
+    const unlockedSocket = await this.smartcard.getUnlockedCardSocket(libPath);
     const sameCardSocket =
-      process.platform !== 'win32' || this.smartcard.hasGlobalCard(libPath) || mode !== 'agent-global'
+      unlockedSocket || process.platform !== 'win32' || mode !== 'agent-global'
         ? undefined
         : await this.smartcard.findCachedGlobalAgentHoldingKey(config.smartcardSync?.keyBlobBase64);
 
-    if (this.smartcard.hasGlobalCard(libPath)) {
-      socketPath = await this.smartcard.ensureAppAgent();
+    if (unlockedSocket) {
+      socketPath = unlockedSocket;
     } else if (sameCardSocket) {
       socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
