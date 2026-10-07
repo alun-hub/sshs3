@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.29] - 2026-10-07
+
+### Fixed
+- quitting while a smartcard/FIDO2 PIN dialog is open no longer lets the answer respawn the app ssh-agent or write an agent block into `~/.ssh/config` after the app has shut down
+- linking or unlocking Remote Profile Sync with a card whose app agent had died and been restarted no longer carries on with the empty agent's socket; the card is loaded again (with a PIN prompt) instead
+
+### Changed
+- internal refactoring with no intended behavior change: the smartcard/FIDO2 agent state and lifecycle moved out of `IpcBridge` into `SmartcardCoordinator` (private state, a small method facade, per-handler-group access), and the smartcard-load cooldown now lives in one place
+
 ## [0.96.28] - 2026-10-06
 
 ### Fixed
