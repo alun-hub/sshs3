@@ -47,7 +47,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ├── src/
 │   ├── main/                       # Electron main process (Node.js)
 │   │   ├── index.ts                # Application lifecycle, window creation, quit hooks
-│   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, shared state (pending prompts, agents), prompt & smartcard/agent helpers, auto-sync, dispose
+│   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, prompt layer (pending prompts, presence), auto-sync, dispose
 │   │   ├── ipc/                    # One registerXHandlers(bridge) per domain (terminal, smartcard, storage, transfer, profile, dotfile, sync, k8s, key install, git, …) + ipcHelpers.ts
 │   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
 │   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
@@ -64,7 +64,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── snippets/               # Saved terminal command snippets (SnippetStore, plain JSON)
 │   │   ├── settings/               # App configuration & default settings (SettingsStore)
 │   │   ├── update/                 # Auto-update polling & state machine (UpdateService, electron-updater)
-│   │   ├── smartcard/              # PKCS#11 detection, cert parsing & isolated AskpassServer
+│   │   ├── smartcard/              # PKCS#11 detection, cert parsing, isolated AskpassServer & SmartcardCoordinator (app-agent/card state and lifecycle)
 │   │   ├── ssh/                    # SSH PTY manager, HostKeyVerifier, SSHTunnelManager, AgentLifecycle
 │   │   │                           # (+ AppAgent: the one app-wide ssh-agent (stable socket, askpass server, lock/unlock) that holds every unlocked smartcard/FIDO2 key under Global PIN caching)
 │   │   ├── storage/                # Local, SFTP, S3, and K8s Pod Storage Providers & Registry
@@ -186,7 +186,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    | App, updates, X11, dialogs | `ipc/generalHandlers.ts` |
    | Session, clipboard, snippets, settings | `ipc/appDataHandlers.ts` |
    - State-free helpers shared by handlers live in `ipc/ipcHelpers.ts`; askpass prompt classification in `ssh/askpassPrompt.ts`.
-   - Not yet extracted from `IpcBridge.ts`: the smartcard/FIDO2 agent lifecycle (`getOrLoadGlobal*Agent`, startup unlock, `globalCards`) and the auto-sync methods. They share state with the handlers and with the tests, so they stay on the class until they get their own coordinator.
+   - The smartcard/FIDO2 agent lifecycle lives in [`SmartcardCoordinator`](file:///home/alun/sshs3/src/main/smartcard/SmartcardCoordinator.ts), reached through `bridge.smartcard`. Its state (`globalCards`, the app agent, per-session agents, cooldown and in-flight maps, certificate caches, the startup-unlock promise) is private; handlers only use its methods (`prepare*Config`, `awaitStartupUnlock`, `hasGlobalCard`, `appAgentSocketIfUnlocked`, `listSessionAgents`, `dispose`, …), and `tests/main/ipcHostAccess.test.ts` fails if a handler reads that state. It gets its dependencies through `SmartcardDeps` (stores, `sshPtyManager`, the PIN prompt and presence notifier, the agent-block sync callback) and never imports `IpcBridge`. The prompt layer (`promptForPinDirect`, `pendingAskpass`, `makePresenceNotifier`) and the auto-sync methods stay on `IpcBridge`.
 4. **Renderer Usage**:
    - Access via `window.multissh.myAction(...)`.
 
