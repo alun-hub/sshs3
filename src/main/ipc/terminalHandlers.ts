@@ -2,12 +2,18 @@ import { XServerManager } from '../x11/XServerManager';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig, PtyOptions } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type TerminalHost = Pick<
   IpcBridge,
-  'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'smartcard' | 'sshPtyManager'
->;
+  'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'sshPtyManager'
+> & {
+  smartcard: Pick<
+    SmartcardCoordinator,
+    'awaitStartupUnlock' | 'prepareFido2Config' | 'prepareSmartcardConfig' | 'resolveLocalShellAgentSocket'
+  >;
+};
 
 export function registerTerminalHandlers(bridge: TerminalHost): void {
   bridge.registerHandler(

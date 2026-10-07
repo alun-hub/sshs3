@@ -8,12 +8,18 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig, LocalPublicKey, ListPublicKeysRequest, InstallPublicKeysRequest, InstallPublicKeysResult, ProbeHostResult, TestLoginResult } from '../../shared/types/ssh';
 import type { SFTPConfig } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type KeyInstallHost = Pick<
   IpcBridge,
-  'makePresenceNotifier' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'smartcard'
->;
+  'makePresenceNotifier' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets'
+> & {
+  smartcard: Pick<
+    SmartcardCoordinator,
+    'appAgentSocketIfUnlocked' | 'cleanupSmartcardSessionAgent' | 'listSessionAgents' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig'
+  >;
+};
 
 /**
  * ssh-copy-id: listar installerbara publika nycklar, probar hosten och lägger nycklarna i

@@ -301,7 +301,7 @@ export class SmartcardCoordinator {
    * that pin a connection to just this card's keys (see SSHConnectionConfig.agentIdentityFiles).
    * Empty for a private per-session agent, which holds only this card, and on Windows.
    */
-  public async agentIdentityFilesFor(
+  private async agentIdentityFilesFor(
     agentPath: string,
     cardKey: string
   ): Promise<{ agentIdentityFiles?: string[] }> {
@@ -322,7 +322,7 @@ export class SmartcardCoordinator {
    * agent fails — callers should then fall back to a direct `-I` login (SSH) or their own ephemeral
    * agent (SFTP), which still prompts for the PIN on its own.
    */
-  public async resolveSmartcardAgentPath(
+  private async resolveSmartcardAgentPath(
     pkcs11LibPath: string,
     sessionId: string,
     promptLabel: string
@@ -376,7 +376,7 @@ export class SmartcardCoordinator {
    * Resolves (loading it if necessary) the ssh-agent socket to use for FIDO2 resident keys,
    * per the user's Settings > Security & Smartcard > Smartcard & Security Key PIN Caching mode.
    */
-  public async resolveFido2AgentPath(
+  private async resolveFido2AgentPath(
     sessionId: string,
     promptLabel: string,
     pinPromptKind: 'pty' | 'direct' = 'pty'
@@ -545,7 +545,7 @@ export class SmartcardCoordinator {
    * credentials are loaded into it (prompting for the PIN once if they aren't). Concurrent callers
    * share the same in-flight load rather than each prompting separately.
    */
-  public async getOrLoadGlobalFido2Agent(
+  private async getOrLoadGlobalFido2Agent(
     sessionId: string,
     promptLabel: string,
     pinPromptKind: 'pty' | 'direct' = 'pty'
@@ -607,7 +607,7 @@ export class SmartcardCoordinator {
    * authentication-capable the heuristic is not trusted and every certificate is kept, as before. A key
    * already linked for smartcard sync is always kept, since sync unlock must keep finding it.
    */
-  public async selectAuthFingerprints(certs: Map<string, SmartcardCertificateDetails>): Promise<Set<string>> {
+  private async selectAuthFingerprints(certs: Map<string, SmartcardCertificateDetails>): Promise<Set<string>> {
     const auth = new Set<string>();
     for (const [fingerprint, details] of certs) {
       if (details.authCapable) auth.add(fingerprint);
@@ -628,7 +628,7 @@ export class SmartcardCoordinator {
    * sha256 in hex; an older link may only have the latter, which is the same digest as the SSH
    * fingerprint (base64, no padding).
    */
-  public async linkedSyncKeyFingerprint(): Promise<string | undefined> {
+  private async linkedSyncKeyFingerprint(): Promise<string | undefined> {
     try {
       const link = (await this.deps.syncConfigStore.getConfig()).smartcardSync;
       if (link?.keyBlobBase64) return fingerprintOfKeyBlob(Buffer.from(link.keyBlobBase64, 'base64'));
@@ -646,7 +646,7 @@ export class SmartcardCoordinator {
    * single module, where nothing can be disturbed, and whenever the app agent already holds a PKCS#11 card:
    * reading now would break that card's session, so the loader falls back to reading as it goes.
    */
-  public async prefetchSmartcardCertificates(libPaths: string[]): Promise<void> {
+  private async prefetchSmartcardCertificates(libPaths: string[]): Promise<void> {
     if (libPaths.length < 2) return;
     if (this.hasPivCard()) return;
     for (const libPath of libPaths) {
@@ -659,7 +659,7 @@ export class SmartcardCoordinator {
   }
 
   /** Same presence banner as loadSmartcardIntoPrivateAgentWithPresence, but loading into the app agent. */
-  public addSmartcardToAppAgentWithPresence(
+  private addSmartcardToAppAgentWithPresence(
     pkcs11LibPath: string,
     promptHandler: AskpassPromptHandler,
     sessionId?: string
@@ -712,7 +712,7 @@ export class SmartcardCoordinator {
    * unlocked in it. Null (⇒ block removed) unless 'agent-global' mode is on and the agent holds a card.
    * Not on Windows (shared OpenSSH service, no key selection there).
    */
-  public async buildAgentHostEntries(): Promise<AgentHostEntry[] | null> {
+  private async buildAgentHostEntries(): Promise<AgentHostEntry[] | null> {
     if (process.platform === 'win32') return null;
     const settings = await this.deps.settingsStore.getSettings().catch(() => null);
     const socketPath = this.appAgent.getSocketPath();
@@ -768,8 +768,8 @@ export class SmartcardCoordinator {
    */
   public async maybeUnlockSmartcardAtStartup(options: { force?: boolean } = {}): Promise<{ started: boolean }> {
     // Assign the guard promise synchronously, before any awaits, so a concurrent restored
-    // terminal session's TERMINAL_CREATE (which awaits awaitStartupUnlock()) always has something to wait on from the very first tick of this call — closing
-    // the TOCTOU gap where a restored pane could otherwise race ahead of the async
+    // terminal session's TERMINAL_CREATE (which awaits awaitStartupUnlock()) always has something to
+    // wait on from the very first tick of this call — closing the TOCTOU gap where a restored pane could otherwise race ahead of the async
     // settings/profile/session detection below (previously done before the guard was assigned)
     // and fall through to a fresh PIN prompt, even though a startup unlock was about to happen.
     // The guard resolves once the real unlock work finishes (or immediately if none is needed);
@@ -808,7 +808,7 @@ export class SmartcardCoordinator {
    * `force` is the on-demand "Unlock" action (top bar): it runs the same detection and unlock as the
    * startup flow but doesn't require the "unlock at startup" setting — the user asked for it now.
    */
-  public async runSmartcardStartupUnlockWork(
+  private async runSmartcardStartupUnlockWork(
     onUnlockStarted: (unlockPromise: Promise<void>) => void,
     force = false
   ): Promise<{ started: boolean }> {
@@ -1106,7 +1106,7 @@ export class SmartcardCoordinator {
     this.refreshAgentSshConfig();
   }
 
-  public sendSmartcardStartupUnlockStatus(event: {
+  private sendSmartcardStartupUnlockStatus(event: {
     kind: 'smartcard' | 'fido2';
     status: 'unlocked' | 'error';
     libPath?: string;

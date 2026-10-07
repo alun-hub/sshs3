@@ -3,12 +3,15 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SessionData } from '../../shared/types/session';
 import type { AppSettings } from '../../shared/types/settings';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type AppDataHost = Pick<
   IpcBridge,
-  'clipboardHistoryStore' | 'profileSyncService' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'smartcard' | 'snippetStore'
->;
+  'clipboardHistoryStore' | 'profileSyncService' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
+> & {
+  smartcard: Pick<SmartcardCoordinator, 'refreshAgentSshConfig'>;
+};
 
 export function registerSessionHandlers(bridge: AppDataHost): void {
   bridge.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {

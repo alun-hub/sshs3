@@ -6,12 +6,18 @@ import { encryptSecretValue } from '../crypto/SecretFieldCrypto';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../../shared/types/sync';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type SyncHost = Pick<
   IpcBridge,
-  'buildSyncStatus' | 'getSyncProvider' | 'profileSyncService' | 'promptForPinDirect' | 'registerHandler' | 'scheduleAutoSync' | 'settingsStore' | 'smartcard' | 'startAutoPullTimer' | 'stopAutoPullTimer' | 'storageRegistry' | 'syncConfigStore' | 'syncCryptoService' | 'unlockSyncInternal' | 'unlockWithSmartcardInternal'
->;
+  'buildSyncStatus' | 'getSyncProvider' | 'profileSyncService' | 'promptForPinDirect' | 'registerHandler' | 'scheduleAutoSync' | 'settingsStore' | 'startAutoPullTimer' | 'stopAutoPullTimer' | 'storageRegistry' | 'syncConfigStore' | 'syncCryptoService' | 'unlockSyncInternal' | 'unlockWithSmartcardInternal'
+> & {
+  smartcard: Pick<
+    SmartcardCoordinator,
+    'forgetGlobalCardAfterFailure' | 'getOrLoadGlobalSmartcardAgent' | 'getUnlockedCardSocket' | 'identitiesForLibrary' | 'loadSmartcardIntoPrivateAgentWithPresence'
+  >;
+};
 
 export function registerSyncHandlers(bridge: SyncHost): void {
   bridge.registerHandler(

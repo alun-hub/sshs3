@@ -5,12 +5,18 @@ import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from 
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { GenerateFido2KeyRequest, GeneratedFido2Key, Fido2ResidentKey } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type SmartcardHost = Pick<
   IpcBridge,
-  'makePresenceNotifier' | 'pendingAskpass' | 'pendingHostKeyPrompts' | 'promptForPinDirect' | 'registerHandler' | 'smartcard'
->;
+  'makePresenceNotifier' | 'pendingAskpass' | 'pendingHostKeyPrompts' | 'promptForPinDirect' | 'registerHandler'
+> & {
+  smartcard: Pick<
+    SmartcardCoordinator,
+    'listGlobalSmartcardAgents' | 'lockAllGlobalSmartcardAgents' | 'maybeUnlockSmartcardAtStartup'
+  >;
+};
 
 export function registerSmartcardHandlers(bridge: SmartcardHost): void {
   bridge.registerHandler(IPC_CHANNELS.SMARTCARD_DETECT, async () => {

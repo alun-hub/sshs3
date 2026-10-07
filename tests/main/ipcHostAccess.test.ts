@@ -57,4 +57,16 @@ describe('ipc handler groups only see the part of IpcBridge they need', () => {
       }
     }
   });
+
+  it('gives each handler group a Pick<SmartcardCoordinator, ...> of exactly the coordinator methods it calls', () => {
+    for (const file of handlerFiles()) {
+      const src = fs.readFileSync(path.join(IPC_DIR, file), 'utf-8');
+      const used = [...new Set([...src.matchAll(/\bbridge\.smartcard\.(\w+)/g)].map((m) => m[1]))];
+      if (used.length === 0) continue;
+      const decl = src.match(/smartcard: Pick<\s*SmartcardCoordinator,\s*([^>]*?)\s*>/);
+      expect(decl, `${file} must declare smartcard: Pick<SmartcardCoordinator, ...>`).not.toBeNull();
+      const declared = [...decl![1].matchAll(/'(\w+)'/g)].map((m) => m[1]);
+      expect(declared.sort(), file).toEqual(used.sort());
+    }
+  });
 });

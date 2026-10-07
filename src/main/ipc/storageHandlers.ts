@@ -2,12 +2,18 @@ import os from 'node:os';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type { FileEntry, ObjectMetadata, S3Tag, BucketVersioningInfo, ObjectVersionEntry } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
   IpcBridge,
-  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'smartcard' | 'storageRegistry'
->;
+  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry'
+> & {
+  smartcard: Pick<
+    SmartcardCoordinator,
+    'awaitStartupUnlock' | 'cleanupSmartcardSessionAgent' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig'
+  >;
+};
 
 export function registerStorageHandlers(bridge: StorageHost): void {
   bridge.registerHandler(
