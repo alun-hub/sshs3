@@ -25,6 +25,19 @@ function buildAad(vaultId: string, formatVersion: number): Buffer {
 }
 
 /**
+ * Rejects a value that would be interpreted as another CLI flag rather than the positional
+ * argument it's meant to be (classic argument-injection: a value like `-o/etc/passwd` or
+ * `--output=...` landing where a recipient string or file path was expected). `execFile` already
+ * avoids shell interpolation, but it does nothing to stop the *binary itself* from parsing an
+ * attacker-influenced value as one of its own flags — this is the defense for that, applied at
+ * the actual sink regardless of what the IPC layer already checked. */
+function assertNotFlagLike(value: string, label: string): void {
+  if (!value || value.startsWith('-')) {
+    throw new Error(`Invalid ${label}`);
+  }
+}
+
+/**
  * Crypto primitives for the Team Vault (docs/team-vault-plan.md), a separate trust model from
  * `SyncCryptoService`: instead of one password shared by everyone, a random "Vault Key" encrypts
  * the payload, and that Vault Key is wrapped individually per recipient via `age` +
@@ -81,6 +94,7 @@ export class TeamVaultCryptoService {
    * Returns the armored ciphertext to store as that recipient's `wrapped_vault_key` (§2.3).
    */
   async wrapVaultKeyForRecipient(vaultKey: Buffer, ageRecipient: string): Promise<string> {
+    assertNotFlagLike(ageRecipient, 'age recipient');
     const stdout = await runAgeCommand(resolveAgeBinary('age'), ['-r', ageRecipient, '-a'], vaultKey);
     return stdout.toString('utf8');
   }
@@ -100,6 +114,7 @@ export class TeamVaultCryptoService {
    * path to work end-to-end.
    */
   async unwrapVaultKey(wrappedVaultKey: string, identityFilePath: string): Promise<Buffer> {
+    assertNotFlagLike(identityFilePath, 'identity file path');
     const agePath = resolveAgeBinary('age');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
     const stdout = await runAgeCommand(

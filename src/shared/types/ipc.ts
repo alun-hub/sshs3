@@ -212,6 +212,10 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_SET_ROLE: 'team-vault:set-role',
   TEAM_VAULT_UNLOCK: 'team-vault:unlock',
   TEAM_VAULT_LOCK: 'team-vault:lock',
+  TEAM_VAULT_SET_TARGET: 'team-vault:set-target',
+  TEAM_VAULT_PUSH: 'team-vault:push',
+  TEAM_VAULT_PULL: 'team-vault:pull',
+  TEAM_VAULT_HAS_REMOTE_VAULT: 'team-vault:has-remote-vault',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -634,6 +638,10 @@ export interface MultiSSHApi {
   teamVaultSetRole(recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void>;
   teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
   teamVaultLock(): Promise<void>;
+  teamVaultSetTarget(target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;
+  teamVaultPush(): Promise<void>;
+  teamVaultPull(): Promise<void>;
+  teamVaultHasRemoteVault(): Promise<boolean>;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

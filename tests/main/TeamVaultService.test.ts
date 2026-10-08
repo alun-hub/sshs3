@@ -8,8 +8,55 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn().mockReturnValue('/tmp/unused-user-data') },
 }));
 
-import { TeamVaultService } from '../../src/main/services/TeamVaultService';
+import { TeamVaultService, TeamVaultSyncConflictError } from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
+import type { FileEntry, IStorageProvider } from '../../src/shared/types/storage';
+
+/** A minimal in-memory S3-like provider — only `stat`/`writeFile`/`readFile` are exercised by
+ * TeamVaultService's push/pull, same subset `ProfileSyncService` relies on. */
+function fakeProvider(): IStorageProvider {
+  const files = new Map<string, { data: Buffer; mtime: string }>();
+  let tick = 0;
+  return {
+    id: 'fake-s3',
+    name: 'Fake S3',
+    type: 's3',
+    list: async () => [],
+    stat: async (remotePath: string): Promise<FileEntry> => {
+      const entry = files.get(remotePath);
+      if (!entry) {
+        const err: any = new Error('NoSuchKey');
+        err.name = 'NoSuchKey';
+        throw err;
+      }
+      return { name: remotePath, path: remotePath, size: entry.data.length, isDirectory: false, mtime: entry.mtime };
+    },
+    createFolder: async () => {},
+    delete: async () => {
+      files.clear();
+    },
+    rename: async () => {},
+    createReadStream: async () => {
+      throw new Error('not implemented in fake provider');
+    },
+    createWriteStream: async () => {
+      throw new Error('not implemented in fake provider');
+    },
+    writeFile: async (remotePath: string, data: Buffer | Uint8Array) => {
+      tick += 1;
+      files.set(remotePath, { data: Buffer.from(data), mtime: `2026-01-01T00:00:${String(tick).padStart(2, '0')}Z` });
+    },
+    readFile: async (remotePath: string) => {
+      const entry = files.get(remotePath);
+      if (!entry) {
+        const err: any = new Error('NoSuchKey');
+        err.name = 'NoSuchKey';
+        throw err;
+      }
+      return entry.data;
+    },
+  } as unknown as IStorageProvider;
+}
 
 /** A deterministic, in-memory stand-in for the real `age`-backed crypto service, so these tests
  * exercise TeamVaultService's own orchestration (re-keying, unlock gating, file persistence)
@@ -216,6 +263,82 @@ describe('TeamVaultService', () => {
       const service = makeService();
       const result = await service.enrollOwnPivRecipient();
       expect(result.recipient).toBe('age1yubikey1fakeadmin');
+    });
+  });
+
+  describe('hasRemoteVault / pushToRemote / pullFromRemote (Fas 3)', () => {
+    it('hasRemoteVault is false against an empty remote and true after a push', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      expect(await service.hasRemoteVault(provider)).toBe(false);
+      await service.pushToRemote(provider);
+      expect(await service.hasRemoteVault(provider)).toBe(true);
+    });
+
+    it('pushes without a conflict check on the very first push (nothing observed yet)', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      await expect(service.pushToRemote(provider)).resolves.toBeUndefined();
+    });
+
+    it('rejects a second push if the remote changed since this instance last observed it', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.pushToRemote(provider);
+
+      // Someone else pushed a change this instance never saw.
+      await provider.writeFile!('team-vault/vault.json', Buffer.from('{"formatVersion":1,"vaultId":"other"}'));
+
+      await expect(service.pushToRemote(provider)).rejects.toThrow(TeamVaultSyncConflictError);
+    });
+
+    it('allows pushing again after a pull refreshes the known remote state', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.pushToRemote(provider);
+
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(JSON.stringify({ formatVersion: 1, vaultId: 'vlt_other', accessHeader: [], recovery: {}, encryptedPayload: '', updatedAt: '', updatedBy: '' }))
+      );
+
+      await service.pullFromRemote(provider);
+      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc')).rejects.toThrow(
+        // Pull locks the vault (the previous Vault Key may not match the pulled file), so this
+        // must now fail for "not unlocked", proving the pull actually replaced local state.
+        'Unlock the Team Vault'
+      );
+    });
+
+    it('pulling an existing remote vault lets a new member join without creating their own', async () => {
+      const admin = makeService();
+      const adminProvider = fakeProvider();
+      await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await admin.pushToRemote(adminProvider);
+
+      const newMemberFilePath = path.join(tempDir, 'team-vault-new-member.json');
+      const newMember = new TeamVaultService({ cryptoService: fakeCrypto(), filePath: newMemberFilePath, identityDir: tempDir });
+
+      expect(await newMember.hasRemoteVault(adminProvider)).toBe(true);
+      await newMember.pullFromRemote(adminProvider);
+
+      const status = await newMember.getStatus();
+      expect(status.exists).toBe(true);
+      expect(status.vaultId).toBe((await admin.getStatus()).vaultId);
+    });
+
+    it('rejects a pull whose remote file is not a recognizable vault', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await provider.writeFile!('team-vault/vault.json', Buffer.from('{"not":"a vault"}'));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
     });
   });
 });

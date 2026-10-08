@@ -142,6 +142,29 @@ describe('TeamVaultCryptoService', () => {
         'no YubiKey detected'
       );
     });
+
+    it('rejects a flag-like identity file path before ever shelling out (argument-injection guard)', async () => {
+      const service2 = new TeamVaultCryptoService();
+      await expect(service2.unwrapVaultKey('wrapped-blob', '--output=/etc/passwd')).rejects.toThrow(
+        'Invalid identity file path'
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('wrapVaultKeyForRecipient argument-injection guard', () => {
+    beforeEach(() => {
+      mockExecFile.mockReset();
+    });
+
+    it('rejects a flag-like recipient string before ever shelling out', async () => {
+      const service2 = new TeamVaultCryptoService();
+      const key = service2.generateVaultKey();
+      await expect(service2.wrapVaultKeyForRecipient(key, '-o/etc/passwd')).rejects.toThrow(
+        'Invalid age recipient'
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
   });
 
   describe('enrollOwnPivRecipient (mocked age-plugin-yubikey --generate)', () => {

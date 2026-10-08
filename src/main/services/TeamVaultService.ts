@@ -10,9 +10,19 @@ import type {
   TeamVaultRole,
   TeamVaultStatus,
 } from '../../shared/types/teamVault';
+import type { FileEntry, IStorageProvider } from '../../shared/types/storage';
+import { joinPaths } from '../transfer/TransferPipeline';
 import { TeamVaultCryptoService } from './TeamVaultCryptoService';
 
 const FORMAT_VERSION = 1 as const;
+const REMOTE_VAULT_FILENAME = 'team-vault/vault.json';
+
+export class TeamVaultSyncConflictError extends Error {
+  constructor() {
+    super('Remote Team Vault changed since it was last read here. Pull the latest changes before pushing again.');
+    this.name = 'TeamVaultSyncConflictError';
+  }
+}
 
 export interface TeamVaultServiceOptions {
   cryptoService?: TeamVaultCryptoService;
@@ -44,6 +54,13 @@ export class TeamVaultService {
   private readonly identityDir: string;
   private writeQueue: Promise<void> = Promise.resolve();
   private unlockedVaultKey: Buffer | null = null;
+  /** Last observed remote `FileEntry` for the vault file, used for optimistic concurrency on
+   * push (see `pushToRemote`) — `undefined` means never observed from this instance (no check
+   * to do yet), `null` means observed as "doesn't exist yet". Same pattern as
+   * `ProfileSyncService.lastKnownRemoteState`/`checkNotChangedRemotely`, which the real S3
+   * provider has no `If-Match`-style primitive to replace (verified against the code; see
+   * docs/team-vault-plan.md Fas 3). */
+  private lastKnownRemoteEntry: FileEntry | null | undefined = undefined;
 
   constructor(options: TeamVaultServiceOptions = {}) {
     this.cryptoService = options.cryptoService ?? new TeamVaultCryptoService();
@@ -266,6 +283,132 @@ export class TeamVaultService {
       throw new Error(`"${recipientId}" is not a recipient of this vault`);
     }
     this.unlockedVaultKey = await this.cryptoService.unwrapVaultKey(source.wrappedVaultKey, identityFilePath);
+  }
+
+  /** Must be called whenever the configured S3 target/remoteBasePath changes — otherwise a stat
+   * recorded against a *previous* target would be compared against the newly configured one on
+   * the next push, producing a spurious (or worse, falsely-absent) conflict. Same reasoning as
+   * `ProfileSyncService.resetRemoteState()`. */
+  resetRemoteState(): void {
+    this.lastKnownRemoteEntry = undefined;
+  }
+
+  /** Whether a vault file already exists at the remote target — used by the UI to offer "Pull
+   * existing vault" instead of "Create Vault" when no local file exists yet (§4.3: a new member
+   * joins an existing team vault, they don't create their own). */
+  async hasRemoteVault(provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
+    return (await this.statOrNull(provider, this.remoteVaultPath(remoteBasePath))) !== null;
+  }
+
+  /**
+   * Pushes the local vault file to the configured S3 target (docs/team-vault-plan.md Fas 3).
+   * Optimistic concurrency mirrors `ProfileSyncService.checkNotChangedRemotely`: if this instance
+   * has previously observed the remote file's state (via a prior push or pull) and a fresh `stat`
+   * no longer matches, the push is rejected with `TeamVaultSyncConflictError` rather than
+   * silently overwriting someone else's change — the real `S3StorageProvider` has no `If-Match`
+   * conditional-write primitive to use instead (verified; not portable across S3/MinIO versions
+   * anyway), so this reuses the same size+mtime comparison already proven for Remote Profile Sync.
+   */
+  async pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+    const file = await this.requireFile();
+    const remotePath = this.remoteVaultPath(remoteBasePath);
+
+    if (this.lastKnownRemoteEntry !== undefined) {
+      const current = await this.statOrNull(provider, remotePath);
+      const known = this.lastKnownRemoteEntry;
+      const unchanged =
+        (known === null && current === null) ||
+        (known !== null && current !== null && known.size === current.size && known.mtime === current.mtime);
+      if (!unchanged) {
+        throw new TeamVaultSyncConflictError();
+      }
+    }
+
+    await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
+    this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+  }
+
+  /**
+   * Pulls the vault file from the configured S3 target and overwrites the local copy — used both
+   * to catch up with changes pushed elsewhere and to join a vault that already exists remotely
+   * (when no local file exists yet). Locks the vault afterwards if it was unlocked: the cached
+   * Vault Key may no longer be valid against a freshly pulled file that another admin re-keyed
+   * (see `removeMember`), and reusing it blindly would be wrong.
+   */
+  async pullFromRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+    const remotePath = this.remoteVaultPath(remoteBasePath);
+    const raw = await this.readProviderFile(provider, remotePath);
+    const file = JSON.parse(raw.toString('utf-8')) as TeamVaultFile;
+    if (file.formatVersion !== FORMAT_VERSION || !file.vaultId || !Array.isArray(file.accessHeader)) {
+      throw new Error('Remote Team Vault file is not a recognizable vault (unexpected format)');
+    }
+
+    await this.writeFile(file);
+    this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+    this.lock();
+  }
+
+  private remoteVaultPath(remoteBasePath: string): string {
+    return joinPaths('s3', remoteBasePath, REMOTE_VAULT_FILENAME);
+  }
+
+  // Same provider-capability fallback as ProfileSyncService.readProviderFile/writeProviderFile:
+  // IStorageProvider.readFile/writeFile are optional on the interface (not every provider
+  // implements the convenience form), so fall back to the stream API any provider must support.
+  private async readProviderFile(provider: IStorageProvider, remotePath: string): Promise<Buffer> {
+    if (typeof provider.readFile === 'function') {
+      return provider.readFile(remotePath);
+    }
+    const stream = await provider.createReadStream(remotePath);
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve());
+      stream.on('error', reject);
+    });
+    return Buffer.concat(chunks);
+  }
+
+  private async writeProviderFile(provider: IStorageProvider, remotePath: string, buffer: Buffer): Promise<void> {
+    if (typeof provider.writeFile === 'function') {
+      await provider.writeFile(remotePath, buffer, { mode: 0o600, size: buffer.length });
+      return;
+    }
+    const stream = await provider.createWriteStream(remotePath, { mode: 0o600, size: buffer.length });
+    await new Promise<void>((resolve, reject) => {
+      stream.on('error', reject);
+      stream.end(buffer, () => resolve());
+    });
+  }
+
+  private async statOrNull(provider: IStorageProvider, remotePath: string): Promise<FileEntry | null> {
+    try {
+      return await provider.stat(remotePath);
+    } catch (err: any) {
+      if (this.isNotFoundError(err)) return null;
+      throw err;
+    }
+  }
+
+  // Same heuristics as ProfileSyncService.isNotFoundError — distinguishes "the object doesn't
+  // exist" from other failures (network errors, auth errors) which must propagate, not be
+  // swallowed into a false "not found".
+  private isNotFoundError(err: any): boolean {
+    if (!err) return false;
+    const code = err.code || err.$metadata?.httpStatusCode;
+    if (code === 'ENOENT' || code === 2 || code === 404 || code === 'NotFound' || code === 'NoSuchKey') {
+      return true;
+    }
+    const name = err.name || '';
+    if (name === 'NoSuchKey' || name === 'NotFound') return true;
+    const msg = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+    if (msg.includes('no such file') || msg.includes('file does not exist') || msg.includes('does not exist') || msg.includes('not found')) {
+      if (msg.includes('host not found') || msg.includes('socket not found') || msg.includes('getaddrinfo') || msg.includes('connect')) {
+        return false;
+      }
+      return true;
+    }
+    return false;
   }
 
   private requireUnlocked(): Buffer {

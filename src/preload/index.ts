@@ -513,6 +513,11 @@ export const api: MultiSSHApi = {
   teamVaultUnlock: (recipientId: string, identityFilePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK, recipientId, identityFilePath),
   teamVaultLock: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_LOCK),
+  teamVaultSetTarget: (target: StorageConnectConfig, remoteBasePath?: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, target, remoteBasePath),
+  teamVaultPush: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PUSH),
+  teamVaultPull: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PULL),
+  teamVaultHasRemoteVault: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT),
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

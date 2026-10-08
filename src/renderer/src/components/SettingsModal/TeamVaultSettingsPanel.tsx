@@ -1,8 +1,28 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Fingerprint, KeyRound, Loader2, Lock, Shield, Trash2, Unlock, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  Cloud,
+  DownloadCloud,
+  Fingerprint,
+  KeyRound,
+  Loader2,
+  Lock,
+  Pencil,
+  Shield,
+  Trash2,
+  Unlock,
+  UploadCloud,
+  Users,
+} from 'lucide-react';
 import type { TeamVaultRole, TeamVaultStatus } from '@shared/types/teamVault';
+import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
+import { formatDateTime } from '../../lib/dateFormat';
 import { useConfirm } from '../ConfirmDialog';
+
+function emptyS3TargetDraft(): SyncTargetDraft {
+  return { ...emptySyncTargetDraft(), type: 's3' };
+}
 
 /** Admin UI for the local Team Vault (docs/team-vault-plan.md Fas 2 — a single local vault, no
  * S3 sync yet; Fas 3 adds remote read/write on top of the same `window.multissh.teamVault*`
@@ -37,12 +57,26 @@ export const TeamVaultSettingsPanel: React.FC = () => {
 
   const [busyRecipientId, setBusyRecipientId] = useState<string | null>(null);
 
+  // S3 target config + push/pull (Fas 3)
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetDraft, setTargetDraft] = useState<SyncTargetDraft>(emptyS3TargetDraft());
+  const [targetError, setTargetError] = useState<string | null>(null);
+  const [savingTarget, setSavingTarget] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [hasRemoteVault, setHasRemoteVault] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const s = await window.multissh.teamVaultGetStatus();
       setStatus(s);
+      if (!s.exists && s.remoteConfigured) {
+        setHasRemoteVault(await window.multissh.teamVaultHasRemoteVault());
+      } else {
+        setHasRemoteVault(false);
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load Team Vault status'));
     } finally {
@@ -149,6 +183,67 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     }
   };
 
+  // There's nothing to prefill from: the renderer never receives the saved target's secrets back
+  // (same principle as every other credential field in this app), so editing always starts from
+  // a blank S3 draft — the admin re-enters the target if they want to change it.
+  const openEditTarget = () => {
+    setTargetDraft(emptyS3TargetDraft());
+    setTargetError(null);
+    setEditingTarget(true);
+  };
+
+  const handleSaveTarget = async () => {
+    if (targetDraft.type !== 's3') {
+      setTargetError('The Team Vault only supports an S3-compatible target.');
+      return;
+    }
+    if (!targetDraft.remoteBasePath.trim()) {
+      setTargetError('A bucket (optionally "bucket/prefix") is required.');
+      return;
+    }
+    if (!targetDraft.accessKeyId?.trim() || !targetDraft.secretAccessKey) {
+      setTargetError('Access key ID and secret access key are required.');
+      return;
+    }
+    setTargetError(null);
+    setSavingTarget(true);
+    try {
+      await window.multissh.teamVaultSetTarget(buildSyncTarget(targetDraft), targetDraft.remoteBasePath);
+      setEditingTarget(false);
+      await load();
+    } catch (err) {
+      setTargetError(describeIpcError(err, 'Failed to save the Team Vault target'));
+    } finally {
+      setSavingTarget(false);
+    }
+  };
+
+  const handlePush = async () => {
+    setPushing(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultPush();
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Push failed'));
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handlePull = async () => {
+    setPulling(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultPull();
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Pull failed'));
+    } finally {
+      setPulling(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-txt-muted">
@@ -167,7 +262,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
         </h3>
         <p className="mt-1 text-xs text-txt-muted">
           Share connection profiles and system credentials with your team, unlocked per-member by
-          PIV hardware key instead of a shared password. Local only for now — no S3 sync yet.
+          PIV hardware key instead of a shared password.
         </p>
       </div>
 
@@ -179,6 +274,24 @@ export const TeamVaultSettingsPanel: React.FC = () => {
 
       {!status?.exists ? (
         <div className="space-y-3 rounded-lg border border-border-subtle bg-app-surface p-4">
+          {hasRemoteVault && (
+            <div className="space-y-2 rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
+              <p className="text-xs text-sky-300">
+                Your team already has a Team Vault at the configured S3 target. Pull it instead of
+                creating a new one.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handlePull()}
+                disabled={pulling}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              >
+                {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                Pull existing vault
+              </button>
+            </div>
+          )}
+
           <p className="text-xs text-txt-secondary">
             No Team Vault exists on this machine yet. Generate a recipient from your PIV card,
             then create the vault with yourself as its first admin.
@@ -349,6 +462,87 @@ export const TeamVaultSettingsPanel: React.FC = () => {
           </div>
         </div>
       )}
+
+      <div className="space-y-2 rounded-lg border border-border-subtle bg-app-surface p-3">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-txt-secondary">
+          <Cloud className="h-3.5 w-3.5 text-sky-400" />
+          Remote sync (S3)
+        </p>
+
+        {!editingTarget ? (
+          <>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-txt-muted">
+                {status?.remoteConfigured ? 'S3 target configured' : 'No S3 target configured yet'}
+              </span>
+              <button
+                type="button"
+                onClick={openEditTarget}
+                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover"
+              >
+                <Pencil className="h-3 w-3" />
+                {status?.remoteConfigured ? 'Edit target' : 'Configure target'}
+              </button>
+            </div>
+            {status?.remoteConfigured && (
+              <>
+                <div className="flex items-center justify-between text-xs text-txt-muted">
+                  <span>Last synced</span>
+                  <span>{status.lastSyncAt ? formatDateTime(status.lastSyncAt) : 'Never'}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handlePush()}
+                    disabled={pushing || !status?.exists}
+                    className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                  >
+                    {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
+                    Push
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePull()}
+                    disabled={pulling}
+                    className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                  >
+                    {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                    Pull
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="space-y-3">
+            {targetError && (
+              <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                {targetError}
+              </div>
+            )}
+            <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingTarget(false)}
+                disabled={savingTarget}
+                className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveTarget()}
+                disabled={savingTarget}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              >
+                {savingTarget && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Save target
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {recoveryIdentity && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">

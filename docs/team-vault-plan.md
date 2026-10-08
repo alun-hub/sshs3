@@ -329,3 +329,32 @@ icke-interaktiv kanal att mata in det i `age-plugin-yubikey` på (se risk
 #1 ovan). Att koppla in prompten innan den kanalen är löst hade bara gett
 dödkod (ett PIN som samlas in och sedan kastas bort) — görs när #1 är
 verifierad mot riktig hårdvara.
+
+**Fas 3 implementerad (2026-10-08) — S3-integration.** `TeamVaultConfigStore`
+(eget S3-mål, separat fil från `SyncConfigStore` — `<userData>/team-vault-sync-config.json`,
+samma `SecretFieldCrypto`-kryptering av nycklar) plus `TeamVaultService.pushToRemote`/
+`pullFromRemote`/`hasRemoteVault` (ny IPC: `team-vault:set-target`,
+`team-vault:push`, `team-vault:pull`, `team-vault:has-remote-vault`).
+Fast remote-nyckel `team-vault/vault.json` under det konfigurerade
+`bucket[/prefix]`. Admin-UI:t har en "Remote sync (S3)"-sektion
+(mål-konfiguration återanvänder `SyncTargetForm`, Push/Pull-knappar) och
+en "Pull existing vault"-väg när ingen lokal fil finns men en redan gör
+det i molnet (en ny medlem som ansluter till ett befintligt team-valv).
+
+**Korrigering av §6:s ETag-antagande.** Verifierat mot kodbasen:
+`S3StorageProvider` har ingen `If-Match`/villkorlig skrivning — `stat()`
+kan bara LÄSA en ETag. Den faktiska, redan beprövade mekanismen i
+`ProfileSyncService` är storlek+mtime-jämförelse mot senast observerad
+`FileEntry`, med avslå-och-be-om-pull-först (`SyncConflictError`), inte
+ETag/`If-Match`. `TeamVaultService` speglar exakt detta mönster
+(`TeamVaultSyncConflictError`) i stället för att bygga ny, mindre
+portabel S3-kod (riktig villkorlig skrivning stöds inte konsekvent över
+AWS/MinIO-versioner). Push/pull är manuellt (knappar), inte automatiskt
+efter varje medlemsändring — samma UX-princip som Remote Profile Sync.
+
+En säkerhetsgranskning innan Fas 3 påbörjades hittade också en
+under-validerad IPC-arg-sink i `teamVaultHandlers.ts` från Fas 2
+(`ageRecipient`/`identityFilePath` kunde tolkas som en CLI-flagga av
+`age` i stället för sitt avsedda värde) — åtgärdad med valideringsguards
+i både handler-lagret och vid själva anropsstället i
+`TeamVaultCryptoService`, med nya tester för båda.

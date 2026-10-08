@@ -53,4 +53,12 @@ export interface TeamVaultStatus {
   adminCount?: number;
   unlocked: boolean;
   filePath: string;
+  /** Whether an S3 target has been configured for this vault (Fas 3) — distinct from `exists`,
+   * since a brand new install can have a remote target configured but no local file yet (join an
+   * existing team's vault) or vice versa (a local-only vault never pushed anywhere). Optional
+   * because `TeamVaultService.getStatus()` itself doesn't know about remote config (that's
+   * `TeamVaultConfigStore`'s job) — only `IpcBridge.buildTeamVaultStatus()`, which merges both,
+   * always sets it for a real IPC response. */
+  remoteConfigured?: boolean;
+  lastSyncAt?: string;
 }

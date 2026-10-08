@@ -32,6 +32,7 @@ import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { TeamVaultService } from './services/TeamVaultService';
+import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
@@ -43,6 +44,7 @@ import type { DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/
 import type { SSHConnectionConfig, SSHPtyExitEvent, SSHActiveTunnel } from '../shared/types/ssh';
 import type { TransferProgress } from '../shared/types/storage';
 import type { ProfileSyncStatus } from '../shared/types/sync';
+import type { TeamVaultStatus } from '../shared/types/teamVault';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
@@ -115,6 +117,7 @@ export interface IpcBridgeOptions {
   syncCryptoService?: SyncCryptoService;
   profileSyncService?: ProfileSyncService;
   teamVaultService?: TeamVaultService;
+  teamVaultConfigStore?: TeamVaultConfigStore;
   k8sDiscoveryService?: K8sDiscoveryService;
   k8sDebugService?: K8sDebugService;
   k8sTerminalManager?: K8sTerminalManager;
@@ -147,6 +150,7 @@ export class IpcBridge {
   public readonly syncCryptoService: SyncCryptoService;
   public readonly profileSyncService: ProfileSyncService;
   public readonly teamVaultService: TeamVaultService;
+  public readonly teamVaultConfigStore: TeamVaultConfigStore;
   public readonly k8sDiscoveryService: K8sDiscoveryService;
   public readonly k8sDebugService: K8sDebugService;
   public readonly k8sTerminalManager: K8sTerminalManager;
@@ -249,6 +253,7 @@ export class IpcBridge {
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
     this.teamVaultService = options.teamVaultService ?? new TeamVaultService();
+    this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();
     this.profileSyncService =
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
@@ -887,6 +892,19 @@ export class IpcBridge {
       smartcardLinked: Boolean(config.smartcardSync),
       smartcardLibPath: config.smartcardSync?.pkcs11LibPath,
       smartcardAvailable: (await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true }).catch(() => [])).length > 0,
+    };
+  }
+
+  /** Merges `TeamVaultService`'s local-file-derived status with `TeamVaultConfigStore`'s S3
+   * target config — same separation `buildSyncStatus()` keeps between `ProfileSyncService` and
+   * `SyncConfigStore` above, so `TeamVaultService` stays unaware of where (or whether) its file
+   * is pushed/pulled from. */
+  public async buildTeamVaultStatus(): Promise<TeamVaultStatus> {
+    const [status, config] = await Promise.all([this.teamVaultService.getStatus(), this.teamVaultConfigStore.getConfig()]);
+    return {
+      ...status,
+      remoteConfigured: !!config.target,
+      lastSyncAt: config.lastSyncAt,
     };
   }
 

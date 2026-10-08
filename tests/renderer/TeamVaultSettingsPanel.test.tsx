@@ -136,4 +136,75 @@ describe('TeamVaultSettingsPanel', () => {
       });
     });
   });
+
+  describe('remote sync (Fas 3)', () => {
+    const baseStatus: TeamVaultStatus = {
+      exists: true,
+      vaultId: 'vlt_1',
+      unlocked: true,
+      filePath: '/x',
+      members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
+      adminCount: 1,
+      remoteConfigured: false,
+    };
+
+    beforeEach(() => {
+      window.multissh = {
+        teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
+        teamVaultHasRemoteVault: vi.fn().mockResolvedValue(false),
+        teamVaultSetTarget: vi.fn().mockResolvedValue(undefined),
+        teamVaultPush: vi.fn().mockResolvedValue(undefined),
+        teamVaultPull: vi.fn().mockResolvedValue(undefined),
+        profilesGet: vi.fn().mockResolvedValue({ ssh: [], s3: [] }),
+      } as unknown as typeof window.multissh;
+    });
+
+    it('configures an S3 target', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('No S3 target configured yet')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Configure target/i }));
+      fireEvent.change(await screen.findByLabelText(/Region/i), { target: { value: 'us-east-1' } });
+      fireEvent.change(screen.getByLabelText(/Access Key ID/i), { target: { value: 'AKIA' } });
+      fireEvent.change(screen.getByLabelText(/Secret Access Key/i), { target: { value: 'secret' } });
+      fireEvent.change(screen.getByLabelText(/Bucket/i), { target: { value: 'team-bucket' } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultSetTarget).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 's3' }),
+          'team-bucket'
+        );
+      });
+    });
+
+    it('pushes and pulls once a target is configured', async () => {
+      window.multissh.teamVaultGetStatus = vi
+        .fn()
+        .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Push' }));
+      await waitFor(() => expect(window.multissh.teamVaultPush).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pull' }));
+      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalled());
+    });
+
+    it('offers "Pull existing vault" when no local vault exists but a remote one does', async () => {
+      window.multissh.teamVaultGetStatus = vi
+        .fn()
+        .mockResolvedValue({ exists: false, unlocked: false, filePath: '/x', remoteConfigured: true });
+      window.multissh.teamVaultHasRemoteVault = vi.fn().mockResolvedValue(true);
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/already has a Team Vault/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pull existing vault' }));
+      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalled());
+    });
+  });
 });
