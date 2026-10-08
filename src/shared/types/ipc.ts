@@ -628,14 +628,9 @@ export interface MultiSSHApi {
   teamVaultGetStatus(): Promise<TeamVaultStatus>;
   teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string }>;
   teamVaultCreate(selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }>;
-  teamVaultAddMember(
-    recipientId: string,
-    ageRecipient: string,
-    role: TeamVaultRole,
-    addedBy: string
-  ): Promise<void>;
-  teamVaultRemoveMember(recipientId: string, removedBy: string): Promise<{ remainingAdmins: number }>;
-  teamVaultSetRole(recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void>;
+  teamVaultAddMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
+  teamVaultRemoveMember(recipientId: string): Promise<{ remainingAdmins: number }>;
+  teamVaultSetRole(recipientId: string, role: TeamVaultRole): Promise<void>;
   teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
   teamVaultLock(): Promise<void>;
   teamVaultSetTarget(target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;

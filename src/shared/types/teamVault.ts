@@ -31,6 +31,13 @@ export interface TeamVaultRecovery {
 export interface TeamVaultFile {
   formatVersion: 1;
   vaultId: string;
+  /** Monotonically incremented on every mutating write (create=1, then +1 per add/remove/role
+   * change). Rollback/replay guard: anyone with mere S3 write access to the vault's path (not
+   * necessarily a real recipient — bucket permissions and "is a vault member" are different
+   * things) could otherwise overwrite the file with an older version to resurrect a removed
+   * member's access to the pre-removal state. `pullFromRemote` refuses a revision that goes
+   * backwards relative to the local copy. */
+  revision: number;
   updatedAt: string;
   updatedBy: string;
   accessHeader: TeamVaultAccessEntry[];

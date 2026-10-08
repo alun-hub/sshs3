@@ -143,6 +143,20 @@ describe('TeamVaultCryptoService', () => {
       );
     });
 
+    it('gives a clear, actionable message when the binary itself is missing (ENOENT)', async () => {
+      mockExecFile.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: any) => {
+        const err: any = new Error('spawn age ENOENT');
+        err.code = 'ENOENT';
+        cb(err, Buffer.from(''), Buffer.from(''));
+        return { stdin: { end: vi.fn() } };
+      });
+
+      const service2 = new TeamVaultCryptoService();
+      await expect(service2.unwrapVaultKey('wrapped-blob', '/tmp/identity.txt')).rejects.toThrow(
+        'was not found'
+      );
+    });
+
     it('rejects a flag-like identity file path before ever shelling out (argument-injection guard)', async () => {
       const service2 = new TeamVaultCryptoService();
       await expect(service2.unwrapVaultKey('wrapped-blob', '--output=/etc/passwd')).rejects.toThrow(

@@ -139,7 +139,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setAddingMember(true);
     setError(null);
     try {
-      await window.multissh.teamVaultAddMember(newRecipientId.trim(), newAgeRecipient.trim(), newRole, 'me');
+      await window.multissh.teamVaultAddMember(newRecipientId.trim(), newAgeRecipient.trim(), newRole);
       setNewRecipientId('');
       setNewAgeRecipient('');
       setNewRole('member');
@@ -161,7 +161,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setBusyRecipientId(recipientId);
     setError(null);
     try {
-      await window.multissh.teamVaultRemoveMember(recipientId, 'me');
+      await window.multissh.teamVaultRemoveMember(recipientId);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to remove member'));
@@ -174,7 +174,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setBusyRecipientId(recipientId);
     setError(null);
     try {
-      await window.multissh.teamVaultSetRole(recipientId, role, 'me');
+      await window.multissh.teamVaultSetRole(recipientId, role);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to change role'));
@@ -406,7 +406,8 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => void handleSetRole(m.recipientId, m.role === 'admin' ? 'member' : 'admin')}
-                      disabled={busyRecipientId === m.recipientId}
+                      disabled={!status.unlocked || busyRecipientId === m.recipientId}
+                      title={status.unlocked ? undefined : 'Unlock the vault first'}
                       className="rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
                     >
                       {m.role === 'admin' ? 'Demote' : 'Promote'}
@@ -414,8 +415,8 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => void handleRemoveMember(m.recipientId)}
-                      disabled={busyRecipientId === m.recipientId}
-                      title="Remove member"
+                      disabled={!status.unlocked || busyRecipientId === m.recipientId}
+                      title={status.unlocked ? 'Remove member' : 'Unlock the vault first'}
                       className="rounded-lg border border-red-900/60 p-1.5 text-red-300 hover:bg-red-950/40 disabled:opacity-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

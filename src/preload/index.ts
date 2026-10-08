@@ -500,16 +500,12 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT),
   teamVaultCreate: (selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient),
-  teamVaultAddMember: (
-    recipientId: string,
-    ageRecipient: string,
-    role: TeamVaultRole,
-    addedBy: string
-  ): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, recipientId, ageRecipient, role, addedBy),
-  teamVaultRemoveMember: (recipientId: string, removedBy: string): Promise<{ remainingAdmins: number }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, recipientId, removedBy),
-  teamVaultSetRole: (recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, recipientId, role, updatedBy),
+  teamVaultAddMember: (recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, recipientId, ageRecipient, role),
+  teamVaultRemoveMember: (recipientId: string): Promise<{ remainingAdmins: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, recipientId),
+  teamVaultSetRole: (recipientId: string, role: TeamVaultRole): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, recipientId, role),
   teamVaultUnlock: (recipientId: string, identityFilePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK, recipientId, identityFilePath),
   teamVaultLock: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_LOCK),

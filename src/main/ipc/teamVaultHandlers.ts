@@ -62,31 +62,25 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
 
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER,
-    async (_event, recipientId: string, ageRecipient: string, role: TeamVaultRole, addedBy: string) => {
+    async (_event, recipientId: string, ageRecipient: string, role: TeamVaultRole) => {
       requireRecipientId(recipientId, 'Recipient id');
       requireAgeRecipient(ageRecipient, 'Age recipient');
       requireRole(role);
-      requireRecipientId(addedBy, 'Added-by recipient id');
-      await bridge.teamVaultService.addMember(recipientId, ageRecipient, role, addedBy);
+      await bridge.teamVaultService.addMember(recipientId, ageRecipient, role);
     }
   );
 
-  bridge.registerHandler(
-    IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER,
-    async (_event, recipientId: string, removedBy: string) => {
-      requireRecipientId(recipientId, 'Recipient id');
-      requireRecipientId(removedBy, 'Removed-by recipient id');
-      return bridge.teamVaultService.removeMember(recipientId, removedBy);
-    }
-  );
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, async (_event, recipientId: string) => {
+    requireRecipientId(recipientId, 'Recipient id');
+    return bridge.teamVaultService.removeMember(recipientId);
+  });
 
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_SET_ROLE,
-    async (_event, recipientId: string, role: TeamVaultRole, updatedBy: string) => {
+    async (_event, recipientId: string, role: TeamVaultRole) => {
       requireRecipientId(recipientId, 'Recipient id');
       requireRole(role);
-      requireRecipientId(updatedBy, 'Updated-by recipient id');
-      await bridge.teamVaultService.setRole(recipientId, role, updatedBy);
+      await bridge.teamVaultService.setRole(recipientId, role);
     }
   );
 

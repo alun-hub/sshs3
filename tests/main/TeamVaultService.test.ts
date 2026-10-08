@@ -8,7 +8,12 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn().mockReturnValue('/tmp/unused-user-data') },
 }));
 
-import { TeamVaultService, TeamVaultSyncConflictError } from '../../src/main/services/TeamVaultService';
+import {
+  TeamVaultService,
+  TeamVaultSyncConflictError,
+  TeamVaultForeignVaultError,
+  TeamVaultRollbackError,
+} from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
 import type { FileEntry, IStorageProvider } from '../../src/shared/types/storage';
 
@@ -141,7 +146,7 @@ describe('TeamVaultService', () => {
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       service.lock();
 
-      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc')).rejects.toThrow(
+      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
         'Unlock the Team Vault'
       );
     });
@@ -151,7 +156,7 @@ describe('TeamVaultService', () => {
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       const beforeStatus = await service.getStatus();
 
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
 
       const status = await service.getStatus();
       expect(status.members).toHaveLength(2);
@@ -168,9 +173,23 @@ describe('TeamVaultService', () => {
     it('rejects adding a recipientId that is already a member', async () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(
-        service.addMember('alice@piv:abc', 'age1yubikey1alice', 'member', 'alice@piv:abc')
-      ).rejects.toThrow('already a member');
+      await expect(service.addMember('alice@piv:abc', 'age1yubikey1alice', 'member')).rejects.toThrow(
+        'already a member'
+      );
+    });
+
+    it('attributes addedBy/updatedBy to whoever actually unlocked the vault, never a caller-supplied value', async () => {
+      // There is no `addedBy` parameter on addMember at all — this is the whole point of the fix:
+      // the audit trail can't be spoofed by whatever string a (potentially compromised) renderer
+      // happens to send, only by who really unlocked the session.
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const raw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const bobEntry = raw.accessHeader.find((e: any) => e.recipientId === 'bob@piv:def');
+      expect(bobEntry.addedBy).toBe('alice@piv:abc');
+      expect(raw.updatedBy).toBe('alice@piv:abc');
     });
   });
 
@@ -178,9 +197,9 @@ describe('TeamVaultService', () => {
     it('re-keys: the removed member loses access, remaining members keep access under a new key', async () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const { remainingAdmins } = await service.removeMember('bob@piv:def', 'alice@piv:abc');
+      const { remainingAdmins } = await service.removeMember('bob@piv:def');
       expect(remainingAdmins).toBe(1);
 
       const status = await service.getStatus();
@@ -197,30 +216,38 @@ describe('TeamVaultService', () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       service.lock();
-      await expect(service.removeMember('alice@piv:abc', 'alice@piv:abc')).rejects.toThrow('Unlock the Team Vault');
+      await expect(service.removeMember('alice@piv:abc')).rejects.toThrow('Unlock the Team Vault');
     });
 
     it('rejects removing a recipientId that is not a member', async () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.removeMember('ghost@piv:xyz', 'alice@piv:abc')).rejects.toThrow('is not a member');
+      await expect(service.removeMember('ghost@piv:xyz')).rejects.toThrow('is not a member');
     });
   });
 
   describe('setRole', () => {
-    it('changes a member role without requiring the vault to be unlocked', async () => {
+    it('changes a member role (requires the vault to be unlocked, to attribute the change)', async () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc');
-      service.lock();
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
 
-      await service.setRole('bob@piv:def', 'admin', 'alice@piv:abc');
+      await service.setRole('bob@piv:def', 'admin');
 
       const status = await service.getStatus();
       expect(status.members).toEqual(
         expect.arrayContaining([expect.objectContaining({ recipientId: 'bob@piv:def', role: 'admin' })])
       );
       expect(status.adminCount).toBe(2);
+    });
+
+    it('requires the vault to be unlocked first (so the change is attributed to a real identity)', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      service.lock();
+
+      await expect(service.setRole('bob@piv:def', 'admin')).rejects.toThrow('Unlock the Team Vault');
     });
   });
 
@@ -267,6 +294,21 @@ describe('TeamVaultService', () => {
   });
 
   describe('hasRemoteVault / pushToRemote / pullFromRemote (Fas 3)', () => {
+    /** A structurally valid, unrelated vault file — used to simulate "someone else's content is
+     * already sitting at this S3 path" without needing a second real TeamVaultService instance. */
+    function foreignVaultFileJson(vaultId: string, revision = 1): string {
+      return JSON.stringify({
+        formatVersion: 1,
+        vaultId,
+        revision,
+        updatedAt: '2026-01-01T00:00:00Z',
+        updatedBy: 'someone@piv:else',
+        accessHeader: [],
+        recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1yubikey1foreignrecovery', wrappedVaultKey: 'w' },
+        encryptedPayload: '',
+      });
+    }
+
     it('hasRemoteVault is false against an empty remote and true after a push', async () => {
       const service = makeService();
       const provider = fakeProvider();
@@ -277,7 +319,7 @@ describe('TeamVaultService', () => {
       expect(await service.hasRemoteVault(provider)).toBe(true);
     });
 
-    it('pushes without a conflict check on the very first push (nothing observed yet)', async () => {
+    it('pushes without a conflict check on the very first push (nothing exists remotely yet)', async () => {
       const service = makeService();
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
@@ -285,14 +327,27 @@ describe('TeamVaultService', () => {
       await expect(service.pushToRemote(provider)).resolves.toBeUndefined();
     });
 
+    it('refuses to push over a different, unrelated vault already at the target — even on the very first push', async () => {
+      // This is the fail-open gap: an in-memory "never observed" cache must not be treated as
+      // "nothing to check" the first time a freshly created local vault is pushed.
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_someone_elses')));
+
+      await expect(service.pushToRemote(provider)).rejects.toThrow(TeamVaultForeignVaultError);
+    });
+
     it('rejects a second push if the remote changed since this instance last observed it', async () => {
       const service = makeService();
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
+      const vaultId = (await service.getStatus()).vaultId!;
 
-      // Someone else pushed a change this instance never saw.
-      await provider.writeFile!('team-vault/vault.json', Buffer.from('{"formatVersion":1,"vaultId":"other"}'));
+      // Someone else pushed a change this instance never saw (same vault, so the identity check
+      // passes — this test is specifically about the freshness check).
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 2)));
 
       await expect(service.pushToRemote(provider)).rejects.toThrow(TeamVaultSyncConflictError);
     });
@@ -303,17 +358,28 @@ describe('TeamVaultService', () => {
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
 
-      await provider.writeFile!(
-        'team-vault/vault.json',
-        Buffer.from(JSON.stringify({ formatVersion: 1, vaultId: 'vlt_other', accessHeader: [], recovery: {}, encryptedPayload: '', updatedAt: '', updatedBy: '' }))
-      );
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_other')));
 
       await service.pullFromRemote(provider);
-      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member', 'alice@piv:abc')).rejects.toThrow(
+      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
         // Pull locks the vault (the previous Vault Key may not match the pulled file), so this
         // must now fail for "not unlocked", proving the pull actually replaced local state.
         'Unlock the Team Vault'
       );
+    });
+
+    it('rejects a pull that would roll the local vault back to an older revision', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member'); // local revision is now 2
+      const vaultId = (await service.getStatus()).vaultId!;
+
+      // An older revision of the *same* vault somehow ends up at the remote (e.g. a bucket-write-
+      // access holder who isn't actually a recipient restoring a stale copy).
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 1)));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultRollbackError);
     });
 
     it('pulling an existing remote vault lets a new member join without creating their own', async () => {
@@ -337,6 +403,28 @@ describe('TeamVaultService', () => {
       const service = makeService();
       const provider = fakeProvider();
       await provider.writeFile!('team-vault/vault.json', Buffer.from('{"not":"a vault"}'));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+    });
+
+    it('rejects a remote file with a malformed access entry (e.g. missing ageRecipient)', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 1,
+            vaultId: 'vlt_malformed',
+            revision: 1,
+            updatedAt: '2026-01-01T00:00:00Z',
+            updatedBy: 'x',
+            accessHeader: [{ recipientId: 'a', role: 'admin', wrappedVaultKey: 'w', addedAt: 'x', addedBy: 'x' }],
+            recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1y', wrappedVaultKey: 'w' },
+            encryptedPayload: '',
+          })
+        )
+      );
 
       await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
     });

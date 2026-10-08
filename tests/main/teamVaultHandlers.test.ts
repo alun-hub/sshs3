@@ -72,15 +72,20 @@ describe('Team Vault IPC handlers', () => {
 
   describe('TEAM_VAULT_ADD_MEMBER', () => {
     it('rejects an invalid role', async () => {
-      await expect(
-        call(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, 'bob', VALID_RECIPIENT, 'superadmin', 'alice')
-      ).rejects.toThrow('Invalid role');
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, 'bob', VALID_RECIPIENT, 'superadmin')).rejects.toThrow(
+        'Invalid role'
+      );
     });
 
     it('rejects a non-age-shaped recipient string', async () => {
       await expect(
-        call(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, 'bob', 'not-a-recipient', 'member', 'alice')
+        call(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, 'bob', 'not-a-recipient', 'member')
       ).rejects.toThrow('must be a valid age recipient string');
+    });
+
+    it('never accepts an addedBy argument — attribution comes only from the unlocked session', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, 'bob', VALID_RECIPIENT, 'member');
+      expect(teamVaultService.addMember).toHaveBeenCalledWith('bob', VALID_RECIPIENT, 'member');
     });
   });
 
@@ -105,9 +110,19 @@ describe('Team Vault IPC handlers', () => {
 
   describe('TEAM_VAULT_SET_ROLE', () => {
     it('rejects an invalid role', async () => {
-      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, 'bob', 'owner', 'alice')).rejects.toThrow(
-        'Invalid role'
-      );
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, 'bob', 'owner')).rejects.toThrow('Invalid role');
+    });
+
+    it('never accepts an updatedBy argument — attribution comes only from the unlocked session', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, 'bob', 'admin');
+      expect(teamVaultService.setRole).toHaveBeenCalledWith('bob', 'admin');
+    });
+  });
+
+  describe('TEAM_VAULT_REMOVE_MEMBER', () => {
+    it('never accepts a removedBy argument — attribution comes only from the unlocked session', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, 'bob');
+      expect(teamVaultService.removeMember).toHaveBeenCalledWith('bob');
     });
   });
 

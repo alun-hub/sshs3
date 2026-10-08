@@ -358,3 +358,36 @@ under-validerad IPC-arg-sink i `teamVaultHandlers.ts` från Fas 2
 `age` i stället för sitt avsedda värde) — åtgärdad med valideringsguards
 i både handler-lagret och vid själva anropsstället i
 `TeamVaultCryptoService`, med nya tester för båda.
+
+**Ytterligare säkerhetsgranskning av Fas 3-committen (2026-10-08)**
+hittade fyra fynd, alla åtgärdade:
+1. **Trust-boundary-confusion:** `addedBy`/`removedBy`/`updatedBy` togs
+   emot som renderer-angivna strängar (UI:t skickade bara den hårdkodade
+   texten `'me'`) — den lokala ändringshistoriken §2.3 beskriver ("vem
+   gjorde senaste skrivningen") var alltså ren dekoration, inte
+   auktoritativ. `addMember`/`removeMember`/`setRole` tar INTE längre
+   emot dessa som parametrar — `TeamVaultService` härleder dem nu från
+   `unlockedAsRecipientId`, satt av `createVault`/`unlock()`. Som en följd
+   kräver `setRole` nu också en upplåst session (tidigare kunde VEM SOM
+   HELST, olåst, befordra en godtycklig recipient till admin).
+2. **Fail-open konflikthantering vid push:** `lastKnownRemoteEntry ===
+   undefined` (alltid sant efter en app-omstart) hoppade över
+   konfliktkontrollen helt — ett nyskapat lokalt valv kunde då tysta
+   skriva över ett helt annat, befintligt team-valv på samma S3-mål vid
+   den första pushen. `pushToRemote` läser nu alltid remote-filens
+   `vaultId` när något finns på målet, oavsett cache-state, och kastar
+   `TeamVaultForeignVaultError` vid mismatch.
+3. **Missing-integrity-check vid pull:** formatkontrollen var ytlig
+   (bara toppnivå-fält) — ett trasigt `accessHeader`-objekt (t.ex.
+   saknad `ageRecipient`) hade kraschat djupt inne i `removeMember`s
+   om-wrap-loop i stället för att avvisas direkt. Ny `assertValidVaultFile`
+   validerar hela formen. Samtidigt lades ett `revision`-fält till i
+   `TeamVaultFile` (inkrementeras på varje skrivning) — `pullFromRemote`
+   avvisar nu en remote-fil vars revision går bakåt (`TeamVaultRollbackError`),
+   eftersom S3-skrivbehörighet inte är samma sak som att vara en
+   legitim valv-recipient: någon med bara bucket-skrivåtkomst skulle
+   annars kunna återställa en äldre version och återuppväcka en borttagen
+   medlems åtkomst.
+4. `pushToRemote`/`pullFromRemote` körs nu också genom `queueMutation`,
+   så de aldrig interleavar med varandra eller med en samtidig lokal
+   mutation (de delar `lastKnownRemoteEntry`/`unlockedVaultKey`-state).

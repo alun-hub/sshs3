@@ -197,6 +197,18 @@ function runAgeCommand(
       { timeout: EXEC_TIMEOUT_MS, maxBuffer: MAX_BUFFER, encoding: 'buffer', env },
       (err, stdout, stderr) => {
         if (err) {
+          // A bare ENOENT (no stdout/stderr at all) means the OS never found the binary to
+          // launch it — surfacing the raw "spawn age ENOENT" is unhelpful; name what's actually
+          // missing and point at how it's supposed to get there (CI-bundled in a packaged build,
+          // or a local install in dev — see docs/team-vault-plan.md Fas 1).
+          if ((err as any).code === 'ENOENT') {
+            reject(
+              new Error(
+                `"${binary}" was not found. In a packaged build this is bundled automatically; in development, install it locally or run a build that fetches it (see docs/team-vault-plan.md Fas 1).`
+              )
+            );
+            return;
+          }
           const stderrText = Buffer.isBuffer(stderr) ? stderr.toString('utf8') : String(stderr ?? '');
           reject(new Error(stderrText.trim() || err.message));
           return;

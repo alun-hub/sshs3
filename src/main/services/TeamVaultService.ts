@@ -24,6 +24,67 @@ export class TeamVaultSyncConflictError extends Error {
   }
 }
 
+/** A remote write-access holder is not necessarily a vault recipient (bucket IAM vs. vault
+ * membership are different trust domains) — this is thrown rather than silently overwriting
+ * whatever unrelated (or malicious) content sits at the configured path. */
+export class TeamVaultForeignVaultError extends Error {
+  constructor() {
+    super(
+      'A different Team Vault already exists at this S3 target. Pull it, or point this vault at a different bucket/prefix.'
+    );
+    this.name = 'TeamVaultForeignVaultError';
+  }
+}
+
+export class TeamVaultRollbackError extends Error {
+  constructor() {
+    super(
+      'The remote Team Vault is older than what is already stored locally — refusing to roll back (possible tampering or a stale remote copy).'
+    );
+    this.name = 'TeamVaultRollbackError';
+  }
+}
+
+function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
+  return (
+    e &&
+    typeof e.recipientId === 'string' &&
+    e.recipientId.length > 0 &&
+    (e.role === 'admin' || e.role === 'member') &&
+    typeof e.ageRecipient === 'string' &&
+    e.ageRecipient.length > 0 &&
+    typeof e.wrappedVaultKey === 'string' &&
+    e.wrappedVaultKey.length > 0 &&
+    typeof e.addedAt === 'string' &&
+    typeof e.addedBy === 'string'
+  );
+}
+
+/** Full-shape validation for a vault file pulled from a remote we don't control the writer of —
+ * a shallow "has the right top-level keys" check isn't enough, since a malformed entry (e.g.
+ * missing `ageRecipient`) would otherwise only fail later, deep inside `removeMember`'s re-wrap
+ * loop, with a confusing error. */
+function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
+  if (
+    !file ||
+    file.formatVersion !== FORMAT_VERSION ||
+    typeof file.vaultId !== 'string' ||
+    !file.vaultId ||
+    typeof file.revision !== 'number' ||
+    !Number.isInteger(file.revision) ||
+    file.revision < 1 ||
+    !Array.isArray(file.accessHeader) ||
+    !file.accessHeader.every(isValidAccessEntry) ||
+    !file.recovery ||
+    typeof file.recovery.recipientId !== 'string' ||
+    typeof file.recovery.ageRecipient !== 'string' ||
+    typeof file.recovery.wrappedVaultKey !== 'string' ||
+    typeof file.encryptedPayload !== 'string'
+  ) {
+    throw new Error('Team Vault file is not a recognizable vault (unexpected format)');
+  }
+}
+
 export interface TeamVaultServiceOptions {
   cryptoService?: TeamVaultCryptoService;
   /** Overrides the vault file path — tests only; production always uses userData. */
@@ -54,6 +115,13 @@ export class TeamVaultService {
   private readonly identityDir: string;
   private writeQueue: Promise<void> = Promise.resolve();
   private unlockedVaultKey: Buffer | null = null;
+  /** The recipientId that produced `unlockedVaultKey` (via `createVault` or `unlock`) — the
+   * authoritative identity for `addedBy`/`removedBy`/`updatedBy` audit fields. Deliberately NOT a
+   * caller-supplied parameter on `addMember`/`removeMember`/`setRole`: a renderer asserting an
+   * arbitrary "I am X" string for an audit trail that's shared with the whole team (§2.3:
+   * `updated_by` exists so a member can tell "who made the last change" without asking S3) would
+   * make that field purely decorative instead of authoritative. */
+  private unlockedAsRecipientId: string | null = null;
   /** Last observed remote `FileEntry` for the vault file, used for optimistic concurrency on
    * push (see `pushToRemote`) — `undefined` means never observed from this instance (no check
    * to do yet), `null` means observed as "doesn't exist yet". Same pattern as
@@ -86,6 +154,7 @@ export class TeamVaultService {
   /** Clears the Vault Key from memory — call on app lock/quit, same as `SyncCryptoService.lock()`. */
   lock(): void {
     this.unlockedVaultKey = null;
+    this.unlockedAsRecipientId = null;
   }
 
   /** Derived entirely from the plaintext `accessHeader` (§2.3) — never requires unlocking. */
@@ -150,6 +219,7 @@ export class TeamVaultService {
       const file: TeamVaultFile = {
         formatVersion: FORMAT_VERSION,
         vaultId,
+        revision: 1,
         updatedAt: now,
         updatedBy: selfRecipientId,
         accessHeader: [selfEntry],
@@ -163,22 +233,21 @@ export class TeamVaultService {
 
       await this.writeFile(file);
       this.unlockedVaultKey = vaultKey;
+      this.unlockedAsRecipientId = selfRecipientId;
 
       return { recoveryIdentity };
     });
   }
 
   /** Pure public-key wrap, no card/PIN involved on either side (§4.3) — requires the Vault Key
-   * already unlocked in this session (e.g. right after `createVault`, or via `unlock()`). */
-  async addMember(
-    recipientId: string,
-    ageRecipient: string,
-    role: TeamVaultRole,
-    addedBy: string
-  ): Promise<void> {
+   * already unlocked in this session (e.g. right after `createVault`, or via `unlock()`). The
+   * audit `addedBy` is always the recipient that actually unlocked this session, never a
+   * caller-supplied value (see `unlockedAsRecipientId`'s doc comment). */
+  async addMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
+      const addedBy = this.requireUnlockedRecipientId();
       if (file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is already a member of this vault`);
       }
@@ -193,6 +262,7 @@ export class TeamVaultService {
         addedAt: now,
         addedBy,
       });
+      file.revision += 1;
       file.updatedAt = now;
       file.updatedBy = addedBy;
       await this.writeFile(file);
@@ -206,10 +276,11 @@ export class TeamVaultService {
    * synced but lose all future updates. Returns the remaining admin count so the caller can warn,
    * not block, when it drops below 2 (§4.3's multi-admin rule is advisory).
    */
-  async removeMember(recipientId: string, removedBy: string): Promise<{ remainingAdmins: number }> {
+  async removeMember(recipientId: string): Promise<{ remainingAdmins: number }> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
+      const removedBy = this.requireUnlockedRecipientId();
       if (!file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
@@ -235,6 +306,7 @@ export class TeamVaultService {
 
       const updated: TeamVaultFile = {
         ...file,
+        revision: file.revision + 1,
         updatedAt: now,
         updatedBy: removedBy,
         accessHeader: rewrapped,
@@ -256,15 +328,18 @@ export class TeamVaultService {
   }
 
   /** Role is UI-only — every member already shares the same Vault Key by design, so changing it
-   * never needs re-keying (§4.3). */
-  async setRole(recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void> {
+   * never needs re-keying (§4.3). Still requires an unlocked, identified caller: without this, any
+   * caller (unlocked or not) could promote an arbitrary recipientId to admin. */
+  async setRole(recipientId: string, role: TeamVaultRole): Promise<void> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
+      const updatedBy = this.requireUnlockedRecipientId();
       const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
       if (!entry) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
       entry.role = role;
+      file.revision += 1;
       file.updatedAt = new Date().toISOString();
       file.updatedBy = updatedBy;
       await this.writeFile(file);
@@ -283,6 +358,7 @@ export class TeamVaultService {
       throw new Error(`"${recipientId}" is not a recipient of this vault`);
     }
     this.unlockedVaultKey = await this.cryptoService.unwrapVaultKey(source.wrappedVaultKey, identityFilePath);
+    this.unlockedAsRecipientId = recipientId;
   }
 
   /** Must be called whenever the configured S3 target/remoteBasePath changes — otherwise a stat
@@ -302,30 +378,50 @@ export class TeamVaultService {
 
   /**
    * Pushes the local vault file to the configured S3 target (docs/team-vault-plan.md Fas 3).
-   * Optimistic concurrency mirrors `ProfileSyncService.checkNotChangedRemotely`: if this instance
-   * has previously observed the remote file's state (via a prior push or pull) and a fresh `stat`
-   * no longer matches, the push is rejected with `TeamVaultSyncConflictError` rather than
-   * silently overwriting someone else's change — the real `S3StorageProvider` has no `If-Match`
-   * conditional-write primitive to use instead (verified; not portable across S3/MinIO versions
-   * anyway), so this reuses the same size+mtime comparison already proven for Remote Profile Sync.
+   * Serialized through `queueMutation` along with every local mutation and `pullFromRemote`, so a
+   * push can never interleave with a concurrent local write or pull touching the same in-memory
+   * state (`lastKnownRemoteEntry`, `unlockedVaultKey`).
+   *
+   * Two independent checks, not one, run before any byte is written remotely:
+   * 1. **Identity.** Whenever something already exists at the remote path, its `vaultId` is read
+   *    and compared to the local file's — regardless of whether this instance has ever observed
+   *    the remote before. Holding S3 write access to a path is not the same thing as being a
+   *    vault recipient (bucket IAM vs. vault membership are different trust domains), so a stat
+   *    cache that starts `undefined` after every app restart must never be treated as "nothing to
+   *    check" — that would silently let a brand-new local vault clobber a completely unrelated
+   *    team's vault the first time it's pushed. Mismatch throws `TeamVaultForeignVaultError`.
+   * 2. **Freshness.** Once identity is confirmed, `ProfileSyncService.checkNotChangedRemotely`'s
+   *    proven size+mtime comparison (the real `S3StorageProvider` has no `If-Match`
+   *    conditional-write primitive to use instead — verified, and not portable across S3/MinIO
+   *    versions anyway) still applies when this instance has previously observed the remote,
+   *    rejecting with `TeamVaultSyncConflictError` if someone else pushed since.
    */
   async pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
-    const file = await this.requireFile();
-    const remotePath = this.remoteVaultPath(remoteBasePath);
+    return this.queueMutation(async () => {
+      const file = await this.requireFile();
+      const remotePath = this.remoteVaultPath(remoteBasePath);
 
-    if (this.lastKnownRemoteEntry !== undefined) {
       const current = await this.statOrNull(provider, remotePath);
-      const known = this.lastKnownRemoteEntry;
-      const unchanged =
-        (known === null && current === null) ||
-        (known !== null && current !== null && known.size === current.size && known.mtime === current.mtime);
-      if (!unchanged) {
-        throw new TeamVaultSyncConflictError();
+      if (current !== null) {
+        const remoteFile = await this.readRemoteVaultFile(provider, remotePath);
+        if (remoteFile.vaultId !== file.vaultId) {
+          throw new TeamVaultForeignVaultError();
+        }
       }
-    }
 
-    await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
-    this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      if (this.lastKnownRemoteEntry !== undefined) {
+        const known = this.lastKnownRemoteEntry;
+        const unchanged =
+          (known === null && current === null) ||
+          (known !== null && current !== null && known.size === current.size && known.mtime === current.mtime);
+        if (!unchanged) {
+          throw new TeamVaultSyncConflictError();
+        }
+      }
+
+      await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
+      this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+    });
   }
 
   /**
@@ -334,18 +430,39 @@ export class TeamVaultService {
    * (when no local file exists yet). Locks the vault afterwards if it was unlocked: the cached
    * Vault Key may no longer be valid against a freshly pulled file that another admin re-keyed
    * (see `removeMember`), and reusing it blindly would be wrong.
+   *
+   * Refuses a pulled file whose `revision` goes backwards relative to the local copy
+   * (`TeamVaultRollbackError`) — see `TeamVaultFile.revision`'s doc comment for why a bucket
+   * write-access holder restoring an older version is a real, not theoretical, concern.
    */
   async pullFromRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
-    const remotePath = this.remoteVaultPath(remoteBasePath);
-    const raw = await this.readProviderFile(provider, remotePath);
-    const file = JSON.parse(raw.toString('utf-8')) as TeamVaultFile;
-    if (file.formatVersion !== FORMAT_VERSION || !file.vaultId || !Array.isArray(file.accessHeader)) {
-      throw new Error('Remote Team Vault file is not a recognizable vault (unexpected format)');
-    }
+    return this.queueMutation(async () => {
+      const remotePath = this.remoteVaultPath(remoteBasePath);
+      const file = await this.readRemoteVaultFile(provider, remotePath);
 
-    await this.writeFile(file);
-    this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
-    this.lock();
+      const localFile = await this.readFile();
+      if (localFile && file.revision < localFile.revision) {
+        throw new TeamVaultRollbackError();
+      }
+
+      await this.writeFile(file);
+      this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      this.lock();
+    });
+  }
+
+  /** Reads and fully validates a vault file from the remote — shared by `pushToRemote`'s identity
+   * check and `pullFromRemote`, since both need the same untrusted-content guarantees. */
+  private async readRemoteVaultFile(provider: IStorageProvider, remotePath: string): Promise<TeamVaultFile> {
+    const raw = await this.readProviderFile(provider, remotePath);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw.toString('utf-8'));
+    } catch {
+      throw new Error('Remote Team Vault file is not valid JSON');
+    }
+    assertValidVaultFile(parsed);
+    return parsed;
   }
 
   private remoteVaultPath(remoteBasePath: string): string {
@@ -416,6 +533,13 @@ export class TeamVaultService {
       throw new Error('Unlock the Team Vault before making changes to it');
     }
     return this.unlockedVaultKey;
+  }
+
+  private requireUnlockedRecipientId(): string {
+    if (!this.unlockedAsRecipientId) {
+      throw new Error('Unlock the Team Vault before making changes to it');
+    }
+    return this.unlockedAsRecipientId;
   }
 
   private async readFile(): Promise<TeamVaultFile | null> {

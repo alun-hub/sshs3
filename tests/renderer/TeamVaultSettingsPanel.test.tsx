@@ -104,8 +104,7 @@ describe('TeamVaultSettingsPanel', () => {
         expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
           'bob@piv:def',
           'age1yubikey1bob',
-          'member',
-          'me'
+          'member'
         );
       });
     });
@@ -121,7 +120,7 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultRemoveMember).toHaveBeenCalledWith('alice@piv:abc', 'me');
+        expect(window.multissh.teamVaultRemoveMember).toHaveBeenCalledWith('alice@piv:abc');
       });
     });
 
@@ -132,7 +131,7 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Demote' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith('alice@piv:abc', 'member', 'me');
+        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith('alice@piv:abc', 'member');
       });
     });
   });
