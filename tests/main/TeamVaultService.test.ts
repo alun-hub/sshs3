@@ -13,6 +13,7 @@ import {
   TeamVaultSyncConflictError,
   TeamVaultForeignVaultError,
   TeamVaultRollbackError,
+  TeamVaultTamperedEntryError,
 } from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
 import type { FileEntry, IStorageProvider } from '../../src/shared/types/storage';
@@ -296,7 +297,7 @@ describe('TeamVaultService', () => {
   describe('hasRemoteVault / pushToRemote / pullFromRemote (Fas 3)', () => {
     /** A structurally valid, unrelated vault file — used to simulate "someone else's content is
      * already sitting at this S3 path" without needing a second real TeamVaultService instance. */
-    function foreignVaultFileJson(vaultId: string, revision = 1): string {
+    function foreignVaultFileJson(vaultId: string, revision = 1, recoveryAgeRecipient = 'age1yubikey1foreignrecovery'): string {
       return JSON.stringify({
         formatVersion: 1,
         vaultId,
@@ -304,7 +305,7 @@ describe('TeamVaultService', () => {
         updatedAt: '2026-01-01T00:00:00Z',
         updatedBy: 'someone@piv:else',
         accessHeader: [],
-        recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1yubikey1foreignrecovery', wrappedVaultKey: 'w' },
+        recovery: { recipientId: 'recovery-key-1', ageRecipient: recoveryAgeRecipient, wrappedVaultKey: 'w' },
         encryptedPayload: '',
       });
     }
@@ -360,8 +361,12 @@ describe('TeamVaultService', () => {
       const vaultId = (await service.getStatus()).vaultId!;
 
       // A newer revision of the *same* vault (e.g. pushed from another machine) — not a vault
-      // switch, which pullFromRemote now refuses whenever a local vault already exists.
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 2)));
+      // switch, which pullFromRemote now refuses whenever a local vault already exists. Reuses
+      // alice's own recovery ageRecipient so this doesn't also trip the tamper check below.
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
+      );
 
       await service.pullFromRemote(provider);
       await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
@@ -396,6 +401,56 @@ describe('TeamVaultService', () => {
       await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_attacker', 999)));
 
       await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultForeignVaultError);
+    });
+
+    it('rejects a pull that keeps the same vaultId/revision bump but swaps an existing recipient\'s public key', async () => {
+      // The two-step attack the vaultId/revision checks alone don't stop: same vault, a
+      // plausible-looking higher revision, but an existing member's ageRecipient silently
+      // replaced with the attacker's own. On its own this is inert (the attacker has no way to
+      // forge a valid wrappedVaultKey) — but a later, routine removeMember would re-wrap a fresh
+      // Vault Key for every remaining entry's ageRecipient, including the tampered one, handing
+      // the attacker real access the moment that happens.
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await service.getStatus()).vaultId!;
+
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 1,
+            vaultId,
+            revision: 99,
+            updatedAt: '2026-01-01T00:00:00Z',
+            updatedBy: 'alice@piv:abc',
+            accessHeader: [
+              {
+                recipientId: 'alice@piv:abc',
+                role: 'admin',
+                ageRecipient: 'age1yubikey1alice',
+                wrappedVaultKey: 'wrapped:age1yubikey1alice:aa',
+                addedAt: 'x',
+                addedBy: 'alice@piv:abc',
+              },
+              {
+                // bob's recipientId kept, but his public key swapped for the attacker's.
+                recipientId: 'bob@piv:def',
+                role: 'member',
+                ageRecipient: 'age1yubikey1attacker',
+                wrappedVaultKey: 'wrapped:age1yubikey1bob:bb', // stale on purpose — inert until reactivated
+                addedAt: 'x',
+                addedBy: 'alice@piv:abc',
+              },
+            ],
+            recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1fakerecovery', wrappedVaultKey: 'w' },
+            encryptedPayload: '',
+          })
+        )
+      );
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultTamperedEntryError);
     });
 
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {

@@ -405,3 +405,21 @@ maskinen följer tyst — det kräver nu att man medvetet tar bort den
 lokala filen först. Samtidigt lades en kontroll till mot dubbla
 `recipientId`-värden i en pullad fil (kan annars skugga en riktig
 medlems eller recovery-nyckelns post).
+
+**Ytterligare granskning (2026-10-08, samma dag) hittade ett kvarvarande
+hål i samma identitetskontroll:** `vaultId`/`revision`-kontrollerna
+skyddar bara HELA filen, inte enskilda poster. Någon med S3-skrivbehörighet
+(utan att vara en legitim recipient) kunde behålla `vaultId`, höja
+`revision`, och bara byta ut en BEFINTLIG medlems `ageRecipient` mot sin
+egen publika nyckel (lämna den posten `wrappedVaultKey` orörd — oskadlig
+tills den återaktiveras). Attacken är overksam i sig (angriparen kan inte
+förfalska en giltig `wrappedVaultKey` utan den riktiga Vault Key:n) — men
+nästa gång en admin kör en helt rutinmässig `removeMember` (för att
+avsluta någon helt annan persons åtkomst) om-wrappar den koden en FRÄSCH
+Vault Key för varje kvarvarande posts `ageRecipient`, inklusive den
+manipulerade — och ger då angriparen verklig åtkomst. `ageRecipient` för
+ett givet `recipientId` ändras aldrig legitimt efter att det lagts till
+(`addMember` vägrar en redan existerande `recipientId`), så
+`pullFromRemote` jämför nu varje känd `recipientId`:s `ageRecipient` (i
+`accessHeader` och recovery-posten) mot det tidigare kända värdet och
+kastar `TeamVaultTamperedEntryError` vid mismatch.

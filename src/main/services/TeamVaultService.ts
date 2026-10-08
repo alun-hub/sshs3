@@ -49,6 +49,23 @@ export class TeamVaultRollbackError extends Error {
   }
 }
 
+/** A recipient's `ageRecipient` (their public key) never legitimately changes once added —
+ * `addMember` refuses a `recipientId` that's already a member, and nothing else ever rewrites
+ * this field. A pulled file that disagrees, for a recipient this machine already knows, despite
+ * matching `vaultId`/`revision`, means someone with mere S3 write access (not necessarily a real
+ * recipient) substituted their own public key into an existing entry. That substitution is inert
+ * on its own — its stale `wrappedVaultKey` can't be unwrapped without the real Vault Key — but a
+ * later, routine `removeMember` would re-wrap a *fresh* Vault Key for every remaining entry's
+ * `ageRecipient`, including the tampered one, handing the attacker real access. Reject outright. */
+export class TeamVaultTamperedEntryError extends Error {
+  constructor(recipientId: string) {
+    super(
+      `The remote Team Vault's public key for "${recipientId}" does not match what was previously known — refusing to accept it (possible tampering by whoever has S3 write access to this path).`
+    );
+    this.name = 'TeamVaultTamperedEntryError';
+  }
+}
+
 function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
   return (
     e &&
@@ -471,6 +488,10 @@ export class TeamVaultService {
         if (file.revision < localFile.revision) {
           throw new TeamVaultRollbackError();
         }
+        // Same vault, same-or-newer revision — but a bucket-write-access holder could still have
+        // silently swapped an existing recipient's public key rather than the whole vault. See
+        // `TeamVaultTamperedEntryError`'s doc comment for the two-step attack this closes.
+        this.assertNoAgeRecipientTampering(localFile, file);
       }
 
       await this.writeFile(file);
@@ -495,6 +516,21 @@ export class TeamVaultService {
 
   private remoteVaultPath(remoteBasePath: string): string {
     return joinPaths('s3', remoteBasePath, REMOTE_VAULT_FILENAME);
+  }
+
+  private assertNoAgeRecipientTampering(localFile: TeamVaultFile, remoteFile: TeamVaultFile): void {
+    const knownAgeRecipients = new Map<string, string>();
+    for (const entry of localFile.accessHeader) {
+      knownAgeRecipients.set(entry.recipientId, entry.ageRecipient);
+    }
+    knownAgeRecipients.set(localFile.recovery.recipientId, localFile.recovery.ageRecipient);
+
+    for (const entry of [...remoteFile.accessHeader, remoteFile.recovery]) {
+      const known = knownAgeRecipients.get(entry.recipientId);
+      if (known !== undefined && known !== entry.ageRecipient) {
+        throw new TeamVaultTamperedEntryError(entry.recipientId);
+      }
+    }
   }
 
   // Same provider-capability fallback as ProfileSyncService.readProviderFile/writeProviderFile:
