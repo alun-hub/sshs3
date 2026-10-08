@@ -60,6 +60,59 @@ jobs:
           npm run lint
           npm run test
 
+      - name: Prepare bundled age + age-plugin-yubikey for Team Vault (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          mkdir -p build-resources/age/linux
+
+          echo "Downloading age v1.3.2 (linux-amd64)..."
+          curl -sL -o age.tar.gz "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz"
+          echo "cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  age.tar.gz" | sha256sum -c -
+          tar xzf age.tar.gz
+          cp age/age build-resources/age/linux/age
+          rm -rf age age.tar.gz
+
+          # Pinned to v0.5.0, not "latest": v0.5.1 dropped the Linux binary from its release
+          # assets entirely (darwin + windows only) — verified against the project's GitHub
+          # Releases API when this step was written. v0.5.0 is the newest release that still
+          # ships Linux and Windows binaries together, so both platforms stay on one version.
+          echo "Downloading age-plugin-yubikey v0.5.0 (x86_64-linux)..."
+          curl -sL -o apy.tar.gz "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.0/age-plugin-yubikey-v0.5.0-x86_64-linux.tar.gz"
+          echo "019b35a13fc81be56d73d0723db0a2082fbd04c936c2c6836381111f7f51b2c3  apy.tar.gz" | sha256sum -c -
+          tar xzf apy.tar.gz
+          cp age-plugin-yubikey/age-plugin-yubikey build-resources/age/linux/age-plugin-yubikey
+          rm -rf age-plugin-yubikey apy.tar.gz
+
+          chmod +x build-resources/age/linux/age build-resources/age/linux/age-plugin-yubikey
+
+      - name: Prepare bundled age + age-plugin-yubikey for Team Vault (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'build-resources/age/win'
+
+          Write-Host "Downloading age v1.3.2 (windows-amd64)..."
+          Invoke-WebRequest -Uri "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip" -OutFile "age.zip"
+          $expectedAge = "f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7"
+          $actualAge = (Get-FileHash -Algorithm SHA256 "age.zip").Hash.ToLower()
+          if ($actualAge -ne $expectedAge) { throw "age.zip checksum mismatch: $actualAge" }
+          Expand-Archive -Path "age.zip" -DestinationPath "age-extract" -Force
+          Copy-Item "age-extract/age/age.exe" "build-resources/age/win/age.exe"
+          Remove-Item -Recurse -Force "age-extract", "age.zip"
+
+          # Pinned to v0.5.0 for the same reason as the Linux step above (see its comment):
+          # v0.5.1 dropped the Linux asset, so both platforms are kept on the last release that
+          # shipped both.
+          Write-Host "Downloading age-plugin-yubikey v0.5.0 (x86_64-windows)..."
+          Invoke-WebRequest -Uri "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.0/age-plugin-yubikey-v0.5.0-x86_64-windows.zip" -OutFile "apy.zip"
+          $expectedApy = "a2f1478bc691328861e9e511dfc498ddedb1d0b4b2e93c002f14ce1db0cb5abf"
+          $actualApy = (Get-FileHash -Algorithm SHA256 "apy.zip").Hash.ToLower()
+          if ($actualApy -ne $expectedApy) { throw "apy.zip checksum mismatch: $actualApy" }
+          Expand-Archive -Path "apy.zip" -DestinationPath "apy-extract" -Force
+          Copy-Item "apy-extract/age-plugin-yubikey/age-plugin-yubikey.exe" "build-resources/age/win/age-plugin-yubikey.exe"
+          Remove-Item -Recurse -Force "apy-extract", "apy.zip"
+
       - name: Prepare bundled VcXsrv for Windows
         if: runner.os == 'Windows'
         shell: pwsh

@@ -18,7 +18,16 @@
     ],
     "category": "Utility",
     "icon": "build/icons",
-    "synopsis": "Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support"
+    "synopsis": "Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support",
+    "extraResources": [
+      {
+        "from": "build-resources/age/linux",
+        "to": "age",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   },
   "win": {
     "icon": "build/icon.ico",
@@ -32,6 +41,13 @@
       {
         "from": "build-resources/vcxsrv",
         "to": "vcxsrv",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build-resources/age/win",
+        "to": "age",
         "filter": [
           "**/*"
         ]

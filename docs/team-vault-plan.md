@@ -276,3 +276,29 @@ Alla vägval för v1 är låsta (2026-09-28):
    Se §6, Fas 1.
 
 Inga öppna frågor kvarstår för att påbörja Fas 1.
+
+**Fas 1 implementerad (2026-10-08).** Precisering av Fas 1-raden ovan:
+bundlingen omfattar **Linux + Windows**, inte macOS — det är de enda
+plattformar `ci.yml`/`release.yml` faktiskt bygger idag (appen har ingen
+macOS-CI). `TeamVaultCryptoService` (vault-kuvertet i §2.3: AES-256-GCM,
+AAD=vaultId+formatVersion, `generateVaultKey`/`encryptPayload`/
+`decryptPayload`/`wrapVaultKeyForRecipient`/`unwrapVaultKey`) och
+`AgeBinaryResolver` (paketerad `extraResources` → dev
+`build-resources/age/<platform>` → PATH, i den ordningen) finns i
+`src/main/services/`. `.github/workflows/release.yml` och
+`electron-builder.json` hämtar och SHA256-pinnar `age` v1.3.2
+(Linux+Windows) och `age-plugin-yubikey` **v0.5.0** — medvetet inte
+"latest": v0.5.1 (verifierat mot GitHub Releases API 2026-10-08) tappade
+Linux-binären helt ur sina release-assets (bara Darwin+Windows kvar), så
+v0.5.0 är senaste versionen som fortfarande ger matchande Linux- och
+Windows-binärer. Bevaka detta vid framtida uppgraderingar av pluginet.
+
+Kvarstående, medvetet olösta risker inför Fas 2/3:
+1. Kan `age-plugin-yubikey` ta emot PIN icke-interaktivt (via stdin)?
+   Inte verifierat mot riktig YubiKey-hårdvara. Om inte: `unwrapVaultKey`
+   behöver en pty-wrapper (appen har redan `node-pty`) i stället för
+   vanlig stdin-piping — en omskrivning av process-spawningen, inte av
+   vault-formatet.
+2. `age-plugin-yubikey` kräver `pcscd` installerad och körande på Linux —
+   ett nytt runtime-beroende utöver dagens PKCS#11-middleware-krav, ännu
+   inte dokumenterat för slutanvändare.
