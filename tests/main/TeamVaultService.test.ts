@@ -357,8 +357,11 @@ describe('TeamVaultService', () => {
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
+      const vaultId = (await service.getStatus()).vaultId!;
 
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_other')));
+      // A newer revision of the *same* vault (e.g. pushed from another machine) — not a vault
+      // switch, which pullFromRemote now refuses whenever a local vault already exists.
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 2)));
 
       await service.pullFromRemote(provider);
       await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
@@ -380,6 +383,50 @@ describe('TeamVaultService', () => {
       await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 1)));
 
       await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultRollbackError);
+    });
+
+    it('refuses to pull a substituted, unrelated vault over an existing local one — even with a higher revision', async () => {
+      // The real attack the revision check alone can't stop: forging a *different* vault
+      // (vaultId) with a revision number higher than ours sails straight past a bare "is this
+      // newer" check. The identity check must run first and reject this outright.
+      const service = makeService();
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_attacker', 999)));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultForeignVaultError);
+    });
+
+    it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 1,
+            vaultId: 'vlt_dup',
+            revision: 1,
+            updatedAt: '2026-01-01T00:00:00Z',
+            updatedBy: 'x',
+            accessHeader: [
+              {
+                recipientId: 'recovery-key-1', // collides with the recovery entry's own id
+                role: 'admin',
+                ageRecipient: 'age1yubikey1attacker',
+                wrappedVaultKey: 'w',
+                addedAt: 'x',
+                addedBy: 'x',
+              },
+            ],
+            recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1y', wrappedVaultKey: 'w' },
+            encryptedPayload: '',
+          })
+        )
+      );
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('pulling an existing remote vault lets a new member join without creating their own', async () => {

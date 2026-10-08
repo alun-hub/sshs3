@@ -391,3 +391,17 @@ hittade fyra fynd, alla åtgärdade:
 4. `pushToRemote`/`pullFromRemote` körs nu också genom `queueMutation`,
    så de aldrig interleavar med varandra eller med en samtidig lokal
    mutation (de delar `lastKnownRemoteEntry`/`unlockedVaultKey`-state).
+
+**Uppföljande granskning (2026-10-08, samma dag) hittade att fixen ovan
+var ofullständig: `pullFromRemote` saknade samma identitetskontroll som
+`pushToRemote` redan fått.** `revision` är bara ett vanligt fält i en
+osignerad JSON-fil — vem som helst med S3-skrivbehörighet (inte
+nödvändigtvis en legitim recipient) kan ersätta HELA valvet med ett helt
+annat (`vaultId`) och själv välja ett `revision`-tal högre än det lokala,
+vilket seglade rakt förbi en rollback-kontroll som bara jämför tal.
+`pullFromRemote` kontrollerar nu `vaultId`-identitet FÖRE
+revision/rollback-kontrollen, och vägrar byta vilket valv den här
+maskinen följer tyst — det kräver nu att man medvetet tar bort den
+lokala filen först. Samtidigt lades en kontroll till mot dubbla
+`recipientId`-värden i en pullad fil (kan annars skugga en riktig
+medlems eller recovery-nyckelns post).

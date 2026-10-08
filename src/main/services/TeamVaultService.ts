@@ -25,12 +25,16 @@ export class TeamVaultSyncConflictError extends Error {
 }
 
 /** A remote write-access holder is not necessarily a vault recipient (bucket IAM vs. vault
- * membership are different trust domains) — this is thrown rather than silently overwriting
- * whatever unrelated (or malicious) content sits at the configured path. */
+ * membership are different trust domains) — thrown by `pushToRemote` (don't silently overwrite
+ * unrelated/malicious content at the target) and by `pullFromRemote` (don't silently adopt
+ * unrelated/malicious content as this machine's vault) alike, whenever a vault with a different
+ * `vaultId` than expected is encountered. */
 export class TeamVaultForeignVaultError extends Error {
   constructor() {
     super(
-      'A different Team Vault already exists at this S3 target. Pull it, or point this vault at a different bucket/prefix.'
+      'A different Team Vault than the one expected here was found. If you mean to switch which ' +
+        'vault this machine follows, delete the local vault file first; otherwise point this vault ' +
+        'at a different bucket/prefix.'
     );
     this.name = 'TeamVaultForeignVaultError';
   }
@@ -82,6 +86,16 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
     typeof file.encryptedPayload !== 'string'
   ) {
     throw new Error('Team Vault file is not a recognizable vault (unexpected format)');
+  }
+
+  // Every recipientId (including the recovery one) must be unique. A duplicate is never a
+  // legitimate state this app itself would write — addMember already rejects an existing
+  // recipientId — so one showing up in pulled content is either corruption or someone with mere
+  // S3 write access trying to shadow a real recipient's entry with one of their own. `unlock()`'s
+  // `.find()` would otherwise silently resolve to whichever entry happens to come first.
+  const allIds = [...file.accessHeader.map((e: TeamVaultAccessEntry) => e.recipientId), file.recovery.recipientId];
+  if (new Set(allIds).size !== allIds.length) {
+    throw new Error('Team Vault file is not a recognizable vault (duplicate recipient id)');
   }
 }
 
@@ -441,8 +455,22 @@ export class TeamVaultService {
       const file = await this.readRemoteVaultFile(provider, remotePath);
 
       const localFile = await this.readFile();
-      if (localFile && file.revision < localFile.revision) {
-        throw new TeamVaultRollbackError();
+      if (localFile) {
+        // Identity BEFORE freshness, and never skippable: `revision` is an ordinary field in an
+        // unsigned JSON file, not a cryptographic guarantee — anyone with S3 write access (not
+        // necessarily a real recipient) can substitute the entire vault with one of their own
+        // choosing and simply pick a `revision` higher than ours, sailing straight past a
+        // rollback check that only compares numbers. Checking `vaultId` first closes exactly that
+        // bypass: a *different* vault, however "newer" it claims to be, is never silently
+        // accepted as a continuation of this one. Leaving/joining a different vault on purpose
+        // means deleting the local file first (so `localFile` is null here) — not something this
+        // sync action does implicitly.
+        if (file.vaultId !== localFile.vaultId) {
+          throw new TeamVaultForeignVaultError();
+        }
+        if (file.revision < localFile.revision) {
+          throw new TeamVaultRollbackError();
+        }
       }
 
       await this.writeFile(file);
