@@ -220,4 +220,72 @@ describe('TeamVaultCryptoService', () => {
       await expect(service2.enrollOwnPivRecipient(dir)).rejects.toThrow('did not produce a recipient string');
     });
   });
+
+  describe('computeAccessHeaderMac', () => {
+    const accessHeader = [
+      {
+        recipientId: 'alice@piv:abc',
+        role: 'admin' as const,
+        method: 'piv-rsa-oaep' as const,
+        ageRecipient: 'age1yubikey1alice',
+        wrappedVaultKey: 'wrapped-alice',
+        addedAt: '2026-01-01T00:00:00Z',
+        addedBy: 'alice@piv:abc',
+      },
+    ];
+    const recovery = {
+      recipientId: 'recovery-key-1',
+      ageRecipient: 'age1recovery',
+      wrappedVaultKey: 'wrapped-recovery',
+    };
+
+    it('is deterministic for the same inputs', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const a = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      const b = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      expect(a).toBe(b);
+    });
+
+    it('changes if the Vault Key differs', () => {
+      const svc = new TeamVaultCryptoService();
+      const macA = svc.computeAccessHeaderMac(Buffer.alloc(32, 1), 'vlt_1', 1, accessHeader, recovery);
+      const macB = svc.computeAccessHeaderMac(Buffer.alloc(32, 2), 'vlt_1', 1, accessHeader, recovery);
+      expect(macA).not.toBe(macB);
+    });
+
+    it('changes if any access entry field differs, even a single character', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const macA = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      const tampered = [{ ...accessHeader[0], ageRecipient: 'age1yubikey1alicX' }];
+      const macB = svc.computeAccessHeaderMac(key, 'vlt_1', 1, tampered, recovery);
+      expect(macA).not.toBe(macB);
+    });
+
+    it('changes if the revision or vaultId differs', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const base = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      expect(svc.computeAccessHeaderMac(key, 'vlt_1', 2, accessHeader, recovery)).not.toBe(base);
+      expect(svc.computeAccessHeaderMac(key, 'vlt_2', 1, accessHeader, recovery)).not.toBe(base);
+    });
+
+    it('is insensitive to access-entry array order (sorted canonicalization)', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const second = {
+        recipientId: 'bob@piv:def',
+        role: 'member' as const,
+        method: 'piv-rsa-oaep' as const,
+        ageRecipient: 'age1yubikey1bob',
+        wrappedVaultKey: 'wrapped-bob',
+        addedAt: '2026-01-02T00:00:00Z',
+        addedBy: 'alice@piv:abc',
+      };
+      const forward = svc.computeAccessHeaderMac(key, 'vlt_1', 1, [accessHeader[0], second], recovery);
+      const reversed = svc.computeAccessHeaderMac(key, 'vlt_1', 1, [second, accessHeader[0]], recovery);
+      expect(forward).toBe(reversed);
+    });
+  });
 });

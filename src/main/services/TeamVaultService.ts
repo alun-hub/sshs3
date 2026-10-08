@@ -66,6 +66,19 @@ export class TeamVaultTamperedEntryError extends Error {
   }
 }
 
+/** The access header's own authenticity tag (`accessHeaderMac`) didn't match what the Vault Key
+ * we hold computes for it — thrown regardless of which field was tampered with, or which
+ * `revision` the tamperer attached to their forgery, since computing a valid tag requires the
+ * real Vault Key. See `TeamVaultCryptoService.computeAccessHeaderMac`'s doc comment. */
+export class TeamVaultHeaderIntegrityError extends Error {
+  constructor() {
+    super(
+      "The remote Team Vault's access header failed its integrity check against the Vault Key already held — refusing to accept it (possible tampering by whoever has S3 write access to this path)."
+    );
+    this.name = 'TeamVaultHeaderIntegrityError';
+  }
+}
+
 function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
   return (
     e &&
@@ -100,7 +113,9 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
     typeof file.recovery.recipientId !== 'string' ||
     typeof file.recovery.ageRecipient !== 'string' ||
     typeof file.recovery.wrappedVaultKey !== 'string' ||
-    typeof file.encryptedPayload !== 'string'
+    typeof file.encryptedPayload !== 'string' ||
+    typeof file.accessHeaderMac !== 'string' ||
+    !file.accessHeaderMac
   ) {
     throw new Error('Team Vault file is not a recognizable vault (unexpected format)');
   }
@@ -247,19 +262,22 @@ export class TeamVaultService {
       const { identity: recoveryIdentity, recipient: recoveryRecipient } =
         await this.cryptoService.generateRecoveryIdentity();
 
+      const recovery = {
+        recipientId: 'recovery-key-1',
+        ageRecipient: recoveryRecipient,
+        wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(vaultKey, recoveryRecipient),
+      };
+      const accessHeader = [selfEntry];
       const file: TeamVaultFile = {
         formatVersion: FORMAT_VERSION,
         vaultId,
         revision: 1,
         updatedAt: now,
         updatedBy: selfRecipientId,
-        accessHeader: [selfEntry],
-        recovery: {
-          recipientId: 'recovery-key-1',
-          ageRecipient: recoveryRecipient,
-          wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(vaultKey, recoveryRecipient),
-        },
+        accessHeader,
+        recovery,
         encryptedPayload: this.cryptoService.encryptPayload(vaultKey, vaultId, FORMAT_VERSION, '{}'),
+        accessHeaderMac: this.cryptoService.computeAccessHeaderMac(vaultKey, vaultId, 1, accessHeader, recovery),
       };
 
       await this.writeFile(file);
@@ -296,6 +314,13 @@ export class TeamVaultService {
       file.revision += 1;
       file.updatedAt = now;
       file.updatedBy = addedBy;
+      file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
+        vaultKey,
+        file.vaultId,
+        file.revision,
+        file.accessHeader,
+        file.recovery
+      );
       await this.writeFile(file);
     });
   }
@@ -335,20 +360,27 @@ export class TeamVaultService {
         });
       }
 
+      const newRevision = file.revision + 1;
+      const newRecovery = {
+        ...file.recovery,
+        wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(newVaultKey, file.recovery.ageRecipient),
+      };
+
       const updated: TeamVaultFile = {
         ...file,
-        revision: file.revision + 1,
+        revision: newRevision,
         updatedAt: now,
         updatedBy: removedBy,
         accessHeader: rewrapped,
-        recovery: {
-          ...file.recovery,
-          wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(
-            newVaultKey,
-            file.recovery.ageRecipient
-          ),
-        },
+        recovery: newRecovery,
         encryptedPayload: this.cryptoService.encryptPayload(newVaultKey, file.vaultId, file.formatVersion, plaintext),
+        accessHeaderMac: this.cryptoService.computeAccessHeaderMac(
+          newVaultKey,
+          file.vaultId,
+          newRevision,
+          rewrapped,
+          newRecovery
+        ),
       };
 
       await this.writeFile(updated);
@@ -360,10 +392,12 @@ export class TeamVaultService {
 
   /** Role is UI-only — every member already shares the same Vault Key by design, so changing it
    * never needs re-keying (§4.3). Still requires an unlocked, identified caller: without this, any
-   * caller (unlocked or not) could promote an arbitrary recipientId to admin. */
+   * caller (unlocked or not) could promote an arbitrary recipientId to admin. Needs the Vault Key
+   * itself too (not just the identity), since the access header's MAC must be recomputed. */
   async setRole(recipientId: string, role: TeamVaultRole): Promise<void> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
+      const vaultKey = this.requireUnlocked();
       const updatedBy = this.requireUnlockedRecipientId();
       const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
       if (!entry) {
@@ -373,6 +407,13 @@ export class TeamVaultService {
       file.revision += 1;
       file.updatedAt = new Date().toISOString();
       file.updatedBy = updatedBy;
+      file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
+        vaultKey,
+        file.vaultId,
+        file.revision,
+        file.accessHeader,
+        file.recovery
+      );
       await this.writeFile(file);
     });
   }
@@ -495,25 +536,41 @@ export class TeamVaultService {
 
         // The tampering check above only catches a *substituted* existing recipient — it says
         // nothing about a wholly new, illegitimate entry a bucket-write-access holder could
-        // inject (their own ageRecipient, no existing recipientId to collide with). That's
-        // indistinguishable at the field level from a real addMember pushed from another
-        // machine, since neither signs its entries. But there's one thing only someone holding
-        // the *real* Vault Key could have produced: a single-step pull (`revision` exactly +1)
-        // whose recipient count didn't drop is, by construction, either `addMember` or
-        // `setRole` — the only two operations that never rotate the Vault Key — so
-        // `encryptedPayload` must still be exactly what it was, still decryptable with the key
-        // we already hold. `removeMember` is the only operation that rotates the key, which is
-        // why it's excluded here (a legitimate key rotation would otherwise look identical to
-        // tampering). Best-effort: only checked when this session happens to be unlocked, and
-        // only for a single-step pull — a multi-revision catch-up may have had a `removeMember`
-        // folded in, which legitimately changes the key, so it's left to the weaker (but always-
-        // applied) checks above rather than risk a false rejection.
-        if (
-          this.unlockedVaultKey &&
-          file.revision === localFile.revision + 1 &&
-          file.accessHeader.length >= localFile.accessHeader.length
-        ) {
-          this.cryptoService.decryptPayload(this.unlockedVaultKey, file.vaultId, file.formatVersion, file.encryptedPayload);
+        // inject (their own ageRecipient, no existing recipientId to collide with), which is
+        // indistinguishable at the field level from a real addMember pushed from another machine.
+        //
+        // An earlier version of this check tried to catch that by requiring the payload to still
+        // decrypt with our held key, but *only* for a single-step pull (`revision` exactly +1) —
+        // which a reviewer correctly flagged as an ineffective control: `revision` is a plain,
+        // attacker-chosen field, so the attacker simply picks a different delta (or the same
+        // revision as ours) and walks straight past that narrow equality check. Verifying
+        // `accessHeaderMac` instead has no such hole: it's valid only if computed with the real
+        // Vault Key, for the exact `vaultId`/`revision`/`accessHeader`/`recovery` being pulled —
+        // there is no revision value an attacker can choose their way around.
+        //
+        // The one gate that remains is `accessHeader.length` not having dropped: `removeMember`
+        // is the only operation that rotates the Vault Key, and after a rotation this check
+        // *must* fail against our now-stale key even though the rotation itself was perfectly
+        // legitimate. Entry count not decreasing is a good, but not perfect, proxy for "no
+        // rotation happened anywhere in this gap" — a multi-revision catch-up that nets to the
+        // same-or-higher count despite an interior remove+add would still (safely) fail here and
+        // be rejected; re-unlocking after a plain `lock()`+pull skips this check entirely and
+        // picks up the real current key regardless. The residual gap this doesn't close — an
+        // attacker removing a real member to fake that same "count decreased" signal just to
+        // smuggle in their own entry — requires deleting a real recipient's access outright,
+        // which is far more conspicuous than a quiet substitution and is accepted as a known
+        // limit of an unsigned header (see docs/team-vault-plan.md Fas 3's note on this).
+        if (this.unlockedVaultKey && file.accessHeader.length >= localFile.accessHeader.length) {
+          const expectedMac = this.cryptoService.computeAccessHeaderMac(
+            this.unlockedVaultKey,
+            file.vaultId,
+            file.revision,
+            file.accessHeader,
+            file.recovery
+          );
+          if (expectedMac !== file.accessHeaderMac) {
+            throw new TeamVaultHeaderIntegrityError();
+          }
         }
       }
 

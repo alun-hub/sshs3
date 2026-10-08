@@ -14,6 +14,7 @@ import {
   TeamVaultForeignVaultError,
   TeamVaultRollbackError,
   TeamVaultTamperedEntryError,
+  TeamVaultHeaderIntegrityError,
 } from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
 import type { FileEntry, IStorageProvider } from '../../src/shared/types/storage';
@@ -93,6 +94,14 @@ function fakeCrypto(): TeamVaultCryptoService {
       identity: 'AGE-SECRET-KEY-FAKE\n# public key: age1fakerecovery',
       recipient: 'age1fakerecovery',
     }),
+    // Simplified but real, deterministic HMAC keyed by the Vault Key — doesn't need to match the
+    // production algorithm's exact canonicalization/HKDF, only to be internally consistent (same
+    // inputs -> same tag) across every TeamVaultService instance under test.
+    computeAccessHeaderMac: (vaultKey: Buffer, vaultId: string, revision: number, accessHeader: unknown, recovery: unknown) =>
+      crypto
+        .createHmac('sha256', vaultKey)
+        .update(JSON.stringify({ vaultId, revision, accessHeader, recovery }))
+        .digest('base64'),
   } as unknown as TeamVaultCryptoService;
 }
 
@@ -307,6 +316,7 @@ describe('TeamVaultService', () => {
         accessHeader: [],
         recovery: { recipientId: 'recovery-key-1', ageRecipient: recoveryAgeRecipient, wrappedVaultKey: 'w' },
         encryptedPayload: '',
+        accessHeaderMac: 'placeholder-mac',
       });
     }
 
@@ -446,6 +456,7 @@ describe('TeamVaultService', () => {
             ],
             recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1fakerecovery', wrappedVaultKey: 'w' },
             encryptedPayload: '',
+            accessHeaderMac: 'placeholder-mac',
           })
         )
       );
@@ -453,9 +464,10 @@ describe('TeamVaultService', () => {
       await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultTamperedEntryError);
     });
 
-    it('accepts a legitimate single-step addMember pulled from another machine (payload untouched, decrypts fine)', async () => {
-      // addMember never rotates the Vault Key or touches encryptedPayload — a real addMember
-      // pushed from elsewhere must leave both exactly as they were.
+    it('accepts a legitimate single-step addMember pulled from another machine (header MAC recomputed correctly)', async () => {
+      // addMember never rotates the Vault Key — a real addMember pushed from elsewhere
+      // recomputes accessHeaderMac correctly for the new content, using the same (still-valid)
+      // Vault Key this instance already holds.
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
@@ -464,32 +476,42 @@ describe('TeamVaultService', () => {
       const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
 
       const provider = fakeProvider();
+      const newRevision = localRaw.revision + 1;
+      const newAccessHeader = [
+        ...localRaw.accessHeader,
+        {
+          recipientId: 'bob@piv:def',
+          role: 'member',
+          ageRecipient: 'age1yubikey1bob',
+          wrappedVaultKey: 'wrapped:age1yubikey1bob:cc',
+          addedAt: 'x',
+          addedBy: 'alice@piv:abc',
+        },
+      ];
       const remoteFile = {
         ...localRaw,
-        revision: localRaw.revision + 1,
-        accessHeader: [
-          ...localRaw.accessHeader,
-          {
-            recipientId: 'bob@piv:def',
-            role: 'member',
-            ageRecipient: 'age1yubikey1bob',
-            wrappedVaultKey: 'wrapped:age1yubikey1bob:cc',
-            addedAt: 'x',
-            addedBy: 'alice@piv:abc',
-          },
-        ],
+        revision: newRevision,
+        accessHeader: newAccessHeader,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          fixedKey,
+          localRaw.vaultId,
+          newRevision,
+          newAccessHeader,
+          localRaw.recovery
+        ),
       };
       await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
     });
 
-    it('rejects a single-step pull that adds a new entry but whose payload does not decrypt with the Vault Key already held', async () => {
+    it('rejects a single-step pull that adds a new entry whose header MAC does not match the Vault Key already held', async () => {
       // The gap the ageRecipient-continuity check alone doesn't close: a wholly NEW entry (no
       // existing recipientId to collide with) is indistinguishable from a real addMember at the
-      // field level. But a single-step, non-removal pull never legitimately rotates the key, so
-      // if the payload can't be decrypted with the key we already hold, whoever produced this
-      // file didn't have the real Vault Key — regardless of which field they tampered with.
+      // field level. But computing a valid accessHeaderMac requires the real Vault Key — the
+      // attacker doesn't have it, so whatever stale/guessed value they attach can never match
+      // what we recompute with the key we already hold, regardless of which field they tampered
+      // with or what revision number they chose.
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
@@ -499,7 +521,7 @@ describe('TeamVaultService', () => {
 
       const provider = fakeProvider();
       const remoteFile = {
-        ...localRaw,
+        ...localRaw, // keeps the OLD accessHeaderMac, now stale against the content below
         revision: localRaw.revision + 1,
         accessHeader: [
           ...localRaw.accessHeader,
@@ -512,11 +534,43 @@ describe('TeamVaultService', () => {
             addedBy: 'attacker@piv:fake',
           },
         ],
-        encryptedPayload: 'not-a-real-payload-since-the-attacker-never-had-the-real-vault-key',
       };
       await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow();
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
+    });
+
+    it('rejects a pull where the revision was bumped specifically to dodge a narrower, revision-gated check', async () => {
+      // This is the exact bypass a reviewer found in an earlier version of this check (which only
+      // verified when `revision === localFile.revision + 1`): picking a different delta skipped
+      // verification entirely. The header MAC has no such hole — it's checked regardless of the
+      // revision gap, since validity never depends on which specific delta is claimed.
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+
+      const provider = fakeProvider();
+      const remoteFile = {
+        ...localRaw,
+        revision: localRaw.revision + 7, // an arbitrary, non-"+1" delta
+        accessHeader: [
+          ...localRaw.accessHeader,
+          {
+            recipientId: 'attacker@piv:fake',
+            role: 'admin',
+            ageRecipient: 'age1yubikey1attacker',
+            wrappedVaultKey: 'bogus',
+            addedAt: 'x',
+            addedBy: 'attacker@piv:fake',
+          },
+        ],
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
     });
 
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {

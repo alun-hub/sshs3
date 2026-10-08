@@ -448,3 +448,32 @@ kör nu detta dekrypteringsförsök (bara vid enstegs-pull utan minskat
 mottagarantal, för att inte falskt avvisa en legitim flerstegs-catchup
 där en `removeMember` kan ingå och roterat nyckeln legitimt) när
 sessionen är upplåst.
+
+**En femte granskning (2026-10-08, samma dag) hittade att även
+dekrypteringskontrollen ovan var en "ineffective-security-control" /
+"incomplete-fix / bypassable integrity check":** villkoret
+`revision === localFile.revision + 1` är ett vanligt, attacker-valt
+fält i filen — angriparen kringgår kontrollen helt bara genom att sätta
+`revision` till NÅGOT ANNAT än exakt +1 (t.ex. +2, eller till och med
+samma revision som lokalt), varpå hela kontrollen hoppas över.
+
+**Fix:** ersatt dekrypteringsheuristiken med en riktig
+integritetskontroll av access-headern självt. `TeamVaultFile` har nu ett
+`accessHeaderMac`-fält: HMAC-SHA256 över `vaultId`+`revision`+
+`accessHeader`+`recovery`, nyckladd med en HKDF-härledd subnyckel från
+Vault Key:n (inte samma råa AES-nyckel återanvänd till ett annat
+primitiv). `createVault`/`addMember`/`removeMember`/`setRole` beräknar
+och sätter fältet vid varje skrivning (`setRole` kräver nu även
+upplåst Vault Key, inte bara identitet, för att kunna beräkna om MAC:en).
+`pullFromRemote` verifierar nu MAC:en (när sessionen är upplåst och
+mottagarantalet inte minskat) **oavsett vilket `revision`-delta
+angriparen väljer** — att beräkna en giltig tagg kräver den riktiga
+Vault Key:n, inte ett specifikt revisionsnummer, så det finns ingen
+kringgående väg kvar via det fältet. Kvarstående, medvetet accepterad
+begränsning: om angriparen OCKSÅ tar bort en riktig medlem för att få
+mottagarantalet att se ut som en legitim `removeMember` (vilket hoppar
+över kontrollen) kan de fortfarande smyga in en post — men det kräver
+att de synligt raderar en riktig medlems åtkomst, vilket är betydligt
+mer upptäckbart än en tyst substitution. Fullständig lösning (signerade
+poster bundna till en specifik admin-identitet) kvarstår som framtida
+arbete, se ovan.

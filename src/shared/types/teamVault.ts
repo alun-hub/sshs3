@@ -43,6 +43,12 @@ export interface TeamVaultFile {
   accessHeader: TeamVaultAccessEntry[];
   recovery: TeamVaultRecovery;
   encryptedPayload: string;
+  /** HMAC-SHA256 (base64) over `vaultId`+`revision`+`accessHeader`+`recovery`, keyed by a subkey
+   * derived from the Vault Key — see `TeamVaultCryptoService.computeAccessHeaderMac`. Lets
+   * `pullFromRemote` detect any tampering with the header itself (a substituted or wholly new
+   * entry, a changed role, ...) without depending on a specific `revision` delta: mere S3 write
+   * access can't produce a valid tag, since that requires the real Vault Key. */
+  accessHeaderMac: string;
 }
 
 export interface TeamVaultMemberSummary {

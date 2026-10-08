@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
+import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
 
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
@@ -22,6 +23,32 @@ export class TeamVaultDecryptionError extends Error {
  * one vault file could silently decrypt as if it belonged to a different one. */
 function buildAad(vaultId: string, formatVersion: number): Buffer {
   return Buffer.from(`${vaultId}:${formatVersion}`, 'utf8');
+}
+
+const HEADER_MAC_INFO = Buffer.from('team-vault-header-mac-v1', 'utf8');
+
+/** A subkey derived from the Vault Key via HKDF, never the raw AES-GCM key itself — simple key
+ * separation so the same symmetric secret isn't reused across two different primitives
+ * (encryption vs. authentication). */
+function deriveHeaderMacKey(vaultKey: Buffer): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), HEADER_MAC_INFO, 32));
+}
+
+/** A fixed, unambiguous serialization of everything the header MAC covers. Entries are sorted
+ * (not kept in array order) so shuffling the array can't produce a different, still-valid tag
+ * for the same logical content; `\u0001`/`\u0002`/`\u0003` are delimiters unlikely to collide
+ * with any real field value, unlike a plain character such as `|`. */
+function canonicalAccessHeaderString(
+  vaultId: string,
+  revision: number,
+  accessHeader: TeamVaultAccessEntry[],
+  recovery: TeamVaultRecovery
+): string {
+  const entryLines = accessHeader
+    .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
+    .sort();
+  const recoveryLine = [recovery.recipientId, recovery.ageRecipient, recovery.wrappedVaultKey].join('\u0001');
+  return [`${vaultId}\u0002${revision}`, ...entryLines, recoveryLine].join('\u0003');
 }
 
 /**
@@ -167,6 +194,28 @@ export class TeamVaultCryptoService {
       throw new Error('age-keygen did not produce a recognizable public key comment');
     }
     return { identity, recipient: recipientMatch[1] };
+  }
+
+  /**
+   * HMAC-SHA256 over the access header (`vaultId` + `revision` + every entry + the recovery
+   * entry), keyed by a subkey derived from the Vault Key. Lets `TeamVaultService.pullFromRemote`
+   * detect tampering with the header itself — a substituted or wholly new entry, a changed role,
+   * anything — without depending on which specific `revision` delta the tamperer claims: unlike a
+   * decrypt-based heuristic (which only works for an exact, narrow revision gap, and is trivially
+   * dodged by choosing a different one), computing a valid tag requires the real Vault Key,
+   * regardless of what revision number is attached to it. Mere S3 write access doesn't provide
+   * that key.
+   */
+  computeAccessHeaderMac(
+    vaultKey: Buffer,
+    vaultId: string,
+    revision: number,
+    accessHeader: TeamVaultAccessEntry[],
+    recovery: TeamVaultRecovery
+  ): string {
+    const macKey = deriveHeaderMacKey(vaultKey);
+    const canonical = canonicalAccessHeaderString(vaultId, revision, accessHeader, recovery);
+    return crypto.createHmac('sha256', macKey).update(canonical, 'utf8').digest('base64');
   }
 }
 
