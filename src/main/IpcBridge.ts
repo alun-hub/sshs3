@@ -31,6 +31,7 @@ import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
+import { TeamVaultService } from './services/TeamVaultService';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
@@ -60,6 +61,7 @@ import { registerDotfileHandlers } from './ipc/dotfileHandlers';
 import { registerK8sHandlers } from './ipc/k8sHandlers';
 import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
 import { registerSyncHandlers } from './ipc/syncHandlers';
+import { registerTeamVaultHandlers } from './ipc/teamVaultHandlers';
 import { createLogger } from './log';
 const ipcLog = createLogger('ipc');
 const sshLog = createLogger('ssh');
@@ -112,6 +114,7 @@ export interface IpcBridgeOptions {
   syncConfigStore?: SyncConfigStore;
   syncCryptoService?: SyncCryptoService;
   profileSyncService?: ProfileSyncService;
+  teamVaultService?: TeamVaultService;
   k8sDiscoveryService?: K8sDiscoveryService;
   k8sDebugService?: K8sDebugService;
   k8sTerminalManager?: K8sTerminalManager;
@@ -143,6 +146,7 @@ export class IpcBridge {
   public readonly syncConfigStore: SyncConfigStore;
   public readonly syncCryptoService: SyncCryptoService;
   public readonly profileSyncService: ProfileSyncService;
+  public readonly teamVaultService: TeamVaultService;
   public readonly k8sDiscoveryService: K8sDiscoveryService;
   public readonly k8sDebugService: K8sDebugService;
   public readonly k8sTerminalManager: K8sTerminalManager;
@@ -244,6 +248,7 @@ export class IpcBridge {
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
+    this.teamVaultService = options.teamVaultService ?? new TeamVaultService();
     this.profileSyncService =
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
@@ -300,6 +305,7 @@ export class IpcBridge {
     registerSnippetHandlers(this);
     registerSettingsHandlers(this);
     registerSyncHandlers(this);
+    registerTeamVaultHandlers(this);
     void this.syncConfigStore
       .getConfig()
       .then((config) => {

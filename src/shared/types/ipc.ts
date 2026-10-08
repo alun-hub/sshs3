@@ -45,6 +45,7 @@ import type {
   DotfilesSyncStatusEvent,
 } from './dotfiles';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
+import type { TeamVaultRole, TeamVaultStatus } from './teamVault';
 import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
 import type {
   ConfigureGitSigningRequest,
@@ -200,6 +201,17 @@ export const IPC_CHANNELS = {
   PROFILE_SYNC_LINK_SMARTCARD: 'profile-sync:link-smartcard',
   PROFILE_SYNC_UNLINK_SMARTCARD: 'profile-sync:unlink-smartcard',
   PROFILE_SYNC_WIPE: 'profile-sync:wipe',
+
+  // Team Vault (docs/team-vault-plan.md) — separate trust model and feature from the password-
+  // based Remote Profile Sync above; see TeamVaultService for the local-only Fas 2 scope.
+  TEAM_VAULT_GET_STATUS: 'team-vault:get-status',
+  TEAM_VAULT_ENROLL_RECIPIENT: 'team-vault:enroll-recipient',
+  TEAM_VAULT_CREATE: 'team-vault:create',
+  TEAM_VAULT_ADD_MEMBER: 'team-vault:add-member',
+  TEAM_VAULT_REMOVE_MEMBER: 'team-vault:remove-member',
+  TEAM_VAULT_SET_ROLE: 'team-vault:set-role',
+  TEAM_VAULT_UNLOCK: 'team-vault:unlock',
+  TEAM_VAULT_LOCK: 'team-vault:lock',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -607,6 +619,21 @@ export interface MultiSSHApi {
   /** Deletes the remote sync files for the current target and clears all local sync configuration (target, salts, smartcard link). Never touches local profiles/dotfiles/settings. */
   profileSyncWipe(): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }>;
   onProfileSyncStatus?(callback: (status: ProfileSyncStatus) => void): () => void;
+
+  // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
+  teamVaultGetStatus(): Promise<TeamVaultStatus>;
+  teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string }>;
+  teamVaultCreate(selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }>;
+  teamVaultAddMember(
+    recipientId: string,
+    ageRecipient: string,
+    role: TeamVaultRole,
+    addedBy: string
+  ): Promise<void>;
+  teamVaultRemoveMember(recipientId: string, removedBy: string): Promise<{ remainingAdmins: number }>;
+  teamVaultSetRole(recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void>;
+  teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
+  teamVaultLock(): Promise<void>;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

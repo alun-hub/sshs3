@@ -302,3 +302,30 @@ Kvarstående, medvetet olösta risker inför Fas 2/3:
 2. `age-plugin-yubikey` kräver `pcscd` installerad och körande på Linux —
    ett nytt runtime-beroende utöver dagens PKCS#11-middleware-krav, ännu
    inte dokumenterat för slutanvändare.
+
+**Fas 2 implementerad (2026-10-08) — lokalt valv, ingen S3 än.**
+`TeamVaultService` (`src/main/services/`) äger valvfilen
+(`<userData>/team-vault.json`, samma katalogkonvention som
+`SyncConfigStore`) och skriver via `queueMutation` (CLAUDE.md-krav).
+Admin-UI i `SettingsModal` → "Team Vault": generera egen PIV-recipient,
+skapa valv, lägg till/ta bort/befordra medlem, <2-admin-varning,
+engångsvisning av recovery-nyckeln med bekräftelsekryss innan dialogen
+går att stänga.
+
+**Korrigering av §2.3:** `TeamVaultAccessEntry`/`TeamVaultRecovery` har
+fått ett tillkommande fält, `ageRecipient` (den publika
+`age1yubikey1...`-strängen, i klartext — redan publik info per §4.3).
+Utan det kan `removeMember`s re-keying (§4.3: ny Vault Key, om-wrap för
+alla kvarvarande) inte genomföras — `wrapped_vault_key` är envägs och
+går inte att återställa en publik nyckel ur. Ren komplettering, ingen
+säkerhetsförsämring.
+
+**PIN-prompt medvetet INTE kopplat in än.** `IpcBridge.promptForPinDirect()`
+(redan återanvänd av `ProfileSyncService`s smartcard-upplåsning, med
+`kind: 'smartcard'`) hade kunnat återanvändas rakt av för Team Vault-PIN
+också — men `TeamVaultService.unlock()` anropar `unwrapVaultKey` direkt
+utan att samla in ett PIN alls, eftersom det inte finns någon verifierad
+icke-interaktiv kanal att mata in det i `age-plugin-yubikey` på (se risk
+#1 ovan). Att koppla in prompten innan den kanalen är löst hade bara gett
+dödkod (ett PIN som samlas in och sedan kastas bort) — görs när #1 är
+verifierad mot riktig hårdvara.

@@ -92,6 +92,7 @@ import type { Snippet } from '../shared/types/snippets';
 import type { AppSettings } from '../shared/types/settings';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
+import type { TeamVaultRole, TeamVaultStatus } from '../shared/types/teamVault';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -492,6 +493,26 @@ export const api: MultiSSHApi = {
     ipcRenderer.on(IPC_CHANNELS.PROFILE_SYNC_STATUS, subscription);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.PROFILE_SYNC_STATUS, subscription);
   },
+
+  // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
+  teamVaultGetStatus: (): Promise<TeamVaultStatus> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_STATUS),
+  teamVaultEnrollRecipient: (): Promise<{ recipient: string; identityFilePath: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT),
+  teamVaultCreate: (selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient),
+  teamVaultAddMember: (
+    recipientId: string,
+    ageRecipient: string,
+    role: TeamVaultRole,
+    addedBy: string
+  ): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, recipientId, ageRecipient, role, addedBy),
+  teamVaultRemoveMember: (recipientId: string, removedBy: string): Promise<{ remainingAdmins: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, recipientId, removedBy),
+  teamVaultSetRole: (recipientId: string, role: TeamVaultRole, updatedBy: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, recipientId, role, updatedBy),
+  teamVaultUnlock: (recipientId: string, identityFilePath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK, recipientId, identityFilePath),
+  teamVaultLock: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_LOCK),
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

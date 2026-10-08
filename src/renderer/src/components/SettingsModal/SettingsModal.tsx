@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch } from 'lucide-react';
+import { Activity, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch, Users } from 'lucide-react';
 import { type AppSettings } from '@shared/types/settings';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
+import { TeamVaultSettingsPanel } from './TeamVaultSettingsPanel';
 import { GitSettingsPanel } from './GitSettingsPanel';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useSettingsForm } from './useSettingsForm';
@@ -84,6 +85,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       items: [
         { id: 'files', label: 'Files & Storage', icon: FolderTree },
         { id: 'sync', label: 'Synchronization', icon: RefreshCw },
+        { id: 'team-vault', label: 'Team Vault', icon: Users },
         { id: 'kubernetes', label: 'Kubernetes & Debug', icon: Boxes },
       ],
     },
@@ -183,6 +185,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Category: Synchronization */}
               {activeCategory === 'sync' && <SyncSettingsPanel />}
 
+              {/* Category: Team Vault */}
+              {activeCategory === 'team-vault' && <TeamVaultSettingsPanel />}
+
               {/* Category: Git & GitHub */}
               {activeCategory === 'git' && (
                 <GitSettingsPanel
@@ -207,10 +212,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-5 py-3">
-              {activeCategory === 'sync' ? (
+              {activeCategory === 'sync' || activeCategory === 'team-vault' ? (
                 <>
                   <p className="mr-auto text-xs text-txt-muted">
-                    Synchronization changes save immediately — nothing to save here.
+                    {activeCategory === 'sync'
+                      ? 'Synchronization changes save immediately — nothing to save here.'
+                      : 'Team Vault changes save immediately — nothing to save here.'}
                   </p>
                   <button
                     type="button"

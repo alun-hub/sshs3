@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
 
 const IV_LENGTH = 12;
@@ -109,6 +111,47 @@ export class TeamVaultCryptoService {
       pluginPathEnv(pluginPath)
     );
     return stdout;
+  }
+
+  /**
+   * Generates a fresh `age-plugin-yubikey` recipient from the operator's own PIV card
+   * (`age-plugin-yubikey --generate`) and persists the resulting identity stanza to a file under
+   * `identityOutDir` for later use by `unwrapVaultKey`. Returns the public `age1yubikey1...`
+   * recipient string — safe to hand to whoever is adding this person to the vault (§4.3: "admin
+   * needs only the member's public certificate").
+   *
+   * Hardware-unverified (docs/team-vault-plan.md Fas 2 "Kvarstående risker"): whether
+   * `--generate` prompts for touch/PIN, and how, has not been confirmed against real hardware.
+   */
+  async enrollOwnPivRecipient(identityOutDir: string): Promise<{ recipient: string; identityFilePath: string }> {
+    const stdout = await runAgeCommand(resolveAgeBinary('age-plugin-yubikey'), ['--generate'], Buffer.alloc(0));
+    const text = stdout.toString('utf8');
+    const recipientMatch = text.match(/age1yubikey1\S+/);
+    if (!recipientMatch) {
+      throw new Error('age-plugin-yubikey --generate did not produce a recipient string');
+    }
+
+    await fs.mkdir(identityOutDir, { recursive: true });
+    const identityFilePath = path.join(identityOutDir, `${crypto.randomUUID()}.txt`);
+    await fs.writeFile(identityFilePath, text, { mode: 0o600 });
+
+    return { recipient: recipientMatch[0], identityFilePath };
+  }
+
+  /**
+   * Generates a fresh software age identity (via `age-keygen`) for the vault's recovery key
+   * (§4.1): an ordinary age keypair the admin prints and locks away, deliberately not tied to any
+   * hardware so it still works if every PIV card is lost. Returns the plaintext identity (to show
+   * the admin exactly once — the caller must never persist it) and its public recipient string.
+   */
+  async generateRecoveryIdentity(): Promise<{ identity: string; recipient: string }> {
+    const stdout = await runAgeCommand(resolveAgeBinary('age-keygen'), [], Buffer.alloc(0));
+    const identity = stdout.toString('utf8');
+    const recipientMatch = identity.match(/#\s*public key:\s*(age1\S+)/i);
+    if (!recipientMatch) {
+      throw new Error('age-keygen did not produce a recognizable public key comment');
+    }
+    return { identity, recipient: recipientMatch[1] };
   }
 }
 

@@ -143,4 +143,44 @@ describe('TeamVaultCryptoService', () => {
       );
     });
   });
+
+  describe('enrollOwnPivRecipient (mocked age-plugin-yubikey --generate)', () => {
+    beforeEach(() => {
+      mockExecFile.mockReset();
+    });
+
+    it('parses the recipient string and persists the identity stanza to a file', async () => {
+      const generated =
+        '#       Serial: 31310420, Slot: 1\n' +
+        '#     PIN policy: Once (requires PIN once per session)\n' +
+        '#   Touch policy: Always\n' +
+        '#    Recipient: age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a\n' +
+        'AGE-PLUGIN-YUBIKEY-1QG69G6ANLKD8W9QL0UGVYAHM3EX8QD0V6V2N5L5W6RR0PQ0WJXS8NQG6C2A\n';
+      mockExecFile.mockImplementation((_file: string, args: string[], _opts: unknown, cb: any) => {
+        expect(args).toEqual(['--generate']);
+        cb(null, Buffer.from(generated), Buffer.from(''));
+        return { stdin: { end: vi.fn() } };
+      });
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-enroll-'));
+      const service2 = new TeamVaultCryptoService();
+      const result = await service2.enrollOwnPivRecipient(dir);
+
+      expect(result.recipient).toBe(
+        'age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a'
+      );
+      expect(fs.readFileSync(result.identityFilePath, 'utf8')).toBe(generated);
+    });
+
+    it('throws if no recipient string is found in the output', async () => {
+      mockExecFile.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: any) => {
+        cb(null, Buffer.from('nothing useful here'), Buffer.from(''));
+        return { stdin: { end: vi.fn() } };
+      });
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-enroll-'));
+      const service2 = new TeamVaultCryptoService();
+      await expect(service2.enrollOwnPivRecipient(dir)).rejects.toThrow('did not produce a recipient string');
+    });
+  });
 });

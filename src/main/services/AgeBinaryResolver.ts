@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app as electronApp } from 'electron';
 
-export type AgeBinaryName = 'age' | 'age-plugin-yubikey';
+export type AgeBinaryName = 'age' | 'age-keygen' | 'age-plugin-yubikey';
 
 function binaryFileName(name: AgeBinaryName): string {
   return process.platform === 'win32' ? `${name}.exe` : name;
