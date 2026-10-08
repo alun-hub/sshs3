@@ -423,3 +423,28 @@ ett givet `recipientId` ändras aldrig legitimt efter att det lagts till
 `pullFromRemote` jämför nu varje känd `recipientId`:s `ageRecipient` (i
 `accessHeader` och recovery-posten) mot det tidigare kända värdet och
 kastar `TeamVaultTamperedEntryError` vid mismatch.
+
+**Ännu en granskning (2026-10-08, samma dag) hittade att kontrollen ovan
+fortfarande var ofullständig ("incomplete-tamper-check / fail-open state
+drift"):** den fångar bara SUBSTITUERADE befintliga poster, inte en
+HELT NY, illegitim post en S3-skrivbehörighetsinnehavare kan sätta in
+(eget `ageRecipient`, inget befintligt `recipientId` att kollidera med —
+oskiljbar på fältnivå från en äkta `addMember` pushad från en annan
+maskin, eftersom inget signeras). En sådan injicerad post skulle annars
+tystlåtet bli en del av den "kända" lokala staten — "state drift" — och
+precis som i föregående fynd återaktiveras av en helt vanlig framtida
+`removeMember`.
+
+Fullständig lösning kräver en signaturmekanism för access-header-poster
+(inte byggd nu — se §6 som en framtida uppföljare, inte en Fas 3-blockerare).
+En konkret, implementerbar delmängd finns dock: `addMember` och `setRole`
+roterar ALDRIG Vault Key:n eller rör `encrypted_payload` — bara
+`removeMember` gör det. Så ett enstegs-pull (`revision` exakt +1) vars
+mottagarantal inte minskat (alltså inte en `removeMember`) MÅSTE, om
+sessionen redan är upplåst, fortfarande kunna dekryptera `encrypted_payload`
+med den Vault Key vi redan har — annars har den som skrev filen inte haft
+den riktiga nyckeln, oavsett vilket fält de manipulerade. `pullFromRemote`
+kör nu detta dekrypteringsförsök (bara vid enstegs-pull utan minskat
+mottagarantal, för att inte falskt avvisa en legitim flerstegs-catchup
+där en `removeMember` kan ingå och roterat nyckeln legitimt) när
+sessionen är upplåst.

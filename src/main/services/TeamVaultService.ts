@@ -492,6 +492,29 @@ export class TeamVaultService {
         // silently swapped an existing recipient's public key rather than the whole vault. See
         // `TeamVaultTamperedEntryError`'s doc comment for the two-step attack this closes.
         this.assertNoAgeRecipientTampering(localFile, file);
+
+        // The tampering check above only catches a *substituted* existing recipient — it says
+        // nothing about a wholly new, illegitimate entry a bucket-write-access holder could
+        // inject (their own ageRecipient, no existing recipientId to collide with). That's
+        // indistinguishable at the field level from a real addMember pushed from another
+        // machine, since neither signs its entries. But there's one thing only someone holding
+        // the *real* Vault Key could have produced: a single-step pull (`revision` exactly +1)
+        // whose recipient count didn't drop is, by construction, either `addMember` or
+        // `setRole` — the only two operations that never rotate the Vault Key — so
+        // `encryptedPayload` must still be exactly what it was, still decryptable with the key
+        // we already hold. `removeMember` is the only operation that rotates the key, which is
+        // why it's excluded here (a legitimate key rotation would otherwise look identical to
+        // tampering). Best-effort: only checked when this session happens to be unlocked, and
+        // only for a single-step pull — a multi-revision catch-up may have had a `removeMember`
+        // folded in, which legitimately changes the key, so it's left to the weaker (but always-
+        // applied) checks above rather than risk a false rejection.
+        if (
+          this.unlockedVaultKey &&
+          file.revision === localFile.revision + 1 &&
+          file.accessHeader.length >= localFile.accessHeader.length
+        ) {
+          this.cryptoService.decryptPayload(this.unlockedVaultKey, file.vaultId, file.formatVersion, file.encryptedPayload);
+        }
       }
 
       await this.writeFile(file);

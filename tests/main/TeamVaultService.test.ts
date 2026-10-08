@@ -453,6 +453,72 @@ describe('TeamVaultService', () => {
       await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultTamperedEntryError);
     });
 
+    it('accepts a legitimate single-step addMember pulled from another machine (payload untouched, decrypts fine)', async () => {
+      // addMember never rotates the Vault Key or touches encryptedPayload — a real addMember
+      // pushed from elsewhere must leave both exactly as they were.
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+
+      const provider = fakeProvider();
+      const remoteFile = {
+        ...localRaw,
+        revision: localRaw.revision + 1,
+        accessHeader: [
+          ...localRaw.accessHeader,
+          {
+            recipientId: 'bob@piv:def',
+            role: 'member',
+            ageRecipient: 'age1yubikey1bob',
+            wrappedVaultKey: 'wrapped:age1yubikey1bob:cc',
+            addedAt: 'x',
+            addedBy: 'alice@piv:abc',
+          },
+        ],
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+
+      await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
+    });
+
+    it('rejects a single-step pull that adds a new entry but whose payload does not decrypt with the Vault Key already held', async () => {
+      // The gap the ageRecipient-continuity check alone doesn't close: a wholly NEW entry (no
+      // existing recipientId to collide with) is indistinguishable from a real addMember at the
+      // field level. But a single-step, non-removal pull never legitimately rotates the key, so
+      // if the payload can't be decrypted with the key we already hold, whoever produced this
+      // file didn't have the real Vault Key — regardless of which field they tampered with.
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+
+      const provider = fakeProvider();
+      const remoteFile = {
+        ...localRaw,
+        revision: localRaw.revision + 1,
+        accessHeader: [
+          ...localRaw.accessHeader,
+          {
+            recipientId: 'attacker@piv:fake',
+            role: 'admin',
+            ageRecipient: 'age1yubikey1attacker',
+            wrappedVaultKey: 'bogus',
+            addedAt: 'x',
+            addedBy: 'attacker@piv:fake',
+          },
+        ],
+        encryptedPayload: 'not-a-real-payload-since-the-attacker-never-had-the-real-vault-key',
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow();
+    });
+
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {
       const service = makeService();
       const provider = fakeProvider();
