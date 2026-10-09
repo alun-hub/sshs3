@@ -22,6 +22,7 @@ describe('TeamVaultSettingsPanel', () => {
 
   describe('no vault yet', () => {
     beforeEach(() => {
+      Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' }),
         teamVaultEnrollRecipient: vi.fn().mockResolvedValue({
@@ -61,6 +62,26 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(doneButton);
       expect(screen.queryByRole('dialog', { name: 'Save your recovery key' })).not.toBeInTheDocument();
     });
+
+    it('lets a new member (joining, not creating) copy a join-info blob for their admin instead of typing recipient/identity fields anywhere', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Generate my recipient/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+
+      // The same recipient-id field doubles as "your suggested label" for the join blob — no
+      // separate field needed.
+      fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'bob@piv:yubikey-1' } });
+      fireEvent.click(screen.getByRole('button', { name: /Copy join info/i }));
+
+      await waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+          'sshs3 Team Vault join request\nrecipientId: bob@piv:yubikey-1\nageRecipient: age1yubikey1testadmin'
+        );
+      });
+      expect(await screen.findByText(/Copied/i)).toBeInTheDocument();
+    });
   });
 
   describe('existing vault', () => {
@@ -90,23 +111,64 @@ describe('TeamVaultSettingsPanel', () => {
       expect(screen.getByText(/fewer than 2 admins/)).toBeInTheDocument();
     });
 
-    it('adds a member via the add-member form', async () => {
+    it('adds a member by pasting their join-info blob, which auto-fills both fields', async () => {
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
-      fireEvent.change(screen.getByPlaceholderText(/Their recipient id/i), { target: { value: 'bob@piv:def' } });
-      fireEvent.change(screen.getByPlaceholderText(/Their age1yubikey1/i), {
-        target: { value: 'age1yubikey1bob' },
+      const joinInfo =
+        'sshs3 Team Vault join request\nrecipientId: bob@piv:def\nageRecipient: age1yubikey1bobbobbobbobbobbobbobbob';
+      fireEvent.change(screen.getByPlaceholderText(/Paste their join info/i), { target: { value: joinInfo } });
+
+      // Auto-filled from the pasted blob, but still editable — the admin's label choice wins if
+      // they change it afterwards.
+      await waitFor(() => {
+        expect((screen.getByPlaceholderText(/Their recipient id/i) as HTMLInputElement).value).toBe('bob@piv:def');
       });
+      expect(screen.getByTestId('parsed-join-info-recipient')).toHaveTextContent(
+        'age1yubikey1bobbobbobbobbobbobbobbob'
+      );
+
       fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
 
       await waitFor(() => {
         expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
           'bob@piv:def',
-          'age1yubikey1bob',
+          'age1yubikey1bobbobbobbobbobbobbobbob',
           'member'
         );
       });
+    });
+
+    it('lets the admin override the auto-filled recipient id before adding', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      const joinInfo = 'recipientId: bob@piv:def\nageRecipient: age1yubikey1bobbobbobbobbobbobbobbob';
+      fireEvent.change(screen.getByPlaceholderText(/Paste their join info/i), { target: { value: joinInfo } });
+      await waitFor(() => {
+        expect((screen.getByPlaceholderText(/Their recipient id/i) as HTMLInputElement).value).toBe('bob@piv:def');
+      });
+
+      fireEvent.change(screen.getByPlaceholderText(/Their recipient id/i), { target: { value: 'bob@company' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
+          'bob@company',
+          'age1yubikey1bobbobbobbobbobbobbobbob',
+          'member'
+        );
+      });
+    });
+
+    it("shows an inline hint instead of a crash when the pasted text isn't a recognizable join blob", async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/Paste their join info/i), { target: { value: 'oops wrong thing' } });
+
+      expect(await screen.findByText(/doesn't look like a join-info blob/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add member' })).toBeDisabled();
     });
 
     it('asks for confirmation before removing a member', async () => {

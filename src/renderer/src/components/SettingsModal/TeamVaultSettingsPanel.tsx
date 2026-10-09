@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
   Cloud,
+  Copy,
   DownloadCloud,
   Fingerprint,
   KeyRound,
@@ -18,6 +20,7 @@ import type { TeamVaultRole, TeamVaultStatus } from '@shared/types/teamVault';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
 import { formatDateTime } from '../../lib/dateFormat';
+import { buildTeamVaultJoinInfo, parseTeamVaultJoinInfo } from '../../lib/teamVaultJoinInfo';
 import { useConfirm } from '../ConfirmDialog';
 
 function emptyS3TargetDraft(): SyncTargetDraft {
@@ -38,6 +41,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [enrolling, setEnrolling] = useState(false);
   const [myRecipient, setMyRecipient] = useState<{ recipient: string; identityFilePath: string } | null>(null);
   const [selfRecipientId, setSelfRecipientId] = useState('');
+  const [joinInfoCopied, setJoinInfoCopied] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
@@ -49,7 +53,10 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [unlockIdentityPath, setUnlockIdentityPath] = useState('');
   const [unlocking, setUnlocking] = useState(false);
 
-  // Add member
+  // Add member — the admin pastes the whole join-info blob a new member copies from their own
+  // "Generate my recipient" step (see buildTeamVaultJoinInfo); parsed automatically so the admin
+  // never has to hand-copy the long age1yubikey1... string themselves.
+  const [joinInfoPaste, setJoinInfoPaste] = useState('');
   const [newRecipientId, setNewRecipientId] = useState('');
   const [newAgeRecipient, setNewAgeRecipient] = useState('');
   const [newRole, setNewRole] = useState<TeamVaultRole>('member');
@@ -127,6 +134,28 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     }
   };
 
+  const handleCopyJoinInfo = async () => {
+    if (!myRecipient || !selfRecipientId.trim()) return;
+    try {
+      await navigator.clipboard.writeText(buildTeamVaultJoinInfo(selfRecipientId.trim(), myRecipient.recipient));
+      setJoinInfoCopied(true);
+      setTimeout(() => setJoinInfoCopied(false), 3000);
+    } catch {
+      setError('Failed to copy join info to clipboard');
+    }
+  };
+
+  const handleJoinInfoPaste = (value: string) => {
+    setJoinInfoPaste(value);
+    const parsed = parseTeamVaultJoinInfo(value);
+    if (parsed) {
+      setNewRecipientId(parsed.recipientId);
+      setNewAgeRecipient(parsed.ageRecipient);
+    } else {
+      setNewAgeRecipient('');
+    }
+  };
+
   const handleUnlock = async () => {
     if (!unlockRecipientId.trim() || !unlockIdentityPath.trim()) return;
     setUnlocking(true);
@@ -147,6 +176,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setError(null);
     try {
       await window.multissh.teamVaultAddMember(newRecipientId.trim(), newAgeRecipient.trim(), newRole);
+      setJoinInfoPaste('');
       setNewRecipientId('');
       setNewAgeRecipient('');
       setNewRole('member');
@@ -327,15 +357,31 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                   className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => void handleCreateVault()}
-                disabled={creating || !selfRecipientId.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-              >
-                {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Create Vault
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCreateVault()}
+                  disabled={creating || !selfRecipientId.trim()}
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                >
+                  {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Create Vault
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyJoinInfo()}
+                  disabled={!selfRecipientId.trim()}
+                  title="Copy a join-info blob to send to your team's admin instead of creating a vault yourself"
+                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                >
+                  {joinInfoCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  {joinInfoCopied ? 'Copied' : 'Copy join info'}
+                </button>
+              </div>
+              <p className="text-xs text-txt-muted">
+                Creating a vault makes you its first admin. To join a team's existing vault
+                instead, copy your join info and send it to their admin.
+              </p>
             </div>
           )}
         </div>
@@ -436,18 +482,29 @@ export const TeamVaultSettingsPanel: React.FC = () => {
 
           <div className="space-y-2 rounded-lg border border-border-subtle bg-app-surface p-3">
             <p className="text-xs font-medium text-txt-secondary">Add a member</p>
+            <textarea
+              value={joinInfoPaste}
+              onChange={(e) => handleJoinInfoPaste(e.target.value)}
+              placeholder="Paste their join info (the blob they copied from Generate my recipient)"
+              rows={3}
+              className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+            />
+            {joinInfoPaste.trim() && !newAgeRecipient && (
+              <p className="text-xs text-amber-300">
+                That doesn't look like a join-info blob — make sure you pasted everything they
+                copied from their own "Generate my recipient" step.
+              </p>
+            )}
+            {newAgeRecipient && (
+              <p data-testid="parsed-join-info-recipient" className="break-all text-xs text-emerald-300">
+                {newAgeRecipient}
+              </p>
+            )}
             <input
               type="text"
               value={newRecipientId}
               onChange={(e) => setNewRecipientId(e.target.value)}
               placeholder="Their recipient id (e.g. bob@piv:yubikey-1)"
-              className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            />
-            <input
-              type="text"
-              value={newAgeRecipient}
-              onChange={(e) => setNewAgeRecipient(e.target.value)}
-              placeholder="Their age1yubikey1... recipient string"
               className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
             />
             <select

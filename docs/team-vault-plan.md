@@ -700,3 +700,29 @@ Tre problem rapporterade direkt efter föregående runda:
    `age-plugin-yubikey`, ingen verklig signal om kortets faktiska
    status. Förvirrande brus, nu bortplockat innan prompttexten når
    modalen.
+
+### Join-sträng i stället för två fält att fylla i fel (2026-10-09)
+
+Uppföljning på touch-/PIN-fixarna: "Add a member" hade samma
+grundproblem som unlock-formuläret hade innan auto-populate — admin
+fick manuellt kopiera en lång `age1yubikey1...`-sträng från en annan
+persons skärm till rätt fält, lätt att klippa fel eller missa en
+kommentarsrad.
+
+Ny lösning: `buildTeamVaultJoinInfo`/`parseTeamVaultJoinInfo`
+(`src/renderer/src/lib/teamVaultJoinInfo.ts`) bakar ihop
+recipient-id + `age1yubikey1...`-strängen till en enda kopierbar
+textblob ("sshs3 Team Vault join request\nrecipientId: ...\n
+ageRecipient: ..."). Den som vill gå med i ett team klickar "Copy
+join info" i samma vy som "Generate my recipient" (samma
+recipient-id-fält återanvänds som föreslaget label) och skickar
+blobben till sin admin via valfri kanal. Admin klistrar in HELA
+blobben i ett enda fält i "Add a member" — parsern är tolerant mot
+omgivande chattext/radbrytningar och extraherar båda värdena
+automatiskt, med recipient-id fortfarande redigerbart om admin vill
+välja en annan etikett.
+
+Medvetet INTE byggt: någon S3-baserad "join request"-mekanism (där
+den nya medlemmens maskin skriver en kandidat-post direkt till
+bucketen för admin att godkänna) — klart mer komplext för marginellt
+mindre copy-paste, och inte vad som efterfrågades.
