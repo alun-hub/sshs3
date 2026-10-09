@@ -726,3 +726,51 @@ Medvetet INTE byggt: någon S3-baserad "join request"-mekanism (där
 den nya medlemmens maskin skriver en kandidat-post direkt till
 bucketen för admin att godkänna) — klart mer komplext för marginellt
 mindre copy-paste, och inte vad som efterfrågades.
+
+### UX-översyn runda 2 (2026-10-09) — rollkontroll, ta bort valv, UPN, enklare formulär
+
+Efter ytterligare en konversationsrunda med konkreta önskemål:
+
+1. **Säkerhetsfynd, åtgärdat:** `addMember`/`removeMember`/`setRole`
+   kontrollerade tidigare bara att NÅGON giltig medlem var upplåst —
+   inte att den faktiskt hade rollen `admin`. En vanlig `member` kunde
+   alltså befordra sig själv eller andra, ta bort medlemmar, etc. Ny
+   `requireUnlockedAsAdmin()` i `TeamVaultService` stänger detta (recovery-
+   identiteten räknas som admin-ekvivalent, §4.1).
+2. **`deleteVault()`** — ny metod, admin-only, **bara lokalt**: tar bort
+   den lokala vault-filen + rensar ihågkommen identitet
+   (`TeamVaultConfigStore.clearSelfIdentity`). Rör aldrig S3-kopian —
+   det är ett medvetet beslut (fråga ställd till användaren, svar: bara
+   lokalt) eftersom fjärrkopian redan är nåbar via appens egen
+   S3-filhanterare om man uttryckligen vill radera den också.
+3. **UPN-förslag:** `enrollOwnPivRecipient`-svaret har nu ett
+   best-effort `suggestedLabel?: string`, hämtat via den redan
+   existerande, PIN-fria `readSmartcardCertificates()`
+   (`SmartcardCertificateReader.ts`, byggd för SSH-autentiseringsflödet)
+   — läser UPN:et från det autentiserings-kapabla certifikatet (i
+   praktiken 9A) och föreslår det som recipient-id-etikett. Blockerar
+   aldrig enroll om kortet saknas/läsningen misslyckas.
+   **Verifierat att 9A INTE kan återanvändas för själva age-nyckeln**:
+   `age-plugin-yubikey --slot` accepterar bara dess egna 20 "retired
+   slots" (numeriskt 1-20), inte `9a`/`9c`/`9d` — bekräftat genom att
+   faktiskt köra `--slot 9a` (fel) och `--list-all` (visar aldrig 9A).
+   En ny nyckel genereras alltså alltid i en retired slot som idag;
+   UPN-läsningen är helt frikopplad från det.
+4. **"Generate my recipient"/"Copy join info" är nu alltid synligt**,
+   inte bara i tomt-valv-läget — förbereder för multi-team (Fas D)
+   utan att bygga en vault-växlare nu.
+5. **Unlock-formuläret visar inga fält alls** när recipient-id och
+   identitetsfil redan är kända — bara en "Unlock as X"-rad och en
+   knapp. En "Use a different identity..."-länk fäller ut de manuella
+   fälten som fallback (flera identiteter, ny maskin, förlorad konfig).
+6. **"Add a member" är nu en enda ruta** — den tidigare separata,
+   redigerbara recipient-id-inputen är borttagen; båda parsade värdena
+   visas read-only för bekräftelse.
+7. **"Remove vault from this machine"**-knapp i en tydligt separat
+   "Danger zone", synlig bara för upplåsta admins (klientsidan är bara
+   UX-sockerdekoration — servern är den riktiga spärren via
+   `requireUnlockedAsAdmin`).
+
+Beslutat, inget byggt: inget UI-val för PIN-policy/touch-policy
+(hårdkodat `once`/`always` som redan — `never` för någotdera skulle
+rycka undan hela poängen med hårdvarulåset).

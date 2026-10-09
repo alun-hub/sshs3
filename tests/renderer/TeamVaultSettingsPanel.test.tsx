@@ -82,6 +82,22 @@ describe('TeamVaultSettingsPanel', () => {
       });
       expect(await screen.findByText(/Copied/i)).toBeInTheDocument();
     });
+
+    it('prefills the recipient-id field with the UPN suggested from an existing smartcard certificate', async () => {
+      window.multissh.teamVaultEnrollRecipient = vi.fn().mockResolvedValue({
+        recipient: 'age1yubikey1testadmin',
+        identityFilePath: '/tmp/identity.txt',
+        suggestedLabel: 'alice@example.com',
+      });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /Generate my recipient/i }));
+
+      await waitFor(() => {
+        expect((screen.getByPlaceholderText(/alice@piv/i) as HTMLInputElement).value).toBe('alice@example.com');
+      });
+    });
   });
 
   describe('existing vault', () => {
@@ -94,14 +110,20 @@ describe('TeamVaultSettingsPanel', () => {
         { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
       ],
       adminCount: 1,
+      selfRecipientId: 'alice@piv:abc',
     };
 
     beforeEach(() => {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
+        teamVaultEnrollRecipient: vi.fn().mockResolvedValue({
+          recipient: 'age1yubikey1testadmin',
+          identityFilePath: '/tmp/identity.txt',
+        }),
         teamVaultAddMember: vi.fn().mockResolvedValue(undefined),
         teamVaultRemoveMember: vi.fn().mockResolvedValue({ remainingAdmins: 0 }),
         teamVaultSetRole: vi.fn().mockResolvedValue(undefined),
+        teamVaultDelete: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
     });
 
@@ -111,7 +133,13 @@ describe('TeamVaultSettingsPanel', () => {
       expect(screen.getByText(/fewer than 2 admins/)).toBeInTheDocument();
     });
 
-    it('adds a member by pasting their join-info blob, which auto-fills both fields', async () => {
+    it('keeps "Generate my recipient" visible even once a vault already exists, ready for a future second team', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /Generate my recipient/i })).toBeInTheDocument();
+    });
+
+    it('adds a member by pasting their join-info blob into the one field — no second box to fill in', async () => {
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -119,42 +147,20 @@ describe('TeamVaultSettingsPanel', () => {
         'sshs3 Team Vault join request\nrecipientId: bob@piv:def\nageRecipient: age1yubikey1bobbobbobbobbobbobbobbob';
       fireEvent.change(screen.getByPlaceholderText(/Paste their join info/i), { target: { value: joinInfo } });
 
-      // Auto-filled from the pasted blob, but still editable — the admin's label choice wins if
-      // they change it afterwards.
       await waitFor(() => {
-        expect((screen.getByPlaceholderText(/Their recipient id/i) as HTMLInputElement).value).toBe('bob@piv:def');
+        expect(screen.getByTestId('parsed-join-info-recipient-id')).toHaveTextContent('bob@piv:def');
       });
-      expect(screen.getByTestId('parsed-join-info-recipient')).toHaveTextContent(
+      expect(screen.getByTestId('parsed-join-info-age-recipient')).toHaveTextContent(
         'age1yubikey1bobbobbobbobbobbobbobbob'
       );
+      // No separate recipient-id input exists any more — only the paste box.
+      expect(screen.queryByPlaceholderText(/Their recipient id/i)).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
 
       await waitFor(() => {
         expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
           'bob@piv:def',
-          'age1yubikey1bobbobbobbobbobbobbobbob',
-          'member'
-        );
-      });
-    });
-
-    it('lets the admin override the auto-filled recipient id before adding', async () => {
-      renderPanel();
-      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
-
-      const joinInfo = 'recipientId: bob@piv:def\nageRecipient: age1yubikey1bobbobbobbobbobbobbobbob';
-      fireEvent.change(screen.getByPlaceholderText(/Paste their join info/i), { target: { value: joinInfo } });
-      await waitFor(() => {
-        expect((screen.getByPlaceholderText(/Their recipient id/i) as HTMLInputElement).value).toBe('bob@piv:def');
-      });
-
-      fireEvent.change(screen.getByPlaceholderText(/Their recipient id/i), { target: { value: 'bob@company' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
-
-      await waitFor(() => {
-        expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
-          'bob@company',
           'age1yubikey1bobbobbobbobbobbobbobbob',
           'member'
         );
@@ -196,9 +202,37 @@ describe('TeamVaultSettingsPanel', () => {
         expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith('alice@piv:abc', 'member');
       });
     });
+
+    it('offers to delete the vault (local-only) when the signed-in identity is an admin, with confirmation', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Remove vault from this machine/i }));
+      const dialog = await screen.findByTestId('confirm-dialog');
+      expect(dialog).toHaveTextContent(/S3 copy/i);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(window.multissh.teamVaultDelete).toHaveBeenCalled());
+    });
+
+    it('hides the delete-vault button for a plain, non-admin member', async () => {
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({
+        ...baseStatus,
+        selfRecipientId: 'bob@piv:def',
+        members: [
+          { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+          { recipientId: 'bob@piv:def', role: 'member', addedAt: '2026-10-02T00:00:00Z' },
+        ],
+      });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: /Remove vault from this machine/i })).not.toBeInTheDocument();
+    });
   });
 
-  describe('locked vault, with a remembered own identity (unlock-form prefill)', () => {
+  describe('locked vault, with a remembered own identity (no fields needed to unlock)', () => {
     const lockedStatus: TeamVaultStatus = {
       exists: true,
       vaultId: 'vlt_1',
@@ -219,14 +253,13 @@ describe('TeamVaultSettingsPanel', () => {
       } as unknown as typeof window.multissh;
     });
 
-    it('prefills the unlock form from status, instead of leaving it for the admin to retype', async () => {
+    it('shows no recipient-id/identity-path fields at all when both are already known — just an Unlock button', async () => {
       renderPanel();
-      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/Unlock as/)).toBeInTheDocument());
 
-      const recipientInput = screen.getByPlaceholderText('Your recipient id') as HTMLInputElement;
-      const identityInput = screen.getByPlaceholderText('Path to your identity file') as HTMLInputElement;
-      expect(recipientInput.value).toBe('alice@piv:abc');
-      expect(identityInput.value).toBe('/home/alice/.config/sshs3/team-vault-identities/abc.txt');
+      expect(screen.getByText(/Unlock as/)).toHaveTextContent('alice@piv:abc');
+      expect(screen.queryByPlaceholderText('Your recipient id')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Path to your identity file')).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
       await waitFor(() => {
@@ -235,6 +268,47 @@ describe('TeamVaultSettingsPanel', () => {
           '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
         );
       });
+    });
+
+    it('offers a manual fallback ("use a different identity") for the rare case of multiple identities or a new machine', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/Unlock as/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /use a different identity/i }));
+
+      const recipientInput = screen.getByPlaceholderText('Your recipient id') as HTMLInputElement;
+      const identityInput = screen.getByPlaceholderText('Path to your identity file') as HTMLInputElement;
+      fireEvent.change(recipientInput, { target: { value: 'carol@piv:ghi' } });
+      fireEvent.change(identityInput, { target: { value: '/tmp/carol-identity.txt' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('carol@piv:ghi', '/tmp/carol-identity.txt');
+      });
+    });
+  });
+
+  describe('locked vault, with no remembered identity at all (fresh machine)', () => {
+    beforeEach(() => {
+      window.multissh = {
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          exists: true,
+          vaultId: 'vlt_1',
+          unlocked: false,
+          filePath: '/x',
+          members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
+          adminCount: 1,
+        }),
+        teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
+      } as unknown as typeof window.multissh;
+    });
+
+    it('falls back to the manual fields directly, with no "known identity" summary to show', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      expect(screen.getByPlaceholderText('Your recipient id')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Path to your identity file')).toBeInTheDocument();
     });
   });
 
