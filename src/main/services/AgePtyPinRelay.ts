@@ -53,7 +53,6 @@ function getSpawn(): typeof nodePty.spawn {
 
 const PIN_PROMPT_RE = /enter pin for yubikey/i;
 const WRONG_PIN_RE = /invalid pin \((\d+) tries? remaining/i;
-const TOUCH_PROMPT_RE = /please touch the yubikey/i;
 // Exact wording of the default-PIN/PUK/management-key migration wizard was never captured (the
 // one time it was hit, the process was killed before any output was saved — see
 // docs/team-vault-plan.md). These patterns are deliberately broad: failing closed (aborting) on
@@ -103,27 +102,28 @@ export function runAgeCommandViaPty(
     let settled = false;
     let pinAttempt = 0;
     let awaitingPinResponse = false;
-    let touchActive = false;
 
     const timeoutHandle = setTimeout(() => {
       finish(() => reject(new Error(`Timed out waiting for "${binary}" to finish`)));
       term.kill();
     }, timeoutMs);
 
-    function clearTouchIfActive(): void {
-      if (touchActive) {
-        touchActive = false;
-        callbacks.onTouchCleared();
-      }
-    }
-
     function finish(action: () => void): void {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutHandle);
-      clearTouchIfActive();
+      callbacks.onTouchCleared();
       action();
     }
+
+    // A touch may be required at any point between now and the operation concluding — and for
+    // `age -d` (unlock), there's no reliable textual signal for exactly when (its plugin-protocol
+    // mode prints no touch prompt at all, unlike `--generate`'s own CLI mode; and when the card's
+    // PIN is already cached from a recent prior operation, there's no PIN prompt either to key a
+    // hint off of — found via real-world use, see docs/team-vault-plan.md). So the hint is shown
+    // for the whole operation unconditionally, not keyed off any particular prompt: a touch-policy
+    // of "never" just means it flashes briefly instead of never appearing when actually needed.
+    callbacks.onTouchRequested();
 
     function requestAndWritePin(promptText: string, retry?: AgePtyPromptRetryContext): void {
       awaitingPinResponse = true;
@@ -133,16 +133,6 @@ export function runAgeCommandViaPty(
           awaitingPinResponse = false;
           if (settled) return;
           term.write(`${pin}\r`);
-          // `age -d`'s plugin-protocol mode prints no textual touch prompt at all (unlike
-          // `--generate`'s own CLI mode — see docs/team-vault-plan.md's end-to-end testing
-          // notes), so there's nothing for TOUCH_PROMPT_RE to ever match on that path. Show the
-          // hint proactively right after a PIN is submitted instead of only on an explicit
-          // match; `finish()` always clears it, so a touch-policy of "never" just means the
-          // hint disappears again almost immediately rather than never appearing.
-          if (!touchActive) {
-            touchActive = true;
-            callbacks.onTouchRequested();
-          }
         })
         .catch((err) => {
           finish(() => reject(err));
@@ -164,7 +154,6 @@ export function runAgeCommandViaPty(
       // the PIN is about to be (or already is) blocked, so this gives up rather than retrying.
       const wrongPinMatch = data.match(WRONG_PIN_RE);
       if (wrongPinMatch) {
-        clearTouchIfActive();
         const triesRemaining = Number(wrongPinMatch[1]);
         if (triesRemaining <= 0) {
           finish(() => reject(new TeamVaultWrongPinError(`Invalid PIN (${triesRemaining} tries remaining before it is blocked)`)));
@@ -183,23 +172,10 @@ export function runAgeCommandViaPty(
       }
 
       if (PIN_PROMPT_RE.test(data) && pinAttempt === 0 && !awaitingPinResponse) {
-        clearTouchIfActive();
         pinAttempt = 1;
         requestAndWritePin(cleanPinPrompt(data));
         return;
       }
-
-      if (TOUCH_PROMPT_RE.test(data)) {
-        if (!touchActive) {
-          touchActive = true;
-          callbacks.onTouchRequested();
-        }
-        return;
-      }
-
-      // Any other output after a touch prompt (success text, a recipient line, etc.) means the
-      // touch step is over.
-      clearTouchIfActive();
     });
 
     term.onExit(({ exitCode }: { exitCode: number }) => {

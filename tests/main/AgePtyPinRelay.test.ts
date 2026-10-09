@@ -79,10 +79,17 @@ describe('runAgeCommandViaPty', () => {
     mockPtyInstances.length = 0;
   });
 
-  it('relays a PIN prompt (without the "(default is ...)" hint), shows the touch hint right after submitting the PIN, then resolves on success', async () => {
+  it('shows the touch hint immediately on spawn (before any PIN prompt), and relays the PIN prompt without the "(default is ...)" hint', async () => {
     const callbacks = makeCallbacks(['123456']);
     const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
     const term = mockPtyInstances[0];
+
+    // Shown unconditionally from the start — there's no reliable textual signal for exactly when
+    // a touch will be needed: `age -d`'s plugin-protocol mode prints no touch prompt at all
+    // (unlike `--generate`'s own CLI mode), and a cached PIN means there may be no PIN prompt
+    // either to key a hint off of (found via real-world use — see docs/team-vault-plan.md).
+    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
+    expect(callbacks.onTouchCleared).not.toHaveBeenCalled();
 
     term.emitData('Enter PIN for YubiKey with serial 20185052 (default is 123456): ');
     await Promise.resolve();
@@ -92,36 +99,24 @@ describe('runAgeCommandViaPty', () => {
     // default PIN — confusing to show in the UI, so it's stripped before reaching the modal.
     expect(callbacks.requestPin).toHaveBeenCalledWith('Enter PIN for YubiKey with serial 20185052:', undefined);
     expect(term.write).toHaveBeenCalledWith('123456\r');
-
-    // `age -d`'s plugin-protocol mode prints no textual touch prompt at all (unlike
-    // `--generate`'s own CLI mode) — see docs/team-vault-plan.md's end-to-end testing notes. So
-    // the touch hint is shown proactively right after a PIN is submitted, not only when an
-    // explicit "please touch" line is seen.
-    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
-
-    // An explicit touch-prompt line (e.g. during --generate) is still recognized too, but must
-    // not show the hint a second time.
-    term.emitData('\r\n👆 Please touch the YubiKey\r\n');
-    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
+    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1); // still just once
 
     term.emitData('# Recipient: age1yubikey1test\r\nAGE-PLUGIN-YUBIKEY-1TEST\r\n');
-    expect(callbacks.onTouchCleared).toHaveBeenCalledTimes(1);
+    expect(callbacks.onTouchCleared).not.toHaveBeenCalled(); // only clears once the op concludes
 
     term.emitExit(0);
     const result = await promise;
     expect(result).toContain('AGE-PLUGIN-YUBIKEY-1TEST');
+    expect(callbacks.onTouchCleared).toHaveBeenCalledTimes(1);
   });
 
-  it('clears the touch hint once the operation concludes even if no touch text was ever seen (age -d)', async () => {
-    const callbacks = makeCallbacks(['123456']);
+  it('shows and clears the touch hint even when no PIN prompt occurs at all (PIN cached on the card)', async () => {
+    const callbacks = makeCallbacks([]);
     const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
     const term = mockPtyInstances[0];
 
-    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
-    await Promise.resolve();
-    await Promise.resolve();
     expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
-    expect(callbacks.onTouchCleared).not.toHaveBeenCalled();
+    expect(callbacks.requestPin).not.toHaveBeenCalled();
 
     term.emitExit(0);
     await promise;
