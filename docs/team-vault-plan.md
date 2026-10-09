@@ -659,3 +659,22 @@ besväret, inte bara `npm test`.
   har inget att matcha mot, så ingen bugg i koden, men en verklig,
   odokumenterad UX-lucka: appen vet inte när den ska visa
   touch-bannern vid upplåsning. Kvarstående, icke-blockerande arbete.
+
+### Känd begränsning: endast YubiKey, inte generiska PIV-kort (2026-10-09)
+
+Team Vaults hårdvarumodell är hårt knuten till `age-plugin-yubikey`,
+som pratar YubiKeyns proprietära hanteringsprotokoll (serienummer,
+slots, management key) — inte ett generiskt PIV/PKCS#11-gränssnitt.
+Ett certifikat utfärdat via t.ex. OpenCA på ett annat PIV-kort
+(Gemalto, Thales, SafeNet, m.fl.) kan alltså **inte** användas som
+Team Vault-mottagare, oavsett om kortet i sig är PIV-kompatibelt —
+`age-plugin-yubikey` känner helt enkelt inte igen det.
+
+Appens befintliga, generiska PIV/PKCS#11-stack (`src/main/smartcard/`,
+använd för SSH-autentisering) är helt frikopplad från Team
+Vault-kryptot och löser inte detta. Att stödja andra PIV-kort skulle
+kräva en parallell kryptoväg (t.ex. RSA-OAEP direkt via PKCS#11 för
+att wrappa Vault Key:n i stället för `age`/`age-plugin-yubikey`) —
+inte en liten ändring utan en separat arkitektur. Inte påbörjat;
+dokumenteras som en känd begränsning, i samma kategori som
+Windows-verifieringsgapet ovan.
