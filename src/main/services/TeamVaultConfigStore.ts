@@ -110,6 +110,16 @@ export class TeamVaultConfigStore {
     });
   }
 
+  /** Explicitly nulls out both remembered self-identity fields (e.g. on `deleteVault()`) — unlike
+   * `setSelfIdentity(undefined, undefined)`, which is a no-op by design (lets a caller that only
+   * knows one field update just that one without clobbering the other). */
+  public async clearSelfIdentity(): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig();
+      await this.persist({ ...current, selfRecipientId: undefined, selfIdentityFilePath: undefined });
+    });
+  }
+
   /** Clears the target entirely — only local configuration, never the remote vault file itself. */
   public async clear(): Promise<void> {
     return this.queueMutation(async () => {

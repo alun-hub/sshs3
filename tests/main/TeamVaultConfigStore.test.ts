@@ -93,6 +93,19 @@ describe('TeamVaultConfigStore', () => {
     expect(config.selfIdentityFilePath).toBe('/new/path.txt');
   });
 
+  it('clearSelfIdentity explicitly nulls out both remembered fields, unlike setSelfIdentity(undefined, undefined) which is a no-op', async () => {
+    const store = new TeamVaultConfigStore(storePath);
+    await store.setSelfIdentity('alice@piv:yubikey-1', '/some/path.txt');
+
+    await store.setSelfIdentity(undefined, undefined);
+    expect((await store.getConfig()).selfRecipientId).toBe('alice@piv:yubikey-1');
+
+    await store.clearSelfIdentity();
+    const config = await store.getConfig();
+    expect(config.selfRecipientId).toBeUndefined();
+    expect(config.selfIdentityFilePath).toBeUndefined();
+  });
+
   it('clear() resets the target and every other field', async () => {
     const store = new TeamVaultConfigStore(storePath);
     await store.setTarget({

@@ -212,6 +212,7 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_SET_ROLE: 'team-vault:set-role',
   TEAM_VAULT_UNLOCK: 'team-vault:unlock',
   TEAM_VAULT_LOCK: 'team-vault:lock',
+  TEAM_VAULT_DELETE: 'team-vault:delete',
   TEAM_VAULT_SET_TARGET: 'team-vault:set-target',
   TEAM_VAULT_PUSH: 'team-vault:push',
   TEAM_VAULT_PULL: 'team-vault:pull',
@@ -626,13 +627,14 @@ export interface MultiSSHApi {
 
   // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
   teamVaultGetStatus(): Promise<TeamVaultStatus>;
-  teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string }>;
+  teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }>;
   teamVaultCreate(selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }>;
   teamVaultAddMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
   teamVaultRemoveMember(recipientId: string): Promise<{ remainingAdmins: number }>;
   teamVaultSetRole(recipientId: string, role: TeamVaultRole): Promise<void>;
   teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
   teamVaultLock(): Promise<void>;
+  teamVaultDelete(): Promise<void>;
   teamVaultSetTarget(target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;
   teamVaultPush(): Promise<void>;
   teamVaultPull(): Promise<void>;

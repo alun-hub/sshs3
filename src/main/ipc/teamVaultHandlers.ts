@@ -2,12 +2,42 @@ import path from 'node:path';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type { TeamVaultRole, TeamVaultStatus } from '../../shared/types/teamVault';
 import type { IpcBridge } from '../IpcBridge';
+import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateReader';
+import { createLogger } from '../log';
+
+const teamVaultLog = createLogger('team-vault');
 
 /** The part of IpcBridge this handler group may use. */
 export type TeamVaultHost = Pick<
   IpcBridge,
-  'buildTeamVaultStatus' | 'registerHandler' | 'storageRegistry' | 'teamVaultConfigStore' | 'teamVaultService'
+  | 'buildTeamVaultStatus'
+  | 'registerHandler'
+  | 'storageRegistry'
+  | 'syncConfigStore'
+  | 'teamVaultConfigStore'
+  | 'teamVaultService'
 >;
+
+/** Best-effort only — reads whatever authentication-capable smartcard certificate is already
+ * configured for Remote Profile Sync (same `smartcardSync.pkcs11LibPath` as
+ * `IpcBridge.unlockWithSmartcardInternal`, no new setting needed) and suggests its UPN as a
+ * default recipient-id label, purely to save the admin from inventing their own. No PIN prompt —
+ * `readSmartcardCertificates` never logs in (public cert objects). Never throws: a missing/absent
+ * card, an unconfigured path, or any read error just means no suggestion, not a failed enroll. */
+async function suggestLabelFromSmartcard(bridge: TeamVaultHost): Promise<string | undefined> {
+  try {
+    const pkcs11LibPath = (await bridge.syncConfigStore.getConfig()).smartcardSync?.pkcs11LibPath;
+    if (!pkcs11LibPath) return undefined;
+    const certs = await readSmartcardCertificates(pkcs11LibPath);
+    for (const details of certs.values()) {
+      if (details.authCapable && details.upn) return details.upn;
+    }
+    return undefined;
+  } catch (err) {
+    teamVaultLog.warn('failed to suggest a label from the smartcard certificate (non-fatal):', err);
+    return undefined;
+  }
+}
 
 // `age`'s own recipient encoding (bech32: lowercase letters + digits only) — also doubles as an
 // argument-injection guard, since nothing matching this can start with '-' or contain shell/CLI
@@ -53,7 +83,8 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     // purely so the unlock form can prefill itself instead of making the admin retype/relocate
     // these every session (found via end-to-end testing, see docs/team-vault-plan.md).
     await bridge.teamVaultConfigStore.setSelfIdentity(undefined, result.identityFilePath);
-    return result;
+    const suggestedLabel = await suggestLabelFromSmartcard(bridge);
+    return { ...result, suggestedLabel };
   });
 
   bridge.registerHandler(
@@ -103,6 +134,11 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_LOCK, async () => {
     bridge.teamVaultService.lock();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_DELETE, async () => {
+    await bridge.teamVaultService.deleteVault();
+    await bridge.teamVaultConfigStore.clearSelfIdentity();
   });
 
   bridge.registerHandler(

@@ -496,7 +496,7 @@ export const api: MultiSSHApi = {
 
   // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
   teamVaultGetStatus: (): Promise<TeamVaultStatus> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_STATUS),
-  teamVaultEnrollRecipient: (): Promise<{ recipient: string; identityFilePath: string }> =>
+  teamVaultEnrollRecipient: (): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT),
   teamVaultCreate: (selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient),
@@ -509,6 +509,7 @@ export const api: MultiSSHApi = {
   teamVaultUnlock: (recipientId: string, identityFilePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK, recipientId, identityFilePath),
   teamVaultLock: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_LOCK),
+  teamVaultDelete: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE),
   teamVaultSetTarget: (target: StorageConnectConfig, remoteBasePath?: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, target, remoteBasePath),
   teamVaultPush: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PUSH),

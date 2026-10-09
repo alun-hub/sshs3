@@ -188,6 +188,19 @@ describe('TeamVaultService', () => {
       );
     });
 
+    it('rejects a plain member trying to add someone — only an admin may mutate membership', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+
+      await expect(asBob.addMember('carol@piv:ghi', 'age1yubikey1carol', 'member')).rejects.toThrow(
+        'Only a Team Vault admin'
+      );
+    });
+
     it('attributes addedBy/updatedBy to whoever actually unlocked the vault, never a caller-supplied value', async () => {
       // There is no `addedBy` parameter on addMember at all — this is the whole point of the fix:
       // the audit trail can't be spoofed by whatever string a (potentially compromised) renderer
@@ -234,6 +247,17 @@ describe('TeamVaultService', () => {
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await expect(service.removeMember('ghost@piv:xyz')).rejects.toThrow('is not a member');
     });
+
+    it('rejects a plain member trying to remove someone — only an admin may mutate membership', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+
+      await expect(asBob.removeMember('alice@piv:abc')).rejects.toThrow('Only a Team Vault admin');
+    });
   });
 
   describe('setRole', () => {
@@ -258,6 +282,70 @@ describe('TeamVaultService', () => {
       service.lock();
 
       await expect(service.setRole('bob@piv:def', 'admin')).rejects.toThrow('Unlock the Team Vault');
+    });
+
+    it('rejects a plain member promoting themselves — only an admin may change roles', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+
+      await expect(asBob.setRole('bob@piv:def', 'admin')).rejects.toThrow('Only a Team Vault admin');
+    });
+
+    it('allows the recovery identity to act as an admin', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const asRecovery = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await asRecovery.unlock('recovery-key-1', '/tmp/recovery-identity.txt');
+
+      await asRecovery.setRole('bob@piv:def', 'admin');
+      const status = await asRecovery.getStatus();
+      expect(status.members).toEqual(
+        expect.arrayContaining([expect.objectContaining({ recipientId: 'bob@piv:def', role: 'admin' })])
+      );
+    });
+  });
+
+  describe('deleteVault', () => {
+    it('removes the local vault file and locks the session, admin only', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      expect(await fs.readFile(filePath, 'utf-8').then(() => true, () => false)).toBe(true);
+
+      await service.deleteVault();
+
+      expect(service.isUnlocked()).toBe(false);
+      await expect(fs.readFile(filePath, 'utf-8')).rejects.toThrow();
+      expect((await service.getStatus()).exists).toBe(false);
+    });
+
+    it('rejects a plain member trying to delete the vault', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+
+      await expect(asBob.deleteVault()).rejects.toThrow('Only a Team Vault admin');
+      await expect(fs.readFile(filePath, 'utf-8')).resolves.toBeTruthy();
+    });
+
+    it('requires the vault to be unlocked first', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      service.lock();
+      await expect(service.deleteVault()).rejects.toThrow('Unlock the Team Vault');
+    });
+
+    it('rejects if no local vault file exists at all', async () => {
+      const service = makeService();
+      await expect(service.deleteVault()).rejects.toThrow();
     });
   });
 

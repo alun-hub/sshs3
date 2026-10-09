@@ -339,14 +339,15 @@ export class TeamVaultService {
   }
 
   /** Pure public-key wrap, no card/PIN involved on either side (§4.3) — requires the Vault Key
-   * already unlocked in this session (e.g. right after `createVault`, or via `unlock()`). The
-   * audit `addedBy` is always the recipient that actually unlocked this session, never a
-   * caller-supplied value (see `unlockedAsRecipientId`'s doc comment). */
+   * already unlocked in this session (e.g. right after `createVault`, or via `unlock()`) AND the
+   * acting identity to be an admin (`requireUnlockedAsAdmin`). The audit `addedBy` is always the
+   * recipient that actually unlocked this session, never a caller-supplied value (see
+   * `unlockedAsRecipientId`'s doc comment). */
   async addMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
-      const addedBy = this.requireUnlockedRecipientId();
+      const addedBy = this.requireUnlockedAsAdmin(file);
       if (file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is already a member of this vault`);
       }
@@ -380,13 +381,14 @@ export class TeamVaultService {
    * *remaining* recipient (plus the recovery key) re-wrapped for it — the removed recipient's old
    * wrap still exists in any S3 version history (Fas 3), so they keep whatever they already
    * synced but lose all future updates. Returns the remaining admin count so the caller can warn,
-   * not block, when it drops below 2 (§4.3's multi-admin rule is advisory).
+   * not block, when it drops below 2 (§4.3's multi-admin rule is advisory). Requires the acting
+   * identity to be an admin (`requireUnlockedAsAdmin`), not merely unlocked.
    */
   async removeMember(recipientId: string): Promise<{ remainingAdmins: number }> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
-      const removedBy = this.requireUnlockedRecipientId();
+      const removedBy = this.requireUnlockedAsAdmin(file);
       if (!file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
@@ -441,14 +443,15 @@ export class TeamVaultService {
   }
 
   /** Role is UI-only — every member already shares the same Vault Key by design, so changing it
-   * never needs re-keying (§4.3). Still requires an unlocked, identified caller: without this, any
-   * caller (unlocked or not) could promote an arbitrary recipientId to admin. Needs the Vault Key
-   * itself too (not just the identity), since the access header's MAC must be recomputed. */
+   * never needs re-keying (§4.3). Requires the acting identity to actually be an admin
+   * (`requireUnlockedAsAdmin`) — a plain member being merely unlocked isn't enough, otherwise any
+   * member could promote themselves. Needs the Vault Key itself too (not just the identity),
+   * since the access header's MAC must be recomputed. */
   async setRole(recipientId: string, role: TeamVaultRole): Promise<void> {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
-      const updatedBy = this.requireUnlockedRecipientId();
+      const updatedBy = this.requireUnlockedAsAdmin(file);
       const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
       if (!entry) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
@@ -465,6 +468,25 @@ export class TeamVaultService {
         file.recovery
       );
       await this.writeFile(file);
+    });
+  }
+
+  /** Removes the Team Vault from THIS machine only — the local file and the in-memory unlocked
+   * state. Deliberately never touches the remote S3 copy (if any): that's reachable through the
+   * app's own generic S3 file manager if the admin explicitly wants to destroy it for the whole
+   * team too, a much higher-blast-radius action than forgetting it locally. Admin only
+   * (`requireUnlockedAsAdmin`). The caller (`teamVaultHandlers.ts`) is responsible for also
+   * clearing `TeamVaultConfigStore`'s remembered self-identity, same as it sets it after
+   * enroll/create/unlock — `TeamVaultService` has no dependency on that store. */
+  async deleteVault(): Promise<void> {
+    return this.queueMutation(async () => {
+      const file = await this.requireFile();
+      this.requireUnlockedAsAdmin(file);
+      await fs.unlink(this.filePath).catch((err) => {
+        if (err?.code !== 'ENOENT') throw err;
+      });
+      this.lock();
+      this.lastKnownRemoteEntry = undefined;
     });
   }
 
@@ -738,6 +760,22 @@ export class TeamVaultService {
       throw new Error('Unlock the Team Vault before making changes to it');
     }
     return this.unlockedAsRecipientId;
+  }
+
+  /** Beyond merely being unlocked (any valid member, admin or not — what
+   * `requireUnlockedRecipientId` alone guarantees), membership mutations and vault deletion
+   * require the acting identity to actually hold the `admin` role, or be the recovery identity
+   * (full restoration access by design, §4.1 — not a regular member, never demotable). Without
+   * this, any plain member could already add/remove/promote other members or delete the vault —
+   * a real gap `requireUnlockedRecipientId` alone never closed. */
+  private requireUnlockedAsAdmin(file: TeamVaultFile): string {
+    const recipientId = this.requireUnlockedRecipientId();
+    if (recipientId === file.recovery.recipientId) return recipientId;
+    const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
+    if (entry?.role !== 'admin') {
+      throw new Error('Only a Team Vault admin can do this');
+    }
+    return recipientId;
   }
 
   private async readFile(): Promise<TeamVaultFile | null> {

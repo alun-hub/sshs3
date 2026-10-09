@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { registerTeamVaultHandlers, type TeamVaultHost } from '../../src/main/ipc/teamVaultHandlers';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
+
+const { mockReadSmartcardCertificates } = vi.hoisted(() => ({ mockReadSmartcardCertificates: vi.fn() }));
+vi.mock('../../src/main/smartcard/SmartcardCertificateReader', () => ({
+  readSmartcardCertificates: mockReadSmartcardCertificates,
+}));
+
+import { registerTeamVaultHandlers, type TeamVaultHost } from '../../src/main/ipc/teamVaultHandlers';
 
 type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
 
@@ -15,6 +21,7 @@ describe('Team Vault IPC handlers', () => {
     setRole: vi.fn(),
     unlock: vi.fn(),
     lock: vi.fn(),
+    deleteVault: vi.fn(),
     resetRemoteState: vi.fn(),
     pushToRemote: vi.fn(),
     pullFromRemote: vi.fn(),
@@ -25,6 +32,10 @@ describe('Team Vault IPC handlers', () => {
     setTarget: vi.fn(),
     setLastSyncAt: vi.fn(),
     setSelfIdentity: vi.fn(),
+    clearSelfIdentity: vi.fn(),
+  };
+  const syncConfigStore = {
+    getConfig: vi.fn().mockResolvedValue({}),
   };
   const storageRegistry = {
     getOrCreate: vi.fn().mockResolvedValue({}),
@@ -36,12 +47,15 @@ describe('Team Vault IPC handlers', () => {
     handlers.clear();
     vi.clearAllMocks();
     teamVaultConfigStore.getConfig.mockResolvedValue({});
+    syncConfigStore.getConfig.mockResolvedValue({});
+    mockReadSmartcardCertificates.mockResolvedValue(new Map());
     storageRegistry.getOrCreate.mockResolvedValue({});
     buildTeamVaultStatus.mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' });
     registerTeamVaultHandlers({
       registerHandler: (channel: string, h: Handler) => void handlers.set(channel, h),
       teamVaultService,
       teamVaultConfigStore,
+      syncConfigStore,
       storageRegistry,
       buildTeamVaultStatus,
     } as unknown as TeamVaultHost);
@@ -87,6 +101,51 @@ describe('Team Vault IPC handlers', () => {
         undefined,
         '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
       );
+    });
+
+    it('suggests the UPN from the auth-capable smartcard certificate as a default label', async () => {
+      teamVaultService.enrollOwnPivRecipient.mockResolvedValue({
+        recipient: VALID_RECIPIENT,
+        identityFilePath: '/tmp/identity.txt',
+      });
+      syncConfigStore.getConfig.mockResolvedValue({ smartcardSync: { pkcs11LibPath: '/usr/lib/opensc-pkcs11.so' } });
+      mockReadSmartcardCertificates.mockResolvedValue(
+        new Map([
+          ['fp1', { authCapable: false, upn: 'not-this-one@example.com' }],
+          ['fp2', { authCapable: true, upn: 'alice@example.com' }],
+        ])
+      );
+
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT);
+      expect(mockReadSmartcardCertificates).toHaveBeenCalledWith('/usr/lib/opensc-pkcs11.so');
+      expect(result).toMatchObject({ suggestedLabel: 'alice@example.com' });
+    });
+
+    it('never blocks enroll when no pkcs11 path is configured', async () => {
+      teamVaultService.enrollOwnPivRecipient.mockResolvedValue({ recipient: VALID_RECIPIENT, identityFilePath: '/tmp/x' });
+      syncConfigStore.getConfig.mockResolvedValue({});
+
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT);
+      expect(mockReadSmartcardCertificates).not.toHaveBeenCalled();
+      expect((result as any).suggestedLabel).toBeUndefined();
+    });
+
+    it('never blocks enroll when cert reading fails (best-effort only)', async () => {
+      teamVaultService.enrollOwnPivRecipient.mockResolvedValue({ recipient: VALID_RECIPIENT, identityFilePath: '/tmp/x' });
+      syncConfigStore.getConfig.mockResolvedValue({ smartcardSync: { pkcs11LibPath: '/bad/path.so' } });
+      mockReadSmartcardCertificates.mockRejectedValue(new Error('no card reader found'));
+
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT);
+      expect((result as any).recipient).toBe(VALID_RECIPIENT);
+      expect((result as any).suggestedLabel).toBeUndefined();
+    });
+  });
+
+  describe('TEAM_VAULT_DELETE', () => {
+    it('deletes the vault and forgets the remembered self-identity', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_DELETE);
+      expect(teamVaultService.deleteVault).toHaveBeenCalled();
+      expect(teamVaultConfigStore.clearSelfIdentity).toHaveBeenCalled();
     });
   });
 
