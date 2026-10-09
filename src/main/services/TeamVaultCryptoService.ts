@@ -124,10 +124,16 @@ export class TeamVaultCryptoService {
    * "admin needs only the member's public certificate"), so no PIV card or PIN is involved on
    * either side. `ageRecipient` is the recipient's public `age1...`/`age1yubikey1...` string.
    * Returns the armored ciphertext to store as that recipient's `wrapped_vault_key` (§2.3).
+   *
+   * For an `age1yubikey1...` recipient, `age` still execs `age-plugin-yubikey` to parse/validate
+   * the recipient stanza (no hardware/PIN touched for a pure wrap) — it needs the same
+   * PATH-prepending `unwrapVaultKey` already gets, found missing when exercising this end-to-end
+   * for the first time against a real yubikey recipient (see docs/team-vault-plan.md).
    */
   async wrapVaultKeyForRecipient(vaultKey: Buffer, ageRecipient: string): Promise<string> {
     assertNotFlagLike(ageRecipient, 'age recipient');
-    const stdout = await runAgeCommand(resolveAgeBinary('age'), ['-r', ageRecipient, '-a'], vaultKey);
+    const pluginPath = resolveAgeBinary('age-plugin-yubikey');
+    const stdout = await runAgeCommand(resolveAgeBinary('age'), ['-r', ageRecipient, '-a'], vaultKey, pluginPathEnv(pluginPath));
     return stdout.toString('utf8');
   }
 
@@ -200,7 +206,7 @@ export class TeamVaultCryptoService {
 
     await fs.mkdir(identityOutDir, { recursive: true });
     const identityFilePath = path.join(identityOutDir, `${crypto.randomUUID()}.txt`);
-    await fs.writeFile(identityFilePath, text, { mode: 0o600 });
+    await fs.writeFile(identityFilePath, extractIdentityStanza(text), { mode: 0o600 });
 
     return { recipient: recipientMatch[0], identityFilePath };
   }
@@ -242,6 +248,30 @@ export class TeamVaultCryptoService {
     const canonical = canonicalAccessHeaderString(vaultId, revision, accessHeader, recovery);
     return crypto.createHmac('sha256', macKey).update(canonical, 'utf8').digest('base64');
   }
+}
+
+/** Extracts just the real identity stanza (the `#`-comment block plus the `AGE-PLUGIN-YUBIKEY-...`
+ * line) from the full, noisy pty transcript `runAgeCommandViaPty` captures — interactive
+ * status/prompt lines ("Generating key...", the echoed PIN prompt with cursor-redraw escape
+ * codes, a touch-prompt line) precede the real stanza in that transcript and must never end up
+ * in the saved identity file: `age -d -i <file>` rejects anything that isn't exactly this stanza
+ * ("unknown identity type" — found via manual end-to-end testing, see
+ * docs/team-vault-plan.md). Walks backward from the identity line through contiguous `#` comment
+ * lines (skipping blank lines the pty sometimes inserts during cursor redraws) to reconstruct
+ * exactly the stanza `age-plugin-yubikey --generate` itself would print to a plain pipe. */
+function extractIdentityStanza(text: string): string {
+  const identityMatch = text.match(/AGE-PLUGIN-YUBIKEY-\S+/);
+  if (!identityMatch || identityMatch.index === undefined) return text;
+
+  const precedingLines = text.slice(0, identityMatch.index).split(/\r\n|\r|\n/);
+  const commentLines: string[] = [];
+  for (let i = precedingLines.length - 1; i >= 0; i--) {
+    const line = precedingLines[i].trim();
+    if (line === '') continue;
+    if (!line.startsWith('#')) break;
+    commentLines.unshift(line);
+  }
+  return [...commentLines, identityMatch[0]].join('\n') + '\n';
 }
 
 function pluginPathEnv(pluginPath: string): NodeJS.ProcessEnv {

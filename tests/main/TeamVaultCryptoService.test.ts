@@ -21,6 +21,8 @@ vi.mock('electron', () => ({
   app: { getAppPath: vi.fn().mockReturnValue('/app') },
 }));
 
+import { app as mockedElectronApp } from 'electron';
+
 // enrollOwnPivRecipient/unwrapVaultKey go through AgePtyPinRelay (a real terminal is required
 // for age-plugin-yubikey to prompt for PIN/touch — see docs/team-vault-plan.md). Mocked here so
 // these unit tests never spawn a pty or touch real hardware; the one real-CLI round trip test
@@ -202,6 +204,38 @@ describe('TeamVaultCryptoService', () => {
       mockExecFile.mockReset();
     });
 
+    // Wrapping for an age1yubikey1... recipient needs `age` to find the `age-plugin-yubikey`
+    // plugin binary to parse/validate the recipient stanza — a pure public-key operation
+    // (no PIV card or PIN involved), but it still execs the plugin, so it needs the same
+    // PATH-prepending `unwrapVaultKey` already gets. Without it, this call fails identically in
+    // a packaged build (the plugin is bundled right next to `age`, but not found by bare name on
+    // PATH) as it does in dev with no system-wide install.
+    it("passes an env with the age-plugin-yubikey directory prepended to PATH, same as unwrapVaultKey, so wrapping for a yubikey recipient doesn't fail with \"plugin not found\"", async () => {
+      // Give resolveAgeBinary('age-plugin-yubikey') a real directory to resolve to (its
+      // dev-checkout lookup is a plain fs.existsSync against <appPath>/build-resources/age/<os>),
+      // so this test doesn't depend on whatever happens to be on the real machine's disk.
+      const fakeAppRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-fake-app-root-'));
+      const platformBinDir = path.join(fakeAppRoot, 'build-resources', 'age', process.platform === 'win32' ? 'win' : 'linux');
+      fs.mkdirSync(platformBinDir, { recursive: true });
+      fs.writeFileSync(path.join(platformBinDir, process.platform === 'win32' ? 'age-plugin-yubikey.exe' : 'age-plugin-yubikey'), '');
+      vi.mocked(mockedElectronApp.getAppPath).mockReturnValueOnce(fakeAppRoot);
+
+      mockExecFile.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: any) => {
+        cb(null, Buffer.from('wrapped'), Buffer.from(''));
+        return { stdin: { end: vi.fn() } };
+      });
+
+      const service2 = new TeamVaultCryptoService();
+      const key = service2.generateVaultKey();
+      await service2.wrapVaultKeyForRecipient(key, 'age1yubikey1fakerecipient');
+
+      const [, , opts] = mockExecFile.mock.calls[0];
+      // Mirrors unwrapVaultKey's pluginPathEnv exactly, so `age` can exec the plugin by bare
+      // name even when it isn't installed system-wide (dev checkout or packaged build alike).
+      expect(opts.env).not.toBe(process.env);
+      expect(opts.env.PATH.split(path.delimiter)[0]).toBe(platformBinDir);
+    });
+
     it('rejects a flag-like recipient string before ever shelling out', async () => {
       const service2 = new TeamVaultCryptoService();
       const key = service2.generateVaultKey();
@@ -239,6 +273,48 @@ describe('TeamVaultCryptoService', () => {
         'age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a'
       );
       expect(fs.readFileSync(result.identityFilePath, 'utf8')).toBe(generated);
+    });
+
+    // Real hardware transcripts (docs/team-vault-plan.md's "Hårdvaruverifiering") include
+    // interactive noise before the actual stanza — a "Generating key..." banner, the echoed PIN
+    // prompt (with cursor-redraw escape codes), and a touch-prompt line. Found via run-desktop:
+    // the file was unusable by `age -d -i <file>` ("unknown identity type") because the FULL
+    // noisy transcript was being written verbatim instead of just the stanza.
+    it('strips interactive pty noise from the saved identity file, keeping only the real stanza', async () => {
+      const noisyTranscript =
+        '\u{1f3b2} Generating key...\r\n' +
+        '\r\n' +
+        'Enter PIN for YubiKey with serial 20185052 (default is 123456): \r\n' +
+        '\u001b[1A\r\u001b[2K\u001b[1B\u001b[1AEnter PIN for YubiKey with serial 20185052 (default is 123456): [hidden]\r\n' +
+        '\r\n' +
+        '\u{1f50f} Generating certificate...\r\n' +
+        '\u{1f446} Please touch the YubiKey\r\n' +
+        '#       Serial: 20185052, Slot: 3\r\n' +
+        '#         Name: age identity 0b5f7a03\r\n' +
+        '#      Created: Fri, 09 Oct 2026 14:18:26 +0000\r\n' +
+        '#   PIN policy: Once   (A PIN is required once per session, if set)\r\n' +
+        '# Touch policy: Always (A physical touch is required for every decryption)\r\n' +
+        '#    Recipient: age1yubikey1qt5hwsyd95vtvxkpyjayvcgys4ng7gs4ucd02g07z2l32qvpvumesxkwg9u\r\n' +
+        'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\r\n';
+      mockRunAgeCommandViaPty.mockResolvedValue(noisyTranscript);
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-enroll-'));
+      const service2 = new TeamVaultCryptoService();
+      const result = await service2.enrollOwnPivRecipient(dir, noopCallbacks());
+
+      const saved = fs.readFileSync(result.identityFilePath, 'utf8');
+      expect(saved).not.toContain('Generating key');
+      expect(saved).not.toContain('Enter PIN');
+      expect(saved).not.toContain('Please touch');
+      expect(saved).toBe(
+        '#       Serial: 20185052, Slot: 3\n' +
+          '#         Name: age identity 0b5f7a03\n' +
+          '#      Created: Fri, 09 Oct 2026 14:18:26 +0000\n' +
+          '#   PIN policy: Once   (A PIN is required once per session, if set)\n' +
+          '# Touch policy: Always (A physical touch is required for every decryption)\n' +
+          '#    Recipient: age1yubikey1qt5hwsyd95vtvxkpyjayvcgys4ng7gs4ucd02g07z2l32qvpvumesxkwg9u\n' +
+          'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\n'
+      );
     });
 
     it('throws if no recipient string is found in the output', async () => {

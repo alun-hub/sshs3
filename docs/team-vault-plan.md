@@ -608,3 +608,54 @@ medvetet beslut) — `node-pty` använder ConPTY där, men huruvida
 (`mkfifo`) ens är tillgänglig (den är inte det på Windows), är öppna
 frågor för en separat verifieringsomgång innan Team Vault-funktionen
 räknas som klar på Windows.
+
+### End-to-end UI-verifiering (2026-10-09) — två verkliga buggar hittade och fixade
+
+Testat via `run-desktop`-skillen mot riktig hårdvara, genom hela
+UI-flödet (Settings → Team Vault → Generate recipient → Create Vault →
+Lock/Unlock), inte bara enhetstester med mockad `node-pty`:
+
+1. **`wrapVaultKeyForRecipient` saknade plugin-PATH** — samma
+   `pluginPathEnv`-mönster som `unwrapVaultKey` redan hade, men aldrig
+   applicerat på wrap-anropet. Eftersom wrap för en
+   `age1yubikey1...`-mottagare fortfarande kör `age-plugin-yubikey`
+   (bara för att tolka/validera mottagarsträngen — ingen PIN/touch
+   inblandad), misslyckades `createVault`/`addMember` med "yubikey
+   plugin not found" så fort en riktig YubiKey-mottagare användes,
+   både i dev och i en paketerad build. Detta var ett existerande fel,
+   inte orsakat av node-pty-omskrivningen, men aldrig upptäckt förrän
+   nu eftersom ingen tidigare testat `createVault` mot en riktig
+   hårdvarumottagare. Fixat genom att ge `wrapVaultKeyForRecipient`
+   samma `pluginPathEnv`.
+2. **Identitetsfilen innehöll hela den brusiga pty-transkripten** —
+   `enrollOwnPivRecipient` skrev den FULLA texten `runAgeCommandViaPty`
+   fångar (statusrader, det ekade PIN-fältet, touch-prompten) till
+   identitetsfilen, inte bara den riktiga stansen
+   (kommentarblock + `AGE-PLUGIN-YUBIKEY-...`-raden). `age -d -i
+   <fil>` vägrade sedan filen ("unknown identity type"). Ny
+   `extractIdentityStanza()`-funktion plockar ut exakt stansen
+   (går baklänges från `AGE-PLUGIN-YUBIKEY-...`-raden genom
+   sammanhängande `#`-kommentarsrader) innan filen skrivs.
+
+Båda buggarna hade gjort hela Team Vault-funktionen obrukbar i
+praktiken (ingen riktig YubiKey-medlem hade kunnat läggas till eller
+låsa upp) trots att alla enhetstester (mockade) var gröna — ett bra
+exempel på varför end-to-end-testning mot riktig hårdvara är värt
+besväret, inte bara `npm test`.
+
+**Övrigt observerat under testet:**
+- `unlock()` fungerade end-to-end efter en engångs-flaky körning
+  (samma diffusa "Failed to decrypt YubiKey stanza"-fel som sågs en
+  gång under den tidigare hårdvarudiagnostiken, löste sig vid
+  omförsök — PIN-räknaren påverkades inte, bekräftat orört via
+  `ykman piv info`). Inte reproducerat på ett sätt som pekar på en
+  specifik kodbugg; dokumenteras som känd, ovanlig flakiness i detta
+  exakta anrop.
+- **Ingen touch-notis visas i UI:t vid `unlock()`** — till skillnad
+  från `enrollOwnPivRecipient` (`--generate`, som explicit skriver
+  "👆 Please touch the YubiKey" i sitt CLI-läge) verkar `age -d`
+  (plugin-protokolläge) inte skriva någon textprompt för touch alls —
+  bara den blinkande lampan. `TOUCH_PROMPT_RE` i `AgePtyPinRelay.ts`
+  har inget att matcha mot, så ingen bugg i koden, men en verklig,
+  odokumenterad UX-lucka: appen vet inte när den ska visa
+  touch-bannern vid upplåsning. Kvarstående, icke-blockerande arbete.
