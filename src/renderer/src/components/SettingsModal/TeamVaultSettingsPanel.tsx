@@ -77,6 +77,13 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       } else {
         setHasRemoteVault(false);
       }
+      // Prefill rather than making the admin retype/relocate these every session — found to be a
+      // real usability problem during end-to-end testing (see docs/team-vault-plan.md). Only
+      // fills an empty field, so it never clobbers something the admin already typed this
+      // session (e.g. unlocking as a different member than the one remembered).
+      setUnlockRecipientId((prev) => prev || s.selfRecipientId || '');
+      setUnlockIdentityPath((prev) => prev || s.selfIdentityFilePath || '');
+      setSelfRecipientId((prev) => prev || s.selfRecipientId || '');
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load Team Vault status'));
     } finally {

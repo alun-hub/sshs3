@@ -24,6 +24,7 @@ describe('Team Vault IPC handlers', () => {
     getConfig: vi.fn().mockResolvedValue({}),
     setTarget: vi.fn(),
     setLastSyncAt: vi.fn(),
+    setSelfIdentity: vi.fn(),
   };
   const storageRegistry = {
     getOrCreate: vi.fn().mockResolvedValue({}),
@@ -68,6 +69,25 @@ describe('Team Vault IPC handlers', () => {
       await call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT);
       expect(teamVaultService.createVault).toHaveBeenCalledWith('alice@piv:abc', VALID_RECIPIENT);
     });
+
+    it('remembers the chosen recipient id for unlock-form prefill, once creation succeeds', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT);
+      expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith('alice@piv:abc', undefined);
+    });
+  });
+
+  describe('TEAM_VAULT_ENROLL_RECIPIENT', () => {
+    it('remembers the generated identity file path for unlock-form prefill', async () => {
+      teamVaultService.enrollOwnPivRecipient.mockResolvedValue({
+        recipient: VALID_RECIPIENT,
+        identityFilePath: '/home/alice/.config/sshs3/team-vault-identities/abc.txt',
+      });
+      await call(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT);
+      expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith(
+        undefined,
+        '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
+      );
+    });
   });
 
   describe('TEAM_VAULT_ADD_MEMBER', () => {
@@ -105,6 +125,11 @@ describe('Team Vault IPC handlers', () => {
     it('accepts a well-formed absolute path', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_UNLOCK, 'alice', '/tmp/identity.txt');
       expect(teamVaultService.unlock).toHaveBeenCalledWith('alice', '/tmp/identity.txt');
+    });
+
+    it('remembers both the recipient id and identity file path for next time, once unlock succeeds', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_UNLOCK, 'alice', '/tmp/identity.txt');
+      expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith('alice', '/tmp/identity.txt');
     });
   });
 

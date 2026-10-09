@@ -61,6 +61,14 @@ const TOUCH_PROMPT_RE = /please touch the yubikey/i;
 // safe; failing to recognize the real wizard and writing into it would not be.
 const DEFAULT_CREDENTIALS_WIZARD_RE = /choose a new (pin|puk)|enter.*new (piv )?(pin|puk)|management key/i;
 
+/** `age-plugin-yubikey`'s prompt always includes "(default is 123456)" verbatim — fixed CLI
+ * wording, not a real signal that this card is actually on its default PIN. Showing it in the
+ * app's PIN modal is just confusing noise (and could misleadingly suggest the card is
+ * unconfigured), so it's stripped before the text ever reaches `callbacks.requestPin`. */
+function cleanPinPrompt(text: string): string {
+  return text.replace(/\s*\(default is \d+\)/i, '').trim();
+}
+
 /**
  * Runs an `age`/`age-plugin-yubikey` invocation inside a real pty (required — see
  * docs/team-vault-plan.md's hardware verification notes: plain `execFile` fails with
@@ -102,18 +110,19 @@ export function runAgeCommandViaPty(
       term.kill();
     }, timeoutMs);
 
-    function finish(action: () => void): void {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutHandle);
-      action();
-    }
-
     function clearTouchIfActive(): void {
       if (touchActive) {
         touchActive = false;
         callbacks.onTouchCleared();
       }
+    }
+
+    function finish(action: () => void): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      clearTouchIfActive();
+      action();
     }
 
     function requestAndWritePin(promptText: string, retry?: AgePtyPromptRetryContext): void {
@@ -124,6 +133,16 @@ export function runAgeCommandViaPty(
           awaitingPinResponse = false;
           if (settled) return;
           term.write(`${pin}\r`);
+          // `age -d`'s plugin-protocol mode prints no textual touch prompt at all (unlike
+          // `--generate`'s own CLI mode — see docs/team-vault-plan.md's end-to-end testing
+          // notes), so there's nothing for TOUCH_PROMPT_RE to ever match on that path. Show the
+          // hint proactively right after a PIN is submitted instead of only on an explicit
+          // match; `finish()` always clears it, so a touch-policy of "never" just means the
+          // hint disappears again almost immediately rather than never appearing.
+          if (!touchActive) {
+            touchActive = true;
+            callbacks.onTouchRequested();
+          }
         })
         .catch((err) => {
           finish(() => reject(err));
@@ -166,7 +185,7 @@ export function runAgeCommandViaPty(
       if (PIN_PROMPT_RE.test(data) && pinAttempt === 0 && !awaitingPinResponse) {
         clearTouchIfActive();
         pinAttempt = 1;
-        requestAndWritePin(data.trim());
+        requestAndWritePin(cleanPinPrompt(data));
         return;
       }
 

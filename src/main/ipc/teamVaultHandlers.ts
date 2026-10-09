@@ -48,7 +48,12 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   });
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT, async () => {
-    return bridge.teamVaultService.enrollOwnPivRecipient();
+    const result = await bridge.teamVaultService.enrollOwnPivRecipient();
+    // Neither value is a secret (see TeamVaultConfigStore.setSelfIdentity's doc comment) — saved
+    // purely so the unlock form can prefill itself instead of making the admin retype/relocate
+    // these every session (found via end-to-end testing, see docs/team-vault-plan.md).
+    await bridge.teamVaultConfigStore.setSelfIdentity(undefined, result.identityFilePath);
+    return result;
   });
 
   bridge.registerHandler(
@@ -56,7 +61,9 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     async (_event, selfRecipientId: string, selfAgeRecipient: string) => {
       requireRecipientId(selfRecipientId, 'Recipient id');
       requireAgeRecipient(selfAgeRecipient, 'Age recipient');
-      return bridge.teamVaultService.createVault(selfRecipientId, selfAgeRecipient);
+      const result = await bridge.teamVaultService.createVault(selfRecipientId, selfAgeRecipient);
+      await bridge.teamVaultConfigStore.setSelfIdentity(selfRecipientId, undefined);
+      return result;
     }
   );
 
@@ -90,6 +97,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       requireRecipientId(recipientId, 'Recipient id');
       requireIdentityFilePath(identityFilePath);
       await bridge.teamVaultService.unlock(recipientId, identityFilePath);
+      await bridge.teamVaultConfigStore.setSelfIdentity(recipientId, identityFilePath);
     }
   );
 

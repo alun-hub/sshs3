@@ -136,6 +136,46 @@ describe('TeamVaultSettingsPanel', () => {
     });
   });
 
+  describe('locked vault, with a remembered own identity (unlock-form prefill)', () => {
+    const lockedStatus: TeamVaultStatus = {
+      exists: true,
+      vaultId: 'vlt_1',
+      unlocked: false,
+      filePath: '/x',
+      members: [
+        { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+      ],
+      adminCount: 1,
+      selfRecipientId: 'alice@piv:abc',
+      selfIdentityFilePath: '/home/alice/.config/sshs3/team-vault-identities/abc.txt',
+    };
+
+    beforeEach(() => {
+      window.multissh = {
+        teamVaultGetStatus: vi.fn().mockResolvedValue(lockedStatus),
+        teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
+      } as unknown as typeof window.multissh;
+    });
+
+    it('prefills the unlock form from status, instead of leaving it for the admin to retype', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      const recipientInput = screen.getByPlaceholderText('Your recipient id') as HTMLInputElement;
+      const identityInput = screen.getByPlaceholderText('Path to your identity file') as HTMLInputElement;
+      expect(recipientInput.value).toBe('alice@piv:abc');
+      expect(identityInput.value).toBe('/home/alice/.config/sshs3/team-vault-identities/abc.txt');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+      await waitFor(() => {
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith(
+          'alice@piv:abc',
+          '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
+        );
+      });
+    });
+  });
+
   describe('remote sync (Fas 3)', () => {
     const baseStatus: TeamVaultStatus = {
       exists: true,

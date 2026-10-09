@@ -16,6 +16,12 @@ export interface TeamVaultConfigData {
    * `remoteBasePath`, see its doc comment. */
   remoteBasePath?: string;
   lastSyncAt?: string;
+  /** This machine's own recipient id and PIV identity file, remembered purely so the UI can
+   * prefill the unlock form instead of making the admin retype/relocate them every session —
+   * neither value is a secret (the identity file holds a public `AGE-PLUGIN-YUBIKEY-...` stanza,
+   * not a key; see `TeamVaultCryptoService.enrollOwnPivRecipient`'s doc comment). */
+  selfRecipientId?: string;
+  selfIdentityFilePath?: string;
 }
 
 function encryptTarget(target: StorageConnectConfig): StorageConnectConfig {
@@ -87,6 +93,20 @@ export class TeamVaultConfigStore {
     return this.queueMutation(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, lastSyncAt: timestamp });
+    });
+  }
+
+  /** Either argument may be omitted to update just the other field (e.g. a fresh
+   * `enrollOwnPivRecipient()` call only knows the identity file path — the recipient id, a
+   * user-chosen label, isn't known until `createVault`/`unlock` confirms it). */
+  public async setSelfIdentity(recipientId: string | undefined, identityFilePath: string | undefined): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig();
+      await this.persist({
+        ...current,
+        selfRecipientId: recipientId ?? current.selfRecipientId,
+        selfIdentityFilePath: identityFilePath ?? current.selfIdentityFilePath,
+      });
     });
   }
 

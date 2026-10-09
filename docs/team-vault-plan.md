@@ -678,3 +678,25 @@ att wrappa Vault Key:n i stället för `age`/`age-plugin-yubikey`) —
 inte en liten ändring utan en separat arkitektur. Inte påbörjat;
 dokumenteras som en känd begränsning, i samma kategori som
 Windows-verifieringsgapet ovan.
+
+### UX-fixar efter användartest (2026-10-09)
+
+Tre problem rapporterade direkt efter föregående runda:
+
+1. **Unlock-formuläret krävde att admin kom ihåg/letade upp
+   recipient-id och identitetsfilens sökväg manuellt.** Nu sparas
+   båda automatiskt (`TeamVaultConfigStore.setSelfIdentity`, inga
+   hemligheter — identitetsfilen innehåller bara en publik
+   `AGE-PLUGIN-YUBIKEY-...`-strofe) efter varje lyckad
+   `enrollOwnPivRecipient`/`createVault`/`unlock`, och förifylls i
+   UI:t via `TeamVaultStatus.selfRecipientId`/`selfIdentityFilePath`.
+2. **Ingen touch-notis vid `unlock()`** (dokumenterat som känt gap i
+   föregående avsnitt) — löst med en heuristik: visa touch-bannern
+   proaktivt direkt efter att en PIN skickats in, inte bara vid en
+   explicit textträff (som `age -d` aldrig ger). Bannern släcks alltid
+   när anropet avslutas, så ett touch-policy=never-kort bara gör att
+   den försvinner igen nästan direkt i stället för att aldrig visas.
+3. **PIN-modalen visade "(default is 123456)"** — fast CLI-text från
+   `age-plugin-yubikey`, ingen verklig signal om kortets faktiska
+   status. Förvirrande brus, nu bortplockat innan prompttexten når
+   modalen.

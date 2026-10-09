@@ -76,6 +76,23 @@ describe('TeamVaultConfigStore', () => {
     expect((await store.getConfig()).lastSyncAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('remembers this machine\'s own recipient id and identity file path for unlock-form prefill', async () => {
+    const store = new TeamVaultConfigStore(storePath);
+    await store.setSelfIdentity('alice@piv:yubikey-1', '/home/alice/.config/sshs3/team-vault-identities/abc.txt');
+    const config = await store.getConfig();
+    expect(config.selfRecipientId).toBe('alice@piv:yubikey-1');
+    expect(config.selfIdentityFilePath).toBe('/home/alice/.config/sshs3/team-vault-identities/abc.txt');
+  });
+
+  it('setSelfIdentity can update just the identity file path, keeping a previously saved recipient id', async () => {
+    const store = new TeamVaultConfigStore(storePath);
+    await store.setSelfIdentity('alice@piv:yubikey-1', '/old/path.txt');
+    await store.setSelfIdentity(undefined, '/new/path.txt');
+    const config = await store.getConfig();
+    expect(config.selfRecipientId).toBe('alice@piv:yubikey-1');
+    expect(config.selfIdentityFilePath).toBe('/new/path.txt');
+  });
+
   it('clear() resets the target and every other field', async () => {
     const store = new TeamVaultConfigStore(storePath);
     await store.setTarget({
@@ -91,6 +108,7 @@ describe('TeamVaultConfigStore', () => {
       },
     });
     await store.setLastSyncAt('2026-01-01T00:00:00.000Z');
+    await store.setSelfIdentity('alice@piv:yubikey-1', '/some/path.txt');
 
     await store.clear();
 

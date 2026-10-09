@@ -74,4 +74,9 @@ export interface TeamVaultStatus {
    * always sets it for a real IPC response. */
   remoteConfigured?: boolean;
   lastSyncAt?: string;
+  /** This machine's last-known own recipient id / PIV identity file path (see
+   * `TeamVaultConfigStore.setSelfIdentity`) — lets the UI prefill the unlock form instead of
+   * making the admin retype or relocate them every session. Neither is a secret. */
+  selfRecipientId?: string;
+  selfIdentityFilePath?: string;
 }

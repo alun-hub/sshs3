@@ -914,6 +914,8 @@ export class IpcBridge {
       ...status,
       remoteConfigured: !!config.target,
       lastSyncAt: config.lastSyncAt,
+      selfRecipientId: config.selfRecipientId,
+      selfIdentityFilePath: config.selfIdentityFilePath,
     };
   }
 

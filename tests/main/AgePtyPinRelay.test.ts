@@ -79,7 +79,7 @@ describe('runAgeCommandViaPty', () => {
     mockPtyInstances.length = 0;
   });
 
-  it('relays a PIN prompt, then a touch prompt, then resolves on success', async () => {
+  it('relays a PIN prompt (without the "(default is ...)" hint), shows the touch hint right after submitting the PIN, then resolves on success', async () => {
     const callbacks = makeCallbacks(['123456']);
     const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
     const term = mockPtyInstances[0];
@@ -88,8 +88,19 @@ describe('runAgeCommandViaPty', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(callbacks.requestPin).toHaveBeenCalledTimes(1);
+    // "(default is 123456)" is just fixed CLI wording, not a real signal the card is on a
+    // default PIN — confusing to show in the UI, so it's stripped before reaching the modal.
+    expect(callbacks.requestPin).toHaveBeenCalledWith('Enter PIN for YubiKey with serial 20185052:', undefined);
     expect(term.write).toHaveBeenCalledWith('123456\r');
 
+    // `age -d`'s plugin-protocol mode prints no textual touch prompt at all (unlike
+    // `--generate`'s own CLI mode) — see docs/team-vault-plan.md's end-to-end testing notes. So
+    // the touch hint is shown proactively right after a PIN is submitted, not only when an
+    // explicit "please touch" line is seen.
+    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
+
+    // An explicit touch-prompt line (e.g. during --generate) is still recognized too, but must
+    // not show the hint a second time.
     term.emitData('\r\n👆 Please touch the YubiKey\r\n');
     expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
 
@@ -99,6 +110,22 @@ describe('runAgeCommandViaPty', () => {
     term.emitExit(0);
     const result = await promise;
     expect(result).toContain('AGE-PLUGIN-YUBIKEY-1TEST');
+  });
+
+  it('clears the touch hint once the operation concludes even if no touch text was ever seen (age -d)', async () => {
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
+    expect(callbacks.onTouchCleared).not.toHaveBeenCalled();
+
+    term.emitExit(0);
+    await promise;
+    expect(callbacks.onTouchCleared).toHaveBeenCalledTimes(1);
   });
 
   it('retries after a wrong PIN, forwarding the remaining-tries count, then succeeds', async () => {
