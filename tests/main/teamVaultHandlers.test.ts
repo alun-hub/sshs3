@@ -46,6 +46,7 @@ describe('Team Vault IPC handlers', () => {
   beforeEach(() => {
     handlers.clear();
     vi.clearAllMocks();
+    teamVaultService.getStatus.mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' });
     teamVaultConfigStore.getConfig.mockResolvedValue({});
     syncConfigStore.getConfig.mockResolvedValue({});
     mockReadSmartcardCertificates.mockResolvedValue(new Map());
@@ -101,6 +102,20 @@ describe('Team Vault IPC handlers', () => {
         undefined,
         '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
       );
+    });
+
+    it("never overwrites the remembered identity for an EXISTING vault — \"Generate my recipient\" is now always visible (for a future second team), and must not clobber what unlock() needs for the current one", async () => {
+      // Regression found via real-world use: generating an extra recipient while a vault already
+      // exists silently overwrote the identity file unlock() needed for that existing vault,
+      // producing "no identity matched any of the recipients" on the next unlock attempt.
+      teamVaultService.getStatus.mockResolvedValue({ exists: true, unlocked: true, filePath: '/x' });
+      teamVaultService.enrollOwnPivRecipient.mockResolvedValue({
+        recipient: VALID_RECIPIENT,
+        identityFilePath: '/tmp/a-fresh-identity-for-some-other-team.txt',
+      });
+
+      await call(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT);
+      expect(teamVaultConfigStore.setSelfIdentity).not.toHaveBeenCalled();
     });
 
     it('suggests the UPN from the auth-capable smartcard certificate as a default label', async () => {

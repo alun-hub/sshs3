@@ -79,10 +79,17 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT, async () => {
     const result = await bridge.teamVaultService.enrollOwnPivRecipient();
-    // Neither value is a secret (see TeamVaultConfigStore.setSelfIdentity's doc comment) — saved
-    // purely so the unlock form can prefill itself instead of making the admin retype/relocate
-    // these every session (found via end-to-end testing, see docs/team-vault-plan.md).
-    await bridge.teamVaultConfigStore.setSelfIdentity(undefined, result.identityFilePath);
+    // Only remember this identity when there's no local vault yet — this is the first-time
+    // setup flow (about to create or join one), the one case `createVault`'s own
+    // `setSelfIdentity` call relies on this having already saved the path. "Generate my
+    // recipient" is also always visible once a vault already exists (for joining a *second*
+    // team later — docs/team-vault-plan.md), and must NOT overwrite the identity `unlock()`
+    // already needs for the current vault — a real regression found via real-world use
+    // ("no identity matched any of the recipients" on the next unlock attempt).
+    const { exists } = await bridge.teamVaultService.getStatus();
+    if (!exists) {
+      await bridge.teamVaultConfigStore.setSelfIdentity(undefined, result.identityFilePath);
+    }
     const suggestedLabel = await suggestLabelFromSmartcard(bridge);
     return { ...result, suggestedLabel };
   });

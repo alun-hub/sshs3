@@ -774,3 +774,32 @@ Efter ytterligare en konversationsrunda med konkreta önskemål:
 Beslutat, inget byggt: inget UI-val för PIN-policy/touch-policy
 (hårdkodat `once`/`always` som redan — `never` för någotdera skulle
 rycka undan hela poängen med hårdvarulåset).
+
+### Regression hittad direkt (2026-10-09) — "Generate my recipient" skrev över fel identitet
+
+Den nya permanenta synligheten av "Generate my recipient" (runda 2,
+punkt 4 ovan) introducerade en bugg: att klicka på knappen EFTER att
+ett valv redan fanns (t.ex. av nyfikenhet på UPN-förslaget) skrev över
+den ihågkomna `selfIdentityFilePath` — samma lagringsplats används för
+"identiteten för DET HÄR valvet" (vad unlock behöver) och "en ny
+identitet för ett framtida andra team" (vad den permanenta knappen är
+till för). Nästa `unlock()` fick då fel identitetsfil och misslyckades
+med `age: error: no identity matched any of the recipients` (inget
+PIN/touch-försök alls — felet sker innan kortet ens kontaktas).
+
+Fixat: `TEAM_VAULT_ENROLL_RECIPIENT`-hanteraren sparar bara den
+genererade identitetssökvägen när inget lokalt valv finns än
+(`!status.exists`) — dvs. bara under det första uppsättnings-flödet,
+som `createVault`s egen `setSelfIdentity`-anrop redan litar på. När ett
+valv redan finns rör enroll aldrig den sparade identiteten; endast
+`createVault`/`unlock` gör det, redan korrekt kopplat till just det
+flödet.
+
+**Känd kvarstående konsekvens för den som redan träffades av buggen:**
+den felaktigt överskrivna sökvägen pekar nu på fel fil. Den ursprungliga,
+korrekta identitetsfilen (den som matchar valvets riktiga
+`wrappedVaultKey`) finns kvar orörd på disk i
+`team-vault-identities/` — bara konfigurationens minne av VILKEN fil
+är fel. Återställs via "Use a different identity..."-länken i
+unlock-formuläret: ange rätt recipientId + peka ut rätt identitetsfil
+manuellt en gång, varefter det sparas rätt igen.
