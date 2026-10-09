@@ -112,6 +112,7 @@ export function runAgeCommandViaPty(
       if (settled) return;
       settled = true;
       clearTimeout(timeoutHandle);
+      clearInterval(touchRefreshHandle);
       callbacks.onTouchCleared();
       action();
     }
@@ -123,7 +124,13 @@ export function runAgeCommandViaPty(
     // hint off of — found via real-world use, see docs/team-vault-plan.md). So the hint is shown
     // for the whole operation unconditionally, not keyed off any particular prompt: a touch-policy
     // of "never" just means it flashes briefly instead of never appearing when actually needed.
+    //
+    // Re-fired periodically (well under the renderer's own 4s fallback auto-hide,
+    // TouchPresenceBanner.tsx) because PIN entry (the modal round-trip to the user) routinely
+    // takes longer than that — without a refresh, the banner vanished long before the real touch
+    // moment, also found via real-world use.
     callbacks.onTouchRequested();
+    const touchRefreshHandle = setInterval(() => callbacks.onTouchRequested(), 2000);
 
     function requestAndWritePin(promptText: string, retry?: AgePtyPromptRetryContext): void {
       awaitingPinResponse = true;

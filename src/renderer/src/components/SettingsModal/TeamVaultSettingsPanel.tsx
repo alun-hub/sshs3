@@ -37,8 +37,10 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // "Generate my recipient" — produces the age1yubikey1... string this device's PIV card will
-  // use, either to create the vault as its first admin or to join an existing one.
+  // "Generate my Team Vault ID" — produces the age1yubikey1... string this device's PIV card
+  // will use, either to create the vault as its first admin or to join an existing one. Named
+  // for what it means to the user (their personal ID for Team Vault access), not the underlying
+  // age/PIV jargon.
   const [enrolling, setEnrolling] = useState(false);
   const [myRecipient, setMyRecipient] = useState<{ recipient: string; identityFilePath: string } | null>(null);
   const [selfRecipientId, setSelfRecipientId] = useState('');
@@ -61,7 +63,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [deletingVault, setDeletingVault] = useState(false);
 
   // Add member — the admin pastes the whole join-info blob a new member copies from their own
-  // "Generate my recipient" step (see buildTeamVaultJoinInfo); parsed automatically so the admin
+  // "Generate my Team Vault ID" step (see buildTeamVaultJoinInfo); parsed automatically so the admin
   // never has to hand-copy the long age1yubikey1... string themselves.
   const [joinInfoPaste, setJoinInfoPaste] = useState('');
   const [newRecipientId, setNewRecipientId] = useState('');
@@ -367,7 +369,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
           className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
         >
           {enrolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5 text-sky-400" />}
-          Generate my recipient
+          Generate my Team Vault ID
         </button>
 
         {myRecipient && (
@@ -581,14 +583,14 @@ export const TeamVaultSettingsPanel: React.FC = () => {
             <textarea
               value={joinInfoPaste}
               onChange={(e) => handleJoinInfoPaste(e.target.value)}
-              placeholder="Paste their join info (the blob they copied from Generate my recipient)"
+              placeholder="Paste their join info (the blob they copied from Generate my Team Vault ID)"
               rows={3}
               className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
             />
             {joinInfoPaste.trim() && !newAgeRecipient && (
               <p className="text-xs text-amber-300">
                 That doesn't look like a join-info blob — make sure you pasted everything they
-                copied from their own "Generate my recipient" step.
+                copied from their own "Generate my Team Vault ID" step.
               </p>
             )}
             {newRecipientId && newAgeRecipient && (

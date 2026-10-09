@@ -38,7 +38,7 @@ describe('TeamVaultSettingsPanel', () => {
 
       await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate my recipient/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
       await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
 
       fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'alice@piv:yubikey-1' } });
@@ -67,7 +67,7 @@ describe('TeamVaultSettingsPanel', () => {
       renderPanel();
       await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate my recipient/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
       await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
 
       // The same recipient-id field doubles as "your suggested label" for the join blob — no
@@ -92,7 +92,7 @@ describe('TeamVaultSettingsPanel', () => {
 
       renderPanel();
       await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
-      fireEvent.click(screen.getByRole('button', { name: /Generate my recipient/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
 
       await waitFor(() => {
         expect((screen.getByPlaceholderText(/alice@piv/i) as HTMLInputElement).value).toBe('alice@example.com');
@@ -133,10 +133,10 @@ describe('TeamVaultSettingsPanel', () => {
       expect(screen.getByText(/fewer than 2 admins/)).toBeInTheDocument();
     });
 
-    it('keeps "Generate my recipient" visible even once a vault already exists, ready for a future second team', async () => {
+    it('keeps "Generate my Team Vault ID" visible even once a vault already exists, ready for a future second team', async () => {
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
-      expect(screen.getByRole('button', { name: /Generate my recipient/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Generate my Team Vault ID/i })).toBeInTheDocument();
     });
 
     it('adds a member by pasting their join-info blob into the one field — no second box to fill in', async () => {

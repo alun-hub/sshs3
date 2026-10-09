@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 
 interface PresencePromptItem {
@@ -16,29 +16,48 @@ interface PresencePromptItem {
  */
 export const TouchPresenceBanner: React.FC = () => {
   const [prompts, setPrompts] = useState<PresencePromptItem[]>([]);
+  // Per-id fallback-timeout handles, tracked outside React state: a long-running operation (e.g.
+  // Team Vault's PIN entry taking the user longer than 4s before the real touch moment) re-sends
+  // the same prompt id to keep the banner alive — found via real-world use, the banner was
+  // vanishing on the ORIGINAL 4s timer regardless, since nothing reset it on a repeat.
+  const timeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     if (!window.multissh?.onPresencePrompt || !window.multissh?.onPresenceClear) return;
 
+    const clearFallbackTimeout = (id: string) => {
+      const existing = timeoutsRef.current.get(id);
+      if (existing) {
+        clearTimeout(existing);
+        timeoutsRef.current.delete(id);
+      }
+    };
+
     const unsubscribePrompt = window.multissh.onPresencePrompt((event) => {
       setPrompts((prev) => (prev.some((p) => p.id === event.id) ? prev : [...prev, event]));
-      setTimeout(() => {
-        setPrompts((prev) => prev.filter((p) => p.id !== event.id));
-      }, 4000);
-    });
-    const unsubscribeClear = window.multissh.onPresenceClear(({ id, sessionId }) => {
-      setPrompts((prev) =>
-        prev.filter((p) => {
-          if (id && p.id === id) return false;
-          if (sessionId && p.sessionId === sessionId) return false;
-          return true;
-        })
+      clearFallbackTimeout(event.id);
+      timeoutsRef.current.set(
+        event.id,
+        setTimeout(() => {
+          timeoutsRef.current.delete(event.id);
+          setPrompts((prev) => prev.filter((p) => p.id !== event.id));
+        }, 4000)
       );
     });
+    const unsubscribeClear = window.multissh.onPresenceClear(({ id, sessionId }) => {
+      setPrompts((prev) => {
+        const removed = prev.filter((p) => (id && p.id === id) || (sessionId && p.sessionId === sessionId));
+        for (const p of removed) clearFallbackTimeout(p.id);
+        return prev.filter((p) => !removed.includes(p));
+      });
+    });
 
+    const timeouts = timeoutsRef.current;
     return () => {
       unsubscribePrompt();
       unsubscribeClear();
+      for (const timeoutId of timeouts.values()) clearTimeout(timeoutId);
+      timeouts.clear();
     };
   }, []);
 

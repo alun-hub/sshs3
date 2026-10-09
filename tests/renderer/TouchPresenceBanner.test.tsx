@@ -132,6 +132,38 @@ describe('TouchPresenceBanner Component', () => {
     expect(screen.queryByTestId('touch-presence-banner')).not.toBeInTheDocument();
   });
 
+  it('a repeated prompt with the same id resets the fallback timeout instead of letting the original one still fire', () => {
+    // Regression found via real-world use: a long-running operation (e.g. Team Vault's PIN entry
+    // taking the user longer than 4s before the real touch moment) re-sends the same prompt id to
+    // keep the banner alive, but the ORIGINAL setTimeout from the first send would still fire and
+    // remove it right on schedule, regardless of the refresh — the banner vanished well before
+    // the touch was actually needed.
+    render(<TouchPresenceBanner />);
+
+    act(() => {
+      promptCallback!({ id: 'presence-1', message: 'Touch your security key to connect' });
+    });
+    expect(screen.getByTestId('touch-presence-banner')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    // Refreshed before the original 4000ms would have elapsed.
+    act(() => {
+      promptCallback!({ id: 'presence-1', message: 'Touch your security key to connect' });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1500); // 4500ms since the first send, but only 1500ms since the refresh
+    });
+    expect(screen.getByTestId('touch-presence-banner')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2500); // 4000ms since the refresh
+    });
+    expect(screen.queryByTestId('touch-presence-banner')).not.toBeInTheDocument();
+  });
+
   it('unsubscribes on unmount', () => {
     const { unmount } = render(<TouchPresenceBanner />);
     unmount();

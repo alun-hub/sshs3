@@ -803,3 +803,25 @@ korrekta identitetsfilen (den som matchar valvets riktiga
 är fel. Återställs via "Use a different identity..."-länken i
 unlock-formuläret: ange rätt recipientId + peka ut rätt identitetsfil
 manuellt en gång, varefter det sparas rätt igen.
+
+### Touch-notisen uteblev ibland, och knappnamn (2026-10-09)
+
+Två till rapporterade problem i samma runda:
+
+1. **Touch-notisen visades inte alltid.** Grundorsak: `TouchPresenceBanner.tsx`
+   har en egen 4-sekunders fallback-timer som alltid döljer bannern,
+   oavsett om det riktiga arbetet fortfarande pågår — ett medvetet
+   säkerhetsnät för andra flöden (FIDO2/SSH) ifall ett riktigt
+   "clear"-event aldrig skulle komma. Eftersom PIN-inmatning (admin
+   skriver sin PIN i modalen) rutinmässigt tar längre än 4 sekunder,
+   hann bannern försvinna långt innan den riktiga touch-stunden ens
+   inträffade. Fixat på två ställen:
+   - `AgePtyPinRelay.ts` skickar nu `onTouchRequested()` upprepat
+     (var 2:a sekund) så länge anropet pågår, inte bara en gång vid start.
+   - `TouchPresenceBanner.tsx` nollställer nu fallback-timern per
+     prompt-id när samma id kommer igen, i stället för att låta den
+     ALLRA FÖRSTA timern fortsätta ticka oavsett (den gamla koden
+     dedupade visningen men glömde avbryta den tidigare timeouten).
+2. **Knappen "Generate my recipient" bytte namn till "Generate my
+   Team Vault ID"** — mer begripligt för slutanvändare, mindre
+   kryptografi-jargong.

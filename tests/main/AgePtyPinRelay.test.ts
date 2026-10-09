@@ -123,6 +123,30 @@ describe('runAgeCommandViaPty', () => {
     expect(callbacks.onTouchCleared).toHaveBeenCalledTimes(1);
   });
 
+  it('re-fires the touch hint periodically while the operation is still running, so a long PIN-entry pause does not let the UI banner expire early', async () => {
+    // Found via real-world use: the renderer's touch banner has its own 4s fallback auto-hide
+    // (TouchPresenceBanner.tsx). Typing a PIN into the modal routinely takes longer than that,
+    // so without a periodic re-fire the banner vanished long before the real touch moment.
+    vi.useFakeTimers();
+    try {
+      const callbacks = makeCallbacks(['123456']);
+      const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+      const term = mockPtyInstances[0];
+
+      expect(callbacks.onTouchRequested).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(vi.mocked(callbacks.onTouchRequested).mock.calls.length).toBeGreaterThan(1);
+
+      term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+      await Promise.resolve();
+      await Promise.resolve();
+      term.emitExit(0);
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries after a wrong PIN, forwarding the remaining-tries count, then succeeds', async () => {
     const callbacks = makeCallbacks(['000000', '123456']);
     const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);

@@ -1,6 +1,6 @@
 /** A small, copy-paste-friendly blob a new Team Vault member sends to their admin, carrying the
  * one piece of information that must originate from their own machine (the `age1yubikey1...`
- * recipient string from "Generate my recipient") alongside their own suggested label. Plain text
+ * recipient string from "Generate my Team Vault ID") alongside their own suggested label. Plain text
  * rather than JSON, so it survives being pasted through chat apps that mangle quotes. */
 export interface TeamVaultJoinInfo {
   recipientId: string;
