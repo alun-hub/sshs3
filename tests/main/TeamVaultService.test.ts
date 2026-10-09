@@ -303,6 +303,82 @@ describe('TeamVaultService', () => {
     });
   });
 
+  // unlock()/enrollOwnPivRecipient() must give TeamVaultCryptoService a way to reach the app's
+  // existing PIN modal (IpcBridge.promptForPinDirect) and touch-banner (makePresenceNotifier) —
+  // see docs/team-vault-plan.md's hardware verification notes. A narrow `pinPrompter` option
+  // keeps the dependency to just those two methods rather than the whole IpcBridge.
+  describe('PIN/touch prompt wiring (pinPrompter)', () => {
+    function fakeCryptoThatPrompts(): TeamVaultCryptoService {
+      const base = fakeCrypto();
+      return {
+        ...base,
+        unwrapVaultKey: async (wrapped: string, _identityFilePath: string, callbacks: any) => {
+          callbacks.onTouchRequested();
+          const pin = await callbacks.requestPin('Enter PIN for YubiKey');
+          expect(pin).toBe('999999');
+          callbacks.onTouchCleared();
+          return (base as any).unwrapVaultKey(wrapped);
+        },
+        enrollOwnPivRecipient: async (_identityOutDir: string, callbacks: any) => {
+          await callbacks.requestPin('Enter PIN for YubiKey');
+          return (base as any).enrollOwnPivRecipient();
+        },
+      } as unknown as TeamVaultCryptoService;
+    }
+
+    function fakePinPrompter() {
+      const touchRequested = vi.fn();
+      const touchCleared = vi.fn();
+      return {
+        promptForPinDirect: vi.fn(async (_prompt?: string, _kind?: string) => '999999'),
+        makePresenceNotifier: vi.fn(() => ({ onPresenceRequested: touchRequested, onPresenceCleared: touchCleared })),
+        touchRequested,
+        touchCleared,
+      };
+    }
+
+    it('unlock() routes PIN requests through pinPrompter.promptForPinDirect with kind "smartcard"', async () => {
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      const prompter = fakePinPrompter();
+      const second = new TeamVaultService({
+        cryptoService: fakeCryptoThatPrompts(),
+        filePath,
+        identityDir: tempDir,
+        pinPrompter: prompter,
+      });
+      await second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt');
+
+      expect(prompter.promptForPinDirect).toHaveBeenCalledWith('Enter PIN for YubiKey', 'smartcard', undefined, undefined);
+      expect(prompter.touchRequested).toHaveBeenCalledTimes(1);
+      expect(prompter.touchCleared).toHaveBeenCalledTimes(1);
+      expect(second.isUnlocked()).toBe(true);
+    });
+
+    it('enrollOwnPivRecipient() routes PIN requests through pinPrompter too', async () => {
+      const prompter = fakePinPrompter();
+      const service = new TeamVaultService({
+        cryptoService: fakeCryptoThatPrompts(),
+        filePath,
+        identityDir: tempDir,
+        pinPrompter: prompter,
+      });
+      await service.enrollOwnPivRecipient();
+      expect(prompter.promptForPinDirect).toHaveBeenCalledWith('Enter PIN for YubiKey', 'smartcard', undefined, undefined);
+    });
+
+    it('fails clearly, instead of silently hanging, when no pinPrompter is configured but the crypto layer needs one', async () => {
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      const second = new TeamVaultService({ cryptoService: fakeCryptoThatPrompts(), filePath, identityDir: tempDir });
+      await expect(second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
+        'not wired up'
+      );
+    });
+  });
+
   describe('hasRemoteVault / pushToRemote / pullFromRemote (Fas 3)', () => {
     /** A structurally valid, unrelated vault file — used to simulate "someone else's content is
      * already sitting at this S3 path" without needing a second real TeamVaultService instance. */

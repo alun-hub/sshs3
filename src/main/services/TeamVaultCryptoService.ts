@@ -1,9 +1,14 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
+import { runAgeCommandViaPty, createFifo, readFifoOnce, removeFifo, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
 import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
+
+export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError } from './AgePtyPinRelay';
+export type { AgePtyPromptCallbacks } from './AgePtyPinRelay';
 
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
@@ -132,27 +137,44 @@ export class TeamVaultCryptoService {
    * stanza (a reference to the card's slot, not a secret) — `age` resolves it through the
    * `age-plugin-yubikey` plugin binary, which talks to the physical PIV token.
    *
-   * PIN handling note: like `AskpassServer`'s SSH flows, a PIN must never be passed as a CLI
-   * argument. `options.pin`, when given, is written to this process' own stdin alongside the
-   * ciphertext — but whether `age-plugin-yubikey` actually reads a PIN from that stream
-   * non-interactively (rather than its own controlling TTY) is NOT yet verified against real
-   * hardware; see docs/team-vault-plan.md Fas 1 "Öppna risker" #1. Until verified, callers should
-   * assume the card's PIV slot is configured with a touch-only policy (no PIN prompt) for this
-   * path to work end-to-end.
+   * Hardware-verified (docs/team-vault-plan.md "Hårdvaruverifiering"): `age-plugin-yubikey`
+   * needs a real controlling terminal to prompt for PIN/touch — plain `execFile`/pipes fails
+   * with "IO error: not a terminal", so this runs through `runAgeCommandViaPty` instead.
+   * `callbacks` collects the PIN from the UI and surfaces the touch prompt — see
+   * `AgePtyPinRelay`.
+   *
+   * The decrypted Vault Key itself is binary, not text, so it must never flow through the pty's
+   * own text channel (UTF-8-decoded and CRLF-normalized — see docs/team-vault-plan.md; `age`
+   * also refuses outright to write binary to a terminal). Instead `-o <fifo>` redirects it to a
+   * FIFO — a kernel pipe, never written to disk — read back via `readFifoOnce`. Verified
+   * byte-exact against real hardware.
    */
-  async unwrapVaultKey(wrappedVaultKey: string, identityFilePath: string): Promise<Buffer> {
+  async unwrapVaultKey(
+    wrappedVaultKey: string,
+    identityFilePath: string,
+    callbacks: AgePtyPromptCallbacks
+  ): Promise<Buffer> {
     assertNotFlagLike(identityFilePath, 'identity file path');
     const agePath = resolveAgeBinary('age');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
-    const stdout = await runAgeCommand(
-      agePath,
-      ['-d', '-i', identityFilePath],
-      Buffer.from(wrappedVaultKey, 'utf8'),
-      // `age` discovers `age-plugin-yubikey` by name on PATH; prepend its resolved directory so a
-      // bundled (packaged-app) or dev-fetched copy is found even when it isn't installed system-wide.
-      pluginPathEnv(pluginPath)
-    );
-    return stdout;
+    const fifoPath = await createFifo(os.tmpdir());
+    try {
+      const readPromise = readFifoOnce(fifoPath);
+      await runAgeCommandViaPty(
+        agePath,
+        ['-d', '-i', identityFilePath, '-o', fifoPath],
+        // `age` discovers `age-plugin-yubikey` by name on PATH; prepend its resolved directory
+        // so a bundled (packaged-app) or dev-fetched copy is found even when not installed
+        // system-wide.
+        pluginPathEnv(pluginPath),
+        callbacks,
+        undefined,
+        wrappedVaultKey
+      );
+      return await readPromise;
+    } finally {
+      await removeFifo(fifoPath);
+    }
   }
 
   /**
@@ -162,12 +184,15 @@ export class TeamVaultCryptoService {
    * recipient string — safe to hand to whoever is adding this person to the vault (§4.3: "admin
    * needs only the member's public certificate").
    *
-   * Hardware-unverified (docs/team-vault-plan.md Fas 2 "Kvarstående risker"): whether
-   * `--generate` prompts for touch/PIN, and how, has not been confirmed against real hardware.
+   * Hardware-verified (docs/team-vault-plan.md "Hårdvaruverifiering"): runs through the same
+   * `runAgeCommandViaPty` as `unwrapVaultKey` — its output is pure text (the identity stanza), so
+   * it needs no FIFO.
    */
-  async enrollOwnPivRecipient(identityOutDir: string): Promise<{ recipient: string; identityFilePath: string }> {
-    const stdout = await runAgeCommand(resolveAgeBinary('age-plugin-yubikey'), ['--generate'], Buffer.alloc(0));
-    const text = stdout.toString('utf8');
+  async enrollOwnPivRecipient(
+    identityOutDir: string,
+    callbacks: AgePtyPromptCallbacks
+  ): Promise<{ recipient: string; identityFilePath: string }> {
+    const text = await runAgeCommandViaPty(resolveAgeBinary('age-plugin-yubikey'), ['--generate'], process.env, callbacks);
     const recipientMatch = text.match(/age1yubikey1\S+/);
     if (!recipientMatch) {
       throw new Error('age-plugin-yubikey --generate did not produce a recipient string');

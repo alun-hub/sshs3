@@ -252,7 +252,16 @@ export class IpcBridge {
     this.awsSsoAuthService = options.awsSsoAuthService ?? new AwsSsoAuthService();
     this.syncConfigStore = options.syncConfigStore ?? new SyncConfigStore();
     this.syncCryptoService = options.syncCryptoService ?? new SyncCryptoService();
-    this.teamVaultService = options.teamVaultService ?? new TeamVaultService();
+    this.teamVaultService =
+      options.teamVaultService ??
+      new TeamVaultService({
+        // Lazily bound: unlock()/enrollOwnPivRecipient() only read this when actually prompting,
+        // by which point the rest of this constructor has finished running.
+        pinPrompter: {
+          promptForPinDirect: (prompt, kind, context, retry) => this.promptForPinDirect(prompt, kind, context, retry),
+          makePresenceNotifier: (sessionId, message) => this.makePresenceNotifier(sessionId, message),
+        },
+      });
     this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();
     this.profileSyncService =
       options.profileSyncService ??

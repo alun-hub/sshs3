@@ -477,3 +477,134 @@ att de synligt raderar en riktig medlems åtkomst, vilket är betydligt
 mer upptäckbart än en tyst substitution. Fullständig lösning (signerade
 poster bundna till en specifik admin-identitet) kvarstår som framtida
 arbete, se ovan.
+
+---
+
+## Hårdvaruverifiering (2026-10-09) — Fas 1/2:s öppna PIN-fråga är löst
+
+Testat mot ett riktigt YubiKey 5C (PIV, slot 1/retired, `age-plugin-yubikey
+--generate --pin-policy once --touch-policy always`), lokalt nedladdade
+binärer (samma pinnade `age` v1.3.2 / `age-plugin-yubikey` v0.5.0 som CI
+bundlar). Två körningar:
+
+1. **Vanlig `execFile` (inga TTY, pipes)** — misslyckas omedelbart:
+   `Error: Failed to get input from user: IO error: not a terminal`.
+   Bekräftar den ursprungliga, odokumenterade misstanken.
+2. **Samma kommando wrappat i `node-pty`** (redan ett beroende i appen) —
+   kommer förbi TTY-kontrollen. Ett första försök med PIN skickad
+   **programmatiskt** via `term.write(pin + '\r')` levererades korrekt
+   till prompten (kortet validerade och avvisade PIN:en på rätt sätt —
+   mekanismen fungerar, bara fel PIN testades då). Ett andra försök med
+   rätt PIN (skriven av en människa i en egen terminal, aldrig i denna
+   konversation) lyckades fullt ut: PIN godtogs, touch-prompten kom och
+   besvarades, och ett giltigt identity/recipient-par skrevs ut.
+   **Exit code 0.**
+
+**Slutsats: icke-interaktiv PIN-matning till `age-plugin-yubikey`
+fungerar — men bara via en `node-pty`-wrapper, aldrig via vanlig
+`execFile`/pipes.** Det här var den enda kvarstående öppna frågan från
+Fas 1/2 som blockerade att `TeamVaultCryptoService.unwrapVaultKey`/
+`enrollOwnPivRecipient` faktiskt kan fungera i produktion. Nu
+verifierad: **implementationen måste bytas från `execFile` till
+`node-pty`** för dessa två metoder (parsa prompter ur pty-utskriften,
+skriv PIN/svar programmatiskt, upptäck touch-prompten för UI-feedback).
+
+**Ny upptäckt, inte tidigare dokumenterad:** på ett kort med
+default-PIN/PUK (fabriksinställning) vägrar `age-plugin-yubikey
+--generate` att generera en nyckel — det tvingar först igenom en
+interaktiv PIN+PUK-bytesguide (flera steg: nuvarande PUK, ny PIN, ny
+PUK). **PIN/PUK är kortövergripande, inte per-slot** — att slutföra den
+guiden ändrar skyddet för ALLA befintliga slots på kortet, inte bara den
+nya. Dessutom migrerar `--generate` på ett kort med default
+management-key automatiskt till en PIN-skyddad management-key som ett
+extra, odokumenterat steg i samma flöde. Konsekvens för Fas 1-3-koden:
+`enrollOwnPivRecipient`/`unwrapVaultKey`:s pty-baserade ersättare måste
+känna igen och hantera (eller åtminstone tydligt felmeddela på) dessa
+extra guide-steg, inte bara en enkel PIN-prompt — annars hänger
+anropet tyst tills vår egen timeout slår till, precis som i det första
+testet här.
+
+**Säkerhetsnotering från testet:** användarens nya PIN syntes olyckligt
+i klartext i en inklistrad terminal-utskrift under testet (ekades inte
+maskerad på den raden) och användaren bytte PIN igen direkt efteråt.
+Ren processhygien för framtida hårdvarutester: mata ALDRIG en riktig
+PIN genom AI-konversationen eller ett skript med hårdkodat PIN-värde —
+låt användaren skriva den direkt i sin egen terminal, eller skicka den
+programmatiskt från appens egen PIN-modal (aldrig loggad).
+
+### Uppföljning (2026-10-09) — binärsäkerhet för `unwrapVaultKey` + en PIN-incident
+
+Innan node-pty-ersättningen implementerades återstod en teknisk fråga
+som ovanstående test inte täckte: `enrollOwnPivRecipient`s utdata är
+ren text (identitetsstrofen), men `unwrapVaultKey`s faktiska nyttolast
+(den upplåsta 32-byte Vault Key:n) är godtycklig binärdata på `age`s
+stdout. `node-pty`s `onData` levererar UTF-8-avkodade strängar och
+terminalens line discipline normaliserar CRLF (`ONLCR`) — att köra
+hela `age -d`-processen genom en full `pty.spawn()` riskerar att tyst
+korrumpera precis de bytes som betyder mest. Verifierat empiriskt:
+
+1. `age -d` vägrar dessutom själv skriva binärdata till en terminal
+   (`age: error: refusing to output binary to the terminal`, kräver
+   `-o -` för att tvinga fram det) — ett medvetet säkerhetsbeteende i
+   `age`, inte en bugg.
+2. Lösning: låt PIN/touch-dialogen fortsätta gå över samma redan
+   verifierade `pty.spawn()`-kanal (ren text, som `--generate`), men
+   dirigera de faktiska nyckelbytena till en **FIFO** (ett namngivet
+   rör skapat med `mkfifo`) via `age -d -i <identitet> -o <fifo-sökväg>`
+   i stället för stdout. En FIFO är inte en terminal (ingen
+   `ONLCR`/ECHO-korruption, inget "refusing binary"-fel) och skriver
+   aldrig till disk (ren kernel-pipe-buffert, försvinner med
+   processen) — så det bryter inte mot regeln i `CLAUDE.md` om att
+   aldrig persistera hemligheter.
+3. Verifierat mot riktig hårdvara: en slumpmässig 32-byte testnyttolast
+   (inte den riktiga Vault Key:n) krypterades mot testrecipienten i
+   slot 1 (mjukvaruoperation, ingen hårdvara inblandad), dekrypterades
+   via `age -d -i <testidentitet> -o <fifo>` wrappat i `node-pty`, och
+   levererades byte-för-byte identiskt via FIFO:n. **Bekräftat: denna
+   kombination är binärsäker.**
+
+**Konsekvens för implementationen:** `unwrapVaultKey`s pty-ersättning
+ska använda `-o <fifo>`, läsa resultatet från FIFO:n (aldrig från
+pty-textkanalen), och själva FIFO-filen skapas/tas bort kring varje
+anrop (aldrig en långlivad fil på disk).
+
+**Ny säkerhetsincident under detta uppföljningstest:** vid ett
+diagnostik-steg (isolera om `-o <fifo>` eller TTY-kravet orsakade ett
+tidigare, oförklarat fel) skickade jag av misstag en felaktig
+"engångs-PIN" direkt mot det riktiga kortets PIV-PIN, i tron att den
+var disposable — den är det inte, den delar samma 3-försök-räknare som
+den riktiga PIN:en. Resultat: PIN gick från 3/3 till 2/3 försök kvar
+innan låsning. Ingen permanent skada (PUK opåverkad, 3/3), användaren
+körde `ykman piv access change-pin` själv och återställde räknaren till
+3/3 (verifierat via `ykman piv info`, read-only). **Lärdom, skarpare än
+den tidigare noteringen ovan: det finns inget "disposable" PIN-värde
+att testa med mot ett riktigt kort — varje PIN-sträng som skickas till
+en riktig YubiKey, rätt eller fel, avsiktligt eller diagnostiskt, räknas
+mot den delade räknaren. Diagnostik som behöver se var ett flöde
+bryter ska göras utan att skicka NÅGOT PIN-värde alls (t.ex. observera
+fram till PIN-prompten, inte förbi den), eller frågas med användaren
+innan varje sådant steg, inte bara innan de uppenbart "riktiga" PIN-
+försöken.
+
+### Implementerat (2026-10-09) — node-pty-ersättningen
+
+`enrollOwnPivRecipient`/`unwrapVaultKey` i `TeamVaultCryptoService`
+kör nu via `AgePtyPinRelay.runAgeCommandViaPty` (ny fil) i stället för
+`execFile`: en riktig pty för PIN/touch-dialogen, med
+`age-plugin-yubikey -o <fifo>` (FIFO, aldrig disk) för den faktiska
+Vault Key-nyttolasten vid unwrap — se avsnittet ovan för härledningen.
+Den en gång upptäckta default-PIN/PUK-guiden detekteras heuristiskt
+(ordalydelsen är fortfarande inte fullt verifierad, se kommentar i
+koden) och avbryter direkt i stället för att försöka svara på den.
+`TeamVaultService.unlock`/`enrollOwnPivRecipient` relayar PIN/touch
+via en ny `pinPrompter`-injektionspunkt (samma `promptForPinDirect`/
+`makePresenceNotifier` som appens övriga PIV/FIDO2-flöden), kopplad in
+i `IpcBridge`s konstruktion av `TeamVaultService` — ingen ny IPC-kanal
+eller UI-komponent krävdes.
+
+**Windows är fortfarande inte verifierat** (bara Linux denna omgång,
+medvetet beslut) — `node-pty` använder ConPTY där, men huruvida
+`age-plugin-yubikey` kräver en tty på samma sätt, och huruvida en FIFO
+(`mkfifo`) ens är tillgänglig (den är inte det på Windows), är öppna
+frågor för en separat verifieringsomgång innan Team Vault-funktionen
+räknas som klar på Windows.

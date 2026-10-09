@@ -11,8 +11,10 @@ import type {
   TeamVaultStatus,
 } from '../../shared/types/teamVault';
 import type { FileEntry, IStorageProvider } from '../../shared/types/storage';
+import type { AskpassPromptKind } from '../../shared/types/ipc';
+import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { joinPaths } from '../transfer/TransferPipeline';
-import { TeamVaultCryptoService } from './TeamVaultCryptoService';
+import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultCryptoService';
 
 const FORMAT_VERSION = 1 as const;
 const REMOTE_VAULT_FILENAME = 'team-vault/vault.json';
@@ -131,12 +133,32 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
   }
 }
 
+/** The narrow slice of `IpcBridge` that `unlock()`/`enrollOwnPivRecipient()` need to relay
+ * PIN/touch prompts to the renderer — injected rather than taking the whole `IpcBridge` to keep
+ * the dependency explicit (mirrors `TeamVaultHost`'s narrow pick-list in `teamVaultHandlers.ts`). */
+export interface TeamVaultPinPrompter {
+  promptForPinDirect(
+    prompt?: string,
+    kind?: AskpassPromptKind,
+    context?: string,
+    retry?: AskpassPromptRetryContext
+  ): Promise<string>;
+  makePresenceNotifier(
+    sessionId: string | undefined,
+    message: string
+  ): { onPresenceRequested: () => void; onPresenceCleared: () => void };
+}
+
 export interface TeamVaultServiceOptions {
   cryptoService?: TeamVaultCryptoService;
   /** Overrides the vault file path — tests only; production always uses userData. */
   filePath?: string;
   /** Overrides where generated PIV identity files are written — tests only. */
   identityDir?: string;
+  /** Required in production for `unlock()`/`enrollOwnPivRecipient()` to actually prompt for a
+   * PIN/touch (see docs/team-vault-plan.md's hardware verification notes) — omitted in most
+   * tests, whose fake crypto service never needs to prompt for anything. */
+  pinPrompter?: TeamVaultPinPrompter;
 }
 
 /**
@@ -148,12 +170,11 @@ export interface TeamVaultServiceOptions {
  * This is Fas 2 (docs/team-vault-plan.md): a single local vault, no S3 sync yet (Fas 3 adds
  * read/write against a remote target on top of this same file format and API).
  *
- * PIN-prompt wiring is deliberately NOT included here yet: whether `age-plugin-yubikey` can take
- * a PIN non-interactively is unverified against real hardware (see Fas 1/2 "Kvarstående risker"
- * in team-vault-plan.md). `unlock()` shells straight to `TeamVaultCryptoService.unwrapVaultKey`,
- * which currently relies on `age-plugin-yubikey` handling its own PIN/touch prompting — wiring in
- * the app's own PIN modal (e.g. reusing `IpcBridge.promptForPinDirect`) is future work once that
- * channel is confirmed to work.
+ * PIN-prompt wiring (docs/team-vault-plan.md's hardware verification notes): `unlock()`/
+ * `enrollOwnPivRecipient()` relay PIN/touch prompts through an injected `TeamVaultPinPrompter`
+ * (see `buildPtyCallbacks()`), which in production is `IpcBridge.promptForPinDirect`/
+ * `makePresenceNotifier` — the same Askpass modal and touch banner every other PIV/FIDO2 flow in
+ * the app already uses.
  */
 export class TeamVaultService {
   private readonly cryptoService: TeamVaultCryptoService;
@@ -175,9 +196,11 @@ export class TeamVaultService {
    * provider has no `If-Match`-style primitive to replace (verified against the code; see
    * docs/team-vault-plan.md Fas 3). */
   private lastKnownRemoteEntry: FileEntry | null | undefined = undefined;
+  private readonly pinPrompter?: TeamVaultPinPrompter;
 
   constructor(options: TeamVaultServiceOptions = {}) {
     this.cryptoService = options.cryptoService ?? new TeamVaultCryptoService();
+    this.pinPrompter = options.pinPrompter;
 
     let baseDir: string;
     try {
@@ -224,10 +247,37 @@ export class TeamVaultService {
     };
   }
 
+  /** Builds the PIN/touch callback bundle `TeamVaultCryptoService` needs for a pty-backed
+   * `age-plugin-yubikey` call, routed through `pinPrompter` (the app's existing Askpass modal
+   * and touch banner — see `TeamVaultPinPrompter`). Without a configured `pinPrompter` (most
+   * tests, whose fake crypto service never actually prompts), `requestPin` fails loudly instead
+   * of hanging forever waiting for a UI that doesn't exist. */
+  private buildPtyCallbacks(sessionId?: string): AgePtyPromptCallbacks {
+    const prompter = this.pinPrompter;
+    if (!prompter) {
+      return {
+        requestPin: async () => {
+          throw new Error('Team Vault PIN prompting is not wired up (missing pinPrompter)');
+        },
+        onTouchRequested: () => {},
+        onTouchCleared: () => {},
+      };
+    }
+    const { onPresenceRequested, onPresenceCleared } = prompter.makePresenceNotifier(
+      sessionId,
+      'Touch your security key now to confirm'
+    );
+    return {
+      requestPin: (promptText, retry) => prompter.promptForPinDirect(promptText, 'smartcard', undefined, retry),
+      onTouchRequested: onPresenceRequested,
+      onTouchCleared: onPresenceCleared,
+    };
+  }
+
   /** Generates a fresh recipient from the caller's own PIV card — used both by the admin
    * enrolling themselves at vault creation and by any later member joining (§4.3). */
   async enrollOwnPivRecipient(): Promise<{ recipient: string; identityFilePath: string }> {
-    return this.cryptoService.enrollOwnPivRecipient(this.identityDir);
+    return this.cryptoService.enrollOwnPivRecipient(this.identityDir, this.buildPtyCallbacks());
   }
 
   /**
@@ -429,7 +479,11 @@ export class TeamVaultService {
     if (!source) {
       throw new Error(`"${recipientId}" is not a recipient of this vault`);
     }
-    this.unlockedVaultKey = await this.cryptoService.unwrapVaultKey(source.wrappedVaultKey, identityFilePath);
+    this.unlockedVaultKey = await this.cryptoService.unwrapVaultKey(
+      source.wrappedVaultKey,
+      identityFilePath,
+      this.buildPtyCallbacks(recipientId)
+    );
     this.unlockedAsRecipientId = recipientId;
   }
 
