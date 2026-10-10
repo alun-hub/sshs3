@@ -871,14 +871,14 @@ export class TeamVaultService {
    * (printed/saved at vault creation, never written to a file by the app — see
    * `generateRecoveryIdentity`), not a file path and not the `'recovery-key-1'` recipientId. Both
    * are handled internally here, never by the renderer: the recipientId is fixed (the recovery
-   * entry's id never varies, see `createVault`), and the pasted text is written to an app-managed
-   * file under `identityDir` (same directory/mode convention as `enrollOwnPivRecipient`) before
-   * delegating to the existing `unlock()`.
+   * entry's id never varies, see `createVault`), and the pasted text — a private key — is fed to
+   * `age` through a FIFO, never written to disk (see `TeamVaultCryptoService.withRecoveryIdentity`).
    */
   async unlockWithRecoveryText(identityText: string): Promise<void> {
     const file = await this.requireFile();
-    const identityFilePath = await this.cryptoService.saveRecoveryIdentityText(this.identityDir, identityText);
-    await this.unlock(file.recovery.recipientId, identityFilePath);
+    await this.cryptoService.withRecoveryIdentity(identityText, (identityPath) =>
+      this.unlock(file.recovery.recipientId, identityPath)
+    );
   }
 
   /** Must be called whenever the configured S3 target/remoteBasePath changes — otherwise a stat

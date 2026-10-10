@@ -339,37 +339,88 @@ describe('TeamVaultCryptoService', () => {
     });
   });
 
-  describe('saveRecoveryIdentityText', () => {
-    it('writes a clean recovery identity text to a file under identityOutDir', async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
-      const service2 = new TeamVaultCryptoService();
-      const text = '# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n';
-      const identityFilePath = await service2.saveRecoveryIdentityText(dir, text);
-      expect(fs.readFileSync(identityFilePath, 'utf8')).toBe(text);
+  // The recovery identity is a private key — CLAUDE.md forbids writing it to disk, so it reaches
+  // `age` through a real FIFO. These tests use the real createFifo/removeFifo (not the file-level
+  // mocks above) to prove what `fn` receives is a pipe and that nothing is left behind.
+  describe('withRecoveryIdentity (FIFO, never a file on disk)', () => {
+    const CLEAN = '# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n';
+
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof import('../../src/main/services/AgePtyPinRelay')>(
+        '../../src/main/services/AgePtyPinRelay'
+      );
+      mockCreateFifo.mockReset().mockImplementation(actual.createFifo);
+      mockRemoveFifo.mockReset().mockImplementation(actual.removeFifo);
+      mockReadFifoOnce.mockReset().mockImplementation(actual.readFifoOnce);
+      // The real createFifo shells out to `mkfifo` via execFile, which this file mocks globally.
+      const realChildProcess = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+      mockExecFile.mockReset().mockImplementation(realChildProcess.execFile as any);
     });
 
-    it('tolerates surrounding chat/email quoting, keeping only the real stanza', async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
+    it('hands fn a FIFO (not a regular file) carrying the stanza, and removes it afterwards', async () => {
       const service2 = new TeamVaultCryptoService();
-      const pasted =
-        'Hey, here is the recovery key we printed:\n\n' +
-        '# created: 2026-01-01T00:00:00Z\n' +
-        '# public key: age1fakerecovery\n' +
-        'AGE-SECRET-KEY-1FAKERECOVERYTEXT\n\n' +
-        '-- sent from my phone';
-      const identityFilePath = await service2.saveRecoveryIdentityText(dir, pasted);
-      const saved = fs.readFileSync(identityFilePath, 'utf8');
-      expect(saved).not.toContain('Hey, here is');
-      expect(saved).not.toContain('sent from my phone');
-      expect(saved).toBe('# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n');
+      let seenPath = '';
+      const read = await service2.withRecoveryIdentity(CLEAN, async (p) => {
+        seenPath = p;
+        expect(fs.statSync(p).isFIFO()).toBe(true);
+        return (await mockReadFifoOnce(p)).toString('utf8');
+      });
+      expect(read).toBe(CLEAN);
+      expect(fs.existsSync(seenPath)).toBe(false);
     });
 
-    it('rejects text with no recognizable AGE-SECRET-KEY-1... line', async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
+    it('tolerates surrounding chat/email quoting, passing only the real stanza', async () => {
       const service2 = new TeamVaultCryptoService();
-      await expect(service2.saveRecoveryIdentityText(dir, 'not a key at all')).rejects.toThrow(
+      const pasted = `Hey, here is the recovery key we printed:\n\n${CLEAN}\n-- sent from my phone`;
+      const read = await service2.withRecoveryIdentity(pasted, async (p) => (await mockReadFifoOnce(p)).toString('utf8'));
+      expect(read).toBe(CLEAN);
+    });
+
+    it('rejects text with no recognizable AGE-SECRET-KEY-1... line without calling fn', async () => {
+      const service2 = new TeamVaultCryptoService();
+      const fn = vi.fn();
+      await expect(service2.withRecoveryIdentity('not a key at all', fn)).rejects.toThrow(
         'does not look like a Team Vault recovery key'
       );
+      expect(fn).not.toHaveBeenCalled();
+      expect(mockCreateFifo).not.toHaveBeenCalled();
+    });
+
+    it('does not hang and still cleans up when fn fails before ever reading the FIFO', async () => {
+      const service2 = new TeamVaultCryptoService();
+      let seenPath = '';
+      await expect(
+        service2.withRecoveryIdentity(CLEAN, async (p) => {
+          seenPath = p;
+          throw new Error('age failed before opening its identity');
+        })
+      ).rejects.toThrow('age failed before opening its identity');
+      expect(fs.existsSync(seenPath)).toBe(false);
+    });
+
+    const realAge = [path.join(process.cwd(), 'build-resources', 'age', 'linux'), ''].map((dir) => ({
+      age: dir ? path.join(dir, 'age') : 'age',
+      keygen: dir ? path.join(dir, 'age-keygen') : 'age-keygen',
+    })).find((b) => !spawnSync(b.age, ['--version'], { stdio: 'ignore' }).error && !spawnSync(b.keygen, ['--version'], { stdio: 'ignore' }).error);
+
+    it.skipIf(!realAge)('real `age -d -i <fifo>` decrypts with a recovery identity fed through it', async () => {
+      const { spawn } = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+      const identity = spawnSync(realAge!.keygen, [], { encoding: 'utf8' }).stdout;
+      const recipient = identity.match(/# public key: (age1\S+)/)![1];
+      const ciphertext = spawnSync(realAge!.age, ['-r', recipient, '-a'], { input: 'vault-key-bytes' }).stdout;
+
+      const service2 = new TeamVaultCryptoService();
+      const plaintext = await service2.withRecoveryIdentity(`pasted:\n${identity}\nthanks`, (p) =>
+        new Promise<string>((resolve, reject) => {
+          const child = spawn(realAge!.age, ['-d', '-i', p]);
+          let out = '';
+          child.stdout.on('data', (d) => (out += d));
+          child.on('error', reject);
+          child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(`age exited ${code}`))));
+          child.stdin.end(ciphertext);
+        })
+      );
+      expect(plaintext).toBe('vault-key-bytes');
     });
   });
 

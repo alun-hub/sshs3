@@ -93,11 +93,11 @@ function fakeCrypto(): TeamVaultCryptoService {
       recipient: 'age1yubikey1fakeadmin',
       identityFilePath: '/tmp/fake-admin-identity.txt',
     }),
-    saveRecoveryIdentityText: async (_identityOutDir: string, identityText: string) => {
+    withRecoveryIdentity: async <T,>(identityText: string, fn: (identityPath: string) => Promise<T>) => {
       if (!identityText.includes('AGE-SECRET-KEY-1')) {
         throw new Error('This does not look like a Team Vault recovery key (no AGE-SECRET-KEY-1... line found)');
       }
-      return '/tmp/recovery-identity.txt';
+      return fn('/tmp/recovery-identity.fifo');
     },
     generateRecoveryIdentity: async () => ({
       identity: 'AGE-SECRET-KEY-FAKE\n# public key: age1fakerecovery',

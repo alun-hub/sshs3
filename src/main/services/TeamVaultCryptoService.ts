@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -229,21 +230,50 @@ export class TeamVaultCryptoService {
   }
 
   /**
-   * Writes a user-pasted recovery identity (the text `generateRecoveryIdentity` showed them once
-   * at vault creation, for printing/safekeeping) to an app-managed file under `identityOutDir`,
-   * for `unlock()` to then use — see `TeamVaultService.unlockWithRecoveryText`. Tolerates
-   * surrounding noise (chat/email quoting, extra blank lines) via `extractStanza`, the same way
-   * `enrollOwnPivRecipient` already tolerates the pty transcript's noise. Throws if no recognizable
-   * `AGE-SECRET-KEY-1...` line is found, rather than writing whatever garbage was pasted.
+   * Runs `fn` with a path `age -i` can read a user-pasted recovery identity from (the text
+   * `generateRecoveryIdentity` showed them once at vault creation) — see
+   * `TeamVaultService.unlockWithRecoveryText`. Unlike a PIV identity stanza (a public reference
+   * to a card slot), the recovery identity IS a private key, so per CLAUDE.md it must never be
+   * written to disk: the path handed to `fn` is a FIFO (kernel pipe, nothing persisted), the same
+   * mechanism `unwrapVaultKey` already uses for the Vault Key itself. Verified against the real
+   * `age` binary that `age -d -i <fifo>` reads an identity this way. An earlier version wrote the
+   * stanza to a regular file under the identity directory and never removed it.
+   *
+   * Tolerates surrounding noise (chat/email quoting, extra blank lines) via `extractStanza`.
+   * Throws if no recognizable `AGE-SECRET-KEY-1...` line is found.
    */
-  async saveRecoveryIdentityText(identityOutDir: string, identityText: string): Promise<string> {
+  async withRecoveryIdentity<T>(identityText: string, fn: (identityPath: string) => Promise<T>): Promise<T> {
     if (!RECOVERY_IDENTITY_PATTERN.test(identityText)) {
       throw new Error('This does not look like a Team Vault recovery key (no AGE-SECRET-KEY-1... line found)');
     }
-    await fs.mkdir(identityOutDir, { recursive: true });
-    const identityFilePath = path.join(identityOutDir, `${crypto.randomUUID()}.txt`);
-    await fs.writeFile(identityFilePath, extractStanza(identityText, RECOVERY_IDENTITY_PATTERN), { mode: 0o600 });
-    return identityFilePath;
+    const stanza = extractStanza(identityText, RECOVERY_IDENTITY_PATTERN);
+    const fifoPath = await createFifo(os.tmpdir());
+    let writerSettled = false;
+    // Opening a FIFO for writing blocks until a reader opens it — i.e. until `age` starts.
+    const writer = fs.writeFile(fifoPath, stanza).then(
+      () => {
+        writerSettled = true;
+      },
+      () => {
+        writerSettled = true;
+      }
+    );
+    try {
+      return await fn(fifoPath);
+    } finally {
+      // If `fn` failed before `age` ever opened the FIFO, the writer is still blocked in open() —
+      // briefly open a reader to release it so it neither hangs nor leaks a threadpool thread.
+      // The stanza then lands in a pipe buffer that's discarded on close, never on disk.
+      if (!writerSettled) {
+        try {
+          fsSync.closeSync(fsSync.openSync(fifoPath, fsSync.constants.O_RDONLY | fsSync.constants.O_NONBLOCK));
+        } catch {
+          // Already gone or already released — nothing to unblock.
+        }
+      }
+      await writer;
+      await removeFifo(fifoPath);
+    }
   }
 
   /**
