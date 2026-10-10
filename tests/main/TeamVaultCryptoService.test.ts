@@ -257,7 +257,7 @@ describe('TeamVaultCryptoService', () => {
         '#     PIN policy: Once (requires PIN once per session)\n' +
         '#   Touch policy: Always\n' +
         '#    Recipient: age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a\n' +
-        'AGE-PLUGIN-YUBIKEY-1QG69G6ANLKD8W9QL0UGVYAHM3EX8QD0V6V2N5L5W6RR0PQ0WJXS8NQG6C2A\n';
+        'AGE-PLUGIN-YUBIKEY-1QG69G6ANLKD8W9QL0UGVYAHM3EX8QD0V6V2N5L5W6RR0PQ0WJXS8NQG6C2A\n'; // pragma: allowlist secret
       mockRunAgeCommandViaPty.mockImplementation(async (_binary: string, args: string[], _env: unknown, cb: unknown) => {
         expect(args).toEqual(['--generate']);
         expect(cb).toBe(callbacks);
@@ -270,7 +270,7 @@ describe('TeamVaultCryptoService', () => {
       const result = await service2.enrollOwnPivRecipient(dir, callbacks);
 
       expect(result.recipient).toBe(
-        'age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a'
+        'age1yubikey1qg69g6anlkd8w9ql0ugvyahm3ex8qd0v6v2n5l5w6rr0pq0wjxs8nqg6c2a' // pragma: allowlist secret
       );
       expect(fs.readFileSync(result.identityFilePath, 'utf8')).toBe(generated);
     });
@@ -295,7 +295,7 @@ describe('TeamVaultCryptoService', () => {
         '#   PIN policy: Once   (A PIN is required once per session, if set)\r\n' +
         '# Touch policy: Always (A physical touch is required for every decryption)\r\n' +
         '#    Recipient: age1yubikey1qt5hwsyd95vtvxkpyjayvcgys4ng7gs4ucd02g07z2l32qvpvumesxkwg9u\r\n' +
-        'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\r\n';
+        'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\r\n'; // pragma: allowlist secret
       mockRunAgeCommandViaPty.mockResolvedValue(noisyTranscript);
 
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-enroll-'));
@@ -313,7 +313,7 @@ describe('TeamVaultCryptoService', () => {
           '#   PIN policy: Once   (A PIN is required once per session, if set)\n' +
           '# Touch policy: Always (A physical touch is required for every decryption)\n' +
           '#    Recipient: age1yubikey1qt5hwsyd95vtvxkpyjayvcgys4ng7gs4ucd02g07z2l32qvpvumesxkwg9u\n' +
-          'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\n'
+          'AGE-PLUGIN-YUBIKEY-1MNLNXQVYPD0H5QCVDPS26\n' // pragma: allowlist secret
       );
     });
 

@@ -70,7 +70,7 @@ describe('TeamVaultConfigStore', () => {
         name: 'Team Vault Bucket',
         region: 'us-east-1',
         accessKeyId: 'AKIA',
-        secretAccessKey: 'top-secret',
+        secretAccessKey: 'top-secret', // pragma: allowlist secret
       },
     };
     await store.setTarget(target, 'team-bucket/prefix');
@@ -131,7 +131,7 @@ describe('TeamVaultConfigStore', () => {
         name: 'Team Vault Bucket',
         region: 'us-east-1',
         accessKeyId: 'AKIA',
-        secretAccessKey: 'top-secret',
+        secretAccessKey: 'top-secret', // pragma: allowlist secret
       },
     });
     await store.setLastSyncAt('2026-01-01T00:00:00.000Z');

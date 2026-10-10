@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildTeamVaultJoinInfo, parseTeamVaultJoinInfo } from '../../src/renderer/src/lib/teamVaultJoinInfo';
 
 describe('buildTeamVaultJoinInfo / parseTeamVaultJoinInfo', () => {
-  const RECIPIENT = 'age1yubikey1qtcxzz6mxwnfxnf20a73grajw82psjfam6q3w68tentulrhcp3lwkcxxy7t';
+  const RECIPIENT = 'age1yubikey1qtcxzz6mxwnfxnf20a73grajw82psjfam6q3w68tentulrhcp3lwkcxxy7t'; // pragma: allowlist secret
 
   it('round-trips a built join string', () => {
     const joinInfo = buildTeamVaultJoinInfo('alice@piv:yubikey-1', RECIPIENT);
