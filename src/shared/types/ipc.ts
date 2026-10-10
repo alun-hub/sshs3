@@ -227,6 +227,7 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_SAVE_FOLDER: 'team-vault:save-folder',
   TEAM_VAULT_RENAME_FOLDER: 'team-vault:rename-folder',
   TEAM_VAULT_DELETE_FOLDER: 'team-vault:delete-folder',
+  TEAM_VAULT_SET_FOLDER_ICON: 'team-vault:set-folder-icon',
   // Push-only (main -> renderer), fired by the background auto-poll (IpcBridge.runTeamVaultAutoPoll).
   TEAM_VAULT_AUTO_PULLED: 'team-vault:auto-pulled',
   TEAM_VAULT_REMOTE_CHANGED: 'team-vault:remote-changed',
@@ -667,6 +668,7 @@ export interface MultiSSHApi {
   teamVaultSaveFolder(folderPath: string): Promise<void>;
   teamVaultRenameFolder(oldPath: string, newPath: string): Promise<void>;
   teamVaultDeleteFolder(folderPath: string, deleteProfiles?: boolean): Promise<void>;
+  teamVaultSetFolderIcon(folderPath: string, icon: string | undefined): Promise<void>;
   /** Fired by the main-process background poll (IpcBridge.runTeamVaultAutoPoll) when it detected
    * and auto-applied a remote change, or detected one it couldn't safely auto-apply. */
   onTeamVaultAutoPulled?(callback: () => void): () => void;

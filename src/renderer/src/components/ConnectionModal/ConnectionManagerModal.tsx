@@ -510,6 +510,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
+  const handleSetTeamFolderIcon = async (path: string, icon: string | undefined) => {
+    try {
+      await window.multissh.teamVaultSetFolderIcon(path, icon);
+      await loadTeam();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to set folder icon'));
+    }
+  };
+
   const handleDropOnTeamFolder = async (
     targetPath: string | undefined,
     e: React.DragEvent,
@@ -625,11 +634,11 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     [teamPayload, query]
   );
   const teamSshTree = useMemo(
-    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamSSH),
+    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamSSH, teamPayload?.folderIcons ?? {}),
     [teamPayload, filteredTeamSSH]
   );
   const teamS3Tree = useMemo(
-    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamS3),
+    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamS3, teamPayload?.folderIcons ?? {}),
     [teamPayload, filteredTeamS3]
   );
   const teamFolderSuggestions = useMemo(
@@ -1280,6 +1289,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       onCreateFolder={handleCreateTeamFolder}
                       onRenameFolder={handleRenameTeamFolder}
                       onDeleteFolder={handleDeleteTeamFolder}
+                      onSetFolderIcon={handleSetTeamFolderIcon}
                     />
                   )}
                 </div>
@@ -1423,6 +1433,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       onCreateFolder={handleCreateTeamFolder}
                       onRenameFolder={handleRenameTeamFolder}
                       onDeleteFolder={handleDeleteTeamFolder}
+                      onSetFolderIcon={handleSetTeamFolderIcon}
                     />
                   )}
                 </div>

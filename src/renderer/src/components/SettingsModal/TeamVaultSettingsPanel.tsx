@@ -50,6 +50,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [vaultNameDraft, setVaultNameDraft] = useState('');
   const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
   const [recoverySaved, setRecoverySaved] = useState(false);
+  const [recoveryCopied, setRecoveryCopied] = useState(false);
 
   // Rename the vault (admin only) — the descriptive name shown instead of the opaque vaultId.
   const [editingVaultName, setEditingVaultName] = useState(false);
@@ -154,6 +155,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       );
       setRecoveryIdentity(identity);
       setRecoverySaved(false);
+      setRecoveryCopied(false);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to create the Team Vault'));
@@ -184,6 +186,17 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       setTimeout(() => setJoinInfoCopied(false), 3000);
     } catch {
       setError('Failed to copy join info to clipboard');
+    }
+  };
+
+  const handleCopyRecovery = async () => {
+    if (!recoveryIdentity) return;
+    try {
+      await navigator.clipboard.writeText(recoveryIdentity);
+      setRecoveryCopied(true);
+      setTimeout(() => setRecoveryCopied(false), 3000);
+    } catch {
+      setError('Failed to copy recovery key to clipboard');
     }
   };
 
@@ -915,9 +928,19 @@ export const TeamVaultSettingsPanel: React.FC = () => {
               never saved by the app — print it and store it somewhere safe (e.g. a safe), per
               docs/team-vault-plan.md §4.1. Anyone who recovers this text can decrypt the vault.
             </p>
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border-subtle bg-app-input p-3 text-xs text-txt-primary">
-              {recoveryIdentity}
-            </pre>
+            <div className="relative">
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border-subtle bg-app-input p-3 pr-20 text-xs text-txt-primary">
+                {recoveryIdentity}
+              </pre>
+              <button
+                type="button"
+                onClick={() => void handleCopyRecovery()}
+                className="absolute right-2 top-2 flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2 py-1 text-2xs font-medium text-txt-secondary hover:bg-app-surface-hover"
+              >
+                {recoveryCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                {recoveryCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
             <label className="flex items-center gap-2 text-xs text-txt-secondary">
               <input
                 type="checkbox"

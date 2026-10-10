@@ -538,6 +538,8 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, oldPath, newPath),
   teamVaultDeleteFolder: (folderPath: string, deleteProfiles?: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER, folderPath, deleteProfiles),
+  teamVaultSetFolderIcon: (folderPath: string, icon: string | undefined): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, folderPath, icon),
   onTeamVaultAutoPulled: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, listener);

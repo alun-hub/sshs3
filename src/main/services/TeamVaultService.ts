@@ -677,17 +677,22 @@ export class TeamVaultService {
       const ssh = Array.isArray(parsed?.ssh) ? parsed.ssh : [];
       const s3 = Array.isArray(parsed?.s3) ? parsed.s3 : [];
       const folders = Array.isArray(parsed?.folders) ? parsed.folders : [];
+      const folderIcons =
+        parsed?.folderIcons && typeof parsed.folderIcons === 'object' && !Array.isArray(parsed.folderIcons)
+          ? parsed.folderIcons
+          : {};
       // Defense in depth against a legacy entry stored by an older app version that still wrote
       // a `pin` — never surfaced on read, same as it's never accepted on write (withoutPin).
       return {
         ssh: ssh.map((p: SSHConnectionConfig) => withoutPin(p)),
         s3,
         folders,
+        folderIcons,
       };
     } catch {
       // The original `createVault` payload is the literal string '{}' (pre-dating this feature),
       // not a parse error — either way, treat as empty rather than throwing.
-      return { ssh: [], s3: [], folders: [] };
+      return { ssh: [], s3: [], folders: [], folderIcons: {} };
     }
   }
 
@@ -738,8 +743,12 @@ export class TeamVaultService {
       }
       const ssh = payload.ssh.map((p) => (p.group ? { ...p, group: remap(p.group) } : p));
       const s3 = payload.s3.map((p) => (p.group ? { ...p, group: remap(p.group) } : p));
+      const folderIcons: Record<string, string> = {};
+      for (const [path, icon] of Object.entries(payload.folderIcons ?? {})) {
+        folderIcons[remap(path)] = icon;
+      }
 
-      await this.persistPayload(file, vaultKey, { ssh, s3, folders: Array.from(new Set(folders)) });
+      await this.persistPayload(file, vaultKey, { ssh, s3, folders: Array.from(new Set(folders)), folderIcons });
     });
   }
 
@@ -760,8 +769,36 @@ export class TeamVaultService {
       const folders = (payload.folders ?? []).filter((f) => !isSelfOrDescendant(f, trimmed));
       const ssh = deleteProfiles ? payload.ssh.filter((p) => !affected(p.group)) : payload.ssh.map((p) => (affected(p.group) ? { ...p, group: undefined } : p));
       const s3 = deleteProfiles ? payload.s3.filter((p) => !affected(p.group)) : payload.s3.map((p) => (affected(p.group) ? { ...p, group: undefined } : p));
+      const folderIcons: Record<string, string> = {};
+      for (const [path, icon] of Object.entries(payload.folderIcons ?? {})) {
+        if (!isSelfOrDescendant(path, trimmed)) folderIcons[path] = icon;
+      }
 
-      await this.persistPayload(file, vaultKey, { ssh, s3, folders });
+      await this.persistPayload(file, vaultKey, { ssh, s3, folders, folderIcons });
+    });
+  }
+
+  /** Sets (or, with `icon` undefined, clears back to the default) a folder's icon — any unlocked
+   * member may organize shared folders, same reasoning as `saveTeamFolder`/profile edits. `icon`
+   * is validated by the IPC handler against `TEAM_FOLDER_ICONS` before this is ever called; this
+   * layer doesn't re-validate it, same division of responsibility as the rest of this file's
+   * handler-vs-service validation split. */
+  async setTeamFolderIcon(folderPath: string, icon: string | undefined): Promise<void> {
+    const trimmed = normalizeFolderPath(folderPath);
+    if (!trimmed) {
+      throw new Error('Folder name is required');
+    }
+    return this.queueMutation(async () => {
+      const file = await this.requireFile();
+      const vaultKey = this.requireUnlocked();
+      const payload = await this.decryptPayload(file, vaultKey);
+      const folderIcons = { ...(payload.folderIcons ?? {}) };
+      if (icon) {
+        folderIcons[trimmed] = icon;
+      } else {
+        delete folderIcons[trimmed];
+      }
+      await this.persistPayload(file, vaultKey, { ...payload, folderIcons });
     });
   }
 

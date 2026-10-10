@@ -1204,7 +1204,7 @@ describe('TeamVaultService', () => {
     it('getPayload returns an empty payload for a freshly created vault (still the original {})', async () => {
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.getPayload()).resolves.toEqual({ ssh: [], s3: [], folders: [] });
+      await expect(service.getPayload()).resolves.toEqual({ ssh: [], s3: [], folders: [], folderIcons: {} });
     });
 
     it('requires the vault unlocked', async () => {
@@ -1443,6 +1443,56 @@ describe('TeamVaultService', () => {
 
       const payload = await service.getPayload();
       expect(payload.ssh.map((p) => p.id)).toEqual(['p3']);
+    });
+
+    describe('setTeamFolderIcon', () => {
+      it('sets and clears a folder icon', async () => {
+        const service = makeService();
+        await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+        await service.saveTeamFolder('Acme Infra');
+
+        await service.setTeamFolderIcon('Acme Infra', 'server');
+        expect((await service.getPayload()).folderIcons).toEqual({ 'Acme Infra': 'server' });
+
+        await service.setTeamFolderIcon('Acme Infra', undefined);
+        expect((await service.getPayload()).folderIcons).toEqual({});
+      });
+
+      it('rejects an empty folder path', async () => {
+        const service = makeService();
+        await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+        await expect(service.setTeamFolderIcon('   ', 'server')).rejects.toThrow('Folder name is required');
+      });
+    });
+
+    it('renameTeamFolder remaps the icon of the renamed folder and every descendant', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.saveTeamFolder('Acme Infra');
+      await service.saveTeamFolder('Acme Infra/Cluster A');
+      await service.setTeamFolderIcon('Acme Infra', 'server');
+      await service.setTeamFolderIcon('Acme Infra/Cluster A', 'database');
+
+      await service.renameTeamFolder('Acme Infra', 'Acme Co');
+
+      const payload = await service.getPayload();
+      expect(payload.folderIcons).toEqual({ 'Acme Co': 'server', 'Acme Co/Cluster A': 'database' });
+    });
+
+    it('deleteTeamFolder removes the icon of the deleted folder and every descendant', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.saveTeamFolder('Acme Infra');
+      await service.saveTeamFolder('Acme Infra/Cluster A');
+      await service.saveTeamFolder('Unrelated');
+      await service.setTeamFolderIcon('Acme Infra', 'server');
+      await service.setTeamFolderIcon('Acme Infra/Cluster A', 'database');
+      await service.setTeamFolderIcon('Unrelated', 'cloud');
+
+      await service.deleteTeamFolder('Acme Infra');
+
+      const payload = await service.getPayload();
+      expect(payload.folderIcons).toEqual({ Unrelated: 'cloud' });
     });
   });
 });

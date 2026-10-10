@@ -57,6 +57,12 @@ describe('TeamVaultSettingsPanel', () => {
       const doneButton = within(dialog).getByRole('button', { name: 'Done' });
       expect(doneButton).toBeDisabled();
 
+      fireEvent.click(within(dialog).getByRole('button', { name: /Copy/i }));
+      await waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('AGE-SECRET-KEY-FAKE'));
+      });
+      expect(within(dialog).getByRole('button', { name: /Copied/i })).toBeInTheDocument();
+
       fireEvent.click(within(dialog).getByRole('checkbox'));
       expect(doneButton).toBeEnabled();
       fireEvent.click(doneButton);

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
-import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from '../../shared/types/teamVault';
+import { TEAM_FOLDER_ICONS, type TeamVaultPayload, type TeamVaultRole, type TeamVaultStatus } from '../../shared/types/teamVault';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
@@ -323,6 +323,18 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     async (_event, folderPath: string, deleteProfiles?: boolean) => {
       requireFolderPath(folderPath, 'Folder path');
       await bridge.teamVaultService.deleteTeamFolder(folderPath, Boolean(deleteProfiles));
+      bridge.scheduleTeamVaultAutoPush();
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON,
+    async (_event, folderPath: string, icon: string | undefined) => {
+      requireFolderPath(folderPath, 'Folder path');
+      if (icon !== undefined && !(TEAM_FOLDER_ICONS as readonly string[]).includes(icon)) {
+        throw new Error(`Unknown folder icon "${icon}"`);
+      }
+      await bridge.teamVaultService.setTeamFolderIcon(folderPath, icon);
       bridge.scheduleTeamVaultAutoPush();
     }
   );

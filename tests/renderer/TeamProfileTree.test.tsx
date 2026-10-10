@@ -22,12 +22,18 @@ function Harness(props: Omit<TreeProps, 'currentPath' | 'onNavigate'> & { initia
   return <TeamProfileTree {...props} currentPath={path} onNavigate={setPath} />;
 }
 
-function renderTree(folders: string[], profiles: P[], overrides: Partial<TreeProps> & { initialPath?: string[] } = {}) {
-  const { roots, ungrouped } = buildTeamFolderTree(folders, profiles);
+function renderTree(
+  folders: string[],
+  profiles: P[],
+  overrides: Partial<TreeProps> & { initialPath?: string[] } = {},
+  folderIcons: Record<string, string> = {}
+) {
+  const { roots, ungrouped } = buildTeamFolderTree(folders, profiles, folderIcons);
   const onDropProfile = vi.fn();
   const onCreateFolder = vi.fn();
   const onRenameFolder = vi.fn();
   const onDeleteFolder = vi.fn();
+  const onSetFolderIcon = vi.fn();
   const utils = render(
     <Harness
       roots={roots}
@@ -38,16 +44,17 @@ function renderTree(folders: string[], profiles: P[], overrides: Partial<TreePro
       onCreateFolder={onCreateFolder}
       onRenameFolder={onRenameFolder}
       onDeleteFolder={onDeleteFolder}
+      onSetFolderIcon={onSetFolderIcon}
       {...overrides}
     />
   );
-  return { ...utils, onDropProfile, onCreateFolder, onRenameFolder, onDeleteFolder };
+  return { ...utils, onDropProfile, onCreateFolder, onRenameFolder, onDeleteFolder, onSetFolderIcon };
 }
 
-/** The card for `name` — found via its "Open <name>" button (present in both the icon and the
- * chevron), scoped to the enclosing card container. */
-function getCard(name: string): HTMLElement {
-  return screen.getAllByTitle(`Open ${name}`)[0].closest('div')!.parentElement!;
+/** The card for a folder path, via the stable `data-folder-path` attribute set on its container
+ * (not derived from any button title, which can be ambiguous or change). */
+function getCard(path: string): HTMLElement {
+  return document.querySelector(`[data-folder-path="${path}"]`) as HTMLElement;
 }
 
 describe('TeamProfileTree', () => {
@@ -124,13 +131,43 @@ describe('TeamProfileTree', () => {
   it('renaming a folder card calls onRenameFolder with the old and new full paths', () => {
     const { onRenameFolder } = renderTree(['Acme Infra/Cluster A'], [], { initialPath: ['Acme Infra'] });
 
-    const card = getCard('Cluster A');
+    const card = getCard('Acme Infra/Cluster A');
     fireEvent.click(within(card).getByTitle('Rename folder'));
     const input = screen.getByDisplayValue('Cluster A');
     fireEvent.change(input, { target: { value: 'Cluster B' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(onRenameFolder).toHaveBeenCalledWith('Acme Infra/Cluster A', 'Acme Infra/Cluster B');
+  });
+
+  it('clicking the folder icon opens an icon picker, and choosing one calls onSetFolderIcon', () => {
+    const { onSetFolderIcon } = renderTree(['Acme Infra'], []);
+
+    fireEvent.click(screen.getByTitle('Change folder icon'));
+    fireEvent.click(screen.getByTitle('server'));
+
+    expect(onSetFolderIcon).toHaveBeenCalledWith('Acme Infra', 'server');
+  });
+
+  it('choosing the default (folder) icon clears it by passing undefined', () => {
+    const { onSetFolderIcon } = renderTree(['Acme Infra'], [], {}, { 'Acme Infra': 'server' });
+
+    fireEvent.click(screen.getByTitle('Change folder icon'));
+    fireEvent.click(screen.getByTitle('folder'));
+
+    expect(onSetFolderIcon).toHaveBeenCalledWith('Acme Infra', undefined);
+  });
+
+  it('clicking the backdrop closes an open icon picker without calling onSetFolderIcon', () => {
+    const { onSetFolderIcon } = renderTree(['Acme Infra'], []);
+
+    fireEvent.click(screen.getByTitle('Change folder icon'));
+    expect(screen.getByTitle('server')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('icon-picker-backdrop'));
+
+    expect(screen.queryByTitle('server')).not.toBeInTheDocument();
+    expect(onSetFolderIcon).not.toHaveBeenCalled();
   });
 
   it('deleting a folder card calls onDeleteFolder with its full path', () => {
@@ -208,6 +245,7 @@ describe('TeamProfileTree', () => {
           onCreateFolder={vi.fn()}
           onRenameFolder={vi.fn()}
           onDeleteFolder={vi.fn()}
+          onSetFolderIcon={vi.fn()}
         />
       );
       expect(screen.getByText(/Search results for/)).toBeInTheDocument();
@@ -223,6 +261,7 @@ describe('TeamProfileTree', () => {
           onCreateFolder={vi.fn()}
           onRenameFolder={vi.fn()}
           onDeleteFolder={vi.fn()}
+          onSetFolderIcon={vi.fn()}
         />
       );
       // Harness remounts its own state from `initialPath` on every rerender here (it's not a

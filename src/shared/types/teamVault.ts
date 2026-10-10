@@ -26,7 +26,40 @@ export interface TeamVaultPayload {
    * same purpose as the personal `folders` list, just shared. Absent on a payload written before
    * this field existed; treat as `[]`. */
   folders?: string[];
+  /** Per-folder icon override, keyed by the same `/`-separated path used in `folders`/a
+   * profile's `group` — values are keys into `TEAM_FOLDER_ICONS` (shared/types/teamVault.ts),
+   * not arbitrary strings or image data (no custom image upload — see
+   * `TeamVaultService.setTeamFolderIcon`). Absent/missing entry means the default folder icon.
+   * `renameTeamFolder`/`deleteTeamFolder` keep this in sync with `folders` (remap or remove the
+   * same self+descendant keys). Absent on a payload written before this field existed; treat as
+   * `{}`. */
+  folderIcons?: Record<string, string>;
 }
+
+/** The fixed set of icons a Team Vault folder can be given (`TeamVaultPayload.folderIcons`) —
+ * deliberately a closed allowlist (no custom image upload, no arbitrary string), both so the
+ * main process can validate an incoming icon key without guessing at the renderer's icon set,
+ * and so every member's renderer (possibly a different app version) has a reasonable fallback
+ * for a key it doesn't recognize (the default folder icon). Chosen to broadly cover common
+ * infra/connection groupings (clusters, databases, cloud providers, network gear, ...); the
+ * renderer maps each key to its actual `lucide-react` icon component (`TeamProfileTree.tsx`).
+ */
+export const TEAM_FOLDER_ICONS = [
+  'folder',
+  'server',
+  'database',
+  'cloud',
+  'shield',
+  'globe',
+  'box',
+  'layers',
+  'hard-drive',
+  'network',
+  'git-branch',
+  'cpu',
+] as const;
+
+export type TeamFolderIcon = (typeof TEAM_FOLDER_ICONS)[number];
 
 /** One recipient's wrapped copy of the Vault Key. `method` is deliberately an open field (only
  * `'piv-rsa-oaep'` exists in v1) so a future recipient mechanism doesn't need a format change —

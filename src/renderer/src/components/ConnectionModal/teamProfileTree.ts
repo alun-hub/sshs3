@@ -13,6 +13,9 @@ export interface TeamFolderNode<T> {
   children: TeamFolderNode<T>[];
   /** Profiles whose `group` is exactly this node's `path` (not a descendant's). */
   profiles: T[];
+  /** Key into `TEAM_FOLDER_ICONS` (shared/types/teamVault.ts), or `undefined` for the default
+   * folder icon — from `TeamVaultPayload.folderIcons[path]`. */
+  icon?: string;
 }
 
 function splitPath(path: string): string[] {
@@ -52,7 +55,8 @@ export function collectAllTeamFolderPaths(
  */
 export function buildTeamFolderTree<T extends { group?: string }>(
   folders: string[],
-  profiles: T[]
+  profiles: T[],
+  folderIcons: Record<string, string> = {}
 ): { roots: TeamFolderNode<T>[]; ungrouped: T[] } {
   const allPaths = collectAllTeamFolderPaths(folders, profiles, []);
   const nodesByPath = new Map<string, TeamFolderNode<T>>();
@@ -60,7 +64,13 @@ export function buildTeamFolderTree<T extends { group?: string }>(
 
   for (const path of allPaths) {
     const segments = splitPath(path);
-    const node: TeamFolderNode<T> = { name: segments[segments.length - 1], path, children: [], profiles: [] };
+    const node: TeamFolderNode<T> = {
+      name: segments[segments.length - 1],
+      path,
+      children: [],
+      profiles: [],
+      icon: folderIcons[path],
+    };
     nodesByPath.set(path, node);
     if (segments.length === 1) {
       roots.push(node);

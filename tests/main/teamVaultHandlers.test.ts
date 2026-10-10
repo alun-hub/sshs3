@@ -37,6 +37,7 @@ describe('Team Vault IPC handlers', () => {
     saveTeamFolder: vi.fn(),
     renameTeamFolder: vi.fn(),
     deleteTeamFolder: vi.fn(),
+    setTeamFolderIcon: vi.fn(),
   };
   const startTeamVaultAutoPollTimer = vi.fn();
   const stopTeamVaultAutoPollTimer = vi.fn();
@@ -467,6 +468,33 @@ describe('Team Vault IPC handlers', () => {
     it('defaults deleteProfiles to false when omitted', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER, 'Acme Infra');
       expect(teamVaultService.deleteTeamFolder).toHaveBeenCalledWith('Acme Infra', false);
+    });
+  });
+
+  describe('TEAM_VAULT_SET_FOLDER_ICON', () => {
+    it('rejects an overlong folder path', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, 'x'.repeat(1001), 'server')).rejects.toThrow(
+        'Folder path must be a string'
+      );
+      expect(teamVaultService.setTeamFolderIcon).not.toHaveBeenCalled();
+    });
+
+    it('rejects an icon not in the known allowlist', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, 'Acme Infra', 'not-a-real-icon')).rejects.toThrow(
+        'Unknown folder icon'
+      );
+      expect(teamVaultService.setTeamFolderIcon).not.toHaveBeenCalled();
+    });
+
+    it('sets a known icon and schedules an auto-push', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, 'Acme Infra', 'server');
+      expect(teamVaultService.setTeamFolderIcon).toHaveBeenCalledWith('Acme Infra', 'server');
+      expect(scheduleTeamVaultAutoPush).toHaveBeenCalled();
+    });
+
+    it('clears the icon when called with undefined', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, 'Acme Infra', undefined);
+      expect(teamVaultService.setTeamFolderIcon).toHaveBeenCalledWith('Acme Infra', undefined);
     });
   });
 

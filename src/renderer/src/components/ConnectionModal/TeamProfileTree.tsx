@@ -1,7 +1,49 @@
 import React, { useState } from 'react';
-import { ArrowLeft, ChevronRight, Folder, FolderPlus, Pencil, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Box,
+  ChevronRight,
+  Cloud,
+  Cpu,
+  Database,
+  Folder,
+  FolderPlus,
+  GitBranch,
+  Globe,
+  HardDrive,
+  Layers,
+  Network,
+  Pencil,
+  Server,
+  Shield,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react';
+import { TEAM_FOLDER_ICONS, type TeamFolderIcon } from '@shared/types/teamVault';
 import type { TeamFolderNode } from './teamProfileTree';
 import { findFolderNode, flattenTeamFolderTree } from './teamProfileTree';
+
+/** Maps `TEAM_FOLDER_ICONS` keys (shared/types/teamVault.ts) to their `lucide-react` component —
+ * the only place that mapping needs to exist, so adding an icon to the shared allowlist is a
+ * one-line addition here too. */
+const FOLDER_ICON_COMPONENTS: Record<TeamFolderIcon, LucideIcon> = {
+  folder: Folder,
+  server: Server,
+  database: Database,
+  cloud: Cloud,
+  shield: Shield,
+  globe: Globe,
+  box: Box,
+  layers: Layers,
+  'hard-drive': HardDrive,
+  network: Network,
+  'git-branch': GitBranch,
+  cpu: Cpu,
+};
+
+function folderIconComponent(icon: string | undefined): LucideIcon {
+  return (icon && FOLDER_ICON_COMPONENTS[icon as TeamFolderIcon]) || Folder;
+}
 
 interface TeamProfileTreeProps<T> {
   roots: TeamFolderNode<T>[];
@@ -19,6 +61,7 @@ interface TeamProfileTreeProps<T> {
   onCreateFolder: (fullPath: string) => Promise<void> | void;
   onRenameFolder: (oldPath: string, newPath: string) => Promise<void> | void;
   onDeleteFolder: (path: string) => Promise<void> | void;
+  onSetFolderIcon: (path: string, icon: string | undefined) => Promise<void> | void;
 }
 
 /**
@@ -41,12 +84,14 @@ export function TeamProfileTree<T>({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  onSetFolderIcon,
 }: TeamProfileTreeProps<T>): React.ReactElement {
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [iconPickerPath, setIconPickerPath] = useState<string | null>(null);
 
   const commitNewFolder = () => {
     const trimmed = newFolderName.trim();
@@ -101,10 +146,13 @@ export function TeamProfileTree<T>({
 
   const renderCard = (node: TeamFolderNode<T>) => {
     const isRenaming = renamingPath === node.path;
+    const isPickingIcon = iconPickerPath === node.path;
     const open = () => onNavigate([...currentPath, node.name]);
+    const FolderIcon = folderIconComponent(node.icon);
     return (
       <div
         key={node.path}
+        data-folder-path={node.path}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
@@ -118,17 +166,41 @@ export function TeamProfileTree<T>({
           setDragOverPath(null);
           onDropProfile(node.path, e);
         }}
-        className={`flex flex-col justify-between rounded-xl border p-3 transition-colors ${dropZoneClasses(node.path, true)}`}
+        className={`relative flex flex-col justify-between rounded-xl border p-3 transition-colors ${isPickingIcon ? 'z-10' : ''} ${dropZoneClasses(node.path, true)}`}
       >
         <div className="flex items-start justify-between w-full">
           <button
             type="button"
-            onClick={open}
-            title={`Open ${node.name}`}
+            onClick={() => setIconPickerPath(isPickingIcon ? null : node.path)}
+            title="Change folder icon"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
           >
-            <Folder className="h-4 w-4" />
+            <FolderIcon className="h-4 w-4" />
           </button>
+          {isPickingIcon && (
+            <div className="absolute left-3 top-11 z-10 grid w-48 grid-cols-6 gap-1 rounded-lg border border-border-subtle bg-app-surface p-2 shadow-xl">
+              {TEAM_FOLDER_ICONS.map((key) => {
+                const Icon = FOLDER_ICON_COMPONENTS[key];
+                const selected = (node.icon ?? 'folder') === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    title={key}
+                    onClick={() => {
+                      setIconPickerPath(null);
+                      void onSetFolderIcon(node.path, key === 'folder' ? undefined : key);
+                    }}
+                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                      selected ? 'bg-sky-500/25 text-sky-300' : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -237,6 +309,13 @@ export function TeamProfileTree<T>({
             </React.Fragment>
           ))}
         </div>
+      )}
+
+      {iconPickerPath !== null && (
+        // Transparent, full-area click-outside-to-close target — sits below the picker's own
+        // z-10 popover (rendered per-card above) but above everything else, so clicking anywhere
+        // other than the open picker dismisses it.
+        <div data-testid="icon-picker-backdrop" className="fixed inset-0 z-[5]" onClick={() => setIconPickerPath(null)} />
       )}
 
       {children.length > 0 && (
