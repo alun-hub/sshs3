@@ -362,11 +362,11 @@ export const TabBar: React.FC<TabBarProps> = ({
                         >
                           {smartcardLibFriendlyName(agent.pkcs11LibPath)}
                         </div>
-                        {agent.identities.length === 0 ? (
+                        {(agent.identities ?? []).length === 0 ? (
                           <div className="text-xs text-txt-muted">(no identities reported)</div>
                         ) : (
                           <ul className="mt-0.5 space-y-0.5">
-                            {agent.identities.map((id) => {
+                            {(agent.identities ?? []).map((id) => {
                               const isExpanded = expandedFingerprints.has(id.fingerprint);
                               return (
                                 <li key={id.fingerprint}>

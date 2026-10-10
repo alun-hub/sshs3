@@ -150,20 +150,34 @@ export function TeamProfileTree<T>({
     );
   }
 
-  const atRoot = currentPath.length === 0;
-  const currentNode = atRoot ? null : findFolderNode(roots, currentPath);
-  const children = atRoot ? roots : (currentNode?.children ?? []);
+  const path = currentPath ?? [];
+  const atRoot = path.length === 0;
+  const currentNode = atRoot ? null : findFolderNode(roots ?? [], path);
+  const children = atRoot ? (roots ?? []) : (currentNode?.children ?? []);
   const profilesHere = atRoot ? [] : (currentNode?.profiles ?? []);
 
   const renderCard = (node: TeamFolderNode<T>) => {
     const isRenaming = renamingPath === node.path;
     const isPickingIcon = iconPickerPath === node.path;
-    const open = () => onNavigate([...currentPath, node.name]);
+    const open = () => onNavigate([...path, node.name]);
     const FolderIcon = folderIconComponent(node.icon);
+    const profiles = node.profiles ?? [];
+    const subfolders = node.children ?? [];
     return (
       <div
         key={node.path}
         data-folder-path={node.path}
+        onClick={() => {
+          if (!isRenaming) open();
+        }}
+        tabIndex={isRenaming ? undefined : 0}
+        onKeyDown={(e) => {
+          if (isRenaming) return;
+          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            open();
+          }
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
@@ -177,19 +191,27 @@ export function TeamProfileTree<T>({
           setDragOverPath(null);
           onDropProfile(node.path, e);
         }}
-        className={`relative flex flex-col justify-between rounded-xl border p-3 transition-colors ${isPickingIcon ? 'z-10' : ''} ${dropZoneClasses(node.path, true)}`}
+        className={`relative flex flex-col justify-between rounded-xl border p-3 transition-colors ${
+          isRenaming ? '' : 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500'
+        } ${isPickingIcon ? 'z-10' : ''} ${dropZoneClasses(node.path, true)}`}
       >
         <div className="flex items-start justify-between w-full">
           <button
             type="button"
-            onClick={() => setIconPickerPath(isPickingIcon ? null : node.path)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIconPickerPath(isPickingIcon ? null : node.path);
+            }}
             title="Change folder icon"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
           >
             <FolderIcon className="h-4 w-4" />
           </button>
           {isPickingIcon && (
-            <div className="absolute left-3 top-11 z-10 grid w-48 grid-cols-6 gap-1 rounded-lg border border-border-subtle bg-app-surface p-2 shadow-xl">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute left-3 top-11 z-10 grid w-48 grid-cols-6 gap-1 rounded-lg border border-border-subtle bg-app-surface p-2 shadow-xl"
+            >
               {TEAM_FOLDER_ICONS.map((key) => {
                 const Icon = FOLDER_ICON_COMPONENTS.get(key)!;
                 const selected = (node.icon ?? 'folder') === key;
@@ -198,7 +220,8 @@ export function TeamProfileTree<T>({
                     key={key}
                     type="button"
                     title={key}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setIconPickerPath(null);
                       void onSetFolderIcon(node.path, key === 'folder' ? undefined : key);
                     }}
@@ -216,7 +239,8 @@ export function TeamProfileTree<T>({
             <button
               type="button"
               title="Rename folder"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setRenamingPath(node.path);
                 setRenameValue(node.name);
               }}
@@ -227,7 +251,10 @@ export function TeamProfileTree<T>({
             <button
               type="button"
               title="Delete folder (ungroups profiles inside, including subfolders)"
-              onClick={() => void onDeleteFolder(node.path)}
+              onClick={(e) => {
+                e.stopPropagation();
+                void onDeleteFolder(node.path);
+              }}
               className="rounded p-1 text-txt-muted hover:text-red-400 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -235,14 +262,17 @@ export function TeamProfileTree<T>({
             <button
               type="button"
               title={`Open ${node.name}`}
-              onClick={open}
+              onClick={(e) => {
+                e.stopPropagation();
+                open();
+              }}
               className="rounded p-1 text-txt-muted hover:text-sky-400 transition-colors"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
-        <button type="button" onClick={open} className="mt-2 block w-full min-w-0 text-left">
+        <div className="mt-2 block w-full min-w-0 text-left">
           {isRenaming ? (
             <input
               type="text"
@@ -257,17 +287,17 @@ export function TeamProfileTree<T>({
                   setRenamingPath(null);
                 }
               }}
-              className="w-full rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
+              className="w-full rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none cursor-text"
             />
           ) : (
             <div className="truncate text-xs font-semibold text-txt-primary">{node.name}</div>
           )}
           <div className="mt-1 text-2xs text-txt-muted">
-            {node.profiles.length} profile{node.profiles.length === 1 ? '' : 's'}
-            {node.children.length > 0 &&
-              ` · ${node.children.length} subfolder${node.children.length === 1 ? '' : 's'}`}
+            {profiles.length} profile{profiles.length === 1 ? '' : 's'}
+            {subfolders.length > 0 &&
+              ` · ${subfolders.length} subfolder${subfolders.length === 1 ? '' : 's'}`}
           </div>
-        </button>
+        </div>
       </div>
     );
   };
@@ -278,7 +308,7 @@ export function TeamProfileTree<T>({
         <div className="flex flex-wrap items-center gap-1 px-2 text-xs text-txt-muted">
           <button
             type="button"
-            onClick={() => onNavigate(currentPath.slice(0, -1))}
+            onClick={() => onNavigate(path.slice(0, -1))}
             className="flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -288,30 +318,30 @@ export function TeamProfileTree<T>({
           <button type="button" onClick={() => onNavigate([])} className="hover:text-txt-primary transition-colors">
             All folders
           </button>
-          {currentPath.map((name, i) => (
+          {path.map((name, i) => (
             <React.Fragment key={i}>
               <ChevronRight className="h-3 w-3" />
               <button
                 type="button"
-                onClick={() => onNavigate(currentPath.slice(0, i + 1))}
+                onClick={() => onNavigate(path.slice(0, i + 1))}
                 onDragOver={(e) => {
-                  if (i === currentPath.length - 1) return;
+                  if (i === path.length - 1) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
-                  const path = currentPath.slice(0, i + 1).join('/');
-                  if (dragOverPath !== path) setDragOverPath(path);
+                  const targetPath = path.slice(0, i + 1).join('/');
+                  if (dragOverPath !== targetPath) setDragOverPath(targetPath);
                 }}
                 onDrop={(e) => {
-                  if (i === currentPath.length - 1) return;
+                  if (i === path.length - 1) return;
                   e.preventDefault();
                   setDragOverPath(null);
-                  onDropProfile(currentPath.slice(0, i + 1).join('/'), e);
+                  onDropProfile(path.slice(0, i + 1).join('/'), e);
                 }}
                 className={
-                  i === currentPath.length - 1
+                  i === path.length - 1
                     ? 'font-medium text-txt-primary'
                     : `rounded px-1 transition-colors hover:text-txt-primary ${
-                        dragOverPath === currentPath.slice(0, i + 1).join('/') ? 'bg-sky-500/15 text-sky-300' : ''
+                        dragOverPath === path.slice(0, i + 1).join('/') ? 'bg-sky-500/15 text-sky-300' : ''
                       }`
                 }
               >

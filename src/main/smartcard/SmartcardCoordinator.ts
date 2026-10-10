@@ -1065,8 +1065,10 @@ export class SmartcardCoordinator {
   public async listGlobalSmartcardAgents(): Promise<CachedSmartcardAgent[]> {
     if (this.globalCards.size === 0) return [];
     // One agent holds every card, so attribute each identity to the card that contributed it.
-    const identities = await this.appAgent.list();
-    return Array.from(this.globalCards.entries()).map(([pkcs11LibPath, { fingerprints }]) => {
+    const rawIdentities = await this.appAgent.list();
+    const identities = Array.isArray(rawIdentities) ? rawIdentities : [];
+    return Array.from(this.globalCards.entries()).map(([pkcs11LibPath, cardInfo]) => {
+      const fingerprints = cardInfo?.fingerprints ?? new Set<string>();
       const certsByFingerprint =
         this.globalSmartcardCerts.get(pkcs11LibPath) ?? new Map<string, SmartcardCertificateDetails>();
       const mine = identities.filter((identity) =>
@@ -1074,7 +1076,7 @@ export class SmartcardCoordinator {
       );
       return {
         pkcs11LibPath: pkcs11LibPath === FIDO2_KEY ? 'FIDO2 Security Key' : pkcs11LibPath,
-        identities: mine.map((identity) => {
+        identities: (mine ?? []).map((identity) => {
           const cert = certsByFingerprint.get(identity.fingerprint);
           return cert
             ? {

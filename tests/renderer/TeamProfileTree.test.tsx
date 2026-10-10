@@ -95,6 +95,26 @@ describe('TeamProfileTree', () => {
     expect(screen.queryByText('node-1')).not.toBeInTheDocument();
   });
 
+  it('clicking anywhere on the card container (upper or lower area) opens the folder', () => {
+    renderTree(['Acme Infra'], [{ id: 'p1', name: 'web-1', group: 'Acme Infra' }]);
+
+    // Click directly on the outer card container (not the inner text)
+    fireEvent.click(getCard('Acme Infra'));
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(screen.getByText('web-1')).toBeInTheDocument();
+  });
+
+  it('pressing Enter on the card container opens the folder', () => {
+    renderTree(['Acme Infra'], [{ id: 'p1', name: 'web-1', group: 'Acme Infra' }]);
+
+    const card = getCard('Acme Infra');
+    fireEvent.keyDown(card, { key: 'Enter' });
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(screen.getByText('web-1')).toBeInTheDocument();
+  });
+
   it('"Back" returns to the top level', () => {
     renderTree(['Acme Infra'], [{ id: 'p1', name: 'web-1', group: 'Acme Infra' }]);
 

@@ -27,6 +27,14 @@ export function installGlobalErrorLogging(): void {
   if (installed) return;
   installed = true;
   const log = createRendererLogger('global');
-  window.addEventListener('error', (e) => log.error('uncaught error', { message: e.message, source: e.filename, line: e.lineno }));
+  window.addEventListener('error', (e) =>
+    log.error('uncaught error', {
+      message: e.message,
+      source: e.filename,
+      line: e.lineno,
+      col: e.colno,
+      stack: e.error?.stack,
+    })
+  );
   window.addEventListener('unhandledrejection', (e) => log.error('unhandled rejection', e.reason));
 }

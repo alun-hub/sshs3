@@ -66,17 +66,17 @@ export const DotfilesSyncBanner: React.FC = () => {
                 Dotfiles out of date on {currentPrompt.hostLabel}
               </div>
               <p className="mt-0.5 text-xs text-txt-muted">
-                {currentPrompt.entries.length} file{currentPrompt.entries.length === 1 ? '' : 's'} from pool
-                &ldquo;{currentPrompt.poolName}&rdquo; {currentPrompt.entries.length === 1 ? 'differs' : 'differ'}{' '}
+                {(currentPrompt.entries ?? []).length} file{(currentPrompt.entries ?? []).length === 1 ? '' : 's'} from pool
+                &ldquo;{currentPrompt.poolName}&rdquo; {(currentPrompt.entries ?? []).length === 1 ? 'differs' : 'differ'}{' '}
                 from this server.
               </p>
               <ul className="mt-1.5 space-y-0.5 font-mono text-2xs text-txt-muted">
-                {currentPrompt.entries.slice(0, 4).map((entry) => (
+                {(currentPrompt.entries ?? []).slice(0, 4).map((entry) => (
                   <li key={entry.fileId} className="truncate">
                     {entry.remotePath} {entry.reason === 'missing' ? '(missing)' : '(changed)'}
                   </li>
                 ))}
-                {currentPrompt.entries.length > 4 && <li>+ {currentPrompt.entries.length - 4} more</li>}
+                {(currentPrompt.entries ?? []).length > 4 && <li>+ {(currentPrompt.entries ?? []).length - 4} more</li>}
               </ul>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 <button
