@@ -836,18 +836,41 @@ describe('TeamVaultService', () => {
       await expect(second.pullFromRemote(provider)).resolves.toBeUndefined();
     });
 
-    it('rejects a remote vault file larger than the size cap without downloading its body', async () => {
+    it('rejects a remote vault file larger than the size cap, enforced against the actual downloaded bytes (not just stat())', async () => {
+      // Deliberately a mismatched stat() vs. readFile() size — this is the TOCTOU shape the cap
+      // must survive: whoever controls the remote object could serve a small stat() and a huge
+      // body moments later, so the cap has to be checked against what was actually downloaded,
+      // not trusted from a preceding stat() call.
       const service = makeService();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       const provider = fakeProvider();
-      const hugeStatOnly: IStorageProvider = {
+      const hugeBody = Buffer.alloc(51 * 1024 * 1024, 'x');
+      const mismatchedProvider: IStorageProvider = {
         ...provider,
-        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 51 * 1024 * 1024, isDirectory: false, mtime: 'x' }),
-        readFile: async () => {
-          throw new Error('must not download a file that already failed the size check');
+        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 10, isDirectory: false, mtime: 'x' }),
+        readFile: async () => hugeBody,
+      };
+      await expect(service.pullFromRemote(mismatchedProvider)).rejects.toThrow('too large');
+    });
+
+    it('aborts an oversized download mid-stream on a provider without a readFile() convenience method', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const { Readable } = await import('node:stream');
+      const streamingProvider: IStorageProvider = {
+        ...fakeProvider(),
+        readFile: undefined,
+        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 10, isDirectory: false, mtime: 'x' }),
+        createReadStream: async () => {
+          const stream = new Readable({
+            read() {
+              this.push(Buffer.alloc(1024 * 1024, 'x'));
+            },
+          });
+          return stream as any;
         },
       };
-      await expect(service.pullFromRemote(hugeStatOnly)).rejects.toThrow('too large');
+      await expect(service.pullFromRemote(streamingProvider)).rejects.toThrow('too large');
     });
 
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {

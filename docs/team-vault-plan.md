@@ -825,3 +825,79 @@ Två till rapporterade problem i samma runda:
 2. **Knappen "Generate my recipient" bytte namn till "Generate my
    Team Vault ID"** — mer begripligt för slutanvändare, mindre
    kryptografi-jargong.
+
+### YubiKey-kompatibilitet: PIV Management Key, varför äldre kort kunde misslyckas (2026-10-10)
+
+Rapporterat fel vid enrollment mot en YubiKey 4: `age-plugin-yubikey
+--generate` avbröts med `TeamVaultDefaultCredentialsError` ("change your
+PIN/PUK first") **trots att PIN och PUK redan var ändrade**. Grundorsak
+hittad och fixad.
+
+**Bakgrund — tre separata hemligheter på ett PIV-kort:**
+
+| Hemlighet | Fabriksvärde | Vad den skyddar |
+|---|---|---|
+| PIN | `123456` | Privata operationer (signering/dekryptering) |
+| PUK | `12345678` | Återställer en blockerad PIN |
+| Management Key | `010203...` (24 byte 3DES) | Administrativa PIV-ändringar (nya nyckelpar, certifikat) |
+
+Att byta PIN/PUK (`ykman piv access change-pin`/`change-puk`) rör
+**inte** Management Key — det är en helt separat hemlighet.
+`age-plugin-yubikey` kräver att Management Key är **PIN-skyddad**
+("PIN-protected metadata"). Om den inte är det, skriver
+`age-plugin-yubikey --generate` ut en informationsrad och migrerar den
+**själv, automatiskt, med PIN:en som redan angetts** — inget extra
+behövs från användaren:
+
+```text
+Your YubiKey is using the default management key.
+We'll migrate it to a PIN-protected management key.
+```
+
+**Buggen:** `AgePtyPinRelay.ts`s `DEFAULT_CREDENTIALS_WIZARD_RE` hade
+ett för brett `|management key`-villkor som matchade även den här
+godartade, icke-interaktiva raden — inte bara en riktig interaktiv
+PIN/PUK-bytesguide. Processen dödades mitt i den automatiska
+migreringen, och felet pekade fel (bad om PIN/PUK-byte, inte det
+faktiska problemet). **Fixat:** mönstret matchar nu bara en riktig
+interaktiv prompt (`choose a new pin/puk`, `enter ... new pin/puk`,
+`enter ... management key`) — aldrig en ren informationsrad.
+
+**Varför YubiKey 5 ofta fungerade men inte YubiKey 4:** nyare
+YubiKeys (5-serien) och moderna versioner av YubiKey Manager sätter
+ofta Management Key som PIN-skyddad redan vid första konfigurering.
+Äldre kort (4-serien) lämnar den ofta orörd på fabriksvärdet även efter
+att PIN/PUK bytts manuellt — det är då den automatiska migreringen
+ovan triggas, och det var den som tidigare (felaktigt) avbröts.
+
+**Vad en användare behöver göra, i praktiken (efter fixen):**
+
+- **De flesta kort (inkl. äldre, opreppade):** Inget särskilt. Första
+  "Generate my Team Vault ID" hanterar en ev. automatisk
+  management-key-migrering transparent, som en del av samma PIN-prompt.
+- **Om kortet har ett eget, redan ändrat Management Key** (inte
+  fabriksvärdet, men inte PIN-skyddat) hamnar `age-plugin-yubikey`
+  troligen i den riktiga interaktiva guiden i stället (den kräver då
+  det befintliga Management Key:t, som appen aldrig känner till eller
+  frågar efter) — detta avbryts fortfarande medvetet (`choose a new
+  pin/puk`/`enter ... management key`-mönstren ovan), eftersom appen
+  inte ska gissa eller ändra kortövergripande credentials i tysthet.
+  Åtgärda manuellt i en egen terminal innan enrollment:
+  ```
+  ykman piv access change-management-key --generate --protect --touch
+  ```
+  (kräver det nuvarande Management Key:t; `--protect` gör den
+  PIN-skyddad, vilket är precis vad `age-plugin-yubikey` förutsätter).
+- **Kort med fabriks-PIN/PUK (aldrig initierat alls):** kräver
+  fortfarande ett manuellt, en gång, PIN+PUK-byte innan enrollment
+  (`ykman piv access change-pin` / `change-puk`) — det är den riktiga
+  interaktiva guiden detta mönster medvetet fortsätter avbryta, inte
+  en bugg.
+
+**Ej byggt (övervägt, avsiktligt skippat denna runda):** en proaktiv
+`ykman piv info`-preflight-kontroll + automatisk
+`change-management-key`-körning inför enrollment, så användaren aldrig
+behöver röra en terminal manuellt. Skulle kräva en ny
+`YkmanPiv.ts`-modul (analog med `YkmanFido.ts`) och ett beslut om att
+låta appen proaktivt ändra kortövergripande PIV-credentials — större
+scope, inte del av denna fix.

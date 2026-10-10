@@ -1066,20 +1066,19 @@ export class TeamVaultService {
   }
 
   /** Reads and fully validates a vault file from the remote — shared by `pushToRemote`'s identity
-   * check and `pullFromRemote`, since both need the same untrusted-content guarantees. Checked
-   * against `MAX_REMOTE_VAULT_FILE_SIZE` via a cheap `stat()` BEFORE downloading: the threat
+   * check and `pullFromRemote`, since both need the same untrusted-content guarantees. The threat
    * model elsewhere in this file already assumes mere S3 write access without real membership
-   * (see every `TeamVault*Error` above), and without this check, that same attacker could upload
+   * (see every `TeamVault*Error` above), and without a size cap, that same attacker could upload
    * a multi-GB `vault.json` for every member's background auto-poll to fully download and
-   * `JSON.parse()` on every tick — a straightforward remote DoS. */
+   * `JSON.parse()` on every tick — a straightforward remote DoS.
+   *
+   * The cap is enforced by `readProviderFile` itself, not just here via a `stat()` precheck: a
+   * `stat()`-then-download precheck alone has a TOCTOU gap (whoever controls the object can
+   * serve a small size to `stat()` and a huge body to the actual read moments later) — passing
+   * `maxBytes` through makes the download itself refuse to buffer past the cap, regardless of
+   * what any preceding `stat()` claimed. */
   private async readRemoteVaultFile(provider: IStorageProvider, remotePath: string): Promise<TeamVaultFile> {
-    const stat = await provider.stat(remotePath);
-    if (stat.size > MAX_REMOTE_VAULT_FILE_SIZE) {
-      throw new Error(
-        `Remote Team Vault file is too large (${stat.size} bytes, max ${MAX_REMOTE_VAULT_FILE_SIZE}) — refusing to download it`
-      );
-    }
-    const raw = await this.readProviderFile(provider, remotePath);
+    const raw = await this.readProviderFile(provider, remotePath, MAX_REMOTE_VAULT_FILE_SIZE);
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw.toString('utf-8'));
@@ -1112,16 +1111,43 @@ export class TeamVaultService {
   // Same provider-capability fallback as ProfileSyncService.readProviderFile/writeProviderFile:
   // IStorageProvider.readFile/writeFile are optional on the interface (not every provider
   // implements the convenience form), so fall back to the stream API any provider must support.
-  private async readProviderFile(provider: IStorageProvider, remotePath: string): Promise<Buffer> {
+  //
+  // `maxBytes`, when given, is enforced against the actual bytes received, not a prior `stat()` —
+  // on the streaming path it aborts (destroys the stream) the moment the running total would
+  // exceed it, so an oversized remote object is never fully buffered in memory; on the
+  // convenience `readFile()` path (an opaque single-call read this code can't interrupt
+  // mid-flight) it's checked once the full buffer is back, which still refuses to hand an
+  // oversized result on to `JSON.parse()`/`assertValidVaultFile()`.
+  private async readProviderFile(provider: IStorageProvider, remotePath: string, maxBytes?: number): Promise<Buffer> {
     if (typeof provider.readFile === 'function') {
-      return provider.readFile(remotePath);
+      const data = await provider.readFile(remotePath);
+      if (maxBytes !== undefined && data.length > maxBytes) {
+        throw new Error(`Remote file is too large (${data.length} bytes, max ${maxBytes}) — refusing to use it`);
+      }
+      return data;
     }
     const stream = await provider.createReadStream(remotePath);
     const chunks: Buffer[] = [];
+    let total = 0;
     await new Promise<void>((resolve, reject) => {
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-      stream.on('end', () => resolve());
-      stream.on('error', reject);
+      let settled = false;
+      const settle = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        action();
+      };
+      stream.on('data', (chunk: Buffer) => {
+        if (settled) return;
+        total += chunk.length;
+        if (maxBytes !== undefined && total > maxBytes) {
+          (stream as unknown as { destroy?: () => void }).destroy?.();
+          settle(() => reject(new Error(`Remote file is too large (over ${maxBytes} bytes) — aborting download`)));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      stream.on('end', () => settle(resolve));
+      stream.on('error', (err: unknown) => settle(() => reject(err)));
     });
     return Buffer.concat(chunks);
   }

@@ -202,6 +202,48 @@ describe('runAgeCommandViaPty', () => {
     expect(term.write).not.toHaveBeenCalled();
   });
 
+  it('does NOT abort on the benign, non-interactive default-management-key auto-migration message', async () => {
+    // Regression guard for a real-world bug found against a YubiKey 4: `age-plugin-yubikey
+    // --generate` prints this purely informational line (no input needed, it migrates the
+    // management key itself using the already-entered PIN) on any card whose management key
+    // isn't yet PIN-protected — common on older/first-generation YubiKeys, less so on 5-series
+    // ones often provisioned with --protect already. An earlier, overly broad pattern treated
+    // any mention of "management key" as the interactive wizard and killed the process mid-way.
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age-plugin-yubikey', ['--generate'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052 (default is 123456): ');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    term.emitData(
+      "Your YubiKey is using the default management key.\r\nWe'll migrate it to a PIN-protected management key.\r\n"
+    );
+    term.emitData('# Recipient: age1yubikey1test\r\nAGE-PLUGIN-YUBIKEY-1TEST\r\n');
+    term.emitExit(0);
+
+    const result = await promise;
+    expect(result).toContain('AGE-PLUGIN-YUBIKEY-1TEST');
+  });
+
+  it('still aborts on an actual interactive management-key entry prompt', async () => {
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age-plugin-yubikey', ['--generate'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+    await Promise.resolve();
+    await Promise.resolve();
+    term.write.mockClear();
+
+    term.emitData('Enter new management key [hex]: ');
+
+    await expect(promise).rejects.toBeInstanceOf(TeamVaultDefaultCredentialsError);
+    expect(term.kill).toHaveBeenCalled();
+    expect(term.write).not.toHaveBeenCalled();
+  });
+
   it('recognizes the default-credentials wizard prompt even when it is split across two pty writes', async () => {
     // Regression guard: an earlier version of this code tested each incoming chunk in isolation,
     // so a detection phrase split across two onData callbacks (as node-pty may deliver it) would

@@ -62,12 +62,21 @@ function getSpawn(): typeof nodePty.spawn {
 
 const PIN_PROMPT_RE = /enter pin for yubikey/i;
 const WRONG_PIN_RE = /invalid pin \((\d+) tries? remaining/i;
-// Exact wording of the default-PIN/PUK/management-key migration wizard was never captured (the
-// one time it was hit, the process was killed before any output was saved — see
-// docs/team-vault-plan.md). These patterns are deliberately broad: failing closed (aborting) on
-// a false positive just means a legitimate PIN prompt gets misclassified and retried, which is
-// safe; failing to recognize the real wizard and writing into it would not be.
-const DEFAULT_CREDENTIALS_WIZARD_RE = /choose a new (pin|puk)|enter.*new (piv )?(pin|puk)|management key/i;
+// Matches the INTERACTIVE default-PIN/PUK-change wizard (a multi-step guide: current PUK, new
+// PIN, new PUK — see docs/team-vault-plan.md's hardware verification notes) and a hypothetical
+// interactive management-key entry prompt, which this code must never drive programmatically
+// (changing card-wide credentials without the user's explicit input). Deliberately does NOT
+// match a bare mention of "management key": `age-plugin-yubikey --generate` also prints a purely
+// informational, non-interactive line on a card whose management key isn't yet PIN-protected —
+// "Your YubiKey is using the default management key. We'll migrate it to a PIN-protected
+// management key." — and then completes that migration itself using the PIN already entered, no
+// further input needed. An earlier version of this pattern (`|management key` as a bare
+// alternative) matched that informational line too and aborted a perfectly normal enrollment on
+// first-generation/older YubiKeys (e.g. YubiKey 4) where that auto-migration hadn't already
+// happened — found via real-world use against one. Failing closed (aborting) on a genuine false
+// positive is still safe here, just misleading; the real risk this pattern guards against is the
+// opposite — failing to recognize an actual interactive prompt and writing into it blind.
+const DEFAULT_CREDENTIALS_WIZARD_RE = /choose a new (pin|puk)|enter.*new (piv )?(pin|puk)|enter.*management key/i;
 
 /** `age-plugin-yubikey`'s prompt always includes "(default is 123456)" verbatim — fixed CLI
  * wording, not a real signal that this card is actually on its default PIN. Showing it in the
