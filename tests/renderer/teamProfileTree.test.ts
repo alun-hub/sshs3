@@ -3,6 +3,8 @@ import {
   buildTeamFolderTree,
   collectAllTeamFolderPaths,
   collectTeamFolderSuggestions,
+  findFolderNode,
+  flattenTeamFolderTree,
 } from '../../src/renderer/src/components/ConnectionModal/teamProfileTree';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -77,6 +79,48 @@ describe('teamProfileTree', () => {
     it('combines folders and both profile types group paths', () => {
       const suggestions = collectTeamFolderSuggestions(['A'], [ssh('p1', 'B')], [{ id: 's1', name: 's1', group: 'C' } as any]);
       expect(suggestions).toEqual(['A', 'B', 'C']);
+    });
+  });
+
+  describe('findFolderNode', () => {
+    it('resolves a node at any depth by walking the path segments', () => {
+      const { roots } = buildTeamFolderTree(['Acme Infra/Cluster A/Nodes'], []);
+      const node = findFolderNode(roots, ['Acme Infra', 'Cluster A', 'Nodes']);
+      expect(node?.path).toBe('Acme Infra/Cluster A/Nodes');
+    });
+
+    it('returns the root node itself for a one-segment path', () => {
+      const { roots } = buildTeamFolderTree(['Acme Infra'], []);
+      expect(findFolderNode(roots, ['Acme Infra'])?.path).toBe('Acme Infra');
+    });
+
+    it('returns null for a path that does not exist', () => {
+      const { roots } = buildTeamFolderTree(['Acme Infra'], []);
+      expect(findFolderNode(roots, ['Acme Infra', 'Ghost'])).toBeNull();
+      expect(findFolderNode(roots, ['Nonexistent'])).toBeNull();
+    });
+  });
+
+  describe('flattenTeamFolderTree', () => {
+    it('lists every profile in the tree with its full folder path', () => {
+      const profiles = [ssh('p1', 'Acme Infra'), ssh('p2', 'Acme Infra/Cluster A')];
+      const { roots, ungrouped } = buildTeamFolderTree(['Acme Infra', 'Acme Infra/Cluster A'], profiles);
+
+      const flat = flattenTeamFolderTree(roots, ungrouped);
+      expect(flat).toEqual(
+        expect.arrayContaining([
+          { profile: expect.objectContaining({ id: 'p1' }), path: 'Acme Infra' },
+          { profile: expect.objectContaining({ id: 'p2' }), path: 'Acme Infra/Cluster A' },
+        ])
+      );
+      expect(flat).toHaveLength(2);
+    });
+
+    it('gives an ungrouped profile a null path', () => {
+      const profiles = [ssh('p1')];
+      const { roots, ungrouped } = buildTeamFolderTree([], profiles);
+
+      expect(flattenTeamFolderTree(roots, ungrouped)).toEqual([{ profile: expect.objectContaining({ id: 'p1' }), path: null }]);
     });
   });
 });

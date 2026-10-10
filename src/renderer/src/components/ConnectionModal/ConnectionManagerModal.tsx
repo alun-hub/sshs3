@@ -115,6 +115,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // Inline unlock, so getting to shared profiles doesn't require a detour through Settings >
   // Team Vault — same "Unlock as X" / manual-fallback pattern TeamVaultSettingsPanel already uses.
   const [teamStatus, setTeamStatus] = useState<TeamVaultStatus | null>(null);
+  // Breadcrumb position in the Team Vault folder card browser (TeamProfileTree) — lifted here so
+  // it survives re-renders and resets alongside the rest of the modal's navigation state below.
+  const [teamFolderPath, setTeamFolderPath] = useState<string[]>([]);
   const [unlockRecipientId, setUnlockRecipientId] = useState('');
   const [unlockIdentityPath, setUnlockIdentityPath] = useState('');
   const [unlocking, setUnlocking] = useState(false);
@@ -193,6 +196,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       setSearchQuery('');
       setNewFolderOpen(false);
       setRenamingFolder(null);
+      setTeamFolderPath([]);
       setImportMenuOpen(false);
       setImportCandidates(null);
       setTeamNotice(null);
@@ -1258,6 +1262,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                     <TeamProfileTree
                       roots={teamSshTree.roots}
                       ungrouped={teamSshTree.ungrouped}
+                      currentPath={teamFolderPath}
+                      onNavigate={setTeamFolderPath}
+                      query={query}
                       renderProfile={(profile) => (
                         <TeamSshProfileRow
                           key={profile.id}
@@ -1399,6 +1406,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                     <TeamProfileTree
                       roots={teamS3Tree.roots}
                       ungrouped={teamS3Tree.ungrouped}
+                      currentPath={teamFolderPath}
+                      onNavigate={setTeamFolderPath}
+                      query={query}
                       renderProfile={(profile) => (
                         <TeamS3ProfileRow
                           key={profile.id}

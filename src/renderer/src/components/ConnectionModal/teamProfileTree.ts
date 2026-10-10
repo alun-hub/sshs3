@@ -96,6 +96,48 @@ export function buildTeamFolderTree<T extends { group?: string }>(
   return { roots, ungrouped };
 }
 
+/** Walks `roots`/`children` down through `path`'s segments, returning the node at that exact
+ * location, or `null` if any segment along the way doesn't exist. Used to resolve "which node am
+ * I currently browsing" from the breadcrumb path state (`ConnectionManagerModal`'s
+ * `teamFolderPath`). */
+export function findFolderNode<T>(roots: TeamFolderNode<T>[], path: string[]): TeamFolderNode<T> | null {
+  let level = roots;
+  let node: TeamFolderNode<T> | null = null;
+  for (const segment of path) {
+    const next: TeamFolderNode<T> | undefined = level.find((n) => n.name === segment);
+    if (!next) return null;
+    node = next;
+    level = next.children;
+  }
+  return node;
+}
+
+/** Flattens the whole tree (ignoring any notion of "current level") into every profile paired
+ * with its full folder path — `null` for an ungrouped profile. Used by the folder browser's
+ * search mode: `ConnectionManagerModal` already filters `ssh`/`s3` down to query matches before
+ * calling `buildTeamFolderTree`, so `roots`/`ungrouped` passed in here are already the matches;
+ * this just lays them out as a flat, path-labeled list instead of requiring the user to drill
+ * down to find which folder(s) contained a hit. */
+export function flattenTeamFolderTree<T>(
+  roots: TeamFolderNode<T>[],
+  ungrouped: T[]
+): Array<{ profile: T; path: string | null }> {
+  const result: Array<{ profile: T; path: string | null }> = [];
+  const walk = (nodes: TeamFolderNode<T>[]) => {
+    for (const node of nodes) {
+      for (const profile of node.profiles) {
+        result.push({ profile, path: node.path });
+      }
+      walk(node.children);
+    }
+  };
+  walk(roots);
+  for (const profile of ungrouped) {
+    result.push({ profile, path: null });
+  }
+  return result;
+}
+
 /** Combined SSH+S3 folder paths for the "move to folder" / autocomplete affordance in the
  * profile form (folders are shared across both profile types in the Team Vault, same as the
  * personal `shareFoldersAcrossTypes` default). */
