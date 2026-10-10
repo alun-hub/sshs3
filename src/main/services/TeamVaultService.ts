@@ -1072,12 +1072,21 @@ export class TeamVaultService {
    * a multi-GB `vault.json` for every member's background auto-poll to fully download and
    * `JSON.parse()` on every tick — a straightforward remote DoS.
    *
-   * The cap is enforced by `readProviderFile` itself, not just here via a `stat()` precheck: a
-   * `stat()`-then-download precheck alone has a TOCTOU gap (whoever controls the object can
-   * serve a small size to `stat()` and a huge body to the actual read moments later) — passing
-   * `maxBytes` through makes the download itself refuse to buffer past the cap, regardless of
-   * what any preceding `stat()` claimed. */
+   * Two layers, not one: a cheap `stat()` precheck rejects the common case (an honestly reported
+   * oversized object) before ever attempting a download, and `readProviderFile`'s `maxBytes`
+   * enforces the cap against what's actually received regardless — a `stat()`-then-download
+   * precheck ALONE has a TOCTOU gap (whoever controls the object can serve a small size to
+   * `stat()` and a huge body to the actual read moments later), so dropping either layer
+   * reopens a real gap: the `stat()` precheck alone is racy, and `maxBytes` alone means every
+   * oversized object is fully downloaded (on a provider whose `readFile()` is an opaque,
+   * uninterruptible single call) before being rejected instead of never downloaded at all. */
   private async readRemoteVaultFile(provider: IStorageProvider, remotePath: string): Promise<TeamVaultFile> {
+    const stat = await provider.stat(remotePath);
+    if (stat.size > MAX_REMOTE_VAULT_FILE_SIZE) {
+      throw new Error(
+        `Remote Team Vault file is too large (${stat.size} bytes, max ${MAX_REMOTE_VAULT_FILE_SIZE}) — refusing to download it`
+      );
+    }
     const raw = await this.readProviderFile(provider, remotePath, MAX_REMOTE_VAULT_FILE_SIZE);
     let parsed: unknown;
     try {

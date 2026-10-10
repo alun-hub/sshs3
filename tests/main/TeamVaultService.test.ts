@@ -836,6 +836,23 @@ describe('TeamVaultService', () => {
       await expect(second.pullFromRemote(provider)).resolves.toBeUndefined();
     });
 
+    it('rejects a remote vault file larger than the size cap via the cheap stat() precheck, without ever downloading it', async () => {
+      // The fast, common-case path: an honestly reported oversized object is rejected before any
+      // download is even attempted — the deeper, download-time cap (tested below) exists for the
+      // adversarial case where stat() can't be trusted, not to replace this cheaper check.
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const provider = fakeProvider();
+      const hugeStatOnly: IStorageProvider = {
+        ...provider,
+        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 51 * 1024 * 1024, isDirectory: false, mtime: 'x' }),
+        readFile: async () => {
+          throw new Error('must not download a file that already failed the cheap size check');
+        },
+      };
+      await expect(service.pullFromRemote(hugeStatOnly)).rejects.toThrow('too large');
+    });
+
     it('rejects a remote vault file larger than the size cap, enforced against the actual downloaded bytes (not just stat())', async () => {
       // Deliberately a mismatched stat() vs. readFile() size — this is the TOCTOU shape the cap
       // must survive: whoever controls the remote object could serve a small stat() and a huge
