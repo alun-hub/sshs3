@@ -250,7 +250,16 @@ export class TeamVaultCryptoService {
     const fifoPath = await createFifo(os.tmpdir());
     let writerSettled = false;
     // Opening a FIFO for writing blocks until a reader opens it — i.e. until `age` starts.
-    const writer = fs.writeFile(fifoPath, stanza).then(
+    // O_WRONLY without O_CREAT: if the FIFO were somehow gone, this fails instead of silently
+    // creating a regular file containing the private key.
+    const writer = (async () => {
+      const handle = await fs.open(fifoPath, fsSync.constants.O_WRONLY);
+      try {
+        await handle.writeFile(stanza);
+      } finally {
+        await handle.close();
+      }
+    })().then(
       () => {
         writerSettled = true;
       },
@@ -261,14 +270,21 @@ export class TeamVaultCryptoService {
     try {
       return await fn(fifoPath);
     } finally {
-      // If `fn` failed before `age` ever opened the FIFO, the writer is still blocked in open() —
-      // briefly open a reader to release it so it neither hangs nor leaks a threadpool thread.
-      // The stanza then lands in a pipe buffer that's discarded on close, never on disk.
+      // If `fn` failed before `age` ever opened the FIFO, the writer is blocked (or about to
+      // block) in open(). Hold a reader open until the writer settles: closing it right away
+      // races a writer whose open() hasn't started yet, which would then wait forever for a
+      // reader that never comes. The stanza lands in a pipe buffer discarded on close.
       if (!writerSettled) {
+        let readerFd: number | undefined;
         try {
-          fsSync.closeSync(fsSync.openSync(fifoPath, fsSync.constants.O_RDONLY | fsSync.constants.O_NONBLOCK));
+          readerFd = fsSync.openSync(fifoPath, fsSync.constants.O_RDONLY | fsSync.constants.O_NONBLOCK);
         } catch {
-          // Already gone or already released — nothing to unblock.
+          // FIFO already gone — the writer's open() then fails on its own instead of blocking.
+        }
+        try {
+          await writer;
+        } finally {
+          if (readerFd !== undefined) fsSync.closeSync(readerFd);
         }
       }
       await writer;
