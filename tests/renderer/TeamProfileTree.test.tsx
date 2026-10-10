@@ -140,6 +140,22 @@ describe('TeamProfileTree', () => {
     expect(onRenameFolder).toHaveBeenCalledWith('Acme Infra/Cluster A', 'Acme Infra/Cluster B');
   });
 
+  it('falls back to the default folder icon for an unrecognized icon key, including prototype-polluting ones, instead of crashing', () => {
+    // `folderIcons` comes from the synced, decrypted vault payload — written by whichever
+    // member's client last touched the folder. This app's own IPC handler validates against
+    // TEAM_FOLDER_ICONS before writing, but that's only a write-time check on this app's own
+    // save path; a different (or tampered) client could still have written anything. A naive
+    // `FOLDER_ICON_COMPONENTS[icon]` plain-object lookup would resolve "constructor"/"__proto__"
+    // through Object.prototype instead of returning undefined, handing back a non-component
+    // value that crashes the render the moment React tries to use it as one.
+    for (const maliciousKey of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'not-a-real-icon']) {
+      expect(() => renderTree(['Acme Infra'], [], {}, { 'Acme Infra': maliciousKey })).not.toThrow();
+      cleanup();
+    }
+    renderTree(['Acme Infra'], [], {}, { 'Acme Infra': '__proto__' });
+    expect(screen.getByText('Acme Infra')).toBeInTheDocument();
+  });
+
   it('clicking the folder icon opens an icon picker, and choosing one calls onSetFolderIcon', () => {
     const { onSetFolderIcon } = renderTree(['Acme Infra'], []);
 
