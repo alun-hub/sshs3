@@ -17,6 +17,7 @@ import {
   TeamVaultHeaderIntegrityError,
   TeamVaultUnpushedChangesError,
   TeamVaultLockedForPullError,
+  TeamVaultRotationProofError,
 } from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
 import type { FileEntry, IStorageProvider, S3Config } from '../../src/shared/types/storage';
@@ -118,19 +119,40 @@ function fakeCrypto(): TeamVaultCryptoService {
         .createHmac('sha256', vaultKey)
         .update(JSON.stringify({ vaultId, revision, vaultName, accessHeader, recovery }))
         .digest('base64'),
+    // Same shape as computeAccessHeaderMac above, but under a distinct fixed label so a rotation
+    // proof (keyed by the OLD Vault Key) can never collide with a header MAC (keyed by the NEW
+    // one) even when both happen to cover the exact same fields — mirrors the real
+    // implementation's separate HKDF info strings.
+    computeRotationProof: (
+      oldVaultKey: Buffer,
+      vaultId: string,
+      revision: number,
+      vaultName: string,
+      accessHeader: unknown,
+      recovery: unknown
+    ) =>
+      crypto
+        .createHmac('sha256', oldVaultKey)
+        .update(JSON.stringify({ label: 'rotation-proof', vaultId, revision, vaultName, accessHeader, recovery }))
+        .digest('base64'),
   } as unknown as TeamVaultCryptoService;
 }
 
 /** A structurally valid, unrelated vault file — used to simulate "someone else's content is
  * already sitting at this S3 path" without needing a second real TeamVaultService instance. */
-function foreignVaultFileJson(vaultId: string, revision = 1, recoveryAgeRecipient = 'age1yubikey1foreignrecovery'): string {
+function foreignVaultFileJson(
+  vaultId: string,
+  revision = 1,
+  recoveryAgeRecipient = 'age1yubikey1foreignrecovery',
+  accessHeader: unknown[] = []
+): string {
   return JSON.stringify({
     formatVersion: 1,
     vaultId,
     revision,
     updatedAt: '2026-01-01T00:00:00Z',
     updatedBy: 'someone@piv:else',
-    accessHeader: [],
+    accessHeader,
     recovery: { recipientId: 'recovery-key-1', ageRecipient: recoveryAgeRecipient, wrappedVaultKey: 'w' },
     encryptedPayload: '',
     accessHeaderMac: 'placeholder-mac',
@@ -446,6 +468,24 @@ describe('TeamVaultService', () => {
       await second.unlock('recovery-key-1', '/tmp/recovery-identity.txt');
       expect(second.isUnlocked()).toBe(true);
     });
+
+    it('refuses to unlock a local file whose accessHeaderMac is inconsistent with the unwrapped key (defense in depth)', async () => {
+      // Not the primary control — pullFromRemote is what keeps a forged file out of local
+      // storage (see TeamVaultRotationProofError's doc comment) — but a corrupted/inconsistent
+      // local file must not be trusted blindly either, on the small chance something upstream
+      // let it through.
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const onDisk = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      onDisk.accessHeaderMac = 'corrupted-mac';
+      await fs.writeFile(filePath, JSON.stringify(onDisk));
+
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+      await expect(second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
+        TeamVaultHeaderIntegrityError
+      );
+      expect(second.isUnlocked()).toBe(false);
+    });
   });
 
   describe('unlockWithRecoveryText', () => {
@@ -599,26 +639,50 @@ describe('TeamVaultService', () => {
     });
 
     it('allows pushing again after a pull refreshes the known remote state', async () => {
-      const service = makeService();
+      // Needs a header MAC that actually verifies (unlike the other foreignVaultFileJson-based
+      // tests above/below, which all stay at the local header's EXISTING length — so the MAC
+      // check here is real, not skipped) — a fixed, known Vault Key lets this test compute one.
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
-      const vaultId = (await service.getStatus()).vaultId!;
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = localRaw.vaultId;
 
       // A newer revision of the *same* vault (e.g. pushed from another machine) — not a vault
-      // switch, which pullFromRemote now refuses whenever a local vault already exists. Reuses
-      // alice's own recovery ageRecipient so this doesn't also trip the tamper check below.
-      await provider.writeFile!(
-        'team-vault/vault.json',
-        Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
-      );
+      // switch, which pullFromRemote now refuses whenever a local vault already exists. Keeps
+      // the same single alice entry and the same recovery ageRecipient (no rotation, so no
+      // shrink, and nothing for the tamper check to flag) and recomputes a real MAC under the
+      // still-valid Vault Key, rather than relying on a placeholder that only slipped past
+      // verification before this test's own fix (see TeamVaultRotationProofError's doc comment).
+      const newRevision = localRaw.revision + 1;
+      const remoteFile = {
+        ...localRaw,
+        revision: newRevision,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          fixedKey,
+          vaultId,
+          newRevision,
+          localRaw.vaultName ?? '',
+          localRaw.accessHeader,
+          localRaw.recovery
+        ),
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await service.pullFromRemote(provider);
-      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
-        // Pull locks the vault (the previous Vault Key may not match the pulled file), so this
-        // must now fail for "not unlocked", proving the pull actually replaced local state.
-        'Unlock the Team Vault'
-      );
+      // The MAC verified against our held key (no rotation happened), so the session stays
+      // unlocked — proving the pull replaced local state is now via the bumped revision, not a
+      // forced lock (see this test's comment above on why the old lock-based proof no longer
+      // applies once the same-length MAC path is exercised for real instead of skipped).
+      expect(service.isUnlocked()).toBe(true);
+      expect((await service.getStatus()).exists).toBe(true);
+      const afterPull = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      expect(afterPull.revision).toBe(newRevision);
+      await expect(service.pushToRemote(provider)).resolves.toBeUndefined();
     });
 
     it('rejects a pull that would roll the local vault back to an older revision', async () => {
@@ -1065,22 +1129,81 @@ describe('TeamVaultService', () => {
       expect(service.isUnlocked()).toBe(true);
     });
 
-    it('locks after a pull whose header MAC proves the held key no longer applies (a real re-key happened)', async () => {
+    it('locks after a pull with a valid rotation proof (a real removeMember re-key happened)', async () => {
       // Contrast with the test above: this is the removeMember-elsewhere case the lock exists
-      // for in the first place — `accessHeader.length` dropping means the MAC check never runs,
-      // so `keyProvenStillValid` stays false and the (now-stale) key must not be reused.
+      // for in the first place — `accessHeader.length` dropping means `accessHeaderMac` can no
+      // longer be checked directly against our now-stale old key (it's keyed by the NEW one).
+      // `prevKeyProof`, computed under the OLD key, is what proves this specific rotation is
+      // legitimate rather than an S3-write-access-only forgery (TeamVaultRotationProofError).
+      const oldKey = Buffer.alloc(32, 7);
+      const newKey = Buffer.alloc(32, 9);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => oldKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const provider = fakeProvider();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.pushToRemote(provider);
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = localRaw.vaultId;
+
+      // Simulate removeMember(bob) happening elsewhere: header shrinks back to just alice,
+      // re-wrapped for a fresh key, with a proof computed under the OLD key (`oldKey`) this
+      // instance is still holding.
+      const aliceEntry = localRaw.accessHeader.find((e: { recipientId: string }) => e.recipientId === 'alice@piv:abc');
+      const newAccessHeader = [{ ...aliceEntry, wrappedVaultKey: `wrapped:age1yubikey1alice:${newKey.toString('hex')}` }];
+      const newRecovery = { ...localRaw.recovery, wrappedVaultKey: `wrapped:${localRaw.recovery.ageRecipient}:${newKey.toString('hex')}` };
+      const newRevision = localRaw.revision + 1;
+      const remoteFile = {
+        ...localRaw,
+        revision: newRevision,
+        accessHeader: newAccessHeader,
+        recovery: newRecovery,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          newKey,
+          vaultId,
+          newRevision,
+          localRaw.vaultName ?? '',
+          newAccessHeader,
+          newRecovery
+        ),
+        prevKeyProof: await crypto2.computeRotationProof(
+          oldKey,
+          vaultId,
+          newRevision,
+          localRaw.vaultName ?? '',
+          newAccessHeader,
+          newRecovery
+        ),
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+
+      await service.pullFromRemote(provider);
+      expect(service.isUnlocked()).toBe(false);
+    });
+
+    it('rejects a pull with a shrunk header and no valid rotation proof (bucket-write-access-only forgery)', async () => {
+      // The vulnerability this whole mechanism closes: mere S3 write access — no member key, no
+      // card — dropping one entry to skip straight past `accessHeaderMac` verification (which
+      // only used to run when the entry count didn't decrease) and have an attacker-generated
+      // Vault Key accepted as a legitimate rotation. `prevKeyProof` must be present and must
+      // verify under the key we're still holding, or the pull must be rejected outright.
       const service = makeService();
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
       await service.pushToRemote(provider);
       const vaultId = (await service.getStatus()).vaultId!;
+
+      // Attacker has no member key — just drops bob and uploads a shrunk header with no
+      // (or a garbage) prevKeyProof, and even a real-looking accessHeaderMac computed under
+      // their own fresh, attacker-chosen key.
       await provider.writeFile!(
         'team-vault/vault.json',
         Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
       );
 
-      await service.pullFromRemote(provider);
-      expect(service.isUnlocked()).toBe(false);
+      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultRotationProofError);
     });
   });
 
@@ -1104,44 +1227,86 @@ describe('TeamVaultService', () => {
     });
 
     it('allows the pull anyway when force is set, discarding the unpushed local changes', async () => {
-      const service = makeService();
+      // Not a rotation (header stays the same length, just a newer revision from elsewhere), so
+      // a real MAC under a known fixed key is needed for the pull to verify — see the "allows
+      // pushing again after a pull refreshes the known remote state" test above for why.
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
       await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      const vaultId = (await service.getStatus()).vaultId!;
-      await provider.writeFile!(
-        'team-vault/vault.json',
-        Buffer.from(foreignVaultFileJson(vaultId, 3, 'age1fakerecovery'))
-      );
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = localRaw.vaultId;
+      const remoteFile = {
+        ...localRaw,
+        revision: 3,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          fixedKey,
+          vaultId,
+          3,
+          localRaw.vaultName ?? '',
+          localRaw.accessHeader,
+          localRaw.recovery
+        ),
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await expect(service.pullFromRemote(provider, '', { force: true })).resolves.toBeUndefined();
     });
 
     it('does not block the pull when nothing was ever pushed from this instance (lastSyncedRevision still undefined)', async () => {
-      const service = makeService();
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      const vaultId = (await service.getStatus()).vaultId!;
-      await provider.writeFile!(
-        'team-vault/vault.json',
-        Buffer.from(foreignVaultFileJson(vaultId, 3, 'age1fakerecovery'))
-      );
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = localRaw.vaultId;
+      const remoteFile = {
+        ...localRaw,
+        revision: 3,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          fixedKey,
+          vaultId,
+          3,
+          localRaw.vaultName ?? '',
+          localRaw.accessHeader,
+          localRaw.recovery
+        ),
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
     });
 
     it('does not block the pull when the local revision still matches the last sync (no local-only edits)', async () => {
-      const service = makeService();
+      const fixedKey = Buffer.alloc(32, 7);
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
       const provider = fakeProvider();
       await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.pushToRemote(provider);
-      const vaultId = (await service.getStatus()).vaultId!;
-      await provider.writeFile!(
-        'team-vault/vault.json',
-        Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
-      );
+      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = localRaw.vaultId;
+      const remoteFile = {
+        ...localRaw,
+        revision: 2,
+        accessHeaderMac: await crypto2.computeAccessHeaderMac(
+          fixedKey,
+          vaultId,
+          2,
+          localRaw.vaultName ?? '',
+          localRaw.accessHeader,
+          localRaw.recovery
+        ),
+      };
+      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
     });

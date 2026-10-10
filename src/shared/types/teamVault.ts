@@ -117,6 +117,15 @@ export interface TeamVaultFile {
    * delta: mere S3 write access can't produce a valid tag, since that requires the real Vault
    * Key. */
   accessHeaderMac: string;
+  /** HMAC-SHA256 (base64) over this file's own header fields, keyed by a subkey derived from the
+   * PREVIOUS Vault Key — set only by a Vault Key rotation (`removeMember`), proving the rotation
+   * was performed by whoever actually held that previous key. Absent on a file whose Vault Key has
+   * never been rotated (created, then only `addMember`/`setRole`/`renameVault` since) — those
+   * never shrink `accessHeader` in the first place, so `pullFromRemote` never needs to check this
+   * field for them. See `TeamVaultCryptoService.computeRotationProof` /
+   * `TeamVaultService.TeamVaultRotationProofError` for why this exists and what it does and
+   * doesn't prove. */
+  prevKeyProof?: string;
 }
 
 export interface TeamVaultMemberSummary {

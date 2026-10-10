@@ -179,7 +179,8 @@ sshs3 never stores the recovery key: the pasted text is passed to the decryption
 
 #### Known limitations
 - **Every member can read every shared secret.** Restricting passwords to admins only is planned but not built.
-- The member list is protected by a shared-key MAC, not per-admin signatures. Someone with both write access to the bucket *and* a valid Vault Key could alter it. Bucket access alone is not enough.
+- The member list is protected by a shared-key MAC, not per-admin signatures. Someone with both write access to the bucket *and* a valid Vault Key could alter it. Bucket access alone is not enough — this also covers removing a member, which re-keys the vault and requires a proof tied to the key being replaced, not just the bucket.
+- A machine that misses more than one member removal while offline refuses the pull outright rather than guess — delete the local vault file and pull fresh (confirming the member list with an admin) to catch up.
 - **YubiKey only**, **Linux only**, **S3 only**, and **one Team Vault per machine**.
 - A removed member keeps the data they had already synced before removal.
 

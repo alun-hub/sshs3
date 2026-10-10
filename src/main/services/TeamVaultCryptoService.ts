@@ -32,12 +32,20 @@ function buildAad(vaultId: string, formatVersion: number): Buffer {
 }
 
 const HEADER_MAC_INFO = Buffer.from('team-vault-header-mac-v1', 'utf8');
+const ROTATION_PROOF_INFO = Buffer.from('team-vault-rotation-proof-v1', 'utf8');
 
 /** A subkey derived from the Vault Key via HKDF, never the raw AES-GCM key itself — simple key
  * separation so the same symmetric secret isn't reused across two different primitives
  * (encryption vs. authentication). */
 function deriveHeaderMacKey(vaultKey: Buffer): Buffer {
   return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), HEADER_MAC_INFO, 32));
+}
+
+/** A separate subkey from `deriveHeaderMacKey` (different HKDF info string), so a rotation proof
+ * computed under the OLD Vault Key can never be confused with — or substituted for — a header MAC
+ * computed under the NEW one, even though both are derived from the same underlying key. */
+function deriveRotationProofKey(vaultKey: Buffer): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), ROTATION_PROOF_INFO, 32));
 }
 
 /** A fixed, unambiguous serialization of everything the header MAC covers. Entries are sorted
@@ -313,6 +321,30 @@ export class TeamVaultCryptoService {
     const macKey = deriveHeaderMacKey(vaultKey);
     const canonical = canonicalAccessHeaderString(vaultId, revision, vaultName, accessHeader, recovery);
     return crypto.createHmac('sha256', macKey).update(canonical, 'utf8').digest('base64');
+  }
+
+  /**
+   * HMAC-SHA256 over the NEW access header (same canonical fields as `computeAccessHeaderMac`),
+   * keyed by a subkey derived from the OLD Vault Key — the one being rotated away from, e.g. by
+   * `removeMember`. Lets `TeamVaultService.pullFromRemote` tell a real rotation apart from a
+   * bucket-write-access-only attacker's own fresh key when the access header shrinks (see
+   * `TeamVaultRotationProofError`'s doc comment): only whoever actually held the real old Vault
+   * Key can produce a matching tag, regardless of which public recipients the new key was wrapped
+   * for. `oldVaultKey` must be the Vault Key in effect immediately before this rotation — a proof
+   * computed against a key from further back in history won't verify, by design (see that error's
+   * note on multi-step catch-up).
+   */
+  computeRotationProof(
+    oldVaultKey: Buffer,
+    newVaultId: string,
+    newRevision: number,
+    newVaultName: string,
+    newAccessHeader: TeamVaultAccessEntry[],
+    newRecovery: TeamVaultRecovery
+  ): string {
+    const proofKey = deriveRotationProofKey(oldVaultKey);
+    const canonical = canonicalAccessHeaderString(newVaultId, newRevision, newVaultName, newAccessHeader, newRecovery);
+    return crypto.createHmac('sha256', proofKey).update(canonical, 'utf8').digest('base64');
   }
 }
 

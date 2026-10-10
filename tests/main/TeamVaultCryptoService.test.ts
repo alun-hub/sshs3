@@ -492,4 +492,67 @@ describe('TeamVaultCryptoService', () => {
       expect(forward).toBe(reversed);
     });
   });
+
+  describe('computeRotationProof', () => {
+    const accessHeader = [
+      {
+        recipientId: 'alice@piv:abc',
+        role: 'admin' as const,
+        method: 'piv-rsa-oaep' as const,
+        ageRecipient: 'age1yubikey1alice',
+        wrappedVaultKey: 'wrapped-alice-under-new-key',
+        addedAt: '2026-01-01T00:00:00Z',
+        addedBy: 'alice@piv:abc',
+      },
+    ];
+    const recovery = {
+      recipientId: 'recovery-key-1',
+      ageRecipient: 'age1recovery',
+      wrappedVaultKey: 'wrapped-recovery-under-new-key',
+    };
+
+    it('is deterministic for the same inputs', () => {
+      const svc = new TeamVaultCryptoService();
+      const oldKey = Buffer.alloc(32, 1);
+      const a = svc.computeRotationProof(oldKey, 'vlt_1', 2, '', accessHeader, recovery);
+      const b = svc.computeRotationProof(oldKey, 'vlt_1', 2, '', accessHeader, recovery);
+      expect(a).toBe(b);
+    });
+
+    it('changes if the old Vault Key differs', () => {
+      const svc = new TeamVaultCryptoService();
+      const proofA = svc.computeRotationProof(Buffer.alloc(32, 1), 'vlt_1', 2, '', accessHeader, recovery);
+      const proofB = svc.computeRotationProof(Buffer.alloc(32, 2), 'vlt_1', 2, '', accessHeader, recovery);
+      expect(proofA).not.toBe(proofB);
+    });
+
+    it('changes if the new header content differs', () => {
+      const svc = new TeamVaultCryptoService();
+      const oldKey = Buffer.alloc(32, 1);
+      const base = svc.computeRotationProof(oldKey, 'vlt_1', 2, '', accessHeader, recovery);
+      const tampered = [{ ...accessHeader[0], ageRecipient: 'age1yubikey1attacker' }];
+      expect(svc.computeRotationProof(oldKey, 'vlt_1', 2, '', tampered, recovery)).not.toBe(base);
+    });
+
+    it('never equals computeAccessHeaderMac for the same key and fields (separate HKDF info strings)', () => {
+      // A rotation proof (keyed by the OLD key) must never be mistakable for a header MAC (keyed
+      // by the NEW key) even if an attacker could somehow get both derived from the same raw key
+      // — see TeamVaultRotationProofError's doc comment on why these are deliberately separate
+      // primitives, not the same HMAC reused for two purposes.
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const proof = svc.computeRotationProof(key, 'vlt_1', 2, '', accessHeader, recovery);
+      const mac = svc.computeAccessHeaderMac(key, 'vlt_1', 2, '', accessHeader, recovery);
+      expect(proof).not.toBe(mac);
+    });
+
+    it("an attacker holding only the new, self-generated key cannot reproduce a valid proof without the old one", () => {
+      const svc = new TeamVaultCryptoService();
+      const realOldKey = Buffer.alloc(32, 1);
+      const attackerGeneratedKey = Buffer.alloc(32, 99); // stands in for the NEW key, irrelevant to the proof
+      const realProof = svc.computeRotationProof(realOldKey, 'vlt_1', 2, '', accessHeader, recovery);
+      const forgedProof = svc.computeRotationProof(attackerGeneratedKey, 'vlt_1', 2, '', accessHeader, recovery);
+      expect(forgedProof).not.toBe(realProof);
+    });
+  });
 });

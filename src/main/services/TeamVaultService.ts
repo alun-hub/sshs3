@@ -117,6 +117,33 @@ export class TeamVaultHeaderIntegrityError extends Error {
   }
 }
 
+/** Thrown when a pulled file's `accessHeader` is shorter than our local copy's (a claimed
+ * `removeMember` rotation) but `prevKeyProof` doesn't verify against the Vault Key already held.
+ * Closes the gap `TeamVaultHeaderIntegrityError`'s doc comment used to call an accepted residual
+ * limit: without this check, mere S3 write access — no member key, no card, nobody real removed —
+ * was enough to drop one entry from the header, which skipped `accessHeaderMac` verification
+ * entirely (it only ran when the entry count didn't decrease) and let an attacker-generated Vault
+ * Key, wrapped to the remaining members' already-public recipients, be accepted as the real
+ * rotation. `prevKeyProof` is an HMAC over the new header keyed by a subkey derived from the Vault
+ * Key being rotated AWAY from — only whoever actually held that real previous key could produce
+ * it, so a bucket-write-access-only attacker generating their own fresh key cannot forge it.
+ *
+ * Also fires on a legitimate but multi-step rotation this client missed entirely (two
+ * `removeMember`s while offline): `prevKeyProof` only links one step back, to the key
+ * *immediately* preceding the pulled file, which an offline client several rotations behind
+ * never held. Deliberately conservative — rejecting a rare legitimate multi-step catch-up is far
+ * safer than accepting an unprovable one. Recovery is the same as for a brand-new join: delete
+ * the local file and pull fresh (nothing to verify against then either), after confirming the
+ * new member list out of band. */
+export class TeamVaultRotationProofError extends Error {
+  constructor() {
+    super(
+      "The remote Team Vault's access header is shorter than the local copy's, but the Vault Key rotation isn't provably linked to the Vault Key already held — refusing to accept it. If a real member was removed while this machine was offline through more than one rotation, delete the local vault file and pull fresh after confirming the member list with an admin."
+    );
+    this.name = 'TeamVaultRotationProofError';
+  }
+}
+
 /** A smartcard/FIDO2 PIN is never written to disk anywhere in this app (see
  * `ProfileStore.persist()`'s identical rule for local profiles) — dropped unconditionally on
  * every save, regardless of who's calling. Every other field on a shared profile (including
@@ -551,6 +578,17 @@ export class TeamVaultService {
           rewrapped,
           newRecovery
         ),
+        // Proves to anyone still holding the OLD key (`vaultKey`, about to be replaced below)
+        // that THIS specific rotation is the real one — see `TeamVaultRotationProofError`'s doc
+        // comment and `computeRotationProof`'s.
+        prevKeyProof: this.cryptoService.computeRotationProof(
+          vaultKey,
+          file.vaultId,
+          newRevision,
+          file.vaultName ?? '',
+          rewrapped,
+          newRecovery
+        ),
       };
 
       await this.writeFile(updated);
@@ -858,11 +896,29 @@ export class TeamVaultService {
     if (!source) {
       throw new Error(`"${recipientId}" is not a recipient of this vault`);
     }
-    this.unlockedVaultKey = await this.cryptoService.unwrapVaultKey(
+    const vaultKey = await this.cryptoService.unwrapVaultKey(
       source.wrappedVaultKey,
       identityFilePath,
       this.buildPtyCallbacks(recipientId)
     );
+    // Defense in depth, not the primary control (see `TeamVaultRotationProofError`'s doc comment
+    // — `pullFromRemote` is what actually keeps a forged file out of local storage in the first
+    // place). This only catches a LOCAL file that's internally inconsistent — e.g. corrupted on
+    // disk, or some future bug writing one without recomputing the MAC — since
+    // `computeAccessHeaderMac` with the just-unwrapped key must reproduce exactly what's already
+    // stored in `accessHeaderMac` for any header this service itself ever wrote.
+    const expectedMac = this.cryptoService.computeAccessHeaderMac(
+      vaultKey,
+      file.vaultId,
+      file.revision,
+      file.vaultName ?? '',
+      file.accessHeader,
+      file.recovery
+    );
+    if (expectedMac !== file.accessHeaderMac) {
+      throw new TeamVaultHeaderIntegrityError();
+    }
+    this.unlockedVaultKey = vaultKey;
     this.unlockedAsRecipientId = recipientId;
   }
 
@@ -1034,18 +1090,10 @@ export class TeamVaultService {
         // Vault Key, for the exact `vaultId`/`revision`/`accessHeader`/`recovery` being pulled —
         // there is no revision value an attacker can choose their way around.
         //
-        // The one gate that remains is `accessHeader.length` not having dropped: `removeMember`
-        // is the only operation that rotates the Vault Key, and after a rotation this check
-        // *must* fail against our now-stale key even though the rotation itself was perfectly
-        // legitimate. Entry count not decreasing is a good, but not perfect, proxy for "no
-        // rotation happened anywhere in this gap" — a multi-revision catch-up that nets to the
-        // same-or-higher count despite an interior remove+add would still (safely) fail here and
-        // be rejected; re-unlocking after a plain `lock()`+pull skips this check entirely and
-        // picks up the real current key regardless. The residual gap this doesn't close — an
-        // attacker removing a real member to fake that same "count decreased" signal just to
-        // smuggle in their own entry — requires deleting a real recipient's access outright,
-        // which is far more conspicuous than a quiet substitution and is accepted as a known
-        // limit of an unsigned header (see docs/team-vault-plan.md Fas 3's note on this).
+        // When the entry count hasn't dropped, no rotation is claimed — verify `accessHeaderMac`
+        // directly against our still-held key. It's valid only if computed with the real Vault
+        // Key, for the exact `vaultId`/`revision`/`accessHeader`/`recovery` being pulled — there
+        // is no revision value an attacker can choose their way around.
         if (this.unlockedVaultKey && file.accessHeader.length >= localFile.accessHeader.length) {
           const expectedMac = this.cryptoService.computeAccessHeaderMac(
             this.unlockedVaultKey,
@@ -1059,6 +1107,30 @@ export class TeamVaultService {
             throw new TeamVaultHeaderIntegrityError();
           }
           keyProvenStillValid = true;
+        } else if (this.unlockedVaultKey && file.accessHeader.length < localFile.accessHeader.length) {
+          // A shrunk header claims a `removeMember` rotation happened — which is the ONLY
+          // operation allowed to change the Vault Key, so `accessHeaderMac` (now keyed by a
+          // DIFFERENT key than ours) can no longer be checked directly. Previously this branch
+          // was skipped entirely, which let mere S3 write access — no member key or card
+          // involved at all — forge a whole new Vault Key, wrap it to the remaining (public)
+          // recipients, and have it accepted as a legitimate rotation. `prevKeyProof` closes
+          // that: it's an HMAC over this exact new header, keyed by a subkey derived from the
+          // Vault Key we're still holding (the real previous one) — only whoever actually
+          // rotated away from that key could have produced it. See
+          // `TeamVaultRotationProofError`'s doc comment for the multi-step-offline caveat.
+          const expectedProof = this.cryptoService.computeRotationProof(
+            this.unlockedVaultKey,
+            file.vaultId,
+            file.revision,
+            file.vaultName ?? '',
+            file.accessHeader,
+            file.recovery
+          );
+          if (!file.prevKeyProof || expectedProof !== file.prevKeyProof) {
+            throw new TeamVaultRotationProofError();
+          }
+          // keyProvenStillValid stays false: the proof shows this rotation is legitimate, not
+          // that our now-superseded key still works — lock() below is still the right call.
         }
       }
 
