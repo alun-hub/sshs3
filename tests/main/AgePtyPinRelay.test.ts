@@ -202,6 +202,60 @@ describe('runAgeCommandViaPty', () => {
     expect(term.write).not.toHaveBeenCalled();
   });
 
+  it('recognizes the default-credentials wizard prompt even when it is split across two pty writes', async () => {
+    // Regression guard: an earlier version of this code tested each incoming chunk in isolation,
+    // so a detection phrase split across two onData callbacks (as node-pty may deliver it) would
+    // never match either chunk alone — a fail-closed violation for a flow this codebase treats as
+    // security-critical (must never drive the migration wizard programmatically).
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age-plugin-yubikey', ['--generate'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Please choose a new P');
+    term.emitData('IN: ');
+
+    await expect(promise).rejects.toBeInstanceOf(TeamVaultDefaultCredentialsError);
+    expect(term.kill).toHaveBeenCalled();
+    expect(term.write).not.toHaveBeenCalled();
+  });
+
+  it('recognizes a wrong-PIN message even when it is split across two pty writes', async () => {
+    const callbacks = makeCallbacks(['000000', '123456']);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    term.emitData('Error: Invalid PIN (2 tries rema');
+    term.emitData('ining before it is blocked)\r\n');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(callbacks.requestPin).toHaveBeenCalledTimes(2);
+    expect(callbacks.calls[1]).toMatchObject({ retry: { attempt: 2, maxAttempts: 3 } });
+
+    term.emitExit(0);
+    await promise;
+  });
+
+  it('aborts with an error rather than accumulating output forever once the output cap is exceeded', async () => {
+    const callbacks = makeCallbacks([]);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    // A misbehaving/tampered binary flooding stdout with otherwise-unrecognizable output (no
+    // prompt phrase ever matches) must still be stopped well before the full DEFAULT_TIMEOUT_MS.
+    const chunk = 'x'.repeat(1024 * 1024);
+    for (let i = 0; i < 5; i++) {
+      term.emitData(chunk);
+    }
+
+    await expect(promise).rejects.toThrow(/too much output/);
+    expect(term.kill).toHaveBeenCalled();
+  });
+
   it('kills the pty and rejects on timeout', async () => {
     const callbacks = makeCallbacks(['123456']);
     const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks, 20);

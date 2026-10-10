@@ -6,6 +6,15 @@ import type { IPty } from 'node-pty';
 import * as nodePty from 'node-pty';
 
 const DEFAULT_TIMEOUT_MS = 30000;
+// Mirrors the 4MB `maxBuffer` TeamVaultCryptoService's own non-interactive `execFile` calls
+// already enforce — a misbehaving or tampered age/age-plugin-yubikey binary that floods stdout
+// would otherwise accumulate in `fullText` unbounded for the whole DEFAULT_TIMEOUT_MS instead of
+// being stopped as soon as it's clearly not a normal prompt/output exchange.
+const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+// A single prompt line/phrase never approaches this size — bounds the re-scan window used to
+// detect a prompt that might be split across two pty writes, without letting that window grow
+// unbounded if no recognizable prompt ever shows up (e.g. a hung or chatty process).
+const MAX_PENDING_CHUNK = 8192;
 
 export class TeamVaultWrongPinError extends Error {
   constructor(message = 'Wrong PIV PIN') {
@@ -99,6 +108,13 @@ export function runAgeCommandViaPty(
     }
 
     let fullText = '';
+    // Separate from `fullText` (the complete transcript returned on success/failure): this is
+    // the re-scan window the prompt regexes are tested against, so a prompt split across two pty
+    // writes (e.g. "Enter PIN for Yu" + "biKey...") is still recognized — testing only the latest
+    // `data` chunk, as a prior version of this code did, would silently miss that split and never
+    // detect the prompt at all. Cleared after a successful match (that prompt is now handled;
+    // nothing left worth re-scanning) and capped at MAX_PENDING_CHUNK otherwise.
+    let pendingChunk = '';
     let settled = false;
     let pinAttempt = 0;
     let awaitingPinResponse = false;
@@ -150,8 +166,18 @@ export function runAgeCommandViaPty(
     term.onData((data: string) => {
       if (settled) return;
       fullText += data;
+      if (fullText.length > MAX_OUTPUT_BYTES) {
+        finish(() => reject(new Error(`"${binary}" produced too much output (over ${MAX_OUTPUT_BYTES} bytes) — aborting`)));
+        term.kill();
+        return;
+      }
 
-      if (DEFAULT_CREDENTIALS_WIZARD_RE.test(data)) {
+      pendingChunk += data;
+      if (pendingChunk.length > MAX_PENDING_CHUNK) {
+        pendingChunk = pendingChunk.slice(-MAX_PENDING_CHUNK);
+      }
+
+      if (DEFAULT_CREDENTIALS_WIZARD_RE.test(pendingChunk)) {
         finish(() => reject(new TeamVaultDefaultCredentialsError()));
         term.kill();
         return;
@@ -159,8 +185,9 @@ export function runAgeCommandViaPty(
 
       // The card's own message is authoritative on how many tries are left — once it says 0,
       // the PIN is about to be (or already is) blocked, so this gives up rather than retrying.
-      const wrongPinMatch = data.match(WRONG_PIN_RE);
+      const wrongPinMatch = pendingChunk.match(WRONG_PIN_RE);
       if (wrongPinMatch) {
+        pendingChunk = '';
         const triesRemaining = Number(wrongPinMatch[1]);
         if (triesRemaining <= 0) {
           finish(() => reject(new TeamVaultWrongPinError(`Invalid PIN (${triesRemaining} tries remaining before it is blocked)`)));
@@ -178,9 +205,11 @@ export function runAgeCommandViaPty(
         return;
       }
 
-      if (PIN_PROMPT_RE.test(data) && pinAttempt === 0 && !awaitingPinResponse) {
+      if (PIN_PROMPT_RE.test(pendingChunk) && pinAttempt === 0 && !awaitingPinResponse) {
         pinAttempt = 1;
-        requestAndWritePin(cleanPinPrompt(data));
+        const promptText = cleanPinPrompt(pendingChunk);
+        pendingChunk = '';
+        requestAndWritePin(promptText);
         return;
       }
     });

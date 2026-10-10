@@ -374,6 +374,12 @@ describe('Team Vault IPC handlers', () => {
       expect(scheduleTeamVaultAutoPush).toHaveBeenCalled();
     });
 
+    it('rejects an SSH profile whose serialized size exceeds the cap', async () => {
+      const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', group: 'x'.repeat(300_000) };
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, profile)).rejects.toThrow('is too large');
+      expect(teamVaultService.saveSSHProfile).not.toHaveBeenCalled();
+    });
+
     it('does not schedule an auto-push when the save itself is rejected', async () => {
       await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, { name: 'x' })).rejects.toThrow();
       expect(scheduleTeamVaultAutoPush).not.toHaveBeenCalled();
@@ -397,6 +403,12 @@ describe('Team Vault IPC handlers', () => {
       await call(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, profile);
       expect(teamVaultService.saveS3Profile).toHaveBeenCalledWith(profile);
       expect(scheduleTeamVaultAutoPush).toHaveBeenCalled();
+    });
+
+    it('rejects an S3 profile whose serialized size exceeds the cap', async () => {
+      const profile = { id: 'p1', name: 'x', region: 'us-east-1', accessKeyId: 'a', secretAccessKey: 'b', group: 'x'.repeat(300_000) };
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, profile)).rejects.toThrow('is too large');
+      expect(teamVaultService.saveS3Profile).not.toHaveBeenCalled();
     });
 
     it('deletes an S3 profile by id and schedules an auto-push', async () => {

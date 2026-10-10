@@ -5,6 +5,9 @@ import { app } from 'electron';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
+import { createLogger } from '../log/Logger';
+
+const teamVaultConfigLog = createLogger('team-vault-config');
 
 const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
 
@@ -78,6 +81,13 @@ export class TeamVaultConfigStore {
       };
     } catch (err: any) {
       if (err?.code === 'ENOENT') return {};
+      // Anything else (corrupted JSON, an OS-keychain/decrypt failure after e.g. a machine
+      // migration, a truncated secret field) was previously indistinguishable from "never
+      // configured" — same empty result, zero diagnostic signal. Logged (not thrown): every
+      // caller already treats a missing config as "no target configured yet" and handles that
+      // gracefully, so surfacing a hard error here would be a bigger behavior change than this
+      // fix intends; the log line is what actually closes the observability gap.
+      teamVaultConfigLog.warn('Failed to read Team Vault config (treating as not configured):', err);
       return {};
     }
   }

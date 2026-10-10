@@ -77,9 +77,18 @@ function requireIdentityFilePath(value: string): void {
   }
 }
 
+// A real profile (host, username, key paths, tunnel definitions, ...) is a few KB at most —
+// without a ceiling here, any unlocked (non-admin) member could save a profile with an
+// arbitrarily large field (e.g. `group`, `privateKeyPath`), which gets stored verbatim in the
+// shared, auto-pushed vault payload and downloaded again by every member on every pull.
+const MAX_PROFILE_JSON_SIZE = 256 * 1024;
+
 function requireProfile(value: unknown, label: string): void {
   if (!value || typeof value !== 'object' || !(value as { id?: unknown }).id) {
     throw new Error(`${label} is required`);
+  }
+  if (JSON.stringify(value).length > MAX_PROFILE_JSON_SIZE) {
+    throw new Error(`${label} is too large (max ${MAX_PROFILE_JSON_SIZE} bytes serialized)`);
   }
 }
 

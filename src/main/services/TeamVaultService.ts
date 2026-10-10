@@ -20,6 +20,9 @@ import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultC
 
 const FORMAT_VERSION = 1 as const;
 const REMOTE_VAULT_FILENAME = 'team-vault/vault.json';
+/** A real vault file (JSON, base64-wrapped keys, every shared SSH/S3 profile) stays well under
+ * this even for a large team — see `readRemoteVaultFile`'s doc comment for why it exists. */
+const MAX_REMOTE_VAULT_FILE_SIZE = 50 * 1024 * 1024;
 
 export class TeamVaultSyncConflictError extends Error {
   constructor() {
@@ -88,6 +91,23 @@ export class TeamVaultTamperedEntryError extends Error {
  * we hold computes for it — thrown regardless of which field was tampered with, or which
  * `revision` the tamperer attached to their forgery, since computing a valid tag requires the
  * real Vault Key. See `TeamVaultCryptoService.computeAccessHeaderMac`'s doc comment. */
+/** `pullFromRemote` cannot verify the pulled access header's `accessHeaderMac` without the Vault
+ * Key, which only exists while unlocked. Thrown instead of silently accepting the pulled file
+ * over an EXISTING local vault whenever the session is locked — otherwise a bucket-write-access
+ * holder (not necessarily a real recipient) could plant a wholly new, forged access-header entry
+ * while the victim happens to be locked, bypassing `accessHeaderMac` verification entirely rather
+ * than needing the much more conspicuous "remove a real member" trick `TeamVaultHeaderIntegrityError`'s
+ * doc comment already treats as the accepted residual gap. Does not apply when there's no local
+ * file yet (a brand-new join has nothing to verify against either way). */
+export class TeamVaultLockedForPullError extends Error {
+  constructor() {
+    super(
+      'Unlock the Team Vault before pulling updates to it, so the pulled file\'s integrity can be verified.'
+    );
+    this.name = 'TeamVaultLockedForPullError';
+  }
+}
+
 export class TeamVaultHeaderIntegrityError extends Error {
   constructor() {
     super(
@@ -135,14 +155,24 @@ function remapFolderPath(path: string, oldPrefix: string, newPrefix: string): st
   return path;
 }
 
+// Same bech32-ish shape the interactive addMember path already enforces
+// (teamVaultHandlers.ts's AGE_RECIPIENT_PATTERN) — applied here too so a pulled/forged remote
+// file can't carry a malformed ageRecipient that only fails later, cryptically, when `age -r
+// <value>` actually runs during a subsequent removeMember re-wrap.
+const AGE_RECIPIENT_SHAPE = /^age1[a-z0-9]{5,}$/;
+
 function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
   return (
     e &&
     typeof e.recipientId === 'string' &&
     e.recipientId.length > 0 &&
     (e.role === 'admin' || e.role === 'member') &&
+    // 'piv-rsa-oaep' is the only value this format version defines (TeamVaultAccessEntry.method's
+    // doc comment) — kept in lockstep with what canonicalAccessHeaderString actually MACs, so the
+    // shape validator and the MAC's field list can't silently drift apart again.
+    e.method === 'piv-rsa-oaep' &&
     typeof e.ageRecipient === 'string' &&
-    e.ageRecipient.length > 0 &&
+    AGE_RECIPIENT_SHAPE.test(e.ageRecipient) &&
     typeof e.wrappedVaultKey === 'string' &&
     e.wrappedVaultKey.length > 0 &&
     typeof e.addedAt === 'string' &&
@@ -169,6 +199,7 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
     !file.recovery ||
     typeof file.recovery.recipientId !== 'string' ||
     typeof file.recovery.ageRecipient !== 'string' ||
+    !AGE_RECIPIENT_SHAPE.test(file.recovery.ageRecipient) ||
     typeof file.recovery.wrappedVaultKey !== 'string' ||
     typeof file.encryptedPayload !== 'string' ||
     typeof file.accessHeaderMac !== 'string' ||
@@ -426,29 +457,40 @@ export class TeamVaultService {
         throw new Error(`"${recipientId}" is already a member of this vault`);
       }
 
-      const now = new Date().toISOString();
       file.accessHeader.push({
         recipientId,
         role,
         method: 'piv-rsa-oaep',
         ageRecipient,
         wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(vaultKey, ageRecipient),
-        addedAt: now,
+        addedAt: new Date().toISOString(),
         addedBy,
       });
-      file.revision += 1;
-      file.updatedAt = now;
-      file.updatedBy = addedBy;
-      file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
-        vaultKey,
-        file.vaultId,
-        file.revision,
-        file.vaultName ?? '',
-        file.accessHeader,
-        file.recovery
-      );
-      await this.writeFile(file);
+      await this.commitHeaderMutation(file, vaultKey, addedBy);
     });
+  }
+
+  /** Shared tail of every admin mutation that only touches the plaintext header (`addMember`,
+   * `setRole`, `renameVault` — NOT `removeMember`, which also re-keys and re-encrypts the
+   * payload, a materially different operation): bump `revision`, stamp `updatedAt`/`updatedBy`,
+   * recompute `accessHeaderMac`, persist. Pulled out after a reviewer noted that four
+   * independently hand-written copies of this exact sequence is exactly the kind of duplication
+   * that caused several of this file's own prior fix commits — a future admin mutation written by
+   * copy-pasting one of these can no longer accidentally omit the revision bump or the MAC
+   * recompute, since there's only one place that does either. */
+  private async commitHeaderMutation(file: TeamVaultFile, vaultKey: Buffer, updatedBy: string): Promise<void> {
+    file.revision += 1;
+    file.updatedAt = new Date().toISOString();
+    file.updatedBy = updatedBy;
+    file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
+      vaultKey,
+      file.vaultId,
+      file.revision,
+      file.vaultName ?? '',
+      file.accessHeader,
+      file.recovery
+    );
+    await this.writeFile(file);
   }
 
   /**
@@ -533,18 +575,7 @@ export class TeamVaultService {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
       entry.role = role;
-      file.revision += 1;
-      file.updatedAt = new Date().toISOString();
-      file.updatedBy = updatedBy;
-      file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
-        vaultKey,
-        file.vaultId,
-        file.revision,
-        file.vaultName ?? '',
-        file.accessHeader,
-        file.recovery
-      );
-      await this.writeFile(file);
+      await this.commitHeaderMutation(file, vaultKey, updatedBy);
     });
   }
 
@@ -559,18 +590,7 @@ export class TeamVaultService {
       const updatedBy = this.requireUnlockedAsAdmin(file);
       const trimmed = vaultName.trim();
       file.vaultName = trimmed || undefined;
-      file.revision += 1;
-      file.updatedAt = new Date().toISOString();
-      file.updatedBy = updatedBy;
-      file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
-        vaultKey,
-        file.vaultId,
-        file.revision,
-        trimmed,
-        file.accessHeader,
-        file.recovery
-      );
-      await this.writeFile(file);
+      await this.commitHeaderMutation(file, vaultKey, updatedBy);
     });
   }
 
@@ -904,6 +924,12 @@ export class TeamVaultService {
    * (`TeamVaultRollbackError`) — see `TeamVaultFile.revision`'s doc comment for why a bucket
    * write-access holder restoring an older version is a real, not theoretical, concern.
    *
+   * Refuses outright when a local vault already exists but the session is locked
+   * (`TeamVaultLockedForPullError`) — verifying the pulled header needs the Vault Key, so a
+   * locked session has no way to tell a legitimate update from a forged one (see that error's
+   * doc comment). Doesn't apply to a brand-new join (no local file yet), which has nothing to
+   * verify against either way.
+   *
    * Also refuses to overwrite local changes that were never pushed (`TeamVaultUnpushedChangesError`,
    * see `lastSyncedRevision`'s doc comment) unless `options.force` is set — there's no per-record
    * merge here (docs/team-vault-plan.md: a whole-file reject-and-pull-first model, same as push's
@@ -923,6 +949,13 @@ export class TeamVaultService {
 
       const localFile = await this.readFile();
       if (localFile) {
+        // Verifying the pulled header against a tampered/forged entry requires the Vault Key
+        // (see TeamVaultLockedForPullError's doc comment) — refuse outright rather than silently
+        // persisting an unverifiable file over the one already trusted locally. A brand-new join
+        // (localFile === null) has nothing to verify against either way, so this never blocks that.
+        if (!this.unlockedVaultKey) {
+          throw new TeamVaultLockedForPullError();
+        }
         // Identity BEFORE freshness, and never skippable: `revision` is an ordinary field in an
         // unsigned JSON file, not a cryptographic guarantee — anyone with S3 write access (not
         // necessarily a real recipient) can substitute the entire vault with one of their own
@@ -1033,8 +1066,19 @@ export class TeamVaultService {
   }
 
   /** Reads and fully validates a vault file from the remote — shared by `pushToRemote`'s identity
-   * check and `pullFromRemote`, since both need the same untrusted-content guarantees. */
+   * check and `pullFromRemote`, since both need the same untrusted-content guarantees. Checked
+   * against `MAX_REMOTE_VAULT_FILE_SIZE` via a cheap `stat()` BEFORE downloading: the threat
+   * model elsewhere in this file already assumes mere S3 write access without real membership
+   * (see every `TeamVault*Error` above), and without this check, that same attacker could upload
+   * a multi-GB `vault.json` for every member's background auto-poll to fully download and
+   * `JSON.parse()` on every tick — a straightforward remote DoS. */
   private async readRemoteVaultFile(provider: IStorageProvider, remotePath: string): Promise<TeamVaultFile> {
+    const stat = await provider.stat(remotePath);
+    if (stat.size > MAX_REMOTE_VAULT_FILE_SIZE) {
+      throw new Error(
+        `Remote Team Vault file is too large (${stat.size} bytes, max ${MAX_REMOTE_VAULT_FILE_SIZE}) — refusing to download it`
+      );
+    }
     const raw = await this.readProviderFile(provider, remotePath);
     let parsed: unknown;
     try {

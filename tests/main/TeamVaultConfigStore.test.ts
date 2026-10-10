@@ -25,6 +25,7 @@ vi.mock('electron', () => {
 
 import { TeamVaultConfigStore } from '../../src/main/services/TeamVaultConfigStore';
 import type { StorageConnectConfig } from '../../src/shared/types/ipc';
+import { setLogSinks } from '../../src/main/log/Logger';
 
 describe('TeamVaultConfigStore', () => {
   let tempDir: string;
@@ -43,6 +44,19 @@ describe('TeamVaultConfigStore', () => {
   it('returns an empty config when no file exists yet', async () => {
     const store = new TeamVaultConfigStore(storePath);
     expect(await store.getConfig()).toEqual({});
+  });
+
+  it('logs a warning (but still returns an empty config) when the file is corrupted, unlike the silent ENOENT case', async () => {
+    const lines: string[] = [];
+    setLogSinks([{ write: (line) => lines.push(line) }]);
+    try {
+      await fs.writeFile(storePath, 'not valid json{{{');
+      const store = new TeamVaultConfigStore(storePath);
+      expect(await store.getConfig()).toEqual({});
+      expect(lines.some((l) => l.includes('WARN') && l.includes('Failed to read Team Vault config'))).toBe(true);
+    } finally {
+      setLogSinks([]);
+    }
   });
 
   it('encrypts the S3 target credentials at rest and decrypts them on read', async () => {

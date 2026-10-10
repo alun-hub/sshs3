@@ -856,7 +856,8 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => void handlePull()}
-                    disabled={pulling}
+                    disabled={pulling || !status?.unlocked}
+                    title={!status?.unlocked ? 'Unlock the Team Vault first — pulling needs the Vault Key to verify the update' : undefined}
                     className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
                   >
                     {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}

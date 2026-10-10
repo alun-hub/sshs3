@@ -16,6 +16,7 @@ import {
   TeamVaultTamperedEntryError,
   TeamVaultHeaderIntegrityError,
   TeamVaultUnpushedChangesError,
+  TeamVaultLockedForPullError,
 } from '../../src/main/services/TeamVaultService';
 import type { TeamVaultCryptoService } from '../../src/main/services/TeamVaultCryptoService';
 import type { FileEntry, IStorageProvider, S3Config } from '../../src/shared/types/storage';
@@ -673,6 +674,7 @@ describe('TeamVaultService', () => {
               {
                 recipientId: 'alice@piv:abc',
                 role: 'admin',
+                method: 'piv-rsa-oaep',
                 ageRecipient: 'age1yubikey1alice',
                 wrappedVaultKey: 'wrapped:age1yubikey1alice:aa',
                 addedAt: 'x',
@@ -682,6 +684,7 @@ describe('TeamVaultService', () => {
                 // bob's recipientId kept, but his public key swapped for the attacker's.
                 recipientId: 'bob@piv:def',
                 role: 'member',
+                method: 'piv-rsa-oaep',
                 ageRecipient: 'age1yubikey1attacker',
                 wrappedVaultKey: 'wrapped:age1yubikey1bob:bb', // stale on purpose — inert until reactivated
                 addedAt: 'x',
@@ -716,6 +719,7 @@ describe('TeamVaultService', () => {
         {
           recipientId: 'bob@piv:def',
           role: 'member',
+          method: 'piv-rsa-oaep',
           ageRecipient: 'age1yubikey1bob',
           wrappedVaultKey: 'wrapped:age1yubikey1bob:cc',
           addedAt: 'x',
@@ -763,6 +767,7 @@ describe('TeamVaultService', () => {
           {
             recipientId: 'attacker@piv:fake',
             role: 'admin',
+            method: 'piv-rsa-oaep',
             ageRecipient: 'age1yubikey1attacker',
             wrappedVaultKey: 'bogus',
             addedAt: 'x',
@@ -796,6 +801,7 @@ describe('TeamVaultService', () => {
           {
             recipientId: 'attacker@piv:fake',
             role: 'admin',
+            method: 'piv-rsa-oaep',
             ageRecipient: 'age1yubikey1attacker',
             wrappedVaultKey: 'bogus',
             addedAt: 'x',
@@ -806,6 +812,42 @@ describe('TeamVaultService', () => {
       await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
 
       await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
+    });
+
+    it('refuses to pull over an existing local vault while locked, since the header MAC cannot be verified without the Vault Key', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      first.lock();
+
+      const provider = fakeProvider();
+      await first.pushToRemote(provider); // pushToRemote needs requireFile() only, not unlock
+
+      await expect(first.pullFromRemote(provider)).rejects.toThrow(TeamVaultLockedForPullError);
+    });
+
+    it('allows pulling a brand-new join (no local file yet) while locked, since nothing exists to verify against', async () => {
+      const first = makeService();
+      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const provider = fakeProvider();
+      await first.pushToRemote(provider);
+
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath: path.join(tempDir, 'second-vault.json'), identityDir: tempDir });
+      expect(second.isUnlocked()).toBe(false);
+      await expect(second.pullFromRemote(provider)).resolves.toBeUndefined();
+    });
+
+    it('rejects a remote vault file larger than the size cap without downloading its body', async () => {
+      const service = makeService();
+      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const provider = fakeProvider();
+      const hugeStatOnly: IStorageProvider = {
+        ...provider,
+        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 51 * 1024 * 1024, isDirectory: false, mtime: 'x' }),
+        readFile: async () => {
+          throw new Error('must not download a file that already failed the size check');
+        },
+      };
+      await expect(service.pullFromRemote(hugeStatOnly)).rejects.toThrow('too large');
     });
 
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {
@@ -878,6 +920,70 @@ describe('TeamVaultService', () => {
             updatedBy: 'x',
             accessHeader: [{ recipientId: 'a', role: 'admin', wrappedVaultKey: 'w', addedAt: 'x', addedBy: 'x' }],
             recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1y', wrappedVaultKey: 'w' },
+            encryptedPayload: '',
+          })
+        )
+      );
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+    });
+
+    it('rejects a remote file whose access entry has an invalid method', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 1,
+            vaultId: 'vlt_badmethod',
+            revision: 1,
+            updatedAt: '2026-01-01T00:00:00Z',
+            updatedBy: 'x',
+            accessHeader: [
+              {
+                recipientId: 'a',
+                role: 'admin',
+                method: 'something-else',
+                ageRecipient: 'age1yubikey1alice',
+                wrappedVaultKey: 'w',
+                addedAt: 'x',
+                addedBy: 'x',
+              },
+            ],
+            recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1fakerecovery', wrappedVaultKey: 'w' },
+            encryptedPayload: '',
+          })
+        )
+      );
+
+      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+    });
+
+    it('rejects a remote file whose access entry has a malformed (non-age1...) ageRecipient', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      await provider.writeFile!(
+        'team-vault/vault.json',
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 1,
+            vaultId: 'vlt_badrecipient',
+            revision: 1,
+            updatedAt: '2026-01-01T00:00:00Z',
+            updatedBy: 'x',
+            accessHeader: [
+              {
+                recipientId: 'a',
+                role: 'admin',
+                method: 'piv-rsa-oaep',
+                ageRecipient: '-not-a-real-recipient',
+                wrappedVaultKey: 'w',
+                addedAt: 'x',
+                addedBy: 'x',
+              },
+            ],
+            recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1fakerecovery', wrappedVaultKey: 'w' },
             encryptedPayload: '',
           })
         )
