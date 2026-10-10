@@ -46,6 +46,7 @@ function deriveHeaderMacKey(vaultKey: Buffer): Buffer {
 function canonicalAccessHeaderString(
   vaultId: string,
   revision: number,
+  vaultName: string,
   accessHeader: TeamVaultAccessEntry[],
   recovery: TeamVaultRecovery
 ): string {
@@ -53,7 +54,7 @@ function canonicalAccessHeaderString(
     .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
     .sort();
   const recoveryLine = [recovery.recipientId, recovery.ageRecipient, recovery.wrappedVaultKey].join('\u0001');
-  return [`${vaultId}\u0002${revision}`, ...entryLines, recoveryLine].join('\u0003');
+  return [`${vaultId}\u0002${revision}\u0002${vaultName}`, ...entryLines, recoveryLine].join('\u0003');
 }
 
 /**
@@ -206,7 +207,7 @@ export class TeamVaultCryptoService {
 
     await fs.mkdir(identityOutDir, { recursive: true });
     const identityFilePath = path.join(identityOutDir, `${crypto.randomUUID()}.txt`);
-    await fs.writeFile(identityFilePath, extractIdentityStanza(text), { mode: 0o600 });
+    await fs.writeFile(identityFilePath, extractStanza(text, PIV_IDENTITY_PATTERN), { mode: 0o600 });
 
     return { recipient: recipientMatch[0], identityFilePath };
   }
@@ -228,39 +229,62 @@ export class TeamVaultCryptoService {
   }
 
   /**
-   * HMAC-SHA256 over the access header (`vaultId` + `revision` + every entry + the recovery
-   * entry), keyed by a subkey derived from the Vault Key. Lets `TeamVaultService.pullFromRemote`
-   * detect tampering with the header itself — a substituted or wholly new entry, a changed role,
-   * anything — without depending on which specific `revision` delta the tamperer claims: unlike a
-   * decrypt-based heuristic (which only works for an exact, narrow revision gap, and is trivially
-   * dodged by choosing a different one), computing a valid tag requires the real Vault Key,
-   * regardless of what revision number is attached to it. Mere S3 write access doesn't provide
-   * that key.
+   * Writes a user-pasted recovery identity (the text `generateRecoveryIdentity` showed them once
+   * at vault creation, for printing/safekeeping) to an app-managed file under `identityOutDir`,
+   * for `unlock()` to then use — see `TeamVaultService.unlockWithRecoveryText`. Tolerates
+   * surrounding noise (chat/email quoting, extra blank lines) via `extractStanza`, the same way
+   * `enrollOwnPivRecipient` already tolerates the pty transcript's noise. Throws if no recognizable
+   * `AGE-SECRET-KEY-1...` line is found, rather than writing whatever garbage was pasted.
+   */
+  async saveRecoveryIdentityText(identityOutDir: string, identityText: string): Promise<string> {
+    if (!RECOVERY_IDENTITY_PATTERN.test(identityText)) {
+      throw new Error('This does not look like a Team Vault recovery key (no AGE-SECRET-KEY-1... line found)');
+    }
+    await fs.mkdir(identityOutDir, { recursive: true });
+    const identityFilePath = path.join(identityOutDir, `${crypto.randomUUID()}.txt`);
+    await fs.writeFile(identityFilePath, extractStanza(identityText, RECOVERY_IDENTITY_PATTERN), { mode: 0o600 });
+    return identityFilePath;
+  }
+
+  /**
+   * HMAC-SHA256 over the access header (`vaultId` + `revision` + `vaultName` + every entry + the
+   * recovery entry), keyed by a subkey derived from the Vault Key. Lets
+   * `TeamVaultService.pullFromRemote` detect tampering with the header itself — a substituted or
+   * wholly new entry, a changed role, a renamed vault, anything — without depending on which
+   * specific `revision` delta the tamperer claims: unlike a decrypt-based heuristic (which only
+   * works for an exact, narrow revision gap, and is trivially dodged by choosing a different
+   * one), computing a valid tag requires the real Vault Key, regardless of what revision number
+   * is attached to it. Mere S3 write access doesn't provide that key.
    */
   computeAccessHeaderMac(
     vaultKey: Buffer,
     vaultId: string,
     revision: number,
+    vaultName: string,
     accessHeader: TeamVaultAccessEntry[],
     recovery: TeamVaultRecovery
   ): string {
     const macKey = deriveHeaderMacKey(vaultKey);
-    const canonical = canonicalAccessHeaderString(vaultId, revision, accessHeader, recovery);
+    const canonical = canonicalAccessHeaderString(vaultId, revision, vaultName, accessHeader, recovery);
     return crypto.createHmac('sha256', macKey).update(canonical, 'utf8').digest('base64');
   }
 }
 
-/** Extracts just the real identity stanza (the `#`-comment block plus the `AGE-PLUGIN-YUBIKEY-...`
- * line) from the full, noisy pty transcript `runAgeCommandViaPty` captures — interactive
- * status/prompt lines ("Generating key...", the echoed PIN prompt with cursor-redraw escape
- * codes, a touch-prompt line) precede the real stanza in that transcript and must never end up
- * in the saved identity file: `age -d -i <file>` rejects anything that isn't exactly this stanza
- * ("unknown identity type" — found via manual end-to-end testing, see
- * docs/team-vault-plan.md). Walks backward from the identity line through contiguous `#` comment
- * lines (skipping blank lines the pty sometimes inserts during cursor redraws) to reconstruct
- * exactly the stanza `age-plugin-yubikey --generate` itself would print to a plain pipe. */
-function extractIdentityStanza(text: string): string {
-  const identityMatch = text.match(/AGE-PLUGIN-YUBIKEY-\S+/);
+const PIV_IDENTITY_PATTERN = /AGE-PLUGIN-YUBIKEY-\S+/;
+const RECOVERY_IDENTITY_PATTERN = /AGE-SECRET-KEY-1\S+/i;
+
+/** Extracts just the real identity stanza (the `#`-comment block plus the actual secret-identity
+ * line matched by `identityPattern`) from a larger, possibly noisy block of text — either the pty
+ * transcript `runAgeCommandViaPty` captures (interactive status/prompt lines, the echoed PIN
+ * prompt with cursor-redraw escape codes, a touch-prompt line, all preceding the real stanza — see
+ * `enrollOwnPivRecipient`) or arbitrary text a user pasted back in (surrounding email/chat quoting,
+ * extra blank lines — see `TeamVaultService.unlockWithRecoveryText`). Either way, `age -d -i
+ * <file>` rejects anything that isn't exactly the stanza itself ("unknown identity type" — found
+ * via manual end-to-end testing, see docs/team-vault-plan.md). Walks backward from the identity
+ * line through contiguous `#` comment lines (skipping blank lines) to reconstruct exactly the
+ * stanza the originating `age`-family command would have printed to a plain pipe. */
+function extractStanza(text: string, identityPattern: RegExp): string {
+  const identityMatch = text.match(identityPattern);
   if (!identityMatch || identityMatch.index === undefined) return text;
 
   const precedingLines = text.slice(0, identityMatch.index).split(/\r\n|\r|\n/);

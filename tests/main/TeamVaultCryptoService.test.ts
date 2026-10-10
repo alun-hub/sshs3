@@ -339,6 +339,40 @@ describe('TeamVaultCryptoService', () => {
     });
   });
 
+  describe('saveRecoveryIdentityText', () => {
+    it('writes a clean recovery identity text to a file under identityOutDir', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
+      const service2 = new TeamVaultCryptoService();
+      const text = '# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n';
+      const identityFilePath = await service2.saveRecoveryIdentityText(dir, text);
+      expect(fs.readFileSync(identityFilePath, 'utf8')).toBe(text);
+    });
+
+    it('tolerates surrounding chat/email quoting, keeping only the real stanza', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
+      const service2 = new TeamVaultCryptoService();
+      const pasted =
+        'Hey, here is the recovery key we printed:\n\n' +
+        '# created: 2026-01-01T00:00:00Z\n' +
+        '# public key: age1fakerecovery\n' +
+        'AGE-SECRET-KEY-1FAKERECOVERYTEXT\n\n' +
+        '-- sent from my phone';
+      const identityFilePath = await service2.saveRecoveryIdentityText(dir, pasted);
+      const saved = fs.readFileSync(identityFilePath, 'utf8');
+      expect(saved).not.toContain('Hey, here is');
+      expect(saved).not.toContain('sent from my phone');
+      expect(saved).toBe('# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n');
+    });
+
+    it('rejects text with no recognizable AGE-SECRET-KEY-1... line', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-vault-recovery-'));
+      const service2 = new TeamVaultCryptoService();
+      await expect(service2.saveRecoveryIdentityText(dir, 'not a key at all')).rejects.toThrow(
+        'does not look like a Team Vault recovery key'
+      );
+    });
+  });
+
   describe('computeAccessHeaderMac', () => {
     const accessHeader = [
       {
@@ -360,33 +394,34 @@ describe('TeamVaultCryptoService', () => {
     it('is deterministic for the same inputs', () => {
       const svc = new TeamVaultCryptoService();
       const key = Buffer.alloc(32, 1);
-      const a = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
-      const b = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      const a = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery);
+      const b = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery);
       expect(a).toBe(b);
     });
 
     it('changes if the Vault Key differs', () => {
       const svc = new TeamVaultCryptoService();
-      const macA = svc.computeAccessHeaderMac(Buffer.alloc(32, 1), 'vlt_1', 1, accessHeader, recovery);
-      const macB = svc.computeAccessHeaderMac(Buffer.alloc(32, 2), 'vlt_1', 1, accessHeader, recovery);
+      const macA = svc.computeAccessHeaderMac(Buffer.alloc(32, 1), 'vlt_1', 1, '', accessHeader, recovery);
+      const macB = svc.computeAccessHeaderMac(Buffer.alloc(32, 2), 'vlt_1', 1, '', accessHeader, recovery);
       expect(macA).not.toBe(macB);
     });
 
     it('changes if any access entry field differs, even a single character', () => {
       const svc = new TeamVaultCryptoService();
       const key = Buffer.alloc(32, 1);
-      const macA = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
+      const macA = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery);
       const tampered = [{ ...accessHeader[0], ageRecipient: 'age1yubikey1alicX' }];
-      const macB = svc.computeAccessHeaderMac(key, 'vlt_1', 1, tampered, recovery);
+      const macB = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', tampered, recovery);
       expect(macA).not.toBe(macB);
     });
 
-    it('changes if the revision or vaultId differs', () => {
+    it('changes if the revision, vaultId, or vaultName differs', () => {
       const svc = new TeamVaultCryptoService();
       const key = Buffer.alloc(32, 1);
-      const base = svc.computeAccessHeaderMac(key, 'vlt_1', 1, accessHeader, recovery);
-      expect(svc.computeAccessHeaderMac(key, 'vlt_1', 2, accessHeader, recovery)).not.toBe(base);
-      expect(svc.computeAccessHeaderMac(key, 'vlt_2', 1, accessHeader, recovery)).not.toBe(base);
+      const base = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery);
+      expect(svc.computeAccessHeaderMac(key, 'vlt_1', 2, '', accessHeader, recovery)).not.toBe(base);
+      expect(svc.computeAccessHeaderMac(key, 'vlt_2', 1, '', accessHeader, recovery)).not.toBe(base);
+      expect(svc.computeAccessHeaderMac(key, 'vlt_1', 1, 'Acme Team', accessHeader, recovery)).not.toBe(base);
     });
 
     it('is insensitive to access-entry array order (sorted canonicalization)', () => {
@@ -401,8 +436,8 @@ describe('TeamVaultCryptoService', () => {
         addedAt: '2026-01-02T00:00:00Z',
         addedBy: 'alice@piv:abc',
       };
-      const forward = svc.computeAccessHeaderMac(key, 'vlt_1', 1, [accessHeader[0], second], recovery);
-      const reversed = svc.computeAccessHeaderMac(key, 'vlt_1', 1, [second, accessHeader[0]], recovery);
+      const forward = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', [accessHeader[0], second], recovery);
+      const reversed = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', [second, accessHeader[0]], recovery);
       expect(forward).toBe(reversed);
     });
   });

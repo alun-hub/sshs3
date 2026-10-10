@@ -102,9 +102,12 @@ export interface AppSettings {
    */
   smartcardUnlockAtStartup?: boolean;
   /**
-   * The PKCS#11 driver to use for smartcard features that aren't tied to one profile — the startup
-   * unlock and linking/unlocking Remote Profile Sync. Empty/undefined = auto-detect (first detected
-   * module, or p11-kit when present). Profiles still use their own library path.
+   * The default PKCS#11 driver for this machine: used for the startup unlock, linking/unlocking
+   * Remote Profile Sync, AND as the fallback for any SSH profile (personal or Team Vault shared)
+   * whose own `pkcs11LibPath` is empty — lets a new team member use shared smartcard profiles
+   * without editing every single one. A profile's own `pkcs11LibPath`, when set, still wins (see
+   * `SmartcardDetector.buildSSHArguments`). Empty/undefined = auto-detect (first detected module,
+   * or p11-kit when present).
    */
   smartcardLibPath?: string;
   /** Action to take when a terminal session exits: 'reconnect' (show reconnect overlay), 'close' (auto-close tab on clean exit), or 'keep' (leave terminal open passively). */

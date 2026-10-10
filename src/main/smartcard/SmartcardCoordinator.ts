@@ -206,7 +206,11 @@ export class SmartcardCoordinator {
   }
 
   public async prepareSmartcardConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
-    if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
+    if (config.authType !== 'smartcard' || config.agentPath) {
+      return config;
+    }
+    config = await this.withSmartcardLibPathFallback(config);
+    if (!config.pkcs11LibPath) {
       return config;
     }
 
@@ -223,6 +227,27 @@ export class SmartcardCoordinator {
     return agentPath
       ? { ...configWithId, agentPath, ...(await this.agentIdentityFilesFor(agentPath, config.pkcs11LibPath)) }
       : configWithId;
+  }
+
+  /** A profile's own `pkcs11LibPath` always wins; falls back to this machine's configured
+   * default (`AppSettings.smartcardLibPath`, Settings > Security & Smartcard) when the profile
+   * doesn't set one — otherwise a smartcard profile with an empty library path connects with
+   * PKCS11Provider silently disabled (`SmartcardDetector.buildSSHArguments`) instead of using
+   * it. Lets a Team Vault shared smartcard profile (necessarily missing a driver path specific
+   * to any one member's machine) actually work for every member without each of them editing
+   * the profile individually — found via real-world use ("PKCS11Provider=none" on a freshly
+   * shared profile). Every caller of `buildSSHArguments` routes through this method (or
+   * `withSmartcardLibPathFallback` directly for SFTP) first, so the fallback only needs to live
+   * here, not in `buildSSHArguments` itself. */
+  private async withSmartcardLibPathFallback<T extends { pkcs11LibPath?: string }>(config: T): Promise<T> {
+    if (config.pkcs11LibPath) return config;
+    let fallback: string | undefined;
+    try {
+      fallback = (await this.deps.settingsStore.getSettings()).smartcardLibPath;
+    } catch {
+      return config;
+    }
+    return fallback ? { ...config, pkcs11LibPath: fallback } : config;
   }
 
   /**
@@ -268,7 +293,11 @@ export class SmartcardCoordinator {
    * transaction at a time.
    */
   public async prepareSftpSmartcardConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
-    if (config.authType !== 'smartcard' || !config.pkcs11LibPath || config.agentPath) {
+    if (config.authType !== 'smartcard' || config.agentPath) {
+      return config;
+    }
+    config = await this.withSmartcardLibPathFallback(config);
+    if (!config.pkcs11LibPath) {
       return config;
     }
 

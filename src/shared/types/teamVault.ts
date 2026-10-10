@@ -1,4 +1,32 @@
+import type { SSHConnectionConfig } from './ssh';
+import type { S3Config } from './storage';
+
 export type TeamVaultRole = 'admin' | 'member';
+
+/** The decrypted shape of `TeamVaultFile.encryptedPayload` — reuses the same domain models as
+ * local profiles (`ProfileStore`'s `SSHConnectionConfig`/`S3Config`), per docs/team-vault-plan.md
+ * §3's decision to avoid a third profile representation. Every field is shared as-is, including
+ * `pkcs11LibPath`/`agentPath`/`privateKeyPath` — none of them execute anything on their own, they
+ * either resolve on a given member's machine or silently don't (same risk profile as a wrong
+ * hostname). The one exception is `pin`, never accepted on a shared profile — see
+ * `TeamVaultService`'s `withoutPin()` — matching `ProfileStore`'s identical rule that a
+ * smartcard/FIDO2 PIN is never written to disk anywhere in this app. A profile whose own
+ * `pkcs11LibPath` is empty falls back to the connecting member's personal default
+ * (`AppSettings.smartcardLibPath`, resolved in `SmartcardDetector.buildSSHArguments`), so a new
+ * member doesn't need to edit every shared profile individually. Private key CONTENT sharing
+ * (not just the path) remains out of scope — see the connection-manager plan. */
+export interface TeamVaultPayload {
+  ssh: SSHConnectionConfig[];
+  s3: S3Config[];
+  /** Shared, arbitrarily-deep folder registry for organizing Team Vault profiles — unlike
+   * personal profiles' local `folders` list (ProfileStore), this is part of the synced payload so
+   * every member sees the same structure. A profile's existing `group` field is reused as a
+   * `/`-separated path into this tree (e.g. `"Acme Infra/Cluster A"`); this array exists
+   * separately so an empty folder (no profile in it yet) can still be created/shown/renamed —
+   * same purpose as the personal `folders` list, just shared. Absent on a payload written before
+   * this field existed; treat as `[]`. */
+  folders?: string[];
+}
 
 /** One recipient's wrapped copy of the Vault Key. `method` is deliberately an open field (only
  * `'piv-rsa-oaep'` exists in v1) so a future recipient mechanism doesn't need a format change —
@@ -31,6 +59,12 @@ export interface TeamVaultRecovery {
 export interface TeamVaultFile {
   formatVersion: 1;
   vaultId: string;
+  /** Creator-chosen descriptive name (e.g. "Acme Infra Team"), shown in the UI instead of the
+   * opaque `vaultId`. Optional for files written before this field existed — the UI falls back to
+   * `vaultId` when absent. Tamper-evident like the rest of the header: included in
+   * `accessHeaderMac` (see below), so changing it requires the real Vault Key, not just S3 write
+   * access. */
+  vaultName?: string;
   /** Monotonically incremented on every mutating write (create=1, then +1 per add/remove/role
    * change). Rollback/replay guard: anyone with mere S3 write access to the vault's path (not
    * necessarily a real recipient — bucket permissions and "is a vault member" are different
@@ -43,11 +77,12 @@ export interface TeamVaultFile {
   accessHeader: TeamVaultAccessEntry[];
   recovery: TeamVaultRecovery;
   encryptedPayload: string;
-  /** HMAC-SHA256 (base64) over `vaultId`+`revision`+`accessHeader`+`recovery`, keyed by a subkey
-   * derived from the Vault Key — see `TeamVaultCryptoService.computeAccessHeaderMac`. Lets
-   * `pullFromRemote` detect any tampering with the header itself (a substituted or wholly new
-   * entry, a changed role, ...) without depending on a specific `revision` delta: mere S3 write
-   * access can't produce a valid tag, since that requires the real Vault Key. */
+  /** HMAC-SHA256 (base64) over `vaultId`+`revision`+`vaultName`+`accessHeader`+`recovery`, keyed
+   * by a subkey derived from the Vault Key — see `TeamVaultCryptoService.computeAccessHeaderMac`.
+   * Lets `pullFromRemote` detect any tampering with the header itself (a substituted or wholly
+   * new entry, a changed role, a renamed vault, ...) without depending on a specific `revision`
+   * delta: mere S3 write access can't produce a valid tag, since that requires the real Vault
+   * Key. */
   accessHeaderMac: string;
 }
 
@@ -62,6 +97,7 @@ export interface TeamVaultMemberSummary {
 export interface TeamVaultStatus {
   exists: boolean;
   vaultId?: string;
+  vaultName?: string;
   members?: TeamVaultMemberSummary[];
   adminCount?: number;
   unlocked: boolean;

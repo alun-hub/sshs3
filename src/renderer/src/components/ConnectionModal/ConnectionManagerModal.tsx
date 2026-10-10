@@ -1,29 +1,38 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  AlertTriangle,
   Boxes,
   ChevronDown,
   ChevronRight,
   Clock,
   Cloud,
+  CloudDownload,
   Download,
   Files,
   FolderPlus,
   Loader2,
+  Lock,
   Plus,
   Search,
   Server,
+  Unlock,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
 import type { Tab, EditingState } from './types';
 import { SshProfileRow, SshRecentRow } from './SshProfileRows';
 import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
+import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
+import { TeamProfileTree } from './TeamProfileTree';
+import { buildTeamFolderTree, collectTeamFolderSuggestions } from './teamProfileTree';
 import {
   collectFolderNames,
   filterS3Profiles,
@@ -96,6 +105,21 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
   const [installKeyProfile, setInstallKeyProfile] = useState<SSHConnectionConfig | null>(null);
 
+  // Personal / Team source toggle (connection-manager-plan: two separate views, not a merged
+  // list with a badge — Team profiles live in the Team Vault's encryptedPayload, never in
+  // profiles.json, and are only visible while the vault is unlocked).
+  const [source, setSource] = useState<'personal' | 'team'>('personal');
+  const [teamPayload, setTeamPayload] = useState<TeamVaultPayload | null>(null);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamNotice, setTeamNotice] = useState<'auto-pulled' | 'remote-changed' | null>(null);
+  // Inline unlock, so getting to shared profiles doesn't require a detour through Settings >
+  // Team Vault — same "Unlock as X" / manual-fallback pattern TeamVaultSettingsPanel already uses.
+  const [teamStatus, setTeamStatus] = useState<TeamVaultStatus | null>(null);
+  const [unlockRecipientId, setUnlockRecipientId] = useState('');
+  const [unlockIdentityPath, setUnlockIdentityPath] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const [showManualUnlock, setShowManualUnlock] = useState(false);
+
   // Folder creation and rename
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -126,24 +150,88 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   }, []);
 
+  // Best-effort: null means "locked / no vault / failed to read" — the Team view shows an
+  // unlock prompt rather than an error for any of those, same as TeamVaultSettingsPanel's own
+  // best-effort reads elsewhere.
+  const loadTeam = useCallback(async () => {
+    setTeamLoading(true);
+    try {
+      const status = await window.multissh.teamVaultGetStatus();
+      setTeamStatus(status);
+      // Prefill only an empty field — never clobbers something the user already typed this
+      // session (e.g. unlocking as a different member than the one remembered).
+      setUnlockRecipientId((prev) => prev || status.selfRecipientId || '');
+      setUnlockIdentityPath((prev) => prev || status.selfIdentityFilePath || '');
+      setTeamPayload(await window.multissh.teamVaultGetPayload());
+    } catch {
+      setTeamStatus(null);
+      setTeamPayload(null);
+    } finally {
+      setTeamLoading(false);
+    }
+  }, []);
+
+  const handleTeamUnlock = async () => {
+    if (!unlockRecipientId.trim() || !unlockIdentityPath.trim()) return;
+    setUnlocking(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultUnlock(unlockRecipientId.trim(), unlockIdentityPath.trim());
+      await loadTeam();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to unlock the Team Vault'));
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       setTab(initialTab);
+      setSource('personal');
       setEditing(startNewProfile ? { type: initialTab } : null);
       setSearchQuery('');
       setNewFolderOpen(false);
       setRenamingFolder(null);
       setImportMenuOpen(false);
       setImportCandidates(null);
+      setTeamNotice(null);
+      setShowManualUnlock(false);
       void load();
+      void loadTeam();
     }
-  }, [open, initialTab, startNewProfile, load]);
+  }, [open, initialTab, startNewProfile, load, loadTeam]);
+
+  // Background auto-poll (IpcBridge.runTeamVaultAutoPoll) pushes these while the modal is open —
+  // refresh the Team view so an edit from another member shows up without a manual reopen.
+  useEffect(() => {
+    if (!open) return;
+    const unsubscribePulled = window.multissh.onTeamVaultAutoPulled?.(() => {
+      setTeamNotice('auto-pulled');
+      void loadTeam();
+    });
+    const unsubscribeChanged = window.multissh.onTeamVaultRemoteChanged?.(() => {
+      setTeamNotice('remote-changed');
+    });
+    return () => {
+      unsubscribePulled?.();
+      unsubscribeChanged?.();
+    };
+  }, [open, loadTeam]);
 
   const toggleGroup = (groupKey: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
+    // Team profiles skip the "lastUsedAt" touch write-back deliberately: bumping it would bump
+    // the vault's revision (every mutating write does — see TeamVaultService.persistPayload),
+    // which every other member's background poll would then pick up as "something changed" for
+    // what's really just a per-viewer stat nobody else needs to see.
+    if (source === 'team') {
+      onConnectSSH?.(profile);
+      return;
+    }
     const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
     try {
       await window.multissh.profilesSaveSSH(updated);
@@ -191,6 +279,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
+    if (source === 'team') {
+      onConnectS3?.(profile);
+      return;
+    }
     const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
     try {
       await window.multissh.profilesSaveS3(updated);
@@ -202,9 +294,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   const handleSaveSSH = async (config: SSHConnectionConfig) => {
     try {
-      await window.multissh.profilesSaveSSH(config);
+      if (source === 'team') {
+        await window.multissh.teamVaultSaveSSHProfile(config);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesSaveSSH(config);
+        await load();
+      }
       setEditing(null);
-      await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to save profile'));
     }
@@ -212,9 +309,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   const handleSaveS3 = async (config: S3Config) => {
     try {
-      await window.multissh.profilesSaveS3(config);
+      if (source === 'team') {
+        await window.multissh.teamVaultSaveS3Profile(config);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesSaveS3(config);
+        await load();
+      }
       setEditing(null);
-      await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to save profile'));
     }
@@ -223,8 +325,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const handleDeleteSSH = async (id: string, name: string) => {
     if (!(await confirm({ title: 'Delete connection', message: `Delete the SSH connection "${name}"?` }))) return;
     try {
-      await window.multissh.profilesDeleteSSH(id);
-      await load();
+      if (source === 'team') {
+        await window.multissh.teamVaultDeleteSSHProfile(id);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesDeleteSSH(id);
+        await load();
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to delete profile'));
     }
@@ -233,8 +340,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const handleDeleteS3 = async (id: string, name: string) => {
     if (!(await confirm({ title: 'Delete connection', message: `Delete the S3 connection "${name}"?` }))) return;
     try {
-      await window.multissh.profilesDeleteS3(id);
-      await load();
+      if (source === 'team') {
+        await window.multissh.teamVaultDeleteS3Profile(id);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesDeleteS3(id);
+        await load();
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to delete profile'));
     }
@@ -249,8 +361,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     };
     delete clone.lastUsedAt;
     try {
-      await window.multissh.profilesSaveSSH(clone);
-      await load();
+      if (source === 'team') {
+        await window.multissh.teamVaultSaveSSHProfile(clone);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesSaveSSH(clone);
+        await load();
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to clone profile'));
     }
@@ -264,8 +381,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     };
     delete clone.lastUsedAt;
     try {
-      await window.multissh.profilesSaveS3(clone);
-      await load();
+      if (source === 'team') {
+        await window.multissh.teamVaultSaveS3Profile(clone);
+        await loadTeam();
+      } else {
+        await window.multissh.profilesSaveS3(clone);
+        await load();
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to clone profile'));
     }
@@ -345,6 +467,74 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
+  // Team Vault folder tree (arbitrary depth, shared via TeamVaultPayload.folders — see
+  // teamProfileTree.ts) — separate handlers from the personal, flat folder ones above, since
+  // Team Vault folders are synced state (teamVaultSaveFolder/etc, re-fetched via loadTeam()),
+  // never the local profileStore.
+  const handleCreateTeamFolder = async (fullPath: string) => {
+    try {
+      await window.multissh.teamVaultSaveFolder(fullPath);
+      await loadTeam();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to create folder'));
+    }
+  };
+
+  const handleRenameTeamFolder = async (oldPath: string, newPath: string) => {
+    try {
+      await window.multissh.teamVaultRenameFolder(oldPath, newPath);
+      await loadTeam();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to rename folder'));
+    }
+  };
+
+  const handleDeleteTeamFolder = async (path: string) => {
+    if (
+      !(await confirm({
+        title: 'Delete folder',
+        message: `Delete folder "${path}"? Profiles inside (including any subfolders) will be moved to Ungrouped.`,
+      }))
+    ) {
+      return;
+    }
+    try {
+      await window.multissh.teamVaultDeleteFolder(path, false);
+      await loadTeam();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to delete folder'));
+    }
+  };
+
+  const handleDropOnTeamFolder = async (
+    targetPath: string | undefined,
+    e: React.DragEvent,
+    kind: 'ssh' | 's3'
+  ) => {
+    e.preventDefault();
+    try {
+      const dataStr = e.dataTransfer.getData('text/plain');
+      if (!dataStr) return;
+      const data = JSON.parse(dataStr);
+      if (data.type !== kind) return;
+      if (kind === 'ssh') {
+        const profile = teamPayload?.ssh.find((p) => p.id === data.id);
+        if (profile && profile.group !== targetPath) {
+          await window.multissh.teamVaultSaveSSHProfile({ ...profile, group: targetPath });
+          await loadTeam();
+        }
+      } else {
+        const profile = teamPayload?.s3.find((p) => p.id === data.id);
+        if (profile && profile.group !== targetPath) {
+          await window.multissh.teamVaultSaveS3Profile({ ...profile, group: targetPath });
+          await loadTeam();
+        }
+      }
+    } catch {
+      // Ignore invalid drag-drop data
+    }
+  };
+
   // Option D: Import / Export
   const handleImportSshConfig = async () => {
     setImportMenuOpen(false);
@@ -412,10 +602,36 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   const query = searchQuery.trim().toLowerCase();
 
-  const adHocTarget = useMemo(() => (tab === 'ssh' ? parseAdHocTarget(searchQuery) : null), [tab, searchQuery]);
+  // Ad-hoc quick-connect and personal-only folders/import/export never apply in the Team view —
+  // shared profiles have no concept of either in this round (§3).
+  const adHocTarget = useMemo(
+    () => (tab === 'ssh' && source === 'personal' ? parseAdHocTarget(searchQuery) : null),
+    [tab, source, searchQuery]
+  );
 
   const filteredSSH = useMemo(() => filterSshProfiles(sshProfiles, query), [sshProfiles, query]);
   const filteredS3 = useMemo(() => filterS3Profiles(s3Profiles, query), [s3Profiles, query]);
+
+  const filteredTeamSSH = useMemo(
+    () => filterSshProfiles(teamPayload?.ssh ?? [], query),
+    [teamPayload, query]
+  );
+  const filteredTeamS3 = useMemo(
+    () => filterS3Profiles(teamPayload?.s3 ?? [], query),
+    [teamPayload, query]
+  );
+  const teamSshTree = useMemo(
+    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamSSH),
+    [teamPayload, filteredTeamSSH]
+  );
+  const teamS3Tree = useMemo(
+    () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamS3),
+    [teamPayload, filteredTeamS3]
+  );
+  const teamFolderSuggestions = useMemo(
+    () => collectTeamFolderSuggestions(teamPayload?.folders ?? [], teamPayload?.ssh ?? [], teamPayload?.s3 ?? []),
+    [teamPayload]
+  );
 
   const allFolderNames = useMemo(
     () => collectFolderNames(folders, sshProfiles, s3Profiles),
@@ -462,6 +678,86 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // silently discard it, since there's no unsaved-changes warning here.
   const handleBackdropClick = useModalDismiss(onClose, open, !editing);
   useModalDismiss(() => setImportCandidates(null), !!importCandidates);
+
+  // Shown in place of either Team list (SSH/S3) whenever the vault isn't unlocked — lets unlocking
+  // happen right here instead of requiring a detour through Settings > Team Vault.
+  const teamLockedPrompt = !teamStatus?.exists ? (
+    <div className="flex flex-col items-center gap-2 py-8 text-center">
+      <Lock className="h-5 w-5 text-amber-400" />
+      <p className="text-sm text-txt-muted">No Team Vault has been set up on this machine yet.</p>
+      <p className="text-xs text-txt-muted">Settings &gt; Team Vault</p>
+    </div>
+  ) : (
+    <div className="mx-auto max-w-sm space-y-2 py-8 text-center">
+      <Lock className="mx-auto h-5 w-5 text-amber-400" />
+      <p className="text-sm text-txt-muted">Unlock the Team Vault to see shared connections.</p>
+      {!showManualUnlock && unlockRecipientId && unlockIdentityPath && teamStatus.selfRecipientId ? (
+        <div className="flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleTeamUnlock()}
+            disabled={unlocking}
+            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+          >
+            {unlocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
+            Unlock as {unlockRecipientId}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowManualUnlock(true);
+              setUnlockRecipientId('');
+              setUnlockIdentityPath('');
+            }}
+            className="text-xs text-txt-muted underline hover:text-txt-secondary"
+          >
+            Use a different identity...
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2">
+          <input
+            type="text"
+            value={unlockRecipientId}
+            onChange={(e) => setUnlockRecipientId(e.target.value)}
+            placeholder="Your recipient id"
+            className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+          />
+          <input
+            type="text"
+            value={unlockIdentityPath}
+            onChange={(e) => setUnlockIdentityPath(e.target.value)}
+            placeholder="Path to your identity file"
+            className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleTeamUnlock()}
+              disabled={unlocking || !unlockRecipientId.trim() || !unlockIdentityPath.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+            >
+              {unlocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
+              Unlock
+            </button>
+            {showManualUnlock && teamStatus.selfRecipientId && teamStatus.selfIdentityFilePath && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManualUnlock(false);
+                  setUnlockRecipientId(teamStatus.selfRecipientId ?? '');
+                  setUnlockIdentityPath(teamStatus.selfIdentityFilePath ?? '');
+                }}
+                className="text-xs text-txt-muted underline hover:text-txt-secondary"
+              >
+                Use my saved identity
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   if (!open) return null;
 
@@ -517,6 +813,50 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
           ))}
         </div>
 
+        {/* Personal / Team source toggle — a separate view, not a merged list with a badge (see
+            docs/team-vault-plan.md's connection-manager plan for why). Hidden for Kubernetes,
+            which has no concept of either. */}
+        {tab !== 'k8s' && !editing && (
+          <div className="flex items-center gap-2 border-b border-divider bg-app-surface px-4 py-2">
+            {(
+              [
+                { key: 'personal' as const, label: 'Personal', icon: Server },
+                { key: 'team' as const, label: 'Team', icon: Users },
+              ]
+            ).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSource(key)}
+                className={
+                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ' +
+                  (source === key
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary')
+                }
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+            {source === 'team' && teamNotice && (
+              <span className="ml-2 flex items-center gap-1.5 text-2xs text-txt-muted">
+                {teamNotice === 'auto-pulled' ? (
+                  <>
+                    <CloudDownload className="h-3 w-3 text-emerald-400" />
+                    Updated from another member
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-amber-400" />
+                    A newer version is available — push your changes to sync
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+        )}
+
         <div
           className={
             editing
@@ -543,12 +883,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onSave={handleSaveSSH}
                   onCancel={() => setEditing(null)}
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
+                  folderSuggestions={source === 'team' ? teamFolderSuggestions : undefined}
                 />
               ) : (
                 <S3ProfileForm
                   initial={editing.config as S3Config | undefined}
                   onSave={handleSaveS3}
                   onCancel={() => setEditing(null)}
+                  folderSuggestions={source === 'team' ? teamFolderSuggestions : undefined}
                 />
               )}
             </>
@@ -565,15 +907,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
+                            const activeSSH = source === 'team' ? filteredTeamSSH : filteredSSH;
+                            const activeS3 = source === 'team' ? filteredTeamS3 : filteredS3;
                             if (adHocTarget && onConnectSSH) {
                               e.preventDefault();
                               handleConnectAdHoc();
-                            } else if (tab === 'ssh' && filteredSSH.length === 1 && onConnectSSH) {
+                            } else if (tab === 'ssh' && activeSSH.length === 1 && onConnectSSH) {
                               e.preventDefault();
-                              void handleConnectSSH(filteredSSH[0]);
-                            } else if (tab === 's3' && filteredS3.length === 1 && onConnectS3) {
+                              void handleConnectSSH(activeSSH[0]);
+                            } else if (tab === 's3' && activeS3.length === 1 && onConnectS3) {
                               e.preventDefault();
-                              void handleConnectS3(filteredS3[0]);
+                              void handleConnectS3(activeS3[0]);
                             }
                           }
                         }}
@@ -586,75 +930,81 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       />
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setEditing({ type: tab })}
-                      className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0 shadow-sm transition-colors"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      New Profile
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewFolderOpen(true);
-                        setNewFolderName('');
-                      }}
-                      title="Create Folder"
-                      className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
-                    >
-                      <FolderPlus className="h-3.5 w-3.5 text-amber-400" />
-                      Folder
-                    </button>
-
-                    {/* Import / Export Menu */}
-                    <div className="relative">
+                    {(source === 'personal' || teamPayload !== null) && (
                       <button
                         type="button"
-                        onClick={() => setImportMenuOpen((prev) => !prev)}
-                        title="Import and Export Profiles"
-                        className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
+                        onClick={() => setEditing({ type: tab })}
+                        className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shrink-0 shadow-sm transition-colors"
                       >
-                        <Download className="h-3.5 w-3.5 text-sky-400" />
-                        <span className="text-xs">Sync</span>
+                        <Plus className="h-3.5 w-3.5" />
+                        New Profile
                       </button>
+                    )}
 
-                      {importMenuOpen && (
-                        <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-border-subtle bg-app-card py-1 shadow-xl text-xs">
-                          {tab === 'ssh' && (
-                            <button
-                              type="button"
-                              onClick={() => void handleImportSshConfig()}
-                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
-                            >
-                              <Upload className="h-3.5 w-3.5 text-sky-400" />
-                              <span>Import ~/.ssh/config</span>
-                            </button>
+                    {source === 'personal' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewFolderOpen(true);
+                            setNewFolderName('');
+                          }}
+                          title="Create Folder"
+                          className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
+                        >
+                          <FolderPlus className="h-3.5 w-3.5 text-amber-400" />
+                          Folder
+                        </button>
+
+                        {/* Import / Export Menu */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setImportMenuOpen((prev) => !prev)}
+                            title="Import and Export Profiles"
+                            className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5 text-sky-400" />
+                            <span className="text-xs">Sync</span>
+                          </button>
+
+                          {importMenuOpen && (
+                            <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-border-subtle bg-app-card py-1 shadow-xl text-xs">
+                              {tab === 'ssh' && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleImportSshConfig()}
+                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+                                >
+                                  <Upload className="h-3.5 w-3.5 text-sky-400" />
+                                  <span>Import ~/.ssh/config</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleExportJson()}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+                              >
+                                <Download className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>Export JSON Backup</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleImportJson()}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
+                              >
+                                <Upload className="h-3.5 w-3.5 text-amber-400" />
+                                <span>Import JSON Backup</span>
+                              </button>
+                            </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => void handleExportJson()}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
-                          >
-                            <Download className="h-3.5 w-3.5 text-emerald-400" />
-                            <span>Export JSON Backup</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleImportJson()}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
-                          >
-                            <Upload className="h-3.5 w-3.5 text-amber-400" />
-                            <span>Import JSON Backup</span>
-                          </button>
                         </div>
-                      )}
-                    </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Inline New Folder Input */}
-                  {newFolderOpen && (
+                  {source === 'personal' && newFolderOpen && (
                     <div className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-950/20 p-2 animate-in fade-in duration-100">
                       <FolderPlus className="h-4 w-4 text-sky-400 shrink-0" />
                       <input
@@ -730,7 +1080,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {!loading && tab === 'ssh' && (
+              {!loading && tab === 'ssh' && source === 'personal' && (
                 <div className="space-y-4">
                   {/* Ad-hoc quick connect: "user@host" typed into search */}
                   {adHocTarget && (
@@ -888,7 +1238,44 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {!loading && tab === 's3' && (
+              {tab === 'ssh' && source === 'team' && (
+                <div className="space-y-2">
+                  {teamLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading Team Vault...
+                    </div>
+                  ) : teamPayload === null ? (
+                    teamLockedPrompt
+                  ) : filteredTeamSSH.length === 0 && teamSshTree.roots.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-txt-muted">
+                      {query ? 'No shared profiles matched your search' : 'No shared SSH profiles yet'}
+                    </p>
+                  ) : (
+                    <TeamProfileTree
+                      roots={teamSshTree.roots}
+                      ungrouped={teamSshTree.ungrouped}
+                      renderProfile={(profile) => (
+                        <TeamSshProfileRow
+                          key={profile.id}
+                          profile={profile}
+                          onConnectSSH={onConnectSSH}
+                          onConnectSFTP={onConnectSFTP}
+                          handleCloneSSH={handleCloneSSH}
+                          handleDeleteSSH={handleDeleteSSH}
+                          setEditing={setEditing}
+                        />
+                      )}
+                      onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(targetPath, e, 'ssh')}
+                      onCreateFolder={handleCreateTeamFolder}
+                      onRenameFolder={handleRenameTeamFolder}
+                      onDeleteFolder={handleDeleteTeamFolder}
+                    />
+                  )}
+                </div>
+              )}
+
+              {!loading && tab === 's3' && source === 'personal' && (
                 <div className="space-y-4">
                   {/* Recently Used S3 Profiles */}
                   {!query && recentS3.length > 0 && (
@@ -988,6 +1375,42 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         </div>
                       );
                     })
+                  )}
+                </div>
+              )}
+
+              {tab === 's3' && source === 'team' && (
+                <div className="space-y-2">
+                  {teamLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading Team Vault...
+                    </div>
+                  ) : teamPayload === null ? (
+                    teamLockedPrompt
+                  ) : filteredTeamS3.length === 0 && teamS3Tree.roots.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-txt-muted">
+                      {query ? 'No shared profiles matched your search' : 'No shared S3 profiles yet'}
+                    </p>
+                  ) : (
+                    <TeamProfileTree
+                      roots={teamS3Tree.roots}
+                      ungrouped={teamS3Tree.ungrouped}
+                      renderProfile={(profile) => (
+                        <TeamS3ProfileRow
+                          key={profile.id}
+                          profile={profile}
+                          onConnectS3={onConnectS3}
+                          handleCloneS3={handleCloneS3}
+                          handleDeleteS3={handleDeleteS3}
+                          setEditing={setEditing}
+                        />
+                      )}
+                      onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(targetPath, e, 's3')}
+                      onCreateFolder={handleCreateTeamFolder}
+                      onRenameFolder={handleRenameTeamFolder}
+                      onDeleteFolder={handleDeleteTeamFolder}
+                    />
                   )}
                 </div>
               )}

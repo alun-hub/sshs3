@@ -4,6 +4,10 @@ import { ChevronDown, ChevronRight, Folder, Pencil, Trash2 } from 'lucide-react'
 
 interface ProfileFolderHeaderProps {
   groupName: string;
+  /** Display text, when it should differ from `groupName` (the identity used for
+   * rename/delete) — e.g. a Team Vault tree node showing just its own segment ("Cluster A")
+   * while `groupName` carries the full path ("Acme Infra/Cluster A"). Defaults to `groupName`. */
+  label?: string;
   profileCount: number;
   isCollapsed: boolean;
   isDragOver: boolean;
@@ -22,6 +26,7 @@ interface ProfileFolderHeaderProps {
 /** A folder row in the profile list: collapse toggle, inline rename, delete, and drop target for dragged profiles. */
 export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
   groupName,
+  label,
   profileCount,
   isCollapsed,
   isDragOver,
@@ -85,7 +90,7 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
           className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
         />
       ) : (
-        <span>{groupName}</span>
+        <span>{label ?? groupName}</span>
       )}
       <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
         {profileCount}

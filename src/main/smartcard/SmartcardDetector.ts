@@ -215,6 +215,11 @@ export class SmartcardDetector {
 
   /**
    * Generates command-line arguments for OpenSSH (ssh) client.
+   *
+   * Expects `config.pkcs11LibPath` to already be resolved (profile's own value, or this
+   * machine's `AppSettings.smartcardLibPath` default substituted in) — see
+   * `SmartcardCoordinator.prepareSmartcardConfig`/`prepareSftpSmartcardConfig`, which every
+   * caller of this function runs first.
    */
   public static buildSSHArguments(config: SSHConnectionConfig, controlPath?: string): string[] {
     if (!config.host || typeof config.host !== 'string' || config.host.startsWith('-')) {

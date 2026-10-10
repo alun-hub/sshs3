@@ -112,6 +112,99 @@ describe('SmartcardCoordinator', () => {
     expect(deps.syncAgentBlock).toHaveBeenCalled();
   });
 
+  describe('prepareSmartcardConfig / prepareSftpSmartcardConfig — smartcardLibPath fallback', () => {
+    // Regression found via real-world use: a shared Team Vault smartcard profile has no
+    // pkcs11LibPath of its own (it's a personal, per-machine setting, never a security boundary
+    // — see the connection-manager plan's correction), so without this fallback the connection
+    // silently disabled PKCS11Provider instead of using the member's own configured default.
+    it("falls back to settings.smartcardLibPath when the profile's own pkcs11LibPath is empty (SSH)", async () => {
+      const { coordinator, deps, agent } = build();
+      (deps.settingsStore.getSettings as any).mockResolvedValue({
+        smartcardAuthMode: 'agent-global',
+        smartcardLibPath: LIB,
+      });
+
+      const prepared = await coordinator.prepareSmartcardConfig({
+        id: 'c1',
+        name: 'shared',
+        host: 'h',
+        username: 'u',
+        authType: 'smartcard',
+      } as any);
+
+      expect(prepared.pkcs11LibPath).toBe(LIB);
+      expect(agent.addPkcs11).toHaveBeenCalledWith(LIB, expect.anything(), expect.anything());
+    });
+
+    it("a profile's own pkcs11LibPath always wins over the settings default", async () => {
+      const { coordinator, deps, agent } = build();
+      const ownPath = '/opt/custom/own-pkcs11.so';
+      (deps.settingsStore.getSettings as any).mockResolvedValue({
+        smartcardAuthMode: 'agent-global',
+        smartcardLibPath: LIB,
+      });
+
+      const prepared = await coordinator.prepareSmartcardConfig({
+        id: 'c1',
+        name: 'own',
+        host: 'h',
+        username: 'u',
+        authType: 'smartcard',
+        pkcs11LibPath: ownPath,
+      } as any);
+
+      expect(prepared.pkcs11LibPath).toBe(ownPath);
+      expect(agent.addPkcs11).toHaveBeenCalledWith(ownPath, expect.anything(), expect.anything());
+    });
+
+    it('leaves the config untouched when neither the profile nor settings has a library path', async () => {
+      const { coordinator, deps, agent } = build();
+      (deps.settingsStore.getSettings as any).mockResolvedValue({ smartcardAuthMode: 'agent-global' });
+
+      const prepared = await coordinator.prepareSmartcardConfig({
+        id: 'c1',
+        name: 'none',
+        host: 'h',
+        username: 'u',
+        authType: 'smartcard',
+      } as any);
+
+      expect(prepared.pkcs11LibPath).toBeUndefined();
+      expect(agent.addPkcs11).not.toHaveBeenCalled();
+    });
+
+    it('applies the same fallback for an SFTP connection', async () => {
+      const { coordinator, deps, agent } = build();
+      (deps.settingsStore.getSettings as any).mockResolvedValue({
+        smartcardAuthMode: 'agent-global',
+        smartcardLibPath: LIB,
+      });
+
+      const prepared = await coordinator.prepareSftpSmartcardConfig(
+        { id: 's1', name: 'shared', host: 'h', username: 'u', authType: 'smartcard' } as any,
+        'provider-1'
+      );
+
+      expect(prepared.pkcs11LibPath).toBe(LIB);
+      expect(agent.addPkcs11).toHaveBeenCalledWith(LIB, expect.anything(), expect.anything());
+    });
+
+    it('is a no-op for a non-smartcard authType', async () => {
+      const { coordinator, deps } = build();
+      (deps.settingsStore.getSettings as any).mockResolvedValue({ smartcardLibPath: LIB });
+
+      const prepared = await coordinator.prepareSmartcardConfig({
+        id: 'c1',
+        name: 'pw',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+      } as any);
+
+      expect(prepared.pkcs11LibPath).toBeUndefined();
+    });
+  });
+
   describe('awaitStartupUnlock', () => {
     it('returns at once when no startup unlock is running', async () => {
       const { coordinator } = build();

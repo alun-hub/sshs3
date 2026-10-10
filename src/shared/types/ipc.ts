@@ -45,7 +45,7 @@ import type {
   DotfilesSyncStatusEvent,
 } from './dotfiles';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
-import type { TeamVaultRole, TeamVaultStatus } from './teamVault';
+import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from './teamVault';
 import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
 import type {
   ConfigureGitSigningRequest,
@@ -210,13 +210,26 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_ADD_MEMBER: 'team-vault:add-member',
   TEAM_VAULT_REMOVE_MEMBER: 'team-vault:remove-member',
   TEAM_VAULT_SET_ROLE: 'team-vault:set-role',
+  TEAM_VAULT_RENAME: 'team-vault:rename',
   TEAM_VAULT_UNLOCK: 'team-vault:unlock',
+  TEAM_VAULT_UNLOCK_WITH_RECOVERY_TEXT: 'team-vault:unlock-with-recovery-text',
   TEAM_VAULT_LOCK: 'team-vault:lock',
   TEAM_VAULT_DELETE: 'team-vault:delete',
   TEAM_VAULT_SET_TARGET: 'team-vault:set-target',
   TEAM_VAULT_PUSH: 'team-vault:push',
   TEAM_VAULT_PULL: 'team-vault:pull',
   TEAM_VAULT_HAS_REMOTE_VAULT: 'team-vault:has-remote-vault',
+  TEAM_VAULT_GET_PAYLOAD: 'team-vault:get-payload',
+  TEAM_VAULT_SAVE_SSH_PROFILE: 'team-vault:save-ssh-profile',
+  TEAM_VAULT_DELETE_SSH_PROFILE: 'team-vault:delete-ssh-profile',
+  TEAM_VAULT_SAVE_S3_PROFILE: 'team-vault:save-s3-profile',
+  TEAM_VAULT_DELETE_S3_PROFILE: 'team-vault:delete-s3-profile',
+  TEAM_VAULT_SAVE_FOLDER: 'team-vault:save-folder',
+  TEAM_VAULT_RENAME_FOLDER: 'team-vault:rename-folder',
+  TEAM_VAULT_DELETE_FOLDER: 'team-vault:delete-folder',
+  // Push-only (main -> renderer), fired by the background auto-poll (IpcBridge.runTeamVaultAutoPoll).
+  TEAM_VAULT_AUTO_PULLED: 'team-vault:auto-pulled',
+  TEAM_VAULT_REMOTE_CHANGED: 'team-vault:remote-changed',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -628,17 +641,36 @@ export interface MultiSSHApi {
   // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
   teamVaultGetStatus(): Promise<TeamVaultStatus>;
   teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }>;
-  teamVaultCreate(selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }>;
+  teamVaultCreate(
+    selfRecipientId: string,
+    selfAgeRecipient: string,
+    vaultName?: string
+  ): Promise<{ recoveryIdentity: string }>;
   teamVaultAddMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
   teamVaultRemoveMember(recipientId: string): Promise<{ remainingAdmins: number }>;
   teamVaultSetRole(recipientId: string, role: TeamVaultRole): Promise<void>;
+  teamVaultRename(vaultName: string): Promise<void>;
   teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
+  teamVaultUnlockWithRecoveryText(identityText: string): Promise<void>;
   teamVaultLock(): Promise<void>;
   teamVaultDelete(): Promise<void>;
   teamVaultSetTarget(target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;
   teamVaultPush(): Promise<void>;
-  teamVaultPull(): Promise<void>;
+  teamVaultPull(options?: { force?: boolean }): Promise<void>;
   teamVaultHasRemoteVault(): Promise<boolean>;
+  /** Null when the vault doesn't exist or isn't unlocked — best-effort, see teamVaultHandlers.ts. */
+  teamVaultGetPayload(): Promise<TeamVaultPayload | null>;
+  teamVaultSaveSSHProfile(profile: SSHConnectionConfig): Promise<void>;
+  teamVaultDeleteSSHProfile(id: string): Promise<void>;
+  teamVaultSaveS3Profile(profile: S3Config): Promise<void>;
+  teamVaultDeleteS3Profile(id: string): Promise<void>;
+  teamVaultSaveFolder(folderPath: string): Promise<void>;
+  teamVaultRenameFolder(oldPath: string, newPath: string): Promise<void>;
+  teamVaultDeleteFolder(folderPath: string, deleteProfiles?: boolean): Promise<void>;
+  /** Fired by the main-process background poll (IpcBridge.runTeamVaultAutoPoll) when it detected
+   * and auto-applied a remote change, or detected one it couldn't safely auto-apply. */
+  onTeamVaultAutoPulled?(callback: () => void): () => void;
+  onTeamVaultRemoteChanged?(callback: () => void): () => void;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

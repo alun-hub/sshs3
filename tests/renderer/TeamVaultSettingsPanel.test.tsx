@@ -48,7 +48,7 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(createButton);
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultCreate).toHaveBeenCalledWith('alice@piv:yubikey-1', 'age1yubikey1testadmin');
+        expect(window.multissh.teamVaultCreate).toHaveBeenCalledWith('alice@piv:yubikey-1', 'age1yubikey1testadmin', '');
       });
 
       // Recovery dialog appears and blocks "Done" until confirmed.
@@ -312,6 +312,51 @@ describe('TeamVaultSettingsPanel', () => {
     });
   });
 
+  describe('recovery (lost card, has only the saved recovery key text)', () => {
+    beforeEach(() => {
+      window.multissh = {
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          exists: true,
+          vaultId: 'vlt_1',
+          unlocked: false,
+          filePath: '/x',
+          members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
+          adminCount: 1,
+        }),
+        teamVaultUnlockWithRecoveryText: vi.fn().mockResolvedValue(undefined),
+      } as unknown as typeof window.multissh;
+    });
+
+    it('reveals a textarea and recovers the vault with the pasted recovery key', async () => {
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Lost your card\?/i }));
+      const textarea = screen.getByPlaceholderText('AGE-SECRET-KEY-1...');
+      fireEvent.change(textarea, { target: { value: 'AGE-SECRET-KEY-1FAKERECOVERYTEXT' } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Recover vault access' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultUnlockWithRecoveryText).toHaveBeenCalledWith('AGE-SECRET-KEY-1FAKERECOVERYTEXT');
+      });
+    });
+
+    it('surfaces an error if the pasted text is rejected', async () => {
+      window.multissh.teamVaultUnlockWithRecoveryText = vi
+        .fn()
+        .mockRejectedValue(new Error('This does not look like a Team Vault recovery key'));
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Lost your card\?/i }));
+      fireEvent.change(screen.getByPlaceholderText('AGE-SECRET-KEY-1...'), { target: { value: 'garbage' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Recover vault access' }));
+
+      await waitFor(() => expect(screen.getByText(/does not look like a Team Vault recovery key/)).toBeInTheDocument());
+    });
+  });
+
   describe('remote sync (Fas 3)', () => {
     const baseStatus: TeamVaultStatus = {
       exists: true,
@@ -367,6 +412,27 @@ describe('TeamVaultSettingsPanel', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Pull' }));
       await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalled());
+    });
+
+    it('offers to pull anyway (discarding local changes) when the pull is rejected as unpushed', async () => {
+      window.multissh.teamVaultGetStatus = vi
+        .fn()
+        .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' });
+      window.multissh.teamVaultPull = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('This machine has local Team Vault changes that have not been pushed yet.'))
+        .mockResolvedValueOnce(undefined);
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pull' }));
+      const dialog = await screen.findByTestId('confirm-dialog');
+      expect(dialog).toHaveTextContent('Unpushed local changes');
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /Pull anyway/i }));
+
+      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalledWith({ force: true }));
     });
 
     it('offers "Pull existing vault" when no local vault exists but a remote one does', async () => {

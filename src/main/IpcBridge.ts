@@ -176,9 +176,17 @@ export class IpcBridge {
   public readonly smartcard: SmartcardCoordinator;
   private autoSyncTimer: NodeJS.Timeout | null = null;
   private autoPullTimer: NodeJS.Timeout | null = null;
+  private teamVaultAutoPollTimer: NodeJS.Timeout | null = null;
+  private teamVaultAutoPushTimer: NodeJS.Timeout | null = null;
   private lastSmartcardAutoUnlockAttempt = 0;
   private static readonly AUTO_PULL_INTERVAL_MS = 10 * 60 * 1000;
   private static readonly SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS = 5 * 60 * 1000;
+  // Shorter than ProfileSyncService's 10-minute auto-pull: Team Vault's poll is a cheap
+  // metadata-only stat() (TeamVaultService.hasRemoteChangedSinceLastSync), not a full pull, so
+  // there's no bandwidth reason to space it out as far — see docs/team-vault-plan.md's connection
+  // manager plan for why a tighter interval matters more here (shared profiles change more often
+  // than vault membership did).
+  private static readonly TEAM_VAULT_AUTO_POLL_INTERVAL_MS = 3 * 60 * 1000;
   private activePresenceSessions = new Set<string>();
 
   // Event listener references for clean teardown
@@ -786,6 +794,40 @@ export class IpcBridge {
   }
 
   /**
+   * Debounced auto-push for Team Vault shared profiles — called after every
+   * save/delete of a shared SSH/S3 profile (teamVaultHandlers.ts), so a new or
+   * edited profile reaches the other members without the saving member having
+   * to remember to click Push themselves. Unlike `scheduleAutoSync`, there's no
+   * opt-in toggle to check (Team Vault's push is always considered "on" once a
+   * remote target is configured) and no unlock requirement (`pushToRemote` only
+   * needs the local vault FILE, never the decrypted Vault Key — the payload
+   * stays encrypted end-to-end). A debounce (default 2s, same as
+   * scheduleAutoSync) coalesces several quick edits into one push instead of
+   * one per keystroke-adjacent save. A conflict (someone else pushed first) or
+   * any other failure is logged, not surfaced — the next save retries, and the
+   * background auto-poll will pick up the other member's change regardless.
+   */
+  public scheduleTeamVaultAutoPush(delayMs = 2000): void {
+    if (this.teamVaultAutoPushTimer) {
+      clearTimeout(this.teamVaultAutoPushTimer);
+    }
+    this.teamVaultAutoPushTimer = setTimeout(async () => {
+      this.teamVaultAutoPushTimer = null;
+      try {
+        const config = await this.teamVaultConfigStore.getConfig();
+        if (!config.target) {
+          return;
+        }
+        const provider = await this.storageRegistry.getOrCreate(config.target);
+        await this.teamVaultService.pushToRemote(provider, config.remoteBasePath ?? '');
+        await this.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
+      } catch (err) {
+        autosyncLog.warn('Team Vault background push failed:', err);
+      }
+    }, delayMs);
+  }
+
+  /**
    * Starts (or restarts) the periodic background pull, so machines pick up
    * changes pushed from elsewhere without the user having to open Settings
    * and click "Pull" themselves. Runs only while auto-sync is enabled — see
@@ -838,6 +880,69 @@ export class IpcBridge {
     if (webContents && !webContents.isDestroyed?.()) {
       const status = await this.buildSyncStatus();
       webContents.send(IPC_CHANNELS.PROFILE_SYNC_STATUS, status);
+    }
+  }
+
+  /** Starts (or restarts) the Team Vault background poll — see
+   * `TeamVaultService.hasRemoteChangedSinceLastSync`'s doc comment for why this is a cheap
+   * metadata-only check rather than a full pull on every tick. Called after a successful
+   * unlock/create and after the target changes; a no-op tick (see `runTeamVaultAutoPoll`) stops
+   * itself if the vault isn't actually unlocked or has no remote target configured, so callers
+   * don't need to check either condition themselves before calling this. */
+  public startTeamVaultAutoPollTimer(): void {
+    this.stopTeamVaultAutoPollTimer();
+    this.teamVaultAutoPollTimer = setInterval(() => {
+      void this.runTeamVaultAutoPoll();
+    }, IpcBridge.TEAM_VAULT_AUTO_POLL_INTERVAL_MS);
+    this.teamVaultAutoPollTimer.unref?.();
+  }
+
+  public stopTeamVaultAutoPollTimer(): void {
+    if (this.teamVaultAutoPollTimer) {
+      clearInterval(this.teamVaultAutoPollTimer);
+      this.teamVaultAutoPollTimer = null;
+    }
+  }
+
+  /**
+   * One tick of the background poll (docs/team-vault-plan.md's connection-manager plan, point 4):
+   * a cheap stat()-only check for whether the remote vault changed since this instance last
+   * observed it. On a change, either auto-pulls (when this machine has no unpushed local
+   * mutations — safe, since there's nothing to lose) or just notifies the renderer that a pull is
+   * needed (when it does — auto-pulling then would silently discard those local changes, exactly
+   * what `TeamVaultUnpushedChangesError` exists to prevent on the interactive path too).
+   */
+  private async runTeamVaultAutoPoll(): Promise<void> {
+    try {
+      if (!this.teamVaultService.isUnlocked()) {
+        this.stopTeamVaultAutoPollTimer();
+        return;
+      }
+      const config = await this.teamVaultConfigStore.getConfig();
+      if (!config.target) {
+        this.stopTeamVaultAutoPollTimer();
+        return;
+      }
+      const provider = await this.storageRegistry.getOrCreate(config.target);
+      const remoteBasePath = config.remoteBasePath ?? '';
+      const changed = await this.teamVaultService.hasRemoteChangedSinceLastSync(provider, remoteBasePath);
+      if (!changed) return;
+
+      const webContents = this.getWebContents();
+      if (await this.teamVaultService.hasUnpushedLocalChanges()) {
+        if (webContents && !webContents.isDestroyed?.()) {
+          webContents.send(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED);
+        }
+        return;
+      }
+
+      await this.teamVaultService.pullFromRemote(provider, remoteBasePath);
+      await this.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
+      if (webContents && !webContents.isDestroyed?.()) {
+        webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED);
+      }
+    } catch (err) {
+      autosyncLog.warn('Team Vault background poll failed:', err);
     }
   }
 
@@ -1464,6 +1569,11 @@ export class IpcBridge {
       this.autoSyncTimer = null;
     }
     this.stopAutoPullTimer();
+    this.stopTeamVaultAutoPollTimer();
+    if (this.teamVaultAutoPushTimer) {
+      clearTimeout(this.teamVaultAutoPushTimer);
+      this.teamVaultAutoPushTimer = null;
+    }
     // The PTY-exit listener that normally drives cleanupSmartcardSessionAgent()
     // was already detached above, so killAll() won't trigger it — kill every
     // remaining per-session ('agent-per-session' mode) private agent explicitly,

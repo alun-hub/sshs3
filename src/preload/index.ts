@@ -92,7 +92,7 @@ import type { Snippet } from '../shared/types/snippets';
 import type { AppSettings } from '../shared/types/settings';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
-import type { TeamVaultRole, TeamVaultStatus } from '../shared/types/teamVault';
+import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from '../shared/types/teamVault';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -498,23 +498,56 @@ export const api: MultiSSHApi = {
   teamVaultGetStatus: (): Promise<TeamVaultStatus> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_STATUS),
   teamVaultEnrollRecipient: (): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ENROLL_RECIPIENT),
-  teamVaultCreate: (selfRecipientId: string, selfAgeRecipient: string): Promise<{ recoveryIdentity: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient),
+  teamVaultCreate: (
+    selfRecipientId: string,
+    selfAgeRecipient: string,
+    vaultName?: string
+  ): Promise<{ recoveryIdentity: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient, vaultName),
   teamVaultAddMember: (recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, recipientId, ageRecipient, role),
   teamVaultRemoveMember: (recipientId: string): Promise<{ remainingAdmins: number }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, recipientId),
   teamVaultSetRole: (recipientId: string, role: TeamVaultRole): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_ROLE, recipientId, role),
+  teamVaultRename: (vaultName: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_RENAME, vaultName),
   teamVaultUnlock: (recipientId: string, identityFilePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK, recipientId, identityFilePath),
+  teamVaultUnlockWithRecoveryText: (identityText: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_UNLOCK_WITH_RECOVERY_TEXT, identityText),
   teamVaultLock: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_LOCK),
   teamVaultDelete: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE),
   teamVaultSetTarget: (target: StorageConnectConfig, remoteBasePath?: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, target, remoteBasePath),
   teamVaultPush: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PUSH),
-  teamVaultPull: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PULL),
+  teamVaultPull: (options?: { force?: boolean }): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PULL, options),
   teamVaultHasRemoteVault: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT),
+  teamVaultGetPayload: (): Promise<TeamVaultPayload | null> => ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD),
+  teamVaultSaveSSHProfile: (profile: SSHConnectionConfig): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, profile),
+  teamVaultDeleteSSHProfile: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_SSH_PROFILE, id),
+  teamVaultSaveS3Profile: (profile: S3Config): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, profile),
+  teamVaultDeleteS3Profile: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_S3_PROFILE, id),
+  teamVaultSaveFolder: (folderPath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, folderPath),
+  teamVaultRenameFolder: (oldPath: string, newPath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, oldPath, newPath),
+  teamVaultDeleteFolder: (folderPath: string, deleteProfiles?: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER, folderPath, deleteProfiles),
+  onTeamVaultAutoPulled: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, listener);
+  },
+  onTeamVaultRemoteChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, listener);
+  },
 
   // Connection Testing
   testSSHConnection: (config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> =>

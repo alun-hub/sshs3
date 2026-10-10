@@ -32,6 +32,10 @@ interface SSHProfileFormProps {
   onCancel: () => void;
   /** Master switch from Settings > Files & Storage. When off, the dotfiles pool field is hidden entirely. */
   dotfilesPoolEnabled?: boolean;
+  /** Existing folder paths to suggest in the Group/Folder field, via a `<datalist>` — passed for
+   * a Team Vault profile, whose folder tree can be arbitrarily deep (`"Acme Infra/Cluster A"`),
+   * so autocomplete matters more than for a personal profile's flat, usually-short list. */
+  folderSuggestions?: string[];
 }
 
 const AUTH_TYPES: { value: SSHAuthType; label: string }[] = [
@@ -63,6 +67,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   onSave,
   onCancel,
   dotfilesPoolEnabled = false,
+  folderSuggestions,
 }) => {
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
@@ -321,9 +326,17 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           <input
             value={config.group ?? ''}
             onChange={(e) => update('group', e.target.value)}
+            list={folderSuggestions ? 'ssh-folder-suggestions' : undefined}
             className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder="e.g. Production or Web Servers"
+            placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : 'e.g. Production or Web Servers'}
           />
+          {folderSuggestions && (
+            <datalist id="ssh-folder-suggestions">
+              {folderSuggestions.map((path) => (
+                <option key={path} value={path} />
+              ))}
+            </datalist>
+          )}
         </label>
       </div>
 

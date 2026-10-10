@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
-import type { TeamVaultRole, TeamVaultStatus } from '../../shared/types/teamVault';
+import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from '../../shared/types/teamVault';
+import type { SSHConnectionConfig } from '../../shared/types/ssh';
+import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateReader';
 import { createLogger } from '../log';
@@ -12,6 +14,9 @@ export type TeamVaultHost = Pick<
   IpcBridge,
   | 'buildTeamVaultStatus'
   | 'registerHandler'
+  | 'scheduleTeamVaultAutoPush'
+  | 'startTeamVaultAutoPollTimer'
+  | 'stopTeamVaultAutoPollTimer'
   | 'storageRegistry'
   | 'syncConfigStore'
   | 'teamVaultConfigStore'
@@ -72,6 +77,18 @@ function requireIdentityFilePath(value: string): void {
   }
 }
 
+function requireProfile(value: unknown, label: string): void {
+  if (!value || typeof value !== 'object' || !(value as { id?: unknown }).id) {
+    throw new Error(`${label} is required`);
+  }
+}
+
+function requireVaultName(value: string): void {
+  if (typeof value !== 'string' || value.length > 200) {
+    throw new Error('Vault name must be a string of at most 200 characters');
+  }
+}
+
 export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_GET_STATUS, async (): Promise<TeamVaultStatus> => {
     return bridge.buildTeamVaultStatus();
@@ -96,14 +113,22 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
 
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_CREATE,
-    async (_event, selfRecipientId: string, selfAgeRecipient: string) => {
+    async (_event, selfRecipientId: string, selfAgeRecipient: string, vaultName?: string) => {
       requireRecipientId(selfRecipientId, 'Recipient id');
       requireAgeRecipient(selfAgeRecipient, 'Age recipient');
-      const result = await bridge.teamVaultService.createVault(selfRecipientId, selfAgeRecipient);
+      requireVaultName(vaultName ?? '');
+      const result = await bridge.teamVaultService.createVault(selfRecipientId, selfAgeRecipient, vaultName);
       await bridge.teamVaultConfigStore.setSelfIdentity(selfRecipientId, undefined);
+      bridge.startTeamVaultAutoPollTimer();
       return result;
     }
   );
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_RENAME, async (_event, vaultName: string) => {
+    requireVaultName(vaultName);
+    await bridge.teamVaultService.renameVault(vaultName);
+    bridge.scheduleTeamVaultAutoPush();
+  });
 
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER,
@@ -136,16 +161,27 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       requireIdentityFilePath(identityFilePath);
       await bridge.teamVaultService.unlock(recipientId, identityFilePath);
       await bridge.teamVaultConfigStore.setSelfIdentity(recipientId, identityFilePath);
+      bridge.startTeamVaultAutoPollTimer();
     }
   );
 
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_UNLOCK_WITH_RECOVERY_TEXT, async (_event, identityText: string) => {
+    if (typeof identityText !== 'string' || !identityText.trim() || identityText.length > 10_000) {
+      throw new Error('Recovery key text is required');
+    }
+    await bridge.teamVaultService.unlockWithRecoveryText(identityText);
+    bridge.startTeamVaultAutoPollTimer();
+  });
+
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_LOCK, async () => {
     bridge.teamVaultService.lock();
+    bridge.stopTeamVaultAutoPollTimer();
   });
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_DELETE, async () => {
     await bridge.teamVaultService.deleteVault();
     await bridge.teamVaultConfigStore.clearSelfIdentity();
+    bridge.stopTeamVaultAutoPollTimer();
   });
 
   bridge.registerHandler(
@@ -166,6 +202,11 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       // remote state it last observed on the *previous* target — same reasoning as
       // ProfileSyncService.resetRemoteState() in syncHandlers.ts.
       bridge.teamVaultService.resetRemoteState();
+      // Restart rather than merely leave running: a stale timer would otherwise keep polling
+      // against whatever target it captured when first started, not this new one.
+      if (bridge.teamVaultService.isUnlocked()) {
+        bridge.startTeamVaultAutoPollTimer();
+      }
     }
   );
 
@@ -180,16 +221,19 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     return bridge.buildTeamVaultStatus();
   });
 
-  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_PULL, async (): Promise<TeamVaultStatus> => {
-    const config = await bridge.teamVaultConfigStore.getConfig();
-    if (!config.target) {
-      throw new Error('Configure a Team Vault target first (team-vault:set-target)');
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_PULL,
+    async (_event, options?: { force?: boolean }): Promise<TeamVaultStatus> => {
+      const config = await bridge.teamVaultConfigStore.getConfig();
+      if (!config.target) {
+        throw new Error('Configure a Team Vault target first (team-vault:set-target)');
+      }
+      const provider = await bridge.storageRegistry.getOrCreate(config.target);
+      await bridge.teamVaultService.pullFromRemote(provider, config.remoteBasePath ?? '', options);
+      await bridge.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
+      return bridge.buildTeamVaultStatus();
     }
-    const provider = await bridge.storageRegistry.getOrCreate(config.target);
-    await bridge.teamVaultService.pullFromRemote(provider, config.remoteBasePath ?? '');
-    await bridge.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
-    return bridge.buildTeamVaultStatus();
-  });
+  );
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT, async (): Promise<boolean> => {
     const config = await bridge.teamVaultConfigStore.getConfig();
@@ -197,4 +241,59 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     const provider = await bridge.storageRegistry.getOrCreate(config.target);
     return bridge.teamVaultService.hasRemoteVault(provider, config.remoteBasePath ?? '');
   });
+
+  // Shared SSH/S3 profiles (connection-manager-plan: the Team Vault's actual payoff) — any
+  // unlocked member may read/edit them, not just an admin (see TeamVaultService.saveSSHProfile's
+  // doc comment: profiles aren't a membership trust boundary).
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD, async (): Promise<TeamVaultPayload | null> => {
+    if (!bridge.teamVaultService.isUnlocked()) return null;
+    try {
+      return await bridge.teamVaultService.getPayload();
+    } catch (err) {
+      teamVaultLog.warn('Failed to read Team Vault payload (treating as unavailable):', err);
+      return null;
+    }
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, async (_event, profile: SSHConnectionConfig) => {
+    requireProfile(profile, 'SSH profile');
+    await bridge.teamVaultService.saveSSHProfile(profile);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_DELETE_SSH_PROFILE, async (_event, id: string) => {
+    requireRecipientId(id, 'Profile id');
+    await bridge.teamVaultService.deleteSSHProfile(id);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, async (_event, profile: S3Config) => {
+    requireProfile(profile, 'S3 profile');
+    await bridge.teamVaultService.saveS3Profile(profile);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_DELETE_S3_PROFILE, async (_event, id: string) => {
+    requireRecipientId(id, 'Profile id');
+    await bridge.teamVaultService.deleteS3Profile(id);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, async (_event, folderPath: string) => {
+    await bridge.teamVaultService.saveTeamFolder(folderPath);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, async (_event, oldPath: string, newPath: string) => {
+    await bridge.teamVaultService.renameTeamFolder(oldPath, newPath);
+    bridge.scheduleTeamVaultAutoPush();
+  });
+
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER,
+    async (_event, folderPath: string, deleteProfiles?: boolean) => {
+      await bridge.teamVaultService.deleteTeamFolder(folderPath, Boolean(deleteProfiles));
+      bridge.scheduleTeamVaultAutoPush();
+    }
+  );
 }

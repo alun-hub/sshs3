@@ -47,8 +47,14 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [joinInfoCopied, setJoinInfoCopied] = useState(false);
 
   const [creating, setCreating] = useState(false);
+  const [vaultNameDraft, setVaultNameDraft] = useState('');
   const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
   const [recoverySaved, setRecoverySaved] = useState(false);
+
+  // Rename the vault (admin only) — the descriptive name shown instead of the opaque vaultId.
+  const [editingVaultName, setEditingVaultName] = useState(false);
+  const [vaultNameEdit, setVaultNameEdit] = useState('');
+  const [savingVaultName, setSavingVaultName] = useState(false);
 
   // Unlock (needed for add/remove — see TeamVaultService.unlock's doc comment on the still-open
   // PIN question).
@@ -59,6 +65,13 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   // status.selfRecipientId/selfIdentityFilePath are already known, unlocking needs no fields at
   // all, just a button (found to be a real usability problem otherwise — see docs/team-vault-plan.md).
   const [showManualUnlock, setShowManualUnlock] = useState(false);
+
+  // Recover using the saved recovery key text — guided alternative to "Use a different identity"
+  // for someone who has only the printed/saved recovery identity, not a file path and not the
+  // internal recipientId (both handled by teamVaultUnlockWithRecoveryText).
+  const [showRecoveryUnlock, setShowRecoveryUnlock] = useState(false);
+  const [recoveryTextInput, setRecoveryTextInput] = useState('');
+  const [recovering, setRecovering] = useState(false);
 
   const [deletingVault, setDeletingVault] = useState(false);
 
@@ -136,7 +149,8 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     try {
       const { recoveryIdentity: identity } = await window.multissh.teamVaultCreate(
         selfRecipientId.trim(),
-        myRecipient.recipient
+        myRecipient.recipient,
+        vaultNameDraft.trim()
       );
       setRecoveryIdentity(identity);
       setRecoverySaved(false);
@@ -145,6 +159,20 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       setError(describeIpcError(err, 'Failed to create the Team Vault'));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleRenameVault = async () => {
+    setSavingVaultName(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultRename(vaultNameEdit.trim());
+      setEditingVaultName(false);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to rename the vault'));
+    } finally {
+      setSavingVaultName(false);
     }
   };
 
@@ -181,6 +209,22 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       setError(describeIpcError(err, 'Failed to unlock the Team Vault'));
     } finally {
       setUnlocking(false);
+    }
+  };
+
+  const handleUnlockWithRecovery = async () => {
+    if (!recoveryTextInput.trim()) return;
+    setRecovering(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultUnlockWithRecoveryText(recoveryTextInput);
+      setRecoveryTextInput('');
+      setShowRecoveryUnlock(false);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to recover the Team Vault with that key'));
+    } finally {
+      setRecovering(false);
     }
   };
 
@@ -302,13 +346,30 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     }
   };
 
-  const handlePull = async () => {
+  const handlePull = async (force = false) => {
     setPulling(true);
     setError(null);
     try {
-      await window.multissh.teamVaultPull();
+      await window.multissh.teamVaultPull(force ? { force: true } : undefined);
       await load();
     } catch (err) {
+      // TeamVaultUnpushedChangesError loses its class crossing IPC (plain Error on this side),
+      // so this matches on the message text — see TeamVaultService.pullFromRemote's doc comment
+      // for why this needs an explicit choice rather than silently overwriting local changes.
+      const message = err instanceof Error ? err.message : '';
+      if (!force && message.includes('have not been pushed yet')) {
+        setPulling(false);
+        const proceed = await confirm({
+          title: 'Unpushed local changes',
+          message:
+            'This machine has local Team Vault changes (e.g. shared profile edits) that have not been pushed yet. Pulling now would discard them. Push first instead, or pull anyway and discard them?',
+          confirmLabel: 'Pull anyway (discard local changes)',
+        });
+        if (proceed) {
+          await handlePull(true);
+        }
+        return;
+      }
       setError(describeIpcError(err, 'Pull failed'));
     } finally {
       setPulling(false);
@@ -385,6 +446,21 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                 className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
               />
             </div>
+            {!status?.exists && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-txt-secondary">
+                  Vault name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={vaultNameDraft}
+                  onChange={(e) => setVaultNameDraft(e.target.value)}
+                  placeholder="e.g. Acme Infra Team"
+                  maxLength={200}
+                  className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                />
+              </div>
+            )}
             <div className="flex gap-2">
               {!status?.exists && (
                 <button
@@ -438,9 +514,56 @@ export const TeamVaultSettingsPanel: React.FC = () => {
       {status?.exists && (
         <div className="space-y-4">
           <div className="rounded-lg border border-border-subtle bg-app-surface p-3 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-txt-muted">Vault</span>
-              <span className="font-mono text-txt-secondary">{status.vaultId}</span>
+              {editingVaultName ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={vaultNameEdit}
+                    onChange={(e) => setVaultNameEdit(e.target.value)}
+                    maxLength={200}
+                    placeholder={status.vaultId}
+                    className="rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleRenameVault()}
+                    disabled={savingVaultName}
+                    className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                    title="Save"
+                  >
+                    {savingVaultName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingVaultName(false)}
+                    disabled={savingVaultName}
+                    className="text-txt-muted hover:text-txt-secondary disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-txt-secondary">{status.vaultName || status.vaultId}</span>
+                  {status.unlocked && isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVaultNameEdit(status.vaultName ?? '');
+                        setEditingVaultName(true);
+                      }}
+                      className="text-txt-muted hover:text-txt-secondary"
+                      title="Rename vault"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             <div className="mt-1 flex items-center justify-between">
               <span className="text-txt-muted">Status</span>
@@ -534,6 +657,53 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                     )}
                   </div>
                 </>
+              )}
+
+              {!showRecoveryUnlock ? (
+                <button
+                  type="button"
+                  onClick={() => setShowRecoveryUnlock(true)}
+                  className="text-xs text-txt-muted underline hover:text-txt-secondary"
+                >
+                  Lost your card? Recover using your saved recovery key...
+                </button>
+              ) : (
+                <div className="space-y-2 border-t border-border-subtle pt-2">
+                  <p className="text-xs text-txt-secondary">
+                    Paste the recovery key text you saved when this vault was created (the
+                    &quot;AGE-SECRET-KEY-1...&quot; block). This unlocks the vault with
+                    admin-equivalent access so you can re-add yourself as a regular member.
+                  </p>
+                  <textarea
+                    value={recoveryTextInput}
+                    onChange={(e) => setRecoveryTextInput(e.target.value)}
+                    placeholder="AGE-SECRET-KEY-1..."
+                    rows={3}
+                    className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleUnlockWithRecovery()}
+                      disabled={recovering || !recoveryTextInput.trim()}
+                      className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+                    >
+                      {recovering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
+                      Recover vault access
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRecoveryUnlock(false);
+                        setRecoveryTextInput('');
+                      }}
+                      disabled={recovering}
+                      className="text-xs text-txt-muted underline hover:text-txt-secondary disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}

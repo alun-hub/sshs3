@@ -8,6 +8,8 @@ interface S3ProfileFormProps {
   initial?: S3Config;
   onSave: (config: S3Config) => void;
   onCancel: () => void;
+  /** See `SSHProfileFormProps.folderSuggestions` — same Team Vault folder-path autocomplete. */
+  folderSuggestions?: string[];
 }
 
 function emptyConfig(): S3Config {
@@ -24,7 +26,7 @@ function emptyConfig(): S3Config {
   };
 }
 
-export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, onCancel }) => {
+export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, onCancel, folderSuggestions }) => {
   const [config, setConfig] = useState<S3Config>(initial ?? emptyConfig());
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -166,9 +168,17 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
           <input
             value={config.group ?? ''}
             onChange={(e) => update('group', e.target.value)}
+            list={folderSuggestions ? 's3-folder-suggestions' : undefined}
             className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder="e.g. Production or MinIO"
+            placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : 'e.g. Production or MinIO'}
           />
+          {folderSuggestions && (
+            <datalist id="s3-folder-suggestions">
+              {folderSuggestions.map((path) => (
+                <option key={path} value={path} />
+              ))}
+            </datalist>
+          )}
         </label>
       </div>
 

@@ -200,8 +200,9 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
         ) : (
           <div className="space-y-2">
             <p className="text-xs text-txt-muted">
-              Pick the driver used for the startup unlock and for linking Remote Profile Sync to your
-              card. Profiles keep their own driver setting.
+              Pick the driver used for the startup unlock, for linking Remote Profile Sync to your
+              card, and as the default for any SSH profile (personal or shared via Team Vault) that
+              doesn't set its own. A profile's own driver path, when set, always takes priority.
             </p>
             <WindowsAgentPathNotice libPath={smartcardLibPath} />
             {[{ path: '', name: 'Auto-detect', hint: 'Use p11-kit if present, otherwise the only detected module' }, ...smartcardLibs].map(
