@@ -5,6 +5,9 @@ release/
 .superpowers/
 *.tsbuildinfo
 
+# Team Vault age binaries — downloaded and checksum-verified by CI at release time
+build-resources/age/
+
 # AI Assistants & LLM tooling
 .gemini/
 .claude/
