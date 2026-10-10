@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.34] - 2026-10-10
+
+### Added
+- **Team Vault: shared connection profiles.** A team shares SSH and S3 profiles (passwords and secret keys included) through an S3 bucket it owns. Each member unlocks with their own YubiKey (via the bundled `age` / `age-plugin-yubikey`). There is no shared master password, and the bucket only ever holds ciphertext. Admins add members by pasting a join-info blob and remove them with one click. A printed recovery key (with a copy button) restores access if every YubiKey is lost. Shared folders are browsed as cards with a breadcrumb, with custom folder icons. Linux and YubiKey PIV only for now. See the new Team Vault page in the user guide.
+
+### Security
+- Team Vault integrity: a real MAC over the access header, which also covers pulls made while the vault is locked. A pull rejects substituted `ageRecipient` values and injected access-header entries. Push and pull both check the member's identity, and the admin role is enforced in the main process.
+- Closed a gap where a pulled file with a shorter member list skipped the access-header MAC check entirely, letting anyone with S3 write access to the vault's path — no member key or YubiKey required — forge a whole new Vault Key and have it accepted as a legitimate member removal. A member removal now also carries a proof tied to the key it replaces, verified before the pull is accepted.
+- The pasted recovery key reaches `age` through a FIFO and is never written to a file. YubiKey PIN/touch prompts run through `node-pty` instead of `execFile`. Fixed argument injection in the Team Vault IPC handlers, and folder paths and download sizes are validated and capped.
+
+### Fixed
+- YubiKey enrollment is no longer killed during its own management-key migration, and enrolling no longer overwrites the current vault's remembered identity. The touch hint stays visible through long PIN entry and for the whole operation.
+
 ## [0.96.33] - 2026-10-07
 
 ### Changed
