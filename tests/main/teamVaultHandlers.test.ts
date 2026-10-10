@@ -407,6 +407,33 @@ describe('Team Vault IPC handlers', () => {
   });
 
   describe('TEAM_VAULT_SAVE_FOLDER / TEAM_VAULT_RENAME_FOLDER / TEAM_VAULT_DELETE_FOLDER', () => {
+    it('rejects an overlong folder path', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, 'x'.repeat(1001))).rejects.toThrow(
+        'Folder path must be a string of at most 1000 characters'
+      );
+      expect(teamVaultService.saveTeamFolder).not.toHaveBeenCalled();
+    });
+
+    it('rejects a folder path nested too deeply', async () => {
+      const deep = Array.from({ length: 51 }, (_, i) => `seg${i}`).join('/');
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, deep)).rejects.toThrow('nested too deeply');
+      expect(teamVaultService.saveTeamFolder).not.toHaveBeenCalled();
+    });
+
+    it('rejects an overlong path on rename (either side) and delete', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, 'x'.repeat(1001), 'ok')).rejects.toThrow(
+        'Folder path must be a string'
+      );
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, 'ok', 'x'.repeat(1001))).rejects.toThrow(
+        'New folder path must be a string'
+      );
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER, 'x'.repeat(1001))).rejects.toThrow(
+        'Folder path must be a string'
+      );
+      expect(teamVaultService.renameTeamFolder).not.toHaveBeenCalled();
+      expect(teamVaultService.deleteTeamFolder).not.toHaveBeenCalled();
+    });
+
     it('saves a folder and schedules an auto-push', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, 'Acme Infra/Cluster A');
       expect(teamVaultService.saveTeamFolder).toHaveBeenCalledWith('Acme Infra/Cluster A');

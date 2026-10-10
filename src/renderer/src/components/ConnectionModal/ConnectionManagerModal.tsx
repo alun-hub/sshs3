@@ -821,7 +821,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             {(
               [
                 { key: 'personal' as const, label: 'Personal', icon: Server },
-                { key: 'team' as const, label: 'Team', icon: Users },
+                // Shows the vault's own descriptive name once it has one (teamVaultRename) —
+                // falls back to the generic "Team" label for a vault that never got one (created
+                // before the feature existed, or left blank on purpose).
+                { key: 'team' as const, label: teamStatus?.vaultName || 'Team', icon: Users },
               ]
             ).map(({ key, label, icon: Icon }) => (
               <button

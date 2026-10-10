@@ -350,6 +350,23 @@ describe('ConnectionManagerModal', () => {
   });
 
   describe('Team Vault view (connection-manager-plan: two separate views, not a merged list)', () => {
+    it('shows the vault\'s own name on the tab once it has one, falling back to "Team" otherwise', async () => {
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({
+        exists: true,
+        unlocked: true,
+        filePath: '/x',
+        vaultName: 'Acme Infra Team',
+      });
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Team' })).not.toBeInTheDocument();
+    });
+
     it('shows an unlock prompt instead of profiles when the vault is locked', async () => {
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue(null);
       render(

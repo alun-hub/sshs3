@@ -89,6 +89,23 @@ function requireVaultName(value: string): void {
   }
 }
 
+// `TeamVaultService.saveTeamFolder`/`renameTeamFolder`/`deleteTeamFolder` already reject an
+// empty-after-trim path, but nothing there bounds its size — without this, a compromised or
+// buggy renderer could push an arbitrarily large (or absurdly deep) path straight into the
+// synced, auto-pushed vault payload, bloating it for every member on every pull. 1000 chars /
+// 50 segments is generous for a real folder tree while still being a hard ceiling.
+const MAX_FOLDER_PATH_LENGTH = 1000;
+const MAX_FOLDER_PATH_SEGMENTS = 50;
+
+function requireFolderPath(value: string, label: string): void {
+  if (typeof value !== 'string' || value.length > MAX_FOLDER_PATH_LENGTH) {
+    throw new Error(`${label} must be a string of at most ${MAX_FOLDER_PATH_LENGTH} characters`);
+  }
+  if (value.split('/').length > MAX_FOLDER_PATH_SEGMENTS) {
+    throw new Error(`${label} is nested too deeply (max ${MAX_FOLDER_PATH_SEGMENTS} segments)`);
+  }
+}
+
 export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_GET_STATUS, async (): Promise<TeamVaultStatus> => {
     return bridge.buildTeamVaultStatus();
@@ -280,11 +297,14 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   });
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_FOLDER, async (_event, folderPath: string) => {
+    requireFolderPath(folderPath, 'Folder path');
     await bridge.teamVaultService.saveTeamFolder(folderPath);
     bridge.scheduleTeamVaultAutoPush();
   });
 
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_RENAME_FOLDER, async (_event, oldPath: string, newPath: string) => {
+    requireFolderPath(oldPath, 'Folder path');
+    requireFolderPath(newPath, 'New folder path');
     await bridge.teamVaultService.renameTeamFolder(oldPath, newPath);
     bridge.scheduleTeamVaultAutoPush();
   });
@@ -292,6 +312,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER,
     async (_event, folderPath: string, deleteProfiles?: boolean) => {
+      requireFolderPath(folderPath, 'Folder path');
       await bridge.teamVaultService.deleteTeamFolder(folderPath, Boolean(deleteProfiles));
       bridge.scheduleTeamVaultAutoPush();
     }
