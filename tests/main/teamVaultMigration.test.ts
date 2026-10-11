@@ -126,6 +126,22 @@ describe('migrateLegacyTeamVaultLayout', () => {
     await expect(fs.readFile(path.join(baseDir, 'team-vault.json'), 'utf-8')).resolves.toBeTruthy();
   });
 
+  it('refuses to migrate a legacy file whose vaultId is malformed (defense in depth against path traversal)', async () => {
+    const legacyFilePath = path.join(baseDir, 'team-vault.json');
+    await fs.writeFile(
+      legacyFilePath,
+      JSON.stringify({ formatVersion: 1, vaultId: '../../../etc/evil' }),
+      'utf-8'
+    );
+
+    const result = migrateLegacyTeamVaultLayout(baseDir);
+    expect(result).toBeUndefined();
+    // Left in place, not migrated under the malicious id — no team-vaults/ entry was ever
+    // created for it, and nothing escaped baseDir.
+    await expect(fs.readFile(legacyFilePath, 'utf-8')).resolves.toBeTruthy();
+    expect(existsSync(path.join(baseDir, 'etc', 'evil.json'))).toBe(false);
+  });
+
   it('does not re-migrate once multiple vaults already exist (post-migration, multi-team in use)', async () => {
     const vaultsDir = path.join(baseDir, 'team-vaults');
     await fs.mkdir(vaultsDir, { recursive: true });

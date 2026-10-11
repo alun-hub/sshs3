@@ -6,6 +6,14 @@ import { createLogger } from '../log/Logger';
 
 const migrationLog = createLogger('team-vault-migration');
 
+// Same shape `teamVaultHandlers.ts`'s `requireVaultId` enforces on every IPC-supplied vaultId —
+// applied here too even though this one comes from a local file this app itself wrote (not
+// untrusted network/IPC input), since it still ends up in `path.join()` calls building this
+// install's own on-disk layout (`${vaultId}.json`, a `${vaultId}` identity subdirectory). Defense
+// in depth: a corrupted or hand-edited legacy file with e.g. `vaultId: "../../../.ssh"` must not
+// be able to walk the resulting path outside `team-vaults/`/`team-vault-identities/`.
+const VAULT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 /** Same userData-or-fallback resolution every Team Vault file/store uses (see
  * `TeamVaultService`'s/`TeamVaultConfigStore`'s constructors) — duplicated here (rather than
  * imported from either) so this migration can run standalone, before either is constructed. */
@@ -72,6 +80,14 @@ export function migrateLegacyTeamVaultLayout(baseDir: string): string | undefine
       migrationLog.warn('Legacy Team Vault file has no vaultId — leaving it in place, unmigrated.');
       return undefined;
     }
+    if (!VAULT_ID_PATTERN.test(vaultId)) {
+      // Every vaultId this app itself ever mints matches this shape (`vlt_${uuid}` —
+      // `TeamVaultService.createVault`) — one that doesn't means the file was corrupted or
+      // hand-edited, not a real install state. Refuse to use it to build a path rather than
+      // guessing at sanitizing it.
+      migrationLog.warn('Legacy Team Vault file has a malformed vaultId — leaving it in place, unmigrated.');
+      return undefined;
+    }
 
     fs.mkdirSync(vaultsDir, { recursive: true, mode: 0o700 });
     const newFilePath = path.join(vaultsDir, `${vaultId}.json`);
@@ -126,8 +142,12 @@ function migrateLegacyIdentitiesDir(legacyIdentitiesDir: string, vaultId: string
  * more than one vault file — there's no single unambiguous answer in either case. */
 function singleExistingVaultId(vaultsDir: string): string | undefined {
   try {
-    const files = fs.readdirSync(vaultsDir).filter((f) => f.endsWith('.json'));
-    return files.length === 1 ? files[0].slice(0, -'.json'.length) : undefined;
+    const ids = fs
+      .readdirSync(vaultsDir)
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => f.slice(0, -'.json'.length))
+      .filter((id) => VAULT_ID_PATTERN.test(id));
+    return ids.length === 1 ? ids[0] : undefined;
   } catch {
     return undefined;
   }
