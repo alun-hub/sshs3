@@ -243,17 +243,25 @@ function guardSshSecretWrite(incoming: SSHConnectionConfig, existing: SSHConnect
   };
 }
 
-/** Whether `incoming` changes where an S3 profile's credentials actually get sent relative to
- * `existing` — same reasoning as `sshRoutingChanged`, applied to `endpoint`/`region`/
- * `forcePathStyle` (a custom endpoint is how S3Config picks a non-AWS host) and `accessKeyId`
- * (pairing a different key id with the stored secret is the same kind of tamper, even though it
- * can't change the request's destination on its own). */
+/** Whether `incoming` changes where an S3 profile's credentials actually get sent, or how safely
+ * they get there, relative to `existing` — same reasoning as `sshRoutingChanged`, applied to
+ * `endpoint`/`region`/`forcePathStyle` (a custom endpoint is how S3Config picks a non-AWS host),
+ * `accessKeyId` (pairing a different key id with the stored secret is the same kind of tamper,
+ * even though it can't change the request's destination on its own), and `rejectUnauthorized`/
+ * `customCaPath` — both feed straight into `S3StorageProvider`'s TLS config, so a non-admin
+ * could otherwise leave the endpoint untouched but disable certificate validation or substitute
+ * a CA they control, exposing the secret (and all transferred data) to a network MITM without
+ * ever touching a field this guard was already watching. */
 function s3RoutingChanged(incoming: S3Config, existing: S3Config): boolean {
   return (
     (incoming.endpoint ?? '') !== (existing.endpoint ?? '') ||
     incoming.region !== existing.region ||
     Boolean(incoming.forcePathStyle) !== Boolean(existing.forcePathStyle) ||
     incoming.accessKeyId !== existing.accessKeyId ||
+    // Not Boolean()-coerced: `undefined` (default, validates) and `false` (explicitly disabled)
+    // are different states here, unlike the other boolean fields in this function.
+    incoming.rejectUnauthorized !== existing.rejectUnauthorized ||
+    (incoming.customCaPath ?? '') !== (existing.customCaPath ?? '') ||
     Boolean(incoming.proxy?.enabled) !== Boolean(existing.proxy?.enabled) ||
     (incoming.proxy?.host ?? '') !== (existing.proxy?.host ?? '') ||
     (incoming.proxy?.port ?? 0) !== (existing.proxy?.port ?? 0)

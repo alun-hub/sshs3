@@ -1571,6 +1571,22 @@ describe('TeamVaultService', () => {
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
+      it('rejects a member disabling TLS validation (rejectUnauthorized) on a profile that has a stored secret key, even with the endpoint unchanged', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveS3Profile(s3Profile('s1'));
+        await expect(
+          asBob.saveS3Profile({ ...s3Profile('s1'), rejectUnauthorized: false, secretAccessKey: '' })
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('rejects a member substituting a custom CA on a profile that has a stored secret key', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveS3Profile(s3Profile('s1'));
+        await expect(
+          asBob.saveS3Profile({ ...s3Profile('s1'), customCaPath: '/tmp/attacker-ca.pem', secretAccessKey: '' })
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
+
       it('redacts and guards an S3 profile\'s proxy.password the same as its secretAccessKey', async () => {
         const { admin, asBob } = await makeAdminAndBob();
         await admin.saveS3Profile({
