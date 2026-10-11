@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { ipcMain as electronIpcMain } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
@@ -33,7 +34,11 @@ import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { TeamVaultService } from './services/TeamVaultService';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
-import { migrateLegacyTeamVaultLayout, resolveTeamVaultBaseDir } from './services/teamVaultMigration';
+import {
+  migrateLegacyTeamVaultLayout,
+  relocateMigratedIdentityPath,
+  resolveTeamVaultBaseDir,
+} from './services/teamVaultMigration';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
@@ -1059,6 +1064,22 @@ export class IpcBridge {
       this.teamVaultService.getStatus(vaultId),
       this.teamVaultConfigStore.getConfig(vaultId),
     ]);
+    // A remembered identity path from before the single-team -> multi-team migration still
+    // points at the old flat identities directory, which migrateLegacyIdentitiesDir has since
+    // moved out from under it — self-heal it here (checked, not assumed, every time the status is
+    // read) rather than only once at startup, so this also covers installs that migrated before
+    // this fix existed. Without it, a returning member's one-click unlock silently regresses to
+    // the manual path-entry form (see relocateMigratedIdentityPath's doc comment).
+    let selfIdentityFilePath = config.selfIdentityFilePath;
+    if (selfIdentityFilePath && !fs.existsSync(selfIdentityFilePath)) {
+      const relocated = relocateMigratedIdentityPath(selfIdentityFilePath, vaultId);
+      if (relocated) {
+        selfIdentityFilePath = relocated;
+        this.teamVaultConfigStore.setSelfIdentity(vaultId, undefined, relocated).catch((err) => {
+          ipcLog.warn('Failed to persist the relocated Team Vault identity path (non-fatal):', err);
+        });
+      }
+    }
     return {
       ...status,
       // `TeamVaultService.getStatus` only knows `vaultId` once a local file exists — a
@@ -1070,7 +1091,7 @@ export class IpcBridge {
       remoteConfigured: !!config.target,
       lastSyncAt: config.lastSyncAt,
       selfRecipientId: config.selfRecipientId,
-      selfIdentityFilePath: config.selfIdentityFilePath,
+      selfIdentityFilePath,
       selfRole: config.selfRecipientId
         ? status.members?.find((m) => m.recipientId === config.selfRecipientId)?.role
         : undefined,

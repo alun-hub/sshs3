@@ -135,6 +135,33 @@ function migrateLegacyIdentitiesDir(legacyIdentitiesDir: string, vaultId: string
   }
 }
 
+/**
+ * A pre-migration `selfIdentityFilePath` (remembered in `TeamVaultConfigStore` so returning
+ * members can unlock with one click, no path typing — see `TeamVaultHandlers`'s
+ * `TEAM_VAULT_UNLOCK`) pointed straight at `<baseDir>/team-vault-identities/<file>`.
+ * `migrateLegacyIdentitiesDir` (above) moves that same file to
+ * `<baseDir>/team-vault-identities/<vaultId>/<file>` as part of the on-disk layout migration, so
+ * the remembered path goes stale: the one-click unlock silently falls back to the manual form
+ * (regressing UX a returning member had before upgrading), or — if the stale path happens to
+ * still resolve to *something* — `age` fails with a confusing "no such file" error. Called by
+ * `IpcBridge` right after `TeamVaultConfigStore.promotePendingConfig()` lands this vault's config
+ * on its real vaultId, since only then is there a `selfIdentityFilePath` to fix up. Returns the
+ * corrected path only when the old one was in fact the flat pre-migration layout and the moved
+ * file is where this function expects it to be; `undefined` otherwise (including: already
+ * correct, never configured, or the file turned out not to exist — nothing to fix, or nothing
+ * safe to guess).
+ */
+export function relocateMigratedIdentityPath(identityFilePath: string, vaultId: string): string | undefined {
+  const dir = path.dirname(identityFilePath);
+  if (path.basename(dir) === vaultId) {
+    // Already under a vaultId subdirectory — this is what migrateLegacyIdentitiesDir produces,
+    // not what it consumes, so there's nothing to relocate.
+    return undefined;
+  }
+  const relocated = path.join(dir, vaultId, path.basename(identityFilePath));
+  return fs.existsSync(relocated) ? relocated : undefined;
+}
+
 /** Returns the sole vaultId in `vaultsDir` when there's exactly one `<vaultId>.json` file in it —
  * used by `migrateLegacyTeamVaultLayout`'s "already migrated" fast path to still report the
  * vaultId (so `TeamVaultConfigStore`'s matching migration can target it) on every run after the

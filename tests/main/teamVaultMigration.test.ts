@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { migrateLegacyTeamVaultLayout } from '../../src/main/services/teamVaultMigration';
+import { migrateLegacyTeamVaultLayout, relocateMigratedIdentityPath } from '../../src/main/services/teamVaultMigration';
 
 describe('migrateLegacyTeamVaultLayout', () => {
   let baseDir: string;
@@ -152,5 +152,42 @@ describe('migrateLegacyTeamVaultLayout', () => {
     // Ambiguous (more than one vault) — correctly reports "no single answer" rather than
     // guessing one of them.
     expect(result).toBeUndefined();
+  });
+});
+
+describe('relocateMigratedIdentityPath', () => {
+  let baseDir: string;
+
+  beforeEach(async () => {
+    baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-relocate-test-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('relocates a pre-migration flat identity path to its vaultId subdirectory when the moved file is there', async () => {
+    const vaultId = 'vlt_abc';
+    const newDir = path.join(baseDir, vaultId);
+    await fs.mkdir(newDir, { recursive: true });
+    await fs.writeFile(path.join(newDir, 'alice-identity.txt'), 'AGE-PLUGIN-YUBIKEY-stuff', 'utf-8');
+
+    const stalePath = path.join(baseDir, 'alice-identity.txt');
+    const result = relocateMigratedIdentityPath(stalePath, vaultId);
+    expect(result).toBe(path.join(newDir, 'alice-identity.txt'));
+  });
+
+  it('returns undefined when the moved file does not exist at the expected relocated path', () => {
+    const stalePath = path.join(baseDir, 'alice-identity.txt');
+    expect(relocateMigratedIdentityPath(stalePath, 'vlt_abc')).toBeUndefined();
+  });
+
+  it('returns undefined for a path already under a vaultId subdirectory (nothing to relocate)', async () => {
+    const vaultId = 'vlt_abc';
+    const dir = path.join(baseDir, vaultId);
+    await fs.mkdir(dir, { recursive: true });
+    const alreadyCorrect = path.join(dir, 'alice-identity.txt');
+    await fs.writeFile(alreadyCorrect, 'AGE-PLUGIN-YUBIKEY-stuff', 'utf-8');
+    expect(relocateMigratedIdentityPath(alreadyCorrect, vaultId)).toBeUndefined();
   });
 });
