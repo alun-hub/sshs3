@@ -69,6 +69,9 @@ describe('ConnectionManagerModal', () => {
         selfRecipientId: 'alice@piv:abc',
         selfIdentityFilePath: '/tmp/alice-identity.txt',
       }),
+      // No teams by default — tests inside the "Team Vault view" describe below override this
+      // with whichever vaults they need.
+      teamVaultList: vi.fn().mockResolvedValue([]),
     } as unknown as typeof window.multissh;
   });
 
@@ -349,26 +352,57 @@ describe('ConnectionManagerModal', () => {
     });
   });
 
-  describe('Team Vault view (connection-manager-plan: two separate views, not a merged list)', () => {
-    it('shows the vault\'s own name on the tab once it has one, falling back to "Team" otherwise', async () => {
-      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({
+  describe('Team Vault view (docs/team-vault-plan.md multi-team plan: every known team, each its own section)', () => {
+    const VAULT_ID = 'vlt_1';
+
+    function unlockedStatus(overrides: Record<string, unknown> = {}) {
+      return {
         exists: true,
+        vaultId: VAULT_ID,
+        vaultName: 'Acme Infra Team',
         unlocked: true,
         filePath: '/x',
+        members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-01-01T00:00:00Z' }],
+        adminCount: 1,
+        selfRecipientId: 'alice@piv:abc',
+        selfIdentityFilePath: '/tmp/alice-identity.txt',
+        selfRole: 'admin',
+        ...overrides,
+      };
+    }
+
+    function lockedStatus(overrides: Record<string, unknown> = {}) {
+      return {
+        exists: true,
+        vaultId: VAULT_ID,
         vaultName: 'Acme Infra Team',
-      });
+        unlocked: false,
+        filePath: '/x',
+        members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-01-01T00:00:00Z' }],
+        adminCount: 1,
+        selfRecipientId: 'alice@piv:abc',
+        selfIdentityFilePath: '/tmp/alice-identity.txt',
+        selfRole: 'admin',
+        ...overrides,
+      };
+    }
+
+    it('shows every team by its own name, grouped under one "Teams" tab', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
       render(
         <ConfirmProvider>
           <ConnectionManagerModal open={true} onClose={vi.fn()} />
         </ConfirmProvider>
       );
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
-      expect(screen.queryByRole('button', { name: 'Team' })).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Teams' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team')).toBeInTheDocument());
     });
 
-    it('shows an unlock prompt instead of profiles when the vault is locked', async () => {
-      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue(null);
+    it('shows a collapsed, locked header with an inline unlock form instead of profiles when a team is locked', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([lockedStatus()]);
       render(
         <ConfirmProvider>
           <ConnectionManagerModal open={true} onClose={vi.fn()} />
@@ -376,13 +410,14 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
-      await waitFor(() => expect(screen.getByText(/Unlock the Team Vault/)).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
       // Personal profiles must not leak into the Team view.
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
     });
 
     it('lists shared SSH/S3 profiles once unlocked, separately from personal ones', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
         ssh: [
           { id: 'team-ssh-1', name: 'Shared Bastion', host: 'bastion.example.com', username: 'ops', authType: 'password' },
@@ -396,12 +431,13 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
       await waitFor(() => expect(screen.getByText('Shared Bastion')).toBeInTheDocument());
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
     });
 
     it('flags a shared privateKey-authenticated profile as machine-local', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
         ssh: [
           {
@@ -422,12 +458,14 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
       await waitFor(() => expect(screen.getByText('Shared Key Host')).toBeInTheDocument());
       expect(screen.getByText(/Private key path is local to this machine/)).toBeInTheDocument();
     });
 
-    it('saves a new profile via the Team Vault IPC, not the personal profile store, while in the Team view', async () => {
+    it('saves a new profile via the Team Vault IPC, scoped to that team\'s vaultId, not the personal profile store', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
       window.multissh.teamVaultSaveSSHProfile = vi.fn().mockResolvedValue(undefined);
       render(
@@ -437,8 +475,8 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
-      await waitFor(() => expect(screen.getByText('No shared SSH profiles yet')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /New Profile/i }));
       fireEvent.change(await screen.findByLabelText(/Profile Name/i), { target: { value: 'Shared Host' } });
@@ -449,6 +487,7 @@ describe('ConnectionManagerModal', () => {
 
       await waitFor(() => {
         expect(window.multissh.teamVaultSaveSSHProfile).toHaveBeenCalledWith(
+          VAULT_ID,
           expect.objectContaining({ name: 'Shared Host', host: 'shared.example.com' })
         );
       });
@@ -456,6 +495,8 @@ describe('ConnectionManagerModal', () => {
     });
 
     it("saves a smartcard profile's PKCS#11 path directly into the shared payload (pkcs11LibPath is not a security boundary — see correction in the connection-manager plan)", async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
       window.multissh.teamVaultSaveSSHProfile = vi.fn().mockResolvedValue(undefined);
       window.multissh.smartcardDetect = vi.fn().mockResolvedValue([]);
@@ -467,8 +508,8 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
-      await waitFor(() => expect(screen.getByText('No shared SSH profiles yet')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /New Profile/i }));
       fireEvent.change(await screen.findByLabelText(/Profile Name/i), { target: { value: 'Shared Smartcard Host' } });
@@ -486,12 +527,12 @@ describe('ConnectionManagerModal', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Save anyway' }));
 
       await waitFor(() => expect(window.multissh.teamVaultSaveSSHProfile).toHaveBeenCalled());
-      const savedConfig = (window.multissh.teamVaultSaveSSHProfile as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const savedConfig = (window.multissh.teamVaultSaveSSHProfile as ReturnType<typeof vi.fn>).mock.calls[0][1];
       expect(savedConfig.pkcs11LibPath).toBe('/usr/lib/opensc-pkcs11.so');
     });
 
-    it('hides the New Profile button in the Team view while the vault is locked', async () => {
-      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue(null);
+    it('hides the New Profile button for a locked team', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([lockedStatus()]);
       render(
         <ConfirmProvider>
           <ConnectionManagerModal open={true} onClose={vi.fn()} />
@@ -499,13 +540,15 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
-      await waitFor(() => expect(screen.getByText(/Unlock the Team Vault/)).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: /New Profile/i })).not.toBeInTheDocument();
     });
 
-    it('refreshes the Team view when the background auto-poll reports a pulled update', async () => {
-      let autoPulledCallback: (() => void) | undefined;
+    it('refreshes that team\'s view when the background auto-poll reports a pulled update for its vaultId', async () => {
+      let autoPulledCallback: ((payload: { vaultId: string }) => void) | undefined;
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
       window.multissh.teamVaultGetPayload = vi
         .fn()
         .mockResolvedValueOnce({ ssh: [], s3: [] })
@@ -513,7 +556,7 @@ describe('ConnectionManagerModal', () => {
           ssh: [{ id: 'team-ssh-3', name: 'New From Bob', host: 'h', username: 'u', authType: 'password' }],
           s3: [],
         });
-      window.multissh.onTeamVaultAutoPulled = vi.fn((cb: () => void) => {
+      window.multissh.onTeamVaultAutoPulled = vi.fn((cb: (payload: { vaultId: string }) => void) => {
         autoPulledCallback = cb;
         return () => {};
       });
@@ -526,20 +569,22 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
-      await waitFor(() => expect(screen.getByText('No shared SSH profiles yet')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
-      autoPulledCallback?.();
+      autoPulledCallback?.({ vaultId: VAULT_ID });
 
       await waitFor(() => expect(screen.getByText('New From Bob')).toBeInTheDocument());
-      expect(screen.getByText(/Updated from another member/)).toBeInTheDocument();
+      expect(screen.getByText(/Updated/)).toBeInTheDocument();
     });
 
-    it('unlocks right from the Team view, with no detour through Settings, using the saved identity', async () => {
-      window.multissh.teamVaultGetPayload = vi
-        .fn()
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ ssh: [], s3: [] });
+    it('unlocks a team right from the Team view, with no detour through Settings, using the saved identity', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([lockedStatus()]);
+      // Initial load() only calls teamVaultList (already locked, above) — teamVaultGetStatus is
+      // only ever called by refreshVault() after the unlock below, so it can just always resolve
+      // the unlocked status.
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
       window.multissh.teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
 
       render(
@@ -549,27 +594,25 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
       await waitFor(() => expect(screen.getByText(/Unlock as alice@piv:abc/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /Unlock as alice@piv:abc/ }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('alice@piv:abc', '/tmp/alice-identity.txt');
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc', '/tmp/alice-identity.txt');
       });
-      await waitFor(() => expect(screen.getByText('No shared SSH profiles yet')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
     });
 
     it('falls back to manual recipient id / identity file fields when no saved identity exists', async () => {
-      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({
-        exists: true,
-        unlocked: false,
-        filePath: '/x',
-      });
-      window.multissh.teamVaultGetPayload = vi
-        .fn()
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ ssh: [], s3: [] });
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        lockedStatus({ selfRecipientId: undefined, selfIdentityFilePath: undefined, selfRole: undefined }),
+      ]);
+      // Same reasoning as the test above: teamVaultGetStatus is only ever called by
+      // refreshVault() after the unlock below.
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
       window.multissh.teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
 
       render(
@@ -579,7 +622,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
       await waitFor(() => expect(screen.getByPlaceholderText('Your recipient id')).toBeInTheDocument());
 
       fireEvent.change(screen.getByPlaceholderText('Your recipient id'), { target: { value: 'bob@piv:def' } });
@@ -589,14 +632,13 @@ describe('ConnectionManagerModal', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('bob@piv:def', '/tmp/bob-identity.txt');
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith(VAULT_ID, 'bob@piv:def', '/tmp/bob-identity.txt');
       });
-      await waitFor(() => expect(screen.getByText('No shared SSH profiles yet')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
     });
 
-    it('shows a "no vault yet" message instead of unlock fields when no Team Vault exists on this machine', async () => {
-      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' });
-      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue(null);
+    it('shows a "no vault yet" message when no Team Vault exists on this machine at all', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([]);
 
       render(
         <ConfirmProvider>
@@ -605,7 +647,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
       await waitFor(() =>
         expect(screen.getByText('No Team Vault has been set up on this machine yet.')).toBeInTheDocument()
       );

@@ -161,11 +161,9 @@ function foreignVaultFileJson(
 
 describe('TeamVaultService', () => {
   let tempDir: string;
-  let filePath: string;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-test-'));
-    filePath = path.join(tempDir, 'team-vault.json');
   });
 
   afterEach(async () => {
@@ -173,56 +171,66 @@ describe('TeamVaultService', () => {
   });
 
   function makeService(): TeamVaultService {
-    return new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+    return new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
   }
 
   describe('getStatus', () => {
     it('reports exists:false when no vault file exists yet', async () => {
       const service = makeService();
-      expect(await service.getStatus()).toEqual({ exists: false, unlocked: false, filePath });
+      const vaultId = 'vlt_nonexistent';
+      expect(await service.getStatus(vaultId)).toEqual({
+        exists: false,
+        unlocked: false,
+        filePath: service.getFilePath(vaultId),
+      });
     });
   });
 
   describe('createVault', () => {
     it('creates a vault with the creating admin as the sole member, unlocked in this session', async () => {
       const service = makeService();
-      const { recoveryIdentity } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const { vaultId, recoveryIdentity } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
 
       expect(recoveryIdentity).toContain('AGE-SECRET-KEY-FAKE');
-      expect(service.isUnlocked()).toBe(true);
+      expect(service.isUnlocked(vaultId)).toBe(true);
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.exists).toBe(true);
       expect(status.members).toEqual([{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: expect.any(String) }]);
       expect(status.adminCount).toBe(1);
     });
 
-    it('refuses to create a second vault on top of an existing one', async () => {
+    it('creating a second vault succeeds independently with its own vaultId — multi-team is supported, not a single-vault-per-machine restriction', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.createVault('bob@piv:def', 'age1yubikey1bob')).rejects.toThrow('already exists');
+      const first = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const second = await service.createVault('bob@piv:def', 'age1yubikey1bob');
+
+      expect(second.vaultId).not.toBe(first.vaultId);
+      expect((await service.getStatus(first.vaultId)).exists).toBe(true);
+      expect((await service.getStatus(second.vaultId)).exists).toBe(true);
+      expect((await service.listVaultIds()).sort()).toEqual([first.vaultId, second.vaultId].sort());
     });
   });
 
   describe('addMember', () => {
     it('requires the vault to be unlocked first', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      service.lock();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      service.lock(vaultId);
 
-      await expect(service.addMember('bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
+      await expect(service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member')).rejects.toThrow(
         'Unlock the Team Vault'
       );
     });
 
     it('adds a member without re-keying (same wrapped key material for existing members)', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const beforeStatus = await service.getStatus();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const beforeStatus = await service.getStatus(vaultId);
 
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.members).toHaveLength(2);
       expect(status.adminCount).toBe(1);
       expect(status.members).toEqual(
@@ -236,21 +244,21 @@ describe('TeamVaultService', () => {
 
     it('rejects adding a recipientId that is already a member', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.addMember('alice@piv:abc', 'age1yubikey1alice', 'member')).rejects.toThrow(
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(service.addMember(vaultId, 'alice@piv:abc', 'age1yubikey1alice', 'member')).rejects.toThrow(
         'already a member'
       );
     });
 
     it('rejects a plain member trying to add someone — only an admin may mutate membership', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', '/tmp/fake-bob-identity.txt');
 
-      await expect(asBob.addMember('carol@piv:ghi', 'age1yubikey1carol', 'member')).rejects.toThrow(
+      await expect(asBob.addMember(vaultId, 'carol@piv:ghi', 'age1yubikey1carol', 'member')).rejects.toThrow(
         'Only a Team Vault admin'
       );
     });
@@ -260,10 +268,10 @@ describe('TeamVaultService', () => {
       // the audit trail can't be spoofed by whatever string a (potentially compromised) renderer
       // happens to send, only by who really unlocked the session.
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const raw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const raw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       const bobEntry = raw.accessHeader.find((e: any) => e.recipientId === 'bob@piv:def');
       expect(bobEntry.addedBy).toBe('alice@piv:abc');
       expect(raw.updatedBy).toBe('alice@piv:abc');
@@ -273,56 +281,56 @@ describe('TeamVaultService', () => {
   describe('removeMember', () => {
     it('re-keys: the removed member loses access, remaining members keep access under a new key', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const { remainingAdmins } = await service.removeMember('bob@piv:def');
+      const { remainingAdmins } = await service.removeMember(vaultId, 'bob@piv:def');
       expect(remainingAdmins).toBe(1);
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.members).toEqual([expect.objectContaining({ recipientId: 'alice@piv:abc' })]);
 
       // A fresh service instance pointed at the same file, unlocking as alice, must still work —
       // proving alice's entry was genuinely re-wrapped for the new Vault Key, not left stale.
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt');
-      expect(second.isUnlocked()).toBe(true);
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+      expect(second.isUnlocked(vaultId)).toBe(true);
     });
 
     it('requires the vault to be unlocked first', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      service.lock();
-      await expect(service.removeMember('alice@piv:abc')).rejects.toThrow('Unlock the Team Vault');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      service.lock(vaultId);
+      await expect(service.removeMember(vaultId, 'alice@piv:abc')).rejects.toThrow('Unlock the Team Vault');
     });
 
     it('rejects removing a recipientId that is not a member', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.removeMember('ghost@piv:xyz')).rejects.toThrow('is not a member');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(service.removeMember(vaultId, 'ghost@piv:xyz')).rejects.toThrow('is not a member');
     });
 
     it('rejects a plain member trying to remove someone — only an admin may mutate membership', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', '/tmp/fake-bob-identity.txt');
 
-      await expect(asBob.removeMember('alice@piv:abc')).rejects.toThrow('Only a Team Vault admin');
+      await expect(asBob.removeMember(vaultId, 'alice@piv:abc')).rejects.toThrow('Only a Team Vault admin');
     });
   });
 
   describe('setRole', () => {
     it('changes a member role (requires the vault to be unlocked, to attribute the change)', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      await service.setRole('bob@piv:def', 'admin');
+      await service.setRole(vaultId, 'bob@piv:def', 'admin');
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.members).toEqual(
         expect.arrayContaining([expect.objectContaining({ recipientId: 'bob@piv:def', role: 'admin' })])
       );
@@ -331,34 +339,34 @@ describe('TeamVaultService', () => {
 
     it('requires the vault to be unlocked first (so the change is attributed to a real identity)', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      service.lock();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      service.lock(vaultId);
 
-      await expect(service.setRole('bob@piv:def', 'admin')).rejects.toThrow('Unlock the Team Vault');
+      await expect(service.setRole(vaultId, 'bob@piv:def', 'admin')).rejects.toThrow('Unlock the Team Vault');
     });
 
     it('rejects a plain member promoting themselves — only an admin may change roles', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', '/tmp/fake-bob-identity.txt');
 
-      await expect(asBob.setRole('bob@piv:def', 'admin')).rejects.toThrow('Only a Team Vault admin');
+      await expect(asBob.setRole(vaultId, 'bob@piv:def', 'admin')).rejects.toThrow('Only a Team Vault admin');
     });
 
     it('allows the recovery identity to act as an admin', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asRecovery = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asRecovery.unlock('recovery-key-1', '/tmp/recovery-identity.txt');
+      const asRecovery = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asRecovery.unlock(vaultId, 'recovery-key-1', '/tmp/recovery-identity.txt');
 
-      await asRecovery.setRole('bob@piv:def', 'admin');
-      const status = await asRecovery.getStatus();
+      await asRecovery.setRole(vaultId, 'bob@piv:def', 'admin');
+      const status = await asRecovery.getStatus(vaultId);
       expect(status.members).toEqual(
         expect.arrayContaining([expect.objectContaining({ recipientId: 'bob@piv:def', role: 'admin' })])
       );
@@ -368,105 +376,105 @@ describe('TeamVaultService', () => {
   describe('renameVault', () => {
     it('sets a descriptive name, surfaced via getStatus', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      await service.renameVault('Acme Infra Team');
+      await service.renameVault(vaultId, 'Acme Infra Team');
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.vaultName).toBe('Acme Infra Team');
     });
 
     it('trims the name and clears it back to undefined when blank', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice', 'Original Name');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice', 'Original Name')).vaultId;
 
-      await service.renameVault('   ');
+      await service.renameVault(vaultId, '   ');
 
-      const status = await service.getStatus();
+      const status = await service.getStatus(vaultId);
       expect(status.vaultName).toBeUndefined();
     });
 
     it('rejects a plain member renaming the vault — only an admin may', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', '/tmp/fake-bob-identity.txt');
 
-      await expect(asBob.renameVault('Hijacked Name')).rejects.toThrow('Only a Team Vault admin');
+      await expect(asBob.renameVault(vaultId, 'Hijacked Name')).rejects.toThrow('Only a Team Vault admin');
     });
   });
 
   describe('deleteVault', () => {
     it('removes the local vault file and locks the session, admin only', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      expect(await fs.readFile(filePath, 'utf-8').then(() => true, () => false)).toBe(true);
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      expect(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8').then(() => true, () => false)).toBe(true);
 
-      await service.deleteVault();
+      await service.deleteVault(vaultId);
 
-      expect(service.isUnlocked()).toBe(false);
-      await expect(fs.readFile(filePath, 'utf-8')).rejects.toThrow();
-      expect((await service.getStatus()).exists).toBe(false);
+      expect(service.isUnlocked(vaultId)).toBe(false);
+      await expect(fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8')).rejects.toThrow();
+      expect((await service.getStatus(vaultId)).exists).toBe(false);
     });
 
     it('rejects a plain member trying to delete the vault', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await first.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', '/tmp/fake-bob-identity.txt');
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', '/tmp/fake-bob-identity.txt');
 
-      await expect(asBob.deleteVault()).rejects.toThrow('Only a Team Vault admin');
-      await expect(fs.readFile(filePath, 'utf-8')).resolves.toBeTruthy();
+      await expect(asBob.deleteVault(vaultId)).rejects.toThrow('Only a Team Vault admin');
+      await expect(fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8')).resolves.toBeTruthy();
     });
 
     it('requires the vault to be unlocked first', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      service.lock();
-      await expect(service.deleteVault()).rejects.toThrow('Unlock the Team Vault');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      service.lock(vaultId);
+      await expect(service.deleteVault(vaultId)).rejects.toThrow('Unlock the Team Vault');
     });
 
     it('rejects if no local vault file exists at all', async () => {
       const service = makeService();
-      await expect(service.deleteVault()).rejects.toThrow();
+      await expect(service.deleteVault('vlt_nonexistent')).rejects.toThrow();
     });
   });
 
   describe('unlock / lock', () => {
     it('unlocks using a recipient wrap and lock() clears it again', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      expect(second.isUnlocked()).toBe(false);
-      await second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt');
-      expect(second.isUnlocked()).toBe(true);
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      expect(second.isUnlocked(vaultId)).toBe(false);
+      await second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+      expect(second.isUnlocked(vaultId)).toBe(true);
 
-      second.lock();
-      expect(second.isUnlocked()).toBe(false);
+      second.lock(vaultId);
+      expect(second.isUnlocked(vaultId)).toBe(false);
     });
 
     it('rejects unlocking as a recipient that does not exist in the vault', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await expect(second.unlock('ghost@piv:xyz', '/tmp/whatever.txt')).rejects.toThrow(
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await expect(second.unlock(vaultId, 'ghost@piv:xyz', '/tmp/whatever.txt')).rejects.toThrow(
         'is not a recipient of this vault'
       );
     });
 
     it('can unlock using the recovery recipientId', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await second.unlock('recovery-key-1', '/tmp/recovery-identity.txt');
-      expect(second.isUnlocked()).toBe(true);
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await second.unlock(vaultId, 'recovery-key-1', '/tmp/recovery-identity.txt');
+      expect(second.isUnlocked(vaultId)).toBe(true);
     });
 
     it('refuses to unlock a local file whose accessHeaderMac is inconsistent with the unwrapped key (defense in depth)', async () => {
@@ -475,38 +483,38 @@ describe('TeamVaultService', () => {
       // local file must not be trusted blindly either, on the small chance something upstream
       // let it through.
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const onDisk = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const onDisk = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       onDisk.accessHeaderMac = 'corrupted-mac';
-      await fs.writeFile(filePath, JSON.stringify(onDisk));
+      await fs.writeFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), JSON.stringify(onDisk));
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await expect(second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await expect(second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
         TeamVaultHeaderIntegrityError
       );
-      expect(second.isUnlocked()).toBe(false);
+      expect(second.isUnlocked(vaultId)).toBe(false);
     });
   });
 
   describe('unlockWithRecoveryText', () => {
     it('writes the pasted text via the crypto service and unlocks as the recovery recipient', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await second.unlockWithRecoveryText('# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n');
-      expect(second.isUnlocked()).toBe(true);
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await second.unlockWithRecoveryText(vaultId, '# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n');
+      expect(second.isUnlocked(vaultId)).toBe(true);
     });
 
     it('rejects text that is not a recognizable recovery identity', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await expect(second.unlockWithRecoveryText('not a key at all')).rejects.toThrow(
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await expect(second.unlockWithRecoveryText(vaultId, 'not a key at all')).rejects.toThrow(
         'does not look like a Team Vault recovery key'
       );
-      expect(second.isUnlocked()).toBe(false);
+      expect(second.isUnlocked(vaultId)).toBe(false);
     });
   });
 
@@ -553,30 +561,28 @@ describe('TeamVaultService', () => {
     }
 
     it('unlock() routes PIN requests through pinPrompter.promptForPinDirect with kind "smartcard"', async () => {
-      const first = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
       const prompter = fakePinPrompter();
       const second = new TeamVaultService({
         cryptoService: fakeCryptoThatPrompts(),
-        filePath,
-        identityDir: tempDir,
+        baseDir: tempDir,
         pinPrompter: prompter,
       });
-      await second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt');
+      await second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
 
       expect(prompter.promptForPinDirect).toHaveBeenCalledWith('Enter PIN for YubiKey', 'smartcard', undefined, undefined);
       expect(prompter.touchRequested).toHaveBeenCalledTimes(1);
       expect(prompter.touchCleared).toHaveBeenCalledTimes(1);
-      expect(second.isUnlocked()).toBe(true);
+      expect(second.isUnlocked(vaultId)).toBe(true);
     });
 
     it('enrollOwnPivRecipient() routes PIN requests through pinPrompter too', async () => {
       const prompter = fakePinPrompter();
       const service = new TeamVaultService({
         cryptoService: fakeCryptoThatPrompts(),
-        filePath,
-        identityDir: tempDir,
+        baseDir: tempDir,
         pinPrompter: prompter,
       });
       await service.enrollOwnPivRecipient();
@@ -584,11 +590,11 @@ describe('TeamVaultService', () => {
     });
 
     it('fails clearly, instead of silently hanging, when no pinPrompter is configured but the crypto layer needs one', async () => {
-      const first = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      const second = new TeamVaultService({ cryptoService: fakeCryptoThatPrompts(), filePath, identityDir: tempDir });
-      await expect(second.unlock('alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
+      const second = new TeamVaultService({ cryptoService: fakeCryptoThatPrompts(), baseDir: tempDir });
+      await expect(second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(
         'not wired up'
       );
     });
@@ -598,19 +604,19 @@ describe('TeamVaultService', () => {
     it('hasRemoteVault is false against an empty remote and true after a push', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      expect(await service.hasRemoteVault(provider)).toBe(false);
-      await service.pushToRemote(provider);
-      expect(await service.hasRemoteVault(provider)).toBe(true);
+      expect(await service.hasRemoteVault(vaultId, provider)).toBe(false);
+      await service.pushToRemote(vaultId, provider);
+      expect(await service.hasRemoteVault(vaultId, provider)).toBe(true);
     });
 
     it('pushes without a conflict check on the very first push (nothing exists remotely yet)', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      await expect(service.pushToRemote(provider)).resolves.toBeUndefined();
+      await expect(service.pushToRemote(vaultId, provider)).resolves.toBeUndefined();
     });
 
     it('refuses to push over a different, unrelated vault already at the target — even on the very first push', async () => {
@@ -618,24 +624,23 @@ describe('TeamVaultService', () => {
       // "nothing to check" the first time a freshly created local vault is pushed.
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_someone_elses')));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(foreignVaultFileJson('vlt_someone_elses')));
 
-      await expect(service.pushToRemote(provider)).rejects.toThrow(TeamVaultForeignVaultError);
+      await expect(service.pushToRemote(vaultId, provider)).rejects.toThrow(TeamVaultForeignVaultError);
     });
 
     it('rejects a second push if the remote changed since this instance last observed it', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
-      const vaultId = (await service.getStatus()).vaultId!;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
 
       // Someone else pushed a change this instance never saw (same vault, so the identity check
       // passes — this test is specifically about the freshness check).
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 2)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(foreignVaultFileJson(vaultId, 2)));
 
-      await expect(service.pushToRemote(provider)).rejects.toThrow(TeamVaultSyncConflictError);
+      await expect(service.pushToRemote(vaultId, provider)).rejects.toThrow(TeamVaultSyncConflictError);
     });
 
     it('allows pushing again after a pull refreshes the known remote state', async () => {
@@ -645,12 +650,11 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
-      const vaultId = localRaw.vaultId;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       // A newer revision of the *same* vault (e.g. pushed from another machine) — not a vault
       // switch, which pullFromRemote now refuses whenever a local vault already exists. Keeps
@@ -671,32 +675,31 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await service.pullFromRemote(provider);
+      await service.pullFromRemote(vaultId, provider);
       // The MAC verified against our held key (no rotation happened), so the session stays
       // unlocked — proving the pull replaced local state is now via the bumped revision, not a
       // forced lock (see this test's comment above on why the old lock-based proof no longer
       // applies once the same-length MAC path is exercised for real instead of skipped).
-      expect(service.isUnlocked()).toBe(true);
-      expect((await service.getStatus()).exists).toBe(true);
-      const afterPull = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      expect(service.isUnlocked(vaultId)).toBe(true);
+      expect((await service.getStatus(vaultId)).exists).toBe(true);
+      const afterPull = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       expect(afterPull.revision).toBe(newRevision);
-      await expect(service.pushToRemote(provider)).resolves.toBeUndefined();
+      await expect(service.pushToRemote(vaultId, provider)).resolves.toBeUndefined();
     });
 
     it('rejects a pull that would roll the local vault back to an older revision', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member'); // local revision is now 2
-      const vaultId = (await service.getStatus()).vaultId!;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member'); // local revision is now 2
 
       // An older revision of the *same* vault somehow ends up at the remote (e.g. a bucket-write-
       // access holder who isn't actually a recipient restoring a stale copy).
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson(vaultId, 1)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(foreignVaultFileJson(vaultId, 1)));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultRollbackError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultRollbackError);
     });
 
     it('refuses to pull a substituted, unrelated vault over an existing local one — even with a higher revision', async () => {
@@ -705,11 +708,11 @@ describe('TeamVaultService', () => {
       // newer" check. The identity check must run first and reject this outright.
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_attacker', 999)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(foreignVaultFileJson('vlt_attacker', 999)));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultForeignVaultError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultForeignVaultError);
     });
 
     it('rejects a pull that keeps the same vaultId/revision bump but swaps an existing recipient\'s public key', async () => {
@@ -721,12 +724,11 @@ describe('TeamVaultService', () => {
       // the attacker real access the moment that happens.
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      const vaultId = (await service.getStatus()).vaultId!;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
 
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(
           JSON.stringify({
             formatVersion: 1,
@@ -762,7 +764,7 @@ describe('TeamVaultService', () => {
         )
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultTamperedEntryError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultTamperedEntryError);
     });
 
     it('accepts a legitimate single-step addMember pulled from another machine (header MAC recomputed correctly)', async () => {
@@ -772,9 +774,9 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       const provider = fakeProvider();
       const newRevision = localRaw.revision + 1;
@@ -803,9 +805,9 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
+      await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
     });
 
     it('rejects a single-step pull that adds a new entry whose header MAC does not match the Vault Key already held', async () => {
@@ -818,9 +820,9 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       const provider = fakeProvider();
       const remoteFile = {
@@ -839,9 +841,9 @@ describe('TeamVaultService', () => {
           },
         ],
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
     });
 
     it('rejects a pull where the revision was bumped specifically to dodge a narrower, revision-gated check', async () => {
@@ -852,9 +854,9 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       const provider = fakeProvider();
       const remoteFile = {
@@ -873,31 +875,36 @@ describe('TeamVaultService', () => {
           },
         ],
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultHeaderIntegrityError);
     });
 
     it('refuses to pull over an existing local vault while locked, since the header MAC cannot be verified without the Vault Key', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      first.lock();
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      first.lock(vaultId);
 
       const provider = fakeProvider();
-      await first.pushToRemote(provider); // pushToRemote needs requireFile() only, not unlock
+      await first.pushToRemote(vaultId, provider); // pushToRemote needs requireFile() only, not unlock
 
-      await expect(first.pullFromRemote(provider)).rejects.toThrow(TeamVaultLockedForPullError);
+      await expect(first.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultLockedForPullError);
     });
 
     it('allows pulling a brand-new join (no local file yet) while locked, since nothing exists to verify against', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       const provider = fakeProvider();
-      await first.pushToRemote(provider);
+      await first.pushToRemote(vaultId, provider);
 
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath: path.join(tempDir, 'second-vault.json'), identityDir: tempDir });
-      expect(second.isUnlocked()).toBe(false);
-      await expect(second.pullFromRemote(provider)).resolves.toBeUndefined();
+      // A separate baseDir simulates a different machine joining for the first time — sharing
+      // `tempDir` with `first` would make this "second" instance see `first`'s own local file for
+      // this exact vaultId, defeating the point of this test (nothing local to verify against yet).
+      const secondBaseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-test-second-'));
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: secondBaseDir });
+      expect(second.isUnlocked(vaultId)).toBe(false);
+      await expect(second.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
+      await fs.rm(secondBaseDir, { recursive: true, force: true }).catch(() => {});
     });
 
     it('rejects a remote vault file larger than the size cap via the cheap stat() precheck, without ever downloading it', async () => {
@@ -905,16 +912,16 @@ describe('TeamVaultService', () => {
       // download is even attempted — the deeper, download-time cap (tested below) exists for the
       // adversarial case where stat() can't be trusted, not to replace this cheaper check.
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       const provider = fakeProvider();
       const hugeStatOnly: IStorageProvider = {
         ...provider,
-        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 51 * 1024 * 1024, isDirectory: false, mtime: 'x' }),
+        stat: async () => ({ name: 'vault.json', path: `team-vault/${vaultId}/vault.json`, size: 51 * 1024 * 1024, isDirectory: false, mtime: 'x' }),
         readFile: async () => {
           throw new Error('must not download a file that already failed the cheap size check');
         },
       };
-      await expect(service.pullFromRemote(hugeStatOnly)).rejects.toThrow('too large');
+      await expect(service.pullFromRemote(vaultId, hugeStatOnly)).rejects.toThrow('too large');
     });
 
     it('rejects a remote vault file larger than the size cap, enforced against the actual downloaded bytes (not just stat())', async () => {
@@ -923,25 +930,25 @@ describe('TeamVaultService', () => {
       // body moments later, so the cap has to be checked against what was actually downloaded,
       // not trusted from a preceding stat() call.
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       const provider = fakeProvider();
       const hugeBody = Buffer.alloc(51 * 1024 * 1024, 'x');
       const mismatchedProvider: IStorageProvider = {
         ...provider,
-        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 10, isDirectory: false, mtime: 'x' }),
+        stat: async () => ({ name: 'vault.json', path: `team-vault/${vaultId}/vault.json`, size: 10, isDirectory: false, mtime: 'x' }),
         readFile: async () => hugeBody,
       };
-      await expect(service.pullFromRemote(mismatchedProvider)).rejects.toThrow('too large');
+      await expect(service.pullFromRemote(vaultId, mismatchedProvider)).rejects.toThrow('too large');
     });
 
     it('aborts an oversized download mid-stream on a provider without a readFile() convenience method', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       const { Readable } = await import('node:stream');
       const streamingProvider: IStorageProvider = {
         ...fakeProvider(),
         readFile: undefined,
-        stat: async () => ({ name: 'vault.json', path: 'team-vault/vault.json', size: 10, isDirectory: false, mtime: 'x' }),
+        stat: async () => ({ name: 'vault.json', path: `team-vault/${vaultId}/vault.json`, size: 10, isDirectory: false, mtime: 'x' }),
         createReadStream: async () => {
           const stream = new Readable({
             read() {
@@ -951,18 +958,19 @@ describe('TeamVaultService', () => {
           return stream as any;
         },
       };
-      await expect(service.pullFromRemote(streamingProvider)).rejects.toThrow('too large');
+      await expect(service.pullFromRemote(vaultId, streamingProvider)).rejects.toThrow('too large');
     });
 
     it('rejects a remote file with a duplicate recipient id (shadowing a real member or the recovery slot)', async () => {
       const service = makeService();
       const provider = fakeProvider();
+      const vaultId = 'vlt_dup';
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(
           JSON.stringify({
             formatVersion: 1,
-            vaultId: 'vlt_dup',
+            vaultId,
             revision: 1,
             updatedAt: '2026-01-01T00:00:00Z',
             updatedBy: 'x',
@@ -982,43 +990,48 @@ describe('TeamVaultService', () => {
         )
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('pulling an existing remote vault lets a new member join without creating their own', async () => {
       const admin = makeService();
       const adminProvider = fakeProvider();
-      await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await admin.pushToRemote(adminProvider);
+      const vaultId = (await admin.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await admin.pushToRemote(vaultId, adminProvider);
 
-      const newMemberFilePath = path.join(tempDir, 'team-vault-new-member.json');
-      const newMember = new TeamVaultService({ cryptoService: fakeCrypto(), filePath: newMemberFilePath, identityDir: tempDir });
+      // A separate baseDir simulates the new member's own machine, which has no local file for
+      // this vaultId yet — sharing `tempDir` with `admin` would make them see admin's own file.
+      const newMemberBaseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-test-newmember-'));
+      const newMember = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: newMemberBaseDir });
 
-      expect(await newMember.hasRemoteVault(adminProvider)).toBe(true);
-      await newMember.pullFromRemote(adminProvider);
+      expect(await newMember.hasRemoteVault(vaultId, adminProvider)).toBe(true);
+      await newMember.pullFromRemote(vaultId, adminProvider);
 
-      const status = await newMember.getStatus();
+      const status = await newMember.getStatus(vaultId);
       expect(status.exists).toBe(true);
-      expect(status.vaultId).toBe((await admin.getStatus()).vaultId);
+      expect(status.vaultId).toBe((await admin.getStatus(vaultId)).vaultId);
+      await fs.rm(newMemberBaseDir, { recursive: true, force: true }).catch(() => {});
     });
 
     it('rejects a pull whose remote file is not a recognizable vault', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await provider.writeFile!('team-vault/vault.json', Buffer.from('{"not":"a vault"}'));
+      const vaultId = 'vlt_unrecognizable';
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from('{"not":"a vault"}'));
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('rejects a remote file with a malformed access entry (e.g. missing ageRecipient)', async () => {
       const service = makeService();
       const provider = fakeProvider();
+      const vaultId = 'vlt_malformed';
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(
           JSON.stringify({
             formatVersion: 1,
-            vaultId: 'vlt_malformed',
+            vaultId,
             revision: 1,
             updatedAt: '2026-01-01T00:00:00Z',
             updatedBy: 'x',
@@ -1029,18 +1042,19 @@ describe('TeamVaultService', () => {
         )
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('rejects a remote file whose access entry has an invalid method', async () => {
       const service = makeService();
       const provider = fakeProvider();
+      const vaultId = 'vlt_badmethod';
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(
           JSON.stringify({
             formatVersion: 1,
-            vaultId: 'vlt_badmethod',
+            vaultId,
             revision: 1,
             updatedAt: '2026-01-01T00:00:00Z',
             updatedBy: 'x',
@@ -1061,18 +1075,19 @@ describe('TeamVaultService', () => {
         )
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('rejects a remote file whose access entry has a malformed (non-age1...) ageRecipient', async () => {
       const service = makeService();
       const provider = fakeProvider();
+      const vaultId = 'vlt_badrecipient';
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(
           JSON.stringify({
             formatVersion: 1,
-            vaultId: 'vlt_badrecipient',
+            vaultId,
             revision: 1,
             updatedAt: '2026-01-01T00:00:00Z',
             updatedBy: 'x',
@@ -1093,7 +1108,7 @@ describe('TeamVaultService', () => {
         )
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow('not a recognizable vault');
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow('not a recognizable vault');
     });
 
     it('does not force a re-unlock after pulling in a plain profile edit from elsewhere (no re-key happened)', async () => {
@@ -1104,9 +1119,9 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       const provider = fakeProvider();
       const newRevision = localRaw.revision + 1;
@@ -1123,10 +1138,10 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await service.pullFromRemote(provider);
-      expect(service.isUnlocked()).toBe(true);
+      await service.pullFromRemote(vaultId, provider);
+      expect(service.isUnlocked(vaultId)).toBe(true);
     });
 
     it('locks after a pull with a valid rotation proof (a real removeMember re-key happened)', async () => {
@@ -1139,13 +1154,12 @@ describe('TeamVaultService', () => {
       const newKey = Buffer.alloc(32, 9);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => oldKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      await service.pushToRemote(provider);
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
-      const vaultId = localRaw.vaultId;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.pushToRemote(vaultId, provider);
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       // Simulate removeMember(bob) happening elsewhere: header shrinks back to just alice,
       // re-wrapped for a fresh key, with a proof computed under the OLD key (`oldKey`) this
@@ -1176,10 +1190,10 @@ describe('TeamVaultService', () => {
           newRecovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await service.pullFromRemote(provider);
-      expect(service.isUnlocked()).toBe(false);
+      await service.pullFromRemote(vaultId, provider);
+      expect(service.isUnlocked(vaultId)).toBe(false);
     });
 
     it('rejects a pull with a shrunk header and no valid rotation proof (bucket-write-access-only forgery)', async () => {
@@ -1190,20 +1204,19 @@ describe('TeamVaultService', () => {
       // verify under the key we're still holding, or the pull must be rejected outright.
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      await service.pushToRemote(provider);
-      const vaultId = (await service.getStatus()).vaultId!;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.pushToRemote(vaultId, provider);
 
       // Attacker has no member key — just drops bob and uploads a shrunk header with no
       // (or a garbage) prevKeyProof, and even a real-looking accessHeaderMac computed under
       // their own fresh, attacker-chosen key.
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultRotationProofError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultRotationProofError);
     });
   });
 
@@ -1211,19 +1224,18 @@ describe('TeamVaultService', () => {
     it('refuses to pull over local changes that were never pushed', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider); // lastSyncedRevision is now 1
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member'); // local revision is now 2, never pushed
-      const vaultId = (await service.getStatus()).vaultId!;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider); // lastSyncedRevision is now 1
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member'); // local revision is now 2, never pushed
 
       // Someone else also pushed a change meanwhile (same vault, higher revision — a legitimate
       // update, not an attack) — but pulling it now would silently discard bob's never-pushed add.
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(foreignVaultFileJson(vaultId, 3, 'age1fakerecovery'))
       );
 
-      await expect(service.pullFromRemote(provider)).rejects.toThrow(TeamVaultUnpushedChangesError);
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultUnpushedChangesError);
     });
 
     it('allows the pull anyway when force is set, discarding the unpushed local changes', async () => {
@@ -1233,13 +1245,12 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
-      const vaultId = localRaw.vaultId;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       const remoteFile = {
         ...localRaw,
         revision: 3,
@@ -1252,21 +1263,20 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider, '', { force: true })).resolves.toBeUndefined();
+      await expect(service.pullFromRemote(vaultId, provider, '', { force: true })).resolves.toBeUndefined();
     });
 
     it('does not block the pull when nothing was ever pushed from this instance (lastSyncedRevision still undefined)', async () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
-      const vaultId = localRaw.vaultId;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       const remoteFile = {
         ...localRaw,
         revision: 3,
@@ -1279,21 +1289,20 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
+      await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
     });
 
     it('does not block the pull when the local revision still matches the last sync (no local-only edits)', async () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
-      const vaultId = localRaw.vaultId;
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       const remoteFile = {
         ...localRaw,
         revision: 2,
@@ -1306,9 +1315,9 @@ describe('TeamVaultService', () => {
           localRaw.recovery
         ),
       };
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(JSON.stringify(remoteFile)));
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
-      await expect(service.pullFromRemote(provider)).resolves.toBeUndefined();
+      await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
     });
   });
 
@@ -1316,45 +1325,44 @@ describe('TeamVaultService', () => {
     it('hasRemoteChangedSinceLastSync is false right after a push, true once something else pushes', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
 
-      expect(await service.hasRemoteChangedSinceLastSync(provider)).toBe(false);
-
-      const vaultId = (await service.getStatus()).vaultId!;
+      expect(await service.hasRemoteChangedSinceLastSync(vaultId, provider)).toBe(false);
       await provider.writeFile!(
-        'team-vault/vault.json',
+        `team-vault/${vaultId}/vault.json`,
         Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
       );
-      expect(await service.hasRemoteChangedSinceLastSync(provider)).toBe(true);
+      expect(await service.hasRemoteChangedSinceLastSync(vaultId, provider)).toBe(true);
     });
 
     it('hasRemoteChangedSinceLastSync is true the first time this instance ever observes a non-empty remote', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await provider.writeFile!('team-vault/vault.json', Buffer.from(foreignVaultFileJson('vlt_other')));
+      const vaultId = 'vlt_other';
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(foreignVaultFileJson(vaultId)));
 
-      expect(await service.hasRemoteChangedSinceLastSync(provider)).toBe(true);
+      expect(await service.hasRemoteChangedSinceLastSync(vaultId, provider)).toBe(true);
     });
 
     it('hasUnpushedLocalChanges is false before any sync has happened', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      expect(await service.hasUnpushedLocalChanges()).toBe(false);
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      expect(await service.hasUnpushedLocalChanges(vaultId)).toBe(false);
     });
 
     it('hasUnpushedLocalChanges is true after a local mutation following a push, false again after pushing it', async () => {
       const service = makeService();
       const provider = fakeProvider();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.pushToRemote(provider);
-      expect(await service.hasUnpushedLocalChanges()).toBe(false);
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      expect(await service.hasUnpushedLocalChanges(vaultId)).toBe(false);
 
-      await service.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
-      expect(await service.hasUnpushedLocalChanges()).toBe(true);
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      expect(await service.hasUnpushedLocalChanges(vaultId)).toBe(true);
 
-      await service.pushToRemote(provider);
-      expect(await service.hasUnpushedLocalChanges()).toBe(false);
+      await service.pushToRemote(vaultId, provider);
+      expect(await service.hasUnpushedLocalChanges(vaultId)).toBe(false);
     });
   });
 
@@ -1368,30 +1376,30 @@ describe('TeamVaultService', () => {
 
     it('getPayload returns an empty payload for a freshly created vault (still the original {})', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.getPayload()).resolves.toEqual({ ssh: [], s3: [], folders: [], folderIcons: {} });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(service.getPayload(vaultId)).resolves.toEqual({ ssh: [], s3: [], folders: [], folderIcons: {} });
     });
 
     it('requires the vault unlocked', async () => {
       const first = makeService();
-      await first.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const second = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await expect(second.getPayload()).rejects.toThrow('Unlock the Team Vault');
-      await expect(second.saveSSHProfile(sshProfile('p1'))).rejects.toThrow('Unlock the Team Vault');
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await expect(second.getPayload(vaultId)).rejects.toThrow('Unlock the Team Vault');
+      await expect(second.saveSSHProfile(vaultId, sshProfile('p1'))).rejects.toThrow('Unlock the Team Vault');
     });
 
     it('rejects an SSH profile with no id', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.saveSSHProfile({} as SSHConnectionConfig)).rejects.toThrow('Profile ID is required');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(service.saveSSHProfile(vaultId, {} as SSHConnectionConfig)).rejects.toThrow('Profile ID is required');
     });
 
     it('saves and reads back a shared SSH profile, stamped with updatedAt', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveSSHProfile(sshProfile('p1'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveSSHProfile(vaultId, sshProfile('p1'));
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh).toHaveLength(1);
       expect(payload.ssh[0]).toMatchObject({ id: 'p1', host: 'example.com', password: 'secret' }); // pragma: allowlist secret
       expect(payload.ssh[0].updatedAt).toBeTruthy();
@@ -1400,51 +1408,51 @@ describe('TeamVaultService', () => {
 
     it('upserts by id rather than duplicating on a second save', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveSSHProfile(sshProfile('p1', 'web-1'));
-      await service.saveSSHProfile(sshProfile('p1', 'web-1-renamed'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveSSHProfile(vaultId, sshProfile('p1', 'web-1'));
+      await service.saveSSHProfile(vaultId, sshProfile('p1', 'web-1-renamed'));
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh).toHaveLength(1);
       expect(payload.ssh[0].name).toBe('web-1-renamed');
     });
 
     it('deletes an SSH profile by id, leaving others untouched', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveSSHProfile(sshProfile('p1'));
-      await service.saveSSHProfile(sshProfile('p2', 'web-2'));
-      await service.deleteSSHProfile('p1');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveSSHProfile(vaultId, sshProfile('p1'));
+      await service.saveSSHProfile(vaultId, sshProfile('p2', 'web-2'));
+      await service.deleteSSHProfile(vaultId, 'p1');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh.map((p) => p.id)).toEqual(['p2']);
     });
 
     it('saves, upserts, and deletes a shared S3 profile independently of the SSH list', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveSSHProfile(sshProfile('p1'));
-      await service.saveS3Profile(s3Profile('s1'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveSSHProfile(vaultId, sshProfile('p1'));
+      await service.saveS3Profile(vaultId, s3Profile('s1'));
 
-      let payload = await service.getPayload();
+      let payload = await service.getPayload(vaultId);
       expect(payload.ssh).toHaveLength(1);
       expect(payload.s3).toHaveLength(1);
       expect(payload.s3[0]).toMatchObject({ id: 's1', secretAccessKey: 'shh' }); // pragma: allowlist secret
 
-      await service.deleteS3Profile('s1');
-      payload = await service.getPayload();
+      await service.deleteS3Profile(vaultId, 's1');
+      payload = await service.getPayload(vaultId);
       expect(payload.ssh).toHaveLength(1);
       expect(payload.s3).toEqual([]);
     });
 
     it('bumps revision and recomputes accessHeaderMac on every profile mutation, even though the header itself is unchanged', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const before = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const before = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
-      await service.saveSSHProfile(sshProfile('p1'));
+      await service.saveSSHProfile(vaultId, sshProfile('p1'));
 
-      const after = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const after = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
       expect(after.revision).toBe(before.revision + 1);
       expect(after.accessHeader).toEqual(before.accessHeader);
       expect(after.accessHeaderMac).not.toBe(before.accessHeaderMac);
@@ -1452,154 +1460,154 @@ describe('TeamVaultService', () => {
 
     it('any unlocked member — not just an admin — can save a shared profile (without setting its password)', async () => {
       const admin = makeService();
-      await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await admin.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+      const vaultId = (await admin.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await admin.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
       const bobsIdentityFile = path.join(tempDir, 'bob-identity.txt');
       await fs.writeFile(bobsIdentityFile, 'unused-by-fake-crypto');
 
-      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-      await asBob.unlock('bob@piv:def', bobsIdentityFile);
+      const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await asBob.unlock(vaultId, 'bob@piv:def', bobsIdentityFile);
 
-      await expect(asBob.saveSSHProfile({ ...sshProfile('p1'), password: undefined })).resolves.toBeUndefined();
+      await expect(asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), password: undefined })).resolves.toBeUndefined();
     });
 
     describe('only an admin may set or change a shared profile\'s password/secret', () => {
       async function makeAdminAndBob() {
         const admin = makeService();
-        await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
-        await admin.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+        const vaultId = (await admin.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await admin.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
         const bobsIdentityFile = path.join(tempDir, 'bob-identity.txt');
         await fs.writeFile(bobsIdentityFile, 'unused-by-fake-crypto');
-        const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
-        await asBob.unlock('bob@piv:def', bobsIdentityFile);
-        return { admin, asBob };
+        const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+        await asBob.unlock(vaultId, 'bob@piv:def', bobsIdentityFile);
+        return { admin, asBob, vaultId };
       }
 
       it('rejects a member creating a new SSH profile with a password', async () => {
-        const { asBob } = await makeAdminAndBob();
-        await expect(asBob.saveSSHProfile(sshProfile('p1'))).rejects.toThrow('Only a Team Vault admin');
+        const { asBob, vaultId } = await makeAdminAndBob();
+        await expect(asBob.saveSSHProfile(vaultId, sshProfile('p1'))).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('rejects a member changing the password of an existing SSH profile', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
         await expect(
-          asBob.saveSSHProfile({ ...sshProfile('p1'), password: 'different' }) // pragma: allowlist secret
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), password: 'different' }) // pragma: allowlist secret
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('lets a member edit a non-routing field (name) on a profile with a password, keeping the password and host intact', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
         await expect(
-          asBob.saveSSHProfile({ ...sshProfile('p1'), name: 'renamed', password: undefined })
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), name: 'renamed', password: undefined })
         ).resolves.toBeUndefined();
 
-        const payload = await admin.getPayload();
+        const payload = await admin.getPayload(vaultId);
         expect(payload.ssh[0]).toMatchObject({ name: 'renamed', host: 'example.com', password: 'secret' }); // pragma: allowlist secret
       });
 
       it('lets an admin set and change a profile password as before', async () => {
-        const { admin } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
-        await admin.saveSSHProfile({ ...sshProfile('p1'), password: 'new-secret' }); // pragma: allowlist secret
-        const payload = await admin.getPayload();
+        const { admin, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
+        await admin.saveSSHProfile(vaultId, { ...sshProfile('p1'), password: 'new-secret' }); // pragma: allowlist secret
+        const payload = await admin.getPayload(vaultId);
         expect(payload.ssh[0].password).toBe('new-secret'); // pragma: allowlist secret
       });
 
       it('rejects a member creating a new S3 profile with a secret key', async () => {
-        const { asBob } = await makeAdminAndBob();
-        await expect(asBob.saveS3Profile(s3Profile('s1'))).rejects.toThrow('Only a Team Vault admin');
+        const { asBob, vaultId } = await makeAdminAndBob();
+        await expect(asBob.saveS3Profile(vaultId, s3Profile('s1'))).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('lets a member edit a non-routing field (name) on an S3 profile, keeping the secret key and region intact', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveS3Profile(s3Profile('s1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
         await expect(
-          asBob.saveS3Profile({ ...s3Profile('s1'), name: 'renamed', secretAccessKey: '' })
+          asBob.saveS3Profile(vaultId, { ...s3Profile('s1'), name: 'renamed', secretAccessKey: '' })
         ).resolves.toBeUndefined();
 
-        const payload = await admin.getPayload();
+        const payload = await admin.getPayload(vaultId);
         expect(payload.s3[0]).toMatchObject({ name: 'renamed', region: 'us-east-1', secretAccessKey: 'shh' }); // pragma: allowlist secret
       });
 
       it('getPayloadForRenderer strips secrets for a member but not for an admin', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
-        await admin.saveS3Profile(s3Profile('s1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
 
-        const memberPayload = await asBob.getPayloadForRenderer();
+        const memberPayload = await asBob.getPayloadForRenderer(vaultId);
         expect(memberPayload.ssh[0].password).toBeUndefined();
         expect(memberPayload.ssh[0].hasPassword).toBe(true);
         expect(memberPayload.s3[0].secretAccessKey).toBe('');
         expect(memberPayload.s3[0].hasSecretAccessKey).toBe(true);
 
-        const adminPayload = await admin.getPayloadForRenderer();
+        const adminPayload = await admin.getPayloadForRenderer(vaultId);
         expect(adminPayload.ssh[0].password).toBe('secret'); // pragma: allowlist secret
         expect(adminPayload.s3[0].secretAccessKey).toBe('shh'); // pragma: allowlist secret
       });
 
       it('resolveProfileForConnect returns the real secret even for a member, for actually connecting', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
 
-        const resolved = await asBob.resolveProfileForConnect('ssh', 'p1');
+        const resolved = await asBob.resolveProfileForConnect(vaultId, 'ssh', 'p1');
         expect((resolved as SSHConnectionConfig).password).toBe('secret'); // pragma: allowlist secret
       });
 
       it('rejects a member repointing the host of a profile that has a stored password (would exfiltrate it on next connect)', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile(sshProfile('p1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
         await expect(
-          asBob.saveSSHProfile({ ...sshProfile('p1'), host: 'attacker.example.com', password: undefined })
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), host: 'attacker.example.com', password: undefined })
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('lets a member change the host of a profile that has no password', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveSSHProfile({ ...sshProfile('p1'), password: undefined });
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, { ...sshProfile('p1'), password: undefined });
         await expect(
-          asBob.saveSSHProfile({ ...sshProfile('p1'), host: 'new-host.example.com', password: undefined })
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), host: 'new-host.example.com', password: undefined })
         ).resolves.toBeUndefined();
       });
 
       it('rejects a member repointing the S3 endpoint of a profile that has a stored secret key', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveS3Profile(s3Profile('s1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
         await expect(
-          asBob.saveS3Profile({ ...s3Profile('s1'), endpoint: 'https://attacker.example.com', secretAccessKey: '' })
+          asBob.saveS3Profile(vaultId, { ...s3Profile('s1'), endpoint: 'https://attacker.example.com', secretAccessKey: '' })
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('rejects a member disabling TLS validation (rejectUnauthorized) on a profile that has a stored secret key, even with the endpoint unchanged', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveS3Profile(s3Profile('s1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
         await expect(
-          asBob.saveS3Profile({ ...s3Profile('s1'), rejectUnauthorized: false, secretAccessKey: '' })
+          asBob.saveS3Profile(vaultId, { ...s3Profile('s1'), rejectUnauthorized: false, secretAccessKey: '' })
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('rejects a member substituting a custom CA on a profile that has a stored secret key', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveS3Profile(s3Profile('s1'));
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
         await expect(
-          asBob.saveS3Profile({ ...s3Profile('s1'), customCaPath: '/tmp/attacker-ca.pem', secretAccessKey: '' })
+          asBob.saveS3Profile(vaultId, { ...s3Profile('s1'), customCaPath: '/tmp/attacker-ca.pem', secretAccessKey: '' })
         ).rejects.toThrow('Only a Team Vault admin');
       });
 
       it('redacts and guards an S3 profile\'s proxy.password the same as its secretAccessKey', async () => {
-        const { admin, asBob } = await makeAdminAndBob();
-        await admin.saveS3Profile({
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveS3Profile(vaultId, {
           ...s3Profile('s1'),
           proxy: { enabled: true, type: 'http', host: 'proxy.example.com', port: 8080, password: 'proxy-secret' }, // pragma: allowlist secret
         });
 
-        const memberPayload = await asBob.getPayloadForRenderer();
+        const memberPayload = await asBob.getPayloadForRenderer(vaultId);
         expect(memberPayload.s3[0].proxy?.password).toBeUndefined();
         expect(memberPayload.s3[0].proxy?.hasPassword).toBe(true);
 
         await expect(
-          asBob.saveS3Profile({
+          asBob.saveS3Profile(vaultId, {
             ...s3Profile('s1'),
             secretAccessKey: '',
             proxy: { enabled: true, type: 'http', host: 'proxy.example.com', port: 8080, password: 'different' }, // pragma: allowlist secret
@@ -1614,8 +1622,8 @@ describe('TeamVaultService', () => {
       // resolve on a given member's machine or silently don't, same risk as a wrong hostname. Only
       // `pin` is special-cased (see withoutPin — never written to disk anywhere in this app).
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveSSHProfile({
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveSSHProfile(vaultId, {
         ...sshProfile('p1'),
         authType: 'smartcard',
         privateKeyPath: '/home/alice/.ssh/id_ed25519',
@@ -1625,7 +1633,7 @@ describe('TeamVaultService', () => {
         pin: '123456', // pragma: allowlist secret
       });
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh[0]).toMatchObject({
         id: 'p1',
         host: 'example.com',
@@ -1640,10 +1648,10 @@ describe('TeamVaultService', () => {
 
     it('shares an S3 customCaPath as plain data too', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveS3Profile({ ...s3Profile('s1'), customCaPath: '/etc/ssl/custom-ca.pem' });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveS3Profile(vaultId, { ...s3Profile('s1'), customCaPath: '/etc/ssl/custom-ca.pem' });
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.s3[0]).toMatchObject({ customCaPath: '/etc/ssl/custom-ca.pem' });
     });
 
@@ -1654,9 +1662,9 @@ describe('TeamVaultService', () => {
       const fixedKey = Buffer.alloc(32, 7);
       const crypto2 = fakeCrypto();
       crypto2.generateVaultKey = () => fixedKey;
-      const service = new TeamVaultService({ cryptoService: crypto2, filePath, identityDir: tempDir });
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      const localRaw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
 
       const plantedPayload = JSON.stringify({
         ssh: [{ ...sshProfile('p1'), pin: '123456' }], // pragma: allowlist secret
@@ -1666,9 +1674,9 @@ describe('TeamVaultService', () => {
         ...localRaw,
         encryptedPayload: crypto2.encryptPayload(fixedKey, localRaw.vaultId, localRaw.formatVersion, plantedPayload),
       };
-      await fs.writeFile(filePath, JSON.stringify(tampered));
+      await fs.writeFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), JSON.stringify(tampered));
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh[0]).not.toHaveProperty('pin');
     });
   });
@@ -1680,43 +1688,43 @@ describe('TeamVaultService', () => {
 
     it('creates an empty folder, visible via getPayload', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      await service.saveTeamFolder('Acme Infra/Cluster A');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folders).toEqual(['Acme Infra/Cluster A']);
     });
 
     it('trims segments and ignores a duplicate save', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
 
-      await service.saveTeamFolder('  Acme Infra / Cluster A  ');
-      await service.saveTeamFolder('Acme Infra/Cluster A');
+      await service.saveTeamFolder(vaultId, '  Acme Infra / Cluster A  ');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folders).toEqual(['Acme Infra/Cluster A']);
     });
 
     it('rejects an empty folder path', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await expect(service.saveTeamFolder('   ')).rejects.toThrow('Folder name is required');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(service.saveTeamFolder(vaultId, '   ')).rejects.toThrow('Folder name is required');
     });
 
     it('renameTeamFolder moves the folder entry and every descendant folder/profile along with it', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveTeamFolder('Acme Infra');
-      await service.saveTeamFolder('Acme Infra/Cluster A');
-      await service.saveSSHProfile(sshProfile('p1', 'Acme Infra'));
-      await service.saveSSHProfile(sshProfile('p2', 'Acme Infra/Cluster A'));
-      await service.saveSSHProfile(sshProfile('p3', 'Unrelated'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveTeamFolder(vaultId, 'Acme Infra');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
+      await service.saveSSHProfile(vaultId, sshProfile('p1', 'Acme Infra'));
+      await service.saveSSHProfile(vaultId, sshProfile('p2', 'Acme Infra/Cluster A'));
+      await service.saveSSHProfile(vaultId, sshProfile('p3', 'Unrelated'));
 
-      await service.renameTeamFolder('Acme Infra', 'Acme Co');
+      await service.renameTeamFolder(vaultId, 'Acme Infra', 'Acme Co');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folders).toEqual(expect.arrayContaining(['Acme Co', 'Acme Co/Cluster A']));
       expect(payload.folders).not.toEqual(expect.arrayContaining(['Acme Infra', 'Acme Infra/Cluster A']));
       expect(payload.ssh.find((p) => p.id === 'p1')?.group).toBe('Acme Co');
@@ -1726,16 +1734,16 @@ describe('TeamVaultService', () => {
 
     it('deleteTeamFolder without deleteProfiles ungroups affected profiles (self and descendants)', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveTeamFolder('Acme Infra');
-      await service.saveTeamFolder('Acme Infra/Cluster A');
-      await service.saveSSHProfile(sshProfile('p1', 'Acme Infra'));
-      await service.saveSSHProfile(sshProfile('p2', 'Acme Infra/Cluster A'));
-      await service.saveSSHProfile(sshProfile('p3', 'Unrelated'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveTeamFolder(vaultId, 'Acme Infra');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
+      await service.saveSSHProfile(vaultId, sshProfile('p1', 'Acme Infra'));
+      await service.saveSSHProfile(vaultId, sshProfile('p2', 'Acme Infra/Cluster A'));
+      await service.saveSSHProfile(vaultId, sshProfile('p3', 'Unrelated'));
 
-      await service.deleteTeamFolder('Acme Infra');
+      await service.deleteTeamFolder(vaultId, 'Acme Infra');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folders).toEqual([]);
       expect(payload.ssh.find((p) => p.id === 'p1')?.group).toBeUndefined();
       expect(payload.ssh.find((p) => p.id === 'p2')?.group).toBeUndefined();
@@ -1744,65 +1752,161 @@ describe('TeamVaultService', () => {
 
     it('deleteTeamFolder with deleteProfiles removes affected profiles outright', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveTeamFolder('Acme Infra');
-      await service.saveSSHProfile(sshProfile('p1', 'Acme Infra'));
-      await service.saveSSHProfile(sshProfile('p3', 'Unrelated'));
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveTeamFolder(vaultId, 'Acme Infra');
+      await service.saveSSHProfile(vaultId, sshProfile('p1', 'Acme Infra'));
+      await service.saveSSHProfile(vaultId, sshProfile('p3', 'Unrelated'));
 
-      await service.deleteTeamFolder('Acme Infra', true);
+      await service.deleteTeamFolder(vaultId, 'Acme Infra', true);
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.ssh.map((p) => p.id)).toEqual(['p3']);
     });
 
     describe('setTeamFolderIcon', () => {
       it('sets and clears a folder icon', async () => {
         const service = makeService();
-        await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-        await service.saveTeamFolder('Acme Infra');
+        const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await service.saveTeamFolder(vaultId, 'Acme Infra');
 
-        await service.setTeamFolderIcon('Acme Infra', 'server');
-        expect((await service.getPayload()).folderIcons).toEqual({ 'Acme Infra': 'server' });
+        await service.setTeamFolderIcon(vaultId, 'Acme Infra', 'server');
+        expect((await service.getPayload(vaultId)).folderIcons).toEqual({ 'Acme Infra': 'server' });
 
-        await service.setTeamFolderIcon('Acme Infra', undefined);
-        expect((await service.getPayload()).folderIcons).toEqual({});
+        await service.setTeamFolderIcon(vaultId, 'Acme Infra', undefined);
+        expect((await service.getPayload(vaultId)).folderIcons).toEqual({});
       });
 
       it('rejects an empty folder path', async () => {
         const service = makeService();
-        await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-        await expect(service.setTeamFolderIcon('   ', 'server')).rejects.toThrow('Folder name is required');
+        const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await expect(service.setTeamFolderIcon(vaultId, '   ', 'server')).rejects.toThrow('Folder name is required');
       });
     });
 
     it('renameTeamFolder remaps the icon of the renamed folder and every descendant', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveTeamFolder('Acme Infra');
-      await service.saveTeamFolder('Acme Infra/Cluster A');
-      await service.setTeamFolderIcon('Acme Infra', 'server');
-      await service.setTeamFolderIcon('Acme Infra/Cluster A', 'database');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveTeamFolder(vaultId, 'Acme Infra');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
+      await service.setTeamFolderIcon(vaultId, 'Acme Infra', 'server');
+      await service.setTeamFolderIcon(vaultId, 'Acme Infra/Cluster A', 'database');
 
-      await service.renameTeamFolder('Acme Infra', 'Acme Co');
+      await service.renameTeamFolder(vaultId, 'Acme Infra', 'Acme Co');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folderIcons).toEqual({ 'Acme Co': 'server', 'Acme Co/Cluster A': 'database' });
     });
 
     it('deleteTeamFolder removes the icon of the deleted folder and every descendant', async () => {
       const service = makeService();
-      await service.createVault('alice@piv:abc', 'age1yubikey1alice');
-      await service.saveTeamFolder('Acme Infra');
-      await service.saveTeamFolder('Acme Infra/Cluster A');
-      await service.saveTeamFolder('Unrelated');
-      await service.setTeamFolderIcon('Acme Infra', 'server');
-      await service.setTeamFolderIcon('Acme Infra/Cluster A', 'database');
-      await service.setTeamFolderIcon('Unrelated', 'cloud');
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveTeamFolder(vaultId, 'Acme Infra');
+      await service.saveTeamFolder(vaultId, 'Acme Infra/Cluster A');
+      await service.saveTeamFolder(vaultId, 'Unrelated');
+      await service.setTeamFolderIcon(vaultId, 'Acme Infra', 'server');
+      await service.setTeamFolderIcon(vaultId, 'Acme Infra/Cluster A', 'database');
+      await service.setTeamFolderIcon(vaultId, 'Unrelated', 'cloud');
 
-      await service.deleteTeamFolder('Acme Infra');
+      await service.deleteTeamFolder(vaultId, 'Acme Infra');
 
-      const payload = await service.getPayload();
+      const payload = await service.getPayload(vaultId);
       expect(payload.folderIcons).toEqual({ Unrelated: 'cloud' });
+    });
+  });
+
+  // The critical property the Map-per-vaultId design (docs/team-vault-plan.md's multi-team plan
+  // §3) exists to uphold: an operation against one team's vault must never unlock, read, or
+  // leak state for another's, even when both share the same TeamVaultService instance AND the
+  // same on-disk baseDir.
+  describe('multi-vault isolation', () => {
+    it('unlocking vault A never unlocks vault B, even from the same service instance', async () => {
+      const service = makeService();
+      const { vaultId: vaultIdA } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      service.lock(vaultIdA);
+      const { vaultId: vaultIdB } = await service.createVault('carol@piv:ghi', 'age1yubikey1carol');
+
+      expect(service.isUnlocked(vaultIdA)).toBe(false);
+      expect(service.isUnlocked(vaultIdB)).toBe(true);
+
+      await service.unlock(vaultIdA, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+
+      expect(service.isUnlocked(vaultIdA)).toBe(true);
+      expect(service.isUnlocked(vaultIdB)).toBe(true);
+
+      service.lock(vaultIdA);
+      expect(service.isUnlocked(vaultIdA)).toBe(false);
+      expect(service.isUnlocked(vaultIdB)).toBe(true);
+    });
+
+    it('pushing vault A never touches vault B\'s sync state (lastKnownRemoteEntry/lastSyncedRevision)', async () => {
+      const service = makeService();
+      const providerA = fakeProvider();
+      const providerB = fakeProvider();
+      const { vaultId: vaultIdA } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const { vaultId: vaultIdB } = await service.createVault('carol@piv:ghi', 'age1yubikey1carol');
+
+      // Something external shows up on B's remote BEFORE B ever syncs — B has never observed
+      // anything yet, so this correctly reads as "changed" (there's something to pull).
+      await providerB.writeFile!(`team-vault/${vaultIdB}/vault.json`, Buffer.from(foreignVaultFileJson(vaultIdB)));
+      expect(await service.hasRemoteChangedSinceLastSync(vaultIdB, providerB)).toBe(true);
+
+      await service.pushToRemote(vaultIdA, providerA);
+
+      // A's own push must not make B look synced — B's remote content (and this instance's
+      // tracking of it) is completely untouched by anything that happened to A.
+      expect(await service.hasRemoteChangedSinceLastSync(vaultIdB, providerB)).toBe(true);
+      // A, having just pushed, correctly sees itself as unchanged against its own target.
+      expect(await service.hasRemoteChangedSinceLastSync(vaultIdA, providerA)).toBe(false);
+
+      // Pushing B now must not be rejected by anything A observed (proves no shared/leaked
+      // cross-vault conflict-check state) — B's own existing remote content legitimately shares
+      // its vaultId, so this is accepted as B's own continuation, not a foreign-vault conflict.
+      await expect(service.pushToRemote(vaultIdB, providerB)).resolves.toBeUndefined();
+    });
+
+    it('two vaults sharing the same S3 target+remoteBasePath never collide on the same remote object', async () => {
+      const service = makeService();
+      const sharedProvider = fakeProvider();
+      const sharedRemoteBasePath = 'shared-bucket/prefix';
+      const { vaultId: vaultIdA } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const { vaultId: vaultIdB } = await service.createVault('carol@piv:ghi', 'age1yubikey1carol');
+
+      await service.pushToRemote(vaultIdA, sharedProvider, sharedRemoteBasePath);
+      // If this collided with A's object, pushToRemote would throw TeamVaultForeignVaultError
+      // (identity check: "something else is already at this path") instead of resolving.
+      await expect(service.pushToRemote(vaultIdB, sharedProvider, sharedRemoteBasePath)).resolves.toBeUndefined();
+
+      const remotePathFor = (vid: string) => `${sharedRemoteBasePath}/team-vault/${vid}/vault.json`;
+      expect(await sharedProvider.readFile!(remotePathFor(vaultIdA))).toBeTruthy();
+      expect(await sharedProvider.readFile!(remotePathFor(vaultIdB))).toBeTruthy();
+
+      const fileA = JSON.parse((await sharedProvider.readFile!(remotePathFor(vaultIdA))).toString('utf-8'));
+      const fileB = JSON.parse((await sharedProvider.readFile!(remotePathFor(vaultIdB))).toString('utf-8'));
+      expect(fileA.vaultId).toBe(vaultIdA);
+      expect(fileB.vaultId).toBe(vaultIdB);
+
+      // A fresh pull of each, through the same shared target, must come back as itself — not the
+      // other vault's content.
+      await expect(service.pullFromRemote(vaultIdA, sharedProvider, sharedRemoteBasePath)).resolves.toBeUndefined();
+      await expect(service.pullFromRemote(vaultIdB, sharedProvider, sharedRemoteBasePath)).resolves.toBeUndefined();
+    });
+
+    it('listVaultIds/listStatuses enumerate every locally known vault independently', async () => {
+      const service = makeService();
+      const { vaultId: vaultIdA } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      const { vaultId: vaultIdB } = await service.createVault('carol@piv:ghi', 'age1yubikey1carol');
+
+      expect((await service.listVaultIds()).sort()).toEqual([vaultIdA, vaultIdB].sort());
+
+      const statuses = await service.listStatuses();
+      expect(statuses).toHaveLength(2);
+      const byId = new Map(statuses.map((s) => [s.vaultId, s]));
+      expect(byId.get(vaultIdA)?.members).toEqual([
+        expect.objectContaining({ recipientId: 'alice@piv:abc' }),
+      ]);
+      expect(byId.get(vaultIdB)?.members).toEqual([
+        expect.objectContaining({ recipientId: 'carol@piv:ghi' }),
+      ]);
     });
   });
 });

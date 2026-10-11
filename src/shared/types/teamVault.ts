@@ -3,6 +3,15 @@ import type { S3Config } from './storage';
 
 export type TeamVaultRole = 'admin' | 'member';
 
+/** Sentinel `vaultId` key `TeamVaultConfigStore` entries are parked under when a device has
+ * configured an S3 target for a team it hasn't pulled from yet — joining a vault requires a
+ * configured target to pull from, but the real `vaultId` isn't known until that first pull
+ * succeeds (chicken-and-egg). The handler that performs the first successful pull is responsible
+ * for moving the entry from this key to the real `vaultId` (see
+ * `TeamVaultConfigStore.promotePendingConfig`). Never written to a `TeamVaultFile` itself — only
+ * ever a `TeamVaultConfigStore` key. */
+export const TEAM_VAULT_PENDING_VAULT_ID = '__pending__';
+
 /** The decrypted shape of `TeamVaultFile.encryptedPayload` — reuses the same domain models as
  * local profiles (`ProfileStore`'s `SSHConnectionConfig`/`S3Config`), per docs/team-vault-plan.md
  * §3's decision to avoid a third profile representation. Every field is shared as-is, including
@@ -157,4 +166,10 @@ export interface TeamVaultStatus {
    * making the admin retype or relocate them every session. Neither is a secret. */
   selfRecipientId?: string;
   selfIdentityFilePath?: string;
+  /** This machine's own role within this specific vault (looked up from `members` by
+   * `selfRecipientId` — see `IpcBridge.buildTeamVaultStatus`), e.g. to show an "admin"/"member"
+   * badge per team in a multi-team list without a second round trip. `undefined` when locked,
+   * when `selfRecipientId` isn't a current member (e.g. just removed), or when the vault doesn't
+   * exist locally yet. */
+  selfRole?: TeamVaultRole;
 }

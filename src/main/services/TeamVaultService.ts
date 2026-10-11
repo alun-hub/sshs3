@@ -19,7 +19,6 @@ import { joinPaths } from '../transfer/TransferPipeline';
 import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultCryptoService';
 
 const FORMAT_VERSION = 1 as const;
-const REMOTE_VAULT_FILENAME = 'team-vault/vault.json';
 /** A real vault file (JSON, base64-wrapped keys, every shared SSH/S3 profile) stays well under
  * this even for a large team — see `readRemoteVaultFile`'s doc comment for why it exists. */
 const MAX_REMOTE_VAULT_FILE_SIZE = 50 * 1024 * 1024;
@@ -124,9 +123,10 @@ export class TeamVaultHeaderIntegrityError extends Error {
  * was enough to drop one entry from the header, which skipped `accessHeaderMac` verification
  * entirely (it only ran when the entry count didn't decrease) and let an attacker-generated Vault
  * Key, wrapped to the remaining members' already-public recipients, be accepted as the real
- * rotation. `prevKeyProof` is an HMAC over the new header keyed by a subkey derived from the Vault
- * Key being rotated AWAY from — only whoever actually held that real previous key could produce
- * it, so a bucket-write-access-only attacker generating their own fresh key cannot forge it.
+ * rotation. `prevKeyProof` closes that: it's an HMAC over the new header keyed by a subkey derived
+ * from the Vault Key being rotated AWAY from — only whoever actually held that real previous key
+ * could produce it, so a bucket-write-access-only attacker generating their own fresh key cannot
+ * forge it.
  *
  * Also fires on a legitimate but multi-step rotation this client missed entirely (two
  * `removeMember`s while offline): `prevKeyProof` only links one step back, to the key
@@ -396,24 +396,69 @@ export interface TeamVaultPinPrompter {
 
 export interface TeamVaultServiceOptions {
   cryptoService?: TeamVaultCryptoService;
-  /** Overrides the vault file path — tests only; production always uses userData. */
-  filePath?: string;
-  /** Overrides where generated PIV identity files are written — tests only. */
-  identityDir?: string;
+  /** Overrides the base directory vault files/identities are written under — tests only;
+   * production always uses userData. Per-vault paths are derived from it: `<baseDir>/team-vaults/
+   * <vaultId>.json` and `<baseDir>/team-vault-identities/<vaultId>/`. */
+  baseDir?: string;
   /** Required in production for `unlock()`/`enrollOwnPivRecipient()` to actually prompt for a
    * PIN/touch (see docs/team-vault-plan.md's hardware verification notes) — omitted in most
    * tests, whose fake crypto service never needs to prompt for anything. */
   pinPrompter?: TeamVaultPinPrompter;
 }
 
+/** Per-vault in-memory state — never persisted, cleared on `lock()`/app quit, and deliberately
+ * kept in its own `Map` entry per `vaultId` so unlocking one team's vault can never leak or be
+ * mistaken for another's (see `TeamVaultService`'s class doc comment). */
+interface VaultRuntimeState {
+  unlockedVaultKey: Buffer | null;
+  /** The recipientId that produced `unlockedVaultKey` (via `createVault` or `unlock`) — the
+   * authoritative identity for `addedBy`/`removedBy`/`updatedBy` audit fields. Deliberately NOT a
+   * caller-supplied parameter on `addMember`/`removeMember`/`setRole`: a renderer asserting an
+   * arbitrary "I am X" string for an audit trail that's shared with the whole team (§2.3:
+   * `updated_by` exists so a member can tell "who made the last change" without asking S3) would
+   * make that field purely decorative instead of authoritative. */
+  unlockedAsRecipientId: string | null;
+  /** Last observed remote `FileEntry` for this vault's file, used for optimistic concurrency on
+   * push (see `pushToRemote`) — `undefined` means never observed from this instance (no check
+   * to do yet), `null` means observed as "doesn't exist yet". Same pattern as
+   * `ProfileSyncService.lastKnownRemoteState`/`checkNotChangedRemotely`, which the real S3
+   * provider has no `If-Match`-style primitive to replace (verified against the code; see
+   * docs/team-vault-plan.md Fas 3). */
+  lastKnownRemoteEntry: FileEntry | null | undefined;
+  /** This vault's local file's `revision` as of the last successful push OR pull — i.e. "this
+   * revision is known to match what's on the remote". `undefined` means never synced from this
+   * instance. `pullFromRemote` compares this against the local file's *current* `revision` before
+   * overwriting it: a mismatch means local mutations (shared-profile edits, membership changes)
+   * happened since the last sync and were never pushed — pulling now would silently discard them
+   * (see `TeamVaultUnpushedChangesError`). Distinct from `lastKnownRemoteEntry`, which tracks the
+   * *remote* side for push's conflict check. */
+  lastSyncedRevision: number | undefined;
+}
+
+function freshRuntimeState(): VaultRuntimeState {
+  return {
+    unlockedVaultKey: null,
+    unlockedAsRecipientId: null,
+    lastKnownRemoteEntry: undefined,
+    lastSyncedRevision: undefined,
+  };
+}
+
 /**
- * Owns the local Team Vault file (`<userData>/team-vault.json`, same directory convention as
- * `SyncConfigStore`) and the in-memory, never-persisted Vault Key once unlocked — exactly the
+ * Owns every local Team Vault file this machine knows about
+ * (`<userData>/team-vaults/<vaultId>.json`, same directory convention as `SyncConfigStore`) and
+ * the in-memory, never-persisted Vault Key of each once unlocked — exactly the
  * `SyncCryptoService`/§4.2 pattern: unlocked fresh every app session (or after an explicit
- * `lock()`), never cached to disk or the OS keyring.
+ * `lock(vaultId)`), never cached to disk or the OS keyring.
  *
- * This is Fas 2 (docs/team-vault-plan.md): a single local vault, no S3 sync yet (Fas 3 adds
- * read/write against a remote target on top of this same file format and API).
+ * A single instance serves every team a user belongs to: runtime state (the unlocked key, sync
+ * cursors) lives in an internal `Map<vaultId, VaultRuntimeState>`, and every public method below
+ * takes `vaultId` as its leading parameter. This is deliberate, not incidental — see
+ * docs/team-vault-plan.md's multi-team plan §3 for why a single service with an internal map was
+ * chosen over one instance per team (avoids `IpcBridge` needing its own duplicate bookkeeping).
+ * The critical invariant this map design exists to uphold: unlocking vault A must never unlock,
+ * read, or leak key material for vault B — every mutation/read below only ever touches the one
+ * `VaultRuntimeState` entry named by its own `vaultId` argument.
  *
  * PIN-prompt wiring (docs/team-vault-plan.md's hardware verification notes): `unlock()`/
  * `enrollOwnPivRecipient()` relay PIN/touch prompts through an injected `TeamVaultPinPrompter`
@@ -423,32 +468,10 @@ export interface TeamVaultServiceOptions {
  */
 export class TeamVaultService {
   private readonly cryptoService: TeamVaultCryptoService;
-  private readonly filePath: string;
-  private readonly identityDir: string;
-  private writeQueue: Promise<void> = Promise.resolve();
-  private unlockedVaultKey: Buffer | null = null;
-  /** The recipientId that produced `unlockedVaultKey` (via `createVault` or `unlock`) — the
-   * authoritative identity for `addedBy`/`removedBy`/`updatedBy` audit fields. Deliberately NOT a
-   * caller-supplied parameter on `addMember`/`removeMember`/`setRole`: a renderer asserting an
-   * arbitrary "I am X" string for an audit trail that's shared with the whole team (§2.3:
-   * `updated_by` exists so a member can tell "who made the last change" without asking S3) would
-   * make that field purely decorative instead of authoritative. */
-  private unlockedAsRecipientId: string | null = null;
-  /** Last observed remote `FileEntry` for the vault file, used for optimistic concurrency on
-   * push (see `pushToRemote`) — `undefined` means never observed from this instance (no check
-   * to do yet), `null` means observed as "doesn't exist yet". Same pattern as
-   * `ProfileSyncService.lastKnownRemoteState`/`checkNotChangedRemotely`, which the real S3
-   * provider has no `If-Match`-style primitive to replace (verified against the code; see
-   * docs/team-vault-plan.md Fas 3). */
-  private lastKnownRemoteEntry: FileEntry | null | undefined = undefined;
-  /** The local file's `revision` as of the last successful push OR pull — i.e. "this revision is
-   * known to match what's on the remote". `undefined` means never synced from this instance.
-   * `pullFromRemote` compares this against the local file's *current* `revision` before
-   * overwriting it: a mismatch means local mutations (shared-profile edits, membership changes)
-   * happened since the last sync and were never pushed — pulling now would silently discard them
-   * (see `TeamVaultUnpushedChangesError`). Distinct from `lastKnownRemoteEntry`, which tracks the
-   * *remote* side for push's conflict check. */
-  private lastSyncedRevision: number | undefined = undefined;
+  private readonly vaultsDir: string;
+  private readonly identitiesBaseDir: string;
+  private readonly states = new Map<string, VaultRuntimeState>();
+  private readonly writeQueues = new Map<string, Promise<void>>();
   private readonly pinPrompter?: TeamVaultPinPrompter;
 
   constructor(options: TeamVaultServiceOptions = {}) {
@@ -456,34 +479,72 @@ export class TeamVaultService {
     this.pinPrompter = options.pinPrompter;
 
     let baseDir: string;
-    try {
-      baseDir = app.getPath('userData');
-    } catch {
-      baseDir = path.join(os.homedir(), '.sshs3');
+    if (options.baseDir) {
+      baseDir = options.baseDir;
+    } else {
+      try {
+        baseDir = app.getPath('userData');
+      } catch {
+        baseDir = path.join(os.homedir(), '.sshs3');
+      }
     }
-    this.filePath = options.filePath ?? path.join(baseDir, 'team-vault.json');
-    this.identityDir = options.identityDir ?? path.join(baseDir, 'team-vault-identities');
+    this.vaultsDir = path.join(baseDir, 'team-vaults');
+    this.identitiesBaseDir = path.join(baseDir, 'team-vault-identities');
   }
 
-  getFilePath(): string {
-    return this.filePath;
+  getFilePath(vaultId: string): string {
+    return path.join(this.vaultsDir, `${vaultId}.json`);
   }
 
-  isUnlocked(): boolean {
-    return this.unlockedVaultKey !== null;
+  /** Every vault this machine has a local file for — a plain directory listing, same "derivable
+   * without unlocking" guarantee as `getStatus` (see its doc comment). Drives the team list/
+   * switcher UI and `listStatuses()`. */
+  async listVaultIds(): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(this.vaultsDir);
+      return entries.filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length));
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') return [];
+      throw err;
+    }
   }
 
-  /** Clears the Vault Key from memory — call on app lock/quit, same as `SyncCryptoService.lock()`. */
-  lock(): void {
-    this.unlockedVaultKey = null;
-    this.unlockedAsRecipientId = null;
+  /** `listVaultIds()` + `getStatus()` for each — the one call a team-list UI needs at mount. */
+  async listStatuses(): Promise<TeamVaultStatus[]> {
+    const vaultIds = await this.listVaultIds();
+    return Promise.all(vaultIds.map((vaultId) => this.getStatus(vaultId)));
+  }
+
+  private stateFor(vaultId: string): VaultRuntimeState {
+    let state = this.states.get(vaultId);
+    if (!state) {
+      state = freshRuntimeState();
+      this.states.set(vaultId, state);
+    }
+    return state;
+  }
+
+  isUnlocked(vaultId: string): boolean {
+    return this.states.get(vaultId)?.unlockedVaultKey != null;
+  }
+
+  /** Clears vault `vaultId`'s Vault Key from memory — call on app lock/quit (for every known
+   * vault) or when the user explicitly locks one team, same as `SyncCryptoService.lock()`. Other
+   * vaults' runtime state is untouched. */
+  lock(vaultId: string): void {
+    const state = this.states.get(vaultId);
+    if (state) {
+      state.unlockedVaultKey = null;
+      state.unlockedAsRecipientId = null;
+    }
   }
 
   /** Derived entirely from the plaintext `accessHeader` (§2.3) — never requires unlocking. */
-  async getStatus(): Promise<TeamVaultStatus> {
-    const file = await this.readFile();
+  async getStatus(vaultId: string): Promise<TeamVaultStatus> {
+    const filePath = this.getFilePath(vaultId);
+    const file = await this.readFile(vaultId);
     if (!file) {
-      return { exists: false, unlocked: this.isUnlocked(), filePath: this.filePath };
+      return { exists: false, unlocked: this.isUnlocked(vaultId), filePath };
     }
     const members: TeamVaultMemberSummary[] = file.accessHeader.map((e) => ({
       recipientId: e.recipientId,
@@ -496,8 +557,8 @@ export class TeamVaultService {
       vaultName: file.vaultName,
       members,
       adminCount: members.filter((m) => m.role === 'admin').length,
-      unlocked: this.isUnlocked(),
-      filePath: this.filePath,
+      unlocked: this.isUnlocked(vaultId),
+      filePath,
     };
   }
 
@@ -529,29 +590,37 @@ export class TeamVaultService {
   }
 
   /** Generates a fresh recipient from the caller's own PIV card — used both by the admin
-   * enrolling themselves at vault creation and by any later member joining (§4.3). */
-  async enrollOwnPivRecipient(): Promise<{ recipient: string; identityFilePath: string }> {
-    return this.cryptoService.enrollOwnPivRecipient(this.identityDir, this.buildPtyCallbacks());
+   * enrolling themselves at vault creation and by any later member joining (§4.3). Deliberately
+   * NOT scoped to a `vaultId`: when creating a brand-new vault the id doesn't exist yet
+   * (`createVault` mints it), and when generating a recipient to send an admin for a vault this
+   * machine is about to join, the vaultId isn't locally known either (that's the whole reason the
+   * admin has to `addMember` before this machine can `unlock`). `vaultId`, when the caller already
+   * knows it (e.g. enrolling a second identity for a team already partially set up), simply
+   * scopes where the identity file is written — purely a filing convenience, not a security
+   * boundary (the identity file's own content is what matters). */
+  async enrollOwnPivRecipient(vaultId?: string): Promise<{ recipient: string; identityFilePath: string }> {
+    return this.cryptoService.enrollOwnPivRecipient(this.identityDirFor(vaultId), this.buildPtyCallbacks());
+  }
+
+  private identityDirFor(vaultId?: string): string {
+    return vaultId ? path.join(this.identitiesBaseDir, vaultId) : this.identitiesBaseDir;
   }
 
   /**
-   * Initiates the vault (§4.1): generates the Vault Key, wraps it for the creating admin and for
-   * a freshly generated recovery identity, writes the file. The recovery identity's plaintext is
-   * returned exactly once — the caller must show it to the admin for printing and never persist
-   * it anywhere in the app.
+   * Initiates a new vault (§4.1): mints a fresh `vaultId`, generates the Vault Key, wraps it for
+   * the creating admin and for a freshly generated recovery identity, writes the file. The
+   * recovery identity's plaintext is returned exactly once — the caller must show it to the admin
+   * for printing and never persist it anywhere in the app. Returns the minted `vaultId` so the
+   * caller (renderer, eventually) can adopt it as the newly selected vault.
    */
   async createVault(
     selfRecipientId: string,
     selfAgeRecipient: string,
     vaultName = ''
-  ): Promise<{ recoveryIdentity: string }> {
-    return this.queueMutation(async () => {
-      if (await this.readFile()) {
-        throw new Error('A Team Vault already exists on this machine');
-      }
-
+  ): Promise<{ vaultId: string; recoveryIdentity: string }> {
+    const vaultId = `vlt_${crypto.randomUUID()}`;
+    return this.queueMutation(vaultId, async () => {
       const vaultKey = this.cryptoService.generateVaultKey();
-      const vaultId = `vlt_${crypto.randomUUID()}`;
       const now = new Date().toISOString();
       const trimmedName = vaultName.trim();
 
@@ -594,11 +663,12 @@ export class TeamVaultService {
         ),
       };
 
-      await this.writeFile(file);
-      this.unlockedVaultKey = vaultKey;
-      this.unlockedAsRecipientId = selfRecipientId;
+      await this.writeFile(vaultId, file);
+      const state = this.stateFor(vaultId);
+      state.unlockedVaultKey = vaultKey;
+      state.unlockedAsRecipientId = selfRecipientId;
 
-      return { recoveryIdentity };
+      return { vaultId, recoveryIdentity };
     });
   }
 
@@ -606,12 +676,12 @@ export class TeamVaultService {
    * already unlocked in this session (e.g. right after `createVault`, or via `unlock()`) AND the
    * acting identity to be an admin (`requireUnlockedAsAdmin`). The audit `addedBy` is always the
    * recipient that actually unlocked this session, never a caller-supplied value (see
-   * `unlockedAsRecipientId`'s doc comment). */
-  async addMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const addedBy = this.requireUnlockedAsAdmin(file);
+   * `VaultRuntimeState.unlockedAsRecipientId`'s doc comment). */
+  async addMember(vaultId: string, recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const addedBy = this.requireUnlockedAsAdmin(vaultId, file);
       if (file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is already a member of this vault`);
       }
@@ -625,7 +695,7 @@ export class TeamVaultService {
         addedAt: new Date().toISOString(),
         addedBy,
       });
-      await this.commitHeaderMutation(file, vaultKey, addedBy);
+      await this.commitHeaderMutation(vaultId, file, vaultKey, addedBy);
     });
   }
 
@@ -637,7 +707,12 @@ export class TeamVaultService {
    * that caused several of this file's own prior fix commits — a future admin mutation written by
    * copy-pasting one of these can no longer accidentally omit the revision bump or the MAC
    * recompute, since there's only one place that does either. */
-  private async commitHeaderMutation(file: TeamVaultFile, vaultKey: Buffer, updatedBy: string): Promise<void> {
+  private async commitHeaderMutation(
+    vaultId: string,
+    file: TeamVaultFile,
+    vaultKey: Buffer,
+    updatedBy: string
+  ): Promise<void> {
     file.revision += 1;
     file.updatedAt = new Date().toISOString();
     file.updatedBy = updatedBy;
@@ -649,7 +724,7 @@ export class TeamVaultService {
       file.accessHeader,
       file.recovery
     );
-    await this.writeFile(file);
+    await this.writeFile(vaultId, file);
   }
 
   /**
@@ -660,11 +735,11 @@ export class TeamVaultService {
    * not block, when it drops below 2 (§4.3's multi-admin rule is advisory). Requires the acting
    * identity to be an admin (`requireUnlockedAsAdmin`), not merely unlocked.
    */
-  async removeMember(recipientId: string): Promise<{ remainingAdmins: number }> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const removedBy = this.requireUnlockedAsAdmin(file);
+  async removeMember(vaultId: string, recipientId: string): Promise<{ remainingAdmins: number }> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const removedBy = this.requireUnlockedAsAdmin(vaultId, file);
       if (!file.accessHeader.some((e) => e.recipientId === recipientId)) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
@@ -723,8 +798,8 @@ export class TeamVaultService {
         ),
       };
 
-      await this.writeFile(updated);
-      this.unlockedVaultKey = newVaultKey;
+      await this.writeFile(vaultId, updated);
+      this.stateFor(vaultId).unlockedVaultKey = newVaultKey;
 
       return { remainingAdmins: rewrapped.filter((e) => e.role === 'admin').length };
     });
@@ -735,17 +810,17 @@ export class TeamVaultService {
    * (`requireUnlockedAsAdmin`) — a plain member being merely unlocked isn't enough, otherwise any
    * member could promote themselves. Needs the Vault Key itself too (not just the identity),
    * since the access header's MAC must be recomputed. */
-  async setRole(recipientId: string, role: TeamVaultRole): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const updatedBy = this.requireUnlockedAsAdmin(file);
+  async setRole(vaultId: string, recipientId: string, role: TeamVaultRole): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const updatedBy = this.requireUnlockedAsAdmin(vaultId, file);
       const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
       if (!entry) {
         throw new Error(`"${recipientId}" is not a member of this vault`);
       }
       entry.role = role;
-      await this.commitHeaderMutation(file, vaultKey, updatedBy);
+      await this.commitHeaderMutation(vaultId, file, vaultKey, updatedBy);
     });
   }
 
@@ -753,23 +828,23 @@ export class TeamVaultService {
    * metadata), but kept admin-gated like `setRole` for coherence with the rest of membership/vault
    * management, and tamper-evident via the recomputed `accessHeaderMac` so a bucket-write-access
    * holder can't silently rename the vault without the real Vault Key. */
-  async renameVault(vaultName: string): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const updatedBy = this.requireUnlockedAsAdmin(file);
+  async renameVault(vaultId: string, vaultName: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const updatedBy = this.requireUnlockedAsAdmin(vaultId, file);
       const trimmed = vaultName.trim();
       file.vaultName = trimmed || undefined;
-      await this.commitHeaderMutation(file, vaultKey, updatedBy);
+      await this.commitHeaderMutation(vaultId, file, vaultKey, updatedBy);
     });
   }
 
   /** Decrypts the current payload (shared SSH/S3 profiles, docs/team-vault-plan.md §3) — requires
    * the vault unlocked. Returns an empty payload (not an error) if the vault was created before
    * this feature existed and still holds the original `'{}'`. */
-  async getPayload(): Promise<TeamVaultPayload> {
-    const file = await this.requireFile();
-    const vaultKey = this.requireUnlocked();
+  async getPayload(vaultId: string): Promise<TeamVaultPayload> {
+    const file = await this.requireFile(vaultId);
+    const vaultKey = this.requireUnlocked(vaultId);
     return this.decryptPayload(file, vaultKey);
   }
 
@@ -779,10 +854,10 @@ export class TeamVaultService {
    * `hasPassword`/`hasSecretAccessKey` are set so the UI can still show "a secret is set" without
    * revealing it. Connecting to a profile does NOT go through this method — see
    * `resolveProfileForConnect`, which main-process-only callers use to get the real secret back. */
-  async getPayloadForRenderer(): Promise<TeamVaultPayload> {
-    const file = await this.requireFile();
-    const vaultKey = this.requireUnlocked();
-    const recipientId = this.requireUnlockedRecipientId();
+  async getPayloadForRenderer(vaultId: string): Promise<TeamVaultPayload> {
+    const file = await this.requireFile(vaultId);
+    const vaultKey = this.requireUnlocked(vaultId);
+    const recipientId = this.requireUnlockedRecipientId(vaultId);
     const payload = await this.decryptPayload(file, vaultKey);
     if (this.isSelfAdmin(file, recipientId)) {
       return payload;
@@ -800,11 +875,12 @@ export class TeamVaultService {
    * wired to an IPC handler that echoes its return value back to the renderer as-is, or a
    * member's secret would leak the same way redaction is meant to prevent. */
   async resolveProfileForConnect(
+    vaultId: string,
     profileType: 'ssh' | 's3',
     profileId: string
   ): Promise<SSHConnectionConfig | S3Config> {
-    const file = await this.requireFile();
-    const vaultKey = this.requireUnlocked();
+    const file = await this.requireFile(vaultId);
+    const vaultKey = this.requireUnlocked(vaultId);
     const payload = await this.decryptPayload(file, vaultKey);
     const list = profileType === 'ssh' ? payload.ssh : payload.s3;
     const profile = list.find((p) => p.id === profileId);
@@ -821,14 +897,14 @@ export class TeamVaultService {
    * change those, and a non-admin's write always keeps whatever secret was already stored, since
    * a member never actually holds the real value to round-trip in the first place. Upserts by
    * `id`. */
-  async saveSSHProfile(profile: SSHConnectionConfig): Promise<void> {
+  async saveSSHProfile(vaultId: string, profile: SSHConnectionConfig): Promise<void> {
     if (!profile?.id) {
       throw new Error('Profile ID is required');
     }
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const recipientId = this.requireUnlockedRecipientId();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const recipientId = this.requireUnlockedRecipientId(vaultId);
       const isAdmin = this.isSelfAdmin(file, recipientId);
       const payload = await this.decryptPayload(file, vaultKey);
       const index = payload.ssh.findIndex((p) => p.id === profile.id);
@@ -843,30 +919,30 @@ export class TeamVaultService {
       } else {
         payload.ssh.push(stamped);
       }
-      await this.persistPayload(file, vaultKey, payload);
+      await this.persistPayload(vaultId, file, vaultKey, payload);
     });
   }
 
-  async deleteSSHProfile(id: string): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+  async deleteSSHProfile(vaultId: string, id: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       payload.ssh = payload.ssh.filter((p) => p.id !== id);
-      await this.persistPayload(file, vaultKey, payload);
+      await this.persistPayload(vaultId, file, vaultKey, payload);
     });
   }
 
   /** Same password-field exception as `saveSSHProfile` (see its doc comment), applied to
    * `secretAccessKey`/`sessionToken` via `guardS3SecretWrite`. */
-  async saveS3Profile(profile: S3Config): Promise<void> {
+  async saveS3Profile(vaultId: string, profile: S3Config): Promise<void> {
     if (!profile?.id) {
       throw new Error('Profile ID is required');
     }
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
-      const recipientId = this.requireUnlockedRecipientId();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const recipientId = this.requireUnlockedRecipientId(vaultId);
       const isAdmin = this.isSelfAdmin(file, recipientId);
       const payload = await this.decryptPayload(file, vaultKey);
       const index = payload.s3.findIndex((p) => p.id === profile.id);
@@ -880,17 +956,17 @@ export class TeamVaultService {
       } else {
         payload.s3.push(stamped);
       }
-      await this.persistPayload(file, vaultKey, payload);
+      await this.persistPayload(vaultId, file, vaultKey, payload);
     });
   }
 
-  async deleteS3Profile(id: string): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+  async deleteS3Profile(vaultId: string, id: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       payload.s3 = payload.s3.filter((p) => p.id !== id);
-      await this.persistPayload(file, vaultKey, payload);
+      await this.persistPayload(vaultId, file, vaultKey, payload);
     });
   }
 
@@ -927,20 +1003,20 @@ export class TeamVaultService {
    * segments are trimmed and empty segments rejected, but intermediate ancestors need not already
    * exist as their own entries (the renderer's tree builder synthesizes them from any deeper
    * path). */
-  async saveTeamFolder(folderPath: string): Promise<void> {
+  async saveTeamFolder(vaultId: string, folderPath: string): Promise<void> {
     const trimmed = normalizeFolderPath(folderPath);
     if (!trimmed) {
       throw new Error('Folder name is required');
     }
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       const folders = payload.folders ?? [];
       if (!folders.includes(trimmed)) {
         folders.push(trimmed);
       }
-      await this.persistPayload(file, vaultKey, { ...payload, folders });
+      await this.persistPayload(vaultId, file, vaultKey, { ...payload, folders });
     });
   }
 
@@ -948,16 +1024,16 @@ export class TeamVaultService {
    * `group` whose path is the folder itself or starts with `folderPath + '/'` — unlike the
    * personal `ProfileStore.renameFolder` (exact-match only, no nesting), a Team Vault folder path
    * can have arbitrarily deep children that must move with it. */
-  async renameTeamFolder(oldPath: string, newPath: string): Promise<void> {
+  async renameTeamFolder(vaultId: string, oldPath: string, newPath: string): Promise<void> {
     const trimmedOld = normalizeFolderPath(oldPath);
     const trimmedNew = normalizeFolderPath(newPath);
     if (!trimmedNew) {
       throw new Error('New folder name is required');
     }
     if (trimmedOld === trimmedNew) return;
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       const remap = (p: string) => remapFolderPath(p, trimmedOld, trimmedNew);
 
@@ -972,7 +1048,12 @@ export class TeamVaultService {
         folderIcons[remap(path)] = icon;
       }
 
-      await this.persistPayload(file, vaultKey, { ssh, s3, folders: Array.from(new Set(folders)), folderIcons });
+      await this.persistPayload(vaultId, file, vaultKey, {
+        ssh,
+        s3,
+        folders: Array.from(new Set(folders)),
+        folderIcons,
+      });
     });
   }
 
@@ -981,12 +1062,12 @@ export class TeamVaultService {
    * `deleteProfiles` is set — are removed from the vault outright, mirroring `ProfileStore`'s
    * `deleteFolder(name, deleteProfiles)`. Team profiles have no tombstone/soft-delete concept
    * (unlike personal ones): a Team Vault "delete" always just drops the entry from the payload. */
-  async deleteTeamFolder(folderPath: string, deleteProfiles = false): Promise<void> {
+  async deleteTeamFolder(vaultId: string, folderPath: string, deleteProfiles = false): Promise<void> {
     const trimmed = normalizeFolderPath(folderPath);
     if (!trimmed) return;
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       const affected = (group: string | undefined) => !!group && isSelfOrDescendant(group, trimmed);
 
@@ -998,7 +1079,7 @@ export class TeamVaultService {
         if (!isSelfOrDescendant(path, trimmed)) folderIcons[path] = icon;
       }
 
-      await this.persistPayload(file, vaultKey, { ssh, s3, folders, folderIcons });
+      await this.persistPayload(vaultId, file, vaultKey, { ssh, s3, folders, folderIcons });
     });
   }
 
@@ -1007,14 +1088,14 @@ export class TeamVaultService {
    * is validated by the IPC handler against `TEAM_FOLDER_ICONS` before this is ever called; this
    * layer doesn't re-validate it, same division of responsibility as the rest of this file's
    * handler-vs-service validation split. */
-  async setTeamFolderIcon(folderPath: string, icon: string | undefined): Promise<void> {
+  async setTeamFolderIcon(vaultId: string, folderPath: string, icon: string | undefined): Promise<void> {
     const trimmed = normalizeFolderPath(folderPath);
     if (!trimmed) {
       throw new Error('Folder name is required');
     }
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const vaultKey = this.requireUnlocked();
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
       const payload = await this.decryptPayload(file, vaultKey);
       const folderIcons = { ...(payload.folderIcons ?? {}) };
       if (icon) {
@@ -1022,7 +1103,7 @@ export class TeamVaultService {
       } else {
         delete folderIcons[trimmed];
       }
-      await this.persistPayload(file, vaultKey, { ...payload, folderIcons });
+      await this.persistPayload(vaultId, file, vaultKey, { ...payload, folderIcons });
     });
   }
 
@@ -1030,8 +1111,13 @@ export class TeamVaultService {
    * and recomputing `accessHeaderMac` even though `accessHeader`/`recovery` themselves don't
    * change here — the MAC covers `revision` (see `TeamVaultFile.accessHeaderMac`'s doc comment),
    * which always bumps on a mutating write, so it must always be recomputed too. */
-  private async persistPayload(file: TeamVaultFile, vaultKey: Buffer, payload: TeamVaultPayload): Promise<void> {
-    const updatedBy = this.requireUnlockedRecipientId();
+  private async persistPayload(
+    vaultId: string,
+    file: TeamVaultFile,
+    vaultKey: Buffer,
+    payload: TeamVaultPayload
+  ): Promise<void> {
+    const updatedBy = this.requireUnlockedRecipientId(vaultId);
     const newRevision = file.revision + 1;
     const updated: TeamVaultFile = {
       ...file,
@@ -1048,7 +1134,7 @@ export class TeamVaultService {
         file.recovery
       ),
     };
-    await this.writeFile(updated);
+    await this.writeFile(vaultId, updated);
   }
 
   /** Removes the Team Vault from THIS machine only — the local file and the in-memory unlocked
@@ -1058,24 +1144,43 @@ export class TeamVaultService {
    * (`requireUnlockedAsAdmin`). The caller (`teamVaultHandlers.ts`) is responsible for also
    * clearing `TeamVaultConfigStore`'s remembered self-identity, same as it sets it after
    * enroll/create/unlock — `TeamVaultService` has no dependency on that store. */
-  async deleteVault(): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      this.requireUnlockedAsAdmin(file);
-      await fs.unlink(this.filePath).catch((err) => {
+  async deleteVault(vaultId: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      this.requireUnlockedAsAdmin(vaultId, file);
+      await fs.unlink(this.getFilePath(vaultId)).catch((err) => {
         if (err?.code !== 'ENOENT') throw err;
       });
-      this.lock();
-      this.lastKnownRemoteEntry = undefined;
-      this.lastSyncedRevision = undefined;
+      this.states.delete(vaultId);
+    });
+  }
+
+  /** Removes a LOCKED vault's local file, identity subdirectory, and runtime state from this
+   * device, without needing the Vault Key — distinct from `deleteVault`, which is an
+   * authenticated, whole-team-affecting action. Used for "forget a team I'm no longer actively
+   * using on this machine" (`TEAM_VAULT_FORGET`). Refuses outright while the vault is unlocked:
+   * forgetting it would silently discard whatever hasn't been pushed yet, exactly what
+   * `TeamVaultUnpushedChangesError` already guards against on the sync path — the caller must
+   * lock it first. The caller (`teamVaultHandlers.ts`) is responsible for also clearing this
+   * vault's `TeamVaultConfigStore` entry. */
+  async forgetLocalVault(vaultId: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      if (this.isUnlocked(vaultId)) {
+        throw new Error('Lock this Team Vault before forgetting it on this device');
+      }
+      await fs.unlink(this.getFilePath(vaultId)).catch((err) => {
+        if (err?.code !== 'ENOENT') throw err;
+      });
+      await fs.rm(this.identityDirFor(vaultId), { recursive: true, force: true }).catch(() => {});
+      this.states.delete(vaultId);
     });
   }
 
   /** Unwraps the Vault Key for `recipientId` (a member or the recovery identity) using
    * `identityFilePath`, and caches it for the rest of this session. See the class doc comment for
    * the unresolved PIN-prompt caveat. */
-  async unlock(recipientId: string, identityFilePath: string): Promise<void> {
-    const file = await this.requireFile();
+  async unlock(vaultId: string, recipientId: string, identityFilePath: string): Promise<void> {
+    const file = await this.requireFile(vaultId);
     const source =
       file.accessHeader.find((e) => e.recipientId === recipientId) ??
       (file.recovery.recipientId === recipientId ? file.recovery : undefined);
@@ -1104,8 +1209,9 @@ export class TeamVaultService {
     if (expectedMac !== file.accessHeaderMac) {
       throw new TeamVaultHeaderIntegrityError();
     }
-    this.unlockedVaultKey = vaultKey;
-    this.unlockedAsRecipientId = recipientId;
+    const state = this.stateFor(vaultId);
+    state.unlockedVaultKey = vaultKey;
+    state.unlockedAsRecipientId = recipientId;
   }
 
   /**
@@ -1116,34 +1222,38 @@ export class TeamVaultService {
    * entry's id never varies, see `createVault`), and the pasted text — a private key — is fed to
    * `age` through a FIFO, never written to disk (see `TeamVaultCryptoService.withRecoveryIdentity`).
    */
-  async unlockWithRecoveryText(identityText: string): Promise<void> {
-    const file = await this.requireFile();
+  async unlockWithRecoveryText(vaultId: string, identityText: string): Promise<void> {
+    const file = await this.requireFile(vaultId);
     await this.cryptoService.withRecoveryIdentity(identityText, (identityPath) =>
-      this.unlock(file.recovery.recipientId, identityPath)
+      this.unlock(vaultId, file.recovery.recipientId, identityPath)
     );
   }
 
-  /** Must be called whenever the configured S3 target/remoteBasePath changes — otherwise a stat
-   * recorded against a *previous* target would be compared against the newly configured one on
-   * the next push, producing a spurious (or worse, falsely-absent) conflict. Same reasoning as
-   * `ProfileSyncService.resetRemoteState()`. */
-  resetRemoteState(): void {
-    this.lastKnownRemoteEntry = undefined;
-    this.lastSyncedRevision = undefined;
+  /** Must be called whenever the configured S3 target/remoteBasePath for `vaultId` changes —
+   * otherwise a stat recorded against a *previous* target would be compared against the newly
+   * configured one on the next push, producing a spurious (or worse, falsely-absent) conflict.
+   * Same reasoning as `ProfileSyncService.resetRemoteState()`. */
+  resetRemoteState(vaultId: string): void {
+    const state = this.states.get(vaultId);
+    if (state) {
+      state.lastKnownRemoteEntry = undefined;
+      state.lastSyncedRevision = undefined;
+    }
   }
 
   /** Whether a vault file already exists at the remote target — used by the UI to offer "Pull
    * existing vault" instead of "Create Vault" when no local file exists yet (§4.3: a new member
    * joins an existing team vault, they don't create their own). */
-  async hasRemoteVault(provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
-    return (await this.statOrNull(provider, this.remoteVaultPath(remoteBasePath))) !== null;
+  async hasRemoteVault(vaultId: string, provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
+    return (await this.statOrNull(provider, this.remoteVaultPath(remoteBasePath, vaultId))) !== null;
   }
 
   /**
    * Pushes the local vault file to the configured S3 target (docs/team-vault-plan.md Fas 3).
-   * Serialized through `queueMutation` along with every local mutation and `pullFromRemote`, so a
-   * push can never interleave with a concurrent local write or pull touching the same in-memory
-   * state (`lastKnownRemoteEntry`, `unlockedVaultKey`).
+   * Serialized through `queueMutation` along with every local mutation and `pullFromRemote` FOR
+   * THIS `vaultId` only, so a push can never interleave with a concurrent local write or pull
+   * touching the same in-memory state (`lastKnownRemoteEntry`, `unlockedVaultKey`) — a push/pull
+   * for a *different* vaultId runs on its own independent queue and never waits behind this one.
    *
    * Two independent checks, not one, run before any byte is written remotely:
    * 1. **Identity.** Whenever something already exists at the remote path, its `vaultId` is read
@@ -1158,11 +1268,17 @@ export class TeamVaultService {
    *    conditional-write primitive to use instead — verified, and not portable across S3/MinIO
    *    versions anyway) still applies when this instance has previously observed the remote,
    *    rejecting with `TeamVaultSyncConflictError` if someone else pushed since.
+   *
+   * The remote object path itself is `${remoteBasePath}/team-vault/${vaultId}/vault.json` (see
+   * `remoteVaultPath`) — including `vaultId` in the path, not just a fixed filename, means two
+   * unrelated teams that (by misconfiguration) share the same `target`+`remoteBasePath` can never
+   * collide on the same S3 object regardless of what either admin configures.
    */
-  async pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
-    return this.queueMutation(async () => {
-      const file = await this.requireFile();
-      const remotePath = this.remoteVaultPath(remoteBasePath);
+  async pushToRemote(vaultId: string, provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
+      const state = this.stateFor(vaultId);
 
       const current = await this.statOrNull(provider, remotePath);
       if (current !== null) {
@@ -1172,8 +1288,8 @@ export class TeamVaultService {
         }
       }
 
-      if (this.lastKnownRemoteEntry !== undefined) {
-        const known = this.lastKnownRemoteEntry;
+      if (state.lastKnownRemoteEntry !== undefined) {
+        const known = state.lastKnownRemoteEntry;
         const unchanged =
           (known === null && current === null) ||
           (known !== null && current !== null && known.size === current.size && known.mtime === current.mtime);
@@ -1183,8 +1299,8 @@ export class TeamVaultService {
       }
 
       await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
-      this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
-      this.lastSyncedRevision = file.revision;
+      state.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      state.lastSyncedRevision = file.revision;
     });
   }
 
@@ -1210,15 +1326,33 @@ export class TeamVaultService {
    * verify against either way.
    *
    * Also refuses to overwrite local changes that were never pushed (`TeamVaultUnpushedChangesError`,
-   * see `lastSyncedRevision`'s doc comment) unless `options.force` is set — there's no per-record
-   * merge here (docs/team-vault-plan.md: a whole-file reject-and-pull-first model, same as push's
-   * own conflict check), so silently overwriting would otherwise just discard whatever the admin
-   * or a member edited locally since the last sync.
+   * see `VaultRuntimeState.lastSyncedRevision`'s doc comment) unless `options.force` is set —
+   * there's no per-record merge here (docs/team-vault-plan.md: a whole-file reject-and-pull-first
+   * model, same as push's own conflict check), so silently overwriting would otherwise just
+   * discard whatever the admin or a member edited locally since the last sync.
    */
-  async pullFromRemote(provider: IStorageProvider, remoteBasePath = '', options: { force?: boolean } = {}): Promise<void> {
-    return this.queueMutation(async () => {
-      const remotePath = this.remoteVaultPath(remoteBasePath);
+  async pullFromRemote(
+    vaultId: string,
+    provider: IStorageProvider,
+    remoteBasePath = '',
+    options: { force?: boolean } = {}
+  ): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
       const file = await this.readRemoteVaultFile(provider, remotePath);
+      const state = this.stateFor(vaultId);
+
+      // The remote object's path already embeds `vaultId` (see `remoteVaultPath`'s doc comment),
+      // but that only prevents two DIFFERENT teams' admins from accidentally colliding on the
+      // same object — it says nothing about whoever actually controls the bytes AT that path
+      // claiming to be a different vault than the one this call asked to pull (a brand-new join
+      // has nothing stored locally yet to cross-check against, so without this the content's own
+      // `vaultId` field would simply be trusted as-is). Checked unconditionally, before the
+      // local-file branch below even runs, so this holds for a first-ever join exactly as much
+      // as for every later pull.
+      if (file.vaultId !== vaultId) {
+        throw new TeamVaultForeignVaultError();
+      }
 
       // Whether the currently-held Vault Key is proven to still decrypt the pulled file —
       // confirmed below via the accessHeaderMac check, the only place that's actually verified.
@@ -1226,13 +1360,13 @@ export class TeamVaultService {
       // session has nothing to preserve either way, and `lock()` on either is a no-op.
       let keyProvenStillValid = false;
 
-      const localFile = await this.readFile();
+      const localFile = await this.readFile(vaultId);
       if (localFile) {
         // Verifying the pulled header against a tampered/forged entry requires the Vault Key
         // (see TeamVaultLockedForPullError's doc comment) — refuse outright rather than silently
         // persisting an unverifiable file over the one already trusted locally. A brand-new join
         // (localFile === null) has nothing to verify against either way, so this never blocks that.
-        if (!this.unlockedVaultKey) {
+        if (!state.unlockedVaultKey) {
           throw new TeamVaultLockedForPullError();
         }
         // Identity BEFORE freshness, and never skippable: `revision` is an ordinary field in an
@@ -1249,8 +1383,8 @@ export class TeamVaultService {
         }
         if (
           !options.force &&
-          this.lastSyncedRevision !== undefined &&
-          localFile.revision !== this.lastSyncedRevision
+          state.lastSyncedRevision !== undefined &&
+          localFile.revision !== state.lastSyncedRevision
         ) {
           throw new TeamVaultUnpushedChangesError();
         }
@@ -1280,9 +1414,9 @@ export class TeamVaultService {
         // directly against our still-held key. It's valid only if computed with the real Vault
         // Key, for the exact `vaultId`/`revision`/`accessHeader`/`recovery` being pulled — there
         // is no revision value an attacker can choose their way around.
-        if (this.unlockedVaultKey && file.accessHeader.length >= localFile.accessHeader.length) {
+        if (state.unlockedVaultKey && file.accessHeader.length >= localFile.accessHeader.length) {
           const expectedMac = this.cryptoService.computeAccessHeaderMac(
-            this.unlockedVaultKey,
+            state.unlockedVaultKey,
             file.vaultId,
             file.revision,
             file.vaultName ?? '',
@@ -1293,7 +1427,7 @@ export class TeamVaultService {
             throw new TeamVaultHeaderIntegrityError();
           }
           keyProvenStillValid = true;
-        } else if (this.unlockedVaultKey && file.accessHeader.length < localFile.accessHeader.length) {
+        } else if (state.unlockedVaultKey && file.accessHeader.length < localFile.accessHeader.length) {
           // A shrunk header claims a `removeMember` rotation happened — which is the ONLY
           // operation allowed to change the Vault Key, so `accessHeaderMac` (now keyed by a
           // DIFFERENT key than ours) can no longer be checked directly. Previously this branch
@@ -1305,7 +1439,7 @@ export class TeamVaultService {
           // rotated away from that key could have produced it. See
           // `TeamVaultRotationProofError`'s doc comment for the multi-step-offline caveat.
           const expectedProof = this.cryptoService.computeRotationProof(
-            this.unlockedVaultKey,
+            state.unlockedVaultKey,
             file.vaultId,
             file.revision,
             file.vaultName ?? '',
@@ -1320,15 +1454,15 @@ export class TeamVaultService {
         }
       }
 
-      await this.writeFile(file);
-      this.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
-      this.lastSyncedRevision = file.revision;
+      await this.writeFile(vaultId, file);
+      state.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      state.lastSyncedRevision = file.revision;
       // Only lock when the held key ISN'T proven still valid — e.g. after a removeMember
       // elsewhere rotated it (accessHeader.length dropped, so the check above never ran). A
       // background auto-poll (IpcBridge.runTeamVaultAutoPoll) pulling in a plain profile edit
       // from another member must not force a re-unlock every time; only an actual re-key should.
       if (!keyProvenStillValid) {
-        this.lock();
+        this.lock(vaultId);
       }
     });
   }
@@ -1338,13 +1472,14 @@ export class TeamVaultService {
    * `HeadObjectCommand`), compared against `lastKnownRemoteEntry` the same way `pushToRemote`'s
    * own freshness check does. Deliberately NOT run through `queueMutation` (read-only, mutates no
    * state) so a poll never has to wait behind an unrelated pending push/pull. */
-  async hasRemoteChangedSinceLastSync(provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
-    const remotePath = this.remoteVaultPath(remoteBasePath);
+  async hasRemoteChangedSinceLastSync(vaultId: string, provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
+    const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
     const current = await this.statOrNull(provider, remotePath);
-    if (this.lastKnownRemoteEntry === undefined) {
+    const state = this.states.get(vaultId);
+    if (!state || state.lastKnownRemoteEntry === undefined) {
       return current !== null;
     }
-    const known = this.lastKnownRemoteEntry;
+    const known = state.lastKnownRemoteEntry;
     const unchanged =
       (known === null && current === null) ||
       (known !== null && current !== null && known.size === current.size && known.mtime === current.mtime);
@@ -1353,11 +1488,13 @@ export class TeamVaultService {
 
   /** Whether this machine has local Team Vault mutations that have never been pushed — used by
    * the background poll to decide whether a detected remote change can be pulled automatically
-   * (see `lastSyncedRevision`'s doc comment) or must instead just be surfaced as a notice. */
-  async hasUnpushedLocalChanges(): Promise<boolean> {
-    const file = await this.readFile();
-    if (!file || this.lastSyncedRevision === undefined) return false;
-    return file.revision !== this.lastSyncedRevision;
+   * (see `VaultRuntimeState.lastSyncedRevision`'s doc comment) or must instead just be surfaced
+   * as a notice. */
+  async hasUnpushedLocalChanges(vaultId: string): Promise<boolean> {
+    const file = await this.readFile(vaultId);
+    const state = this.states.get(vaultId);
+    if (!file || !state || state.lastSyncedRevision === undefined) return false;
+    return file.revision !== state.lastSyncedRevision;
   }
 
   /** Reads and fully validates a vault file from the remote — shared by `pushToRemote`'s identity
@@ -1393,8 +1530,13 @@ export class TeamVaultService {
     return parsed;
   }
 
-  private remoteVaultPath(remoteBasePath: string): string {
-    return joinPaths('s3', remoteBasePath, REMOTE_VAULT_FILENAME);
+  /** `${remoteBasePath}/team-vault/${vaultId}/vault.json` — `vaultId` is part of the path, not
+   * just a fixed filename, so two teams that happen to share the same `target`+`remoteBasePath`
+   * (e.g. one bucket, per-team IAM-scoped prefixes an admin got wrong) can never collide on the
+   * same remote object: collision becomes structurally impossible regardless of admin
+   * misconfiguration, rather than merely unlikely. See `pushToRemote`'s doc comment. */
+  private remoteVaultPath(remoteBasePath: string, vaultId: string): string {
+    return joinPaths('s3', remoteBasePath, `team-vault/${vaultId}/vault.json`);
   }
 
   private assertNoAgeRecipientTampering(localFile: TeamVaultFile, remoteFile: TeamVaultFile): void {
@@ -1498,18 +1640,20 @@ export class TeamVaultService {
     return false;
   }
 
-  private requireUnlocked(): Buffer {
-    if (!this.unlockedVaultKey) {
+  private requireUnlocked(vaultId: string): Buffer {
+    const vaultKey = this.states.get(vaultId)?.unlockedVaultKey;
+    if (!vaultKey) {
       throw new Error('Unlock the Team Vault before making changes to it');
     }
-    return this.unlockedVaultKey;
+    return vaultKey;
   }
 
-  private requireUnlockedRecipientId(): string {
-    if (!this.unlockedAsRecipientId) {
+  private requireUnlockedRecipientId(vaultId: string): string {
+    const recipientId = this.states.get(vaultId)?.unlockedAsRecipientId;
+    if (!recipientId) {
       throw new Error('Unlock the Team Vault before making changes to it');
     }
-    return this.unlockedAsRecipientId;
+    return recipientId;
   }
 
   /** Beyond merely being unlocked (any valid member, admin or not — what
@@ -1518,8 +1662,8 @@ export class TeamVaultService {
    * (full restoration access by design, §4.1 — not a regular member, never demotable). Without
    * this, any plain member could already add/remove/promote other members or delete the vault —
    * a real gap `requireUnlockedRecipientId` alone never closed. */
-  private requireUnlockedAsAdmin(file: TeamVaultFile): string {
-    const recipientId = this.requireUnlockedRecipientId();
+  private requireUnlockedAsAdmin(vaultId: string, file: TeamVaultFile): string {
+    const recipientId = this.requireUnlockedRecipientId(vaultId);
     if (!this.isSelfAdmin(file, recipientId)) {
       throw new Error('Only a Team Vault admin can do this');
     }
@@ -1536,9 +1680,9 @@ export class TeamVaultService {
     return entry?.role === 'admin';
   }
 
-  private async readFile(): Promise<TeamVaultFile | null> {
+  private async readFile(vaultId: string): Promise<TeamVaultFile | null> {
     try {
-      const raw = await fs.readFile(this.filePath, 'utf-8');
+      const raw = await fs.readFile(this.getFilePath(vaultId), 'utf-8');
       return JSON.parse(raw) as TeamVaultFile;
     } catch (err: any) {
       if (err?.code === 'ENOENT') return null;
@@ -1546,29 +1690,37 @@ export class TeamVaultService {
     }
   }
 
-  private async requireFile(): Promise<TeamVaultFile> {
-    const file = await this.readFile();
+  private async requireFile(vaultId: string): Promise<TeamVaultFile> {
+    const file = await this.readFile(vaultId);
     if (!file) {
       throw new Error('No Team Vault exists on this machine yet');
     }
     return file;
   }
 
-  private async writeFile(file: TeamVaultFile): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(file, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  private async writeFile(vaultId: string, file: TeamVaultFile): Promise<void> {
+    const filePath = this.getFilePath(vaultId);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(file, null, 2), { encoding: 'utf-8', mode: 0o600 });
     try {
-      await fs.chmod(this.filePath, 0o600);
+      await fs.chmod(filePath, 0o600);
     } catch {
       // Ignore chmod failures on non-POSIX filesystems.
     }
   }
 
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
+  /** Per-`vaultId` write queue: mutations against DIFFERENT vaults run fully independently
+   * (never wait behind one another), while mutations against the SAME vault are still fully
+   * serialized, same guarantee the single queue gave the single-vault version of this file. */
+  private queueMutation<T>(vaultId: string, mutation: () => Promise<T>): Promise<T> {
+    const previous = this.writeQueues.get(vaultId) ?? Promise.resolve();
+    const resultPromise = previous.then(mutation, mutation);
+    this.writeQueues.set(
+      vaultId,
+      resultPromise.then(
+        () => {},
+        () => {}
+      )
     );
     return resultPromise;
   }

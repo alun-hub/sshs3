@@ -40,6 +40,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         // missing the secret but untrusted for host/port/proxy too (TeamVaultService guards
         // those server-side on save, but connect must still ignore whatever the renderer sent).
         const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+          config.sftpConfig.teamVaultProfileRef.vaultId,
           'ssh',
           config.sftpConfig.teamVaultProfileRef.profileId
         );
@@ -51,6 +52,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
       }
       if (config.type === 's3' && config.s3Config?.teamVaultProfileRef && !bridge.storageRegistry.has(config.id)) {
         const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+          config.s3Config.teamVaultProfileRef.vaultId,
           's3',
           config.s3Config.teamVaultProfileRef.profileId
         );

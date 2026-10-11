@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   Cloud,
   Copy,
   DownloadCloud,
-  Fingerprint,
-  KeyRound,
   Loader2,
   Lock,
   Pencil,
@@ -21,41 +20,43 @@ import type { TeamVaultRole, TeamVaultStatus } from '@shared/types/teamVault';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
 import { formatDateTime } from '../../lib/dateFormat';
-import { buildTeamVaultJoinInfo, parseTeamVaultJoinInfo } from '../../lib/teamVaultJoinInfo';
+import { parseTeamVaultJoinInfo } from '../../lib/teamVaultJoinInfo';
 import { useConfirm } from '../ConfirmDialog';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 
 function emptyS3TargetDraft(): SyncTargetDraft {
   return { ...emptySyncTargetDraft(), type: 's3' };
 }
 
-/** Admin UI for the local Team Vault (docs/team-vault-plan.md Fas 2 — a single local vault, no
- * S3 sync yet; Fas 3 adds remote read/write on top of the same `window.multissh.teamVault*`
- * calls used here). */
-export const TeamVaultSettingsPanel: React.FC = () => {
+interface TeamVaultDetailPanelProps {
+  vaultId: string;
+  /** Returns to `TeamVaultListPanel` — wired to both an explicit "Back" button and Escape. */
+  onBack: () => void;
+  /** Called after this vault is deleted (admin, whole-team) or forgotten on this device, so the
+   * list can drop it and return to the list view. */
+  onVaultRemoved: () => void;
+}
+
+/**
+ * Per-team detail/admin UI for the Team Vault (docs/team-vault-plan.md's multi-team plan §7) —
+ * mounted by `TeamVaultListPanel` with `key={vaultId}` so switching teams always starts from a
+ * clean draft state. Creating a brand-new vault or generating a join-request identity both now
+ * live in `TeamVaultListPanel` instead (neither has a `vaultId` to scope itself by yet) — this
+ * panel only ever renders for a team already known on this device.
+ */
+export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaultId, onBack, onVaultRemoved }) => {
   const confirm = useConfirm();
   const [status, setStatus] = useState<TeamVaultStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // "Generate my Team Vault ID" — produces the age1yubikey1... string this device's PIV card
-  // will use, either to create the vault as its first admin or to join an existing one. Named
-  // for what it means to the user (their personal ID for Team Vault access), not the underlying
-  // age/PIV jargon.
-  const [enrolling, setEnrolling] = useState(false);
-  const [myRecipient, setMyRecipient] = useState<{ recipient: string; identityFilePath: string } | null>(null);
-  const [selfRecipientId, setSelfRecipientId] = useState('');
-  const [joinInfoCopied, setJoinInfoCopied] = useState(false);
-
-  const [creating, setCreating] = useState(false);
-  const [vaultNameDraft, setVaultNameDraft] = useState('');
-  const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
-  const [recoverySaved, setRecoverySaved] = useState(false);
-  const [recoveryCopied, setRecoveryCopied] = useState(false);
+  useEscapeToClose(onBack, true);
 
   // Rename the vault (admin only) — the descriptive name shown instead of the opaque vaultId.
   const [editingVaultName, setEditingVaultName] = useState(false);
   const [vaultNameEdit, setVaultNameEdit] = useState('');
   const [savingVaultName, setSavingVaultName] = useState(false);
+  const [vaultIdCopied, setVaultIdCopied] = useState(false);
 
   // Unlock (needed for add/remove — see TeamVaultService.unlock's doc comment on the still-open
   // PIN question).
@@ -77,7 +78,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [deletingVault, setDeletingVault] = useState(false);
 
   // Add member — the admin pastes the whole join-info blob a new member copies from their own
-  // "Generate my Team Vault ID" step (see buildTeamVaultJoinInfo); parsed automatically so the admin
+  // "Generate my Team Vault ID" step (TeamVaultListPanel); parsed automatically so the admin
   // never has to hand-copy the long age1yubikey1... string themselves.
   const [joinInfoPaste, setJoinInfoPaste] = useState('');
   const [newRecipientId, setNewRecipientId] = useState('');
@@ -94,109 +95,41 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   const [savingTarget, setSavingTarget] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pulling, setPulling] = useState(false);
-  const [hasRemoteVault, setHasRemoteVault] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const s = await window.multissh.teamVaultGetStatus();
+      const s = await window.multissh.teamVaultGetStatus(vaultId);
       setStatus(s);
-      if (!s.exists && s.remoteConfigured) {
-        setHasRemoteVault(await window.multissh.teamVaultHasRemoteVault());
-      } else {
-        setHasRemoteVault(false);
-      }
       // Prefill rather than making the admin retype/relocate these every session — found to be a
       // real usability problem during end-to-end testing (see docs/team-vault-plan.md). Only
       // fills an empty field, so it never clobbers something the admin already typed this
       // session (e.g. unlocking as a different member than the one remembered).
       setUnlockRecipientId((prev) => prev || s.selfRecipientId || '');
       setUnlockIdentityPath((prev) => prev || s.selfIdentityFilePath || '');
-      setSelfRecipientId((prev) => prev || s.selfRecipientId || '');
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load Team Vault status'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [vaultId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const handleEnroll = async () => {
-    setEnrolling(true);
-    setError(null);
-    try {
-      const result = await window.multissh.teamVaultEnrollRecipient();
-      setMyRecipient(result);
-      // Best-effort suggestion from an existing smartcard cert's UPN — never overwrites something
-      // the admin already typed.
-      if (result.suggestedLabel) {
-        setSelfRecipientId((prev) => prev || result.suggestedLabel || '');
-      }
-    } catch (err) {
-      setError(describeIpcError(err, 'Failed to generate a recipient from this PIV card'));
-    } finally {
-      setEnrolling(false);
-    }
-  };
-
-  const handleCreateVault = async () => {
-    if (!myRecipient || !selfRecipientId.trim()) return;
-    setCreating(true);
-    setError(null);
-    try {
-      const { recoveryIdentity: identity } = await window.multissh.teamVaultCreate(
-        selfRecipientId.trim(),
-        myRecipient.recipient,
-        vaultNameDraft.trim()
-      );
-      setRecoveryIdentity(identity);
-      setRecoverySaved(false);
-      setRecoveryCopied(false);
-      await load();
-    } catch (err) {
-      setError(describeIpcError(err, 'Failed to create the Team Vault'));
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const handleRenameVault = async () => {
     setSavingVaultName(true);
     setError(null);
     try {
-      await window.multissh.teamVaultRename(vaultNameEdit.trim());
+      await window.multissh.teamVaultRename(vaultId, vaultNameEdit.trim());
       setEditingVaultName(false);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to rename the vault'));
     } finally {
       setSavingVaultName(false);
-    }
-  };
-
-  const handleCopyJoinInfo = async () => {
-    if (!myRecipient || !selfRecipientId.trim()) return;
-    try {
-      await navigator.clipboard.writeText(buildTeamVaultJoinInfo(selfRecipientId.trim(), myRecipient.recipient));
-      setJoinInfoCopied(true);
-      setTimeout(() => setJoinInfoCopied(false), 3000);
-    } catch {
-      setError('Failed to copy join info to clipboard');
-    }
-  };
-
-  const handleCopyRecovery = async () => {
-    if (!recoveryIdentity) return;
-    try {
-      await navigator.clipboard.writeText(recoveryIdentity);
-      setRecoveryCopied(true);
-      setTimeout(() => setRecoveryCopied(false), 3000);
-    } catch {
-      setError('Failed to copy recovery key to clipboard');
     }
   };
 
@@ -216,7 +149,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setUnlocking(true);
     setError(null);
     try {
-      await window.multissh.teamVaultUnlock(unlockRecipientId.trim(), unlockIdentityPath.trim());
+      await window.multissh.teamVaultUnlock(vaultId, unlockRecipientId.trim(), unlockIdentityPath.trim());
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to unlock the Team Vault'));
@@ -230,7 +163,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setRecovering(true);
     setError(null);
     try {
-      await window.multissh.teamVaultUnlockWithRecoveryText(recoveryTextInput);
+      await window.multissh.teamVaultUnlockWithRecoveryText(vaultId, recoveryTextInput);
       setRecoveryTextInput('');
       setShowRecoveryUnlock(false);
       await load();
@@ -246,7 +179,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setAddingMember(true);
     setError(null);
     try {
-      await window.multissh.teamVaultAddMember(newRecipientId.trim(), newAgeRecipient.trim(), newRole);
+      await window.multissh.teamVaultAddMember(vaultId, newRecipientId.trim(), newAgeRecipient.trim(), newRole);
       setJoinInfoPaste('');
       setNewRecipientId('');
       setNewAgeRecipient('');
@@ -269,7 +202,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setBusyRecipientId(recipientId);
     setError(null);
     try {
-      await window.multissh.teamVaultRemoveMember(recipientId);
+      await window.multissh.teamVaultRemoveMember(vaultId, recipientId);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to remove member'));
@@ -282,15 +215,15 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     if (!(await confirm({
       title: 'Remove vault from this machine',
       message:
-        'This forgets the Team Vault on this machine only — the remote S3 copy (if any) is not touched, and other members keep their access. You can get it back later with "Pull existing vault" if a remote copy exists.',
+        'This forgets the Team Vault on this machine only — the remote S3 copy (if any) is not touched, and other members keep their access. You can get it back later by joining again if a remote copy exists.',
     }))) {
       return;
     }
     setDeletingVault(true);
     setError(null);
     try {
-      await window.multissh.teamVaultDelete();
-      await load();
+      await window.multissh.teamVaultDelete(vaultId);
+      onVaultRemoved();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to remove the vault from this machine'));
     } finally {
@@ -302,7 +235,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setBusyRecipientId(recipientId);
     setError(null);
     try {
-      await window.multissh.teamVaultSetRole(recipientId, role);
+      await window.multissh.teamVaultSetRole(vaultId, recipientId, role);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to change role'));
@@ -336,7 +269,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setTargetError(null);
     setSavingTarget(true);
     try {
-      await window.multissh.teamVaultSetTarget(buildSyncTarget(targetDraft), targetDraft.remoteBasePath);
+      await window.multissh.teamVaultSetTarget(vaultId, buildSyncTarget(targetDraft), targetDraft.remoteBasePath);
       setEditingTarget(false);
       await load();
     } catch (err) {
@@ -350,7 +283,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setPushing(true);
     setError(null);
     try {
-      await window.multissh.teamVaultPush();
+      await window.multissh.teamVaultPush(vaultId);
       await load();
     } catch (err) {
       setError(describeIpcError(err, 'Push failed'));
@@ -363,7 +296,7 @@ export const TeamVaultSettingsPanel: React.FC = () => {
     setPulling(true);
     setError(null);
     try {
-      await window.multissh.teamVaultPull(force ? { force: true } : undefined);
+      await window.multissh.teamVaultPull(vaultId, force ? { force: true } : undefined);
       await load();
     } catch (err) {
       // TeamVaultUnpushedChangesError loses its class crossing IPC (plain Error on this side),
@@ -393,26 +326,37 @@ export const TeamVaultSettingsPanel: React.FC = () => {
   // the real admin check (`TeamVaultService.requireUnlockedAsAdmin`) regardless of this.
   const isAdmin = !!status?.members?.some((m) => m.recipientId === status.selfRecipientId && m.role === 'admin');
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-txt-muted">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading Team Vault status...
-      </div>
-    );
-  }
+  // A new member's join flow (`TeamVaultListPanel`) needs the real vaultId up front — the remote
+  // object path is keyed by it, so there's no way to discover it blind the way a single-team
+  // install's "point at a bucket and pull" used to work. Anyone already in the team copies it
+  // from here and sends it to the joiner the same out-of-band way they already share the S3
+  // target/credentials.
+  const handleCopyVaultId = async () => {
+    if (!status?.vaultId) return;
+    try {
+      await navigator.clipboard.writeText(status.vaultId);
+      setVaultIdCopied(true);
+      setTimeout(() => setVaultIdCopied(false), 3000);
+    } catch {
+      setError('Failed to copy the Team ID to clipboard');
+    }
+  };
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Teams
+        </button>
         <h3 className="flex items-center gap-2 text-sm font-semibold text-txt-primary">
           <Shield className="h-4 w-4 text-sky-400" />
-          Team Vault
+          {status?.vaultName || status?.vaultId || vaultId}
         </h3>
-        <p className="mt-1 text-xs text-txt-muted">
-          Share connection profiles and system credentials with your team, unlocked per-member by
-          PIV hardware key instead of a shared password.
-        </p>
       </div>
 
       {error && (
@@ -421,110 +365,16 @@ export const TeamVaultSettingsPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Always visible, regardless of whether a vault already exists on this machine — not just
-          in the empty state. Generating a fresh recipient / copying join info is also how you'd
-          ask to join a *second* team later (multi-team support is future work, Fas D in
-          connection-manager-workspaces-plan.md), so this shouldn't be locked away once the first
-          vault is set up. */}
-      <div className="space-y-3 rounded-lg border border-border-subtle bg-app-surface p-4">
-        <p className="text-xs font-medium text-txt-secondary">Your Team Vault identity</p>
-        {!status?.exists && (
-          <p className="text-xs text-txt-secondary">
-            No Team Vault exists on this machine yet. Generate a recipient from your PIV card,
-            then create the vault with yourself as its first admin — or copy your join info below
-            to join a team that already has one.
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={() => void handleEnroll()}
-          disabled={enrolling}
-          className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
-        >
-          {enrolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5 text-sky-400" />}
-          Generate my Team Vault ID
-        </button>
-
-        {myRecipient && (
-          <div className="space-y-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
-            <p className="break-all text-xs text-emerald-300">{myRecipient.recipient}</p>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-txt-secondary">Your recipient id</label>
-              <input
-                type="text"
-                value={selfRecipientId}
-                onChange={(e) => setSelfRecipientId(e.target.value)}
-                placeholder="e.g. alice@piv:yubikey-1"
-                className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-              />
-            </div>
-            {!status?.exists && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-txt-secondary">
-                  Vault name (optional)
-                </label>
-                <input
-                  type="text"
-                  value={vaultNameDraft}
-                  onChange={(e) => setVaultNameDraft(e.target.value)}
-                  placeholder="e.g. Acme Infra Team"
-                  maxLength={200}
-                  className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-                />
-              </div>
-            )}
-            <div className="flex gap-2">
-              {!status?.exists && (
-                <button
-                  type="button"
-                  onClick={() => void handleCreateVault()}
-                  disabled={creating || !selfRecipientId.trim()}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-                >
-                  {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Create Vault
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => void handleCopyJoinInfo()}
-                disabled={!selfRecipientId.trim()}
-                title="Copy a join-info blob to send to a team admin"
-                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
-              >
-                {joinInfoCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                {joinInfoCopied ? 'Copied' : 'Copy join info'}
-              </button>
-            </div>
-            <p className="text-xs text-txt-muted">
-              {status?.exists
-                ? "Generating a new recipient here doesn't affect this vault — it's for joining a different team's vault later; copy your join info and send it to that team's admin."
-                : "Creating a vault makes you its first admin. To join a team's existing vault instead, copy your join info and send it to their admin."}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {!status?.exists && hasRemoteVault && (
-        <div className="space-y-2 rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
-          <p className="text-xs text-sky-300">
-            Your team already has a Team Vault at the configured S3 target. Pull it instead of
-            creating a new one.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handlePull()}
-            disabled={pulling}
-            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-          >
-            {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
-            Pull existing vault
-          </button>
+      {loading ? (
+        <div className="flex items-center gap-2 text-txt-muted">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading Team Vault status...
         </div>
-      )}
-
-      {status?.exists && (
+      ) : !status?.exists ? (
+        <p className="text-xs text-txt-muted">
+          This team isn't known on this device anymore. Go back to the team list.
+        </p>
+      ) : (
         <div className="space-y-4">
           <div className="rounded-lg border border-border-subtle bg-app-surface p-3 text-xs">
             <div className="flex items-center justify-between gap-2">
@@ -578,12 +428,32 @@ export const TeamVaultSettingsPanel: React.FC = () => {
                 </div>
               )}
             </div>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="text-txt-muted">Team ID</span>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-mono text-2xs text-txt-muted">{status.vaultId}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyVaultId()}
+                  title="Copy — share with anyone joining this team"
+                  className="shrink-0 text-txt-muted hover:text-txt-secondary"
+                >
+                  {vaultIdCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                </button>
+              </div>
+            </div>
             <div className="mt-1 flex items-center justify-between">
               <span className="text-txt-muted">Status</span>
               <span className={status.unlocked ? 'text-emerald-400' : 'text-amber-400'}>
                 {status.unlocked ? 'Unlocked for this session' : 'Locked'}
               </span>
             </div>
+            {status.selfRole && (
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-txt-muted">Your role</span>
+                <span className="capitalize text-txt-secondary">{status.selfRole}</span>
+              </div>
+            )}
           </div>
 
           {(status.adminCount ?? 0) < 2 && (
@@ -805,6 +675,88 @@ export const TeamVaultSettingsPanel: React.FC = () => {
             </button>
           </div>
 
+          <div className="space-y-2 rounded-lg border border-border-subtle bg-app-surface p-3">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-txt-secondary">
+              <Cloud className="h-3.5 w-3.5 text-sky-400" />
+              Remote sync (S3)
+            </p>
+
+            {!editingTarget ? (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-txt-muted">
+                    {status.remoteConfigured ? 'S3 target configured' : 'No S3 target configured yet'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={openEditTarget}
+                    className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    {status.remoteConfigured ? 'Edit target' : 'Configure target'}
+                  </button>
+                </div>
+                {status.remoteConfigured && (
+                  <>
+                    <div className="flex items-center justify-between text-xs text-txt-muted">
+                      <span>Last synced</span>
+                      <span>{status.lastSyncAt ? formatDateTime(status.lastSyncAt) : 'Never'}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handlePush()}
+                        disabled={pushing}
+                        className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                      >
+                        {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
+                        Push
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handlePull()}
+                        disabled={pulling || !status.unlocked}
+                        title={!status.unlocked ? 'Unlock the Team Vault first — pulling needs the Vault Key to verify the update' : undefined}
+                        className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                      >
+                        {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                        Pull
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                {targetError && (
+                  <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                    {targetError}
+                  </div>
+                )}
+                <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTarget(false)}
+                    disabled={savingTarget}
+                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveTarget()}
+                    disabled={savingTarget}
+                    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {savingTarget && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Save target
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {status.unlocked && isAdmin && (
             <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-3">
               <p className="flex items-center gap-1.5 text-xs font-medium text-red-300">
@@ -826,140 +778,6 @@ export const TeamVaultSettingsPanel: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      <div className="space-y-2 rounded-lg border border-border-subtle bg-app-surface p-3">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-txt-secondary">
-          <Cloud className="h-3.5 w-3.5 text-sky-400" />
-          Remote sync (S3)
-        </p>
-
-        {!editingTarget ? (
-          <>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-txt-muted">
-                {status?.remoteConfigured ? 'S3 target configured' : 'No S3 target configured yet'}
-              </span>
-              <button
-                type="button"
-                onClick={openEditTarget}
-                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover"
-              >
-                <Pencil className="h-3 w-3" />
-                {status?.remoteConfigured ? 'Edit target' : 'Configure target'}
-              </button>
-            </div>
-            {status?.remoteConfigured && (
-              <>
-                <div className="flex items-center justify-between text-xs text-txt-muted">
-                  <span>Last synced</span>
-                  <span>{status.lastSyncAt ? formatDateTime(status.lastSyncAt) : 'Never'}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handlePush()}
-                    disabled={pushing || !status?.exists}
-                    className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
-                  >
-                    {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
-                    Push
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handlePull()}
-                    disabled={pulling || !status?.unlocked}
-                    title={!status?.unlocked ? 'Unlock the Team Vault first — pulling needs the Vault Key to verify the update' : undefined}
-                    className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
-                  >
-                    {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
-                    Pull
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <div className="space-y-3">
-            {targetError && (
-              <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
-                {targetError}
-              </div>
-            )}
-            <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingTarget(false)}
-                disabled={savingTarget}
-                className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSaveTarget()}
-                disabled={savingTarget}
-                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-              >
-                {savingTarget && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save target
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {recoveryIdentity && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Save your recovery key"
-            className="w-full max-w-lg space-y-3 rounded-xl border border-amber-500/40 bg-app-surface p-4 shadow-2xl"
-          >
-            <div className="flex items-center gap-2 text-amber-400">
-              <KeyRound className="h-4 w-4" />
-              <h4 className="text-sm font-semibold">Save your recovery key now</h4>
-            </div>
-            <p className="text-xs text-txt-secondary">
-              This is the Team Vault's recovery identity. It is shown <strong>once</strong> and
-              never saved by the app — print it and store it somewhere safe (e.g. a safe), per
-              docs/team-vault-plan.md §4.1. Anyone who recovers this text can decrypt the vault.
-            </p>
-            <div className="relative">
-              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border-subtle bg-app-input p-3 pr-20 text-xs text-txt-primary">
-                {recoveryIdentity}
-              </pre>
-              <button
-                type="button"
-                onClick={() => void handleCopyRecovery()}
-                className="absolute right-2 top-2 flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2 py-1 text-2xs font-medium text-txt-secondary hover:bg-app-surface-hover"
-              >
-                {recoveryCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                {recoveryCopied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-txt-secondary">
-              <input
-                type="checkbox"
-                checked={recoverySaved}
-                onChange={(e) => setRecoverySaved(e.target.checked)}
-              />
-              I have printed/saved this recovery key
-            </label>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={!recoverySaved}
-                onClick={() => setRecoveryIdentity(null)}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-              >
-                Done
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
