@@ -1061,6 +1061,12 @@ export class IpcBridge {
     ]);
     return {
       ...status,
+      // `TeamVaultService.getStatus` only knows `vaultId` once a local file exists — a
+      // configured-but-never-pulled (or orphaned-pending) entry has none, and without this the
+      // renderer gets back `vaultId: undefined` and can't act on the row (e.g. "forget" sends
+      // `undefined` to an IPC handler that requires a real id). The vaultId we were asked about
+      // is always the right one to report back, file or no file.
+      vaultId: status.vaultId ?? vaultId,
       remoteConfigured: !!config.target,
       lastSyncAt: config.lastSyncAt,
       selfRecipientId: config.selfRecipientId,
