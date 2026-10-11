@@ -156,6 +156,130 @@ function withoutPin(profile: SSHConnectionConfig): SSHConnectionConfig {
   return rest as SSHConnectionConfig;
 }
 
+/** Strips an SSH profile's secret fields for a non-admin reader, replacing them with booleans
+ * the UI can use to show "a password is set" without ever seeing it — see
+ * `TeamVaultService.getPayloadForRenderer`. */
+function redactSshSecrets(profile: SSHConnectionConfig): SSHConnectionConfig {
+  const { password, passphrase, proxy, ...rest } = profile;
+  return {
+    ...rest,
+    hasPassword: Boolean(password) || Boolean(passphrase),
+    ...(proxy ? { proxy: { ...proxy, password: undefined, hasPassword: Boolean(proxy.password) } } : {}),
+  };
+}
+
+/** Strips an S3 profile's secret fields for a non-admin reader — see `redactSshSecrets`.
+ * Includes `proxy.password` (the S3 traffic proxy's credential, same shape as the SSH one) —
+ * easy to miss since it lives one level down from the fields this is named after. */
+function redactS3Secrets(profile: S3Config): S3Config {
+  const { secretAccessKey, sessionToken, proxy, ...rest } = profile;
+  return {
+    ...rest,
+    secretAccessKey: '',
+    hasSecretAccessKey: Boolean(secretAccessKey) || Boolean(sessionToken),
+    ...(proxy ? { proxy: { ...proxy, password: undefined, hasPassword: Boolean(proxy.password) } } : {}),
+  };
+}
+
+/** True when `incoming` is a non-empty value that differs from `existing` — i.e. a genuine
+ * attempt to set/change a secret, as opposed to a redacted/untouched field round-tripping back
+ * unchanged (always falsy or identical, since a non-admin never receives the real value in the
+ * first place — see `getPayloadForRenderer`). */
+function isSecretChangeAttempt(incoming: string | undefined, existing: string | undefined): boolean {
+  return Boolean(incoming) && incoming !== existing;
+}
+
+/** Whether an SSH profile currently has any secret worth protecting. */
+function hasSshSecret(profile: SSHConnectionConfig | undefined): boolean {
+  return Boolean(profile?.password || profile?.passphrase || profile?.proxy?.password);
+}
+
+/** Whether `incoming` changes where a connection actually goes relative to `existing` — the
+ * host/port/username/auth-type it connects as, or the proxy/jump host it routes through. A
+ * non-admin allowed to edit these on a profile with no secret must NOT also be allowed to edit
+ * them on one that has a secret: otherwise they could repoint an admin-set password at a server
+ * of their own choosing and have it delivered there on the next connect (by themselves via
+ * `resolveProfileForConnect`, or by anyone else who later connects using the edited profile) —
+ * `guardSshSecretWrite` rejects such a change outright instead of silently keeping the old
+ * routing (the user asked for host/port to stay member-editable, which this still allows on
+ * secret-less profiles and for every other field regardless). */
+function sshRoutingChanged(incoming: SSHConnectionConfig, existing: SSHConnectionConfig): boolean {
+  return (
+    incoming.host !== existing.host ||
+    (incoming.port ?? 22) !== (existing.port ?? 22) ||
+    incoming.username !== existing.username ||
+    incoming.authType !== existing.authType ||
+    incoming.proxyJump !== existing.proxyJump ||
+    incoming.proxyJumpProfileId !== existing.proxyJumpProfileId ||
+    Boolean(incoming.proxy?.enabled) !== Boolean(existing.proxy?.enabled) ||
+    (incoming.proxy?.host ?? '') !== (existing.proxy?.host ?? '') ||
+    (incoming.proxy?.port ?? 0) !== (existing.proxy?.port ?? 0) ||
+    (incoming.proxy?.type ?? '') !== (existing.proxy?.type ?? '') ||
+    (incoming.proxy?.username ?? '') !== (existing.proxy?.username ?? '')
+  );
+}
+
+/** Enforces that only an admin may set or change an SSH profile's secret fields
+ * (`password`/`passphrase`/`proxy.password`) — see `TeamVaultService.saveSSHProfile`. Throws if
+ * a non-admin's incoming value for any of these is a genuine change attempt, or if a non-admin
+ * tries to change where a profile with a stored secret actually connects (see
+ * `sshRoutingChanged`'s doc comment — that's an exfiltration path, not a harmless edit).
+ * Otherwise the previously stored secret value (if any) is kept, discarding whatever
+ * blank/redacted value the non-admin's own copy of the field held. */
+function guardSshSecretWrite(incoming: SSHConnectionConfig, existing: SSHConnectionConfig | undefined): SSHConnectionConfig {
+  if (
+    isSecretChangeAttempt(incoming.password, existing?.password) ||
+    isSecretChangeAttempt(incoming.passphrase, existing?.passphrase) ||
+    isSecretChangeAttempt(incoming.proxy?.password, existing?.proxy?.password) ||
+    (hasSshSecret(existing) && existing && sshRoutingChanged(incoming, existing))
+  ) {
+    throw new Error('Only a Team Vault admin can set or change a profile password, or where it connects');
+  }
+  return {
+    ...incoming,
+    password: existing?.password,
+    passphrase: existing?.passphrase,
+    ...(incoming.proxy ? { proxy: { ...incoming.proxy, password: existing?.proxy?.password } } : {}),
+  };
+}
+
+/** Whether `incoming` changes where an S3 profile's credentials actually get sent relative to
+ * `existing` — same reasoning as `sshRoutingChanged`, applied to `endpoint`/`region`/
+ * `forcePathStyle` (a custom endpoint is how S3Config picks a non-AWS host) and `accessKeyId`
+ * (pairing a different key id with the stored secret is the same kind of tamper, even though it
+ * can't change the request's destination on its own). */
+function s3RoutingChanged(incoming: S3Config, existing: S3Config): boolean {
+  return (
+    (incoming.endpoint ?? '') !== (existing.endpoint ?? '') ||
+    incoming.region !== existing.region ||
+    Boolean(incoming.forcePathStyle) !== Boolean(existing.forcePathStyle) ||
+    incoming.accessKeyId !== existing.accessKeyId ||
+    Boolean(incoming.proxy?.enabled) !== Boolean(existing.proxy?.enabled) ||
+    (incoming.proxy?.host ?? '') !== (existing.proxy?.host ?? '') ||
+    (incoming.proxy?.port ?? 0) !== (existing.proxy?.port ?? 0)
+  );
+}
+
+/** Same as `guardSshSecretWrite`, for an S3 profile's `secretAccessKey`/`sessionToken`/
+ * `proxy.password` and `s3RoutingChanged`. */
+function guardS3SecretWrite(incoming: S3Config, existing: S3Config | undefined): S3Config {
+  const existingHasSecret = Boolean(existing?.secretAccessKey || existing?.sessionToken || existing?.proxy?.password);
+  if (
+    isSecretChangeAttempt(incoming.secretAccessKey, existing?.secretAccessKey) ||
+    isSecretChangeAttempt(incoming.sessionToken, existing?.sessionToken) ||
+    isSecretChangeAttempt(incoming.proxy?.password, existing?.proxy?.password) ||
+    (existingHasSecret && existing && s3RoutingChanged(incoming, existing))
+  ) {
+    throw new Error('Only a Team Vault admin can set or change a profile secret key, or where it connects');
+  }
+  return {
+    ...incoming,
+    secretAccessKey: existing?.secretAccessKey ?? '',
+    sessionToken: existing?.sessionToken,
+    ...(incoming.proxy ? { proxy: { ...incoming.proxy, password: existing?.proxy?.password } } : {}),
+  };
+}
+
 /** Trims a `/`-separated folder path and each of its segments, collapsing away any empty segment
  * (a leading/trailing/doubled slash) — e.g. `" Acme Infra / Cluster A /"` -> `"Acme Infra/Cluster A"`.
  * Returns `''` for a path with no real segments at all. */
@@ -641,9 +765,54 @@ export class TeamVaultService {
     return this.decryptPayload(file, vaultKey);
   }
 
+  /** Same as `getPayload()`, but strips the password/secret fields of every shared profile when
+   * the caller is a plain member (not admin, not the recovery identity) — the renderer calls
+   * this, never `getPayload()` directly, so a member's secret never crosses the IPC boundary.
+   * `hasPassword`/`hasSecretAccessKey` are set so the UI can still show "a secret is set" without
+   * revealing it. Connecting to a profile does NOT go through this method — see
+   * `resolveProfileForConnect`, which main-process-only callers use to get the real secret back. */
+  async getPayloadForRenderer(): Promise<TeamVaultPayload> {
+    const file = await this.requireFile();
+    const vaultKey = this.requireUnlocked();
+    const recipientId = this.requireUnlockedRecipientId();
+    const payload = await this.decryptPayload(file, vaultKey);
+    if (this.isSelfAdmin(file, recipientId)) {
+      return payload;
+    }
+    return {
+      ...payload,
+      ssh: payload.ssh.map((p) => redactSshSecrets(p)),
+      s3: payload.s3.map((p) => redactS3Secrets(p)),
+    };
+  }
+
+  /** Main-process-only: resolves a shared profile's full config, including its secret fields,
+   * for establishing an actual connection. Any unlocked member may connect (same as
+   * `requireUnlocked` alone guarantees) — unlike `getPayloadForRenderer`, this must never be
+   * wired to an IPC handler that echoes its return value back to the renderer as-is, or a
+   * member's secret would leak the same way redaction is meant to prevent. */
+  async resolveProfileForConnect(
+    profileType: 'ssh' | 's3',
+    profileId: string
+  ): Promise<SSHConnectionConfig | S3Config> {
+    const file = await this.requireFile();
+    const vaultKey = this.requireUnlocked();
+    const payload = await this.decryptPayload(file, vaultKey);
+    const list = profileType === 'ssh' ? payload.ssh : payload.s3;
+    const profile = list.find((p) => p.id === profileId);
+    if (!profile) {
+      throw new Error(`Team Vault ${profileType} profile not found: ${profileId}`);
+    }
+    return profile;
+  }
+
   /** Any unlocked member (not just an admin — unlike membership mutations) may add or edit a
    * shared profile: profiles aren't a trust boundary the way membership is, and requiring admin
-   * here would make the feature far less useful day-to-day. Upserts by `id`. */
+   * here would make the feature far less useful day-to-day. The password/passphrase/proxy
+   * password fields are the one exception (see `guardSshSecretWrite`): only an admin may set or
+   * change those, and a non-admin's write always keeps whatever secret was already stored, since
+   * a member never actually holds the real value to round-trip in the first place. Upserts by
+   * `id`. */
   async saveSSHProfile(profile: SSHConnectionConfig): Promise<void> {
     if (!profile?.id) {
       throw new Error('Profile ID is required');
@@ -651,12 +820,16 @@ export class TeamVaultService {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
+      const recipientId = this.requireUnlockedRecipientId();
+      const isAdmin = this.isSelfAdmin(file, recipientId);
       const payload = await this.decryptPayload(file, vaultKey);
+      const index = payload.ssh.findIndex((p) => p.id === profile.id);
+      const existing = index >= 0 ? payload.ssh[index] : undefined;
+      const incoming = withoutPin(profile);
       const stamped: SSHConnectionConfig = {
-        ...withoutPin(profile),
+        ...(isAdmin ? incoming : guardSshSecretWrite(incoming, existing)),
         updatedAt: new Date().toISOString(),
       };
-      const index = payload.ssh.findIndex((p) => p.id === profile.id);
       if (index >= 0) {
         payload.ssh[index] = stamped;
       } else {
@@ -676,6 +849,8 @@ export class TeamVaultService {
     });
   }
 
+  /** Same password-field exception as `saveSSHProfile` (see its doc comment), applied to
+   * `secretAccessKey`/`sessionToken` via `guardS3SecretWrite`. */
   async saveS3Profile(profile: S3Config): Promise<void> {
     if (!profile?.id) {
       throw new Error('Profile ID is required');
@@ -683,12 +858,15 @@ export class TeamVaultService {
     return this.queueMutation(async () => {
       const file = await this.requireFile();
       const vaultKey = this.requireUnlocked();
+      const recipientId = this.requireUnlockedRecipientId();
+      const isAdmin = this.isSelfAdmin(file, recipientId);
       const payload = await this.decryptPayload(file, vaultKey);
+      const index = payload.s3.findIndex((p) => p.id === profile.id);
+      const existing = index >= 0 ? payload.s3[index] : undefined;
       const stamped: S3Config = {
-        ...profile,
+        ...(isAdmin ? profile : guardS3SecretWrite(profile, existing)),
         updatedAt: new Date().toISOString(),
       };
-      const index = payload.s3.findIndex((p) => p.id === profile.id);
       if (index >= 0) {
         payload.s3[index] = stamped;
       } else {
@@ -1334,12 +1512,20 @@ export class TeamVaultService {
    * a real gap `requireUnlockedRecipientId` alone never closed. */
   private requireUnlockedAsAdmin(file: TeamVaultFile): string {
     const recipientId = this.requireUnlockedRecipientId();
-    if (recipientId === file.recovery.recipientId) return recipientId;
-    const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
-    if (entry?.role !== 'admin') {
+    if (!this.isSelfAdmin(file, recipientId)) {
       throw new Error('Only a Team Vault admin can do this');
     }
     return recipientId;
+  }
+
+  /** Non-throwing version of the check inside `requireUnlockedAsAdmin` — used to decide whether
+   * to redact secrets from `getPayloadForRenderer()` and whether a profile save may touch a
+   * secret field, without rejecting the read/save outright for a plain member. The recovery
+   * identity counts as admin here too, same as `requireUnlockedAsAdmin`. */
+  private isSelfAdmin(file: TeamVaultFile, recipientId: string): boolean {
+    if (recipientId === file.recovery.recipientId) return true;
+    const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
+    return entry?.role === 'admin';
   }
 
   private async readFile(): Promise<TeamVaultFile | null> {

@@ -1450,7 +1450,7 @@ describe('TeamVaultService', () => {
       expect(after.accessHeaderMac).not.toBe(before.accessHeaderMac);
     });
 
-    it('any unlocked member — not just an admin — can save a shared profile', async () => {
+    it('any unlocked member — not just an admin — can save a shared profile (without setting its password)', async () => {
       const admin = makeService();
       await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
       await admin.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
@@ -1460,7 +1460,136 @@ describe('TeamVaultService', () => {
       const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
       await asBob.unlock('bob@piv:def', bobsIdentityFile);
 
-      await expect(asBob.saveSSHProfile(sshProfile('p1'))).resolves.toBeUndefined();
+      await expect(asBob.saveSSHProfile({ ...sshProfile('p1'), password: undefined })).resolves.toBeUndefined();
+    });
+
+    describe('only an admin may set or change a shared profile\'s password/secret', () => {
+      async function makeAdminAndBob() {
+        const admin = makeService();
+        await admin.createVault('alice@piv:abc', 'age1yubikey1alice');
+        await admin.addMember('bob@piv:def', 'age1yubikey1bob', 'member');
+        const bobsIdentityFile = path.join(tempDir, 'bob-identity.txt');
+        await fs.writeFile(bobsIdentityFile, 'unused-by-fake-crypto');
+        const asBob = new TeamVaultService({ cryptoService: fakeCrypto(), filePath, identityDir: tempDir });
+        await asBob.unlock('bob@piv:def', bobsIdentityFile);
+        return { admin, asBob };
+      }
+
+      it('rejects a member creating a new SSH profile with a password', async () => {
+        const { asBob } = await makeAdminAndBob();
+        await expect(asBob.saveSSHProfile(sshProfile('p1'))).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('rejects a member changing the password of an existing SSH profile', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+        await expect(
+          asBob.saveSSHProfile({ ...sshProfile('p1'), password: 'different' }) // pragma: allowlist secret
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('lets a member edit a non-routing field (name) on a profile with a password, keeping the password and host intact', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+        await expect(
+          asBob.saveSSHProfile({ ...sshProfile('p1'), name: 'renamed', password: undefined })
+        ).resolves.toBeUndefined();
+
+        const payload = await admin.getPayload();
+        expect(payload.ssh[0]).toMatchObject({ name: 'renamed', host: 'example.com', password: 'secret' }); // pragma: allowlist secret
+      });
+
+      it('lets an admin set and change a profile password as before', async () => {
+        const { admin } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+        await admin.saveSSHProfile({ ...sshProfile('p1'), password: 'new-secret' }); // pragma: allowlist secret
+        const payload = await admin.getPayload();
+        expect(payload.ssh[0].password).toBe('new-secret'); // pragma: allowlist secret
+      });
+
+      it('rejects a member creating a new S3 profile with a secret key', async () => {
+        const { asBob } = await makeAdminAndBob();
+        await expect(asBob.saveS3Profile(s3Profile('s1'))).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('lets a member edit a non-routing field (name) on an S3 profile, keeping the secret key and region intact', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveS3Profile(s3Profile('s1'));
+        await expect(
+          asBob.saveS3Profile({ ...s3Profile('s1'), name: 'renamed', secretAccessKey: '' })
+        ).resolves.toBeUndefined();
+
+        const payload = await admin.getPayload();
+        expect(payload.s3[0]).toMatchObject({ name: 'renamed', region: 'us-east-1', secretAccessKey: 'shh' }); // pragma: allowlist secret
+      });
+
+      it('getPayloadForRenderer strips secrets for a member but not for an admin', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+        await admin.saveS3Profile(s3Profile('s1'));
+
+        const memberPayload = await asBob.getPayloadForRenderer();
+        expect(memberPayload.ssh[0].password).toBeUndefined();
+        expect(memberPayload.ssh[0].hasPassword).toBe(true);
+        expect(memberPayload.s3[0].secretAccessKey).toBe('');
+        expect(memberPayload.s3[0].hasSecretAccessKey).toBe(true);
+
+        const adminPayload = await admin.getPayloadForRenderer();
+        expect(adminPayload.ssh[0].password).toBe('secret'); // pragma: allowlist secret
+        expect(adminPayload.s3[0].secretAccessKey).toBe('shh'); // pragma: allowlist secret
+      });
+
+      it('resolveProfileForConnect returns the real secret even for a member, for actually connecting', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+
+        const resolved = await asBob.resolveProfileForConnect('ssh', 'p1');
+        expect((resolved as SSHConnectionConfig).password).toBe('secret'); // pragma: allowlist secret
+      });
+
+      it('rejects a member repointing the host of a profile that has a stored password (would exfiltrate it on next connect)', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile(sshProfile('p1'));
+        await expect(
+          asBob.saveSSHProfile({ ...sshProfile('p1'), host: 'attacker.example.com', password: undefined })
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('lets a member change the host of a profile that has no password', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveSSHProfile({ ...sshProfile('p1'), password: undefined });
+        await expect(
+          asBob.saveSSHProfile({ ...sshProfile('p1'), host: 'new-host.example.com', password: undefined })
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a member repointing the S3 endpoint of a profile that has a stored secret key', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveS3Profile(s3Profile('s1'));
+        await expect(
+          asBob.saveS3Profile({ ...s3Profile('s1'), endpoint: 'https://attacker.example.com', secretAccessKey: '' })
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
+
+      it('redacts and guards an S3 profile\'s proxy.password the same as its secretAccessKey', async () => {
+        const { admin, asBob } = await makeAdminAndBob();
+        await admin.saveS3Profile({
+          ...s3Profile('s1'),
+          proxy: { enabled: true, type: 'http', host: 'proxy.example.com', port: 8080, password: 'proxy-secret' }, // pragma: allowlist secret
+        });
+
+        const memberPayload = await asBob.getPayloadForRenderer();
+        expect(memberPayload.s3[0].proxy?.password).toBeUndefined();
+        expect(memberPayload.s3[0].proxy?.hasPassword).toBe(true);
+
+        await expect(
+          asBob.saveS3Profile({
+            ...s3Profile('s1'),
+            secretAccessKey: '',
+            proxy: { enabled: true, type: 'http', host: 'proxy.example.com', port: 8080, password: 'different' }, // pragma: allowlist secret
+          })
+        ).rejects.toThrow('Only a Team Vault admin');
+      });
     });
 
     it('shares privateKeyPath/pkcs11LibPath/agentPath/agentIdentityFiles as plain data — none of them execute anything on their own', async () => {

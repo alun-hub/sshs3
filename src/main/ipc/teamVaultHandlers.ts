@@ -270,11 +270,13 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
 
   // Shared SSH/S3 profiles (connection-manager-plan: the Team Vault's actual payoff) — any
   // unlocked member may read/edit them, not just an admin (see TeamVaultService.saveSSHProfile's
-  // doc comment: profiles aren't a membership trust boundary).
+  // doc comment: profiles aren't a membership trust boundary). The one exception is the
+  // password/secret fields themselves — getPayloadForRenderer strips those for a non-admin
+  // before this ever reaches the renderer (see its doc comment).
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD, async (): Promise<TeamVaultPayload | null> => {
     if (!bridge.teamVaultService.isUnlocked()) return null;
     try {
-      return await bridge.teamVaultService.getPayload();
+      return await bridge.teamVaultService.getPayloadForRenderer();
     } catch (err) {
       teamVaultLog.warn('Failed to read Team Vault payload (treating as unavailable):', err);
       return null;

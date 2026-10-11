@@ -30,6 +30,7 @@ describe('Team Vault IPC handlers', () => {
     hasRemoteVault: vi.fn(),
     isUnlocked: vi.fn().mockReturnValue(false),
     getPayload: vi.fn(),
+    getPayloadForRenderer: vi.fn(),
     saveSSHProfile: vi.fn(),
     deleteSSHProfile: vi.fn(),
     saveS3Profile: vi.fn(),
@@ -345,19 +346,19 @@ describe('Team Vault IPC handlers', () => {
     it('returns null without calling the service when the vault is locked', async () => {
       teamVaultService.isUnlocked.mockReturnValue(false);
       await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD)).resolves.toBeNull();
-      expect(teamVaultService.getPayload).not.toHaveBeenCalled();
+      expect(teamVaultService.getPayloadForRenderer).not.toHaveBeenCalled();
     });
 
-    it('returns the payload when unlocked', async () => {
+    it('returns the (renderer-redacted) payload when unlocked', async () => {
       teamVaultService.isUnlocked.mockReturnValue(true);
       const payload = { ssh: [], s3: [] };
-      teamVaultService.getPayload.mockResolvedValue(payload);
+      teamVaultService.getPayloadForRenderer.mockResolvedValue(payload);
       await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD)).resolves.toBe(payload);
     });
 
-    it('returns null (rather than throwing) if getPayload itself fails unexpectedly', async () => {
+    it('returns null (rather than throwing) if getPayloadForRenderer itself fails unexpectedly', async () => {
       teamVaultService.isUnlocked.mockReturnValue(true);
-      teamVaultService.getPayload.mockRejectedValue(new Error('boom'));
+      teamVaultService.getPayloadForRenderer.mockRejectedValue(new Error('boom'));
       await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD)).resolves.toBeNull();
     });
 

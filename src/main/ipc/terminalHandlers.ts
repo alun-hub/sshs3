@@ -7,7 +7,13 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type TerminalHost = Pick<
   IpcBridge,
-  'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'runDotfilesSyncCheck' | 'settingsStore' | 'sshPtyManager'
+  | 'registerHandler'
+  | 'resolveProxyJumpConfig'
+  | 'restoreSavedSecrets'
+  | 'runDotfilesSyncCheck'
+  | 'settingsStore'
+  | 'sshPtyManager'
+  | 'teamVaultService'
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
@@ -31,6 +37,16 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
 
       let config = options.config;
       if (!options.local && config) {
+        if (config.teamVaultProfileRef) {
+          // Resolves the real secret fields server-side — a member's copy of this config may
+          // have had them stripped (TeamVaultService.getPayloadForRenderer), so never trust
+          // `config.password`/`passphrase` here when this ref is present.
+          const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+            'ssh',
+            config.teamVaultProfileRef.profileId
+          );
+          config = { ...(resolved as SSHConnectionConfig), id: config.id };
+        }
         config = await bridge.restoreSavedSecrets(config);
         config = await bridge.resolveProxyJumpConfig(config);
         config = await bridge.smartcard.prepareSmartcardConfig(config);

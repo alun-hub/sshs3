@@ -10,6 +10,9 @@ interface S3ProfileFormProps {
   onCancel: () => void;
   /** See `SSHProfileFormProps.folderSuggestions` — same Team Vault folder-path autocomplete. */
   folderSuggestions?: string[];
+  /** See `SSHProfileFormProps.canEditSecret` — same Team Vault admin-only secret gate, applied
+   * here to `secretAccessKey`/`sessionToken`. */
+  canEditSecret?: boolean;
 }
 
 function emptyConfig(): S3Config {
@@ -26,7 +29,13 @@ function emptyConfig(): S3Config {
   };
 }
 
-export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, onCancel, folderSuggestions }) => {
+export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
+  initial,
+  onSave,
+  onCancel,
+  folderSuggestions,
+  canEditSecret = true,
+}) => {
   const [config, setConfig] = useState<S3Config>(initial ?? emptyConfig());
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -138,7 +147,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
     config.region.trim() &&
     (authMode === 'sso'
       ? Boolean(config.sso?.startUrl?.trim() && config.sso?.accountId?.trim() && config.sso?.roleName?.trim())
-      : Boolean(config.accessKeyId.trim() && config.secretAccessKey.trim()));
+      : Boolean(config.accessKeyId.trim() && (canEditSecret ? config.secretAccessKey.trim() : true)));
 
   return (
     <form
@@ -256,11 +265,15 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
             <label className="flex flex-col gap-1 text-txt-secondary">
               Secret Access Key
               <input
-                required
+                required={canEditSecret}
                 type="password"
                 value={config.secretAccessKey}
                 onChange={(e) => update('secretAccessKey', e.target.value)}
-                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+                disabled={!canEditSecret}
+                placeholder={
+                  !canEditSecret ? (config.hasSecretAccessKey ? '•••• (admin only)' : 'Not set (admin only)') : undefined
+                }
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>
           </div>
@@ -270,9 +283,16 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
             <input
               value={config.sessionToken ?? ''}
               onChange={(e) => update('sessionToken', e.target.value)}
-              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
+              disabled={!canEditSecret}
+              placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono disabled:cursor-not-allowed disabled:opacity-60"
             />
           </label>
+          {!canEditSecret && (
+            <p className="text-xs text-txt-muted">
+              Only a Team Vault admin can see or change this secret key. You can still connect using it.
+            </p>
+          )}
         </>
       ) : (
         <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
@@ -558,7 +578,9 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({ initial, onSave, o
                       proxy: { ...prev.proxy!, password: e.target.value },
                     }))
                   }
-                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+                  disabled={!canEditSecret}
+                  placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
             </div>
