@@ -42,6 +42,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
           // have had them stripped (TeamVaultService.getPayloadForRenderer), so never trust
           // `config.password`/`passphrase` here when this ref is present.
           const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+            config.teamVaultProfileRef.vaultId,
             'ssh',
             config.teamVaultProfileRef.profileId
           );

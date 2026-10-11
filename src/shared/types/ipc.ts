@@ -205,6 +205,8 @@ export const IPC_CHANNELS = {
   // Team Vault (docs/team-vault-plan.md) — separate trust model and feature from the password-
   // based Remote Profile Sync above; see TeamVaultService for the local-only Fas 2 scope.
   TEAM_VAULT_GET_STATUS: 'team-vault:get-status',
+  // Merged statuses+configs across every known vault — drives a multi-team list/switcher.
+  TEAM_VAULT_LIST: 'team-vault:list',
   TEAM_VAULT_ENROLL_RECIPIENT: 'team-vault:enroll-recipient',
   TEAM_VAULT_CREATE: 'team-vault:create',
   TEAM_VAULT_ADD_MEMBER: 'team-vault:add-member',
@@ -215,6 +217,9 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_UNLOCK_WITH_RECOVERY_TEXT: 'team-vault:unlock-with-recovery-text',
   TEAM_VAULT_LOCK: 'team-vault:lock',
   TEAM_VAULT_DELETE: 'team-vault:delete',
+  // Removes a LOCKED vault's local file/identity/config from this device only — see
+  // teamVaultHandlers.ts's doc comment for how this differs from TEAM_VAULT_DELETE.
+  TEAM_VAULT_FORGET: 'team-vault:forget',
   TEAM_VAULT_SET_TARGET: 'team-vault:set-target',
   TEAM_VAULT_PUSH: 'team-vault:push',
   TEAM_VAULT_PULL: 'team-vault:pull',
@@ -639,40 +644,55 @@ export interface MultiSSHApi {
   profileSyncWipe(): Promise<ProfileSyncStatus & { remoteWipeErrors: string[] }>;
   onProfileSyncStatus?(callback: (status: ProfileSyncStatus) => void): () => void;
 
-  // Team Vault (docs/team-vault-plan.md Fas 2 — local-only, no S3 sync yet)
-  teamVaultGetStatus(): Promise<TeamVaultStatus>;
-  teamVaultEnrollRecipient(): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }>;
+  // Team Vault (docs/team-vault-plan.md) — multi-team: every method below takes a leading
+  // `vaultId`, except `teamVaultCreate` (mints one and returns it) and `teamVaultEnrollRecipient`
+  // (generating a recipient to create/join a vault has no vaultId to pass yet — see
+  // TeamVaultService.enrollOwnPivRecipient's doc comment).
+  teamVaultGetStatus(vaultId: string): Promise<TeamVaultStatus>;
+  /** Merged statuses+configs across every vault this device knows about — the one call a
+   * team-list/switcher UI needs at mount. */
+  teamVaultList(): Promise<TeamVaultStatus[]>;
+  teamVaultEnrollRecipient(
+    vaultId?: string
+  ): Promise<{ recipient: string; identityFilePath: string; suggestedLabel?: string }>;
   teamVaultCreate(
     selfRecipientId: string,
     selfAgeRecipient: string,
     vaultName?: string
-  ): Promise<{ recoveryIdentity: string }>;
-  teamVaultAddMember(recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
-  teamVaultRemoveMember(recipientId: string): Promise<{ remainingAdmins: number }>;
-  teamVaultSetRole(recipientId: string, role: TeamVaultRole): Promise<void>;
-  teamVaultRename(vaultName: string): Promise<void>;
-  teamVaultUnlock(recipientId: string, identityFilePath: string): Promise<void>;
-  teamVaultUnlockWithRecoveryText(identityText: string): Promise<void>;
-  teamVaultLock(): Promise<void>;
-  teamVaultDelete(): Promise<void>;
-  teamVaultSetTarget(target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;
-  teamVaultPush(): Promise<void>;
-  teamVaultPull(options?: { force?: boolean }): Promise<void>;
-  teamVaultHasRemoteVault(): Promise<boolean>;
+  ): Promise<{ vaultId: string; recoveryIdentity: string }>;
+  teamVaultAddMember(vaultId: string, recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
+  teamVaultRemoveMember(vaultId: string, recipientId: string): Promise<{ remainingAdmins: number }>;
+  teamVaultSetRole(vaultId: string, recipientId: string, role: TeamVaultRole): Promise<void>;
+  teamVaultRename(vaultId: string, vaultName: string): Promise<void>;
+  teamVaultUnlock(vaultId: string, recipientId: string, identityFilePath: string): Promise<void>;
+  teamVaultUnlockWithRecoveryText(vaultId: string, identityText: string): Promise<void>;
+  teamVaultLock(vaultId: string): Promise<void>;
+  teamVaultDelete(vaultId: string): Promise<void>;
+  /** Removes a LOCKED vault's local file/identity/config from this device only — distinct from
+   * `teamVaultDelete`, an authenticated whole-team-affecting action; see teamVaultHandlers.ts. */
+  teamVaultForget(vaultId: string): Promise<void>;
+  teamVaultSetTarget(vaultId: string, target: StorageConnectConfig, remoteBasePath?: string): Promise<void>;
+  // Both return the post-push/pull TeamVaultStatus (same as teamVaultGetStatus would right
+  // after) — used by TeamVaultListPanel's join flow to learn the real vaultId a pending-sentinel
+  // pull resolves to, without a second round trip.
+  teamVaultPush(vaultId: string): Promise<TeamVaultStatus>;
+  teamVaultPull(vaultId: string, options?: { force?: boolean }): Promise<TeamVaultStatus>;
+  teamVaultHasRemoteVault(vaultId: string): Promise<boolean>;
   /** Null when the vault doesn't exist or isn't unlocked — best-effort, see teamVaultHandlers.ts. */
-  teamVaultGetPayload(): Promise<TeamVaultPayload | null>;
-  teamVaultSaveSSHProfile(profile: SSHConnectionConfig): Promise<void>;
-  teamVaultDeleteSSHProfile(id: string): Promise<void>;
-  teamVaultSaveS3Profile(profile: S3Config): Promise<void>;
-  teamVaultDeleteS3Profile(id: string): Promise<void>;
-  teamVaultSaveFolder(folderPath: string): Promise<void>;
-  teamVaultRenameFolder(oldPath: string, newPath: string): Promise<void>;
-  teamVaultDeleteFolder(folderPath: string, deleteProfiles?: boolean): Promise<void>;
-  teamVaultSetFolderIcon(folderPath: string, icon: string | undefined): Promise<void>;
+  teamVaultGetPayload(vaultId: string): Promise<TeamVaultPayload | null>;
+  teamVaultSaveSSHProfile(vaultId: string, profile: SSHConnectionConfig): Promise<void>;
+  teamVaultDeleteSSHProfile(vaultId: string, id: string): Promise<void>;
+  teamVaultSaveS3Profile(vaultId: string, profile: S3Config): Promise<void>;
+  teamVaultDeleteS3Profile(vaultId: string, id: string): Promise<void>;
+  teamVaultSaveFolder(vaultId: string, folderPath: string): Promise<void>;
+  teamVaultRenameFolder(vaultId: string, oldPath: string, newPath: string): Promise<void>;
+  teamVaultDeleteFolder(vaultId: string, folderPath: string, deleteProfiles?: boolean): Promise<void>;
+  teamVaultSetFolderIcon(vaultId: string, folderPath: string, icon: string | undefined): Promise<void>;
   /** Fired by the main-process background poll (IpcBridge.runTeamVaultAutoPoll) when it detected
-   * and auto-applied a remote change, or detected one it couldn't safely auto-apply. */
-  onTeamVaultAutoPulled?(callback: () => void): () => void;
-  onTeamVaultRemoteChanged?(callback: () => void): () => void;
+   * and auto-applied a remote change, or detected one it couldn't safely auto-apply —
+   * `vaultId` tells the renderer which team's UI to refresh. */
+  onTeamVaultAutoPulled?(callback: (payload: { vaultId: string }) => void): () => void;
+  onTeamVaultRemoteChanged?(callback: (payload: { vaultId: string }) => void): () => void;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

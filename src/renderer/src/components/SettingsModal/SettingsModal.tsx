@@ -3,7 +3,7 @@ import { Activity, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree,
 import { type AppSettings } from '@shared/types/settings';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
-import { TeamVaultSettingsPanel } from './TeamVaultSettingsPanel';
+import { TeamVaultListPanel } from './TeamVaultListPanel';
 import { GitSettingsPanel } from './GitSettingsPanel';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useSettingsForm } from './useSettingsForm';
@@ -186,7 +186,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {activeCategory === 'sync' && <SyncSettingsPanel />}
 
               {/* Category: Team Vault */}
-              {activeCategory === 'team-vault' && <TeamVaultSettingsPanel />}
+              {activeCategory === 'team-vault' && <TeamVaultListPanel />}
 
               {/* Category: Git & GitHub */}
               {activeCategory === 'git' && (

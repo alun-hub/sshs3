@@ -33,6 +33,7 @@ import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { TeamVaultService } from './services/TeamVaultService';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
+import { migrateLegacyTeamVaultLayout, resolveTeamVaultBaseDir } from './services/teamVaultMigration';
 import { SyncCryptoService, SyncDecryptionError, generateSalt } from './services/SyncCryptoService';
 import { ProfileSyncService } from './services/ProfileSyncService';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
@@ -176,8 +177,11 @@ export class IpcBridge {
   public readonly smartcard: SmartcardCoordinator;
   private autoSyncTimer: NodeJS.Timeout | null = null;
   private autoPullTimer: NodeJS.Timeout | null = null;
-  private teamVaultAutoPollTimer: NodeJS.Timeout | null = null;
-  private teamVaultAutoPushTimer: NodeJS.Timeout | null = null;
+  // Per-vaultId: a team's auto-poll/auto-push timer must never be confused with another team's,
+  // and starting/stopping one must never disturb another's (see TeamVaultService's class doc
+  // comment on the same per-vaultId isolation requirement for runtime state).
+  private readonly teamVaultAutoPollTimers = new Map<string, NodeJS.Timeout>();
+  private readonly teamVaultAutoPushTimers = new Map<string, NodeJS.Timeout>();
   private lastSmartcardAutoUnlockAttempt = 0;
   private static readonly AUTO_PULL_INTERVAL_MS = 10 * 60 * 1000;
   private static readonly SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS = 5 * 60 * 1000;
@@ -212,6 +216,25 @@ export class IpcBridge {
   private unsubscribeK8sConfig?: () => void;
 
   constructor(options: IpcBridgeOptions = {}) {
+    // Must run before TeamVaultService/TeamVaultConfigStore are constructed just below — it's
+    // the one-time move from the single-team on-disk layout to the multi-team one (see its doc
+    // comment), and both services assume that layout already exists by the time they first touch
+    // disk. Skipped when a test injects its own teamVaultService/teamVaultConfigStore (pointed at
+    // an isolated temp directory, not the real userData path this migration always targets) —
+    // production always constructs both from defaults, so this only ever runs for real.
+    // Set below, used after `this.teamVaultConfigStore` is constructed a few lines down, to
+    // promote that single discovered team's config out of the pending sentinel onto its real
+    // vaultId — see the promotion call at the end of this constructor for why this can't happen
+    // here directly (TeamVaultConfigStore doesn't exist as `this.teamVaultConfigStore` yet, and a
+    // constructor can't `await` the async store methods either way).
+    let migratedVaultId: string | undefined;
+    if (!options.teamVaultService && !options.teamVaultConfigStore) {
+      try {
+        migratedVaultId = migrateLegacyTeamVaultLayout(resolveTeamVaultBaseDir());
+      } catch (err) {
+        ipcLog.warn('Team Vault legacy layout migration failed (non-fatal, continuing):', err);
+      }
+    }
     this.ipcMain = options.ipcMain ?? electronIpcMain;
     this.settingsStore = options.settingsStore ?? new SettingsStore();
     this.sshPtyManager =
@@ -271,6 +294,18 @@ export class IpcBridge {
         },
       });
     this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();
+    if (migratedVaultId) {
+      // Fire-and-forget: this only matters before the first IPC call touches this vault's config
+      // (TEAM_VAULT_PULL's own promotePendingConfig call would otherwise reach the same end state
+      // eventually, but only once a pull actually succeeds — an upgrading install's already-
+      // configured S3 target/credentials/lastSyncAt/selfIdentity would otherwise sit unreachable
+      // under the pending sentinel in the meantime, invisible to `buildAllTeamVaultStatuses()`'s
+      // per-vaultId union). `queueMutation` inside the store serializes this against any other
+      // config write that happens to race it.
+      this.teamVaultConfigStore.promotePendingConfig(migratedVaultId).catch((err) => {
+        ipcLog.warn('Failed to promote the migrated Team Vault config to its real vaultId (non-fatal):', err);
+      });
+    }
     this.profileSyncService =
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
@@ -807,24 +842,26 @@ export class IpcBridge {
    * any other failure is logged, not surfaced — the next save retries, and the
    * background auto-poll will pick up the other member's change regardless.
    */
-  public scheduleTeamVaultAutoPush(delayMs = 2000): void {
-    if (this.teamVaultAutoPushTimer) {
-      clearTimeout(this.teamVaultAutoPushTimer);
+  public scheduleTeamVaultAutoPush(vaultId: string, delayMs = 2000): void {
+    const existing = this.teamVaultAutoPushTimers.get(vaultId);
+    if (existing) {
+      clearTimeout(existing);
     }
-    this.teamVaultAutoPushTimer = setTimeout(async () => {
-      this.teamVaultAutoPushTimer = null;
+    const timer = setTimeout(async () => {
+      this.teamVaultAutoPushTimers.delete(vaultId);
       try {
-        const config = await this.teamVaultConfigStore.getConfig();
+        const config = await this.teamVaultConfigStore.getConfig(vaultId);
         if (!config.target) {
           return;
         }
         const provider = await this.storageRegistry.getOrCreate(config.target);
-        await this.teamVaultService.pushToRemote(provider, config.remoteBasePath ?? '');
-        await this.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
+        await this.teamVaultService.pushToRemote(vaultId, provider, config.remoteBasePath ?? '');
+        await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
       } catch (err) {
-        autosyncLog.warn('Team Vault background push failed:', err);
+        autosyncLog.warn(`Team Vault background push failed (vaultId=${vaultId}):`, err);
       }
     }, delayMs);
+    this.teamVaultAutoPushTimers.set(vaultId, timer);
   }
 
   /**
@@ -889,60 +926,64 @@ export class IpcBridge {
    * unlock/create and after the target changes; a no-op tick (see `runTeamVaultAutoPoll`) stops
    * itself if the vault isn't actually unlocked or has no remote target configured, so callers
    * don't need to check either condition themselves before calling this. */
-  public startTeamVaultAutoPollTimer(): void {
-    this.stopTeamVaultAutoPollTimer();
-    this.teamVaultAutoPollTimer = setInterval(() => {
-      void this.runTeamVaultAutoPoll();
+  public startTeamVaultAutoPollTimer(vaultId: string): void {
+    this.stopTeamVaultAutoPollTimer(vaultId);
+    const timer = setInterval(() => {
+      void this.runTeamVaultAutoPoll(vaultId);
     }, IpcBridge.TEAM_VAULT_AUTO_POLL_INTERVAL_MS);
-    this.teamVaultAutoPollTimer.unref?.();
+    timer.unref?.();
+    this.teamVaultAutoPollTimers.set(vaultId, timer);
   }
 
-  public stopTeamVaultAutoPollTimer(): void {
-    if (this.teamVaultAutoPollTimer) {
-      clearInterval(this.teamVaultAutoPollTimer);
-      this.teamVaultAutoPollTimer = null;
+  public stopTeamVaultAutoPollTimer(vaultId: string): void {
+    const timer = this.teamVaultAutoPollTimers.get(vaultId);
+    if (timer) {
+      clearInterval(timer);
+      this.teamVaultAutoPollTimers.delete(vaultId);
     }
   }
 
   /**
-   * One tick of the background poll (docs/team-vault-plan.md's connection-manager plan, point 4):
-   * a cheap stat()-only check for whether the remote vault changed since this instance last
-   * observed it. On a change, either auto-pulls (when this machine has no unpushed local
-   * mutations — safe, since there's nothing to lose) or just notifies the renderer that a pull is
-   * needed (when it does — auto-pulling then would silently discard those local changes, exactly
-   * what `TeamVaultUnpushedChangesError` exists to prevent on the interactive path too).
+   * One tick of the background poll (docs/team-vault-plan.md's connection-manager plan, point 4),
+   * for one specific team: a cheap stat()-only check for whether that vault's remote file changed
+   * since this instance last observed it. On a change, either auto-pulls (when this machine has
+   * no unpushed local mutations — safe, since there's nothing to lose) or just notifies the
+   * renderer that a pull is needed (when it does — auto-pulling then would silently discard those
+   * local changes, exactly what `TeamVaultUnpushedChangesError` exists to prevent on the
+   * interactive path too). Every per-vault timer runs this independently, so one team's poll
+   * failing or being slow never blocks another's.
    */
-  private async runTeamVaultAutoPoll(): Promise<void> {
+  private async runTeamVaultAutoPoll(vaultId: string): Promise<void> {
     try {
-      if (!this.teamVaultService.isUnlocked()) {
-        this.stopTeamVaultAutoPollTimer();
+      if (!this.teamVaultService.isUnlocked(vaultId)) {
+        this.stopTeamVaultAutoPollTimer(vaultId);
         return;
       }
-      const config = await this.teamVaultConfigStore.getConfig();
+      const config = await this.teamVaultConfigStore.getConfig(vaultId);
       if (!config.target) {
-        this.stopTeamVaultAutoPollTimer();
+        this.stopTeamVaultAutoPollTimer(vaultId);
         return;
       }
       const provider = await this.storageRegistry.getOrCreate(config.target);
       const remoteBasePath = config.remoteBasePath ?? '';
-      const changed = await this.teamVaultService.hasRemoteChangedSinceLastSync(provider, remoteBasePath);
+      const changed = await this.teamVaultService.hasRemoteChangedSinceLastSync(vaultId, provider, remoteBasePath);
       if (!changed) return;
 
       const webContents = this.getWebContents();
-      if (await this.teamVaultService.hasUnpushedLocalChanges()) {
+      if (await this.teamVaultService.hasUnpushedLocalChanges(vaultId)) {
         if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED);
+          webContents.send(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, { vaultId });
         }
         return;
       }
 
-      await this.teamVaultService.pullFromRemote(provider, remoteBasePath);
-      await this.teamVaultConfigStore.setLastSyncAt(new Date().toISOString());
+      await this.teamVaultService.pullFromRemote(vaultId, provider, remoteBasePath);
+      await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
       if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED);
+        webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, { vaultId });
       }
     } catch (err) {
-      autosyncLog.warn('Team Vault background poll failed:', err);
+      autosyncLog.warn(`Team Vault background poll failed (vaultId=${vaultId}):`, err);
     }
   }
 
@@ -1013,15 +1054,39 @@ export class IpcBridge {
    * target config — same separation `buildSyncStatus()` keeps between `ProfileSyncService` and
    * `SyncConfigStore` above, so `TeamVaultService` stays unaware of where (or whether) its file
    * is pushed/pulled from. */
-  public async buildTeamVaultStatus(): Promise<TeamVaultStatus> {
-    const [status, config] = await Promise.all([this.teamVaultService.getStatus(), this.teamVaultConfigStore.getConfig()]);
+  public async buildTeamVaultStatus(vaultId: string): Promise<TeamVaultStatus> {
+    const [status, config] = await Promise.all([
+      this.teamVaultService.getStatus(vaultId),
+      this.teamVaultConfigStore.getConfig(vaultId),
+    ]);
     return {
       ...status,
       remoteConfigured: !!config.target,
       lastSyncAt: config.lastSyncAt,
       selfRecipientId: config.selfRecipientId,
       selfIdentityFilePath: config.selfIdentityFilePath,
+      selfRole: config.selfRecipientId
+        ? status.members?.find((m) => m.recipientId === config.selfRecipientId)?.role
+        : undefined,
     };
+  }
+
+  /** Every vault this device knows about, merging `TeamVaultService`'s local-file-derived
+   * statuses with `TeamVaultConfigStore`'s per-team S3 target configs in one round trip — the
+   * only call a multi-team list/switcher UI needs at mount (`TEAM_VAULT_LIST`). Includes a vault
+   * that has a configured S3 target but no local file yet (join-in-progress, parked under the
+   * pending sentinel — see `TEAM_VAULT_PENDING_VAULT_ID`'s doc comment), which `listStatuses()`
+   * alone (local-file-derived only) would otherwise miss entirely. */
+  public async buildAllTeamVaultStatuses(): Promise<TeamVaultStatus[]> {
+    const [localVaultIds, allConfigs] = await Promise.all([
+      this.teamVaultService.listVaultIds(),
+      this.teamVaultConfigStore.getAllConfigs(),
+    ]);
+    const vaultIds = new Set<string>(localVaultIds);
+    for (const vaultId of Object.keys(allConfigs)) {
+      vaultIds.add(vaultId);
+    }
+    return Promise.all(Array.from(vaultIds).map((vaultId) => this.buildTeamVaultStatus(vaultId)));
   }
 
   /**
@@ -1569,11 +1634,13 @@ export class IpcBridge {
       this.autoSyncTimer = null;
     }
     this.stopAutoPullTimer();
-    this.stopTeamVaultAutoPollTimer();
-    if (this.teamVaultAutoPushTimer) {
-      clearTimeout(this.teamVaultAutoPushTimer);
-      this.teamVaultAutoPushTimer = null;
+    for (const vaultId of Array.from(this.teamVaultAutoPollTimers.keys())) {
+      this.stopTeamVaultAutoPollTimer(vaultId);
     }
+    for (const timer of this.teamVaultAutoPushTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.teamVaultAutoPushTimers.clear();
     // The PTY-exit listener that normally drives cleanupSmartcardSessionAgent()
     // was already detached above, so killAll() won't trigger it — kill every
     // remaining per-session ('agent-per-session' mode) private agent explicitly,

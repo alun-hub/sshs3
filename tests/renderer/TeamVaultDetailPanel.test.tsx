@@ -1,115 +1,31 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import { TeamVaultSettingsPanel } from '../../src/renderer/src/components/SettingsModal/TeamVaultSettingsPanel';
+import { TeamVaultDetailPanel } from '../../src/renderer/src/components/SettingsModal/TeamVaultDetailPanel';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { TeamVaultStatus } from '../../src/shared/types/teamVault';
 
-function renderPanel() {
+const VAULT_ID = 'vlt_1';
+
+function renderPanel(onVaultRemoved = vi.fn(), onBack = vi.fn()) {
   return render(
     <ConfirmProvider>
-      <TeamVaultSettingsPanel />
+      <TeamVaultDetailPanel vaultId={VAULT_ID} onBack={onBack} onVaultRemoved={onVaultRemoved} />
     </ConfirmProvider>
   );
 }
 
-describe('TeamVaultSettingsPanel', () => {
+describe('TeamVaultDetailPanel', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
   });
 
-  describe('no vault yet', () => {
-    beforeEach(() => {
-      Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
-      window.multissh = {
-        teamVaultGetStatus: vi.fn().mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' }),
-        teamVaultEnrollRecipient: vi.fn().mockResolvedValue({
-          recipient: 'age1yubikey1testadmin',
-          identityFilePath: '/tmp/identity.txt',
-        }),
-        teamVaultCreate: vi.fn().mockResolvedValue({ recoveryIdentity: 'AGE-SECRET-KEY-FAKE\n# public key: age1x' }),
-      } as unknown as typeof window.multissh;
-    });
-
-    it('shows the empty state and lets the admin generate a recipient then create the vault', async () => {
-      renderPanel();
-
-      await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
-
-      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
-      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
-
-      fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'alice@piv:yubikey-1' } });
-
-      const createButton = screen.getByRole('button', { name: 'Create Vault' });
-      expect(createButton).toBeEnabled();
-      fireEvent.click(createButton);
-
-      await waitFor(() => {
-        expect(window.multissh.teamVaultCreate).toHaveBeenCalledWith('alice@piv:yubikey-1', 'age1yubikey1testadmin', '');
-      });
-
-      // Recovery dialog appears and blocks "Done" until confirmed.
-      const dialog = await screen.findByRole('dialog', { name: 'Save your recovery key' });
-      expect(dialog).toHaveTextContent('AGE-SECRET-KEY-FAKE');
-      const doneButton = within(dialog).getByRole('button', { name: 'Done' });
-      expect(doneButton).toBeDisabled();
-
-      fireEvent.click(within(dialog).getByRole('button', { name: /Copy/i }));
-      await waitFor(() => {
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('AGE-SECRET-KEY-FAKE'));
-      });
-      expect(within(dialog).getByRole('button', { name: /Copied/i })).toBeInTheDocument();
-
-      fireEvent.click(within(dialog).getByRole('checkbox'));
-      expect(doneButton).toBeEnabled();
-      fireEvent.click(doneButton);
-      expect(screen.queryByRole('dialog', { name: 'Save your recovery key' })).not.toBeInTheDocument();
-    });
-
-    it('lets a new member (joining, not creating) copy a join-info blob for their admin instead of typing recipient/identity fields anywhere', async () => {
-      renderPanel();
-      await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
-
-      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
-      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
-
-      // The same recipient-id field doubles as "your suggested label" for the join blob — no
-      // separate field needed.
-      fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'bob@piv:yubikey-1' } });
-      fireEvent.click(screen.getByRole('button', { name: /Copy join info/i }));
-
-      await waitFor(() => {
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-          'sshs3 Team Vault join request\nrecipientId: bob@piv:yubikey-1\nageRecipient: age1yubikey1testadmin'
-        );
-      });
-      expect(await screen.findByText(/Copied/i)).toBeInTheDocument();
-    });
-
-    it('prefills the recipient-id field with the UPN suggested from an existing smartcard certificate', async () => {
-      window.multissh.teamVaultEnrollRecipient = vi.fn().mockResolvedValue({
-        recipient: 'age1yubikey1testadmin',
-        identityFilePath: '/tmp/identity.txt',
-        suggestedLabel: 'alice@example.com',
-      });
-
-      renderPanel();
-      await waitFor(() => expect(screen.getByText(/No Team Vault exists/)).toBeInTheDocument());
-      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
-
-      await waitFor(() => {
-        expect((screen.getByPlaceholderText(/alice@piv/i) as HTMLInputElement).value).toBe('alice@example.com');
-      });
-    });
-  });
-
   describe('existing vault', () => {
     const baseStatus: TeamVaultStatus = {
       exists: true,
-      vaultId: 'vlt_1',
+      vaultId: VAULT_ID,
       unlocked: true,
       filePath: '/x',
       members: [
@@ -117,35 +33,43 @@ describe('TeamVaultSettingsPanel', () => {
       ],
       adminCount: 1,
       selfRecipientId: 'alice@piv:abc',
+      selfRole: 'admin',
     };
 
-    beforeEach(() => {
+    function mockApi(overrides: Partial<typeof window.multissh> = {}) {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
-        teamVaultEnrollRecipient: vi.fn().mockResolvedValue({
-          recipient: 'age1yubikey1testadmin',
-          identityFilePath: '/tmp/identity.txt',
-        }),
         teamVaultAddMember: vi.fn().mockResolvedValue(undefined),
         teamVaultRemoveMember: vi.fn().mockResolvedValue({ remainingAdmins: 0 }),
         teamVaultSetRole: vi.fn().mockResolvedValue(undefined),
         teamVaultDelete: vi.fn().mockResolvedValue(undefined),
+        ...overrides,
       } as unknown as typeof window.multissh;
+    }
+
+    it('fetches status scoped to this vaultId', async () => {
+      mockApi();
+      renderPanel();
+      await waitFor(() => expect(window.multissh.teamVaultGetStatus).toHaveBeenCalledWith(VAULT_ID));
     });
 
     it('warns when fewer than 2 admins', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
       expect(screen.getByText(/fewer than 2 admins/)).toBeInTheDocument();
     });
 
-    it('keeps "Generate my Team Vault ID" visible even once a vault already exists, ready for a future second team', async () => {
+    it('shows this device\'s role for the vault', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
-      expect(screen.getByRole('button', { name: /Generate my Team Vault ID/i })).toBeInTheDocument();
+      expect(screen.getByText('Your role')).toBeInTheDocument();
+      expect(screen.getByText('Your role').nextSibling).toHaveTextContent('admin');
     });
 
     it('adds a member by pasting their join-info blob into the one field — no second box to fill in', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -159,13 +83,12 @@ describe('TeamVaultSettingsPanel', () => {
       expect(screen.getByTestId('parsed-join-info-age-recipient')).toHaveTextContent(
         'age1yubikey1bobbobbobbobbobbobbobbob'
       );
-      // No separate recipient-id input exists any more — only the paste box.
-      expect(screen.queryByPlaceholderText(/Their recipient id/i)).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
 
       await waitFor(() => {
         expect(window.multissh.teamVaultAddMember).toHaveBeenCalledWith(
+          VAULT_ID,
           'bob@piv:def',
           'age1yubikey1bobbobbobbobbobbobbobbob',
           'member'
@@ -174,6 +97,7 @@ describe('TeamVaultSettingsPanel', () => {
     });
 
     it("shows an inline hint instead of a crash when the pasted text isn't a recognizable join blob", async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -184,6 +108,7 @@ describe('TeamVaultSettingsPanel', () => {
     });
 
     it('asks for confirmation before removing a member', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -194,23 +119,26 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultRemoveMember).toHaveBeenCalledWith('alice@piv:abc');
+        expect(window.multissh.teamVaultRemoveMember).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc');
       });
     });
 
     it('promotes/demotes a member via the role button', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: 'Demote' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith('alice@piv:abc', 'member');
+        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc', 'member');
       });
     });
 
-    it('offers to delete the vault (local-only) when the signed-in identity is an admin, with confirmation', async () => {
-      renderPanel();
+    it('offers to delete the vault (local-only) when the signed-in identity is an admin, with confirmation, then reports it removed', async () => {
+      mockApi();
+      const onVaultRemoved = vi.fn();
+      renderPanel(onVaultRemoved);
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /Remove vault from this machine/i }));
@@ -219,17 +147,21 @@ describe('TeamVaultSettingsPanel', () => {
 
       fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-      await waitFor(() => expect(window.multissh.teamVaultDelete).toHaveBeenCalled());
+      await waitFor(() => expect(window.multissh.teamVaultDelete).toHaveBeenCalledWith(VAULT_ID));
+      await waitFor(() => expect(onVaultRemoved).toHaveBeenCalled());
     });
 
     it('hides the delete-vault button for a plain, non-admin member', async () => {
-      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue({
-        ...baseStatus,
-        selfRecipientId: 'bob@piv:def',
-        members: [
-          { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
-          { recipientId: 'bob@piv:def', role: 'member', addedAt: '2026-10-02T00:00:00Z' },
-        ],
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          selfRecipientId: 'bob@piv:def',
+          selfRole: 'member',
+          members: [
+            { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+            { recipientId: 'bob@piv:def', role: 'member', addedAt: '2026-10-02T00:00:00Z' },
+          ],
+        }),
       });
 
       renderPanel();
@@ -241,7 +173,7 @@ describe('TeamVaultSettingsPanel', () => {
   describe('locked vault, with a remembered own identity (no fields needed to unlock)', () => {
     const lockedStatus: TeamVaultStatus = {
       exists: true,
-      vaultId: 'vlt_1',
+      vaultId: VAULT_ID,
       unlocked: false,
       filePath: '/x',
       members: [
@@ -252,14 +184,15 @@ describe('TeamVaultSettingsPanel', () => {
       selfIdentityFilePath: '/home/alice/.config/sshs3/team-vault-identities/abc.txt',
     };
 
-    beforeEach(() => {
+    function mockApi() {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue(lockedStatus),
         teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
-    });
+    }
 
     it('shows no recipient-id/identity-path fields at all when both are already known — just an Unlock button', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText(/Unlock as/)).toBeInTheDocument());
 
@@ -270,6 +203,7 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
       await waitFor(() => {
         expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith(
+          VAULT_ID,
           'alice@piv:abc',
           '/home/alice/.config/sshs3/team-vault-identities/abc.txt'
         );
@@ -277,6 +211,7 @@ describe('TeamVaultSettingsPanel', () => {
     });
 
     it('offers a manual fallback ("use a different identity") for the rare case of multiple identities or a new machine', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText(/Unlock as/)).toBeInTheDocument());
 
@@ -289,17 +224,17 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('carol@piv:ghi', '/tmp/carol-identity.txt');
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith(VAULT_ID, 'carol@piv:ghi', '/tmp/carol-identity.txt');
       });
     });
   });
 
   describe('locked vault, with no remembered identity at all (fresh machine)', () => {
-    beforeEach(() => {
+    function mockApi() {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue({
           exists: true,
-          vaultId: 'vlt_1',
+          vaultId: VAULT_ID,
           unlocked: false,
           filePath: '/x',
           members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
@@ -307,9 +242,10 @@ describe('TeamVaultSettingsPanel', () => {
         }),
         teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
-    });
+    }
 
     it('falls back to the manual fields directly, with no "known identity" summary to show', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -319,11 +255,11 @@ describe('TeamVaultSettingsPanel', () => {
   });
 
   describe('recovery (lost card, has only the saved recovery key text)', () => {
-    beforeEach(() => {
+    function mockApi() {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue({
           exists: true,
-          vaultId: 'vlt_1',
+          vaultId: VAULT_ID,
           unlocked: false,
           filePath: '/x',
           members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
@@ -331,9 +267,10 @@ describe('TeamVaultSettingsPanel', () => {
         }),
         teamVaultUnlockWithRecoveryText: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
-    });
+    }
 
     it('reveals a textarea and recovers the vault with the pasted recovery key', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
@@ -344,11 +281,15 @@ describe('TeamVaultSettingsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Recover vault access' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultUnlockWithRecoveryText).toHaveBeenCalledWith('AGE-SECRET-KEY-1FAKERECOVERYTEXT');
+        expect(window.multissh.teamVaultUnlockWithRecoveryText).toHaveBeenCalledWith(
+          VAULT_ID,
+          'AGE-SECRET-KEY-1FAKERECOVERYTEXT'
+        );
       });
     });
 
     it('surfaces an error if the pasted text is rejected', async () => {
+      mockApi();
       window.multissh.teamVaultUnlockWithRecoveryText = vi
         .fn()
         .mockRejectedValue(new Error('This does not look like a Team Vault recovery key'));
@@ -366,7 +307,7 @@ describe('TeamVaultSettingsPanel', () => {
   describe('remote sync (Fas 3)', () => {
     const baseStatus: TeamVaultStatus = {
       exists: true,
-      vaultId: 'vlt_1',
+      vaultId: VAULT_ID,
       unlocked: true,
       filePath: '/x',
       members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
@@ -374,18 +315,18 @@ describe('TeamVaultSettingsPanel', () => {
       remoteConfigured: false,
     };
 
-    beforeEach(() => {
+    function mockApi(overrides: Partial<typeof window.multissh> = {}) {
       window.multissh = {
         teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
-        teamVaultHasRemoteVault: vi.fn().mockResolvedValue(false),
         teamVaultSetTarget: vi.fn().mockResolvedValue(undefined),
         teamVaultPush: vi.fn().mockResolvedValue(undefined),
         teamVaultPull: vi.fn().mockResolvedValue(undefined),
-        profilesGet: vi.fn().mockResolvedValue({ ssh: [], s3: [] }),
+        ...overrides,
       } as unknown as typeof window.multissh;
-    });
+    }
 
-    it('configures an S3 target', async () => {
+    it('configures an S3 target, scoped to this vaultId', async () => {
+      mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('No S3 target configured yet')).toBeInTheDocument());
 
@@ -399,35 +340,40 @@ describe('TeamVaultSettingsPanel', () => {
 
       await waitFor(() => {
         expect(window.multissh.teamVaultSetTarget).toHaveBeenCalledWith(
+          VAULT_ID,
           expect.objectContaining({ type: 's3' }),
           'team-bucket'
         );
       });
     });
 
-    it('pushes and pulls once a target is configured', async () => {
-      window.multissh.teamVaultGetStatus = vi
-        .fn()
-        .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' });
+    it('pushes and pulls once a target is configured, scoped to this vaultId', async () => {
+      mockApi({
+        teamVaultGetStatus: vi
+          .fn()
+          .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' }),
+      });
 
       renderPanel();
       await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: 'Push' }));
-      await waitFor(() => expect(window.multissh.teamVaultPush).toHaveBeenCalled());
+      await waitFor(() => expect(window.multissh.teamVaultPush).toHaveBeenCalledWith(VAULT_ID));
 
       fireEvent.click(screen.getByRole('button', { name: 'Pull' }));
-      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalled());
+      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalledWith(VAULT_ID, undefined));
     });
 
     it('offers to pull anyway (discarding local changes) when the pull is rejected as unpushed', async () => {
-      window.multissh.teamVaultGetStatus = vi
-        .fn()
-        .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' });
-      window.multissh.teamVaultPull = vi
-        .fn()
-        .mockRejectedValueOnce(new Error('This machine has local Team Vault changes that have not been pushed yet.'))
-        .mockResolvedValueOnce(undefined);
+      mockApi({
+        teamVaultGetStatus: vi
+          .fn()
+          .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' }),
+        teamVaultPull: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('This machine has local Team Vault changes that have not been pushed yet.'))
+          .mockResolvedValueOnce(undefined),
+      });
 
       renderPanel();
       await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
@@ -438,20 +384,7 @@ describe('TeamVaultSettingsPanel', () => {
 
       fireEvent.click(within(dialog).getByRole('button', { name: /Pull anyway/i }));
 
-      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalledWith({ force: true }));
-    });
-
-    it('offers "Pull existing vault" when no local vault exists but a remote one does', async () => {
-      window.multissh.teamVaultGetStatus = vi
-        .fn()
-        .mockResolvedValue({ exists: false, unlocked: false, filePath: '/x', remoteConfigured: true });
-      window.multissh.teamVaultHasRemoteVault = vi.fn().mockResolvedValue(true);
-
-      renderPanel();
-      await waitFor(() => expect(screen.getByText(/already has a Team Vault/)).toBeInTheDocument());
-
-      fireEvent.click(screen.getByRole('button', { name: 'Pull existing vault' }));
-      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalled());
+      await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalledWith(VAULT_ID, { force: true }));
     });
   });
 });
