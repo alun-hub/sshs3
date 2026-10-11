@@ -147,6 +147,19 @@ describe('Team Vault IPC handlers', () => {
       await call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT);
       expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc', undefined);
     });
+
+    it('also remembers the identity file path from the preceding enroll call, so the one-click unlock shortcut is available immediately — not just the recipient id', async () => {
+      teamVaultService.createVault.mockResolvedValue({ vaultId: VAULT_ID, recoveryIdentity: 'AGE-SECRET-KEY-X' });
+      await call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT, 'Acme Team', '/tmp/x');
+      expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc', '/tmp/x');
+    });
+
+    it('rejects a flag-like identity file path (argument-injection guard)', async () => {
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT, 'Acme Team', '-o/etc/passwd')
+      ).rejects.toThrow('Identity file path must be an absolute path');
+      expect(teamVaultService.createVault).not.toHaveBeenCalled();
+    });
   });
 
   describe('TEAM_VAULT_LIST', () => {

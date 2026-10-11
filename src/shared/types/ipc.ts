@@ -658,7 +658,8 @@ export interface MultiSSHApi {
   teamVaultCreate(
     selfRecipientId: string,
     selfAgeRecipient: string,
-    vaultName?: string
+    vaultName?: string,
+    selfIdentityFilePath?: string
   ): Promise<{ vaultId: string; recoveryIdentity: string }>;
   teamVaultAddMember(vaultId: string, recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void>;
   teamVaultRemoveMember(vaultId: string, recipientId: string): Promise<{ remainingAdmins: number }>;

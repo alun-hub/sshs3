@@ -61,7 +61,8 @@ describe('TeamVaultListPanel', () => {
         expect(window.multissh.teamVaultCreate).toHaveBeenCalledWith(
           'alice@piv:yubikey-1',
           'age1yubikey1testadmin',
-          'Acme Infra'
+          'Acme Infra',
+          '/tmp/identity.txt'
         );
       });
 

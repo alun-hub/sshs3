@@ -125,7 +125,8 @@ export const TeamVaultListPanel: React.FC = () => {
       const { vaultId, recoveryIdentity: identity } = await window.multissh.teamVaultCreate(
         selfRecipientId.trim(),
         myRecipient.recipient,
-        vaultNameDraft.trim()
+        vaultNameDraft.trim(),
+        myRecipient.identityFilePath
       );
       setRecoveryIdentity(identity);
       setRecoverySaved(false);

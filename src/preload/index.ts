@@ -507,9 +507,10 @@ export const api: MultiSSHApi = {
   teamVaultCreate: (
     selfRecipientId: string,
     selfAgeRecipient: string,
-    vaultName?: string
+    vaultName?: string,
+    selfIdentityFilePath?: string
   ): Promise<{ vaultId: string; recoveryIdentity: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient, vaultName),
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_CREATE, selfRecipientId, selfAgeRecipient, vaultName, selfIdentityFilePath),
   teamVaultAddMember: (vaultId: string, recipientId: string, ageRecipient: string, role: TeamVaultRole): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER, vaultId, recipientId, ageRecipient, role),
   teamVaultRemoveMember: (vaultId: string, recipientId: string): Promise<{ remainingAdmins: number }> =>
