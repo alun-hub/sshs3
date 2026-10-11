@@ -133,6 +133,8 @@ export interface ProxyConfig {
   port: number;
   username?: string;
   password?: string;
+  /** Team Vault only — see `SSHConnectionConfig.hasPassword`. */
+  hasPassword?: boolean;
 }
 
 export interface SFTPConfig {
@@ -145,6 +147,8 @@ export interface SFTPConfig {
   password?: string;
   privateKeyPath?: string;
   passphrase?: string;
+  /** Team Vault only — see `SSHConnectionConfig.teamVaultProfileRef`. */
+  teamVaultProfileRef?: { vaultId: string; profileId: string };
   agentPath?: string;
   /** Runtime only: public key files selecting this connection's keys in a shared agent — see SSHConnectionConfig.agentIdentityFiles. */
   agentIdentityFiles?: string[];
@@ -186,7 +190,13 @@ export interface S3Config {
   authMode?: S3AuthMode;
   accessKeyId: string;
   secretAccessKey: string;
+  /** Team Vault only, set by the main process on read: true when a secret key is stored but was
+   * stripped before reaching the renderer (member role — see TeamVaultService.getPayloadForRenderer).
+   * Never persisted as part of the profile itself. */
+  hasSecretAccessKey?: boolean;
   sessionToken?: string;
+  /** Team Vault only — see `SSHConnectionConfig.teamVaultProfileRef`. */
+  teamVaultProfileRef?: { vaultId: string; profileId: string };
   sso?: S3SsoConfig;
   serverSideEncryption?: S3ServerSideEncryption;
   kmsKeyId?: string;

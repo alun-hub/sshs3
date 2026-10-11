@@ -1,13 +1,23 @@
 import os from 'node:os';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
-import type { FileEntry, ObjectMetadata, S3Tag, BucketVersioningInfo, ObjectVersionEntry, SpaceInfo, VolumeInfo } from '../../shared/types/storage';
+import type {
+  FileEntry,
+  ObjectMetadata,
+  S3Tag,
+  S3Config,
+  BucketVersioningInfo,
+  ObjectVersionEntry,
+  SpaceInfo,
+  VolumeInfo,
+} from '../../shared/types/storage';
+import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
   IpcBridge,
-  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry'
+  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry' | 'teamVaultService'
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
@@ -24,11 +34,33 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         // A startup unlock error does not block a background connect.
         await bridge.smartcard.awaitStartupUnlock();
       }
-      if (config.type === 'sftp' && config.sftpConfig && !bridge.storageRegistry.has(config.id)) {
-        let sftpConfig = await bridge.resolveProxyJumpConfig(config.sftpConfig);
+      if (config.type === 'sftp' && config.sftpConfig?.teamVaultProfileRef && !bridge.storageRegistry.has(config.id)) {
+        // Resolves the whole config server-side from the vault's stored profile — never merges
+        // in the renderer-supplied sftpConfig, which (for a non-admin member) is not just
+        // missing the secret but untrusted for host/port/proxy too (TeamVaultService guards
+        // those server-side on save, but connect must still ignore whatever the renderer sent).
+        const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+          'ssh',
+          config.sftpConfig.teamVaultProfileRef.profileId
+        );
+        const resolvedSsh = resolved as SSHConnectionConfig;
+        resolvedConfig = {
+          ...config,
+          sftpConfig: { ...resolvedSsh, port: resolvedSsh.port ?? 22, id: config.sftpConfig.id },
+        };
+      }
+      if (config.type === 's3' && config.s3Config?.teamVaultProfileRef && !bridge.storageRegistry.has(config.id)) {
+        const resolved = await bridge.teamVaultService.resolveProfileForConnect(
+          's3',
+          config.s3Config.teamVaultProfileRef.profileId
+        );
+        resolvedConfig = { ...config, s3Config: { ...(resolved as S3Config), id: config.s3Config.id } };
+      }
+      if (resolvedConfig.type === 'sftp' && resolvedConfig.sftpConfig && !bridge.storageRegistry.has(config.id)) {
+        let sftpConfig = await bridge.resolveProxyJumpConfig(resolvedConfig.sftpConfig);
         sftpConfig = await bridge.smartcard.prepareSftpSmartcardConfig(sftpConfig, config.id);
         sftpConfig = await bridge.smartcard.prepareFido2SftpConfig(sftpConfig, config.id);
-        resolvedConfig = { ...config, sftpConfig };
+        resolvedConfig = { ...resolvedConfig, sftpConfig };
       }
       await bridge.storageRegistry.getOrCreate(resolvedConfig);
       return { id: config.id };

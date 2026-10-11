@@ -36,6 +36,11 @@ interface SSHProfileFormProps {
    * a Team Vault profile, whose folder tree can be arbitrarily deep (`"Acme Infra/Cluster A"`),
    * so autocomplete matters more than for a personal profile's flat, usually-short list. */
   folderSuggestions?: string[];
+  /** false for a Team Vault member (not admin): the password/passphrase/proxy-password fields
+   * are shown disabled with a placeholder instead of the real value — TeamVaultService enforces
+   * the same rule server-side regardless of this prop, this only drives the UI. Defaults to true
+   * (personal profiles, and Team Vault admins, can always edit their own secrets). */
+  canEditSecret?: boolean;
 }
 
 const AUTH_TYPES: { value: SSHAuthType; label: string }[] = [
@@ -68,6 +73,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   onCancel,
   dotfilesPoolEnabled = false,
   folderSuggestions,
+  canEditSecret = true,
 }) => {
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
@@ -446,10 +452,14 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             type="password"
             value={config.password ?? ''}
             onChange={(e) => update('password', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+            disabled={!canEditSecret}
+            placeholder={!canEditSecret ? (config.hasPassword ? '•••• (admin only)' : 'No password set (admin only)') : undefined}
+            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <span className="text-xs text-txt-muted">
-            Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting.
+            {canEditSecret
+              ? "Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting."
+              : 'Only a Team Vault admin can see or change this password. You can still connect using it.'}
           </span>
         </label>
       )}
@@ -481,7 +491,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               type="password"
               value={config.passphrase ?? ''}
               onChange={(e) => update('passphrase', e.target.value)}
-              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+              disabled={!canEditSecret}
+              placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
           </label>
         </>
@@ -952,7 +964,9 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                     proxy: { ...prev.proxy!, password: e.target.value },
                   }))
                 }
-                className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+                disabled={!canEditSecret}
+                placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+                className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>
           </div>

@@ -328,6 +328,10 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       if (!side) return;
 
       const passwordToUse = overridePassword !== undefined ? overridePassword : config.password;
+      // A Team Vault member profile never carries its real password here (redacted by
+      // getPayloadForRenderer for non-admins) — main resolves it server-side via
+      // `teamVaultProfileRef` instead, so skip the "no password configured" prompt below.
+      const isTeamVaultProfile = Boolean(config.teamVaultProfileRef);
 
       const unavailableReason = sftpUnavailableReason(config.authType);
       if (unavailableReason) {
@@ -337,7 +341,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       }
 
       // If the profile uses password authentication but has no password configured, prompt for it
-      if (config.authType === 'password' && !passwordToUse) {
+      if (!isTeamVaultProfile && config.authType === 'password' && !passwordToUse) {
         setPasswordPrompt({ config, side });
         setPromptPassword('');
         setSavePasswordToProfile(false);
@@ -364,6 +368,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           proxy: config.proxy,
           proxyJump: config.proxyJump,
           proxyJumpProfileId: config.proxyJumpProfileId,
+          teamVaultProfileRef: config.teamVaultProfileRef,
         };
         const providerId = `sftp-${config.id}`;
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });

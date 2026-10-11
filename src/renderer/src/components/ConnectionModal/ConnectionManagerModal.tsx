@@ -625,14 +625,34 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const filteredSSH = useMemo(() => filterSshProfiles(sshProfiles, query), [sshProfiles, query]);
   const filteredS3 = useMemo(() => filterS3Profiles(s3Profiles, query), [s3Profiles, query]);
 
-  const filteredTeamSSH = useMemo(
-    () => filterSshProfiles(teamPayload?.ssh ?? [], query),
-    [teamPayload, query]
+  // Whether the current unlocked identity holds the 'admin' role for this vault — same check as
+  // TeamVaultSettingsPanel's isAdmin. Gates whether the password/secret field of a shared profile
+  // is editable/visible in the form below (TeamVaultService enforces the same rule server-side;
+  // this only drives the UI).
+  const isTeamAdmin = useMemo(
+    () => Boolean(teamStatus?.members?.some((m) => m.recipientId === teamStatus.selfRecipientId && m.role === 'admin')),
+    [teamStatus]
   );
-  const filteredTeamS3 = useMemo(
-    () => filterS3Profiles(teamPayload?.s3 ?? [], query),
-    [teamPayload, query]
+
+  // Tags each shared profile with a reference main can use to resolve the real secret itself on
+  // connect (TeamVaultService.resolveProfileForConnect) — see SSHConnectionConfig.teamVaultProfileRef.
+  const teamSshWithRef = useMemo(
+    () =>
+      teamStatus?.vaultId
+        ? (teamPayload?.ssh ?? []).map((p) => ({ ...p, teamVaultProfileRef: { vaultId: teamStatus.vaultId!, profileId: p.id } }))
+        : teamPayload?.ssh ?? [],
+    [teamPayload, teamStatus]
   );
+  const teamS3WithRef = useMemo(
+    () =>
+      teamStatus?.vaultId
+        ? (teamPayload?.s3 ?? []).map((p) => ({ ...p, teamVaultProfileRef: { vaultId: teamStatus.vaultId!, profileId: p.id } }))
+        : teamPayload?.s3 ?? [],
+    [teamPayload, teamStatus]
+  );
+
+  const filteredTeamSSH = useMemo(() => filterSshProfiles(teamSshWithRef, query), [teamSshWithRef, query]);
+  const filteredTeamS3 = useMemo(() => filterS3Profiles(teamS3WithRef, query), [teamS3WithRef, query]);
   const teamSshTree = useMemo(
     () => buildTeamFolderTree(teamPayload?.folders ?? [], filteredTeamSSH, teamPayload?.folderIcons ?? {}),
     [teamPayload, filteredTeamSSH]
@@ -900,6 +920,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onCancel={() => setEditing(null)}
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
                   folderSuggestions={source === 'team' ? teamFolderSuggestions : undefined}
+                  canEditSecret={source !== 'team' || isTeamAdmin}
                 />
               ) : (
                 <S3ProfileForm
@@ -907,6 +928,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onSave={handleSaveS3}
                   onCancel={() => setEditing(null)}
                   folderSuggestions={source === 'team' ? teamFolderSuggestions : undefined}
+                  canEditSecret={source !== 'team' || isTeamAdmin}
                 />
               )}
             </>

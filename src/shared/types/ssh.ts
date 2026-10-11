@@ -36,6 +36,15 @@ export interface SSHConnectionConfig {
   username: string;
   authType: SSHAuthType;
   password?: string;
+  /** Team Vault only, set by the main process on read: true when a password is stored but was
+   * stripped before reaching the renderer (member role — see TeamVaultService.getPayloadForRenderer).
+   * Never persisted as part of the profile itself. */
+  hasPassword?: boolean;
+  /** Team Vault only, set by the renderer when connecting a shared profile: lets main resolve the
+   * real secret fields itself (TeamVaultService.resolveProfileForConnect) instead of trusting
+   * this object's own password/passphrase, which may have been stripped for a member. Never
+   * persisted. */
+  teamVaultProfileRef?: { vaultId: string; profileId: string };
   privateKeyPath?: string;
   passphrase?: string;
   pkcs11LibPath?: string; // path to .so or .dll
