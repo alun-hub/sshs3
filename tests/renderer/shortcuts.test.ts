@@ -8,6 +8,11 @@ describe('comboFromKeyboardEvent', () => {
     );
   });
 
+  it('returns null rather than throwing when key is missing or empty (dead-key/compose/IME events)', () => {
+    expect(comboFromKeyboardEvent({ key: undefined as unknown as string, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBeNull();
+    expect(comboFromKeyboardEvent({ key: '', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBeNull();
+  });
+
   it('returns null for a lone modifier keypress', () => {
     expect(comboFromKeyboardEvent({ key: 'Shift', code: 'ShiftLeft', ctrlKey: false, metaKey: false, altKey: false, shiftKey: true })).toBeNull();
   });

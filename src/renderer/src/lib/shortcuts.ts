@@ -48,6 +48,10 @@ export interface ShortcutKeyEventLike {
  * Returns null for a lone modifier keypress (nothing to bind yet).
  */
 export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
+  // `key` is typed as always-a-string, but some real-world keydown events (dead-key/compose
+  // sequences, certain IME and virtual-keyboard input) fire with `key` missing or empty — nothing
+  // to bind yet, same as a lone modifier press.
+  if (!e.key) return null;
   if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Alt' || e.key === 'Shift') {
     return null;
   }
