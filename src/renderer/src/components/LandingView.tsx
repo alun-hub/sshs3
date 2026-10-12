@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Clock, Cloud, Folder, Plus, Server, Terminal } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SftpButton } from './SftpButton';
-import { Kbd } from './ui/Kbd';
+import { Shortcut } from './ui/Shortcut';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
@@ -17,6 +17,7 @@ export interface LandingViewProps {
   onNewProfile: () => void;
   onOpenSyncBootstrap: () => void;
   onNavigateToTabBar: () => void;
+  shortcuts?: Record<string, string>;
 }
 
 export const LandingView: React.FC<LandingViewProps> = ({
@@ -29,6 +30,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onNewProfile,
   onOpenSyncBootstrap,
   onNavigateToTabBar,
+  shortcuts,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -201,7 +203,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 group-hover:scale-105 transition-all">
                   <Terminal className="h-5 w-5" />
                 </div>
-                <Kbd>Ctrl+Shift+T</Kbd>
+                <Shortcut id="newTerminal" shortcuts={shortcuts} />
               </div>
               <div className="mt-3">
                 <div className="text-xs font-semibold text-txt-primary group-hover:text-sky-400 transition-colors">
@@ -223,7 +225,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25 group-hover:scale-105 transition-all">
                   <Folder className="h-5 w-5" />
                 </div>
-                <Kbd>Ctrl+Shift+F</Kbd>
+                <Shortcut id="newFileManager" shortcuts={shortcuts} />
               </div>
               <div className="mt-3">
                 <div className="text-xs font-semibold text-txt-primary group-hover:text-amber-400 transition-colors">
@@ -245,7 +247,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500/25 group-hover:scale-105 transition-all">
                   <Server className="h-5 w-5" />
                 </div>
-                <Kbd>Ctrl+Shift+P</Kbd>
+                <Shortcut id="openProfiles" shortcuts={shortcuts} />
               </div>
               <div className="mt-3">
                 <div className="text-xs font-semibold text-txt-primary group-hover:text-emerald-400 transition-colors">
@@ -292,9 +294,9 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
         {/* Keyboard hints footer */}
         <div className="pt-4 text-2xs text-txt-muted flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-          <span><Kbd variant="plain">Ctrl+Tab</Kbd> Cycle tabs</span>
-          <span><Kbd variant="plain">Ctrl+W</Kbd> Close tab</span>
-          <span><Kbd variant="plain">Ctrl+,</Kbd> Settings</span>
+          <span><Shortcut id="nextTab" shortcuts={shortcuts} variant="plain" /> Cycle tabs</span>
+          <span><Shortcut id="closeTab" shortcuts={shortcuts} variant="plain" /> Close tab</span>
+          <span><Shortcut id="openSettings" shortcuts={shortcuts} variant="plain" /> Settings</span>
         </div>
       </div>
     </div>

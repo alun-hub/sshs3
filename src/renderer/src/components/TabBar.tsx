@@ -19,7 +19,8 @@ import {
   Cable,
 } from 'lucide-react';
 import type { CachedSmartcardAgent, SSHActiveTunnel } from '@shared/types/ssh';
-import { Kbd } from './ui/Kbd';
+import { Shortcut } from './ui/Shortcut';
+import { getShortcutKeys } from '../lib/shortcuts';
 
 export type TabType = 'terminal' | 'filemanager';
 
@@ -48,6 +49,7 @@ export interface TabBarProps {
   /** Unlocks the cards/keys that aren't cached yet (prompts for the PIN); resolves once detection has decided whether anything was started. */
   onUnlockSmartcard?: () => Promise<{ started: boolean }>;
   onListCachedSmartcards?: () => Promise<CachedSmartcardAgent[]>;
+  shortcuts?: Record<string, string>;
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -66,6 +68,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onLockSmartcard,
   onUnlockSmartcard,
   onListCachedSmartcards,
+  shortcuts,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -272,7 +275,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <Terminal className="h-3.5 w-3.5 text-sky-400" />
                 <span>New Terminal</span>
               </div>
-              <Kbd>Ctrl+Shift+T</Kbd>
+              <Shortcut id="newTerminal" shortcuts={shortcuts} />
             </button>
             <button
               role="menuitem"
@@ -288,7 +291,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <Folder className="h-3.5 w-3.5 text-amber-400" />
                 <span>New File Manager</span>
               </div>
-              <Kbd>Ctrl+Shift+F</Kbd>
+              <Shortcut id="newFileManager" shortcuts={shortcuts} />
             </button>
             {onNewK8sSession && (
               <button
@@ -503,7 +506,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button
           type="button"
           data-testid="quick-profiles-btn"
-          title="Connections & Profiles (Ctrl+Shift+O)"
+          title={`Connections & Profiles (${getShortcutKeys('openProfiles', shortcuts)})`}
           aria-label="Connections & Profiles"
           onClick={onOpenProfiles}
           className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -545,7 +548,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button
           type="button"
           data-testid="quick-settings-btn"
-          title="Settings (Ctrl+,)"
+          title={`Settings (${getShortcutKeys('openSettings', shortcuts)})`}
           aria-label="Settings"
           onClick={onOpenSettings}
           className="flex h-6 w-6 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

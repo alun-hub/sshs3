@@ -1,3 +1,5 @@
+import { DEFAULT_SHORTCUTS, SHORTCUT_DEFINITIONS } from '@shared/types/settings';
+
 /**
  * Maps a physical key (KeyboardEvent.code) to the unshifted symbol it types on a standard
  * QWERTY layout. Used to recover the base symbol for a Shift-held combo: browsers report
@@ -77,4 +79,17 @@ export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
   parts.push(key);
 
   return parts.join('+');
+}
+
+/**
+ * Resolves the key combo currently bound to a shortcut id: the user's configured binding if
+ * one exists, else the built-in default. Falls back to the id itself if it isn't a known
+ * shortcut, so a typo surfaces as a visibly wrong label instead of a blank one.
+ */
+export function getShortcutKeys(id: string, shortcuts: Record<string, string> | undefined): string {
+  return shortcuts?.[id] || DEFAULT_SHORTCUTS[id] || id;
+}
+
+export function getShortcutName(id: string): string {
+  return SHORTCUT_DEFINITIONS.find((def) => def.id === id)?.name ?? id;
 }

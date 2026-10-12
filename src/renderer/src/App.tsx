@@ -328,6 +328,7 @@ export const App: React.FC = () => {
             onLockSmartcard={() => window.multissh?.smartcardLockAll() ?? Promise.resolve({ locked: 0 })}
             onUnlockSmartcard={() => window.multissh?.smartcardUnlockNow?.() ?? Promise.resolve({ started: false })}
             onListCachedSmartcards={() => window.multissh?.smartcardListCached() ?? Promise.resolve([])}
+            shortcuts={settings.shortcuts}
           />
         </div>
       </header>
@@ -350,6 +351,7 @@ export const App: React.FC = () => {
             onNewProfile={handleNewProfile}
             onOpenSyncBootstrap={() => setSyncBootstrapModalOpen(true)}
             onNavigateToTabBar={() => setTabBarFocused(true)}
+            shortcuts={settings.shortcuts}
           />
         )}
         {tabs.map((tab) => {
