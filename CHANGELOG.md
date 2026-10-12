@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.35] - 2026-10-12
+
+### Added
+- **Team Vault: multiple teams, and Windows support.** Belong to several teams at once, each with its own role (admin/member) and its own S3 target — teams no longer have to share one bucket. Teams now show as their own tabs in the Connection Manager next to Personal, each independently shown/hidden, with a pinnable default tab and a background sync indicator. Team Vault now also runs on Windows (previously Linux-only); YubiKey 5 is verified end-to-end, YubiKey 4 doesn't work there yet.
+- **Simpler join flow.** An admin shares a one-click "invite" per member (the team ID and S3 target, encrypted to that member's own key) instead of dictating S3 credentials by hand. The new member pastes it, reviews the decoded team/endpoint, and joins — no manual S3 setup and no separate unlock step.
+- **Team description.** A free-text, multi-line description admins can set to explain what a team is for, shown on its Connection Manager tab and editable from either there or Settings.
+- Sync conflicts (unsynced local edits plus a remote change) now surface a "Get latest" action instead of a passive badge.
+- PIN/touch dialogs now say which team an unlock, enrollment, or invite action is for.
+
+### Security
+- Closed a header-MAC canonicalization gap where a crafted team name, description, or member id could let someone with only S3 write access (no Vault Key) shift which bytes belong to which field under a still-valid MAC. Closed both at the input boundary and inside the MAC function itself.
+- The join flow no longer acts on a decrypted invite blindly — the decoded team and S3 endpoint are shown for review before anything connects, since the encryption proves a message reached the right person but not who sent it.
+
+### Fixed
+- A team's remembered identity path wasn't saved when creating it (only when joining), forcing the admin to retype it on every unlock; a migrated install's remembered path could also go stale after the on-disk layout changed.
+- "Forget team" failed on a team that had a configured S3 target but no local file pulled yet.
+- A backward-compatibility bug in the header MAC could block unlocking an existing vault after upgrading.
+- A keyboard-navigation regression in the Connection Manager's "pin as default tab" action.
+- A crash on a keydown event with no `key` (dead-key/compose and some IME input).
+
 ## [0.96.34] - 2026-10-10
 
 ### Added
