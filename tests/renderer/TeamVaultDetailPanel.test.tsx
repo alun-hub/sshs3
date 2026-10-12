@@ -140,16 +140,59 @@ describe('TeamVaultDetailPanel', () => {
       });
     });
 
-    it('promotes/demotes a member via the role button', async () => {
+    it("disables Demote for the last admin so they can't lock everyone out", async () => {
       mockApi();
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Demote' }));
+      const demoteButton = screen.getByRole('button', { name: 'Demote' });
+      expect(demoteButton).toBeDisabled();
+      expect(demoteButton).toHaveAttribute('title', "Can't demote the last admin — promote another member first");
+
+      fireEvent.click(demoteButton);
+      expect(window.multissh.teamVaultSetRole).not.toHaveBeenCalled();
+    });
+
+    it('promotes/demotes a member via the role button once a second admin exists', async () => {
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          adminCount: 2,
+          members: [
+            { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+            { recipientId: 'bob@piv:def', role: 'admin', addedAt: '2026-10-02T00:00:00Z' },
+          ],
+        }),
+      });
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('bob@piv:def')).toBeInTheDocument());
+
+      const bobRow = screen.getByText('bob@piv:def').closest('div[class*="rounded-lg"]') as HTMLElement;
+      fireEvent.click(within(bobRow).getByRole('button', { name: 'Demote' }));
 
       await waitFor(() => {
-        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith(VAULT_ID, 'alice@piv:abc', 'member');
+        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith(VAULT_ID, 'bob@piv:def', 'member');
       });
+    });
+
+    it("hides Copy invite on the signed-in identity's own row", async () => {
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          adminCount: 2,
+          members: [
+            { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+            { recipientId: 'bob@piv:def', role: 'admin', addedAt: '2026-10-02T00:00:00Z' },
+          ],
+        }),
+      });
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('bob@piv:def')).toBeInTheDocument());
+
+      const aliceRow = screen.getByText('alice@piv:abc').closest('div[class*="rounded-lg"]') as HTMLElement;
+      const bobRow = screen.getByText('bob@piv:def').closest('div[class*="rounded-lg"]') as HTMLElement;
+      expect(within(aliceRow).queryByRole('button', { name: /Copy invite/ })).not.toBeInTheDocument();
+      expect(within(bobRow).getByRole('button', { name: /Copy invite/ })).toBeInTheDocument();
     });
 
     it('offers to delete the vault (local-only) when the signed-in identity is an admin, with confirmation, then reports it removed', async () => {

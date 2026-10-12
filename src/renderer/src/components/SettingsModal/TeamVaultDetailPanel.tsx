@@ -749,7 +749,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     <div className="text-txt-muted">{m.role}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {status.unlocked && isAdmin && (
+                    {status.unlocked && isAdmin && m.recipientId !== status.selfRecipientId && (
                       <button
                         type="button"
                         onClick={() => void handleCopyInvite(m.recipientId)}
@@ -770,8 +770,18 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     <button
                       type="button"
                       onClick={() => void handleSetRole(m.recipientId, m.role === 'admin' ? 'member' : 'admin')}
-                      disabled={!status.unlocked || busyRecipientId === m.recipientId}
-                      title={status.unlocked ? undefined : 'Unlock the vault first'}
+                      disabled={
+                        !status.unlocked ||
+                        busyRecipientId === m.recipientId ||
+                        (m.role === 'admin' && (status.adminCount ?? 0) <= 1)
+                      }
+                      title={
+                        !status.unlocked
+                          ? 'Unlock the vault first'
+                          : m.role === 'admin' && (status.adminCount ?? 0) <= 1
+                            ? "Can't demote the last admin — promote another member first"
+                            : undefined
+                      }
                       className="rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
                     >
                       {m.role === 'admin' ? 'Demote' : 'Promote'}
