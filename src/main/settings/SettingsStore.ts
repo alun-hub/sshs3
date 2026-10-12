@@ -82,18 +82,49 @@ export class SettingsStore {
         ...partial,
         updatedAt: options?.preserveTimestamp ? (partial.updatedAt ?? current.updatedAt) : new Date().toISOString(),
       };
-      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-      await fs.writeFile(this.filePath, JSON.stringify(updated, null, 2), {
-        encoding: 'utf-8',
-        mode: 0o600,
-      });
-      try {
-        await fs.chmod(this.filePath, 0o600);
-      } catch {
-        // Ignore chmod failures on non-POSIX filesystems
-      }
-      return updated;
+      return this.persist(updated);
     });
+  }
+
+  /**
+   * Atomically flips one team's entry in `connectionManagerVisibleTeamVaults` — unlike a
+   * renderer doing its own `settingsGet()` -> mutate the map -> `settingsSave()` round trip, the
+   * read-modify-write here happens entirely inside this store's own `queueMutation` lock, so two
+   * calls for two different vaultIds (e.g. two Team Vault detail panels toggled in quick
+   * succession) can never race on a stale snapshot and have one overwrite the other's change —
+   * `saveSettings`'s top-level merge replaces this nested map wholesale from whatever the caller
+   * last read, which is exactly the gap this closes. Per CLAUDE.md: "Alla stores använder
+   * `queueMutation` för sekventiella skrivningar."
+   */
+  public async setTeamVaultTabVisible(vaultId: string, visible: boolean): Promise<AppSettings> {
+    return this.queueMutation(async () => {
+      const current = await this.getSettings();
+      const updated: AppSettings = {
+        ...current,
+        connectionManagerVisibleTeamVaults: {
+          ...current.connectionManagerVisibleTeamVaults,
+          [vaultId]: visible,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      return this.persist(updated);
+    });
+  }
+
+  /** Shared disk-write tail for `saveSettings`/`setTeamVaultTabVisible` — both already compute
+   * `updated` under this store's `queueMutation` lock; this only persists it. */
+  private async persist(updated: AppSettings): Promise<AppSettings> {
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    await fs.writeFile(this.filePath, JSON.stringify(updated, null, 2), {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+    try {
+      await fs.chmod(this.filePath, 0o600);
+    } catch {
+      // Ignore chmod failures on non-POSIX filesystems
+    }
+    return updated;
   }
 
   private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {

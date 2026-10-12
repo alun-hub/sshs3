@@ -456,6 +456,9 @@ export const api: MultiSSHApi = {
   settingsSave: (settings: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE, settings),
 
+  settingsSetTeamVaultTabVisible: (vaultId: string, visible: boolean): Promise<AppSettings> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_TEAM_VAULT_TAB_VISIBLE, vaultId, visible),
+
   // Remote profile sync
   profileSyncSetup: (payload: { target: StorageConnectConfig; remoteBasePath?: string }): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, payload),
@@ -551,6 +554,15 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_FOLDER, vaultId, folderPath, deleteProfiles),
   teamVaultSetFolderIcon: (vaultId: string, folderPath: string, icon: string | undefined): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_FOLDER_ICON, vaultId, folderPath, icon),
+  teamVaultBuildInvite: (vaultId: string, recipientId: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, vaultId, recipientId),
+  teamVaultDecodeInvite: (
+    inviteText: string,
+    identityFilePath: string
+  ): Promise<{ vaultId: string; target: StorageConnectConfig; remoteBasePath?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE, inviteText, identityFilePath),
+  teamVaultSetDescription: (vaultId: string, description: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, vaultId, description),
   onTeamVaultAutoPulled: (callback: (payload: { vaultId: string }) => void): (() => void) => {
     const listener = (_event: any, payload: { vaultId: string }) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, listener);
@@ -560,6 +572,11 @@ export const api: MultiSSHApi = {
     const listener = (_event: any, payload: { vaultId: string }) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, listener);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, listener);
+  },
+  onTeamVaultSyncStatus: (callback: (payload: { vaultId: string; syncing: boolean }) => void): (() => void) => {
+    const listener = (_event: any, payload: { vaultId: string; syncing: boolean }) => callback(payload);
+    ipcRenderer.on(IPC_CHANNELS.TEAM_VAULT_SYNC_STATUS, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.TEAM_VAULT_SYNC_STATUS, listener);
   },
 
   // Connection Testing

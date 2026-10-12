@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { KeyRound, ShieldCheck, Cpu, Lock, Server, Layers, FolderSync } from 'lucide-react';
+import { KeyRound, ShieldCheck, Cpu, Lock, Server, Layers, FolderSync, Users } from 'lucide-react';
 import type { AskpassPromptKind } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
 import { createRendererLogger } from '../lib/log';
@@ -121,6 +121,9 @@ function resolvePromptContext(
   }
   if (/dotfile/i.test(raw)) {
     return { label: raw, icon: FolderSync };
+  }
+  if (/team vault/i.test(raw)) {
+    return { label: raw, icon: Users };
   }
   return { label: raw, icon: Server };
 }

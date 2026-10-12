@@ -71,6 +71,11 @@ export const TeamVaultListPanel: React.FC = () => {
   const [joinTargetDraft, setJoinTargetDraft] = useState<SyncTargetDraft>(emptyS3TargetDraft());
   const [joinTargetError, setJoinTargetError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  // Default join path (§A of the join-flow plan): paste an age-encrypted invite blob from the
+  // admin instead of typing the S3 target in by hand. The old manual form (joinVaultId +
+  // joinTargetDraft above) stays as a collapsed "...or configure manually" fallback.
+  const [inviteText, setInviteText] = useState('');
+  const [showManualJoin, setShowManualJoin] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +101,8 @@ export const TeamVaultListPanel: React.FC = () => {
     setJoinVaultId('');
     setJoinTargetDraft(emptyS3TargetDraft());
     setJoinTargetError(null);
+    setInviteText('');
+    setShowManualJoin(false);
   };
 
   const handleEnroll = async () => {
@@ -206,6 +213,46 @@ export const TeamVaultListPanel: React.FC = () => {
       resetJoinCreateState();
     } catch (err) {
       setJoinTargetError(describeIpcError(err, 'Failed to join the existing Team Vault'));
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  /**
+   * Default join path (§A): decrypts the admin's pasted invite blob with the identity generated
+   * in step 1 (`myRecipient.identityFilePath`) to recover the S3 target, then sets it, pulls, and
+   * auto-unlocks with that same identity — no manual S3 entry and no second identity-path
+   * round-trip, unlike `handleJoinExistingVault`'s manual fallback below.
+   */
+  const handleJoinWithInvite = async () => {
+    if (!myRecipient || !selfRecipientId.trim() || !inviteText.trim()) return;
+    setJoinTargetError(null);
+    setJoining(true);
+    setError(null);
+    try {
+      const { vaultId, target, remoteBasePath } = await window.multissh.teamVaultDecodeInvite(
+        inviteText,
+        myRecipient.identityFilePath
+      );
+      await window.multissh.teamVaultSetTarget(vaultId, target, remoteBasePath);
+      const hasRemote = await window.multissh.teamVaultHasRemoteVault(vaultId);
+      if (!hasRemote) {
+        setJoinTargetError('No Team Vault found at that location — check the invite with your admin.');
+        return;
+      }
+      await window.multissh.teamVaultPull(vaultId);
+      await window.multissh.teamVaultUnlock(vaultId, selfRecipientId.trim(), myRecipient.identityFilePath);
+      await load();
+      setSelectedVaultId(vaultId);
+      setMode({ kind: 'list' });
+      resetJoinCreateState();
+    } catch (err) {
+      setJoinTargetError(
+        describeIpcError(
+          err,
+          'Could not read this invite — check it was pasted completely, or that it matches your identity.'
+        )
+      );
     } finally {
       setJoining(false);
     }
@@ -481,9 +528,10 @@ export const TeamVaultListPanel: React.FC = () => {
 
           <div className="space-y-2 border-t border-border-subtle pt-3">
             <p className="text-xs text-txt-secondary">
-              Step 2 — once their admin has added you as a member, ask them for the team's{' '}
-              <strong>Team ID</strong> (shown in their Team Vault detail view) and point this
-              device at the team's S3 target to pull the vault.
+              Step 2 — once their admin has added you as a member, ask them for an{' '}
+              <strong>invite</strong> (copied from their Team Vault detail view's "Copy invite"
+              next to your name) and paste it below. It carries the team's S3 target, so you don't
+              need to type it in by hand.
             </p>
             {joinTargetError && (
               <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
@@ -491,26 +539,66 @@ export const TeamVaultListPanel: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="mb-1 block text-xs font-medium text-txt-secondary">Team ID</label>
-              <input
-                type="text"
-                value={joinVaultId}
-                onChange={(e) => setJoinVaultId(e.target.value)}
-                placeholder="vlt_..."
-                disabled={joining}
+              <label className="mb-1 block text-xs font-medium text-txt-secondary">Paste invite from your admin</label>
+              <textarea
+                value={inviteText}
+                onChange={(e) => setInviteText(e.target.value)}
+                placeholder="sshs3 Team Vault invite for ..."
+                rows={4}
+                disabled={joining || !myRecipient}
                 className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted disabled:opacity-50"
               />
             </div>
-            <SyncTargetForm draft={joinTargetDraft} onChange={setJoinTargetDraft} disabled={joining} />
             <button
               type="button"
-              onClick={() => void handleJoinExistingVault()}
-              disabled={joining || !joinVaultId.trim()}
+              onClick={() => void handleJoinWithInvite()}
+              disabled={joining || !myRecipient || !selfRecipientId.trim() || !inviteText.trim()}
+              title={
+                !myRecipient || !selfRecipientId.trim() ? 'Generate your Team Vault ID first (step 1)' : undefined
+              }
               className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
             >
               {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
-              Pull and join
+              Join team
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowManualJoin((prev) => !prev)}
+              className="text-xs text-txt-muted underline hover:text-txt-secondary"
+            >
+              {showManualJoin ? 'Hide manual setup' : '...or configure manually'}
+            </button>
+            {showManualJoin && (
+              <div className="space-y-2 rounded-lg border border-border-subtle bg-app-input/40 p-3">
+                <p className="text-xs text-txt-muted">
+                  Fallback for a broken invite or a special case: enter the team's{' '}
+                  <strong>Team ID</strong> (shown in their Team Vault detail view) and its S3
+                  target by hand.
+                </p>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-txt-secondary">Team ID</label>
+                  <input
+                    type="text"
+                    value={joinVaultId}
+                    onChange={(e) => setJoinVaultId(e.target.value)}
+                    placeholder="vlt_..."
+                    disabled={joining}
+                    className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted disabled:opacity-50"
+                  />
+                </div>
+                <SyncTargetForm draft={joinTargetDraft} onChange={setJoinTargetDraft} disabled={joining} />
+                <button
+                  type="button"
+                  onClick={() => void handleJoinExistingVault()}
+                  disabled={joining || !joinVaultId.trim()}
+                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                >
+                  {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                  Pull and join
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

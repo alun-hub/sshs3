@@ -90,6 +90,23 @@ function fakeCrypto(): TeamVaultCryptoService {
       if (!m) throw new Error('bad wrap');
       return Buffer.from(m[1], 'hex');
     },
+    // Deterministic stand-in for the real age-backed encrypt/decrypt (TeamVaultService.buildInvite
+    // / decodeInvite) — embeds the recipient so a test can assert the right one was used, without
+    // actually tying decryption to a specific identity file (these tests fake identity-mismatch
+    // failures by having decryptWithIdentity reject outright instead, same as `age` would).
+    encryptForRecipient: async (plaintext: string, ageRecipient: string) =>
+      `enc:${ageRecipient}:${Buffer.from(plaintext, 'utf8').toString('base64')}`,
+    decryptWithIdentity: async (armoredCiphertext: string) => {
+      // Tolerates an optional real age armor envelope around the fake `enc:...` payload — lets
+      // tests exercise extractInviteCiphertext's primary BEGIN/END-marker extraction path (not
+      // just its legacy header-line fallback) without needing the real `age` binary.
+      const unwrapped = armoredCiphertext
+        .replace(/^-----BEGIN AGE ENCRYPTED FILE-----\n?/, '')
+        .replace(/\n?-----END AGE ENCRYPTED FILE-----$/, '');
+      const m = unwrapped.match(/^enc:[^:]+:(.+)$/s);
+      if (!m) throw new Error('age: error: failed to parse ciphertext');
+      return Buffer.from(m[1], 'base64').toString('utf8');
+    },
     enrollOwnPivRecipient: async () => ({
       recipient: 'age1yubikey1fakeadmin',
       identityFilePath: '/tmp/fake-admin-identity.txt',
@@ -572,7 +589,12 @@ describe('TeamVaultService', () => {
       });
       await second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
 
-      expect(prompter.promptForPinDirect).toHaveBeenCalledWith('Enter PIN for YubiKey', 'smartcard', undefined, undefined);
+      expect(prompter.promptForPinDirect).toHaveBeenCalledWith(
+        'Enter PIN for YubiKey',
+        'smartcard',
+        `Team Vault: ${vaultId}`,
+        undefined
+      );
       expect(prompter.touchRequested).toHaveBeenCalledTimes(1);
       expect(prompter.touchCleared).toHaveBeenCalledTimes(1);
       expect(second.isUnlocked(vaultId)).toBe(true);
@@ -586,7 +608,12 @@ describe('TeamVaultService', () => {
         pinPrompter: prompter,
       });
       await service.enrollOwnPivRecipient();
-      expect(prompter.promptForPinDirect).toHaveBeenCalledWith('Enter PIN for YubiKey', 'smartcard', undefined, undefined);
+      expect(prompter.promptForPinDirect).toHaveBeenCalledWith(
+        'Enter PIN for YubiKey',
+        'smartcard',
+        'Team Vault: new identity',
+        undefined
+      );
     });
 
     it('fails clearly, instead of silently hanging, when no pinPrompter is configured but the crypto layer needs one', async () => {
@@ -1907,6 +1934,156 @@ describe('TeamVaultService', () => {
       expect(byId.get(vaultIdB)?.members).toEqual([
         expect.objectContaining({ recipientId: 'carol@piv:ghi' }),
       ]);
+    });
+  });
+
+  describe('buildInvite / decodeInvite (age-encrypted invite blob, §A of the join-flow plan)', () => {
+    const fakeTarget = { id: 'target-1', name: 'Team Bucket', type: 's3' as const };
+
+    function makeServiceWithConfig(remoteBasePath = 'team-bucket/prefix'): TeamVaultService {
+      return new TeamVaultService({
+        cryptoService: fakeCrypto(),
+        baseDir: tempDir,
+        configStore: { getConfig: async () => ({ target: fakeTarget, remoteBasePath }) },
+      });
+    }
+
+    it("builds an invite using the member's own ageRecipient from the access header, and decodes it back to the configured target", async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+
+      const invite = await service.buildInvite(vaultId, 'bob@piv:def');
+      expect(invite).toMatch(/^sshs3 Team Vault invite for bob@piv:def\n/);
+      expect(invite).toContain('age1yubikey1bob');
+
+      const decoded = await service.decodeInvite(invite, '/tmp/bob-identity.txt');
+      expect(decoded).toEqual({ vaultId, target: fakeTarget, remoteBasePath: 'team-bucket/prefix' });
+    });
+
+    it('is admin-gated: a plain member cannot build an invite for another member', async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.addMember(vaultId, 'carol@piv:ghi', 'age1yubikey1carol', 'member');
+
+      // Unlock as bob (a plain member), not alice (the admin).
+      service.lock(vaultId);
+      await service.unlock(vaultId, 'bob@piv:def', '/tmp/bob-identity.txt');
+
+      await expect(service.buildInvite(vaultId, 'carol@piv:ghi')).rejects.toThrow('Only a Team Vault admin can do this');
+    });
+
+    it('rejects building an invite for a recipientId that is not a member', async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      await expect(service.buildInvite(vaultId, 'nobody@piv:xyz')).rejects.toThrow('is not a member of this vault');
+    });
+
+    it('fails clearly when no configStore is wired up', async () => {
+      const service = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await expect(service.buildInvite(vaultId, 'alice@piv:abc')).rejects.toThrow('missing configStore');
+    });
+
+    it('decodeInvite surfaces a clear, user-facing error for a truncated/garbled paste', async () => {
+      const service = makeServiceWithConfig();
+      await expect(
+        service.decodeInvite('sshs3 Team Vault invite for bob@piv:def\nnot-a-real-blob', '/tmp/bob-identity.txt')
+      ).rejects.toThrow('Could not read this invite');
+    });
+
+    it('decodeInvite rejects a decrypted blob that is not a recognizable invite shape', async () => {
+      const service = makeServiceWithConfig();
+      const bogusEncrypted = `enc:age1yubikey1bob:${Buffer.from(JSON.stringify({ not: 'an invite' }), 'utf8').toString('base64')}`;
+      await expect(service.decodeInvite(bogusEncrypted, '/tmp/bob-identity.txt')).rejects.toThrow(
+        'not a recognizable Team Vault invite'
+      );
+    });
+
+    it('decodeInvite tolerates a paste of just the ciphertext, without the human-readable header line', async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      const invite = await service.buildInvite(vaultId, 'bob@piv:def');
+      const ciphertextOnly = invite.split('\n').slice(1).join('\n');
+
+      const decoded = await service.decodeInvite(ciphertextOnly, '/tmp/bob-identity.txt');
+      expect(decoded.vaultId).toBe(vaultId);
+    });
+
+    it('decodeInvite tolerates a chat/email client quoting every line with "> ", including the header line itself', async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      const invite = await service.buildInvite(vaultId, 'bob@piv:def');
+      // Simulates a reply-quoted paste — every line, including the header line that a prior
+      // version of this code required to be the exact, unquoted first line, prefixed with the
+      // chat/email client's own "> " quote marker.
+      const quoted = invite
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+
+      const decoded = await service.decodeInvite(quoted, '/tmp/bob-identity.txt');
+      expect(decoded.vaultId).toBe(vaultId);
+    });
+
+    it('decodeInvite extracts the ciphertext from a real age ASCII-armor envelope anywhere in the pasted text, ignoring surrounding commentary and quote markers', async () => {
+      const service = makeServiceWithConfig();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      const rawInvite = await service.buildInvite(vaultId, 'bob@piv:def');
+      const rawCiphertext = rawInvite.split('\n').slice(1).join('\n');
+      // A real age -a envelope around the fake ciphertext, buried in unrelated chat text on both
+      // sides and quoted — the BEGIN/END markers are what extractInviteCiphertext should find and
+      // extract, regardless of anything else surrounding them.
+      const messy = [
+        '> Hey, here is the invite you asked for:',
+        '> -----BEGIN AGE ENCRYPTED FILE-----',
+        `> ${rawCiphertext}`,
+        '> -----END AGE ENCRYPTED FILE-----',
+        '> let me know once you are in!',
+      ].join('\n');
+
+      const decoded = await service.decodeInvite(messy, '/tmp/bob-identity.txt');
+      expect(decoded.vaultId).toBe(vaultId);
+    });
+  });
+
+  describe('setDescription (free-text vault description, §D of the join-flow plan)', () => {
+    it('is admin-gated, trims, and clears back to undefined on an empty string', async () => {
+      const service = makeService();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+
+      await service.setDescription(vaultId, '  Acme Infra — prod SSH/S3 access  ');
+      expect((await service.getStatus(vaultId)).vaultDescription).toBe('Acme Infra — prod SSH/S3 access');
+
+      await service.setDescription(vaultId, '   ');
+      expect((await service.getStatus(vaultId)).vaultDescription).toBeUndefined();
+    });
+
+    it('rejects a non-admin setting the description', async () => {
+      const service = makeService();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+
+      service.lock(vaultId);
+      await service.unlock(vaultId, 'bob@piv:def', '/tmp/bob-identity.txt');
+
+      await expect(service.setDescription(vaultId, 'Hijacked description')).rejects.toThrow(
+        'Only a Team Vault admin can do this'
+      );
+    });
+
+    it('keeps the access header verifiable after a description change — unlock still succeeds', async () => {
+      const service = makeService();
+      const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
+      await service.setDescription(vaultId, 'Acme Infra team');
+
+      service.lock(vaultId);
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).resolves.toBeUndefined();
     });
   });
 });

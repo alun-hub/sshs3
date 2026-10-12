@@ -119,6 +119,25 @@ function requireVaultName(value: string): void {
   }
 }
 
+function requireVaultDescription(value: string): void {
+  if (typeof value !== 'string' || value.length > 500) {
+    throw new Error('Vault description must be a string of at most 500 characters');
+  }
+}
+
+// An armored age blob of the small JSON object `TeamVaultService.buildInvite` encrypts (vaultId +
+// an S3 target + an optional prefix) is a few KB at most — well under this ceiling even with the
+// human-readable header line prepended. Without a cap, a pasted invite of unbounded size would be
+// handed straight to the `age` CLI via a pty (see `decryptWithIdentity`), which has its own
+// MAX_OUTPUT_BYTES guard but only after spawning the process.
+const MAX_INVITE_TEXT_LENGTH = 64 * 1024;
+
+function requireInviteText(value: string): void {
+  if (typeof value !== 'string' || !value.trim() || value.length > MAX_INVITE_TEXT_LENGTH) {
+    throw new Error('A valid invite is required');
+  }
+}
+
 // `TeamVaultService.saveTeamFolder`/`renameTeamFolder`/`deleteTeamFolder` already reject an
 // empty-after-trim path, but nothing there bounds its size — without this, a compromised or
 // buggy renderer could push an arbitrarily large (or absurdly deep) path straight into the
@@ -202,6 +221,13 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     bridge.scheduleTeamVaultAutoPush(vid);
   });
 
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, async (_event, vaultId: string, description: string) => {
+    const vid = requireVaultId(vaultId);
+    requireVaultDescription(description);
+    await bridge.teamVaultService.setDescription(vid, description);
+    bridge.scheduleTeamVaultAutoPush(vid);
+  });
+
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_ADD_MEMBER,
     async (_event, vaultId: string, recipientId: string, ageRecipient: string, role: TeamVaultRole) => {
@@ -218,6 +244,27 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     requireRecipientId(recipientId, 'Recipient id');
     return bridge.teamVaultService.removeMember(vid, recipientId);
   });
+
+  // Invite-blob join-flow simplification (docs/team-vault-plan.md): the admin builds an
+  // age-encrypted blob for an already-added member (TEAM_VAULT_ADD_MEMBER must run first) so that
+  // member never has to type the S3 target in by hand — see TeamVaultService.buildInvite's doc
+  // comment for why this is admin-gated.
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, async (_event, vaultId: string, recipientId: string): Promise<string> => {
+    const vid = requireVaultId(vaultId);
+    requireRecipientId(recipientId, 'Recipient id');
+    return bridge.teamVaultService.buildInvite(vid, recipientId);
+  });
+
+  // New-member side of TEAM_VAULT_BUILD_INVITE — deliberately NOT vaultId-led (the vault being
+  // joined isn't locally known yet; its id comes back inside the decrypted result).
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE,
+    async (_event, inviteText: string, identityFilePath: string) => {
+      requireInviteText(inviteText);
+      requireIdentityFilePath(identityFilePath);
+      return bridge.teamVaultService.decodeInvite(inviteText, identityFilePath);
+    }
+  );
 
   bridge.registerHandler(
     IPC_CHANNELS.TEAM_VAULT_SET_ROLE,

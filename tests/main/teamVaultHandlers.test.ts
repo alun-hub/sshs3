@@ -25,6 +25,9 @@ describe('Team Vault IPC handlers', () => {
     removeMember: vi.fn(),
     setRole: vi.fn(),
     renameVault: vi.fn(),
+    setDescription: vi.fn(),
+    buildInvite: vi.fn(),
+    decodeInvite: vi.fn(),
     unlock: vi.fn(),
     unlockWithRecoveryText: vi.fn(),
     lock: vi.fn(),
@@ -369,6 +372,79 @@ describe('Team Vault IPC handlers', () => {
     it('never accepts a removedBy argument — attribution comes only from the unlocked session', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_REMOVE_MEMBER, VAULT_ID, 'bob');
       expect(teamVaultService.removeMember).toHaveBeenCalledWith(VAULT_ID, 'bob');
+    });
+  });
+
+  describe('TEAM_VAULT_SET_DESCRIPTION', () => {
+    it('rejects an overlong description', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, VAULT_ID, 'x'.repeat(501))).rejects.toThrow(
+        'Vault description must be a string of at most 500 characters'
+      );
+      expect(teamVaultService.setDescription).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid vaultId before ever calling the service (admin-gating happens inside TeamVaultService itself)', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, '../../etc/passwd', 'x')).rejects.toThrow(
+        'A valid vaultId is required'
+      );
+      expect(teamVaultService.setDescription).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the service and schedules an auto-push for that vaultId', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, VAULT_ID, 'Acme Infra team');
+      expect(teamVaultService.setDescription).toHaveBeenCalledWith(VAULT_ID, 'Acme Infra team');
+      expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
+    });
+  });
+
+  describe('TEAM_VAULT_BUILD_INVITE', () => {
+    it('requires a valid vaultId and recipientId before calling the service', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, '../x', 'bob')).rejects.toThrow(
+        'A valid vaultId is required'
+      );
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, VAULT_ID, '')).rejects.toThrow('Recipient id is required');
+      expect(teamVaultService.buildInvite).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the service and returns its result — admin-gating is TeamVaultService.buildInvite\'s job, not this handler\'s', async () => {
+      teamVaultService.buildInvite.mockResolvedValue('sshs3 Team Vault invite for bob\narmored-blob');
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, VAULT_ID, 'bob');
+      expect(teamVaultService.buildInvite).toHaveBeenCalledWith(VAULT_ID, 'bob');
+      expect(result).toBe('sshs3 Team Vault invite for bob\narmored-blob');
+    });
+
+    it('propagates the service\'s admin-gating rejection as-is', async () => {
+      teamVaultService.buildInvite.mockRejectedValue(new Error('Only a Team Vault admin can do this'));
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_BUILD_INVITE, VAULT_ID, 'bob')).rejects.toThrow(
+        'Only a Team Vault admin can do this'
+      );
+    });
+  });
+
+  describe('TEAM_VAULT_DECODE_INVITE', () => {
+    it('is not vaultId-led — rejects a missing/empty invite text and a non-absolute identity path', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE, '', '/tmp/identity.txt')).rejects.toThrow(
+        'A valid invite is required'
+      );
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE, 'invite text', 'relative/path.txt')).rejects.toThrow(
+        'Identity file path must be an absolute path'
+      );
+      expect(teamVaultService.decodeInvite).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized invite text before ever calling the service', async () => {
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE, 'x'.repeat(65 * 1024 + 1), '/tmp/identity.txt')
+      ).rejects.toThrow('A valid invite is required');
+      expect(teamVaultService.decodeInvite).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the service and returns its decoded result', async () => {
+      const decoded = { vaultId: VAULT_ID, target: { id: 't', name: 'n', type: 's3' }, remoteBasePath: 'bucket' };
+      teamVaultService.decodeInvite.mockResolvedValue(decoded);
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_DECODE_INVITE, 'invite text', '/tmp/identity.txt');
+      expect(teamVaultService.decodeInvite).toHaveBeenCalledWith('invite text', '/tmp/identity.txt');
+      expect(result).toEqual(decoded);
     });
   });
 

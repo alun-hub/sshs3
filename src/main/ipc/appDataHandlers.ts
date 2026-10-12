@@ -110,4 +110,17 @@ export function registerSettingsHandlers(bridge: AppDataHost): void {
       return saved;
     }
   );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.SETTINGS_SET_TEAM_VAULT_TAB_VISIBLE,
+    async (_event, vaultId: unknown, visible: unknown): Promise<AppSettings> => {
+      if (typeof vaultId !== 'string' || !vaultId.trim() || vaultId.length > 128) {
+        throw new Error('A valid vaultId is required');
+      }
+      if (typeof visible !== 'boolean') {
+        throw new Error('visible must be a boolean');
+      }
+      return await bridge.settingsStore.setTeamVaultTabVisible(vaultId, visible);
+    }
+  );
 }

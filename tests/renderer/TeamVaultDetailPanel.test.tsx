@@ -38,6 +38,9 @@ describe('TeamVaultDetailPanel', () => {
 
     function mockApi(overrides: Partial<typeof window.multissh> = {}) {
       window.multissh = {
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
+        settingsSetTeamVaultTabVisible: vi.fn().mockResolvedValue({}),
         teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
         teamVaultAddMember: vi.fn().mockResolvedValue(undefined),
         teamVaultRemoveMember: vi.fn().mockResolvedValue({ remainingAdmins: 0 }),
@@ -51,6 +54,20 @@ describe('TeamVaultDetailPanel', () => {
       mockApi();
       renderPanel();
       await waitFor(() => expect(window.multissh.teamVaultGetStatus).toHaveBeenCalledWith(VAULT_ID));
+    });
+
+    it('toggles "show as tab" via the atomic settingsSetTeamVaultTabVisible call, not a settingsGet+settingsSave round trip (the race the atomic method exists to close)', async () => {
+      mockApi();
+      renderPanel();
+      const checkbox = await screen.findByRole('checkbox', { name: /Show this team as a tab/i });
+      expect(checkbox).toBeChecked();
+
+      fireEvent.click(checkbox);
+
+      await waitFor(() => {
+        expect(window.multissh.settingsSetTeamVaultTabVisible).toHaveBeenCalledWith(VAULT_ID, false);
+      });
+      expect(window.multissh.settingsSave).not.toHaveBeenCalled();
     });
 
     it('warns when fewer than 2 admins', async () => {
@@ -186,6 +203,9 @@ describe('TeamVaultDetailPanel', () => {
 
     function mockApi() {
       window.multissh = {
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
+        settingsSetTeamVaultTabVisible: vi.fn().mockResolvedValue({}),
         teamVaultGetStatus: vi.fn().mockResolvedValue(lockedStatus),
         teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
@@ -240,6 +260,9 @@ describe('TeamVaultDetailPanel', () => {
           members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
           adminCount: 1,
         }),
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
+        settingsSetTeamVaultTabVisible: vi.fn().mockResolvedValue({}),
         teamVaultUnlock: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
     }
@@ -265,6 +288,9 @@ describe('TeamVaultDetailPanel', () => {
           members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
           adminCount: 1,
         }),
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
+        settingsSetTeamVaultTabVisible: vi.fn().mockResolvedValue({}),
         teamVaultUnlockWithRecoveryText: vi.fn().mockResolvedValue(undefined),
       } as unknown as typeof window.multissh;
     }
@@ -317,6 +343,9 @@ describe('TeamVaultDetailPanel', () => {
 
     function mockApi(overrides: Partial<typeof window.multissh> = {}) {
       window.multissh = {
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
+        settingsSetTeamVaultTabVisible: vi.fn().mockResolvedValue({}),
         teamVaultGetStatus: vi.fn().mockResolvedValue(baseStatus),
         teamVaultSetTarget: vi.fn().mockResolvedValue(undefined),
         teamVaultPush: vi.fn().mockResolvedValue(undefined),

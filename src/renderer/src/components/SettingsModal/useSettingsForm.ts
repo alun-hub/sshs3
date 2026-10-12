@@ -296,6 +296,13 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       shortcuts,
       enableOpenShift,
       k8sDebugImages,
+      // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
+      // instead) — passed through unchanged so this full-object onSave doesn't silently drop
+      // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
+      // for why the detail panel writes connectionManagerVisibleTeamVaults atomically rather
+      // than through this same submit path.
+      connectionManagerVisibleTeamVaults: currentSettings.connectionManagerVisibleTeamVaults,
+      connectionManagerDefaultTab: currentSettings.connectionManagerDefaultTab,
     });
     onClose();
   };

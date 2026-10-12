@@ -43,4 +43,39 @@ describe('SettingsStore', () => {
 
     expect(settings.defaultNewTabType).toBe('filemanager');
   });
+
+  describe('setTeamVaultTabVisible', () => {
+    it('sets one vaultId entry in connectionManagerVisibleTeamVaults without touching others', async () => {
+      await store.setTeamVaultTabVisible('vlt_a', false);
+      await store.setTeamVaultTabVisible('vlt_b', true);
+      const settings = await store.getSettings();
+      expect(settings.connectionManagerVisibleTeamVaults).toEqual({ vlt_a: false, vlt_b: true });
+    });
+
+    it('never clobbers another team\'s entry even when two calls race on a stale read — the whole point of this atomic method over a renderer-side get/mutate/save round trip', async () => {
+      // Seed one existing entry first, same as if a prior session had already toggled it.
+      await store.setTeamVaultTabVisible('vlt_existing', true);
+
+      // Two "concurrent" toggles for two different teams, fired without awaiting either first —
+      // a plain settingsGet() -> mutate -> settingsSave() renderer round trip would have both
+      // read the same pre-toggle snapshot and the second save to land would silently drop the
+      // first toggle's change. This method's own internal queueMutation must serialize the two
+      // read-modify-writes instead.
+      await Promise.all([store.setTeamVaultTabVisible('vlt_a', false), store.setTeamVaultTabVisible('vlt_b', true)]);
+
+      const settings = await store.getSettings();
+      expect(settings.connectionManagerVisibleTeamVaults).toEqual({
+        vlt_existing: true,
+        vlt_a: false,
+        vlt_b: true,
+      });
+    });
+
+    it('leaves every other setting untouched', async () => {
+      await store.saveSettings({ theme: 'light' });
+      await store.setTeamVaultTabVisible('vlt_a', false);
+      const settings = await store.getSettings();
+      expect(settings.theme).toBe('light');
+    });
+  });
 });

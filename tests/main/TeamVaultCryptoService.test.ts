@@ -147,6 +147,89 @@ describe('TeamVaultCryptoService', () => {
     );
   });
 
+  describe('encryptForRecipient / decryptWithIdentity against the real `age` CLI', () => {
+    const hasAge = !spawnSync('age', ['--version'], { stdio: 'ignore' }).error;
+    const hasAgeKeygen = !spawnSync('age-keygen', ['--version'], { stdio: 'ignore' }).error;
+
+    it.skipIf(!hasAge || !hasAgeKeygen)(
+      'round-trips an arbitrary JSON string (the invite payload) for a software age identity',
+      async () => {
+        vi.doUnmock('node:child_process');
+        vi.doUnmock('../../src/main/services/AgePtyPinRelay');
+        vi.resetModules();
+        const real = await vi.importActual<typeof import('../../src/main/services/TeamVaultCryptoService')>(
+          '../../src/main/services/TeamVaultCryptoService'
+        );
+        const realService = new real.TeamVaultCryptoService();
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-invite-it-'));
+        const identityPath = path.join(dir, 'identity.txt');
+        const keygen = spawnSync('age-keygen', ['-o', identityPath]);
+        expect(keygen.status).toBe(0);
+        const identity = fs.readFileSync(identityPath, 'utf8');
+        const recipientLine = identity.match(/# public key: (age1\S+)/)?.[1];
+        expect(recipientLine).toBeTruthy();
+
+        const plaintext = JSON.stringify({ vaultId: 'vlt_1', target: { id: 't1', name: 'x', type: 's3' } });
+        const armored = await realService.encryptForRecipient(plaintext, recipientLine!);
+        const decrypted = await realService.decryptWithIdentity(armored, identityPath, noopCallbacks());
+        expect(decrypted).toBe(plaintext);
+      }
+    );
+  });
+
+  describe('decryptWithIdentity (pty + FIFO path, mocked)', () => {
+    beforeEach(() => {
+      mockRunAgeCommandViaPty.mockReset();
+      mockCreateFifo.mockReset();
+      mockReadFifoOnce.mockReset();
+      mockRemoveFifo.mockReset();
+    });
+
+    it('creates a FIFO, decrypts via the pty with -o <fifo>, reads the result as text, and cleans up', async () => {
+      mockCreateFifo.mockResolvedValue('/tmp/fake-invite.fifo');
+      mockReadFifoOnce.mockResolvedValue(Buffer.from('{"vaultId":"vlt_1"}', 'utf8'));
+      mockRunAgeCommandViaPty.mockResolvedValue('# some human-readable status text\n');
+      mockRemoveFifo.mockResolvedValue(undefined);
+
+      const callbacks = noopCallbacks();
+      const service2 = new TeamVaultCryptoService();
+      const result = await service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', callbacks);
+
+      expect(result).toBe('{"vaultId":"vlt_1"}');
+      expect(mockCreateFifo).toHaveBeenCalledTimes(1);
+      expect(mockRunAgeCommandViaPty).toHaveBeenCalledTimes(1);
+      const [binary, args, , cbArg, , stdinArg] = mockRunAgeCommandViaPty.mock.calls[0];
+      expect(binary).toMatch(/age$/);
+      expect(args).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake-invite.fifo']);
+      expect(cbArg).toBe(callbacks);
+      expect(stdinArg).toBe('armored-blob');
+      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake-invite.fifo');
+    });
+
+    it('still cleans up the FIFO when the pty run rejects (e.g. mismatched identity)', async () => {
+      mockCreateFifo.mockResolvedValue('/tmp/fake-invite.fifo');
+      mockReadFifoOnce.mockResolvedValue(Buffer.alloc(0));
+      mockRunAgeCommandViaPty.mockRejectedValue(new Error('age: error: no identity matched any of the recipients'));
+      mockRemoveFifo.mockResolvedValue(undefined);
+
+      const service2 = new TeamVaultCryptoService();
+      await expect(
+        service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', noopCallbacks())
+      ).rejects.toThrow('no identity matched');
+      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake-invite.fifo');
+    });
+
+    it('rejects a flag-like identity file path before ever creating a FIFO or spawning (argument-injection guard)', async () => {
+      const service2 = new TeamVaultCryptoService();
+      await expect(
+        service2.decryptWithIdentity('armored-blob', '--output=/etc/passwd', noopCallbacks())
+      ).rejects.toThrow('Invalid identity file path');
+      expect(mockCreateFifo).not.toHaveBeenCalled();
+      expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
+    });
+  });
+
   describe('unwrapVaultKey (pty + FIFO path, mocked)', () => {
     beforeEach(() => {
       mockRunAgeCommandViaPty.mockReset();
@@ -490,6 +573,16 @@ describe('TeamVaultCryptoService', () => {
       const forward = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', [accessHeader[0], second], recovery);
       const reversed = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', [second, accessHeader[0]], recovery);
       expect(forward).toBe(reversed);
+    });
+
+    it('changes if vaultDescription differs, and defaults to the empty string when omitted', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      const withoutDescription = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery);
+      const withEmptyDescription = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery, '');
+      const withDescription = svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery, 'Acme Infra team');
+      expect(withoutDescription).toBe(withEmptyDescription);
+      expect(withDescription).not.toBe(withoutDescription);
     });
   });
 

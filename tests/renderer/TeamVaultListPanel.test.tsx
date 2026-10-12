@@ -22,7 +22,19 @@ describe('TeamVaultListPanel', () => {
   describe('no teams yet', () => {
     function mockApi() {
       window.multissh = {
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
         teamVaultList: vi.fn().mockResolvedValue([]),
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          exists: true,
+          vaultId: 'vlt_new',
+          unlocked: true,
+          filePath: '/x',
+          members: [{ recipientId: 'alice@piv:yubikey-1', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
+          adminCount: 1,
+          selfRecipientId: 'alice@piv:yubikey-1',
+          selfRole: 'admin',
+        }),
         teamVaultEnrollRecipient: vi.fn().mockResolvedValue({
           recipient: 'age1yubikey1testadmin',
           identityFilePath: '/tmp/identity.txt',
@@ -101,6 +113,80 @@ describe('TeamVaultListPanel', () => {
       });
     });
 
+    it('keeps "Join team" disabled, and never calls teamVaultDecodeInvite, until a recipient id is typed in — even with an identity generated and an invite pasted', async () => {
+      mockApi();
+      const teamVaultDecodeInvite = vi.fn();
+      window.multissh.teamVaultDecodeInvite = teamVaultDecodeInvite;
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+
+      // Deliberately leave "Your recipient id" empty — only the invite is pasted.
+      fireEvent.change(screen.getByPlaceholderText(/sshs3 Team Vault invite for/i), {
+        target: { value: 'sshs3 Team Vault invite for bob\narmored-blob' },
+      });
+
+      const joinButton = screen.getByRole('button', { name: 'Join team' });
+      expect(joinButton).toBeDisabled();
+
+      fireEvent.click(joinButton);
+      expect(teamVaultDecodeInvite).not.toHaveBeenCalled();
+    });
+
+    it('joins by pasting an invite: decodes it with the generated identity, sets the target, pulls, and auto-unlocks — no manual S3 entry', async () => {
+      mockApi();
+      const teamVaultDecodeInvite = vi.fn().mockResolvedValue({
+        vaultId: 'vlt_invited',
+        target: { id: 't1', name: 'Team Bucket', type: 's3' },
+        remoteBasePath: 'team-bucket',
+      });
+      const teamVaultSetTarget = vi.fn().mockResolvedValue(undefined);
+      const teamVaultHasRemoteVault = vi.fn().mockResolvedValue(true);
+      const teamVaultPull = vi.fn().mockResolvedValue({ exists: true, unlocked: false, filePath: '/x', vaultId: 'vlt_invited' });
+      const teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
+      window.multissh.teamVaultDecodeInvite = teamVaultDecodeInvite;
+      window.multissh.teamVaultSetTarget = teamVaultSetTarget;
+      window.multissh.teamVaultHasRemoteVault = teamVaultHasRemoteVault;
+      window.multissh.teamVaultPull = teamVaultPull;
+      window.multissh.teamVaultUnlock = teamVaultUnlock;
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'bob@piv:yubikey-1' } });
+      fireEvent.change(screen.getByPlaceholderText(/sshs3 Team Vault invite for/i), {
+        target: { value: 'sshs3 Team Vault invite for bob\narmored-blob' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Join team' }));
+
+      await waitFor(() => {
+        expect(teamVaultDecodeInvite).toHaveBeenCalledWith(
+          'sshs3 Team Vault invite for bob\narmored-blob',
+          '/tmp/identity.txt'
+        );
+      });
+      await waitFor(() =>
+        expect(teamVaultSetTarget).toHaveBeenCalledWith(
+          'vlt_invited',
+          { id: 't1', name: 'Team Bucket', type: 's3' },
+          'team-bucket'
+        )
+      );
+      await waitFor(() => expect(teamVaultHasRemoteVault).toHaveBeenCalledWith('vlt_invited'));
+      await waitFor(() => expect(teamVaultPull).toHaveBeenCalledWith('vlt_invited'));
+      await waitFor(() =>
+        expect(teamVaultUnlock).toHaveBeenCalledWith('vlt_invited', 'bob@piv:yubikey-1', '/tmp/identity.txt')
+      );
+    });
+
     it('joins an existing team by entering its Team ID, configuring a target, and pulling under that real vaultId', async () => {
       const teamVaultSetTarget = vi.fn().mockResolvedValue(undefined);
       const teamVaultHasRemoteVault = vi.fn().mockResolvedValue(true);
@@ -116,6 +202,7 @@ describe('TeamVaultListPanel', () => {
       await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /\.\.\.or configure manually/i }));
       fireEvent.change(screen.getByPlaceholderText('vlt_...'), { target: { value: 'vlt_joined' } });
       fireEvent.change(await screen.findByLabelText(/Region/i), { target: { value: 'us-east-1' } });
       fireEvent.change(screen.getByLabelText(/Access Key ID/i), { target: { value: 'AKIA' } });
@@ -146,6 +233,7 @@ describe('TeamVaultListPanel', () => {
       await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /\.\.\.or configure manually/i }));
       fireEvent.change(await screen.findByLabelText(/Region/i), { target: { value: 'us-east-1' } });
       fireEvent.change(screen.getByLabelText(/Access Key ID/i), { target: { value: 'AKIA' } });
       fireEvent.change(screen.getByLabelText(/Secret Access Key/i), { target: { value: 'secret' } });
@@ -164,6 +252,8 @@ describe('TeamVaultListPanel', () => {
   describe('existing teams', () => {
     function mockApi() {
       window.multissh = {
+        settingsGet: vi.fn().mockResolvedValue({}),
+        settingsSave: vi.fn().mockResolvedValue({}),
         teamVaultList: vi.fn().mockResolvedValue([
           {
             exists: true,
