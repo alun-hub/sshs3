@@ -48,10 +48,42 @@ function deriveRotationProofKey(vaultKey: Buffer): Buffer {
   return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), ROTATION_PROOF_INFO, 32));
 }
 
+export class TeamVaultCanonicalizationError extends Error {
+  constructor(label: string) {
+    super(
+      `${label} contains a reserved control character and can't be safely included in the Team Vault header MAC.`
+    );
+    this.name = 'TeamVaultCanonicalizationError';
+  }
+}
+
+// `canonicalAccessHeaderString` joins fields with these three control characters — built from
+// character codes, not a regex literal, so they aren't control-character escapes
+// eslint-plugin-security's `no-control-regex` (rightly) flags in a `/.../ ` pattern.
+function assertNoCanonicalizationDelimiter(value: string, label: string): void {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0x01 || code === 0x02 || code === 0x03) {
+      throw new TeamVaultCanonicalizationError(label);
+    }
+  }
+}
+
 /** A fixed, unambiguous serialization of everything the header MAC covers. Entries are sorted
  * (not kept in array order) so shuffling the array can't produce a different, still-valid tag
- * for the same logical content; `\u0001`/`\u0002`/`\u0003` are delimiters unlikely to collide
- * with any real field value, unlike a plain character such as `|`. */
+ * for the same logical content.
+ *
+ * `\u0001`/`\u0002`/`\u0003` are the delimiters. Every field is defense-in-depth-checked against
+ * containing one via `assertNoCanonicalizationDelimiter` below — not just at the IPC layer that
+ * first accepts recipientId/vaultName/vaultDescription (`teamVaultHandlers.ts`'s
+ * `requireRecipientId`/`requireVaultName`/`requireVaultDescription`) — because relying solely on
+ * callers to remember that discipline is exactly the kind of thing a future new caller forgets.
+ * Without this, a value containing a delimiter could shift where this function reads a field
+ * boundary: e.g. vaultName `"Foo\u0002Bar"` with no description produces the IDENTICAL canonical
+ * string (and therefore MAC) as vaultName `"Foo"` with description `"Bar"` — letting a
+ * bucket-write-access-only attacker (no Vault Key) swap which bytes belong to which field while
+ * an old, still-valid MAC keeps verifying against the tampered split. Throwing here makes that
+ * construction impossible regardless of what calls this function, now or in the future. */
 function canonicalAccessHeaderString(
   vaultId: string,
   revision: number,
@@ -60,6 +92,22 @@ function canonicalAccessHeaderString(
   recovery: TeamVaultRecovery,
   vaultDescription = ''
 ): string {
+  assertNoCanonicalizationDelimiter(vaultId, 'vaultId');
+  assertNoCanonicalizationDelimiter(vaultName, 'vaultName');
+  assertNoCanonicalizationDelimiter(vaultDescription, 'vaultDescription');
+  for (const e of accessHeader) {
+    assertNoCanonicalizationDelimiter(e.recipientId, 'recipientId');
+    assertNoCanonicalizationDelimiter(e.role, 'role');
+    assertNoCanonicalizationDelimiter(e.method, 'method');
+    assertNoCanonicalizationDelimiter(e.ageRecipient, 'ageRecipient');
+    assertNoCanonicalizationDelimiter(e.wrappedVaultKey, 'wrappedVaultKey');
+    assertNoCanonicalizationDelimiter(e.addedAt, 'addedAt');
+    assertNoCanonicalizationDelimiter(e.addedBy, 'addedBy');
+  }
+  assertNoCanonicalizationDelimiter(recovery.recipientId, 'recovery.recipientId');
+  assertNoCanonicalizationDelimiter(recovery.ageRecipient, 'recovery.ageRecipient');
+  assertNoCanonicalizationDelimiter(recovery.wrappedVaultKey, 'recovery.wrappedVaultKey');
+
   const entryLines = accessHeader
     .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
     .sort();
@@ -71,7 +119,8 @@ function canonicalAccessHeaderString(
   // those vaults on their very next unlock, even though nothing about them actually changed —
   // this broke real installs (TeamVaultHeaderIntegrityError on unlock) the moment this shipped.
   // Only vaults that actually have a description get the 4-field form; the two can never collide
-  // because `vaultDescription` here is only ever '' when the vault doesn't have one.
+  // with the 3-field form because the delimiter check above has already ruled out a vaultName
+  // that could be mistaken for one.
   const headerLine = vaultDescription
     ? `${vaultId}\u0002${revision}\u0002${vaultName}\u0002${vaultDescription}`
     : `${vaultId}\u0002${revision}\u0002${vaultName}`;
