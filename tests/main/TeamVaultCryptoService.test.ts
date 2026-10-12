@@ -611,7 +611,7 @@ describe('TeamVaultCryptoService', () => {
         wrappedVaultKey: 'wrapped-recovery',
       };
       const mac = svc.computeAccessHeaderMac(key, 'vlt_golden', 1, 'Golden Team', entry, goldenRecovery);
-      expect(mac).toBe('uQ8waktnAlCZTy3zVUd8AZuBWXyqv7e6LuHJ+vUr3gw=');
+      expect(mac).toBe('uQ8waktnAlCZTy3zVUd8AZuBWXyqv7e6LuHJ+vUr3gw='); // pragma: allowlist secret
     });
 
     it('throws rather than silently computing an ambiguous MAC when a field contains a canonicalization delimiter — defense in depth, even though every known caller already rejects these at its own input boundary', () => {
