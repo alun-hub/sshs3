@@ -111,11 +111,13 @@ function fakeCrypto(): TeamVaultCryptoService {
       recipient: 'age1yubikey1fakeadmin',
       identityFilePath: '/tmp/fake-admin-identity.txt',
     }),
-    withRecoveryIdentity: async <T,>(identityText: string, fn: (identityPath: string) => Promise<T>) => {
+    unwrapVaultKeyWithRecoveryIdentity: async (wrapped: string, identityText: string) => {
       if (!identityText.includes('AGE-SECRET-KEY-1')) {
         throw new Error('This does not look like a Team Vault recovery key (no AGE-SECRET-KEY-1... line found)');
       }
-      return fn('/tmp/recovery-identity.fifo');
+      const m = wrapped.match(/^wrapped:[^:]+:([0-9a-f]+)$/);
+      if (!m) throw new Error('bad wrap');
+      return Buffer.from(m[1], 'hex');
     },
     generateRecoveryIdentity: async () => ({
       identity: 'AGE-SECRET-KEY-FAKE\n# public key: age1fakerecovery',

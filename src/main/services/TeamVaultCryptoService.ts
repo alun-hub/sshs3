@@ -1,11 +1,10 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
-import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
-import { runAgeCommandViaPty, createFifo, readFifoOnce, removeFifo, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
+import { runAgeCommandViaPty, createSecretOutputChannel, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
 import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
 
 export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError } from './AgePtyPinRelay';
@@ -191,8 +190,8 @@ export class TeamVaultCryptoService {
    * a terminal) regardless of whether the caller's own result happens to be text (the invite's
    * JSON) or binary (the Vault Key) — routing it through the pty's text channel would otherwise
    * mix the decrypted content with terminal echo of the piped-in ciphertext and any PIN-prompt
-   * noise either way. Instead `-o <fifo>` redirects it to a FIFO — a kernel pipe, never written to
-   * disk — read back via `readFifoOnce`. Verified byte-exact against real hardware.
+   * noise either way. Instead `-o <path>` redirects it to a FIFO (a named pipe on Windows) — a kernel
+   * pipe, never written to disk — read back via `createSecretOutputChannel`. Verified byte-exact against real hardware.
    */
   private async decryptWithIdentityFile(
     armoredCiphertext: string,
@@ -202,23 +201,35 @@ export class TeamVaultCryptoService {
     assertNotFlagLike(identityFilePath, 'identity file path');
     const agePath = resolveAgeBinary('age');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
-    const fifoPath = await createFifo(os.tmpdir());
+    const channel = await createSecretOutputChannel(os.tmpdir());
+    let ciphertextFile: string | undefined;
     try {
-      const readPromise = readFifoOnce(fifoPath);
+      const args = ['-d', '-i', identityFilePath, '-o', channel.path];
+      let stdin: string | undefined = armoredCiphertext;
+      if (process.platform === 'win32') {
+        // A ConPTY has no Ctrl-D end-of-input, so the ciphertext can't be piped in through it.
+        // It isn't a secret (the same text sits in the vault file on disk), so hand it over as a
+        // file argument instead.
+        ciphertextFile = path.join(os.tmpdir(), `${crypto.randomUUID()}.age`);
+        await fs.writeFile(ciphertextFile, armoredCiphertext, { mode: 0o600 });
+        args.push(ciphertextFile);
+        stdin = undefined;
+      }
       await runAgeCommandViaPty(
         agePath,
-        ['-d', '-i', identityFilePath, '-o', fifoPath],
+        args,
         // `age` discovers `age-plugin-yubikey` by name on PATH; prepend its resolved directory
         // so a bundled (packaged-app) or dev-fetched copy is found even when not installed
         // system-wide.
         pluginPathEnv(pluginPath),
         callbacks,
         undefined,
-        armoredCiphertext
+        stdin
       );
-      return await readPromise;
+      return await channel.read();
     } finally {
-      await removeFifo(fifoPath);
+      await channel.dispose();
+      if (ciphertextFile) await fs.rm(ciphertextFile, { force: true });
     }
   }
 
@@ -278,65 +289,29 @@ export class TeamVaultCryptoService {
   }
 
   /**
-   * Runs `fn` with a path `age -i` can read a user-pasted recovery identity from (the text
+   * Unwraps a `wrapped_vault_key` with a user-pasted recovery identity (the text
    * `generateRecoveryIdentity` showed them once at vault creation) — see
-   * `TeamVaultService.unlockWithRecoveryText`. Unlike a PIV identity stanza (a public reference
-   * to a card slot), the recovery identity IS a private key, so per CLAUDE.md it must never be
-   * written to disk: the path handed to `fn` is a FIFO (kernel pipe, nothing persisted), the same
-   * mechanism `unwrapVaultKey` already uses for the Vault Key itself. Verified against the real
-   * `age` binary that `age -d -i <fifo>` reads an identity this way. An earlier version wrote the
-   * stanza to a regular file under the identity directory and never removed it.
+   * `TeamVaultService.unlockWithRecoveryText`. The recovery identity is a private key, so per
+   * CLAUDE.md it must never be written to disk: it goes to `age -d -i -` on stdin and the Vault
+   * Key comes back on stdout. A software identity never prompts for a PIN or touch, so unlike
+   * `unwrapVaultKey` this needs neither a pty nor a FIFO/pipe — which also makes it work the
+   * same on Windows. The ciphertext isn't secret (it is stored in the vault file), so it is
+   * passed as a temp file, stdin being taken by the identity.
    *
    * Tolerates surrounding noise (chat/email quoting, extra blank lines) via `extractStanza`.
    * Throws if no recognizable `AGE-SECRET-KEY-1...` line is found.
    */
-  async withRecoveryIdentity<T>(identityText: string, fn: (identityPath: string) => Promise<T>): Promise<T> {
+  async unwrapVaultKeyWithRecoveryIdentity(wrappedVaultKey: string, identityText: string): Promise<Buffer> {
     if (!RECOVERY_IDENTITY_PATTERN.test(identityText)) {
       throw new Error('This does not look like a Team Vault recovery key (no AGE-SECRET-KEY-1... line found)');
     }
     const stanza = extractStanza(identityText, RECOVERY_IDENTITY_PATTERN);
-    const fifoPath = await createFifo(os.tmpdir());
-    let writerSettled = false;
-    // Opening a FIFO for writing blocks until a reader opens it — i.e. until `age` starts.
-    // O_WRONLY without O_CREAT: if the FIFO were somehow gone, this fails instead of silently
-    // creating a regular file containing the private key.
-    const writer = (async () => {
-      const handle = await fs.open(fifoPath, fsSync.constants.O_WRONLY);
-      try {
-        await handle.writeFile(stanza);
-      } finally {
-        await handle.close();
-      }
-    })().then(
-      () => {
-        writerSettled = true;
-      },
-      () => {
-        writerSettled = true;
-      }
-    );
+    const ciphertextFile = path.join(os.tmpdir(), `${crypto.randomUUID()}.age`);
+    await fs.writeFile(ciphertextFile, wrappedVaultKey, { mode: 0o600 });
     try {
-      return await fn(fifoPath);
+      return await runAgeCommand(resolveAgeBinary('age'), ['-d', '-i', '-', ciphertextFile], Buffer.from(stanza, 'utf8'));
     } finally {
-      // If `fn` failed before `age` ever opened the FIFO, the writer is blocked (or about to
-      // block) in open(). Hold a reader open until the writer settles: closing it right away
-      // races a writer whose open() hasn't started yet, which would then wait forever for a
-      // reader that never comes. The stanza lands in a pipe buffer discarded on close.
-      if (!writerSettled) {
-        let readerFd: number | undefined;
-        try {
-          readerFd = fsSync.openSync(fifoPath, fsSync.constants.O_RDONLY | fsSync.constants.O_NONBLOCK);
-        } catch {
-          // FIFO already gone — the writer's open() then fails on its own instead of blocking.
-        }
-        try {
-          await writer;
-        } finally {
-          if (readerFd !== undefined) fsSync.closeSync(readerFd);
-        }
-      }
-      await writer;
-      await removeFifo(fifoPath);
+      await fs.rm(ciphertextFile, { force: true });
     }
   }
 
@@ -441,7 +416,10 @@ function pluginPathEnv(pluginPath: string): NodeJS.ProcessEnv {
   const pluginDir = pluginPath.includes('/') || pluginPath.includes('\\') ? dirnameOf(pluginPath) : undefined;
   if (!pluginDir) return process.env;
   const pathSep = process.platform === 'win32' ? ';' : ':';
-  return { ...process.env, PATH: `${pluginDir}${pathSep}${process.env.PATH ?? ''}` };
+  // Windows env names are case-insensitive but a plain object isn't: process.env spreads as
+  // `Path`, and adding a second `PATH` key would leave the child with two variants.
+  const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  return { ...process.env, [pathKey]: `${pluginDir}${pathSep}${process.env[pathKey] ?? ''}` };
 }
 
 function dirnameOf(p: string): string {

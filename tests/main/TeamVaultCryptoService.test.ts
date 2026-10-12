@@ -4,12 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const { mockExecFile, mockRunAgeCommandViaPty, mockCreateFifo, mockReadFifoOnce, mockRemoveFifo } = vi.hoisted(() => ({
+const { mockExecFile, mockRunAgeCommandViaPty, mockCreateChannel } = vi.hoisted(() => ({
   mockExecFile: vi.fn(),
   mockRunAgeCommandViaPty: vi.fn(),
-  mockCreateFifo: vi.fn(),
-  mockReadFifoOnce: vi.fn(),
-  mockRemoveFifo: vi.fn(),
+  mockCreateChannel: vi.fn(),
 }));
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -32,9 +30,7 @@ vi.mock('../../src/main/services/AgePtyPinRelay', async (importOriginal) => {
   return {
     ...actual,
     runAgeCommandViaPty: mockRunAgeCommandViaPty,
-    createFifo: mockCreateFifo,
-    readFifoOnce: mockReadFifoOnce,
-    removeFifo: mockRemoveFifo,
+    createSecretOutputChannel: mockCreateChannel,
   };
 });
 
@@ -114,6 +110,10 @@ describe('TeamVaultCryptoService', () => {
   });
 
   describe('wrapVaultKeyForRecipient / unwrapVaultKey against the real `age` CLI', () => {
+    // Prefer the CI-fetched copy (build-resources/age/<platform>) so this also runs on a machine
+    // without a system-wide age: the real service resolves a bare `age` via PATH in this file.
+    const bundledDir = path.join(process.cwd(), 'build-resources', 'age', process.platform === 'win32' ? 'win' : 'linux');
+    if (fs.existsSync(bundledDir)) process.env.PATH = bundledDir + path.delimiter + process.env.PATH;
     const hasAge = !spawnSync('age', ['--version'], { stdio: 'ignore' }).error;
     const hasAgeKeygen = !spawnSync('age-keygen', ['--version'], { stdio: 'ignore' }).error;
 
@@ -122,7 +122,7 @@ describe('TeamVaultCryptoService', () => {
       async () => {
         // Unmock node:child_process and AgePtyPinRelay for this one real-binary round trip.
         // A software (non-PIV) identity never prompts for anything, so the real
-        // runAgeCommandViaPty/createFifo/readFifoOnce/removeFifo can run unmocked too.
+        // runAgeCommandViaPty/createSecretOutputChannel can run unmocked too.
         vi.doUnmock('node:child_process');
         vi.doUnmock('../../src/main/services/AgePtyPinRelay');
         vi.resetModules();
@@ -178,106 +178,121 @@ describe('TeamVaultCryptoService', () => {
     );
   });
 
-  describe('decryptWithIdentity (pty + FIFO path, mocked)', () => {
+  describe('decryptWithIdentity (pty + secret output channel, mocked)', () => {
+    function fakeChannel(bytes: Buffer = Buffer.from('{"vaultId":"vlt_1"}', 'utf8')) {
+      const channel = {
+        path: '/tmp/fake-invite.fifo',
+        read: vi.fn(() => Promise.resolve(bytes)),
+        dispose: vi.fn().mockResolvedValue(undefined),
+      };
+      mockCreateChannel.mockResolvedValue(channel);
+      return channel;
+    }
+
     beforeEach(() => {
       mockRunAgeCommandViaPty.mockReset();
-      mockCreateFifo.mockReset();
-      mockReadFifoOnce.mockReset();
-      mockRemoveFifo.mockReset();
+      mockCreateChannel.mockReset();
     });
 
-    it('creates a FIFO, decrypts via the pty with -o <fifo>, reads the result as text, and cleans up', async () => {
-      mockCreateFifo.mockResolvedValue('/tmp/fake-invite.fifo');
-      mockReadFifoOnce.mockResolvedValue(Buffer.from('{"vaultId":"vlt_1"}', 'utf8'));
+    it('decrypts via the pty with -o <channel>, reads the result as text, and cleans up', async () => {
+      const channel = fakeChannel();
       mockRunAgeCommandViaPty.mockResolvedValue('# some human-readable status text\n');
-      mockRemoveFifo.mockResolvedValue(undefined);
 
       const callbacks = noopCallbacks();
       const service2 = new TeamVaultCryptoService();
       const result = await service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', callbacks);
 
       expect(result).toBe('{"vaultId":"vlt_1"}');
-      expect(mockCreateFifo).toHaveBeenCalledTimes(1);
-      expect(mockRunAgeCommandViaPty).toHaveBeenCalledTimes(1);
+      expect(mockCreateChannel).toHaveBeenCalledTimes(1);
       const [binary, args, , cbArg, , stdinArg] = mockRunAgeCommandViaPty.mock.calls[0];
-      expect(binary).toMatch(/age$/);
-      expect(args).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake-invite.fifo']);
+      expect(binary).toMatch(/age(\.exe)?$/);
+      expect(args.slice(0, 5)).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake-invite.fifo']);
       expect(cbArg).toBe(callbacks);
-      expect(stdinArg).toBe('armored-blob');
-      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake-invite.fifo');
+      if (process.platform !== 'win32') expect(stdinArg).toBe('armored-blob');
+      expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
 
-    it('still cleans up the FIFO when the pty run rejects (e.g. mismatched identity)', async () => {
-      mockCreateFifo.mockResolvedValue('/tmp/fake-invite.fifo');
-      mockReadFifoOnce.mockResolvedValue(Buffer.alloc(0));
+    it('still cleans up the channel when the pty run rejects (e.g. mismatched identity)', async () => {
+      const channel = fakeChannel(Buffer.alloc(0));
       mockRunAgeCommandViaPty.mockRejectedValue(new Error('age: error: no identity matched any of the recipients'));
-      mockRemoveFifo.mockResolvedValue(undefined);
 
       const service2 = new TeamVaultCryptoService();
       await expect(
         service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', noopCallbacks())
       ).rejects.toThrow('no identity matched');
-      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake-invite.fifo');
+      expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects a flag-like identity file path before ever creating a FIFO or spawning (argument-injection guard)', async () => {
+    it('rejects a flag-like identity file path before ever creating a channel or spawning (argument-injection guard)', async () => {
       const service2 = new TeamVaultCryptoService();
       await expect(
         service2.decryptWithIdentity('armored-blob', '--output=/etc/passwd', noopCallbacks())
       ).rejects.toThrow('Invalid identity file path');
-      expect(mockCreateFifo).not.toHaveBeenCalled();
+      expect(mockCreateChannel).not.toHaveBeenCalled();
       expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
     });
   });
 
-  describe('unwrapVaultKey (pty + FIFO path, mocked)', () => {
+  describe('unwrapVaultKey (pty + secret output channel, mocked)', () => {
+    function fakeChannel(bytes: Buffer = Buffer.from('raw-vault-key-bytes')) {
+      const channel = {
+        path: '/tmp/fake.fifo',
+        read: vi.fn(() => Promise.resolve(bytes)),
+        dispose: vi.fn().mockResolvedValue(undefined),
+      };
+      mockCreateChannel.mockResolvedValue(channel);
+      return channel;
+    }
+
     beforeEach(() => {
       mockRunAgeCommandViaPty.mockReset();
-      mockCreateFifo.mockReset();
-      mockReadFifoOnce.mockReset();
-      mockRemoveFifo.mockReset();
+      mockCreateChannel.mockReset();
     });
 
-    it('creates a FIFO, decrypts via the pty with -o <fifo>, reads the result from the FIFO, and cleans up', async () => {
-      mockCreateFifo.mockResolvedValue('/tmp/fake.fifo');
-      mockReadFifoOnce.mockResolvedValue(Buffer.from('raw-vault-key-bytes'));
+    it('creates the channel, decrypts via the pty with -o <channel>, reads the result from it, and cleans up', async () => {
+      const channel = fakeChannel();
       mockRunAgeCommandViaPty.mockResolvedValue('# some human-readable status text\n');
-      mockRemoveFifo.mockResolvedValue(undefined);
 
       const callbacks = noopCallbacks();
       const service2 = new TeamVaultCryptoService();
       const result = await service2.unwrapVaultKey('wrapped-blob', '/tmp/identity.txt', callbacks);
 
       expect(result.toString('utf8')).toBe('raw-vault-key-bytes');
-      expect(mockCreateFifo).toHaveBeenCalledTimes(1);
+      expect(mockCreateChannel).toHaveBeenCalledTimes(1);
       expect(mockRunAgeCommandViaPty).toHaveBeenCalledTimes(1);
       const [binary, args, , cbArg, , stdinArg] = mockRunAgeCommandViaPty.mock.calls[0];
-      expect(binary).toMatch(/age$/);
-      expect(args).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake.fifo']);
+      expect(binary).toMatch(/age(\.exe)?$/);
       expect(cbArg).toBe(callbacks);
-      expect(stdinArg).toBe('wrapped-blob');
-      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake.fifo');
+      if (process.platform === 'win32') {
+        // A ConPTY has no Ctrl-D EOF: the (non-secret) ciphertext goes in as a file argument.
+        expect(args.slice(0, 5)).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake.fifo']);
+        expect(args).toHaveLength(6);
+        expect(stdinArg).toBeUndefined();
+        expect(fs.existsSync(args[5])).toBe(false);
+      } else {
+        expect(args).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake.fifo']);
+        expect(stdinArg).toBe('wrapped-blob');
+      }
+      expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
 
-    it('still cleans up the FIFO when the pty run rejects', async () => {
-      mockCreateFifo.mockResolvedValue('/tmp/fake.fifo');
-      mockReadFifoOnce.mockResolvedValue(Buffer.alloc(0));
+    it('still cleans up the channel when the pty run rejects', async () => {
+      const channel = fakeChannel(Buffer.alloc(0));
       mockRunAgeCommandViaPty.mockRejectedValue(new Error('age: error: no YubiKey detected'));
-      mockRemoveFifo.mockResolvedValue(undefined);
 
       const service2 = new TeamVaultCryptoService();
       await expect(service2.unwrapVaultKey('wrapped-blob', '/tmp/identity.txt', noopCallbacks())).rejects.toThrow(
         'no YubiKey detected'
       );
-      expect(mockRemoveFifo).toHaveBeenCalledWith('/tmp/fake.fifo');
+      expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects a flag-like identity file path before ever creating a FIFO or spawning (argument-injection guard)', async () => {
+    it('rejects a flag-like identity file path before ever creating a channel or spawning (argument-injection guard)', async () => {
       const service2 = new TeamVaultCryptoService();
       await expect(
         service2.unwrapVaultKey('wrapped-blob', '--output=/etc/passwd', noopCallbacks())
       ).rejects.toThrow('Invalid identity file path');
-      expect(mockCreateFifo).not.toHaveBeenCalled();
+      expect(mockCreateChannel).not.toHaveBeenCalled();
       expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
     });
   });
@@ -423,87 +438,88 @@ describe('TeamVaultCryptoService', () => {
   });
 
   // The recovery identity is a private key — CLAUDE.md forbids writing it to disk, so it reaches
-  // `age` through a real FIFO. These tests use the real createFifo/removeFifo (not the file-level
-  // mocks above) to prove what `fn` receives is a pipe and that nothing is left behind.
-  describe('withRecoveryIdentity (FIFO, never a file on disk)', () => {
+  // `age` on stdin (`-i -`) and the Vault Key comes back on stdout; no pty, FIFO or pipe, which
+  // is also what makes this path work on Windows.
+  describe('unwrapVaultKeyWithRecoveryIdentity (stdin identity, never a file on disk)', () => {
     const CLEAN = '# created: 2026-01-01T00:00:00Z\n# public key: age1fakerecovery\nAGE-SECRET-KEY-1FAKERECOVERYTEXT\n';
 
-    beforeEach(async () => {
-      const actual = await vi.importActual<typeof import('../../src/main/services/AgePtyPinRelay')>(
-        '../../src/main/services/AgePtyPinRelay'
-      );
-      mockCreateFifo.mockReset().mockImplementation(actual.createFifo);
-      mockRemoveFifo.mockReset().mockImplementation(actual.removeFifo);
-      mockReadFifoOnce.mockReset().mockImplementation(actual.readFifoOnce);
-      // The real createFifo shells out to `mkfifo` via execFile, which this file mocks globally.
-      const realChildProcess = await vi.importActual<typeof import('node:child_process')>('node:child_process');
-      mockExecFile.mockReset().mockImplementation(realChildProcess.execFile as any);
+    beforeEach(() => {
+      mockExecFile.mockReset();
     });
 
-    it('hands fn a FIFO (not a regular file) carrying the stanza, and removes it afterwards', async () => {
-      const service2 = new TeamVaultCryptoService();
-      let seenPath = '';
-      const read = await service2.withRecoveryIdentity(CLEAN, async (p) => {
-        seenPath = p;
-        expect(fs.statSync(p).isFIFO()).toBe(true);
-        return (await mockReadFifoOnce(p)).toString('utf8');
+    function fakeAge(stdout: Buffer) {
+      const stdinEnd = vi.fn();
+      mockExecFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: (...a: unknown[]) => void) => {
+        queueMicrotask(() => cb(null, stdout, Buffer.alloc(0)));
+        return { stdin: { end: stdinEnd } };
       });
-      expect(read).toBe(CLEAN);
-      expect(fs.existsSync(seenPath)).toBe(false);
+      return stdinEnd;
+    }
+
+    it('feeds only the stanza on stdin, passes the ciphertext as a temp file, and removes that file', async () => {
+      const stdinEnd = fakeAge(Buffer.from('vault-key'));
+      const service2 = new TeamVaultCryptoService();
+      const result = await service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', CLEAN);
+
+      expect(result.toString('utf8')).toBe('vault-key');
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args.slice(0, 3)).toEqual(['-d', '-i', '-']);
+      expect(args).toHaveLength(4);
+      expect(fs.existsSync(args[3])).toBe(false);
+      expect(stdinEnd.mock.calls[0][0].toString('utf8')).toBe(CLEAN);
     });
 
     it('tolerates surrounding chat/email quoting, passing only the real stanza', async () => {
+      const stdinEnd = fakeAge(Buffer.from('vault-key'));
       const service2 = new TeamVaultCryptoService();
       const pasted = `Hey, here is the recovery key we printed:\n\n${CLEAN}\n-- sent from my phone`;
-      const read = await service2.withRecoveryIdentity(pasted, async (p) => (await mockReadFifoOnce(p)).toString('utf8'));
-      expect(read).toBe(CLEAN);
+      await service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', pasted);
+      expect(stdinEnd.mock.calls[0][0].toString('utf8')).toBe(CLEAN);
     });
 
-    it('rejects text with no recognizable AGE-SECRET-KEY-1... line without calling fn', async () => {
+    it('rejects text with no recognizable AGE-SECRET-KEY-1... line without spawning age', async () => {
       const service2 = new TeamVaultCryptoService();
-      const fn = vi.fn();
-      await expect(service2.withRecoveryIdentity('not a key at all', fn)).rejects.toThrow(
+      await expect(service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', 'not a key at all')).rejects.toThrow(
         'does not look like a Team Vault recovery key'
       );
-      expect(fn).not.toHaveBeenCalled();
-      expect(mockCreateFifo).not.toHaveBeenCalled();
+      expect(mockExecFile).not.toHaveBeenCalled();
     });
 
-    it('does not hang and still cleans up when fn fails before ever reading the FIFO', async () => {
+    it('removes the temp ciphertext file even when age fails', async () => {
+      let seen = '';
+      mockExecFile.mockImplementation((_bin: string, args: string[], _opts: unknown, cb: (...a: unknown[]) => void) => {
+        seen = args[3];
+        queueMicrotask(() =>
+          cb(new Error('exit 1'), Buffer.alloc(0), Buffer.from('age: error: no identity matched any of the recipients'))
+        );
+        return { stdin: { end: vi.fn() } };
+      });
       const service2 = new TeamVaultCryptoService();
-      let seenPath = '';
-      await expect(
-        service2.withRecoveryIdentity(CLEAN, async (p) => {
-          seenPath = p;
-          throw new Error('age failed before opening its identity');
-        })
-      ).rejects.toThrow('age failed before opening its identity');
-      expect(fs.existsSync(seenPath)).toBe(false);
+      await expect(service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', CLEAN)).rejects.toThrow('no identity matched');
+      expect(fs.existsSync(seen)).toBe(false);
     });
 
-    const realAge = [path.join(process.cwd(), 'build-resources', 'age', 'linux'), ''].map((dir) => ({
-      age: dir ? path.join(dir, 'age') : 'age',
-      keygen: dir ? path.join(dir, 'age-keygen') : 'age-keygen',
-    })).find((b) => !spawnSync(b.age, ['--version'], { stdio: 'ignore' }).error && !spawnSync(b.keygen, ['--version'], { stdio: 'ignore' }).error);
+    const platformDir = process.platform === 'win32' ? 'win' : 'linux';
+    const exe = (n: string) => (process.platform === 'win32' ? `${n}.exe` : n);
+    const realAge = [path.join(process.cwd(), 'build-resources', 'age', platformDir), '']
+      .map((dir) => ({
+        age: dir ? path.join(dir, exe('age')) : 'age',
+        keygen: dir ? path.join(dir, exe('age-keygen')) : 'age-keygen',
+      }))
+      .find((b) => !spawnSync(b.age, ['--version'], { stdio: 'ignore' }).error && !spawnSync(b.keygen, ['--version'], { stdio: 'ignore' }).error);
 
-    it.skipIf(!realAge)('real `age -d -i <fifo>` decrypts with a recovery identity fed through it', async () => {
-      const { spawn } = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    it.skipIf(!realAge)('real `age -d -i -` recovers the Vault Key with a pasted recovery identity', async () => {
       const identity = spawnSync(realAge!.keygen, [], { encoding: 'utf8' }).stdout;
       const recipient = identity.match(/# public key: (age1\S+)/)![1];
-      const ciphertext = spawnSync(realAge!.age, ['-r', recipient, '-a'], { input: 'vault-key-bytes' }).stdout;
+      const ciphertext = spawnSync(realAge!.age, ['-r', recipient, '-a'], { input: 'vault-key-bytes', encoding: 'utf8' }).stdout;
+
+      const realChildProcess = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+      mockExecFile.mockReset().mockImplementation(((_bin: string, args: string[], opts: unknown, cb: unknown) =>
+        (realChildProcess.execFile as any)(realAge!.age, args, opts, cb)) as any);
 
       const service2 = new TeamVaultCryptoService();
-      const plaintext = await service2.withRecoveryIdentity(`pasted:\n${identity}\nthanks`, (p) =>
-        new Promise<string>((resolve, reject) => {
-          const child = spawn(realAge!.age, ['-d', '-i', p]);
-          let out = '';
-          child.stdout.on('data', (d) => (out += d));
-          child.on('error', reject);
-          child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(`age exited ${code}`))));
-          child.stdin.end(ciphertext);
-        })
-      );
-      expect(plaintext).toBe('vault-key-bytes');
+      const plaintext = await service2.unwrapVaultKeyWithRecoveryIdentity(ciphertext, `pasted:\n${identity}\nthanks`);
+      expect(plaintext.toString('utf8')).toBe('vault-key-bytes');
     });
   });
 

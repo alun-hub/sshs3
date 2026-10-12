@@ -1301,6 +1301,11 @@ export class TeamVaultService {
       identityFilePath,
       this.buildPtyCallbacks(recipientId, `Team Vault: ${file.vaultName || vaultId}`)
     );
+    this.completeUnlock(vaultId, file, recipientId, vaultKey);
+  }
+
+  /** Verifies the just-unwrapped Vault Key against the stored header MAC and caches it. */
+  private completeUnlock(vaultId: string, file: TeamVaultFile, recipientId: string, vaultKey: Buffer): void {
     // Defense in depth, not the primary control (see `TeamVaultRotationProofError`'s doc comment
     // — `pullFromRemote` is what actually keeps a forged file out of local storage in the first
     // place). This only catches a LOCAL file that's internally inconsistent — e.g. corrupted on
@@ -1330,13 +1335,15 @@ export class TeamVaultService {
    * `generateRecoveryIdentity`), not a file path and not the `'recovery-key-1'` recipientId. Both
    * are handled internally here, never by the renderer: the recipientId is fixed (the recovery
    * entry's id never varies, see `createVault`), and the pasted text — a private key — is fed to
-   * `age` through a FIFO, never written to disk (see `TeamVaultCryptoService.withRecoveryIdentity`).
+   * `age` on stdin, never written to disk (see `TeamVaultCryptoService.unwrapVaultKeyWithRecoveryIdentity`).
    */
   async unlockWithRecoveryText(vaultId: string, identityText: string): Promise<void> {
     const file = await this.requireFile(vaultId);
-    await this.cryptoService.withRecoveryIdentity(identityText, (identityPath) =>
-      this.unlock(vaultId, file.recovery.recipientId, identityPath)
+    const vaultKey = await this.cryptoService.unwrapVaultKeyWithRecoveryIdentity(
+      file.recovery.wrappedVaultKey,
+      identityText
     );
+    this.completeUnlock(vaultId, file, file.recovery.recipientId, vaultKey);
   }
 
   /**
