@@ -4,7 +4,7 @@ import { AlertTriangle, Copy, Pencil, Trash2 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { SftpButton } from '../SftpButton';
-import { ProfileRowMenu } from './ProfileRowMenu';
+import { OverflowMenu } from '../ui/OverflowMenu';
 import type { EditingState } from './types';
 
 interface TeamSshProfileRowProps {
@@ -67,7 +67,7 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
-        <ProfileRowMenu
+        <OverflowMenu
           items={[
             { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
             {
@@ -137,7 +137,7 @@ export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <ProfileRowMenu
+      <OverflowMenu
         items={[
           { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneS3(profile) },
           {

@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Cable, Copy, Folder, KeyRound, Pencil, Trash2 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { SftpButton } from '../SftpButton';
-import { ProfileRowMenu } from './ProfileRowMenu';
+import { OverflowMenu } from '../ui/OverflowMenu';
 import type { EditingState } from './types';
 
 interface SshProfileRowProps {
@@ -89,7 +89,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-        <ProfileRowMenu
+        <OverflowMenu
         items={[
           { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
           { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
@@ -176,7 +176,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-        <ProfileRowMenu
+        <OverflowMenu
         items={[
           { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
           { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },

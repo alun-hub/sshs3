@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import { ProfileRowMenu } from '../../src/renderer/src/components/ConnectionModal/ProfileRowMenu';
+import { OverflowMenu } from '../../src/renderer/src/components/ui/OverflowMenu';
 
 const setup = () => {
   const onEdit = vi.fn();
@@ -10,7 +10,7 @@ const setup = () => {
   const onOuterKey = vi.fn();
   document.addEventListener('keydown', onOuterKey);
   render(
-    <ProfileRowMenu
+    <OverflowMenu
       items={[
         { label: 'Duplicate profile', icon: <span />, onSelect: onEdit },
         { label: 'Delete profile', icon: <span />, onSelect: onDelete, danger: true, separated: true },
@@ -20,7 +20,7 @@ const setup = () => {
   return { onEdit, onDelete, onOuterKey, cleanup: () => document.removeEventListener('keydown', onOuterKey) };
 };
 
-describe('ProfileRowMenu', () => {
+describe('OverflowMenu', () => {
   afterEach(() => cleanup());
 
   it('opens on click, runs the chosen item and closes', () => {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { classNames } from '../../lib/format';
 
-export interface ProfileRowMenuItem {
+export interface OverflowMenuItem {
   label: string;
   icon: React.ReactNode;
   onSelect: () => void;
@@ -11,8 +11,8 @@ export interface ProfileRowMenuItem {
   separated?: boolean;
 }
 
-interface ProfileRowMenuProps {
-  items: ProfileRowMenuItem[];
+interface OverflowMenuProps {
+  items: OverflowMenuItem[];
   label?: string;
 }
 
@@ -25,7 +25,7 @@ const SEPARATOR_HEIGHT = 9; // my-1 + h-px
  * Overflow ("...") menu for secondary row actions. Rendered with fixed positioning so it is not
  * clipped by the scrolling modal body, and flips upward when there is no room below the button.
  */
-export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = 'More actions' }) => {
+export const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, label = 'More actions' }) => {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -173,4 +173,4 @@ export const ProfileRowMenu: React.FC<ProfileRowMenuProps> = ({ items, label = '
   );
 };
 
-export default ProfileRowMenu;
+export default OverflowMenu;
