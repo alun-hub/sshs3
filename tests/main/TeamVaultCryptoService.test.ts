@@ -143,7 +143,11 @@ describe('TeamVaultCryptoService', () => {
         const wrapped = await realService.wrapVaultKeyForRecipient(vaultKey, recipientLine!);
         const unwrapped = await realService.unwrapVaultKey(wrapped, identityPath, noopCallbacks());
         expect(unwrapped.equals(vaultKey)).toBe(true);
-      }
+      },
+      // A real subprocess round trip (age-keygen + age wrap + age unwrap via pty) is slower than
+      // the default 5s under full-suite parallel load (many vitest workers competing for CPU) —
+      // seen flaking in pre-commit's `npm test` even though it's consistently <1s in isolation.
+      20000
     );
   });
 
@@ -174,7 +178,9 @@ describe('TeamVaultCryptoService', () => {
         const armored = await realService.encryptForRecipient(plaintext, recipientLine!);
         const decrypted = await realService.decryptWithIdentity(armored, identityPath, noopCallbacks());
         expect(decrypted).toBe(plaintext);
-      }
+      },
+      // Same reasoning as the real round-trip test above — a real subprocess, not mocked.
+      20000
     );
   });
 
