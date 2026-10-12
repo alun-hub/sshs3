@@ -629,6 +629,32 @@ describe('TeamVaultCryptoService', () => {
       const mac = svc.computeAccessHeaderMac(key, 'vlt_golden', 1, 'Golden Team', entry, goldenRecovery);
       expect(mac).toBe('uQ8waktnAlCZTy3zVUd8AZuBWXyqv7e6LuHJ+vUr3gw=');
     });
+
+    it('throws rather than silently computing an ambiguous MAC when a field contains a canonicalization delimiter — defense in depth, even though every known caller already rejects these at its own input boundary', () => {
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 1);
+      // vaultName "Foo\u0002Bar" with no description would otherwise canonicalize identically to
+      // vaultName "Foo" with description "Bar" — the exact collision this check closes.
+      expect(() => svc.computeAccessHeaderMac(key, 'vlt_1', 1, 'Foo\u0002Bar', accessHeader, recovery)).toThrow(
+        /reserved control character/
+      );
+      expect(() =>
+        svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, recovery, 'desc\u0003injected')
+      ).toThrow(/reserved control character/);
+      expect(() =>
+        svc.computeAccessHeaderMac(
+          key,
+          'vlt_1',
+          1,
+          '',
+          [{ ...accessHeader[0], recipientId: 'alice\u0001evil' }],
+          recovery
+        )
+      ).toThrow(/reserved control character/);
+      expect(() =>
+        svc.computeAccessHeaderMac(key, 'vlt_1', 1, '', accessHeader, { ...recovery, recipientId: 'r\u0002x' })
+      ).toThrow(/reserved control character/);
+    });
   });
 
   describe('computeRotationProof', () => {
