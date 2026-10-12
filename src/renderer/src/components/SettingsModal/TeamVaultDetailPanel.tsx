@@ -426,6 +426,9 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
   // Client-side only, for deciding whether to show the delete-vault button — the server enforces
   // the real admin check (`TeamVaultService.requireUnlockedAsAdmin`) regardless of this.
   const isAdmin = !!status?.members?.some((m) => m.recipientId === status.selfRecipientId && m.role === 'admin');
+  // Who the "fewer than 2 admins" warning's quick "Promote <member>" action (§16) would offer —
+  // the first non-admin member, if any.
+  const otherMembers = status?.members?.filter((m) => m.role !== 'admin') ?? [];
 
   // A new member's join flow (`TeamVaultListPanel`) needs the real vaultId up front — the remote
   // object path is keyed by it, so there's no way to discover it blind the way a single-team
@@ -636,8 +639,22 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
           {(status.adminCount ?? 0) < 2 && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              This vault has fewer than 2 admins. If the sole admin loses their card, only the
-              recovery key can restore access.
+              <div className="flex-1 space-y-1.5">
+                <p>
+                  This vault has fewer than 2 admins. If the sole admin loses their card, only the
+                  recovery key can restore access.
+                </p>
+                {status.unlocked && isAdmin && otherMembers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSetRole(otherMembers[0].recipientId, 'admin')}
+                    disabled={busyRecipientId === otherMembers[0].recipientId}
+                    className="rounded-lg border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-xs font-medium text-amber-200 hover:bg-amber-900/50 disabled:opacity-50"
+                  >
+                    Promote {otherMembers[0].recipientId}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

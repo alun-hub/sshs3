@@ -76,6 +76,28 @@ describe('TeamVaultDetailPanel', () => {
       renderPanel();
       await waitFor(() => expect(screen.getByText('alice@piv:abc')).toBeInTheDocument());
       expect(screen.getByText(/fewer than 2 admins/)).toBeInTheDocument();
+      // No other member to promote in this fixture (alice is the only member).
+      expect(screen.queryByRole('button', { name: /Promote/ })).not.toBeInTheDocument();
+    });
+
+    it('offers a quick "Promote <member>" action in the admin warning when another member exists', async () => {
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          members: [
+            { recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' },
+            { recipientId: 'bob@piv:def', role: 'member', addedAt: '2026-10-02T00:00:00Z' },
+          ],
+        }),
+      });
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('bob@piv:def')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Promote bob@piv:def' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultSetRole).toHaveBeenCalledWith(VAULT_ID, 'bob@piv:def', 'admin');
+      });
     });
 
     it('shows this device\'s role for the vault', async () => {
