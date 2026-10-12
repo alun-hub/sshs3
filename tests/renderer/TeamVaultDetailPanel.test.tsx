@@ -404,6 +404,7 @@ describe('TeamVaultDetailPanel', () => {
         teamVaultSetTarget: vi.fn().mockResolvedValue(undefined),
         teamVaultPush: vi.fn().mockResolvedValue(undefined),
         teamVaultPull: vi.fn().mockResolvedValue(undefined),
+        teamVaultGetSyncPreview: vi.fn().mockResolvedValue({ hasUnpushedLocalChanges: false, remoteChanged: false }),
         ...overrides,
       } as unknown as typeof window.multissh;
     }
@@ -445,6 +446,43 @@ describe('TeamVaultDetailPanel', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Pull' }));
       await waitFor(() => expect(window.multissh.teamVaultPull).toHaveBeenCalledWith(VAULT_ID, undefined));
+    });
+
+    it('shows sync status before Push/Pull, highlighting Pull when the remote changed', async () => {
+      mockApi({
+        teamVaultGetStatus: vi
+          .fn()
+          .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' }),
+        teamVaultGetSyncPreview: vi.fn().mockResolvedValue({ hasUnpushedLocalChanges: false, remoteChanged: true }),
+      });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Remote has a newer version — pull first')).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /Pull/ }).className).toContain('border-amber-500');
+    });
+
+    it('shows sync status before Push/Pull, highlighting Push when there are unpushed local changes', async () => {
+      mockApi({
+        teamVaultGetStatus: vi
+          .fn()
+          .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' }),
+        teamVaultGetSyncPreview: vi.fn().mockResolvedValue({ hasUnpushedLocalChanges: true, remoteChanged: false }),
+      });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Local changes not pushed')).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /Push/ }).className).toContain('border-sky-500');
+    });
+
+    it('shows "Up to date" when nothing needs syncing', async () => {
+      mockApi({
+        teamVaultGetStatus: vi
+          .fn()
+          .mockResolvedValue({ ...baseStatus, remoteConfigured: true, lastSyncAt: '2026-10-08T00:00:00Z' }),
+      });
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Up to date')).toBeInTheDocument());
     });
 
     it('offers to pull anyway (discarding local changes) when the pull is rejected as unpushed', async () => {

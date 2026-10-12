@@ -181,3 +181,17 @@ export interface TeamVaultStatus {
    * exist locally yet. */
   selfRole?: TeamVaultRole;
 }
+
+/**
+ * What Push/Pull would actually do, checked before either button is pressed (§14) — built from
+ * the same cheap, metadata-only checks the background auto-poll already uses
+ * (`TeamVaultService.hasUnpushedLocalChanges`/`hasRemoteChangedSinceLastSync`), not a full
+ * download/diff. `remoteChanged` is relative to this instance's last-known remote state, which is
+ * in-memory only (`VaultRuntimeState.lastKnownRemoteEntry`) — a fresh app session that has never
+ * pushed or pulled this vault yet reports `remoteChanged: true` whenever anything exists on the
+ * remote at all, same "nothing observed yet" fallback the auto-poll already relies on.
+ */
+export interface TeamVaultSyncPreview {
+  hasUnpushedLocalChanges: boolean;
+  remoteChanged: boolean;
+}

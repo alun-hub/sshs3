@@ -37,6 +37,7 @@ describe('Team Vault IPC handlers', () => {
     pushToRemote: vi.fn(),
     pullFromRemote: vi.fn(),
     hasRemoteVault: vi.fn(),
+    getSyncPreview: vi.fn(),
     isUnlocked: vi.fn().mockReturnValue(false),
     getPayload: vi.fn(),
     getPayloadForRenderer: vi.fn(),
@@ -710,6 +711,37 @@ describe('Team Vault IPC handlers', () => {
     it('hasRemoteVault returns false with no target configured, without touching the provider', async () => {
       await expect(call(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT, VAULT_ID)).resolves.toBe(false);
       expect(storageRegistry.getOrCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TEAM_VAULT_GET_SYNC_PREVIEW (§14)', () => {
+    it('reports nothing to sync with no target configured, without touching the provider', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW, VAULT_ID)).resolves.toEqual({
+        hasUnpushedLocalChanges: false,
+        remoteChanged: false,
+      });
+      expect(storageRegistry.getOrCreate).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the service via the configured target', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({ target: { id: 't1', type: 's3' }, remoteBasePath: 'b' });
+      teamVaultService.getSyncPreview.mockResolvedValue({ hasUnpushedLocalChanges: true, remoteChanged: false });
+
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW, VAULT_ID)).resolves.toEqual({
+        hasUnpushedLocalChanges: true,
+        remoteChanged: false,
+      });
+      expect(teamVaultService.getSyncPreview).toHaveBeenCalledWith(VAULT_ID, {}, 'b');
+    });
+
+    it('reports nothing to sync if the preview check itself fails (best-effort)', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({ target: { id: 't1', type: 's3' }, remoteBasePath: 'b' });
+      teamVaultService.getSyncPreview.mockRejectedValue(new Error('network blip'));
+
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW, VAULT_ID)).resolves.toEqual({
+        hasUnpushedLocalChanges: false,
+        remoteChanged: false,
+      });
     });
   });
 });

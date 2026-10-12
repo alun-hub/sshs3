@@ -5,6 +5,7 @@ import {
   type TeamVaultPayload,
   type TeamVaultRole,
   type TeamVaultStatus,
+  type TeamVaultSyncPreview,
 } from '../../shared/types/teamVault';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
@@ -417,6 +418,24 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     const provider = await bridge.storageRegistry.getOrCreate(config.target);
     return bridge.teamVaultService.hasRemoteVault(vid, provider, config.remoteBasePath ?? '');
   });
+
+  // Best-effort (§14/§15: shown before Push/Pull, not load-bearing) — any failure (no target
+  // configured yet, locked vault, a transient network error) just reports "nothing to sync".
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW,
+    async (_event, vaultId: string): Promise<TeamVaultSyncPreview> => {
+      const vid = requireVaultId(vaultId);
+      try {
+        const config = await bridge.teamVaultConfigStore.getConfig(vid);
+        if (!config.target) return { hasUnpushedLocalChanges: false, remoteChanged: false };
+        const provider = await bridge.storageRegistry.getOrCreate(config.target);
+        return await bridge.teamVaultService.getSyncPreview(vid, provider, config.remoteBasePath ?? '');
+      } catch (err) {
+        teamVaultLog.warn(`Failed to build sync preview (vaultId=${vid}):`, err);
+        return { hasUnpushedLocalChanges: false, remoteChanged: false };
+      }
+    }
+  );
 
   // Shared SSH/S3 profiles (connection-manager-plan: the Team Vault's actual payoff) — any
   // unlocked member may read/edit them, not just an admin (see TeamVaultService.saveSSHProfile's

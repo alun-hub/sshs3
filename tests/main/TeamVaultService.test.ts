@@ -1395,6 +1395,49 @@ describe('TeamVaultService', () => {
     });
   });
 
+  describe('getSyncPreview (§14: what Push/Pull would do, before either is pressed)', () => {
+    it('reports up to date right after a push', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+
+      expect(await service.getSyncPreview(vaultId, provider)).toEqual({
+        hasUnpushedLocalChanges: false,
+        remoteChanged: false,
+      });
+    });
+
+    it('reports unpushed local changes after a local mutation', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+
+      expect(await service.getSyncPreview(vaultId, provider)).toEqual({
+        hasUnpushedLocalChanges: true,
+        remoteChanged: false,
+      });
+    });
+
+    it('reports a changed remote once something else pushes', async () => {
+      const service = makeService();
+      const provider = fakeProvider();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.pushToRemote(vaultId, provider);
+      await provider.writeFile!(
+        `team-vault/${vaultId}/vault.json`,
+        Buffer.from(foreignVaultFileJson(vaultId, 2, 'age1fakerecovery'))
+      );
+
+      expect(await service.getSyncPreview(vaultId, provider)).toEqual({
+        hasUnpushedLocalChanges: false,
+        remoteChanged: true,
+      });
+    });
+  });
+
   describe('shared SSH/S3 profiles (getPayload / save*Profile / delete*Profile)', () => {
     function sshProfile(id: string, name = 'web-1'): SSHConnectionConfig {
       return { id, name, host: 'example.com', username: 'root', authType: 'password', password: 'secret' }; // pragma: allowlist secret

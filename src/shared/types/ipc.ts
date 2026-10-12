@@ -45,7 +45,7 @@ import type {
   DotfilesSyncStatusEvent,
 } from './dotfiles';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from './sync';
-import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from './teamVault';
+import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus, TeamVaultSyncPreview } from './teamVault';
 import type { DirectoryDiffEntry, DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from './dirsync';
 import type {
   ConfigureGitSigningRequest,
@@ -227,6 +227,7 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_PUSH: 'team-vault:push',
   TEAM_VAULT_PULL: 'team-vault:pull',
   TEAM_VAULT_HAS_REMOTE_VAULT: 'team-vault:has-remote-vault',
+  TEAM_VAULT_GET_SYNC_PREVIEW: 'team-vault:get-sync-preview',
   TEAM_VAULT_GET_PAYLOAD: 'team-vault:get-payload',
   TEAM_VAULT_SAVE_SSH_PROFILE: 'team-vault:save-ssh-profile',
   TEAM_VAULT_DELETE_SSH_PROFILE: 'team-vault:delete-ssh-profile',
@@ -694,6 +695,10 @@ export interface MultiSSHApi {
   teamVaultPush(vaultId: string): Promise<TeamVaultStatus>;
   teamVaultPull(vaultId: string, options?: { force?: boolean }): Promise<TeamVaultStatus>;
   teamVaultHasRemoteVault(vaultId: string): Promise<boolean>;
+  /** Best-effort: resolves to `{ hasUnpushedLocalChanges: false, remoteChanged: false }` (shown
+   * as "Up to date") if the preview check itself fails, e.g. no target configured yet or the
+   * vault is locked — see teamVaultHandlers.ts. */
+  teamVaultGetSyncPreview(vaultId: string): Promise<TeamVaultSyncPreview>;
   /** Null when the vault doesn't exist or isn't unlocked — best-effort, see teamVaultHandlers.ts. */
   teamVaultGetPayload(vaultId: string): Promise<TeamVaultPayload | null>;
   teamVaultSaveSSHProfile(vaultId: string, profile: SSHConnectionConfig): Promise<void>;

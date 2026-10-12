@@ -92,7 +92,7 @@ import type { Snippet } from '../shared/types/snippets';
 import type { AppSettings } from '../shared/types/settings';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
-import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus } from '../shared/types/teamVault';
+import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus, TeamVaultSyncPreview } from '../shared/types/teamVault';
 import type {
   SearchDoneEvent,
   SearchErrorEvent,
@@ -536,6 +536,8 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_PULL, vaultId, options),
   teamVaultHasRemoteVault: (vaultId: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT, vaultId),
+  teamVaultGetSyncPreview: (vaultId: string): Promise<TeamVaultSyncPreview> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW, vaultId),
   teamVaultGetPayload: (vaultId: string): Promise<TeamVaultPayload | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD, vaultId),
   teamVaultSaveSSHProfile: (vaultId: string, profile: SSHConnectionConfig): Promise<void> =>

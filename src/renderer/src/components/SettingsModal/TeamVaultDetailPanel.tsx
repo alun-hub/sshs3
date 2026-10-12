@@ -16,7 +16,7 @@ import {
   UploadCloud,
   Users,
 } from 'lucide-react';
-import type { TeamVaultRole, TeamVaultStatus } from '@shared/types/teamVault';
+import type { TeamVaultRole, TeamVaultStatus, TeamVaultSyncPreview } from '@shared/types/teamVault';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
 import { formatDateTime } from '../../lib/dateFormat';
@@ -80,6 +80,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
   const [unlockIdentityPath, setUnlockIdentityPath] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<TeamVaultSyncPreview | null>(null);
   // Shown only as a fallback (multiple identities, a new machine, or a lost config) — when
   // status.selfRecipientId/selfIdentityFilePath are already known, unlocking needs no fields at
   // all, just a button (found to be a real usability problem otherwise — see docs/team-vault-plan.md).
@@ -125,6 +126,13 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
       // session (e.g. unlocking as a different member than the one remembered).
       setUnlockRecipientId((prev) => prev || s.selfRecipientId || '');
       setUnlockIdentityPath((prev) => prev || s.selfIdentityFilePath || '');
+      // Shown before Push/Pull (§14) — best-effort, so a failure here never blocks the rest of
+      // the panel from loading.
+      if (s.remoteConfigured) {
+        setSyncPreview(await window.multissh.teamVaultGetSyncPreview(vaultId));
+      } else {
+        setSyncPreview(null);
+      }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load Team Vault status'));
     } finally {
@@ -899,12 +907,28 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                       <span>Last synced</span>
                       <span>{status.lastSyncAt ? formatDateTime(status.lastSyncAt) : 'Never'}</span>
                     </div>
+                    {syncPreview && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-txt-muted">Status</span>
+                        {syncPreview.remoteChanged ? (
+                          <span className="text-amber-400">Remote has a newer version — pull first</span>
+                        ) : syncPreview.hasUnpushedLocalChanges ? (
+                          <span className="text-sky-400">Local changes not pushed</span>
+                        ) : (
+                          <span className="text-emerald-400">Up to date</span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => void handlePush()}
                         disabled={pushing}
-                        className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 disabled:opacity-50 ${
+                          syncPreview?.hasUnpushedLocalChanges && !syncPreview.remoteChanged
+                            ? 'border-sky-500 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
+                            : 'border-border-subtle text-txt-secondary hover:bg-app-surface-hover'
+                        }`}
                       >
                         {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
                         Push
@@ -914,7 +938,11 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                         onClick={() => void handlePull()}
                         disabled={pulling || !status.unlocked}
                         title={!status.unlocked ? 'Unlock the Team Vault first — pulling needs the Vault Key to verify the update' : undefined}
-                        className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 disabled:opacity-50 ${
+                          syncPreview?.remoteChanged
+                            ? 'border-amber-500 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                            : 'border-border-subtle text-txt-secondary hover:bg-app-surface-hover'
+                        }`}
                       >
                         {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
                         Pull

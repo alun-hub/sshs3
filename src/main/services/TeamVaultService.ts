@@ -10,6 +10,7 @@ import type {
   TeamVaultPayload,
   TeamVaultRole,
   TeamVaultStatus,
+  TeamVaultSyncPreview,
 } from '../../shared/types/teamVault';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { FileEntry, IStorageProvider, S3Config } from '../../shared/types/storage';
@@ -1699,6 +1700,18 @@ export class TeamVaultService {
     const state = this.states.get(vaultId);
     if (!file || !state || state.lastSyncedRevision === undefined) return false;
     return file.revision !== state.lastSyncedRevision;
+  }
+
+  /** Combines `hasUnpushedLocalChanges`/`hasRemoteChangedSinceLastSync` into the one check the
+   * Team Vault detail/list UI needs before Push/Pull is pressed (§14/§15) — same cheap,
+   * metadata-only checks the background auto-poll already runs on every tick, just surfaced
+   * on demand instead of acted on automatically. */
+  async getSyncPreview(vaultId: string, provider: IStorageProvider, remoteBasePath = ''): Promise<TeamVaultSyncPreview> {
+    const [hasUnpushedLocalChanges, remoteChanged] = await Promise.all([
+      this.hasUnpushedLocalChanges(vaultId),
+      this.hasRemoteChangedSinceLastSync(vaultId, provider, remoteBasePath),
+    ]);
+    return { hasUnpushedLocalChanges, remoteChanged };
   }
 
   /** Reads and fully validates a vault file from the remote — shared by `pushToRemote`'s identity
