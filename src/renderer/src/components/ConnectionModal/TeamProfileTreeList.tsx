@@ -7,7 +7,7 @@ import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault'
 import type { EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './types';
 import { TeamProfileTree } from './TeamProfileTree';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
-import { buildTeamFolderTree, collectTeamFolderSuggestions } from './teamProfileTree';
+import { buildTeamFolderTree, collectTeamFolderSuggestions } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
 import { describeIpcError } from '../../lib/format';
 import { useConfirm } from '../ConfirmDialog';

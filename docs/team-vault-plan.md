@@ -602,12 +602,25 @@ via en ny `pinPrompter`-injektionspunkt (samma `promptForPinDirect`/
 i `IpcBridge`s konstruktion av `TeamVaultService` — ingen ny IPC-kanal
 eller UI-komponent krävdes.
 
-**Windows är fortfarande inte verifierat** (bara Linux denna omgång,
-medvetet beslut) — `node-pty` använder ConPTY där, men huruvida
-`age-plugin-yubikey` kräver en tty på samma sätt, och huruvida en FIFO
-(`mkfifo`) ens är tillgänglig (den är inte det på Windows), är öppna
-frågor för en separat verifieringsomgång innan Team Vault-funktionen
-räknas som klar på Windows.
+**Windows (verifierat 2026-10-11, YubiKey 5C):** flödet fungerar end-to-end.
+`node-pty` använder ConPTY och PIN-prompten når oss i klartext, men omgiven av
+terminalstyrkoder (rensas med `stripAnsi` innan matchning). Två saker skiljer
+sig från Linux:
+
+- **Ingen `mkfifo`.** `createSecretOutputChannel` använder en named pipe
+  (`\.pipesshs3-<uuid>`) i stället. `age` v1.3.2 öppnar sitt `-o`-mål
+  flera gånger (två tomma anslutningar, sedan den som bär datat), så läsaren
+  lämnar ut den första icke-tomma anslutningen.
+- **Ctrl-D är inte EOF i ConPTY.** Ciphertexten (inte hemlig) skickas därför som
+  filargument i stället för via stdin.
+
+Upplåsning med återställningsnyckel behöver varken pty eller FIFO/pipe längre:
+identiteten går på stdin (`age -d -i -`) och Vault Key kommer på stdout, på alla
+plattformar. `node-pty` kan inte starta ett bart kommandonamn på Windows;
+`AgeBinaryResolver` slår därför upp `.exe` på PATH.
+
+**Känt öppet:** YubiKey 4 (firmware 4.3.7) fungerar inte på Windows ännu (fungerar
+på Linux); orsaken är inte utredd.
 
 ### End-to-end UI-verifiering (2026-10-09) — två verkliga buggar hittade och fixade
 

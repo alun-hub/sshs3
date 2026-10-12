@@ -20,8 +20,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { TEAM_FOLDER_ICONS, type TeamFolderIcon } from '@shared/types/teamVault';
-import type { TeamFolderNode } from './teamProfileTree';
-import { findFolderNode, flattenTeamFolderTree } from './teamProfileTree';
+import type { TeamFolderNode } from './teamFolderTree';
+import { findFolderNode, flattenTeamFolderTree } from './teamFolderTree';
 
 /** Maps `TEAM_FOLDER_ICONS` keys (shared/types/teamVault.ts) to their `lucide-react` component —
  * the only place that mapping needs to exist, so adding an icon to the shared allowlist is a
@@ -76,7 +76,7 @@ interface TeamProfileTreeProps<T> {
 }
 
 /**
- * Browses the shared, arbitrarily-deep Team Vault folder tree (see `teamProfileTree.ts`) as a
+ * Browses the shared, arbitrarily-deep Team Vault folder tree (see `teamFolderTree.ts`) as a
  * card grid with breadcrumb drill-down — one level visible at a time, navigated by clicking a
  * folder card or a breadcrumb segment — rather than an always-expanded indented tree. Modeled
  * visually on `feature/connection-system-model`'s `SystemCardGrid`/breadcrumb pattern (kept only
