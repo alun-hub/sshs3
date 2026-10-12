@@ -61,8 +61,35 @@ function requireAgeRecipient(value: string, label: string): void {
   }
 }
 
+// `canonicalAccessHeaderString` (TeamVaultCryptoService.ts) joins the header-MAC's fields with
+// these three control characters as delimiters (\u0001 between an access-entry's own fields,
+// \u0002 within the header line, \u0003 between lines) on the assumption that no real field value
+// ever contains one. None of recipientId/vaultName/vaultDescription are otherwise restricted in
+// character set, so without this guard a value containing one of these could be crafted to shift
+// where the canonicalizer "sees" a field boundary — letting a bucket-write-access-only attacker
+// (no Vault Key) reinterpret which bytes belong to which field while an old, still-valid MAC
+// keeps verifying against the tampered split (a security review on 2026-10-12 flagged exactly
+// this ambiguity after `vaultDescription` was added). Rejecting the delimiters outright at the
+// point every one of these values is first accepted closes the construction path entirely,
+// without touching the canonical string format itself (so it can never re-break an existing
+// vault's MAC the way the `vaultDescription` backward-compatibility bug just did).
+// Built from character codes, not a regex literal, so the delimiters aren't control-character
+// escapes eslint-plugin-security's `no-control-regex` (rightly) flags in a `/.../ ` pattern.
+function containsCanonicalizationDelimiter(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0x01 || code === 0x02 || code === 0x03) return true;
+  }
+  return false;
+}
+
 function requireRecipientId(value: string, label: string): void {
-  if (typeof value !== 'string' || !value.trim() || value.length > 512) {
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    value.length > 512 ||
+    containsCanonicalizationDelimiter(value)
+  ) {
     throw new Error(`${label} is required`);
   }
 }
@@ -114,13 +141,13 @@ function requireProfile(value: unknown, label: string): void {
 }
 
 function requireVaultName(value: string): void {
-  if (typeof value !== 'string' || value.length > 200) {
+  if (typeof value !== 'string' || value.length > 200 || containsCanonicalizationDelimiter(value)) {
     throw new Error('Vault name must be a string of at most 200 characters');
   }
 }
 
 function requireVaultDescription(value: string): void {
-  if (typeof value !== 'string' || value.length > 500) {
+  if (typeof value !== 'string' || value.length > 500 || containsCanonicalizationDelimiter(value)) {
     throw new Error('Vault description must be a string of at most 500 characters');
   }
 }

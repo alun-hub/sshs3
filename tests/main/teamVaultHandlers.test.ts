@@ -139,6 +139,20 @@ describe('Team Vault IPC handlers', () => {
       ).rejects.toThrow('Vault name must be a string of at most 200 characters');
     });
 
+    it('rejects a vault name containing a header-MAC canonicalization delimiter (\\u0001/\\u0002/\\u0003) — crafting one could otherwise let a bucket-write-access attacker reinterpret the vaultName/vaultDescription field boundary under a stale but still-valid MAC', async () => {
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT, 'Acme\u0002Team')
+      ).rejects.toThrow('Vault name must be a string of at most 200 characters');
+      expect(teamVaultService.createVault).not.toHaveBeenCalled();
+    });
+
+    it('rejects a recipient id containing a header-MAC canonicalization delimiter', async () => {
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice\u0001@piv:abc', VALID_RECIPIENT)
+      ).rejects.toThrow('Recipient id is required');
+      expect(teamVaultService.createVault).not.toHaveBeenCalled();
+    });
+
     it('starts the background auto-poll for the minted vaultId once creation succeeds', async () => {
       teamVaultService.createVault.mockResolvedValue({ vaultId: VAULT_ID, recoveryIdentity: 'AGE-SECRET-KEY-X' });
       await call(IPC_CHANNELS.TEAM_VAULT_CREATE, 'alice@piv:abc', VALID_RECIPIENT);
@@ -380,6 +394,13 @@ describe('Team Vault IPC handlers', () => {
       await expect(call(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, VAULT_ID, 'x'.repeat(501))).rejects.toThrow(
         'Vault description must be a string of at most 500 characters'
       );
+      expect(teamVaultService.setDescription).not.toHaveBeenCalled();
+    });
+
+    it('rejects a description containing a header-MAC canonicalization delimiter', async () => {
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_SET_DESCRIPTION, VAULT_ID, 'Internal infra\u0003team')
+      ).rejects.toThrow('Vault description must be a string of at most 500 characters');
       expect(teamVaultService.setDescription).not.toHaveBeenCalled();
     });
 
