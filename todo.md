@@ -74,6 +74,11 @@ Dessa är luckor som en användare av ett konkurrerande verktyg skulle uppfatta 
   `sprintf-js` ≤1.1.3 (alert #14, via electron-builder > `@electron/get` > `global-agent` > `roarr`)
   har ingen fixad version (1.1.3 är senast) — kolla när en patch släpps.
 - **Multifönster saknas** — applikationen körs i dagsläget i ett samlat fönster per instans.
+- **Team Vault på Windows** *(klart 2026-10-12, PR #44)* — fungerar end-to-end, verifierat mot
+  riktig Windows-maskin med en YubiKey 5C (se `docs/team-vault-plan.md`s logg). Named pipe
+  (`net`-modulen) ersätter FIFO:n för att läsa tillbaka Vault Key/recovery-unlock; recovery-upplåsning
+  går numera via stdin på alla plattformar. **Kvar:** YubiKey 4 (firmware 4.3.7) fungerar inte på
+  Windows ännu (fungerar på Linux) — orsaken är inte utredd.
 
 ## Prioriterad funktionslista
 
