@@ -765,6 +765,17 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   </button>
                 </div>
               ))}
+              {visibleTeamVaultTabs.filter((v) => !v.unlocked).length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => void teamProfileTreeListRef.current?.unlockAll()}
+                  title="Unlock every team that already has a saved identity"
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                >
+                  <Unlock className="h-3.5 w-3.5" />
+                  Unlock all
+                </button>
+              )}
             </div>
             {source !== 'personal' && activeTeamVaultTab && (
               <div className="mt-1.5">
@@ -877,6 +888,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
               {tab !== 'k8s' && (
                 <div className="mb-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
+                    {!(source !== 'personal' && activeTeamVaultTab && !activeTeamVaultTab.unlocked) && (
                     <div className="relative flex-1">
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
                       <input
@@ -909,6 +921,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                       />
                     </div>
+                    )}
 
                     {source === 'personal' && (
                       <button

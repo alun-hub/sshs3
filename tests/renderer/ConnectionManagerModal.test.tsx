@@ -511,9 +511,54 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
-      await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Acme Infra Team is locked')).toBeInTheDocument());
       // Personal profiles must not leak into the Team view.
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
+    });
+
+    it('hides the search field while the active team is locked', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([lockedStatus()]);
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+      expect(screen.getByPlaceholderText(/Search profiles/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team is locked')).toBeInTheDocument());
+      expect(screen.queryByPlaceholderText(/Search profiles/)).not.toBeInTheDocument();
+    });
+
+    it('offers "Unlock all" once more than one team is locked, and unlocks every ready vault', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        lockedStatus({ vaultId: 'vlt_1', vaultName: 'Acme Infra Team' }),
+        lockedStatus({ vaultId: 'vlt_2', vaultName: 'Beta Team' }),
+      ]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockImplementation((vaultId: string) =>
+        Promise.resolve(
+          vaultId === 'vlt_1'
+            ? lockedStatus({ vaultId: 'vlt_1', vaultName: 'Acme Infra Team' })
+            : lockedStatus({ vaultId: 'vlt_2', vaultName: 'Beta Team' })
+        )
+      );
+      window.multissh.teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team is locked')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Unlock all/ }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('vlt_1', 'alice@piv:abc', '/tmp/alice-identity.txt');
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('vlt_2', 'alice@piv:abc', '/tmp/alice-identity.txt');
+      });
     });
 
     it('lists shared SSH/S3 profiles once unlocked, separately from personal ones', async () => {
@@ -641,7 +686,7 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
-      await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Acme Infra Team is locked')).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: /New Profile/i })).not.toBeInTheDocument();
     });
 

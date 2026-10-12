@@ -109,8 +109,6 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     [loadPayload]
   );
 
-  useImperativeHandle(ref, () => ({ refreshVault }), [refreshVault]);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -228,6 +226,26 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
       updateEntry(vaultId, { unlocking: false });
     }
   };
+
+  // "Unlock all" (§12): only attempts vaults where the quick "Unlock as <id>" identity was
+  // already prefilled from a prior session (same gate the per-vault quick-unlock button uses) —
+  // a vault that needs a manually-entered identity is left for the member to unlock by hand.
+  const unlockAll = useCallback(async () => {
+    const targets = vaultOrder.filter((vaultId) => {
+      const entry = entries[vaultId];
+      return (
+        entry &&
+        !entry.status.unlocked &&
+        !entry.showManualUnlock &&
+        entry.unlockRecipientId.trim() &&
+        entry.unlockIdentityPath.trim()
+      );
+    });
+    await Promise.all(targets.map((vaultId) => handleUnlock(vaultId)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultOrder, entries]);
+
+  useImperativeHandle(ref, () => ({ refreshVault, unlockAll }), [refreshVault, unlockAll]);
 
   const handleCloneSSH = async (vaultId: string, profile: SSHConnectionConfig) => {
     const clone: SSHConnectionConfig = { ...profile, id: crypto.randomUUID(), name: `${profile.name} (Copy)` };
@@ -386,16 +404,22 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
         if (!status.unlocked) {
           return (
-            <div key={vaultId} className="space-y-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
-              <p className="flex items-center gap-1.5 text-xs font-medium text-txt-secondary">
-                <Lock className="h-3.5 w-3.5 text-amber-400" />
-                {title} (locked)
-              </p>
+            <div
+              key={vaultId}
+              className="flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-6 text-center"
+            >
+              <Lock className="h-6 w-6 text-amber-400" />
+              <p className="text-sm font-medium text-txt-secondary">{title} is locked</p>
               {!entry.showManualUnlock && entry.unlockRecipientId && entry.unlockIdentityPath && status.selfRecipientId ? (
-                <div className="flex items-center gap-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleUnlock(vaultId);
+                  }}
+                  className="flex flex-col items-center gap-2"
+                >
                   <button
-                    type="button"
-                    onClick={() => void handleUnlock(vaultId)}
+                    type="submit"
                     disabled={entry.unlocking}
                     className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
                   >
@@ -409,9 +433,15 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                   >
                     Use a different identity...
                   </button>
-                </div>
+                </form>
               ) : (
-                <div className="flex flex-col gap-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleUnlock(vaultId);
+                  }}
+                  className="flex w-full max-w-xs flex-col gap-2"
+                >
                   <input
                     type="text"
                     value={entry.unlockRecipientId}
@@ -427,15 +457,14 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                     className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                   />
                   <button
-                    type="button"
-                    onClick={() => void handleUnlock(vaultId)}
+                    type="submit"
                     disabled={entry.unlocking || !entry.unlockRecipientId.trim() || !entry.unlockIdentityPath.trim()}
-                    className="flex items-center gap-1.5 self-start rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 self-center rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
                   >
                     {entry.unlocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
                     Unlock
                   </button>
-                </div>
+                </form>
               )}
             </div>
           );

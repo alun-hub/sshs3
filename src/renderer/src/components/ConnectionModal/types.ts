@@ -40,4 +40,7 @@ export interface TeamVaultMeta {
  * instead of waiting for the next background poll. */
 export interface TeamProfileTreeListHandle {
   refreshVault: (vaultId: string) => Promise<void>;
+  /** Unlocks every locked vault that already has a prefilled identity (the same one the
+   * per-vault "Unlock as <id>" quick button uses) — for the tab row's "Unlock all" action. */
+  unlockAll: () => Promise<void>;
 }
