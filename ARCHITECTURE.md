@@ -58,7 +58,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── profile/                # OS keychain encrypted profile store (safeStorage)
 │   │   ├── proxy/                  # HTTP/SOCKS socket creation & proxyCli helper
 │   │   ├── search/                 # Local/remote regex search & live log tailing (tail -f)
-│   │   ├── services/               # K8s discovery, debug containers, port forward & OpenShift
+│   │   ├── services/               # K8s discovery, debug containers, port forward, OpenShift, & Team Vault (TeamVaultService, TeamVaultCryptoService, TeamVaultConfigStore, AgeBinaryResolver, AgePtyPinRelay)
 │   │   ├── session/                # Window tab & layout persistence (SessionStore)
 │   │   ├── clipboard/              # Encrypted terminal selection history (ClipboardHistoryStore)
 │   │   ├── snippets/               # Saved terminal command snippets (SnippetStore, plain JSON)
@@ -77,10 +77,10 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   └── src/
 │   │       ├── App.tsx             # Root component: layout, top-level modals, tab views
 │   │       ├── components/
-│   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes (ConnectionManagerModal + folder/row/import components, connectionGrouping.ts)
+│   │       │   ├── ConnectionModal/# Profile management for SSH, S3, and Kubernetes (ConnectionManagerModal + team tabs, TeamProfileTree/List, folder/row/import components, connectionGrouping.ts)
 │   │       │   ├── FileManager/    # DualPaneExplorer, FileList, FilePane (+ FilePaneToolbar, FilePaneFilterBar, FilePaneModals, GitStatusMenu, filePaneContextMenu.ts), GitCloneModal
 │   │       │   ├── K8s/            # Pod inspector, port forward modal, debug container UI
-│   │       │   ├── SettingsModal/  # SettingsModal shell + useSettingsForm (draft state) + one *SettingsSection per category, GitSettingsPanel, SyncSettingsPanel
+│   │       │   ├── SettingsModal/  # SettingsModal shell + useSettingsForm (draft state) + one *SettingsSection per category, GitSettingsPanel, SyncSettingsPanel, TeamVaultListPanel, TeamVaultDetailPanel
 │   │       │   ├── TabBar.tsx      # Draggable/closable tab bar
 │   │       │   ├── TerminalView.tsx# xterm.js terminal instance & FitAddon
 │   │       │   └── Tunnels/        # Independent SSH port-forwarding management dashboard

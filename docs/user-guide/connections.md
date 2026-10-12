@@ -2,6 +2,9 @@
 
 The Connection Manager in **sshs3** (accessible via <kbd>Ctrl+Shift+O</kbd> or the primary sidebar) centralizes configuration, credentials, and topology management for SSH servers, Kubernetes clusters, and S3 object storage in a unified, searchable workspace.
 
+> [!TIP]
+> To share connection profiles and folders securely across your team using hardware YubiKeys, see [Team Vault: Shared Connection Profiles](/docs/team-vault/). Shared teams appear as dedicated tabs alongside **Personal** profiles.
+
 ![SSH Profile Form](/img/docs/profile-new-ssh.png)
 
 ---
