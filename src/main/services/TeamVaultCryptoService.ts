@@ -64,11 +64,18 @@ function canonicalAccessHeaderString(
     .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
     .sort();
   const recoveryLine = [recovery.recipientId, recovery.ageRecipient, recovery.wrappedVaultKey].join('\u0001');
-  return [
-    `${vaultId}\u0002${revision}\u0002${vaultName}\u0002${vaultDescription}`,
-    ...entryLines,
-    recoveryLine,
-  ].join('\u0003');
+  // Backward compatibility: every vault written before `vaultDescription` existed has an
+  // `accessHeaderMac` computed over the 3-field header line below, with no description segment
+  // at all — not even an empty one. Appending `\u0002${vaultDescription}` unconditionally (even
+  // when it's '') would change the canonical bytes, and therefore the MAC, for every one of
+  // those vaults on their very next unlock, even though nothing about them actually changed —
+  // this broke real installs (TeamVaultHeaderIntegrityError on unlock) the moment this shipped.
+  // Only vaults that actually have a description get the 4-field form; the two can never collide
+  // because `vaultDescription` here is only ever '' when the vault doesn't have one.
+  const headerLine = vaultDescription
+    ? `${vaultId}\u0002${revision}\u0002${vaultName}\u0002${vaultDescription}`
+    : `${vaultId}\u0002${revision}\u0002${vaultName}`;
+  return [headerLine, ...entryLines, recoveryLine].join('\u0003');
 }
 
 /**

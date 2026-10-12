@@ -584,6 +584,35 @@ describe('TeamVaultCryptoService', () => {
       expect(withoutDescription).toBe(withEmptyDescription);
       expect(withDescription).not.toBe(withoutDescription);
     });
+
+    it('reproduces the exact pre-vaultDescription MAC (golden value) for a vault with no description, so every vault written before this field existed keeps unlocking', () => {
+      // Regression pin: an earlier version of this canonicalization always appended a
+      // `\u0002${vaultDescription}` segment, even when empty — which changed the canonical bytes
+      // (and therefore the MAC) for every vault that predates the `vaultDescription` field,
+      // breaking unlock with TeamVaultHeaderIntegrityError on real installs the moment it shipped.
+      // This golden value was computed once against the fixed (backward-compatible) 3-field
+      // header line and must never change for a description-less vault.
+      const svc = new TeamVaultCryptoService();
+      const key = Buffer.alloc(32, 7);
+      const entry = [
+        {
+          recipientId: 'alice@piv:abc',
+          role: 'admin' as const,
+          method: 'piv-rsa-oaep' as const,
+          ageRecipient: 'age1yubikey1alice',
+          wrappedVaultKey: 'wrapped-alice',
+          addedAt: '2026-01-01T00:00:00Z',
+          addedBy: 'alice@piv:abc',
+        },
+      ];
+      const goldenRecovery = {
+        recipientId: 'recovery-key-1',
+        ageRecipient: 'age1fakerecovery',
+        wrappedVaultKey: 'wrapped-recovery',
+      };
+      const mac = svc.computeAccessHeaderMac(key, 'vlt_golden', 1, 'Golden Team', entry, goldenRecovery);
+      expect(mac).toBe('uQ8waktnAlCZTy3zVUd8AZuBWXyqv7e6LuHJ+vUr3gw=');
+    });
   });
 
   describe('computeRotationProof', () => {
