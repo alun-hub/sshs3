@@ -203,7 +203,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               sessionExitAction === 'reconnect'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -215,7 +215,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="sessionExitAction"
                 checked={sessionExitAction === 'reconnect'}
                 onChange={() => setSessionExitAction('reconnect')}
-                className="hidden"
+                className="sr-only"
               />
               <RotateCcw className="h-3.5 w-3.5 text-sky-400" />
               <span>Reconnect (Default)</span>
@@ -226,7 +226,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </label>
 
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               sessionExitAction === 'close'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -238,7 +238,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="sessionExitAction"
                 checked={sessionExitAction === 'close'}
                 onChange={() => setSessionExitAction('close')}
-                className="hidden"
+                className="sr-only"
               />
               <X className="h-3.5 w-3.5 text-amber-400" />
               <span>Close Tab Immediately</span>
@@ -249,7 +249,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </label>
 
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               sessionExitAction === 'keep'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -261,7 +261,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="sessionExitAction"
                 checked={sessionExitAction === 'keep'}
                 onChange={() => setSessionExitAction('keep')}
-                className="hidden"
+                className="sr-only"
               />
               <Terminal className="h-3.5 w-3.5 text-txt-muted" />
               <span>Keep Open</span>

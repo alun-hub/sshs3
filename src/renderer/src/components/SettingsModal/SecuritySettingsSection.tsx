@@ -68,7 +68,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               smartcardAuthMode === 'always-prompt'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -80,7 +80,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="smartcardAuthMode"
                 checked={smartcardAuthMode === 'always-prompt'}
                 onChange={() => setSmartcardAuthMode('always-prompt')}
-                className="hidden"
+                className="sr-only"
               />
               <Lock className="h-3.5 w-3.5 text-emerald-400" />
               <span>Always Prompt (Default)</span>
@@ -92,7 +92,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </label>
 
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               smartcardAuthMode === 'agent-per-session'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -104,7 +104,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="smartcardAuthMode"
                 checked={smartcardAuthMode === 'agent-per-session'}
                 onChange={() => setSmartcardAuthMode('agent-per-session')}
-                className="hidden"
+                className="sr-only"
               />
               <Shield className="h-3.5 w-3.5 text-sky-400" />
               <span>Once Per Terminal Connection</span>
@@ -117,7 +117,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </label>
 
           <label
-            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               smartcardAuthMode === 'agent-global'
                 ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -129,7 +129,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 name="smartcardAuthMode"
                 checked={smartcardAuthMode === 'agent-global'}
                 onChange={() => setSmartcardAuthMode('agent-global')}
-                className="hidden"
+                className="sr-only"
               />
               <Globe className="h-3.5 w-3.5 text-amber-400" />
               <span>Global (App Lifetime)</span>
@@ -212,7 +212,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                 return (
                   <label
                     key={lib.path || 'auto'}
-                    className={`flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-xs transition-colors ${
+                    className={`flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                       selected
                         ? 'border-sky-500 bg-sky-500/15'
                         : 'border-border-subtle bg-app-surface hover:bg-app-surface-hover'
@@ -223,7 +223,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
                       name="smartcardLibPath"
                       checked={selected}
                       onChange={() => setSmartcardLibPath(lib.path)}
-                      className="hidden"
+                      className="sr-only"
                     />
                     <div className="min-w-0 pr-2">
                       <div className="flex items-center gap-1.5 font-medium text-txt-primary">

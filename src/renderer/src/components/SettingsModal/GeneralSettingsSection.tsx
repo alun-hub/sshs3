@@ -92,7 +92,7 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
         <label className="text-xs font-medium text-txt-primary">Default Tab Type</label>
         <div className="grid grid-cols-2 gap-2.5">
           <label
-            className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors ${
+            className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               defaultNewTab === 'terminal'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -103,14 +103,14 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
               name="defaultTab"
               checked={defaultNewTab === 'terminal'}
               onChange={() => setDefaultNewTab('terminal')}
-              className="hidden"
+              className="sr-only"
             />
             <Terminal className="h-4 w-4 text-sky-400" />
             <span>Terminal</span>
           </label>
 
           <label
-            className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors ${
+            className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               defaultNewTab === 'filemanager'
                 ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -121,7 +121,7 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
               name="defaultTab"
               checked={defaultNewTab === 'filemanager'}
               onChange={() => setDefaultNewTab('filemanager')}
-              className="hidden"
+              className="sr-only"
             />
             <FolderTree className="h-4 w-4 text-amber-400" />
             <span>File Manager</span>
