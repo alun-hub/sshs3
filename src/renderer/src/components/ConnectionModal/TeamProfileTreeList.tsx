@@ -177,6 +177,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
         vaultName: e.status.vaultName,
         isAdmin: !!e.status.members?.some((m) => m.recipientId === e.status.selfRecipientId && m.role === 'admin'),
         folderSuggestions: collectTeamFolderSuggestions(e.payload?.folders ?? [], e.payload?.ssh ?? [], e.payload?.s3 ?? []),
+        unlocked: e.status.unlocked,
       }));
     onVaultsMetaChange(metas);
     // eslint-disable-next-line react-hooks/exhaustive-deps

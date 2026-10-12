@@ -124,6 +124,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // this modal can tell which team an open edit belongs to (for the secret-field gate and folder
   // suggestions below), since it no longer fetches payloads itself.
   const [teamVaultsMeta, setTeamVaultsMeta] = useState<TeamVaultMeta[]>([]);
+  // `TeamProfileTreeList` owns the only live `unlocked` status per vault (it unlocks/locks them),
+  // so when it reports metas here, also patch the tab row's own copy — otherwise the tab's lock
+  // icon stays stale until the next `loadTeamVaultTabs()` poll (e.g. switching protocol tabs).
+  const handleVaultsMetaChange = useCallback((metas: TeamVaultMeta[]) => {
+    setTeamVaultsMeta(metas);
+    setTeamVaultTabs((prev) =>
+      prev.map((tab) => {
+        const meta = metas.find((m) => m.vaultId === tab.vaultId);
+        return meta && meta.unlocked !== tab.unlocked ? { ...tab, unlocked: meta.unlocked } : tab;
+      })
+    );
+  }, []);
   // So a save made through the edit form (rendered here, not by TeamProfileTreeList) can refresh
   // that one vault's cached payload immediately — see TeamProfileTreeListHandle's doc comment.
   const teamProfileTreeListRef = useRef<TeamProfileTreeListHandle>(null);
@@ -1216,7 +1228,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onConnectSFTP={onConnectSFTP}
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}
-                  onVaultsMetaChange={setTeamVaultsMeta}
+                  onVaultsMetaChange={handleVaultsMetaChange}
                 />
               )}
 
@@ -1333,7 +1345,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onConnectS3={onConnectS3}
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}
-                  onVaultsMetaChange={setTeamVaultsMeta}
+                  onVaultsMetaChange={handleVaultsMetaChange}
                 />
               )}
             </>

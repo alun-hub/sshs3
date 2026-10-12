@@ -28,6 +28,10 @@ export interface TeamVaultMeta {
   vaultName?: string;
   isAdmin: boolean;
   folderSuggestions: string[];
+  /** Mirrors `TeamVaultStatus.unlocked` so `ConnectionManagerModal` can keep its tab row's lock
+   * icon in sync the moment `TeamProfileTreeList` unlocks/locks a vault, instead of waiting for
+   * the next `loadTeamVaultTabs()` poll. */
+  unlocked: boolean;
 }
 
 /** Imperative handle `TeamProfileTreeList` exposes via `forwardRef` — `ConnectionManagerModal`
