@@ -855,10 +855,15 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
 
           <div className="space-y-2 rounded-lg border border-border-subtle bg-app-surface p-3">
             <p className="text-xs font-medium text-txt-secondary">Add a member</p>
+            <ol className="space-y-0.5 text-2xs text-txt-muted">
+              <li>1. They open Settings → Team Vault → "Join an existing team" → "Generate my Team Vault ID" and send you what it copies.</li>
+              <li>2. Paste it below.</li>
+              <li>3. Once added, send them "Copy invite" from their row below.</li>
+            </ol>
             <textarea
               value={joinInfoPaste}
               onChange={(e) => handleJoinInfoPaste(e.target.value)}
-              placeholder="Paste their join info (the blob they copied from Generate my Team Vault ID)"
+              placeholder="Paste their join info (step 1 above)"
               rows={3}
               className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
             />
