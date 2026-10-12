@@ -7,7 +7,7 @@ import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault'
 import type { EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './types';
 import { TeamProfileTree } from './TeamProfileTree';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
-import { buildTeamFolderTree, collectTeamFolderSuggestions } from './teamFolderTree';
+import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
 import { describeIpcError } from '../../lib/format';
 import { useConfirm } from '../ConfirmDialog';
@@ -448,10 +448,13 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
         const filteredSSH = filterSshProfiles(sshWithRef, query);
         const filteredS3 = filterS3Profiles(s3WithRef, query);
         const activeProfiles = tab === 'ssh' ? filteredSSH : filteredS3;
+        // Scope the folder registry to this tab's type (§13) before building the tree — a folder
+        // used only for S3 buckets shouldn't show up, empty, on the SSH tab and vice versa.
+        const tabFolders = filterTeamFolderNamesForTab(tab, entry.payload?.folders ?? [], ssh, s3);
         const tree =
           tab === 'ssh'
-            ? buildTeamFolderTree(entry.payload?.folders ?? [], filteredSSH, entry.payload?.folderIcons ?? {})
-            : buildTeamFolderTree(entry.payload?.folders ?? [], filteredS3, entry.payload?.folderIcons ?? {});
+            ? buildTeamFolderTree(tabFolders, filteredSSH, entry.payload?.folderIcons ?? {})
+            : buildTeamFolderTree(tabFolders, filteredS3, entry.payload?.folderIcons ?? {});
 
         return (
           <div key={vaultId} className="space-y-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">

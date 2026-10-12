@@ -3,13 +3,17 @@ import {
   buildTeamFolderTree,
   collectAllTeamFolderPaths,
   collectTeamFolderSuggestions,
+  filterTeamFolderNamesForTab,
   findFolderNode,
   flattenTeamFolderTree,
 } from '../../src/renderer/src/components/ConnectionModal/teamFolderTree';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+import type { S3Config } from '../../src/shared/types/storage';
 
 const ssh = (id: string, group?: string): SSHConnectionConfig =>
   ({ id, name: id, host: `${id}.example.com`, username: 'root', authType: 'password', group }) as SSHConnectionConfig;
+
+const s3 = (id: string, group?: string): S3Config => ({ id, name: id, group }) as S3Config;
 
 describe('teamFolderTree', () => {
   describe('collectAllTeamFolderPaths', () => {
@@ -121,6 +125,32 @@ describe('teamFolderTree', () => {
       const { roots, ungrouped } = buildTeamFolderTree([], profiles);
 
       expect(flattenTeamFolderTree(roots, ungrouped)).toEqual([{ profile: expect.objectContaining({ id: 'p1' }), path: null }]);
+    });
+  });
+
+  describe('filterTeamFolderNamesForTab', () => {
+    it('hides a folder used only by the other profile type', () => {
+      const folders = ['Infra', 'Cluster B'];
+      const sshProfiles = [ssh('p1', 'Infra')];
+      const s3Profiles = [s3('p2', 'Cluster B')];
+
+      expect(filterTeamFolderNamesForTab('ssh', folders, sshProfiles, s3Profiles)).toEqual(['Infra']);
+      expect(filterTeamFolderNamesForTab('s3', folders, sshProfiles, s3Profiles)).toEqual(['Cluster B']);
+    });
+
+    it('keeps an ancestor folder visible when only a descendant holds a matching profile', () => {
+      const folders = ['Infra', 'Infra/Cluster A'];
+      const sshProfiles = [ssh('p1', 'Infra/Cluster A')];
+      const s3Profiles: S3Config[] = [];
+
+      expect(filterTeamFolderNamesForTab('ssh', folders, sshProfiles, s3Profiles)).toEqual(['Infra', 'Infra/Cluster A']);
+      expect(filterTeamFolderNamesForTab('s3', folders, sshProfiles, s3Profiles)).toEqual([]);
+    });
+
+    it('keeps a brand-new folder with no profiles of either type on both tabs', () => {
+      const folders = ['New Folder'];
+      expect(filterTeamFolderNamesForTab('ssh', folders, [], [])).toEqual(['New Folder']);
+      expect(filterTeamFolderNamesForTab('s3', folders, [], [])).toEqual(['New Folder']);
     });
   });
 });

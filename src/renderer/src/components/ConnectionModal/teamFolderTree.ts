@@ -148,6 +148,31 @@ export function flattenTeamFolderTree<T>(
   return result;
 }
 
+/**
+ * Folders are one shared registry per Team Vault (same as personal profiles' default), so a
+ * folder created while organizing S3 buckets shows up, empty, under the SSH tab too, and vice
+ * versa — the team-tree analog of `connectionGrouping.ts`'s `folderNamesForTab`. A folder is kept
+ * for `tab` if it (or any descendant path) holds a profile of that type, or holds no profile of
+ * either type yet (brand new, not yet "for" either type).
+ */
+export function filterTeamFolderNamesForTab(
+  tab: 'ssh' | 's3',
+  allFolderNames: string[],
+  ssh: Array<{ group?: string }>,
+  s3: Array<{ group?: string }>
+): string[] {
+  const hasProfileUnder = (list: Array<{ group?: string }>, path: string) =>
+    list.some((p) => {
+      const g = p.group?.trim();
+      return !!g && (g === path || g.startsWith(`${path}/`));
+    });
+  return allFolderNames.filter((name) => {
+    const sshHas = hasProfileUnder(ssh, name);
+    const s3Has = hasProfileUnder(s3, name);
+    return tab === 'ssh' ? sshHas || !s3Has : s3Has || !sshHas;
+  });
+}
+
 /** Combined SSH+S3 folder paths for the "move to folder" / autocomplete affordance in the
  * profile form (folders are shared across both profile types in the Team Vault, same as the
  * personal `shareFoldersAcrossTypes` default). */
