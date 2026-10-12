@@ -380,5 +380,79 @@ describe('TeamVaultListPanel', () => {
 
       await waitFor(() => expect(screen.getByText(/Lock this team first/i)).toBeInTheDocument());
     });
+
+    it('locks an unlocked team from its row, without opening the detail view', async () => {
+      mockApi();
+      window.multissh.teamVaultLock = vi.fn().mockResolvedValue(undefined);
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Acme Infra Team')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTitle('Lock this team now'));
+
+      await waitFor(() => expect(window.multissh.teamVaultLock).toHaveBeenCalledWith('vlt_1'));
+      // Stayed on the list — no detail-view navigation happened.
+      expect(screen.queryByRole('button', { name: /Teams/i })).not.toBeInTheDocument();
+    });
+
+    it('unlocks a locked team from its row when an identity is already known, without opening the detail view', async () => {
+      mockApi();
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        {
+          exists: true,
+          vaultId: 'vlt_2',
+          vaultName: 'Beta Team',
+          unlocked: false,
+          filePath: '/y',
+          members: [{ recipientId: 'alice@piv:abc', role: 'member', addedAt: '2026-10-02T00:00:00Z' }],
+          adminCount: 1,
+          selfRole: 'member',
+          selfRecipientId: 'alice@piv:abc',
+          selfIdentityFilePath: '/tmp/alice-identity.txt',
+        },
+      ]);
+      window.multissh.teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Beta Team')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTitle('Unlock as alice@piv:abc'));
+
+      await waitFor(() =>
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('vlt_2', 'alice@piv:abc', '/tmp/alice-identity.txt')
+      );
+      expect(screen.queryByRole('button', { name: /Teams/i })).not.toBeInTheDocument();
+    });
+
+    it("doesn't offer a quick-unlock button when no identity is known yet for a locked team", async () => {
+      mockApi();
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('vlt_2')).toBeInTheDocument());
+
+      expect(screen.queryByTitle(/Unlock as/)).not.toBeInTheDocument();
+    });
+
+    it('shows per-team sync status from the preview check', async () => {
+      mockApi();
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        {
+          exists: true,
+          vaultId: 'vlt_1',
+          vaultName: 'Acme Infra Team',
+          unlocked: true,
+          filePath: '/x',
+          members: [{ recipientId: 'alice@piv:abc', role: 'admin', addedAt: '2026-10-01T00:00:00Z' }],
+          adminCount: 1,
+          selfRecipientId: 'alice@piv:abc',
+          selfRole: 'admin',
+          remoteConfigured: true,
+        },
+      ]);
+      window.multissh.teamVaultGetSyncPreview = vi
+        .fn()
+        .mockResolvedValue({ hasUnpushedLocalChanges: false, remoteChanged: true });
+      renderPanel();
+
+      await waitFor(() => expect(screen.getByText('Remote has a newer version')).toBeInTheDocument());
+      expect(window.multissh.teamVaultGetSyncPreview).toHaveBeenCalledWith('vlt_1');
+    });
   });
 });

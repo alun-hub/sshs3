@@ -13,7 +13,7 @@ import {
   Unlock,
   UserPlus,
 } from 'lucide-react';
-import type { TeamVaultStatus } from '@shared/types/teamVault';
+import type { TeamVaultStatus, TeamVaultSyncPreview } from '@shared/types/teamVault';
 import type { StorageConnectConfig } from '@shared/types/ipc';
 import { TeamVaultDetailPanel } from './TeamVaultDetailPanel';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
@@ -50,6 +50,7 @@ export const TeamVaultListPanel: React.FC = () => {
   const [pendingVaultId, setPendingVaultId] = useState<string | null>(null);
   const [mode, setMode] = useState<ListMode>({ kind: 'list' });
   const [busyVaultId, setBusyVaultId] = useState<string | null>(null);
+  const [syncPreviews, setSyncPreviews] = useState<Record<string, TeamVaultSyncPreview>>({});
 
   // "Generate my Team Vault ID" — produces the age1yubikey1... recipient this device's PIV card
   // will use, either to create a brand-new vault as its first admin, or to send to an existing
@@ -95,7 +96,20 @@ export const TeamVaultListPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      setVaults(await window.multissh.teamVaultList());
+      const statuses = await window.multissh.teamVaultList();
+      setVaults(statuses);
+      // Shown per-row (§15) — best-effort, so a failed preview for one team never blocks the
+      // rest of the list from loading.
+      const remoteConfigured = statuses.filter((v) => v.remoteConfigured && v.vaultId);
+      const previews = await Promise.all(
+        remoteConfigured.map((v) =>
+          window.multissh
+            .teamVaultGetSyncPreview(v.vaultId!)
+            .then((preview) => [v.vaultId!, preview] as const)
+            .catch(() => [v.vaultId!, { hasUnpushedLocalChanges: false, remoteChanged: false }] as const)
+        )
+      );
+      setSyncPreviews(Object.fromEntries(previews));
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load the list of teams'));
     } finally {
@@ -293,6 +307,37 @@ export const TeamVaultListPanel: React.FC = () => {
     }
   };
 
+  // Quick Lock/Unlock from the list row (§15), without opening the detail view. Unlock only
+  // fires when a prefilled identity is already available (same gate the Connection Manager's own
+  // quick "Unlock as <id>" button uses) — a vault needing a manually-entered identity still has
+  // to be unlocked from its detail view's full form.
+  const handleQuickLock = async (vaultId: string) => {
+    setBusyVaultId(vaultId);
+    setError(null);
+    try {
+      await window.multissh.teamVaultLock(vaultId);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to lock this team'));
+    } finally {
+      setBusyVaultId(null);
+    }
+  };
+
+  const handleQuickUnlock = async (v: TeamVaultStatus) => {
+    if (!v.vaultId || !v.selfRecipientId || !v.selfIdentityFilePath) return;
+    setBusyVaultId(v.vaultId);
+    setError(null);
+    try {
+      await window.multissh.teamVaultUnlock(v.vaultId, v.selfRecipientId, v.selfIdentityFilePath);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to unlock this team'));
+    } finally {
+      setBusyVaultId(null);
+    }
+  };
+
   const handleForget = async (vaultId: string) => {
     if (
       !(await confirm({
@@ -417,8 +462,53 @@ export const TeamVaultListPanel: React.FC = () => {
                         {(v.members?.length ?? 0)} member{(v.members?.length ?? 0) === 1 ? '' : 's'}
                         {v.selfRole ? ` · ${v.selfRole}` : ''}
                       </span>
+                      {v.vaultId && syncPreviews[v.vaultId] && (
+                        <span
+                          className={
+                            syncPreviews[v.vaultId].remoteChanged
+                              ? 'block text-amber-400'
+                              : syncPreviews[v.vaultId].hasUnpushedLocalChanges
+                                ? 'block text-sky-400'
+                                : 'block text-emerald-400'
+                          }
+                        >
+                          {syncPreviews[v.vaultId].remoteChanged
+                            ? 'Remote has a newer version'
+                            : syncPreviews[v.vaultId].hasUnpushedLocalChanges
+                              ? 'Local changes not pushed'
+                              : 'Up to date'}
+                        </span>
+                      )}
                     </span>
                   </button>
+                  {v.unlocked ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleQuickLock(v.vaultId!)}
+                      disabled={busyVaultId === v.vaultId}
+                      title="Lock this team now"
+                      className="shrink-0 rounded-lg border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                    >
+                      {busyVaultId === v.vaultId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                    </button>
+                  ) : (
+                    v.selfRecipientId &&
+                    v.selfIdentityFilePath && (
+                      <button
+                        type="button"
+                        onClick={() => void handleQuickUnlock(v)}
+                        disabled={busyVaultId === v.vaultId}
+                        title={`Unlock as ${v.selfRecipientId}`}
+                        className="shrink-0 rounded-lg border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                      >
+                        {busyVaultId === v.vaultId ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Unlock className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )
+                  )}
                   {!v.unlocked && (
                     <button
                       type="button"
