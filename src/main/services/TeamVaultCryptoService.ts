@@ -57,13 +57,18 @@ function canonicalAccessHeaderString(
   revision: number,
   vaultName: string,
   accessHeader: TeamVaultAccessEntry[],
-  recovery: TeamVaultRecovery
+  recovery: TeamVaultRecovery,
+  vaultDescription = ''
 ): string {
   const entryLines = accessHeader
     .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
     .sort();
   const recoveryLine = [recovery.recipientId, recovery.ageRecipient, recovery.wrappedVaultKey].join('\u0001');
-  return [`${vaultId}\u0002${revision}\u0002${vaultName}`, ...entryLines, recoveryLine].join('\u0003');
+  return [
+    `${vaultId}\u0002${revision}\u0002${vaultName}\u0002${vaultDescription}`,
+    ...entryLines,
+    recoveryLine,
+  ].join('\u0003');
 }
 
 /**
@@ -130,43 +135,60 @@ export class TeamVaultCryptoService {
   }
 
   /**
-   * Wraps `vaultKey` for one recipient via the `age` CLI — a pure public-key operation (§4.3:
-   * "admin needs only the member's public certificate"), so no PIV card or PIN is involved on
-   * either side. `ageRecipient` is the recipient's public `age1...`/`age1yubikey1...` string.
-   * Returns the armored ciphertext to store as that recipient's `wrapped_vault_key` (§2.3).
+   * Shared mechanics behind `wrapVaultKeyForRecipient` and `encryptForRecipient` — a pure
+   * public-key `age -r <ageRecipient> -a` operation (§4.3: "admin needs only the member's public
+   * certificate"), so no PIV card or PIN is involved on either side, regardless of what `input`
+   * actually is (a 32-byte Vault Key, or an arbitrary plaintext string). Returns the raw armored
+   * ciphertext bytes; callers decide whether/how to decode them.
    *
    * For an `age1yubikey1...` recipient, `age` still execs `age-plugin-yubikey` to parse/validate
    * the recipient stanza (no hardware/PIN touched for a pure wrap) — it needs the same
-   * PATH-prepending `unwrapVaultKey` already gets, found missing when exercising this end-to-end
-   * for the first time against a real yubikey recipient (see docs/team-vault-plan.md).
+   * PATH-prepending `decryptForIdentity` already gets, found missing when exercising this
+   * end-to-end for the first time against a real yubikey recipient (see docs/team-vault-plan.md).
    */
-  async wrapVaultKeyForRecipient(vaultKey: Buffer, ageRecipient: string): Promise<string> {
+  private async encryptToRecipient(input: Buffer, ageRecipient: string): Promise<Buffer> {
     assertNotFlagLike(ageRecipient, 'age recipient');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
-    const stdout = await runAgeCommand(resolveAgeBinary('age'), ['-r', ageRecipient, '-a'], vaultKey, pluginPathEnv(pluginPath));
-    return stdout.toString('utf8');
+    return runAgeCommand(resolveAgeBinary('age'), ['-r', ageRecipient, '-a'], input, pluginPathEnv(pluginPath));
+  }
+
+  /** Wraps `vaultKey` for one recipient — see `encryptToRecipient` for the shared mechanics.
+   * Returns the armored ciphertext to store as that recipient's `wrapped_vault_key` (§2.3). */
+  async wrapVaultKeyForRecipient(vaultKey: Buffer, ageRecipient: string): Promise<string> {
+    return (await this.encryptToRecipient(vaultKey, ageRecipient)).toString('utf8');
   }
 
   /**
-   * Unwraps a `wrapped_vault_key` back into the raw Vault Key bytes, via `age -d -i
-   * <identityFilePath>`. `identityFilePath` holds a public `AGE-PLUGIN-YUBIKEY-...` identity
-   * stanza (a reference to the card's slot, not a secret) — `age` resolves it through the
-   * `age-plugin-yubikey` plugin binary, which talks to the physical PIV token.
-   *
-   * Hardware-verified (docs/team-vault-plan.md "Hårdvaruverifiering"): `age-plugin-yubikey`
-   * needs a real controlling terminal to prompt for PIN/touch — plain `execFile`/pipes fails
-   * with "IO error: not a terminal", so this runs through `runAgeCommandViaPty` instead.
-   * `callbacks` collects the PIN from the UI and surfaces the touch prompt — see
-   * `AgePtyPinRelay`.
-   *
-   * The decrypted Vault Key itself is binary, not text, so it must never flow through the pty's
-   * own text channel (UTF-8-decoded and CRLF-normalized — see docs/team-vault-plan.md; `age`
-   * also refuses outright to write binary to a terminal). Instead `-o <fifo>` redirects it to a
-   * FIFO — a kernel pipe, never written to disk — read back via `readFifoOnce`. Verified
-   * byte-exact against real hardware.
+   * Encrypts arbitrary text for one recipient — see `encryptToRecipient` for the shared
+   * mechanics, just generalized to any plaintext rather than a 32-byte Vault Key. Used by
+   * `TeamVaultService.buildInvite` to hand a new member their vault's S3 target without them
+   * typing it in by hand (docs/team-vault-plan.md join-flow simplification). Returns the armored
+   * ciphertext.
    */
-  async unwrapVaultKey(
-    wrappedVaultKey: string,
+  async encryptForRecipient(plaintext: string, ageRecipient: string): Promise<string> {
+    return (await this.encryptToRecipient(Buffer.from(plaintext, 'utf8'), ageRecipient)).toString('utf8');
+  }
+
+  /**
+   * Shared mechanics behind `unwrapVaultKey` and `decryptWithIdentity` — `age -d -i
+   * <identityFilePath>` via a pty (hardware-verified, docs/team-vault-plan.md
+   * "Hårdvaruverifiering": `age-plugin-yubikey` needs a real controlling terminal to prompt for
+   * PIN/touch — plain `execFile`/pipes fails with "IO error: not a terminal"). `identityFilePath`
+   * holds a public `AGE-PLUGIN-YUBIKEY-...` identity stanza (a reference to the card's slot, not
+   * a secret) — `age` resolves it through the `age-plugin-yubikey` plugin binary, which talks to
+   * the physical PIV token. `callbacks` collects the PIN from the UI and surfaces the touch
+   * prompt — see `AgePtyPinRelay`.
+   *
+   * The decrypted result must never flow through the pty's own text channel (UTF-8-decoded and
+   * CRLF-normalized — see docs/team-vault-plan.md; `age` also refuses outright to write binary to
+   * a terminal) regardless of whether the caller's own result happens to be text (the invite's
+   * JSON) or binary (the Vault Key) — routing it through the pty's text channel would otherwise
+   * mix the decrypted content with terminal echo of the piped-in ciphertext and any PIN-prompt
+   * noise either way. Instead `-o <fifo>` redirects it to a FIFO — a kernel pipe, never written to
+   * disk — read back via `readFifoOnce`. Verified byte-exact against real hardware.
+   */
+  private async decryptWithIdentityFile(
+    armoredCiphertext: string,
     identityFilePath: string,
     callbacks: AgePtyPromptCallbacks
   ): Promise<Buffer> {
@@ -185,12 +207,23 @@ export class TeamVaultCryptoService {
         pluginPathEnv(pluginPath),
         callbacks,
         undefined,
-        wrappedVaultKey
+        armoredCiphertext
       );
       return await readPromise;
     } finally {
       await removeFifo(fifoPath);
     }
+  }
+
+  /** Unwraps a `wrapped_vault_key` back into the raw Vault Key bytes — see
+   * `decryptWithIdentityFile` for the shared mechanics. Kept as a raw `Buffer`, never
+   * `.toString()`'d, since the Vault Key is a binary secret, not text. */
+  async unwrapVaultKey(
+    wrappedVaultKey: string,
+    identityFilePath: string,
+    callbacks: AgePtyPromptCallbacks
+  ): Promise<Buffer> {
+    return this.decryptWithIdentityFile(wrappedVaultKey, identityFilePath, callbacks);
   }
 
   /**
@@ -316,10 +349,11 @@ export class TeamVaultCryptoService {
     revision: number,
     vaultName: string,
     accessHeader: TeamVaultAccessEntry[],
-    recovery: TeamVaultRecovery
+    recovery: TeamVaultRecovery,
+    vaultDescription = ''
   ): string {
     const macKey = deriveHeaderMacKey(vaultKey);
-    const canonical = canonicalAccessHeaderString(vaultId, revision, vaultName, accessHeader, recovery);
+    const canonical = canonicalAccessHeaderString(vaultId, revision, vaultName, accessHeader, recovery, vaultDescription);
     return crypto.createHmac('sha256', macKey).update(canonical, 'utf8').digest('base64');
   }
 
@@ -340,11 +374,31 @@ export class TeamVaultCryptoService {
     newRevision: number,
     newVaultName: string,
     newAccessHeader: TeamVaultAccessEntry[],
-    newRecovery: TeamVaultRecovery
+    newRecovery: TeamVaultRecovery,
+    newVaultDescription = ''
   ): string {
     const proofKey = deriveRotationProofKey(oldVaultKey);
-    const canonical = canonicalAccessHeaderString(newVaultId, newRevision, newVaultName, newAccessHeader, newRecovery);
+    const canonical = canonicalAccessHeaderString(
+      newVaultId,
+      newRevision,
+      newVaultName,
+      newAccessHeader,
+      newRecovery,
+      newVaultDescription
+    );
     return crypto.createHmac('sha256', proofKey).update(canonical, 'utf8').digest('base64');
+  }
+
+  /** Decrypts an `encryptForRecipient`-produced blob with the identity at `identityFilePath` —
+   * see `decryptWithIdentityFile` for the shared mechanics. Returns text (the invite's small JSON
+   * object), not a raw secret buffer, since unlike `unwrapVaultKey`'s result this one is meant to
+   * be read as a string. */
+  async decryptWithIdentity(
+    armoredCiphertext: string,
+    identityFilePath: string,
+    callbacks: AgePtyPromptCallbacks
+  ): Promise<string> {
+    return (await this.decryptWithIdentityFile(armoredCiphertext, identityFilePath, callbacks)).toString('utf8');
   }
 }
 

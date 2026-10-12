@@ -29,6 +29,11 @@ interface VaultEntry {
 interface TeamProfileTreeListProps {
   tab: 'ssh' | 's3';
   query: string;
+  /** The one team currently selected in the Connection Manager's per-team tab row (§D) — when
+   * set, only that vaultId's section is rendered (locked-form or unlocked tree), instead of every
+   * known team stacked as sections. `null`/undefined falls back to the old "every known team"
+   * rendering (used by tests that don't go through the tab row). */
+  activeVaultId?: string | null;
   onConnectSSH?: (config: SSHConnectionConfig) => void;
   onConnectSFTP?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
@@ -55,7 +60,7 @@ interface TeamProfileTreeListProps {
  * `setEditing`/`onNewProfile`), since the form itself is rendered by `ConnectionManagerModal`.
  */
 export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamProfileTreeListProps>(function TeamProfileTreeList(
-  { tab, query, onConnectSSH, onConnectSFTP, onConnectS3, setEditing, onNewProfile, onVaultsMetaChange },
+  { tab, query, activeVaultId, onConnectSSH, onConnectSFTP, onConnectS3, setEditing, onNewProfile, onVaultsMetaChange },
   ref
 ) {
   const confirm = useConfirm();
@@ -179,6 +184,34 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
   const updateEntry = (vaultId: string, patch: Partial<VaultEntry>) => {
     setEntries((prev) => (prev[vaultId] ? { ...prev, [vaultId]: { ...prev[vaultId], ...patch } } : prev));
+  };
+
+  // §C: the one safe action on a sync conflict (pushToRemote deliberately has no merge/force
+  // path — see TeamVaultService.pushToRemote's doc comment) is to discard this machine's unpushed
+  // local changes and adopt the remote's latest version instead.
+  const [gettingLatestVaultId, setGettingLatestVaultId] = useState<string | null>(null);
+
+  const handleGetLatest = async (vaultId: string) => {
+    if (
+      !(await confirm({
+        title: 'Get latest version',
+        message: 'A newer version is available on the remote. Your unsynced changes here will be lost. Get the latest version anyway?',
+        confirmLabel: 'Get latest (discard local changes)',
+      }))
+    ) {
+      return;
+    }
+    setGettingLatestVaultId(vaultId);
+    setError(null);
+    try {
+      await window.multissh.teamVaultPull(vaultId, { force: true });
+      updateEntry(vaultId, { notice: null });
+      await refreshVault(vaultId);
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to get the latest version'));
+    } finally {
+      setGettingLatestVaultId(null);
+    }
   };
 
   const handleUnlock = async (vaultId: string) => {
@@ -337,9 +370,14 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     );
   }
 
+  // When a specific team tab is selected (§D), render only that one vault's section — the old
+  // "every known team stacked as sections" behavior still applies when activeVaultId is omitted
+  // (e.g. existing tests that render this component directly).
+  const visibleVaultIds = activeVaultId ? vaultOrder.filter((id) => id === activeVaultId) : vaultOrder;
+
   return (
     <div className="space-y-4">
-      {vaultOrder.map((vaultId) => {
+      {visibleVaultIds.map((vaultId) => {
         const entry = entries[vaultId];
         if (!entry) return null;
         const { status } = entry;
@@ -422,19 +460,10 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                 {title}
               </p>
               <div className="flex items-center gap-2">
-                {entry.notice && (
+                {entry.notice === 'auto-pulled' && (
                   <span className="flex items-center gap-1 text-2xs text-txt-muted">
-                    {entry.notice === 'auto-pulled' ? (
-                      <>
-                        <CloudDownload className="h-3 w-3 text-emerald-400" />
-                        Updated
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="h-3 w-3 text-amber-400" />
-                        Newer version available
-                      </>
-                    )}
+                    <CloudDownload className="h-3 w-3 text-emerald-400" />
+                    Updated
                   </span>
                 )}
                 <button
@@ -447,6 +476,28 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                 </button>
               </div>
             </div>
+
+            {/* §C: a sync conflict (local unpushed changes + a newer remote revision) gets one
+                safe action, not just a passive badge — pushToRemote has no merge/force path, so
+                "get the latest version" (discarding local changes) is the only way to resolve it
+                here, same as TeamVaultListPanel's identical banner for the Settings view. */}
+            {entry.notice === 'remote-changed' && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-2xs text-amber-300">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  A newer version is available — your unsynced changes here will be lost.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleGetLatest(vaultId)}
+                  disabled={gettingLatestVaultId === vaultId}
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-amber-700/60 px-2 py-1 font-medium text-amber-200 hover:bg-amber-950/40 disabled:opacity-50"
+                >
+                  {gettingLatestVaultId === vaultId ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudDownload className="h-3 w-3" />}
+                  Get latest
+                </button>
+              </div>
+            )}
 
             {activeProfiles.length === 0 && tree.roots.length === 0 ? (
               <p className="py-4 text-center text-xs text-txt-muted">

@@ -9,16 +9,19 @@ import {
   Files,
   FolderPlus,
   Loader2,
+  Lock,
+  Pin,
   Plus,
   Search,
   Server,
+  Unlock,
   Upload,
-  Users,
   X,
 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import type { TeamVaultStatus } from '@shared/types/teamVault';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
@@ -98,13 +101,23 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
   const [installKeyProfile, setInstallKeyProfile] = useState<SSHConnectionConfig | null>(null);
 
-  // Personal / Team source toggle (connection-manager-plan: two separate views, not a merged
-  // list with a badge — Team profiles live in each Team Vault's encryptedPayload, never in
-  // profiles.json, and are only visible per-team while that team's vault is unlocked). "Team" now
-  // means "every team this device knows about", not a single vault — see `TeamProfileTreeList`,
-  // which owns the per-vault state (statuses, payloads, unlock forms) this modal used to hold
-  // directly for the single-vault version of this view.
-  const [source, setSource] = useState<'personal' | 'team'>('personal');
+  // Personal / per-team source "tab" (connection-manager-plan: a flat tab row, one per team this
+  // device knows about, next to "Personal" — not a merged list with a badge, and not a single
+  // binary "Teams" toggle any more. `'personal'` is the sentinel for the personal view; any other
+  // value is a `vaultId`. Team profiles live in each Team Vault's encryptedPayload, never in
+  // profiles.json, and are only visible per-team while that team's vault is unlocked — see
+  // `TeamProfileTreeList`, which owns the per-vault state (statuses, payloads, unlock forms).
+  const [source, setSource] = useState<string>('personal');
+  // Every team this device knows about, for the tab row itself (label, lock state, description) —
+  // fetched here independently of `TeamProfileTreeList` (which only mounts once a team tab is
+  // actually selected) so the tab row can show every team up front, even while on "Personal".
+  const [teamVaultTabs, setTeamVaultTabs] = useState<TeamVaultStatus[]>([]);
+  // Local, per-device "show as tab" preference (AppSettings.connectionManagerVisibleTeamVaults) —
+  // missing entry defaults to visible (true), same as TeamVaultDetailPanel's toggle.
+  const [visibleTeamVaults, setVisibleTeamVaults] = useState<Record<string, boolean>>({});
+  // Discreet per-tab sync dot (§C/§D): which vaultIds are mid push/pull right now, driven by the
+  // main-process TEAM_VAULT_SYNC_STATUS event (fired right before/after each background sync).
+  const [syncingVaultIds, setSyncingVaultIds] = useState<Record<string, boolean>>({});
   // Reported by `TeamProfileTreeList` whenever its known vaults/payloads change — the only way
   // this modal can tell which team an open edit belongs to (for the secret-field gate and folder
   // suggestions below), since it no longer fetches payloads itself.
@@ -112,6 +125,58 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // So a save made through the edit form (rendered here, not by TeamProfileTreeList) can refresh
   // that one vault's cached payload immediately — see TeamProfileTreeListHandle's doc comment.
   const teamProfileTreeListRef = useRef<TeamProfileTreeListHandle>(null);
+
+  const loadTeamVaultTabs = useCallback(async () => {
+    try {
+      const [statuses, settings] = await Promise.all([window.multissh.teamVaultList(), window.multissh.settingsGet()]);
+      setTeamVaultTabs(statuses);
+      setVisibleTeamVaults(settings.connectionManagerVisibleTeamVaults ?? {});
+      return { statuses, defaultTab: settings.connectionManagerDefaultTab };
+    } catch {
+      // Best-effort — the tab row simply shows "Personal" only if this fails.
+      return { statuses: [] as TeamVaultStatus[], defaultTab: undefined };
+    }
+  }, []);
+
+  // Visible team tabs, in the order teamVaultList() returned them — a missing
+  // visibleTeamVaults[vaultId] entry defaults to visible (true), same default as the toggle in
+  // TeamVaultDetailPanel.
+  const visibleTeamVaultTabs = useMemo(
+    () => teamVaultTabs.filter((v) => v.vaultId && visibleTeamVaults[v.vaultId] !== false),
+    [teamVaultTabs, visibleTeamVaults]
+  );
+  // Hoisted rather than calling .find() twice in the JSX below (the tab row's `source`-scoped
+  // description line reads this same lookup twice: once to gate rendering, once for the text).
+  const activeTeamVaultTab = useMemo(
+    () => visibleTeamVaultTabs.find((v) => v.vaultId === source),
+    [visibleTeamVaultTabs, source]
+  );
+
+  const handleSetDefaultTab = async (key: string) => {
+    try {
+      await window.multissh.settingsSave({ connectionManagerDefaultTab: key });
+    } catch {
+      // Non-critical preference — a failed save just means the old default sticks.
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = window.multissh.onTeamVaultSyncStatus?.(({ vaultId, syncing }) => {
+      setSyncingVaultIds((prev) => ({ ...prev, [vaultId]: syncing }));
+    });
+    return () => unsubscribe?.();
+  }, []);
+
+  // A background auto-pull/remote-change also means the tab row's lock/role/description may be
+  // stale — cheap enough to just refetch the whole tab list rather than patch one field.
+  useEffect(() => {
+    const unsubPulled = window.multissh.onTeamVaultAutoPulled?.(() => void loadTeamVaultTabs());
+    const unsubChanged = window.multissh.onTeamVaultRemoteChanged?.(() => void loadTeamVaultTabs());
+    return () => {
+      unsubPulled?.();
+      unsubChanged?.();
+    };
+  }, [loadTeamVaultTabs]);
 
   // Folder creation and rename
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -146,16 +211,31 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   useEffect(() => {
     if (open) {
       setTab(initialTab);
-      setSource('personal');
       setEditing(startNewProfile ? { type: initialTab } : null);
       setSearchQuery('');
       setNewFolderOpen(false);
       setRenamingFolder(null);
       setImportMenuOpen(false);
       setImportCandidates(null);
+      // Synchronous reset to safe defaults the instant the modal opens — reopening on a
+      // previously-selected team tab must not briefly flash that tab's stale content (and a
+      // settingsGet()+teamVaultList() round trip isn't instant) before the async load below gets
+      // a chance to correct it to the remembered default tab.
+      setSource('personal');
+      setTeamVaultTabs([]);
       void load();
+      void loadTeamVaultTabs().then(({ statuses, defaultTab }) => {
+        // Only honor a remembered default tab if it's still a real, visible team — otherwise
+        // fall back to Personal rather than opening onto a team that no longer exists/unlocked
+        // state this device has since forgotten.
+        if (defaultTab && defaultTab !== 'personal' && statuses.some((s) => s.vaultId === defaultTab)) {
+          setSource(defaultTab);
+        } else {
+          setSource('personal');
+        }
+      });
     }
-  }, [open, initialTab, startNewProfile, load]);
+  }, [open, initialTab, startNewProfile, load, loadTeamVaultTabs]);
 
   const toggleGroup = (groupKey: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
@@ -166,7 +246,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     // the vault's revision (every mutating write does — see TeamVaultService.persistPayload),
     // which every other member's background poll would then pick up as "something changed" for
     // what's really just a per-viewer stat nobody else needs to see.
-    if (source === 'team') {
+    if (source !== 'personal') {
       onConnectSSH?.(profile);
       return;
     }
@@ -217,7 +297,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
-    if (source === 'team') {
+    if (source !== 'personal') {
       onConnectS3?.(profile);
       return;
     }
@@ -590,34 +670,68 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
           ))}
         </div>
 
-        {/* Personal / Team source toggle — a separate view, not a merged list with a badge (see
-            docs/team-vault-plan.md's connection-manager plan for why). Hidden for Kubernetes,
-            which has no concept of either. */}
+        {/* Personal + one tab per team (§D of the join-flow plan) — a flat tab row, not a binary
+            "Personal"/"Teams" toggle: each visible, unlocked-or-not team gets its own tab next to
+            Personal, with a discreet sync dot and a hover "pin as default" action. Hidden for
+            Kubernetes, which has no concept of either. */}
         {tab !== 'k8s' && !editing && (
-          <div className="flex items-center gap-2 border-b border-divider bg-app-surface px-4 py-2">
-            {(
-              [
-                { key: 'personal' as const, label: 'Personal', icon: Server },
-                // "Teams" (plural): every team this device knows about, each shown as its own
-                // section by TeamProfileTreeList below — see its doc comment.
-                { key: 'team' as const, label: 'Teams', icon: Users },
-              ]
-            ).map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSource(key)}
-                className={
-                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ' +
-                  (source === key
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary')
-                }
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
-            ))}
+          <div className="border-b border-divider bg-app-surface px-4 py-2">
+            <div className="flex items-center gap-1.5">
+              {[
+                { key: 'personal', label: 'Personal', vault: null as TeamVaultStatus | null },
+                ...visibleTeamVaultTabs.map((v) => ({ key: v.vaultId!, label: v.vaultName || v.vaultId!, vault: v })),
+              ].map(({ key, label, vault }) => (
+                <div key={key} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setSource(key)}
+                    title={vault?.vaultDescription || undefined}
+                    className={
+                      'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ' +
+                      (source === key
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary')
+                    }
+                  >
+                    {vault ? (
+                      vault.unlocked ? (
+                        <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                      ) : (
+                        <Lock className="h-3.5 w-3.5 text-amber-400" />
+                      )
+                    ) : (
+                      <Server className="h-3.5 w-3.5" />
+                    )}
+                    {label}
+                    {vault && (
+                      <span
+                        title={syncingVaultIds[vault.vaultId!] ? 'Syncing now' : vault.lastSyncAt ? `Last synced ${formatDateTime(vault.lastSyncAt)}` : 'Not synced yet'}
+                        className={
+                          'h-1.5 w-1.5 rounded-full ' +
+                          (syncingVaultIds[vault.vaultId!] ? 'animate-pulse bg-emerald-400' : 'bg-txt-muted/40')
+                        }
+                      />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSetDefaultTab(key)}
+                    title="Set as default tab"
+                    // Opacity-based reveal, not `hidden`/`display:none` — per CLAUDE.md's
+                    // keyboard-first mandate, this button must stay in the tab order and
+                    // reachable via Tab even when the pointer never hovers it. `focus-visible`
+                    // (not just `focus`) also reveals it, so a sighted keyboard user tabbing
+                    // through sees it appear instead of invisibly activating a mystery control.
+                    className="absolute -right-1 -top-1 rounded-full bg-app-surface p-0.5 text-txt-muted opacity-0 outline-none transition-opacity hover:text-sky-400 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-sky-500 group-hover:opacity-100"
+                  >
+                    <Pin className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {source !== 'personal' && activeTeamVaultTab?.vaultDescription && (
+              <p className="mt-1.5 truncate text-2xs text-txt-muted">{activeTeamVaultTab.vaultDescription}</p>
+            )}
           </div>
         )}
 
@@ -1006,11 +1120,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {tab === 'ssh' && source === 'team' && (
+              {tab === 'ssh' && source !== 'personal' && (
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
                   tab="ssh"
                   query={query}
+                  activeVaultId={source}
                   onConnectSSH={onConnectSSH}
                   onConnectSFTP={onConnectSFTP}
                   setEditing={setEditing}
@@ -1123,11 +1238,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {tab === 's3' && source === 'team' && (
+              {tab === 's3' && source !== 'personal' && (
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
                   tab="s3"
                   query={query}
+                  activeVaultId={source}
                   onConnectS3={onConnectS3}
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}

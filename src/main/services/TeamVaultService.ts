@@ -13,7 +13,7 @@ import type {
 } from '../../shared/types/teamVault';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { FileEntry, IStorageProvider, S3Config } from '../../shared/types/storage';
-import type { AskpassPromptKind } from '../../shared/types/ipc';
+import type { AskpassPromptKind, StorageConnectConfig } from '../../shared/types/ipc';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { joinPaths } from '../transfer/TransferPipeline';
 import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultCryptoService';
@@ -320,6 +320,66 @@ function remapFolderPath(path: string, oldPrefix: string, newPrefix: string): st
 // <value>` actually runs during a subsequent removeMember re-wrap.
 const AGE_RECIPIENT_SHAPE = /^age1[a-z0-9]{5,}$/;
 
+// Same shape teamVaultHandlers.ts's VAULT_ID_PATTERN already enforces at the IPC boundary —
+// duplicated here (not imported, to keep this file's own validation self-contained, same posture
+// as AGE_RECIPIENT_SHAPE above) so a decoded invite's vaultId can never carry something that
+// wasn't actually minted by this service's own `vlt_${uuid}` scheme before it's adopted as a
+// filesystem path segment elsewhere (TeamVaultService.getFilePath, identityDirFor).
+const INVITE_VAULT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+// `age -a`'s own ASCII-armor envelope (age-encryption.org/v1) — matched anywhere in the pasted
+// text, not anchored to the start, same tolerance `parseTeamVaultJoinInfo` already gives the
+// join-info blob. This is the primary extraction path: it survives a chat client prefixing every
+// line with a quote marker (`> `) or inserting its own commentary before/after the real content,
+// neither of which the old "the first line must be exactly ..." check tolerated. The lazy
+// [\s\S]*? sits between two fixed, non-overlapping literal anchors (no nested/overlapping
+// quantifiers), so this can't backtrack catastrophically regardless of input; the IPC boundary
+// (teamVaultHandlers.ts's requireInviteText) also caps the input at 64KB before it ever reaches
+// this regex.
+const AGE_ARMOR_PATTERN = /-----BEGIN AGE ENCRYPTED FILE-----[\s\S]*?-----END AGE ENCRYPTED FILE-----/;
+
+/** Strips a leading quote marker (`>`, possibly repeated for nested quoting, with optional
+ * surrounding whitespace) from every line — the only mangling a chat/email client's "reply with
+ * quote" feature does that would otherwise break recognizing either the header line or the armor
+ * markers below. Always safe to apply unconditionally: `>` never legitimately starts a line of
+ * age's own armor output or of `buildInvite`'s header line, so a text that was never quoted comes
+ * back byte-for-byte unchanged. */
+function stripQuoteMarkers(text: string): string {
+  return text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.replace(/^[ \t>]+/, ''))
+    .join('\n');
+}
+
+/** Extracts just the armored ciphertext from a pasted invite, tolerating the same real-world
+ * mangling `parseTeamVaultJoinInfo` already tolerates for the join-info blob (surrounding
+ * chat/email quoting, extra commentary, blank lines) — a prior version of this function required
+ * the human-readable `"sshs3 Team Vault invite for <recipientId>\n"` header `buildInvite`
+ * prepends to be the text's exact, unquoted first line, which broke the moment a chat client
+ * prefixed it with its own `> ` quote marker on reply.
+ *
+ * Primary path: find `age -a`'s own `-----BEGIN/END AGE ENCRYPTED FILE-----` envelope anywhere in
+ * the (de-quoted) text — this is reliable regardless of what surrounds it, including the header
+ * line itself. Falls back to the old "strip the header line, if present" behavior only when no
+ * armor envelope is found at all (e.g. a test fake that isn't real age output, or a paste that
+ * somehow dropped the BEGIN/END markers) — `decryptWithIdentity` still fails naturally on
+ * anything that isn't actually decryptable either way. */
+function extractInviteCiphertext(inviteText: string): string {
+  const dequoted = stripQuoteMarkers(inviteText);
+  const armorMatch = dequoted.match(AGE_ARMOR_PATTERN);
+  if (armorMatch) {
+    return armorMatch[0];
+  }
+  const trimmed = dequoted.trim();
+  const newlineIndex = trimmed.indexOf('\n');
+  if (newlineIndex === -1) return trimmed;
+  const firstLine = trimmed.slice(0, newlineIndex);
+  if (/^sshs3 Team Vault invite for /.test(firstLine)) {
+    return trimmed.slice(newlineIndex + 1).trim();
+  }
+  return trimmed;
+}
+
 function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
   return (
     e &&
@@ -350,6 +410,7 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
     typeof file.vaultId !== 'string' ||
     !file.vaultId ||
     (file.vaultName !== undefined && typeof file.vaultName !== 'string') ||
+    (file.vaultDescription !== undefined && typeof file.vaultDescription !== 'string') ||
     typeof file.revision !== 'number' ||
     !Number.isInteger(file.revision) ||
     file.revision < 1 ||
@@ -394,6 +455,13 @@ export interface TeamVaultPinPrompter {
   ): { onPresenceRequested: () => void; onPresenceCleared: () => void };
 }
 
+/** The narrow slice of `TeamVaultConfigStore` that `buildInvite()` needs to learn the vault's
+ * configured S3 target — injected rather than taking the whole config store, same reasoning as
+ * `TeamVaultPinPrompter` above (keeps the dependency explicit and easy to fake in tests). */
+export interface TeamVaultConfigReader {
+  getConfig(vaultId: string): Promise<{ target?: StorageConnectConfig; remoteBasePath?: string }>;
+}
+
 export interface TeamVaultServiceOptions {
   cryptoService?: TeamVaultCryptoService;
   /** Overrides the base directory vault files/identities are written under — tests only;
@@ -404,6 +472,9 @@ export interface TeamVaultServiceOptions {
    * PIN/touch (see docs/team-vault-plan.md's hardware verification notes) — omitted in most
    * tests, whose fake crypto service never needs to prompt for anything. */
   pinPrompter?: TeamVaultPinPrompter;
+  /** Required in production for `buildInvite()` to read the vault's configured S3 target —
+   * omitted in most tests that never call it. */
+  configStore?: TeamVaultConfigReader;
 }
 
 /** Per-vault in-memory state — never persisted, cleared on `lock()`/app quit, and deliberately
@@ -473,10 +544,12 @@ export class TeamVaultService {
   private readonly states = new Map<string, VaultRuntimeState>();
   private readonly writeQueues = new Map<string, Promise<void>>();
   private readonly pinPrompter?: TeamVaultPinPrompter;
+  private readonly configStore?: TeamVaultConfigReader;
 
   constructor(options: TeamVaultServiceOptions = {}) {
     this.cryptoService = options.cryptoService ?? new TeamVaultCryptoService();
     this.pinPrompter = options.pinPrompter;
+    this.configStore = options.configStore;
 
     let baseDir: string;
     if (options.baseDir) {
@@ -555,6 +628,7 @@ export class TeamVaultService {
       exists: true,
       vaultId: file.vaultId,
       vaultName: file.vaultName,
+      vaultDescription: file.vaultDescription,
       members,
       adminCount: members.filter((m) => m.role === 'admin').length,
       unlocked: this.isUnlocked(vaultId),
@@ -567,7 +641,12 @@ export class TeamVaultService {
    * and touch banner — see `TeamVaultPinPrompter`). Without a configured `pinPrompter` (most
    * tests, whose fake crypto service never actually prompts), `requestPin` fails loudly instead
    * of hanging forever waiting for a UI that doesn't exist. */
-  private buildPtyCallbacks(sessionId?: string): AgePtyPromptCallbacks {
+  /** `contextLabel`, when given, is forwarded to `promptForPinDirect` so the PIN/touch modal's
+   * context row can show which team/operation the prompt is for (e.g. "Team Vault: Acme Infra")
+   * instead of staying blank — `SmartcardPinModal.resolvePromptContext` already reads this field
+   * first, before falling back to guessing from the prompt text, so passing a real string here is
+   * the only change needed for it to show up. */
+  private buildPtyCallbacks(sessionId?: string, contextLabel?: string): AgePtyPromptCallbacks {
     const prompter = this.pinPrompter;
     if (!prompter) {
       return {
@@ -583,7 +662,7 @@ export class TeamVaultService {
       'Touch your security key now to confirm'
     );
     return {
-      requestPin: (promptText, retry) => prompter.promptForPinDirect(promptText, 'smartcard', undefined, retry),
+      requestPin: (promptText, retry) => prompter.promptForPinDirect(promptText, 'smartcard', contextLabel, retry),
       onTouchRequested: onPresenceRequested,
       onTouchCleared: onPresenceCleared,
     };
@@ -599,7 +678,8 @@ export class TeamVaultService {
    * scopes where the identity file is written — purely a filing convenience, not a security
    * boundary (the identity file's own content is what matters). */
   async enrollOwnPivRecipient(vaultId?: string): Promise<{ recipient: string; identityFilePath: string }> {
-    return this.cryptoService.enrollOwnPivRecipient(this.identityDirFor(vaultId), this.buildPtyCallbacks());
+    const contextLabel = vaultId ? `Team Vault: ${vaultId}` : 'Team Vault: new identity';
+    return this.cryptoService.enrollOwnPivRecipient(this.identityDirFor(vaultId), this.buildPtyCallbacks(undefined, contextLabel));
   }
 
   private identityDirFor(vaultId?: string): string {
@@ -699,6 +779,15 @@ export class TeamVaultService {
     });
   }
 
+  /** The `vaultDescription` argument every `computeAccessHeaderMac`/`computeRotationProof` call
+   * site needs — centralized so the `?? ''` default/normalization (an absent description must
+   * MAC the same as an explicitly empty one, since `TeamVaultFile.vaultDescription` was added
+   * after `vaultName`) can't be missed at one of the 7 call sites and silently produce a MAC
+   * mismatch for another member reading the same file. */
+  private descriptionForMac(file: TeamVaultFile): string {
+    return file.vaultDescription ?? '';
+  }
+
   /** Shared tail of every admin mutation that only touches the plaintext header (`addMember`,
    * `setRole`, `renameVault` — NOT `removeMember`, which also re-keys and re-encrypts the
    * payload, a materially different operation): bump `revision`, stamp `updatedAt`/`updatedBy`,
@@ -722,7 +811,8 @@ export class TeamVaultService {
       file.revision,
       file.vaultName ?? '',
       file.accessHeader,
-      file.recovery
+      file.recovery,
+      this.descriptionForMac(file)
     );
     await this.writeFile(vaultId, file);
   }
@@ -783,7 +873,8 @@ export class TeamVaultService {
           newRevision,
           file.vaultName ?? '',
           rewrapped,
-          newRecovery
+          newRecovery,
+          this.descriptionForMac(file)
         ),
         // Proves to anyone still holding the OLD key (`vaultKey`, about to be replaced below)
         // that THIS specific rotation is the real one — see `TeamVaultRotationProofError`'s doc
@@ -794,7 +885,8 @@ export class TeamVaultService {
           newRevision,
           file.vaultName ?? '',
           rewrapped,
-          newRecovery
+          newRecovery,
+          this.descriptionForMac(file)
         ),
       };
 
@@ -835,6 +927,22 @@ export class TeamVaultService {
       const updatedBy = this.requireUnlockedAsAdmin(vaultId, file);
       const trimmed = vaultName.trim();
       file.vaultName = trimmed || undefined;
+      await this.commitHeaderMutation(vaultId, file, vaultKey, updatedBy);
+    });
+  }
+
+  /** Sets (or, with an empty/whitespace-only string, clears) the vault's free-text description —
+   * shown in the Connection Manager's per-team tab so a member can tell what the team is for
+   * without asking the admin out of band. Same trust posture as `renameVault`: admin-gated,
+   * cosmetic metadata (not a security boundary), tamper-evident via the recomputed
+   * `accessHeaderMac` (see `commitHeaderMutation`). */
+  async setDescription(vaultId: string, description: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const updatedBy = this.requireUnlockedAsAdmin(vaultId, file);
+      const trimmed = description.trim();
+      file.vaultDescription = trimmed || undefined;
       await this.commitHeaderMutation(vaultId, file, vaultKey, updatedBy);
     });
   }
@@ -1131,7 +1239,8 @@ export class TeamVaultService {
         newRevision,
         file.vaultName ?? '',
         file.accessHeader,
-        file.recovery
+        file.recovery,
+        this.descriptionForMac(file)
       ),
     };
     await this.writeFile(vaultId, updated);
@@ -1190,7 +1299,7 @@ export class TeamVaultService {
     const vaultKey = await this.cryptoService.unwrapVaultKey(
       source.wrappedVaultKey,
       identityFilePath,
-      this.buildPtyCallbacks(recipientId)
+      this.buildPtyCallbacks(recipientId, `Team Vault: ${file.vaultName || vaultId}`)
     );
     // Defense in depth, not the primary control (see `TeamVaultRotationProofError`'s doc comment
     // — `pullFromRemote` is what actually keeps a forged file out of local storage in the first
@@ -1204,7 +1313,8 @@ export class TeamVaultService {
       file.revision,
       file.vaultName ?? '',
       file.accessHeader,
-      file.recovery
+      file.recovery,
+      this.descriptionForMac(file)
     );
     if (expectedMac !== file.accessHeaderMac) {
       throw new TeamVaultHeaderIntegrityError();
@@ -1227,6 +1337,91 @@ export class TeamVaultService {
     await this.cryptoService.withRecoveryIdentity(identityText, (identityPath) =>
       this.unlock(vaultId, file.recovery.recipientId, identityPath)
     );
+  }
+
+  /**
+   * Builds an age-encrypted invite blob for `recipientId` — a join-flow simplification
+   * (docs/team-vault-plan.md) that lets a new member skip typing in the vault's S3
+   * target/bucket/prefix by hand. `recipientId` must already be a member (added via
+   * `addMember`) — their `ageRecipient` (public key) is read straight out of the vault's own
+   * already-plaintext `accessHeader`, no new input needed. Admin-only (`requireUnlockedAsAdmin`,
+   * same gate as `addMember`/`removeMember`): building an invite that reveals the S3
+   * target/bucket/prefix is itself a membership-adjacent action, not something any unlocked
+   * member should be able to do for an arbitrary recipientId. Requires `configStore` to be wired
+   * up (production only, same as `pinPrompter`).
+   */
+  async buildInvite(vaultId: string, recipientId: string): Promise<string> {
+    const file = await this.requireFile(vaultId);
+    this.requireUnlockedAsAdmin(vaultId, file);
+    const entry = file.accessHeader.find((e) => e.recipientId === recipientId);
+    if (!entry) {
+      throw new Error(`"${recipientId}" is not a member of this vault`);
+    }
+    if (!this.configStore) {
+      throw new Error('Team Vault invite building is not wired up (missing configStore)');
+    }
+    const config = await this.configStore.getConfig(vaultId);
+    if (!config.target) {
+      throw new Error('Configure a Team Vault target first (team-vault:set-target)');
+    }
+    const body = JSON.stringify({ vaultId, target: config.target, remoteBasePath: config.remoteBasePath });
+    const armored = await this.cryptoService.encryptForRecipient(body, entry.ageRecipient);
+    return `sshs3 Team Vault invite for ${recipientId}\n${armored}`;
+  }
+
+  /**
+   * New-member side of `buildInvite`: decrypts a pasted invite blob with the identity at
+   * `identityFilePath` (the one generated by this machine's own `enrollOwnPivRecipient()` call,
+   * same as the manual join flow it replaces) and returns the S3 target it carries. Not scoped to
+   * a particular `vaultId` in its own runtime state (the vault being joined isn't locally known
+   * yet — that's the whole point) — the `vaultId` inside the decrypted blob is returned for the
+   * caller to adopt. Throws a plain, user-facing error on a truncated/garbled paste or an
+   * identity that doesn't match the intended recipient, since `age` itself fails the same way
+   * `unwrapVaultKey` already does for those cases.
+   */
+  async decodeInvite(
+    inviteText: string,
+    identityFilePath: string
+  ): Promise<{ vaultId: string; target: StorageConnectConfig; remoteBasePath?: string }> {
+    const armored = extractInviteCiphertext(inviteText);
+    let decrypted: string;
+    try {
+      decrypted = await this.cryptoService.decryptWithIdentity(
+        armored,
+        identityFilePath,
+        this.buildPtyCallbacks(undefined, 'Team Vault: reading invite')
+      );
+    } catch {
+      throw new Error(
+        'Could not read this invite — check it was pasted completely, or that it matches your identity.'
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(decrypted);
+    } catch {
+      throw new Error(
+        'Could not read this invite — check it was pasted completely, or that it matches your identity.'
+      );
+    }
+    const candidate = parsed as { vaultId?: unknown; target?: unknown; remoteBasePath?: unknown };
+    if (
+      typeof candidate.vaultId !== 'string' ||
+      !INVITE_VAULT_ID_PATTERN.test(candidate.vaultId) ||
+      !candidate.target ||
+      typeof candidate.target !== 'object' ||
+      typeof (candidate.target as { id?: unknown }).id !== 'string' ||
+      typeof (candidate.target as { name?: unknown }).name !== 'string' ||
+      (candidate.target as { type?: unknown }).type !== 's3' ||
+      (candidate.remoteBasePath !== undefined && typeof candidate.remoteBasePath !== 'string')
+    ) {
+      throw new Error('This invite is not a recognizable Team Vault invite');
+    }
+    return {
+      vaultId: candidate.vaultId,
+      target: candidate.target as StorageConnectConfig,
+      remoteBasePath: candidate.remoteBasePath as string | undefined,
+    };
   }
 
   /** Must be called whenever the configured S3 target/remoteBasePath for `vaultId` changes —
@@ -1421,7 +1616,8 @@ export class TeamVaultService {
             file.revision,
             file.vaultName ?? '',
             file.accessHeader,
-            file.recovery
+            file.recovery,
+            this.descriptionForMac(file)
           );
           if (expectedMac !== file.accessHeaderMac) {
             throw new TeamVaultHeaderIntegrityError();
@@ -1444,7 +1640,8 @@ export class TeamVaultService {
             file.revision,
             file.vaultName ?? '',
             file.accessHeader,
-            file.recovery
+            file.recovery,
+            this.descriptionForMac(file)
           );
           if (!file.prevKeyProof || expectedProof !== file.prevKeyProof) {
             throw new TeamVaultRotationProofError();

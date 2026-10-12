@@ -185,6 +185,9 @@ export const IPC_CHANNELS = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  // Atomic read-modify-write for one team's entry in connectionManagerVisibleTeamVaults — see
+  // SettingsStore.setTeamVaultTabVisible's doc comment for why this isn't just settingsSave().
+  SETTINGS_SET_TEAM_VAULT_TAB_VISIBLE: 'settings:set-team-vault-tab-visible',
 
   // Remote profile sync ("Remote Profile Sync" — distinct from the
   // dotfiles:sync-* channels above, which deploy a dotfile pool to a remote
@@ -233,9 +236,17 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_RENAME_FOLDER: 'team-vault:rename-folder',
   TEAM_VAULT_DELETE_FOLDER: 'team-vault:delete-folder',
   TEAM_VAULT_SET_FOLDER_ICON: 'team-vault:set-folder-icon',
+  // Age-encrypted invite blob (join-flow simplification): admin side builds one for a specific
+  // member, new-member side decodes it to recover the S3 target without typing it by hand.
+  TEAM_VAULT_BUILD_INVITE: 'team-vault:build-invite',
+  TEAM_VAULT_DECODE_INVITE: 'team-vault:decode-invite',
+  TEAM_VAULT_SET_DESCRIPTION: 'team-vault:set-description',
   // Push-only (main -> renderer), fired by the background auto-poll (IpcBridge.runTeamVaultAutoPoll).
   TEAM_VAULT_AUTO_PULLED: 'team-vault:auto-pulled',
   TEAM_VAULT_REMOTE_CHANGED: 'team-vault:remote-changed',
+  // Push-only (main -> renderer): fired right before/after each background push/pull, so the UI
+  // can show a discreet per-team "syncing now" indicator (not just the after-the-fact result).
+  TEAM_VAULT_SYNC_STATUS: 'team-vault:sync-status',
 
   // Connection Testing
   CONNECTION_TEST_SSH: 'connection:test-ssh',
@@ -621,6 +632,10 @@ export interface MultiSSHApi {
   // Settings
   settingsGet(): Promise<AppSettings>;
   settingsSave(settings: Partial<AppSettings>): Promise<AppSettings>;
+  /** Atomically flips one team's `connectionManagerVisibleTeamVaults` entry — see
+   * `SettingsStore.setTeamVaultTabVisible`'s doc comment for why this exists instead of a plain
+   * `settingsGet()` -> mutate -> `settingsSave()` round trip. */
+  settingsSetTeamVaultTabVisible(vaultId: string, visible: boolean): Promise<AppSettings>;
 
   // Remote profile sync
   profileSyncSetup(payload: { target: StorageConnectConfig; remoteBasePath?: string }): Promise<void>;
@@ -689,11 +704,30 @@ export interface MultiSSHApi {
   teamVaultRenameFolder(vaultId: string, oldPath: string, newPath: string): Promise<void>;
   teamVaultDeleteFolder(vaultId: string, folderPath: string, deleteProfiles?: boolean): Promise<void>;
   teamVaultSetFolderIcon(vaultId: string, folderPath: string, icon: string | undefined): Promise<void>;
+  /** Admin-only (see `TeamVaultService.buildInvite`'s doc comment): builds an age-encrypted
+   * invite blob for `recipientId`, already a member (added via `teamVaultAddMember`), containing
+   * the vault's configured S3 target — so the new member never has to type it in by hand. Returns
+   * the blob as a single string, ready to copy/paste out of band (chat, email, ...). */
+  teamVaultBuildInvite(vaultId: string, recipientId: string): Promise<string>;
+  /** New-member side of `teamVaultBuildInvite`: decrypts a pasted invite blob with the identity at
+   * `identityFilePath` (prompts for PIN/touch like any other PIV operation) and returns the S3
+   * target it carries. Throws a user-facing error on a malformed/truncated paste or a mismatched
+   * identity. */
+  teamVaultDecodeInvite(
+    inviteText: string,
+    identityFilePath: string
+  ): Promise<{ vaultId: string; target: StorageConnectConfig; remoteBasePath?: string }>;
+  /** Admin-only: sets (or, with an empty string, clears) the vault's free-text description shown
+   * in the Connection Manager's per-team tab. */
+  teamVaultSetDescription(vaultId: string, description: string): Promise<void>;
   /** Fired by the main-process background poll (IpcBridge.runTeamVaultAutoPoll) when it detected
    * and auto-applied a remote change, or detected one it couldn't safely auto-apply —
    * `vaultId` tells the renderer which team's UI to refresh. */
   onTeamVaultAutoPulled?(callback: (payload: { vaultId: string }) => void): () => void;
   onTeamVaultRemoteChanged?(callback: (payload: { vaultId: string }) => void): () => void;
+  /** Fired right before (`syncing: true`) and after (`syncing: false`) each background
+   * push/pull for `vaultId` — drives the per-team-tab sync dot (§C/§D of the join-flow plan). */
+  onTeamVaultSyncStatus?(callback: (payload: { vaultId: string; syncing: boolean }) => void): () => void;
 
   // Connection Testing
   testSSHConnection(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }>;

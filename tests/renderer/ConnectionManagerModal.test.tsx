@@ -54,6 +54,8 @@ const mockS3Profiles: S3Config[] = [
 describe('ConnectionManagerModal', () => {
   beforeEach(() => {
     window.multissh = {
+      settingsGet: vi.fn().mockResolvedValue({}),
+      settingsSave: vi.fn().mockResolvedValue({}),
       profilesGet: vi.fn().mockResolvedValue({
         ssh: mockSSHProfiles,
         s3: mockS3Profiles,
@@ -387,7 +389,7 @@ describe('ConnectionManagerModal', () => {
       };
     }
 
-    it('shows every team by its own name, grouped under one "Teams" tab', async () => {
+    it('shows each known team as its own tab next to Personal', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
@@ -396,9 +398,46 @@ describe('ConnectionManagerModal', () => {
           <ConnectionManagerModal open={true} onClose={vi.fn()} />
         </ConfirmProvider>
       );
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Teams' })).toBeInTheDocument());
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
-      await waitFor(() => expect(screen.getByText('Acme Infra Team')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
+    });
+
+    it('keeps the per-tab "Set as default tab" pin button keyboard-reachable (CLAUDE.md: 100% mouse-free navigation) — it must stay in the tab order via an opacity reveal, not `hidden`/`display:none`', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      // Wait for the team tab itself to render before looking for its pin button — there's one
+      // "Set as default tab" button per tab (Personal included), so querying before the team tab
+      // exists would resolve to Personal's instead.
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      // Found via getAllByRole with no prior hover/pointer interaction at all — an element hidden
+      // via the HTML `hidden` attribute or a `display:none` class is excluded from the
+      // accessibility tree and wouldn't be findable this way, exactly the bug this
+      // regression-tests. The team tab's pin button is the second one (Personal's is first).
+      const pinButtons = screen.getAllByRole('button', { name: 'Set as default tab' });
+      expect(pinButtons).toHaveLength(2);
+      const pinButton = pinButtons[1];
+
+      // A `hidden` Tailwind utility (display:none) is what originally made this unreachable by
+      // keyboard — assert the fix (opacity-based reveal) is what's actually applied, not just
+      // that *some* button with this name exists somewhere.
+      expect(pinButton.className).not.toMatch(/(?:^|\s)hidden(?:\s|$)/);
+      expect(pinButton.className).toContain('opacity-0');
+      expect(pinButton.className).toContain('focus-visible:opacity-100');
+
+      // And it's genuinely focusable/clickable via keyboard, not just present in markup.
+      pinButton.focus();
+      expect(document.activeElement).toBe(pinButton);
+      fireEvent.click(pinButton);
+      await waitFor(() => {
+        expect(window.multissh.settingsSave).toHaveBeenCalledWith({ connectionManagerDefaultTab: VAULT_ID });
+      });
     });
 
     it('shows a collapsed, locked header with an inline unlock form instead of profiles when a team is locked', async () => {
@@ -410,7 +449,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
       // Personal profiles must not leak into the Team view.
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
@@ -431,7 +470,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('Shared Bastion')).toBeInTheDocument());
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
     });
@@ -458,7 +497,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('Shared Key Host')).toBeInTheDocument());
       expect(screen.getByText(/Private key path is local to this machine/)).toBeInTheDocument();
     });
@@ -475,7 +514,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /New Profile/i }));
@@ -508,7 +547,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /New Profile/i }));
@@ -540,7 +579,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('Acme Infra Team (locked)')).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: /New Profile/i })).not.toBeInTheDocument();
     });
@@ -569,7 +608,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
 
       autoPulledCallback?.({ vaultId: VAULT_ID });
@@ -594,7 +633,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText(/Unlock as alice@piv:abc/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: /Unlock as alice@piv:abc/ }));
@@ -622,7 +661,7 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByPlaceholderText('Your recipient id')).toBeInTheDocument());
 
       fireEvent.change(screen.getByPlaceholderText('Your recipient id'), { target: { value: 'bob@piv:def' } });
@@ -637,7 +676,7 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
     });
 
-    it('shows a "no vault yet" message when no Team Vault exists on this machine at all', async () => {
+    it('shows only the Personal tab when no Team Vault exists on this machine at all', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([]);
 
       render(
@@ -647,11 +686,10 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
-      await waitFor(() =>
-        expect(screen.getByText('No Team Vault has been set up on this machine yet.')).toBeInTheDocument()
-      );
-      expect(screen.queryByPlaceholderText('Your recipient id')).not.toBeInTheDocument();
+      // No team tab at all — nothing was ever unlocked/configured on this device, so there's
+      // nothing for the per-team tab row (§D of the join-flow plan) to show next to Personal.
+      expect(screen.queryByRole('button', { name: 'Acme Infra Team' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Personal' })).toBeInTheDocument();
     });
   });
 });

@@ -107,6 +107,13 @@ export interface TeamVaultFile {
    * `accessHeaderMac` (see below), so changing it requires the real Vault Key, not just S3 write
    * access. */
   vaultName?: string;
+  /** Admin-set free-text description of what this team/vault is for (e.g. "Acme Infra —
+   * production SSH/S3 access"), shown in the Connection Manager's per-team tab so a member who
+   * isn't the admin can tell what the team is without asking. Plaintext metadata, not a secret —
+   * same trust/protection level as `vaultName`: included in `accessHeaderMac` (see below), so
+   * changing it requires the real Vault Key, not just S3 write access. Optional/absent on a vault
+   * created before this field existed. */
+  vaultDescription?: string;
   /** Monotonically incremented on every mutating write (create=1, then +1 per add/remove/role
    * change). Rollback/replay guard: anyone with mere S3 write access to the vault's path (not
    * necessarily a real recipient — bucket permissions and "is a vault member" are different
@@ -149,6 +156,7 @@ export interface TeamVaultStatus {
   exists: boolean;
   vaultId?: string;
   vaultName?: string;
+  vaultDescription?: string;
   members?: TeamVaultMemberSummary[];
   adminCount?: number;
   unlocked: boolean;

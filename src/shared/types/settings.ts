@@ -153,6 +153,19 @@ export interface AppSettings {
   localTerminalAgentMode?: 'auto' | 'system' | 'app-managed' | 'disabled';
   /** Keep the sshs3-managed block in ~/.ssh/config in sync with saved SSH profiles. On by default. */
   autoSyncLocalSshConfig?: boolean;
+  /**
+   * Local, per-device preference (never synced — not part of a Team Vault's own synced data):
+   * whether each unlocked Team Vault should show up as its own tab in the Connection Manager,
+   * keyed by `vaultId`. Missing entry (including for a team never seen before) defaults to
+   * `true` — a newly joined/unlocked team shows up as a tab without the member needing to opt in.
+   */
+  connectionManagerVisibleTeamVaults?: Record<string, boolean>;
+  /**
+   * Local, per-device preference: which Connection Manager tab opens by default — `'personal'`
+   * or a `vaultId`. Falls back to `'personal'`/`'ssh'` when unset or when the referenced vault no
+   * longer exists/isn't visible.
+   */
+  connectionManagerDefaultTab?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

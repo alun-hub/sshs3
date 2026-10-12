@@ -187,6 +187,11 @@ export class IpcBridge {
   // comment on the same per-vaultId isolation requirement for runtime state).
   private readonly teamVaultAutoPollTimers = new Map<string, NodeJS.Timeout>();
   private readonly teamVaultAutoPushTimers = new Map<string, NodeJS.Timeout>();
+  // In-flight push/pull count per vaultId, driving TEAM_VAULT_SYNC_STATUS — a concurrent
+  // auto-push and auto-poll pull for the same vaultId must not have whichever finishes first
+  // turn the sync dot off while the other is still running. See
+  // `beginTeamVaultSync`/`endTeamVaultSync`'s doc comment.
+  private readonly teamVaultSyncInFlight = new Map<string, number>();
   private lastSmartcardAutoUnlockAttempt = 0;
   private static readonly AUTO_PULL_INTERVAL_MS = 10 * 60 * 1000;
   private static readonly SMARTCARD_AUTO_UNLOCK_COOLDOWN_MS = 5 * 60 * 1000;
@@ -296,6 +301,12 @@ export class IpcBridge {
         pinPrompter: {
           promptForPinDirect: (prompt, kind, context, retry) => this.promptForPinDirect(prompt, kind, context, retry),
           makePresenceNotifier: (sessionId, message) => this.makePresenceNotifier(sessionId, message),
+        },
+        // Lazily bound, same reasoning as `pinPrompter` above: `teamVaultConfigStore` is
+        // constructed a few lines below this one, so this arrow only needs it to exist by the
+        // time `buildInvite()` actually calls it, not at this object literal's own construction.
+        configStore: {
+          getConfig: (vaultId) => this.teamVaultConfigStore.getConfig(vaultId),
         },
       });
     this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();
@@ -859,9 +870,14 @@ export class IpcBridge {
         if (!config.target) {
           return;
         }
-        const provider = await this.storageRegistry.getOrCreate(config.target);
-        await this.teamVaultService.pushToRemote(vaultId, provider, config.remoteBasePath ?? '');
-        await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
+        this.beginTeamVaultSync(vaultId);
+        try {
+          const provider = await this.storageRegistry.getOrCreate(config.target);
+          await this.teamVaultService.pushToRemote(vaultId, provider, config.remoteBasePath ?? '');
+          await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
+        } finally {
+          this.endTeamVaultSync(vaultId);
+        }
       } catch (err) {
         autosyncLog.warn(`Team Vault background push failed (vaultId=${vaultId}):`, err);
       }
@@ -982,13 +998,62 @@ export class IpcBridge {
         return;
       }
 
-      await this.teamVaultService.pullFromRemote(vaultId, provider, remoteBasePath);
-      await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, { vaultId });
+      this.beginTeamVaultSync(vaultId);
+      try {
+        await this.teamVaultService.pullFromRemote(vaultId, provider, remoteBasePath);
+        await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
+        if (webContents && !webContents.isDestroyed?.()) {
+          webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, { vaultId });
+        }
+      } finally {
+        this.endTeamVaultSync(vaultId);
       }
     } catch (err) {
       autosyncLog.warn(`Team Vault background poll failed (vaultId=${vaultId}):`, err);
+    }
+  }
+
+  /**
+   * Reference-counted start of a background push/pull for `vaultId` — fires
+   * `TEAM_VAULT_SYNC_STATUS` with `syncing: true` only on the 0->1 transition, so the per-team-tab
+   * sync dot in the Connection Manager turns on once regardless of how many operations are
+   * concurrently in flight for the same vault. Always pair with `endTeamVaultSync` in a `finally`.
+   */
+  private beginTeamVaultSync(vaultId: string): void {
+    const count = (this.teamVaultSyncInFlight.get(vaultId) ?? 0) + 1;
+    this.teamVaultSyncInFlight.set(vaultId, count);
+    if (count === 1) {
+      this.sendTeamVaultSyncStatus(vaultId, true);
+    }
+  }
+
+  /**
+   * Counterpart to `beginTeamVaultSync` — fires `TEAM_VAULT_SYNC_STATUS` with `syncing: false`
+   * only once the count drops back to 0. Without this reference count, a concurrent auto-push
+   * (`scheduleTeamVaultAutoPush`) and auto-poll pull (`runTeamVaultAutoPoll`) for the same vaultId
+   * could race: whichever finishes first would send `syncing: false` and turn the dot off while
+   * the other operation is still genuinely in progress.
+   */
+  private endTeamVaultSync(vaultId: string): void {
+    const count = (this.teamVaultSyncInFlight.get(vaultId) ?? 1) - 1;
+    if (count <= 0) {
+      this.teamVaultSyncInFlight.delete(vaultId);
+      this.sendTeamVaultSyncStatus(vaultId, false);
+    } else {
+      this.teamVaultSyncInFlight.set(vaultId, count);
+    }
+  }
+
+  /** Fires `TEAM_VAULT_SYNC_STATUS` — drives the per-team-tab sync dot in the Connection Manager
+   * (a discreet "syncing now" indicator, not just the after-the-fact
+   * `TEAM_VAULT_AUTO_PULLED`/`TEAM_VAULT_REMOTE_CHANGED` result). Best-effort, same as the rest of
+   * this file's `webContents.send` calls — no renderer window to notify is not an error. Always
+   * called through `beginTeamVaultSync`/`endTeamVaultSync`, never directly, so the reference count
+   * and the emitted event can't drift apart. */
+  private sendTeamVaultSyncStatus(vaultId: string, syncing: boolean): void {
+    const webContents = this.getWebContents();
+    if (webContents && !webContents.isDestroyed?.()) {
+      webContents.send(IPC_CHANNELS.TEAM_VAULT_SYNC_STATUS, { vaultId, syncing });
     }
   }
 

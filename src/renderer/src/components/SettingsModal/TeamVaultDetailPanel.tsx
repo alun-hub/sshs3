@@ -58,6 +58,22 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
   const [savingVaultName, setSavingVaultName] = useState(false);
   const [vaultIdCopied, setVaultIdCopied] = useState(false);
 
+  // Free-text description (admin only) — shown in the Connection Manager's per-team tab so a
+  // member can tell what the team is for without asking out of band (§D of the join-flow plan).
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionEdit, setDescriptionEdit] = useState('');
+  const [savingDescription, setSavingDescription] = useState(false);
+
+  // "Copy invite" per member (§A) — an age-encrypted blob of this vault's S3 target for that
+  // specific recipient, so they never have to type it in by hand.
+  const [invitingRecipientId, setInvitingRecipientId] = useState<string | null>(null);
+  const [copiedInviteFor, setCopiedInviteFor] = useState<string | null>(null);
+
+  // Local, per-device "show this team as a tab in the Connection Manager" preference (§D) —
+  // never synced, lives in AppSettings, defaults to true when no entry exists yet.
+  const [showAsTab, setShowAsTab] = useState(true);
+  const [savingShowAsTab, setSavingShowAsTab] = useState(false);
+
   // Unlock (needed for add/remove — see TeamVaultService.unlock's doc comment on the still-open
   // PIN question).
   const [unlockRecipientId, setUnlockRecipientId] = useState('');
@@ -119,6 +135,23 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await window.multissh.settingsGet();
+        if (cancelled) return;
+        const entry = settings.connectionManagerVisibleTeamVaults?.[vaultId];
+        setShowAsTab(entry ?? true);
+      } catch {
+        // Best-effort preference load — defaults to visible (the initial state) on failure.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultId]);
+
   const handleRenameVault = async () => {
     setSavingVaultName(true);
     setError(null);
@@ -130,6 +163,52 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
       setError(describeIpcError(err, 'Failed to rename the vault'));
     } finally {
       setSavingVaultName(false);
+    }
+  };
+
+  const handleSetDescription = async () => {
+    setSavingDescription(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultSetDescription(vaultId, descriptionEdit.trim());
+      setEditingDescription(false);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to save the description'));
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleCopyInvite = async (recipientId: string) => {
+    setInvitingRecipientId(recipientId);
+    setError(null);
+    try {
+      const invite = await window.multissh.teamVaultBuildInvite(vaultId, recipientId);
+      await navigator.clipboard.writeText(invite);
+      setCopiedInviteFor(recipientId);
+      setTimeout(() => setCopiedInviteFor((prev) => (prev === recipientId ? null : prev)), 3000);
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to build the invite'));
+    } finally {
+      setInvitingRecipientId(null);
+    }
+  };
+
+  const handleToggleShowAsTab = async (checked: boolean) => {
+    setSavingShowAsTab(true);
+    setShowAsTab(checked);
+    try {
+      // Atomic read-modify-write in the main process (SettingsStore.setTeamVaultTabVisible) —
+      // not a settingsGet() -> mutate -> settingsSave() round trip here, which would race against
+      // another team's detail panel toggling its own entry at the same time and silently clobber
+      // it (see that method's doc comment).
+      await window.multissh.settingsSetTeamVaultTabVisible(vaultId, checked);
+    } catch (err) {
+      setShowAsTab(!checked);
+      setError(describeIpcError(err, 'Failed to save this preference'));
+    } finally {
+      setSavingShowAsTab(false);
     }
   };
 
@@ -454,6 +533,67 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                 <span className="capitalize text-txt-secondary">{status.selfRole}</span>
               </div>
             )}
+            <div className="mt-1 flex items-start justify-between gap-2">
+              <span className="shrink-0 text-txt-muted">Description</span>
+              {editingDescription ? (
+                <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                  <textarea
+                    autoFocus
+                    value={descriptionEdit}
+                    onChange={(e) => setDescriptionEdit(e.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="What is this team for? (shown to members in the Connection Manager)"
+                    className="min-w-0 flex-1 rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSetDescription()}
+                    disabled={savingDescription}
+                    className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                    title="Save"
+                  >
+                    {savingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingDescription(false)}
+                    disabled={savingDescription}
+                    className="text-txt-muted hover:text-txt-secondary disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-txt-secondary">{status.vaultDescription || '—'}</span>
+                  {status.unlocked && isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDescriptionEdit(status.vaultDescription ?? '');
+                        setEditingDescription(true);
+                      }}
+                      className="shrink-0 text-txt-muted hover:text-txt-secondary"
+                      title="Edit description"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <label className="mt-2 flex items-center justify-between gap-2 border-t border-border-subtle pt-2">
+              <span className="text-txt-muted">Show this team as a tab in the Connection Manager</span>
+              <input
+                type="checkbox"
+                checked={showAsTab}
+                disabled={savingShowAsTab}
+                onChange={(e) => void handleToggleShowAsTab(e.target.checked)}
+                className="h-3.5 w-3.5 accent-sky-500"
+              />
+            </label>
           </div>
 
           {(status.adminCount ?? 0) < 2 && (
@@ -607,6 +747,24 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     <div className="text-txt-muted">{m.role}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {status.unlocked && isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyInvite(m.recipientId)}
+                        disabled={invitingRecipientId === m.recipientId}
+                        title="Copy an invite blob for this member (their S3 target, no manual setup needed)"
+                        className="flex items-center gap-1 rounded-lg border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                      >
+                        {invitingRecipientId === m.recipientId ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : copiedInviteFor === m.recipientId ? (
+                          <Check className="h-3 w-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                        {copiedInviteFor === m.recipientId ? 'Copied!' : 'Copy invite'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleSetRole(m.recipientId, m.role === 'admin' ? 'member' : 'admin')}
