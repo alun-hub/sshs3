@@ -14,6 +14,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import type { TeamVaultStatus } from '@shared/types/teamVault';
+import type { StorageConnectConfig } from '@shared/types/ipc';
 import { TeamVaultDetailPanel } from './TeamVaultDetailPanel';
 import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
@@ -76,6 +77,19 @@ export const TeamVaultListPanel: React.FC = () => {
   // joinTargetDraft above) stays as a collapsed "...or configure manually" fallback.
   const [inviteText, setInviteText] = useState('');
   const [showManualJoin, setShowManualJoin] = useState(false);
+  // Decoding an invite only decrypts and parses it — it never implicitly configures/connects to
+  // anything. `age -r <recipient>` encryption proves the blob was encrypted to THIS device's own
+  // identity, but proves nothing about who encrypted it (no sender authentication) — the same
+  // trust model the join-info blob and the manual-entry fallback already rely on (the human
+  // verifies the sender out of band). Surfacing the decoded target here, gated behind an explicit
+  // second click, gives that same human-verification chance instead of silently reconfiguring the
+  // S3 target and connecting to it the instant decryption succeeds.
+  const [decodedInvite, setDecodedInvite] = useState<{
+    vaultId: string;
+    target: StorageConnectConfig;
+    remoteBasePath?: string;
+  } | null>(null);
+  const [decoding, setDecoding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,6 +117,7 @@ export const TeamVaultListPanel: React.FC = () => {
     setJoinTargetError(null);
     setInviteText('');
     setShowManualJoin(false);
+    setDecodedInvite(null);
   };
 
   const handleEnroll = async () => {
@@ -219,21 +234,46 @@ export const TeamVaultListPanel: React.FC = () => {
   };
 
   /**
-   * Default join path (§A): decrypts the admin's pasted invite blob with the identity generated
-   * in step 1 (`myRecipient.identityFilePath`) to recover the S3 target, then sets it, pulls, and
-   * auto-unlocks with that same identity — no manual S3 entry and no second identity-path
-   * round-trip, unlike `handleJoinExistingVault`'s manual fallback below.
+   * Default join path (§A), step one of two: decrypts the admin's pasted invite blob with the
+   * identity generated in step 1 (`myRecipient.identityFilePath`) to recover the S3 target.
+   * Deliberately does NOT act on it yet — `age -r <recipient>` encryption proves this blob was
+   * encrypted to this device's own identity, but proves nothing about who encrypted it. Stops
+   * here and hands the decoded target to `handleConfirmJoin` below, which only runs on an
+   * explicit second click, so the human gets a chance to notice an unexpected team/endpoint
+   * before the app connects to it — same human-verification step the manual-entry fallback
+   * already requires implicitly (the admin reads the values out loud/in chat, the joiner types
+   * them in and can compare).
    */
-  const handleJoinWithInvite = async () => {
+  const handleDecodeInvite = async () => {
     if (!myRecipient || !selfRecipientId.trim() || !inviteText.trim()) return;
+    setJoinTargetError(null);
+    setDecoding(true);
+    setError(null);
+    try {
+      const decoded = await window.multissh.teamVaultDecodeInvite(inviteText, myRecipient.identityFilePath);
+      setDecodedInvite(decoded);
+    } catch (err) {
+      setJoinTargetError(
+        describeIpcError(
+          err,
+          'Could not read this invite — check it was pasted completely, or that it matches your identity.'
+        )
+      );
+    } finally {
+      setDecoding(false);
+    }
+  };
+
+  /** Step two: the human has reviewed `decodedInvite`'s team id/endpoint/bucket below and
+   * confirmed it's the team they expected — now actually sets the target, pulls, and
+   * auto-unlocks with the identity from step 1. */
+  const handleConfirmJoin = async () => {
+    if (!decodedInvite || !myRecipient || !selfRecipientId.trim()) return;
+    const { vaultId, target, remoteBasePath } = decodedInvite;
     setJoinTargetError(null);
     setJoining(true);
     setError(null);
     try {
-      const { vaultId, target, remoteBasePath } = await window.multissh.teamVaultDecodeInvite(
-        inviteText,
-        myRecipient.identityFilePath
-      );
       await window.multissh.teamVaultSetTarget(vaultId, target, remoteBasePath);
       const hasRemote = await window.multissh.teamVaultHasRemoteVault(vaultId);
       if (!hasRemote) {
@@ -247,12 +287,7 @@ export const TeamVaultListPanel: React.FC = () => {
       setMode({ kind: 'list' });
       resetJoinCreateState();
     } catch (err) {
-      setJoinTargetError(
-        describeIpcError(
-          err,
-          'Could not read this invite — check it was pasted completely, or that it matches your identity.'
-        )
-      );
+      setJoinTargetError(describeIpcError(err, 'Failed to join the existing Team Vault'));
     } finally {
       setJoining(false);
     }
@@ -538,29 +573,84 @@ export const TeamVaultListPanel: React.FC = () => {
                 {joinTargetError}
               </div>
             )}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-txt-secondary">Paste invite from your admin</label>
-              <textarea
-                value={inviteText}
-                onChange={(e) => setInviteText(e.target.value)}
-                placeholder="sshs3 Team Vault invite for ..."
-                rows={4}
-                disabled={joining || !myRecipient}
-                className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted disabled:opacity-50"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleJoinWithInvite()}
-              disabled={joining || !myRecipient || !selfRecipientId.trim() || !inviteText.trim()}
-              title={
-                !myRecipient || !selfRecipientId.trim() ? 'Generate your Team Vault ID first (step 1)' : undefined
-              }
-              className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-            >
-              {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
-              Join team
-            </button>
+            {decodedInvite ? (
+              <div className="space-y-2 rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+                <p className="text-xs font-medium text-amber-200">
+                  Check this matches the team your admin told you about before continuing — this
+                  invite was readable with your identity, but that only proves who it's addressed
+                  to, not who sent it.
+                </p>
+                <dl className="space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="text-txt-muted">Team ID</dt>
+                    <dd className="break-all font-mono text-txt-secondary">{decodedInvite.vaultId}</dd>
+                  </div>
+                  {decodedInvite.target.s3Config?.endpoint && (
+                    <div className="flex gap-2">
+                      <dt className="text-txt-muted">Endpoint</dt>
+                      <dd className="break-all text-txt-secondary">{decodedInvite.target.s3Config.endpoint}</dd>
+                    </div>
+                  )}
+                  {decodedInvite.target.s3Config?.region && (
+                    <div className="flex gap-2">
+                      <dt className="text-txt-muted">Region</dt>
+                      <dd className="text-txt-secondary">{decodedInvite.target.s3Config.region}</dd>
+                    </div>
+                  )}
+                  {decodedInvite.remoteBasePath && (
+                    <div className="flex gap-2">
+                      <dt className="text-txt-muted">Path</dt>
+                      <dd className="break-all text-txt-secondary">{decodedInvite.remoteBasePath}</dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmJoin()}
+                    disabled={joining}
+                    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {joining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                    This is my team — join
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDecodedInvite(null)}
+                    disabled={joining}
+                    className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                  >
+                    Not my team — discard
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-txt-secondary">Paste invite from your admin</label>
+                  <textarea
+                    value={inviteText}
+                    onChange={(e) => setInviteText(e.target.value)}
+                    placeholder="sshs3 Team Vault invite for ..."
+                    rows={4}
+                    disabled={decoding || !myRecipient}
+                    className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted disabled:opacity-50"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDecodeInvite()}
+                  disabled={decoding || !myRecipient || !selfRecipientId.trim() || !inviteText.trim()}
+                  title={
+                    !myRecipient || !selfRecipientId.trim() ? 'Generate your Team Vault ID first (step 1)' : undefined
+                  }
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                >
+                  {decoding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+                  Read invite
+                </button>
+              </>
+            )}
 
             <button
               type="button"

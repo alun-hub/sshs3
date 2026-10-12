@@ -113,7 +113,7 @@ describe('TeamVaultListPanel', () => {
       });
     });
 
-    it('keeps "Join team" disabled, and never calls teamVaultDecodeInvite, until a recipient id is typed in — even with an identity generated and an invite pasted', async () => {
+    it('keeps "Read invite" disabled, and never calls teamVaultDecodeInvite, until a recipient id is typed in — even with an identity generated and an invite pasted', async () => {
       mockApi();
       const teamVaultDecodeInvite = vi.fn();
       window.multissh.teamVaultDecodeInvite = teamVaultDecodeInvite;
@@ -129,18 +129,18 @@ describe('TeamVaultListPanel', () => {
         target: { value: 'sshs3 Team Vault invite for bob\narmored-blob' },
       });
 
-      const joinButton = screen.getByRole('button', { name: 'Join team' });
-      expect(joinButton).toBeDisabled();
+      const readButton = screen.getByRole('button', { name: 'Read invite' });
+      expect(readButton).toBeDisabled();
 
-      fireEvent.click(joinButton);
+      fireEvent.click(readButton);
       expect(teamVaultDecodeInvite).not.toHaveBeenCalled();
     });
 
-    it('joins by pasting an invite: decodes it with the generated identity, sets the target, pulls, and auto-unlocks — no manual S3 entry', async () => {
+    it('joins by pasting an invite: decodes it, shows the decoded team/endpoint for review, and only sets the target/pulls/auto-unlocks after an explicit confirm — never silently from decode alone', async () => {
       mockApi();
       const teamVaultDecodeInvite = vi.fn().mockResolvedValue({
         vaultId: 'vlt_invited',
-        target: { id: 't1', name: 'Team Bucket', type: 's3' },
+        target: { id: 't1', name: 'Team Bucket', type: 's3', s3Config: { endpoint: 'https://s3.example.com', region: 'us-east-1' } },
         remoteBasePath: 'team-bucket',
       });
       const teamVaultSetTarget = vi.fn().mockResolvedValue(undefined);
@@ -165,7 +165,7 @@ describe('TeamVaultListPanel', () => {
         target: { value: 'sshs3 Team Vault invite for bob\narmored-blob' },
       });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Join team' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Read invite' }));
 
       await waitFor(() => {
         expect(teamVaultDecodeInvite).toHaveBeenCalledWith(
@@ -173,10 +173,19 @@ describe('TeamVaultListPanel', () => {
           '/tmp/identity.txt'
         );
       });
+
+      // Decoding alone must never act — the decoded team/endpoint is shown for review first.
+      await waitFor(() => expect(screen.getByText('vlt_invited')).toBeInTheDocument());
+      expect(screen.getByText('https://s3.example.com')).toBeInTheDocument();
+      expect(teamVaultSetTarget).not.toHaveBeenCalled();
+      expect(teamVaultPull).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: /This is my team — join/i }));
+
       await waitFor(() =>
         expect(teamVaultSetTarget).toHaveBeenCalledWith(
           'vlt_invited',
-          { id: 't1', name: 'Team Bucket', type: 's3' },
+          { id: 't1', name: 'Team Bucket', type: 's3', s3Config: { endpoint: 'https://s3.example.com', region: 'us-east-1' } },
           'team-bucket'
         )
       );
@@ -185,6 +194,37 @@ describe('TeamVaultListPanel', () => {
       await waitFor(() =>
         expect(teamVaultUnlock).toHaveBeenCalledWith('vlt_invited', 'bob@piv:yubikey-1', '/tmp/identity.txt')
       );
+    });
+
+    it('lets the user cancel out of the decoded-invite review without joining', async () => {
+      mockApi();
+      const teamVaultDecodeInvite = vi.fn().mockResolvedValue({
+        vaultId: 'vlt_invited',
+        target: { id: 't1', name: 'Team Bucket', type: 's3' },
+      });
+      const teamVaultSetTarget = vi.fn();
+      window.multissh.teamVaultDecodeInvite = teamVaultDecodeInvite;
+      window.multissh.teamVaultSetTarget = teamVaultSetTarget;
+
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/alice@piv/i), { target: { value: 'bob@piv:yubikey-1' } });
+      fireEvent.change(screen.getByPlaceholderText(/sshs3 Team Vault invite for/i), {
+        target: { value: 'sshs3 Team Vault invite for bob\narmored-blob' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Read invite' }));
+      await waitFor(() => expect(screen.getByText('vlt_invited')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Not my team — discard/i }));
+
+      await waitFor(() => expect(screen.queryByText('vlt_invited')).not.toBeInTheDocument());
+      expect(screen.getByPlaceholderText(/sshs3 Team Vault invite for/i)).toBeInTheDocument();
+      expect(teamVaultSetTarget).not.toHaveBeenCalled();
     });
 
     it('joins an existing team by entering its Team ID, configuring a target, and pulling under that real vaultId', async () => {
