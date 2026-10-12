@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Boxes,
+  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -10,6 +11,7 @@ import {
   FolderPlus,
   Loader2,
   Lock,
+  Pencil,
   Pin,
   Plus,
   Search,
@@ -157,6 +159,29 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       await window.multissh.settingsSave({ connectionManagerDefaultTab: key });
     } catch {
       // Non-critical preference — a failed save just means the old default sticks.
+    }
+  };
+
+  // Editing a team's description directly from its tab row — the same `teamVaultSetDescription`
+  // call `TeamVaultDetailPanel` (Settings) makes, just reachable without leaving the Connection
+  // Manager too. `editingTabDescription` holds the vaultId currently being edited (not a bool —
+  // only one tab's editor is open at a time, and this doubles as "which tab" for the save call).
+  const [editingTabDescription, setEditingTabDescription] = useState<string | null>(null);
+  const [tabDescriptionDraft, setTabDescriptionDraft] = useState('');
+  const [savingTabDescription, setSavingTabDescription] = useState(false);
+  const [tabDescriptionError, setTabDescriptionError] = useState<string | null>(null);
+
+  const handleSaveTabDescription = async (vaultId: string) => {
+    setSavingTabDescription(true);
+    setTabDescriptionError(null);
+    try {
+      await window.multissh.teamVaultSetDescription(vaultId, tabDescriptionDraft.trim());
+      await loadTeamVaultTabs();
+      setEditingTabDescription(null);
+    } catch (err) {
+      setTabDescriptionError(describeIpcError(err, 'Failed to save the description'));
+    } finally {
+      setSavingTabDescription(false);
     }
   };
 
@@ -729,8 +754,69 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               ))}
             </div>
-            {source !== 'personal' && activeTeamVaultTab?.vaultDescription && (
-              <p className="mt-1.5 truncate text-2xs text-txt-muted">{activeTeamVaultTab.vaultDescription}</p>
+            {source !== 'personal' && activeTeamVaultTab && (
+              <div className="mt-1.5">
+                {editingTabDescription === activeTeamVaultTab.vaultId ? (
+                  <div className="flex items-start gap-1.5">
+                    <textarea
+                      autoFocus
+                      value={tabDescriptionDraft}
+                      onChange={(e) => setTabDescriptionDraft(e.target.value)}
+                      maxLength={500}
+                      rows={2}
+                      placeholder="What is this team for? (shown to every member here)"
+                      className="min-w-0 flex-1 rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-2xs text-txt-primary outline-none focus:border-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveTabDescription(activeTeamVaultTab.vaultId!)}
+                      disabled={savingTabDescription}
+                      className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                      title="Save"
+                    >
+                      {savingTabDescription ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTabDescription(null)}
+                      disabled={savingTabDescription}
+                      className="text-txt-muted hover:text-txt-secondary disabled:opacity-50"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  (activeTeamVaultTab.vaultDescription || activeTeamVaultTab.selfRole === 'admin') && (
+                    <div className="flex items-start gap-1.5">
+                      <p className="max-h-16 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap text-2xs text-txt-muted">
+                        {activeTeamVaultTab.vaultDescription || 'No description yet.'}
+                      </p>
+                      {activeTeamVaultTab.selfRole === 'admin' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTabDescriptionDraft(activeTeamVaultTab.vaultDescription ?? '');
+                            setTabDescriptionError(null);
+                            setEditingTabDescription(activeTeamVaultTab.vaultId!);
+                          }}
+                          className="shrink-0 text-txt-muted hover:text-txt-secondary"
+                          title="Edit description"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )
+                )}
+                {editingTabDescription === activeTeamVaultTab.vaultId && tabDescriptionError && (
+                  <p className="mt-1 text-2xs text-red-400">{tabDescriptionError}</p>
+                )}
+              </div>
             )}
           </div>
         )}

@@ -566,8 +566,10 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   </button>
                 </div>
               ) : (
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-txt-secondary">{status.vaultDescription || '—'}</span>
+                <div className="flex min-w-0 items-start gap-1.5">
+                  <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-txt-secondary">
+                    {status.vaultDescription || '—'}
+                  </span>
                   {status.unlocked && isAdmin && (
                     <button
                       type="button"

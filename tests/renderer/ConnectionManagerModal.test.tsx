@@ -440,6 +440,67 @@ describe('ConnectionManagerModal', () => {
       });
     });
 
+    it('shows the team description under the tab row, preserving line breaks instead of collapsing them to one line', async () => {
+      window.multissh.teamVaultList = vi
+        .fn()
+        .mockResolvedValue([unlockedStatus({ vaultDescription: 'Line one\nLine two' })]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+
+      const descriptions = await screen.findAllByText((_, el) => el?.textContent === 'Line one\nLine two');
+      const paragraph = descriptions.find((el) => el.tagName === 'P');
+      expect(paragraph?.className).toContain('whitespace-pre-wrap');
+    });
+
+    it('lets an admin edit the team description directly from the Connection Manager tab row, without going to Settings', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus({ vaultDescription: 'Old text' })]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      window.multissh.teamVaultSetDescription = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await screen.findByText('Old text');
+
+      fireEvent.click(screen.getByTitle('Edit description'));
+      const textarea = screen.getByPlaceholderText(/What is this team for/);
+      fireEvent.change(textarea, { target: { value: 'New multi-line\ndescription' } });
+      fireEvent.click(screen.getByTitle('Save'));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultSetDescription).toHaveBeenCalledWith(VAULT_ID, 'New multi-line\ndescription');
+      });
+    });
+
+    it('does not offer an edit affordance to a non-admin member', async () => {
+      window.multissh.teamVaultList = vi
+        .fn()
+        .mockResolvedValue([unlockedStatus({ vaultDescription: 'Team notes', selfRole: 'member' })]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus({ selfRole: 'member' }));
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await screen.findByText('Team notes');
+
+      expect(screen.queryByTitle('Edit description')).not.toBeInTheDocument();
+    });
+
     it('shows a collapsed, locked header with an inline unlock form instead of profiles when a team is locked', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([lockedStatus()]);
       render(
