@@ -5,13 +5,13 @@ import {
   collectTeamFolderSuggestions,
   findFolderNode,
   flattenTeamFolderTree,
-} from '../../src/renderer/src/components/ConnectionModal/teamProfileTree';
+} from '../../src/renderer/src/components/ConnectionModal/teamFolderTree';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
 const ssh = (id: string, group?: string): SSHConnectionConfig =>
   ({ id, name: id, host: `${id}.example.com`, username: 'root', authType: 'password', group }) as SSHConnectionConfig;
 
-describe('teamProfileTree', () => {
+describe('teamFolderTree', () => {
   describe('collectAllTeamFolderPaths', () => {
     it('synthesizes every ancestor of a deep folder, even if only the leaf was ever saved', () => {
       const paths = collectAllTeamFolderPaths(['Acme Infra/Cluster A/Node 1'], [], []);
