@@ -481,7 +481,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
       ) : (
         <div className="space-y-4">
           <div className="rounded-lg border border-border-subtle bg-app-surface p-3 text-xs">
-            <div className="flex items-center justify-between gap-2">
+            <div className="grid grid-cols-[88px_1fr] items-center gap-x-2 gap-y-1">
               <span className="text-txt-muted">Vault</span>
               {editingVaultName ? (
                 <div className="flex items-center gap-1.5">
@@ -515,7 +515,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-txt-secondary">{status.vaultName || status.vaultId}</span>
+                  <span className="text-txt-secondary">{status.vaultName || status.vaultId}</span>
                   {status.unlocked && isAdmin && (
                     <button
                       type="button"
@@ -531,8 +531,6 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   )}
                 </div>
               )}
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-2">
               <span className="text-txt-muted">Team ID</span>
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate font-mono text-2xs text-txt-muted">{status.vaultId}</span>
@@ -545,8 +543,6 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   {vaultIdCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
                 </button>
               </div>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
               <span className="text-txt-muted">Status</span>
               <span className="flex items-center gap-2">
                 <span className={status.unlocked ? 'text-emerald-400' : 'text-amber-400'}>
@@ -564,15 +560,13 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   </button>
                 )}
               </span>
-            </div>
-            {status.selfRole && (
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-txt-muted">Your role</span>
-                <span className="capitalize text-txt-secondary">{status.selfRole}</span>
-              </div>
-            )}
-            <div className="mt-1 flex items-start justify-between gap-2">
-              <span className="shrink-0 text-txt-muted">Description</span>
+              {status.selfRole && (
+                <>
+                  <span className="text-txt-muted">Your role</span>
+                  <span className="capitalize text-txt-secondary">{status.selfRole}</span>
+                </>
+              )}
+              <span className="self-start text-txt-muted">Description</span>
               {editingDescription ? (
                 <div className="flex min-w-0 flex-1 items-start gap-1.5">
                   <textarea
