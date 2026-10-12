@@ -79,6 +79,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
   const [unlockRecipientId, setUnlockRecipientId] = useState('');
   const [unlockIdentityPath, setUnlockIdentityPath] = useState('');
   const [unlocking, setUnlocking] = useState(false);
+  const [locking, setLocking] = useState(false);
   // Shown only as a fallback (multiple identities, a new machine, or a lost config) — when
   // status.selfRecipientId/selfIdentityFilePath are already known, unlocking needs no fields at
   // all, just a button (found to be a real usability problem otherwise — see docs/team-vault-plan.md).
@@ -220,6 +221,19 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
       setNewAgeRecipient(parsed.ageRecipient);
     } else {
       setNewAgeRecipient('');
+    }
+  };
+
+  const handleLock = async () => {
+    setLocking(true);
+    setError(null);
+    try {
+      await window.multissh.teamVaultLock(vaultId);
+      await load();
+    } catch (err) {
+      setError(describeIpcError(err, 'Failed to lock the Team Vault'));
+    } finally {
+      setLocking(false);
     }
   };
 
@@ -523,8 +537,21 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
             </div>
             <div className="mt-1 flex items-center justify-between">
               <span className="text-txt-muted">Status</span>
-              <span className={status.unlocked ? 'text-emerald-400' : 'text-amber-400'}>
-                {status.unlocked ? 'Unlocked for this session' : 'Locked'}
+              <span className="flex items-center gap-2">
+                <span className={status.unlocked ? 'text-emerald-400' : 'text-amber-400'}>
+                  {status.unlocked ? 'Unlocked for this session' : 'Locked'}
+                </span>
+                {status.unlocked && (
+                  <button
+                    type="button"
+                    onClick={() => void handleLock()}
+                    disabled={locking}
+                    title="Lock this Team Vault now"
+                    className="rounded-lg border border-border-subtle px-1.5 py-0.5 text-2xs text-txt-secondary hover:bg-app-surface-hover disabled:opacity-50"
+                  >
+                    {locking ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Lock now'}
+                  </button>
+                )}
               </span>
             </div>
             {status.selfRole && (

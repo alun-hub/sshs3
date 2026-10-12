@@ -46,6 +46,7 @@ describe('TeamVaultDetailPanel', () => {
         teamVaultRemoveMember: vi.fn().mockResolvedValue({ remainingAdmins: 0 }),
         teamVaultSetRole: vi.fn().mockResolvedValue(undefined),
         teamVaultDelete: vi.fn().mockResolvedValue(undefined),
+        teamVaultLock: vi.fn().mockResolvedValue(undefined),
         ...overrides,
       } as unknown as typeof window.multissh;
     }
@@ -193,6 +194,16 @@ describe('TeamVaultDetailPanel', () => {
       const bobRow = screen.getByText('bob@piv:def').closest('div[class*="rounded-lg"]') as HTMLElement;
       expect(within(aliceRow).queryByRole('button', { name: /Copy invite/ })).not.toBeInTheDocument();
       expect(within(bobRow).getByRole('button', { name: /Copy invite/ })).toBeInTheDocument();
+    });
+
+    it('locks the vault immediately via "Lock now"', async () => {
+      mockApi();
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('Unlocked for this session')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Lock now' }));
+
+      await waitFor(() => expect(window.multissh.teamVaultLock).toHaveBeenCalledWith(VAULT_ID));
     });
 
     it('offers to delete the vault (local-only) when the signed-in identity is an admin, with confirmation, then reports it removed', async () => {
