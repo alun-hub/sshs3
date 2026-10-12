@@ -711,7 +711,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             "Personal"/"Teams" toggle: each visible, unlocked-or-not team gets its own tab next to
             Personal, with a discreet sync dot and a hover "pin as default" action. Hidden for
             Kubernetes, which has no concept of either. */}
-        {tab !== 'k8s' && !editing && (
+        {tab !== 'k8s' && !editing && visibleTeamVaultTabs.length > 0 && (
           <div className="border-b border-divider bg-app-surface px-4 py-2">
             <div className="flex items-center gap-1.5">
               {[

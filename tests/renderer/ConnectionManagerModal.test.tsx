@@ -401,6 +401,9 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
       fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
+
+      // §11: the panel below must not repeat the team's name — the tab row already names it.
+      expect(screen.getAllByText('Acme Infra Team')).toHaveLength(1);
     });
 
     it('keeps the per-tab "Set as default tab" pin button keyboard-reachable (CLAUDE.md: 100% mouse-free navigation) — it must stay in the tab order via an opacity reveal, not `hidden`/`display:none`', async () => {
@@ -782,7 +785,7 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
     });
 
-    it('shows only the Personal tab when no Team Vault exists on this machine at all', async () => {
+    it('hides the tab row entirely when no Team Vault exists on this machine at all (§11: "Personal" is meaningless as a lone subtab)', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([]);
 
       render(
@@ -792,10 +795,11 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
 
-      // No team tab at all — nothing was ever unlocked/configured on this device, so there's
-      // nothing for the per-team tab row (§D of the join-flow plan) to show next to Personal.
+      // No teams at all — nothing was ever unlocked/configured on this device, so there's
+      // nothing for the per-team tab row (§D of the join-flow plan) to distinguish, and a lone
+      // "Personal" tab with no alternative is not a meaningful choice.
       expect(screen.queryByRole('button', { name: 'Acme Infra Team' })).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Personal' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Personal' })).not.toBeInTheDocument();
     });
   });
 });

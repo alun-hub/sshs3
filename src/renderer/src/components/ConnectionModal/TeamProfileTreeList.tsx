@@ -487,11 +487,15 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
         return (
           <div key={vaultId} className="space-y-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-txt-secondary">
-                <Unlock className="h-3.5 w-3.5 text-emerald-400" />
-                {title}
-              </p>
+            <div className="flex items-center justify-end gap-2">
+              {/* Omitted when a specific tab is selected (§D/§11) — the Connection Manager's own
+                  tab row already names this team, so repeating it here was a duplicate heading. */}
+              {!activeVaultId && (
+                <p className="mr-auto flex items-center gap-1.5 text-xs font-semibold text-txt-secondary">
+                  <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                  {title}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 {entry.notice === 'auto-pulled' && (
                   <span className="flex items-center gap-1 text-2xs text-txt-muted">
