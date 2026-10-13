@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
 import { runAgeCommandViaPty, createSecretOutputChannel, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
+import { withPkcs11Lock } from '../smartcard/Pkcs11Lock';
 import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
 
 export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError } from './AgePtyPinRelay';
@@ -264,16 +265,25 @@ export class TeamVaultCryptoService {
         args.push(ciphertextFile);
         stdin = undefined;
       }
-      await runAgeCommandViaPty(
-        agePath,
-        args,
-        // `age` discovers `age-plugin-yubikey` by name on PATH; prepend its resolved directory
-        // so a bundled (packaged-app) or dev-fetched copy is found even when not installed
-        // system-wide.
-        pluginPathEnv(pluginPath),
-        callbacks,
-        undefined,
-        stdin
+      // `age-plugin-yubikey` talks PIV/PC-SC directly to the physical card — same class of
+      // "broadly unreliable under concurrent access" issue `Pkcs11Lock`'s doc comment describes
+      // for vendor PKCS#11 modules, confirmed in practice: unlocking two different Team Vaults at
+      // once (e.g. "Unlock all" with 2+ locked teams sharing a card) raced two independent
+      // age-plugin-yubikey processes against the same USB token — one touch could only satisfy
+      // one of them, and the other failed silently. Serializing here, app-wide, is the same fix
+      // already applied to every other native-smartcard call this app makes.
+      await withPkcs11Lock(() =>
+        runAgeCommandViaPty(
+          agePath,
+          args,
+          // `age` discovers `age-plugin-yubikey` by name on PATH; prepend its resolved directory
+          // so a bundled (packaged-app) or dev-fetched copy is found even when not installed
+          // system-wide.
+          pluginPathEnv(pluginPath),
+          callbacks,
+          undefined,
+          stdin
+        )
       );
       return await channel.read();
     } finally {
@@ -308,7 +318,11 @@ export class TeamVaultCryptoService {
     identityOutDir: string,
     callbacks: AgePtyPromptCallbacks
   ): Promise<{ recipient: string; identityFilePath: string }> {
-    const text = await runAgeCommandViaPty(resolveAgeBinary('age-plugin-yubikey'), ['--generate'], process.env, callbacks);
+    // Same app-wide serialization as `decryptWithIdentityFile` — this also talks PIV/PC-SC
+    // directly to the physical card.
+    const text = await withPkcs11Lock(() =>
+      runAgeCommandViaPty(resolveAgeBinary('age-plugin-yubikey'), ['--generate'], process.env, callbacks)
+    );
     const recipientMatch = text.match(/age1yubikey1\S+/);
     if (!recipientMatch) {
       throw new Error('age-plugin-yubikey --generate did not produce a recipient string');

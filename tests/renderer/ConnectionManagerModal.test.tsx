@@ -585,6 +585,34 @@ describe('ConnectionManagerModal', () => {
       });
     });
 
+    it('unlocks "Unlock all" targets one at a time, not concurrently, and surfaces which ones failed', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        lockedStatus({ vaultId: 'vlt_1', vaultName: 'Acme Infra Team' }),
+        lockedStatus({ vaultId: 'vlt_2', vaultName: 'Beta Team' }),
+      ]);
+      let concurrentCalls = 0;
+      let maxConcurrentCalls = 0;
+      window.multissh.teamVaultUnlock = vi.fn(async (vaultId: string) => {
+        concurrentCalls += 1;
+        maxConcurrentCalls = Math.max(maxConcurrentCalls, concurrentCalls);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        concurrentCalls -= 1;
+        if (vaultId === 'vlt_2') throw new Error('touch timed out');
+      });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: /Unlock all/ })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Unlock all/ }));
+
+      await waitFor(() => expect(screen.getByText(/Failed to unlock: Beta Team/)).toBeInTheDocument());
+      expect(maxConcurrentCalls).toBe(1);
+      expect(window.multissh.teamVaultUnlock).toHaveBeenCalledTimes(2);
+    });
+
     it('lists shared SSH/S3 profiles once unlocked, separately from personal ones', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({

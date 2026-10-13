@@ -301,6 +301,28 @@ describe('TeamVaultCryptoService', () => {
       expect(mockCreateChannel).not.toHaveBeenCalled();
       expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
     });
+
+    it('serializes concurrent unwrapVaultKey calls app-wide (Pkcs11Lock) — two different vaults unlocked at once must never run age-plugin-yubikey concurrently against the same physical card', async () => {
+      fakeChannel();
+      let inFlight = 0;
+      let maxInFlight = 0;
+      mockRunAgeCommandViaPty.mockImplementation(async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        inFlight -= 1;
+        return '';
+      });
+
+      const service2 = new TeamVaultCryptoService();
+      await Promise.all([
+        service2.unwrapVaultKey('wrapped-blob-1', '/tmp/identity-1.txt', noopCallbacks()),
+        service2.unwrapVaultKey('wrapped-blob-2', '/tmp/identity-2.txt', noopCallbacks()),
+      ]);
+
+      expect(maxInFlight).toBe(1);
+      expect(mockRunAgeCommandViaPty).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('wrapVaultKeyForRecipient argument-injection guard', () => {

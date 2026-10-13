@@ -186,16 +186,24 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       (v) => !v.unlocked && v.vaultId && v.selfRecipientId && v.selfIdentityFilePath
     );
     setUnlockingAllTeams(true);
-    try {
-      await Promise.all(
-        targets.map((v) => window.multissh.teamVaultUnlock(v.vaultId!, v.selfRecipientId!, v.selfIdentityFilePath!))
-      );
-    } catch {
-      // Best-effort — any vault that failed just stays locked; its tab's own lock icon/unlock
-      // form (or the per-team quick-unlock button) is still there for a manual retry.
-    } finally {
-      await loadTeamVaultTabs();
-      setUnlockingAllTeams(false);
+    // One at a time, not Promise.all: every unlock here needs a touch on the physical
+    // smartcard, and firing them concurrently raced independent age-plugin-yubikey processes
+    // against the same USB token — one touch could only satisfy one of them, the other failed
+    // silently. The main process now also serializes this itself (TeamVaultCryptoService), but
+    // staying sequential here keeps the touch prompts in a clear, predictable one-at-a-time order
+    // instead of relying solely on that queue.
+    const failed: string[] = [];
+    for (const v of targets) {
+      try {
+        await window.multissh.teamVaultUnlock(v.vaultId!, v.selfRecipientId!, v.selfIdentityFilePath!);
+      } catch {
+        failed.push(v.vaultName || v.vaultId!);
+      }
+    }
+    await loadTeamVaultTabs();
+    setUnlockingAllTeams(false);
+    if (failed.length > 0) {
+      setError(`Failed to unlock: ${failed.join(', ')}`);
     }
   };
 
