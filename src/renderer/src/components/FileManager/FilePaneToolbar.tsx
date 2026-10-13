@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
-import { Breadcrumbs } from './Breadcrumbs';
+import { Breadcrumbs, type BreadcrumbsHandle } from './Breadcrumbs';
 import { DiskSpaceMenu } from './DiskSpaceMenu';
 import type { SourceType } from './types';
 
@@ -34,6 +34,8 @@ interface FilePaneToolbarProps {
   onOpenTerminal?: (path: string) => void;
   /** The git status entry, rendered between the breadcrumbs and the action groups. */
   children?: React.ReactNode;
+  /** Lets the pane's keydown handler trigger path-editing (Ctrl+L/Alt+D, §25). */
+  breadcrumbsRef?: React.Ref<BreadcrumbsHandle>;
 }
 
 /** Navigation buttons, breadcrumbs and the file action groups above the file list. */
@@ -63,6 +65,7 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   setSearchOpen,
   onOpenTerminal,
   children,
+  breadcrumbsRef,
 }) => (
   <div className="flex flex-col gap-0.5 border-b border-divider bg-app-surface-subtle px-2 py-0.5">
     <div className="flex items-center gap-1">
@@ -242,6 +245,6 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
     </div>
 
     {/* Breadcrumb bar gets its own row so the path is never squeezed out by the icon groups above. */}
-    <Breadcrumbs currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
+    <Breadcrumbs ref={breadcrumbsRef} currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
   </div>
 );

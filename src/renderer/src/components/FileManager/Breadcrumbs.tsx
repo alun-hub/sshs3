@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { classNames, pathSegments } from '../../lib/format';
 
@@ -8,7 +8,16 @@ interface BreadcrumbsProps {
   onDropToPath?: (targetPath: string, e: React.DragEvent) => void;
 }
 
-export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigate, onDropToPath }) => {
+export interface BreadcrumbsHandle {
+  /** Enters path-editing mode with the whole path selected — used by FilePane's Ctrl+L/Alt+D
+   * shortcut (§25), the same convention browser address bars use. */
+  startEditing: () => void;
+}
+
+export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(function Breadcrumbs(
+  { currentPath, onNavigate, onDropToPath },
+  ref
+) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(currentPath);
   const [dragOverSegment, setDragOverSegment] = useState<string | null>(null);
@@ -24,6 +33,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
     }
     springTargetRef.current = null;
   }, []);
+
+  useImperativeHandle(ref, () => ({
+    startEditing: () => setEditing(true),
+  }));
 
   useEffect(() => {
     setDraft(currentPath);
@@ -161,6 +174,6 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ currentPath, onNavigat
       </button>
     </div>
   );
-};
+});
 
 export default Breadcrumbs;

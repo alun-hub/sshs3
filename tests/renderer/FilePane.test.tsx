@@ -278,4 +278,35 @@ describe('FilePane Home Button', () => {
     fireEvent.doubleClick(row);
     expect((await screen.findByTestId('editor')).getAttribute('data-tail')).toBe('false');
   });
+
+  it('enters breadcrumb path-editing on Ctrl+L and Alt+D (§25)', async () => {
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    const pane = screen.getByTestId('file-pane-left');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(pane, { key: 'l', ctrlKey: true });
+    const input = (await screen.findByRole('textbox')) as HTMLInputElement;
+    expect(input.value).toBe('/var/log');
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(pane, { key: 'd', altKey: true });
+    expect(await screen.findByRole('textbox')).toBeInTheDocument();
+  });
 });

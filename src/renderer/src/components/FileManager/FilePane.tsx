@@ -15,6 +15,7 @@ import { buildContextMenuItems } from './filePaneContextMenu';
 import { FilePaneModals } from './FilePaneModals';
 import { GitStatusMenu } from './GitStatusMenu';
 import { FilePaneToolbar } from './FilePaneToolbar';
+import type { BreadcrumbsHandle } from './Breadcrumbs';
 import { FilePaneFilterBar } from './FilePaneFilterBar';
 import { useNavHistory } from '../../lib/useNavHistory';
 import { SOURCE_ICONS } from './filePaneHelpers';
@@ -597,6 +598,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   });
 
   const SourceIcon = SOURCE_ICONS[source.sourceType];
+  const breadcrumbsRef = useRef<BreadcrumbsHandle>(null);
   const isReceivingForeignDrag = activeDrag !== null && activeDrag.fromPane !== side;
 
   const handlePaneKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -631,6 +633,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (e.key === 'ArrowRight' && e.altKey) {
       e.preventDefault();
       handleGoForward();
+      return;
+    }
+
+    // Browser-address-bar convention (§25): edit the path with the whole thing selected.
+    if ((e.key === 'l' && (e.ctrlKey || e.metaKey)) || (e.key === 'd' && e.altKey)) {
+      e.preventDefault();
+      breadcrumbsRef.current?.startEditing();
       return;
     }
 
@@ -739,6 +748,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* Pane Action Toolbar */}
       <FilePaneToolbar
+        breadcrumbsRef={breadcrumbsRef}
         sourceType={source.sourceType}
         providerId={source.providerId}
         currentPath={currentPath}
