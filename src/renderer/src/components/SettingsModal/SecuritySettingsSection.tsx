@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Shield, CheckCircle2, Lock, ShieldAlert, Globe } from 'lucide-react';
 import { IS_WINDOWS } from '../../lib/platform';
 import { pkcs11LibDisplayName } from '../../lib/smartcard';
@@ -20,6 +20,9 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setDetectingSmartcard,
     credentialEncryptionAvailable,
   } = form;
+  // Which PIN-caching card's full explanation is expanded (§26: one sentence + "Learn more",
+  // not a text wall by default) — at most one at a time.
+  const [expandedCachingMode, setExpandedCachingMode] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -85,10 +88,24 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <Lock className="h-3.5 w-3.5 text-emerald-400" />
               <span>Always Prompt (Default)</span>
             </div>
-            <span className="text-xs text-txt-muted leading-tight">
-              No caching. Every connection that needs the {IS_WINDOWS ? 'card' : 'card or security key'} (terminal, dotfiles sync) prompts for its
-              own PIN. Use this if your organization requires re-authentication on every login.
-            </span>
+            <span className="text-xs text-txt-muted leading-tight">No caching — every connection prompts for its own PIN.</span>
+            {expandedCachingMode === 'always-prompt' ? (
+              <span className="text-xs text-txt-muted leading-tight">
+                Every connection that needs the {IS_WINDOWS ? 'card' : 'card or security key'} (terminal, dotfiles sync) prompts for its
+                own PIN. Use this if your organization requires re-authentication on every login.
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setExpandedCachingMode('always-prompt');
+                }}
+                className="self-start text-2xs font-medium text-sky-400 hover:underline"
+              >
+                Learn more
+              </button>
+            )}
           </label>
 
           <label
@@ -109,11 +126,25 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <Shield className="h-3.5 w-3.5 text-sky-400" />
               <span>Once Per Terminal Connection</span>
             </div>
-            <span className="text-xs text-txt-muted leading-tight">
-              {IS_WINDOWS
-                ? 'Enter the PIN once; the card is loaded into the Windows ssh-agent service for that terminal tab and its dotfiles sync. It is removed again as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'
-                : 'Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'}
-            </span>
+            <span className="text-xs text-txt-muted leading-tight">One PIN per terminal tab; cleared when it disconnects.</span>
+            {expandedCachingMode === 'agent-per-session' ? (
+              <span className="text-xs text-txt-muted leading-tight">
+                {IS_WINDOWS
+                  ? 'Enter the PIN once; the card is loaded into the Windows ssh-agent service for that terminal tab and its dotfiles sync. It is removed again as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'
+                  : 'Enter the PIN once into a private, app-managed ssh-agent shared by that terminal tab and its dotfiles sync. Discarded as soon as that terminal disconnects — logging back in (even in the same app run) asks for the PIN again.'}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setExpandedCachingMode('agent-per-session');
+                }}
+                className="self-start text-2xs font-medium text-sky-400 hover:underline"
+              >
+                Learn more
+              </button>
+            )}
           </label>
 
           <label
@@ -135,10 +166,26 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <span>Global (App Lifetime)</span>
             </div>
             <span className="text-xs text-txt-muted leading-tight">
-              Enter the PIN once per {IS_WINDOWS ? 'card' : 'card or key'}, shared by every terminal and profile using it, for as long as
-              the app runs. Most convenient, least strict — anything in the app can use the {IS_WINDOWS ? 'card' : 'card/key'} until
-              you quit or lock it manually below.{IS_WINDOWS ? ' On Windows the card is held by the shared ssh-agent service, so other programs using that agent can use it too.' : ' Everything unlocked lives in one app-wide ssh-agent, which local terminals use (Settings → Local Terminal SSH Agent) — also tabs opened before you unlocked.'}
+              One PIN per {IS_WINDOWS ? 'card' : 'card or key'}, shared app-wide until you quit or lock it.
             </span>
+            {expandedCachingMode === 'agent-global' ? (
+              <span className="text-xs text-txt-muted leading-tight">
+                Enter the PIN once per {IS_WINDOWS ? 'card' : 'card or key'}, shared by every terminal and profile using it, for as long as
+                the app runs. Most convenient, least strict — anything in the app can use the {IS_WINDOWS ? 'card' : 'card/key'} until
+                you quit or lock it manually below.{IS_WINDOWS ? ' On Windows the card is held by the shared ssh-agent service, so other programs using that agent can use it too.' : ' Everything unlocked lives in one app-wide ssh-agent, which local terminals use (Settings → Terminal → Local Terminal SSH Agent) — also tabs opened before you unlocked.'}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setExpandedCachingMode('agent-global');
+                }}
+                className="self-start text-2xs font-medium text-sky-400 hover:underline"
+              >
+                Learn more
+              </button>
+            )}
           </label>
         </div>
 

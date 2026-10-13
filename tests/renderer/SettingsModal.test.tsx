@@ -387,4 +387,23 @@ describe('SettingsModal', () => {
     expect(screen.getByText('No matching settings.')).toBeInTheDocument();
     expect(screen.queryByRole('tablist')?.querySelectorAll('[role="tab"]')).toHaveLength(0);
   });
+
+  it('shows a one-sentence summary for each PIN-caching option, expanding to the full explanation only via "Learn more"', () => {
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Security/ }));
+
+    expect(screen.getByText('No caching — every connection prompts for its own PIN.')).toBeInTheDocument();
+    expect(screen.queryByText(/Use this if your organization requires re-authentication/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Learn more' })[0]);
+    expect(screen.getByText(/Use this if your organization requires re-authentication/)).toBeInTheDocument();
+  });
 });
