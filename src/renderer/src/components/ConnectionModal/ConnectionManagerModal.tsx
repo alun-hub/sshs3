@@ -196,6 +196,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     for (const v of targets) {
       try {
         await window.multissh.teamVaultUnlock(v.vaultId!, v.selfRecipientId!, v.selfIdentityFilePath!);
+        // TeamProfileTreeList owns its own independent per-vault status/payload cache (entries),
+        // never refreshed just because a sibling-triggered unlock happened — without this, the
+        // actual panel content for that team (not just this tab row's lock icon) stayed stale
+        // until the component happened to unmount/remount (e.g. switching to Personal and back).
+        // Same pattern this modal already uses after other cross-component mutations (the
+        // edit-form save flow, below).
+        await teamProfileTreeListRef.current?.refreshVault(v.vaultId!);
       } catch {
         failed.push(v.vaultName || v.vaultId!);
       }

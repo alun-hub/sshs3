@@ -613,6 +613,46 @@ describe('ConnectionManagerModal', () => {
       expect(window.multissh.teamVaultUnlock).toHaveBeenCalledTimes(2);
     });
 
+    it('refreshes the active team\'s own panel content after "Unlock all", without navigating away (TeamProfileTreeList keeps its own status cache)', async () => {
+      const unlockedVaultIds = new Set<string>();
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        lockedStatus({ vaultId: 'vlt_1', vaultName: 'Acme Infra Team' }),
+        lockedStatus({ vaultId: 'vlt_2', vaultName: 'Beta Team' }),
+      ]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockImplementation((vaultId: string) =>
+        Promise.resolve(
+          unlockedVaultIds.has(vaultId)
+            ? unlockedStatus({ vaultId, vaultName: vaultId === 'vlt_1' ? 'Acme Infra Team' : 'Beta Team' })
+            : lockedStatus({ vaultId, vaultName: vaultId === 'vlt_1' ? 'Acme Infra Team' : 'Beta Team' })
+        )
+      );
+      window.multissh.teamVaultUnlock = vi.fn(async (vaultId: string) => {
+        unlockedVaultIds.add(vaultId);
+      });
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
+        ssh: [{ id: 'team-ssh-1', name: 'Shared Bastion', host: 'bastion.example.com', username: 'ops', authType: 'password' }],
+        s3: [],
+      });
+
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+
+      // Stay on Acme Infra Team's own tab — TeamProfileTreeList mounts and caches its (locked) status.
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.getByText('Acme Infra Team is locked')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Unlock all/ }));
+
+      // Must show the actual unlocked profile list directly — not just the tab row's lock icon —
+      // without the user switching away to Personal and back first.
+      await waitFor(() => expect(screen.getByText('Shared Bastion')).toBeInTheDocument());
+      expect(screen.queryByText('Acme Infra Team is locked')).not.toBeInTheDocument();
+    });
+
     it('lists shared SSH/S3 profiles once unlocked, separately from personal ones', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
