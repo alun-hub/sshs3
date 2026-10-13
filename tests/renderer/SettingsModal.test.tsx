@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../src/shared/types/settings';
 
 describe('SettingsModal', () => {
@@ -40,7 +41,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('Default Tab Type')).toBeInTheDocument();
 
     // Click on Terminal category tab
-    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
     expect(screen.getByText('Terminal Font Size')).toBeInTheDocument();
     expect(screen.getByText('13 px')).toBeInTheDocument();
   });
@@ -65,7 +66,7 @@ describe('SettingsModal', () => {
     fireEvent.click(screen.getByText('File Manager'));
 
     // Switch to Terminal tab to change font size
-    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
     const numInput = screen.getAllByRole('spinbutton')[0];
     fireEvent.change(numInput, { target: { value: '16' } });
     expect(screen.getByText('16 px')).toBeInTheDocument();
@@ -176,7 +177,7 @@ describe('SettingsModal', () => {
     );
 
     // Click on Terminal category tab
-    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
 
     expect(screen.getByText('On Logout / Session End')).toBeInTheDocument();
     expect(screen.getByText('Reconnect (Default)')).toBeInTheDocument();
@@ -211,7 +212,7 @@ describe('SettingsModal', () => {
     );
 
     // Click on Terminal category tab
-    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
 
     expect(screen.getByText('Local X11 Server (GUI Forwarding)')).toBeInTheDocument();
     expect(screen.getByText('Auto-start (Default)')).toBeInTheDocument();
@@ -258,7 +259,7 @@ describe('SettingsModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
 
     expect(await screen.findByText(/Linux system detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Native display support active/i)).toBeInTheDocument();
@@ -281,7 +282,7 @@ describe('SettingsModal', () => {
 
     // Switch to Kubernetes tab
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Kubernetes/ }));
+      fireEvent.click(screen.getByRole('tab', { name: /Kubernetes/ }));
     });
 
     expect(screen.getByText('Enable OpenShift Support')).toBeInTheDocument();
@@ -305,5 +306,62 @@ describe('SettingsModal', () => {
       })
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('navigates the sidebar as a vertical tablist with ArrowUp/ArrowDown, wrapping at the ends', () => {
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const tablist = screen.getByRole('tablist', { name: 'Settings categories' });
+    expect(tablist).toBeInTheDocument();
+
+    const general = screen.getByRole('tab', { name: 'General' });
+    const terminal = screen.getByRole('tab', { name: 'Terminal' });
+    expect(general).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(general, { key: 'ArrowDown' });
+    expect(terminal).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(terminal);
+
+    fireEvent.keyDown(terminal, { key: 'ArrowUp' });
+    expect(general).toHaveAttribute('aria-selected', 'true');
+
+    // Wraps from the first tab to the last on ArrowUp.
+    fireEvent.keyDown(general, { key: 'ArrowUp' });
+    expect(screen.getByRole('tab', { name: 'Keyboard Shortcuts' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('keeps the same Cancel/Save Settings buttons in the footer for every category, including Sync and Team Vault', async () => {
+    render(
+      <ConfirmProvider>
+        <SettingsModal
+          open={true}
+          currentSettings={DEFAULT_SETTINGS}
+          onSave={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </ConfirmProvider>
+    );
+
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    expect(screen.getByText('Save Settings')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: /Synchronization/ }));
+    });
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    expect(screen.getByText('Save Settings')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: /Team Vault/ }));
+    });
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    expect(screen.getByText('Save Settings')).toBeInTheDocument();
   });
 });

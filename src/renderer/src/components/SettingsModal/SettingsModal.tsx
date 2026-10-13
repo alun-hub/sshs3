@@ -52,6 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // sentence. Track scroll position and fade a gradient in/out at the
   // bottom edge whenever there's unscrolled content beneath it.
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const sidebarButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const updateScrollShadow = useCallback(() => {
     const el = contentRef.current;
@@ -98,6 +99,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ],
     },
   ];
+  const allCategories = categoryGroups.flatMap((g) => g.items);
 
   return (
     <div
@@ -129,8 +131,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Body with Sidebar & Content */}
         <div className="flex flex-1 min-h-0">
-          {/* Sidebar */}
-          <aside className="w-52 shrink-0 overflow-y-auto border-r border-divider bg-app-surface p-2.5 flex flex-col gap-3">
+          {/* Sidebar — a vertical tablist (§26): Up/Down moves between categories regardless of
+              group, wrapping at the ends; group headers are purely visual dividers. */}
+          <aside
+            role="tablist"
+            aria-orientation="vertical"
+            aria-label="Settings categories"
+            className="w-52 shrink-0 overflow-y-auto border-r border-divider bg-app-surface p-2.5 flex flex-col gap-3"
+          >
             {categoryGroups.map(({ group, items }) => (
               <div key={group} className="flex flex-col gap-1">
                 <div className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
@@ -143,7 +151,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <button
                       key={cat.id}
                       type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
                       onClick={() => setActiveCategory(cat.id)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                        e.preventDefault();
+                        const idx = allCategories.findIndex((c) => c.id === cat.id);
+                        const nextIdx =
+                          e.key === 'ArrowDown'
+                            ? (idx + 1) % allCategories.length
+                            : (idx - 1 + allCategories.length) % allCategories.length;
+                        const next = allCategories[nextIdx];
+                        setActiveCategory(next.id);
+                        sidebarButtonRefs.current[next.id]?.focus();
+                      }}
+                      ref={(el) => {
+                        sidebarButtonRefs.current[cat.id] = el;
+                      }}
                       className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-left transition-colors ${
                         isActive
                           ? 'bg-sky-500/15 text-sky-400 font-semibold'
@@ -210,40 +236,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
             </div>
 
-            {/* Modal Footer */}
+            {/* Modal Footer — same two buttons, same place, in every category (§26). Sync and
+                Team Vault save their own changes immediately, but submitting here is still
+                harmless: it re-saves the rest of the draft and closes, same as any other
+                category. */}
             <div className="flex items-center justify-end gap-2 border-t border-divider bg-app-surface px-5 py-3">
-              {activeCategory === 'sync' || activeCategory === 'team-vault' ? (
-                <>
-                  <p className="mr-auto text-xs text-txt-muted">
-                    {activeCategory === 'sync'
-                      ? 'Synchronization changes save immediately — nothing to save here.'
-                      : 'Team Vault changes save immediately — nothing to save here.'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-                  >
-                    Close
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-                  >
-                    Save Settings
-                  </button>
-                </>
+              {(activeCategory === 'sync' || activeCategory === 'team-vault') && (
+                <p className="mr-auto text-xs text-txt-muted">
+                  {activeCategory === 'sync'
+                    ? 'Synchronization changes save immediately.'
+                    : 'Team Vault changes save immediately.'}
+                </p>
               )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+              >
+                Save Settings
+              </button>
             </div>
           </form>
         </div>

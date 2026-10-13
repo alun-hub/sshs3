@@ -10,7 +10,7 @@ describe('SettingsModal performance bar section', () => {
 
   const open = (onSave = vi.fn()) => {
     render(<SettingsModal open currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /Performance/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Performance/ }));
     return onSave;
   };
 
@@ -38,9 +38,9 @@ describe('SettingsModal performance bar section', () => {
 
   it('lives in its own category, not under Terminal', () => {
     render(<SettingsModal open currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /^Terminal/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Terminal/ }));
     expect(screen.queryByTestId('perf-enabled')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Performance/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Performance/ }));
     expect(screen.getByTestId('perf-enabled')).toBeInTheDocument();
   });
 
