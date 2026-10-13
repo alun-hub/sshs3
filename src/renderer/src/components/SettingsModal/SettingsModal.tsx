@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch, Users } from 'lucide-react';
+import { Activity, Search, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch, Users } from 'lucide-react';
 import { type AppSettings } from '@shared/types/settings';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
@@ -53,6 +53,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // bottom edge whenever there's unscrolled content beneath it.
   const contentRef = useRef<HTMLDivElement | null>(null);
   const sidebarButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Filters the sidebar by category label (§26) — 11 categories is enough that scanning for one
+  // by eye is slower than typing a few letters.
+  const [categoryQuery, setCategoryQuery] = useState('');
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const updateScrollShadow = useCallback(() => {
     const el = contentRef.current;
@@ -99,7 +102,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ],
     },
   ];
-  const allCategories = categoryGroups.flatMap((g) => g.items);
+  const query = categoryQuery.trim().toLowerCase();
+  const visibleCategoryGroups = query
+    ? categoryGroups
+        .map((g) => ({ ...g, items: g.items.filter((c) => c.label.toLowerCase().includes(query)) }))
+        .filter((g) => g.items.length > 0)
+    : categoryGroups;
+  // Arrow-key navigation (§26) walks this list, not the unfiltered one — while a search is
+  // active, Up/Down should only ever land on a tab that's actually visible.
+  const visibleCategories = visibleCategoryGroups.flatMap((g) => g.items);
 
   return (
     <div
@@ -133,13 +144,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex flex-1 min-h-0">
           {/* Sidebar — a vertical tablist (§26): Up/Down moves between categories regardless of
               group, wrapping at the ends; group headers are purely visual dividers. */}
-          <aside
-            role="tablist"
-            aria-orientation="vertical"
-            aria-label="Settings categories"
-            className="w-52 shrink-0 overflow-y-auto border-r border-divider bg-app-surface p-2.5 flex flex-col gap-3"
-          >
-            {categoryGroups.map(({ group, items }) => (
+          <aside className="w-52 shrink-0 flex flex-col border-r border-divider bg-app-surface">
+            <div className="shrink-0 p-2.5 pb-1.5">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
+                <input
+                  type="text"
+                  value={categoryQuery}
+                  onChange={(e) => setCategoryQuery(e.target.value)}
+                  placeholder="Search settings..."
+                  aria-label="Search settings categories"
+                  className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-2.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                />
+              </div>
+            </div>
+            <div
+              role="tablist"
+              aria-orientation="vertical"
+              aria-label="Settings categories"
+              className="flex-1 min-h-0 overflow-y-auto p-2.5 pt-0 flex flex-col gap-3"
+            >
+            {visibleCategoryGroups.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-txt-muted">No matching settings.</p>
+            ) : (
+            visibleCategoryGroups.map(({ group, items }) => (
               <div key={group} className="flex flex-col gap-1">
                 <div className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
                   {group}
@@ -158,12 +186,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onKeyDown={(e) => {
                         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
                         e.preventDefault();
-                        const idx = allCategories.findIndex((c) => c.id === cat.id);
+                        const idx = visibleCategories.findIndex((c) => c.id === cat.id);
                         const nextIdx =
                           e.key === 'ArrowDown'
-                            ? (idx + 1) % allCategories.length
-                            : (idx - 1 + allCategories.length) % allCategories.length;
-                        const next = allCategories[nextIdx];
+                            ? (idx + 1) % visibleCategories.length
+                            : (idx - 1 + visibleCategories.length) % visibleCategories.length;
+                        const next = visibleCategories[nextIdx];
                         setActiveCategory(next.id);
                         sidebarButtonRefs.current[next.id]?.focus();
                       }}
@@ -182,7 +210,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   );
                 })}
               </div>
-            ))}
+            ))
+            )}
+            </div>
           </aside>
 
           {/* Form Content Area */}

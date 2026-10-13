@@ -364,4 +364,27 @@ describe('SettingsModal', () => {
     expect(screen.getByText('Cancel')).toBeInTheDocument();
     expect(screen.getByText('Save Settings')).toBeInTheDocument();
   });
+
+  it('filters the sidebar categories by the search field (§26)', () => {
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('tab', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Git & GitHub' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Search settings...'), { target: { value: 'git' } });
+
+    expect(screen.getByRole('tab', { name: 'Git & GitHub' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'General' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Search settings...'), { target: { value: 'nonexistent' } });
+    expect(screen.getByText('No matching settings.')).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')?.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  });
 });
