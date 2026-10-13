@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DualPaneExplorer } from '../../src/renderer/src/components/FileManager/DualPaneExplorer';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
@@ -104,5 +104,21 @@ describe('DualPaneExplorer SFTP default start path', () => {
       window.dispatchEvent(new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'right' }));
     });
     expect(document.activeElement).toBe(list);
+  });
+
+  it('renders a resizable divider between the two file panes (§23)', async () => {
+    render(
+      <ConfirmProvider>
+        <DualPaneExplorer />
+      </ConfirmProvider>
+    );
+    await screen.findByTestId('file-pane-left');
+
+    const divider = screen.getByRole('separator', { name: 'Resize file panes' });
+    expect(divider).toBeInTheDocument();
+    expect(divider).toHaveAttribute('aria-valuenow', '50');
+
+    fireEvent.doubleClick(divider);
+    expect(divider).toHaveAttribute('aria-valuenow', '50');
   });
 });

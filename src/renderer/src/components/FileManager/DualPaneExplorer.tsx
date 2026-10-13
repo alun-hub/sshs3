@@ -7,6 +7,7 @@ import type { K8sTerminalTarget, K8sStorageConfig } from '@shared/types/kubernet
 import { ConnectionManagerModal } from '../ConnectionModal/ConnectionManagerModal';
 import { DragDropProvider } from './DragDropLayer';
 import { FilePane } from './FilePane';
+import { SplitDivider } from '../ui/SplitDivider';
 import { TransferQueueDrawer } from './TransferQueueDrawer';
 import { FILEMANAGER_FOCUS_SIDE_EVENT, type PaneSide, type PaneSource, type SourceType } from './types';
 import type { TransferConflictResolution } from '@shared/types/ipc';
@@ -70,6 +71,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   useModalDismiss(() => setPasswordPrompt(null), !!passwordPrompt, !connecting);
   const [savePasswordToProfile, setSavePasswordToProfile] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [splitRatio, setSplitRatio] = useState(0.5);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
 
@@ -619,7 +622,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         {initError && (
           <div className="border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">{initError}</div>
         )}
-        <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
+        <div ref={splitContainerRef} className="flex min-h-0 flex-1 p-1.5">
+          <div style={{ flexGrow: splitRatio, flexBasis: 0, minWidth: 0 }} className="flex min-w-0">
           <FilePane
             side="left"
             source={panes.left.source}
@@ -636,6 +640,15 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             showHiddenFiles={showHiddenFiles}
             gitIntegrationEnabled={gitIntegrationEnabled}
           />
+          </div>
+          <SplitDivider
+            orientation="vertical"
+            ratio={splitRatio}
+            onChange={setSplitRatio}
+            containerRef={splitContainerRef}
+            label="Resize file panes"
+          />
+          <div style={{ flexGrow: 1 - splitRatio, flexBasis: 0, minWidth: 0 }} className="flex min-w-0">
           <FilePane
             side="right"
             source={panes.right.source}
@@ -652,6 +665,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             showHiddenFiles={showHiddenFiles}
             gitIntegrationEnabled={gitIntegrationEnabled}
           />
+          </div>
         </div>
         <TransferQueueDrawer />
       </div>
