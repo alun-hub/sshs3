@@ -388,6 +388,29 @@ describe('SettingsModal', () => {
     expect(screen.queryByRole('tablist')?.querySelectorAll('[role="tab"]')).toHaveLength(0);
   });
 
+  it('switches the active category away when a search filters it out, keeping a visible tab selected and reachable', () => {
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' }));
+    expect(screen.getByText('Terminal Font Size')).toBeInTheDocument();
+
+    // Narrows the sidebar to a set that excludes the currently active "Terminal" category.
+    fireEvent.change(screen.getByPlaceholderText('Search settings...'), { target: { value: 'git' } });
+
+    const gitTab = screen.getByRole('tab', { name: 'Git & GitHub' });
+    expect(gitTab).toHaveAttribute('aria-selected', 'true');
+    expect(gitTab).toHaveAttribute('tabIndex', '0');
+    // The content pane follows: it must not keep showing the now-hidden Terminal category.
+    expect(screen.queryByText('Terminal Font Size')).not.toBeInTheDocument();
+  });
+
   it('shows a one-sentence summary for each PIN-caching option, expanding to the full explanation only via "Learn more"', () => {
     render(
       <SettingsModal

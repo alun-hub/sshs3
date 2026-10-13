@@ -67,9 +67,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     updateScrollShadow();
   }, [activeCategory, updateScrollShadow]);
 
-  if (!open) return null;
-
-
   // Grouped under short section headers (UX review #9) so a 7-item sidebar
   // scans faster than one flat list.
   const categoryGroups: {
@@ -111,6 +108,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Arrow-key navigation (§26) walks this list, not the unfiltered one — while a search is
   // active, Up/Down should only ever land on a tab that's actually visible.
   const visibleCategories = visibleCategoryGroups.flatMap((g) => g.items);
+
+  // Keeps the active tab always one of the visible ones: narrowing the search to a set that
+  // excludes the current category would otherwise leave every tab unselected (and, since each
+  // non-active tab is tabIndex={-1}, keyboard-unreachable) while the content pane kept showing
+  // the now-hidden category.
+  useEffect(() => {
+    if (visibleCategories.length === 0) return;
+    if (!visibleCategories.some((c) => c.id === activeCategory)) {
+      setActiveCategory(visibleCategories[0].id);
+    }
+    // Deliberately keyed on the query/activeCategory primitives, not the `visibleCategories`
+    // array itself (a fresh reference every render) — this only needs to re-check when the
+    // search term or the selected tab actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, activeCategory]);
+
+  if (!open) return null;
 
   return (
     <div
