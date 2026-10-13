@@ -233,25 +233,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     }
   };
 
-  // "Unlock all" (§12): only attempts vaults where the quick "Unlock as <id>" identity was
-  // already prefilled from a prior session (same gate the per-vault quick-unlock button uses) —
-  // a vault that needs a manually-entered identity is left for the member to unlock by hand.
-  const unlockAll = useCallback(async () => {
-    const targets = vaultOrder.filter((vaultId) => {
-      const entry = entries[vaultId];
-      return (
-        entry &&
-        !entry.status.unlocked &&
-        !entry.showManualUnlock &&
-        entry.unlockRecipientId.trim() &&
-        entry.unlockIdentityPath.trim()
-      );
-    });
-    await Promise.all(targets.map((vaultId) => handleUnlock(vaultId)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultOrder, entries]);
-
-  useImperativeHandle(ref, () => ({ refreshVault, unlockAll }), [refreshVault, unlockAll]);
+  useImperativeHandle(ref, () => ({ refreshVault }), [refreshVault]);
 
   const handleCloneSSH = async (vaultId: string, profile: SSHConnectionConfig) => {
     const clone: SSHConnectionConfig = { ...profile, id: crypto.randomUUID(), name: `${profile.name} (Copy)` };

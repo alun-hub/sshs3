@@ -174,6 +174,31 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
+  // "Unlock all" (§12) — deliberately independent of whether a `TeamProfileTreeList` happens to
+  // be mounted (it only mounts once a team tab is selected, or a search is active — see its own
+  // mount condition below): calling straight through to `teamVaultUnlock` here means the button,
+  // visible from the tab row in every view including Personal, always actually does something.
+  // Same gate as the per-team quick "Unlock as <id>" button: only vaults with an already-known
+  // identity are attempted.
+  const [unlockingAllTeams, setUnlockingAllTeams] = useState(false);
+  const handleUnlockAllTeams = async () => {
+    const targets = visibleTeamVaultTabs.filter(
+      (v) => !v.unlocked && v.vaultId && v.selfRecipientId && v.selfIdentityFilePath
+    );
+    setUnlockingAllTeams(true);
+    try {
+      await Promise.all(
+        targets.map((v) => window.multissh.teamVaultUnlock(v.vaultId!, v.selfRecipientId!, v.selfIdentityFilePath!))
+      );
+    } catch {
+      // Best-effort — any vault that failed just stays locked; its tab's own lock icon/unlock
+      // form (or the per-team quick-unlock button) is still there for a manual retry.
+    } finally {
+      await loadTeamVaultTabs();
+      setUnlockingAllTeams(false);
+    }
+  };
+
   // Editing a team's description directly from its tab row — the same `teamVaultSetDescription`
   // call `TeamVaultDetailPanel` (Settings) makes, just reachable without leaving the Connection
   // Manager too. `editingTabDescription` holds the vaultId currently being edited (not a bool —
@@ -785,9 +810,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
               {visibleTeamVaultTabs.filter((v) => !v.unlocked).length > 1 && (
                 <button
                   type="button"
-                  onClick={() => void teamProfileTreeListRef.current?.unlockAll()}
+                  onClick={() => void handleUnlockAllTeams()}
+                  disabled={unlockingAllTeams}
                   title="Unlock every team that already has a saved identity"
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
                 >
                   <Unlock className="h-3.5 w-3.5" />
                   Unlock all

@@ -564,6 +564,27 @@ describe('ConnectionManagerModal', () => {
       });
     });
 
+    it('unlocks every ready vault from "Unlock all" straight from the default Personal view, without first opening a team tab', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([
+        lockedStatus({ vaultId: 'vlt_1', vaultName: 'Acme Infra Team' }),
+        lockedStatus({ vaultId: 'vlt_2', vaultName: 'Beta Team' }),
+      ]);
+      window.multissh.teamVaultUnlock = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: /Unlock all/ })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Unlock all/ }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('vlt_1', 'alice@piv:abc', '/tmp/alice-identity.txt');
+        expect(window.multissh.teamVaultUnlock).toHaveBeenCalledWith('vlt_2', 'alice@piv:abc', '/tmp/alice-identity.txt');
+      });
+    });
+
     it('lists shared SSH/S3 profiles once unlocked, separately from personal ones', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
