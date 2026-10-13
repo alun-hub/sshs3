@@ -365,6 +365,21 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       if (!remoteBasePath?.trim()) {
         throw new Error('An S3 target requires a bucket (optionally "bucket/prefix") to sync to');
       }
+      // Guards against an accidental/blank submission silently clobbering a previously-working
+      // secret (e.g. a renderer bug, or any other caller of this channel that doesn't round-trip
+      // the saved secret back the way the admin UI does) — never the admin-permission check
+      // guardS3SecretWrite does for shared member profiles, since this channel is already
+      // admin-only at the UI layer; purely "don't let blank silently beat real".
+      const existingTarget = (await bridge.teamVaultConfigStore.getConfig(vid)).target;
+      if (
+        target.s3Config &&
+        !target.s3Config.secretAccessKey &&
+        existingTarget?.type === 's3' &&
+        existingTarget.s3Config?.secretAccessKey &&
+        existingTarget.id === target.id
+      ) {
+        target.s3Config.secretAccessKey = existingTarget.s3Config.secretAccessKey;
+      }
       await bridge.teamVaultConfigStore.setTarget(vid, target, remoteBasePath);
       await bridge.storageRegistry.disconnect?.(target.id);
       // The (app-lifetime) TeamVaultService instance otherwise keeps comparing against whatever

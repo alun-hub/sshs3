@@ -168,6 +168,15 @@ export interface TeamVaultStatus {
    * `TeamVaultConfigStore`'s job) — only `IpcBridge.buildTeamVaultStatus()`, which merges both,
    * always sets it for a real IPC response. */
   remoteConfigured?: boolean;
+  /** Complete target connection configuration (decrypted), for autofilling the target editor
+   * form — same precedent `ProfileSyncStatus.targetConfig` already set for the general
+   * Synchronization settings panel, now matched here (the admin previously had to retype the
+   * bucket/region/credentials from scratch every time, since nothing round-tripped them back). */
+  targetConfig?: { type: 's3'; s3Config: S3Config };
+  /** `bucket[/prefix]` the vault syncs under — an S3 target carries no bucket of its own (see
+   * `TeamVaultService.remoteVaultPath`'s doc comment), so this is also needed to fully prefill
+   * the target editor form. */
+  remoteBasePath?: string;
   lastSyncAt?: string;
   /** This machine's last-known own recipient id / PIV identity file path (see
    * `TeamVaultConfigStore.setSelfIdentity`) — lets the UI prefill the unlock form instead of

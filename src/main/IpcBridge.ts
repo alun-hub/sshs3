@@ -1154,6 +1154,13 @@ export class IpcBridge {
       // is always the right one to report back, file or no file.
       vaultId: status.vaultId ?? vaultId,
       remoteConfigured: !!config.target,
+      // Decrypted, for autofilling the target editor form — same precedent buildSyncStatus()
+      // already set for the general Synchronization panel's own target (§ edit-target prefill).
+      targetConfig:
+        config.target?.type === 's3' && config.target.s3Config
+          ? { type: 's3', s3Config: config.target.s3Config }
+          : undefined,
+      remoteBasePath: config.remoteBasePath,
       lastSyncAt: config.lastSyncAt,
       selfRecipientId: config.selfRecipientId,
       selfIdentityFilePath,

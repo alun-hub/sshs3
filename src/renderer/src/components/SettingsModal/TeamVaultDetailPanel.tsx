@@ -17,7 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { TeamVaultRole, TeamVaultStatus, TeamVaultSyncPreview } from '@shared/types/teamVault';
-import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
+import { SyncTargetForm, emptySyncTargetDraft, draftFromTargetConfig, buildSyncTarget, type SyncTargetDraft } from './SyncTargetForm';
 import { describeIpcError } from '../../lib/format';
 import { formatDateTime } from '../../lib/dateFormat';
 import { parseTeamVaultJoinInfo } from '../../lib/teamVaultJoinInfo';
@@ -345,11 +345,16 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
     }
   };
 
-  // There's nothing to prefill from: the renderer never receives the saved target's secrets back
-  // (same principle as every other credential field in this app), so editing always starts from
-  // a blank S3 draft — the admin re-enters the target if they want to change it.
+  // Prefills from the saved target (same precedent the general Synchronization settings panel
+  // already set for its own target editor — see buildSyncStatus()/draftFromTargetConfig) rather
+  // than starting blank: the admin previously had to retype the bucket/region/credentials from
+  // scratch every time just to change one field.
   const openEditTarget = () => {
-    setTargetDraft(emptyS3TargetDraft());
+    setTargetDraft(
+      status?.targetConfig
+        ? draftFromTargetConfig(status.targetConfig, status.remoteBasePath ?? '')
+        : emptyS3TargetDraft()
+    );
     setTargetError(null);
     setEditingTarget(true);
   };

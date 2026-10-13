@@ -521,6 +521,36 @@ describe('Team Vault IPC handlers', () => {
       await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, TEAM_VAULT_PENDING_VAULT_ID, s3Target, 'team-bucket');
       expect(teamVaultConfigStore.setTarget).toHaveBeenCalledWith(TEAM_VAULT_PENDING_VAULT_ID, s3Target, 'team-bucket');
     });
+
+    it('preserves the existing secret when the same target is re-saved with a blank one (accidental-clobber guard)', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({
+        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+      });
+      const resubmitted = { id: 't1', name: 'Team bucket', type: 's3' as const, s3Config: { region: 'eu-north-1', secretAccessKey: '' } };
+
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, VAULT_ID, resubmitted, 'team-bucket');
+
+      expect(teamVaultConfigStore.setTarget).toHaveBeenCalledWith(
+        VAULT_ID,
+        expect.objectContaining({ s3Config: expect.objectContaining({ secretAccessKey: 'real-secret' }) }),
+        'team-bucket'
+      );
+    });
+
+    it('does not borrow a secret from a DIFFERENT target id (switching providers with a blank secret stays blank)', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({
+        target: { id: 'old-target', name: 'Old', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+      });
+      const newTarget = { id: 'new-target', name: 'New', type: 's3' as const, s3Config: { region: 'eu-north-1', secretAccessKey: '' } };
+
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, VAULT_ID, newTarget, 'team-bucket');
+
+      expect(teamVaultConfigStore.setTarget).toHaveBeenCalledWith(
+        VAULT_ID,
+        expect.objectContaining({ s3Config: expect.objectContaining({ secretAccessKey: '' }) }),
+        'team-bucket'
+      );
+    });
   });
 
   describe('TEAM_VAULT_GET_PAYLOAD / SAVE / DELETE (shared SSH & S3 profiles)', () => {

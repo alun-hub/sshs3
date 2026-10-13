@@ -453,6 +453,34 @@ describe('TeamVaultDetailPanel', () => {
       });
     });
 
+    it('prefills "Edit target" from the saved target instead of starting blank', async () => {
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          remoteConfigured: true,
+          remoteBasePath: 'team-bucket/prefix',
+          targetConfig: {
+            type: 's3',
+            s3Config: {
+              region: 'eu-north-1',
+              accessKeyId: 'AKIASAVED',
+              secretAccessKey: 'saved-secret',
+              endpoint: 'https://s3.example.com',
+            },
+          },
+        }),
+      });
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Edit target/i }));
+
+      expect(await screen.findByLabelText(/Region/i)).toHaveValue('eu-north-1');
+      expect(screen.getByLabelText(/Access Key ID/i)).toHaveValue('AKIASAVED');
+      expect(screen.getByLabelText(/Secret Access Key/i)).toHaveValue('saved-secret');
+      expect(screen.getByLabelText(/Bucket/i)).toHaveValue('team-bucket/prefix');
+    });
+
     it('pushes and pulls once a target is configured, scoped to this vaultId', async () => {
       mockApi({
         teamVaultGetStatus: vi
