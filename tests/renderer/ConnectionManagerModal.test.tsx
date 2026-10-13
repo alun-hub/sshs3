@@ -584,6 +584,45 @@ describe('ConnectionManagerModal', () => {
       expect(screen.queryByText('Prod Web 01')).not.toBeInTheDocument();
     });
 
+    it('shows "Also matches" for other sources while on Personal, and jumps to the team on click (§8)', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
+        ssh: [
+          { id: 'team-ssh-1', name: 'Shared Sandbox Host', host: 'sandbox.team.example.com', username: 'ops', authType: 'password' },
+        ],
+        s3: [],
+      });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/Search profiles/), { target: { value: 'sandbox' } });
+      await waitFor(() => expect(screen.getByText(/Acme Infra Team \(1\)/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText(/Acme Infra Team \(1\)/));
+      await waitFor(() => expect(screen.getByText('Shared Sandbox Host')).toBeInTheDocument());
+    });
+
+    it('shows a "Personal (N)" chip while searching inside a team, for matches back in Personal', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.getByText('No shared profiles yet')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/Search profiles/), { target: { value: 'sandbox' } });
+      await waitFor(() => expect(screen.getByText(/Personal \(1\)/)).toBeInTheDocument());
+    });
+
     it('flags a shared privateKey-authenticated profile as machine-local', async () => {
       window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
       window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({

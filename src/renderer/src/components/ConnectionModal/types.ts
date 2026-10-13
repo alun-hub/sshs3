@@ -32,6 +32,11 @@ export interface TeamVaultMeta {
    * icon in sync the moment `TeamProfileTreeList` unlocks/locks a vault, instead of waiting for
    * the next `loadTeamVaultTabs()` poll. */
   unlocked: boolean;
+  /** How many of this vault's profiles (of the active tab's type) match the current search query
+   * — lets `ConnectionManagerModal` tell the user "N more results in <team>" when searching from
+   * Personal or a different team (§8), without fetching every unlocked vault's full payload
+   * itself. 0 when `query` is empty. */
+  matchCount: number;
 }
 
 /** Imperative handle `TeamProfileTreeList` exposes via `forwardRef` — `ConnectionManagerModal`

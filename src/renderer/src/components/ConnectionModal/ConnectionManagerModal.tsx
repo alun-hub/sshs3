@@ -623,6 +623,23 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, filteredSSH, query), [filteredSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
+  // "N more results elsewhere" (§8): the search field only filters the active source
+  // (Personal, or one team), so surface — without switching away — whatever else matches in
+  // Personal and every other unlocked team, each one jump-to-able.
+  const otherSourceMatches = useMemo(() => {
+    if (!query || tab === 'k8s') return [];
+    const results: { key: string; label: string; count: number }[] = [];
+    if (source !== 'personal') {
+      const personalCount = tab === 'ssh' ? filteredSSH.length : filteredS3.length;
+      if (personalCount > 0) results.push({ key: 'personal', label: 'Personal', count: personalCount });
+    }
+    for (const meta of teamVaultsMeta) {
+      if (meta.vaultId === source || meta.matchCount === 0) continue;
+      results.push({ key: meta.vaultId, label: meta.vaultName || meta.vaultId, count: meta.matchCount });
+    }
+    return results;
+  }, [query, tab, source, filteredSSH, filteredS3, teamVaultsMeta]);
+
   // Collapsed state of the "Recently Used" box, remembered per viewer (best effort).
   const [recentCollapsed, setRecentCollapsed] = useState<boolean>(() => {
     try {
@@ -996,6 +1013,22 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                     )}
                   </div>
 
+                  {otherSourceMatches.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-2xs text-txt-muted">
+                      <span>Also matches:</span>
+                      {otherSourceMatches.map((m) => (
+                        <button
+                          key={m.key}
+                          type="button"
+                          onClick={() => setSource(m.key)}
+                          className="rounded-full border border-border-subtle bg-app-surface px-2 py-0.5 text-txt-secondary hover:border-sky-500/40 hover:text-sky-400 transition-colors"
+                        >
+                          {m.label} ({m.count})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Inline New Folder Input */}
                   {source === 'personal' && newFolderOpen && (
                     <div className="flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-950/20 p-2 animate-in fade-in duration-100">
@@ -1231,7 +1264,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {tab === 'ssh' && source !== 'personal' && (
+              {tab === 'ssh' && (source !== 'personal' || query) && (
+                // Mounted while on Personal too, but only once there's a query (§8):
+                // activeVaultId="personal" matches no real vaultId, so this renders nothing
+                // visible either way — but mounting it unconditionally would fetch every
+                // unlocked team's payload just for browsing Personal with nothing typed, which
+                // defeats the lazy-fetch design TeamProfileTreeList otherwise relies on (see its
+                // own doc comment). Gating on `query` limits that eager fetch to exactly the
+                // moment the "N more results elsewhere" notice below actually needs the data.
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
                   tab="ssh"
@@ -1349,7 +1389,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
-              {tab === 's3' && source !== 'personal' && (
+              {tab === 's3' && (source !== 'personal' || query) && (
+                // See the "ssh" mount above for why this is gated on `query` while on Personal.
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
                   tab="s3"

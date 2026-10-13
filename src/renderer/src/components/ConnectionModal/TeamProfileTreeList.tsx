@@ -167,6 +167,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
   // folder-suggestion autocomplete, but has no other way to know (it doesn't fetch payloads
   // itself any more).
   useEffect(() => {
+    const trimmedQuery = query.trim().toLowerCase();
     const metas: TeamVaultMeta[] = vaultOrder
       .map((vaultId) => entries[vaultId])
       .filter((e): e is VaultEntry => !!e)
@@ -176,10 +177,15 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
         isAdmin: !!e.status.members?.some((m) => m.recipientId === e.status.selfRecipientId && m.role === 'admin'),
         folderSuggestions: collectTeamFolderSuggestions(e.payload?.folders ?? [], e.payload?.ssh ?? [], e.payload?.s3 ?? []),
         unlocked: e.status.unlocked,
+        matchCount: !trimmedQuery
+          ? 0
+          : tab === 'ssh'
+            ? filterSshProfiles(e.payload?.ssh ?? [], trimmedQuery).length
+            : filterS3Profiles(e.payload?.s3 ?? [], trimmedQuery).length,
       }));
     onVaultsMetaChange(metas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, vaultOrder]);
+  }, [entries, vaultOrder, tab, query]);
 
   const updateEntry = (vaultId: string, patch: Partial<VaultEntry>) => {
     setEntries((prev) => (prev[vaultId] ? { ...prev, [vaultId]: { ...prev[vaultId], ...patch } } : prev));
