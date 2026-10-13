@@ -309,4 +309,33 @@ describe('FilePane Home Button', () => {
     fireEvent.keyDown(pane, { key: 'd', altKey: true });
     expect(await screen.findByRole('textbox')).toBeInTheDocument();
   });
+
+  it('shows item count, selection count, and selected size in the status bar (§24)', async () => {
+    (window as any).multissh.storageList = vi.fn().mockResolvedValue([
+      { name: 'a.txt', path: '/var/log/a.txt', size: 1024, isDirectory: false },
+      { name: 'b.txt', path: '/var/log/b.txt', size: 2048, isDirectory: false },
+    ]);
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await screen.findByText('a.txt');
+    expect(screen.getByText('2 items')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('a.txt'));
+    expect(screen.getByText(/1 selected.*1\.00 KB/)).toBeInTheDocument();
+  });
 });

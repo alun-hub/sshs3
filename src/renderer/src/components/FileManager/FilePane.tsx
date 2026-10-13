@@ -5,7 +5,7 @@ import {
 import type { FileEntry } from '@shared/types/storage';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import type { GitRepoStatus } from '@shared/types/git';
-import { joinPath, parentPath, describeIpcError } from '../../lib/format';
+import { joinPath, parentPath, describeIpcError, formatBytes } from '../../lib/format';
 import { FileList } from './FileList';
 import { useDragDrop } from './DragDropContext';
 import { useConfirm } from '../ConfirmDialog';
@@ -869,6 +869,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
           }
           onDeleteSelected={() => void handleDelete()}
         />
+      </div>
+
+      {/* Status Bar (§24): item count, selection count, and total size of the selection. */}
+      <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface-subtle px-2.5 py-1 text-2xs text-txt-muted">
+        <span>
+          {visibleEntries.length} item{visibleEntries.length === 1 ? '' : 's'}
+        </span>
+        {selectedEntries.length > 0 && (
+          <span>
+            {selectedEntries.length} selected
+            {selectedEntries.some((e) => typeof e.size === 'number') &&
+              ` · ${formatBytes(selectedEntries.reduce((sum, e) => sum + (e.size ?? 0), 0))}`}
+          </span>
+        )}
       </div>
 
       {contextMenu && (
