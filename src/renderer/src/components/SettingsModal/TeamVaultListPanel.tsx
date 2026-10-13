@@ -99,16 +99,18 @@ export const TeamVaultListPanel: React.FC = () => {
       const statuses = await window.multissh.teamVaultList();
       setVaults(statuses);
       // Shown per-row (§15) — best-effort, so a failed preview for one team never blocks the
-      // rest of the list from loading.
+      // rest of the list from loading. Fetched one at a time, not via Promise.all: several
+      // vaults can share the same S3 target, and firing concurrent HEAD requests through it hit
+      // real-world "SignatureDoesNotMatch" failures against at least one S3-compatible endpoint.
       const remoteConfigured = statuses.filter((v) => v.remoteConfigured && v.vaultId);
-      const previews = await Promise.all(
-        remoteConfigured.map((v) =>
-          window.multissh
-            .teamVaultGetSyncPreview(v.vaultId!)
-            .then((preview) => [v.vaultId!, preview] as const)
-            .catch(() => [v.vaultId!, { hasUnpushedLocalChanges: false, remoteChanged: false }] as const)
-        )
-      );
+      const previews: Array<readonly [string, TeamVaultSyncPreview]> = [];
+      for (const v of remoteConfigured) {
+        try {
+          previews.push([v.vaultId!, await window.multissh.teamVaultGetSyncPreview(v.vaultId!)]);
+        } catch {
+          previews.push([v.vaultId!, { hasUnpushedLocalChanges: false, remoteChanged: false }]);
+        }
+      }
       setSyncPreviews(Object.fromEntries(previews));
     } catch (err) {
       setError(describeIpcError(err, 'Failed to load the list of teams'));
