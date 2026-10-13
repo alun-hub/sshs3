@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Clock, Cloud, Folder, Plus, Server, Terminal } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SftpButton } from './SftpButton';
 import { Shortcut } from './ui/Shortcut';
+import { parseAdHocTarget } from './ConnectionModal/connectionGrouping';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
@@ -17,6 +18,9 @@ export interface LandingViewProps {
   onNewProfile: () => void;
   onOpenSyncBootstrap: () => void;
   onNavigateToTabBar: () => void;
+  /** Connects to a typed "user@host[:port]" target directly, without saving it as a profile —
+   * distinct from `onConnectRecentSSH`, which persists the profile's updated `lastUsedAt`. */
+  onQuickConnectSSH: (config: SSHConnectionConfig) => void;
   shortcuts?: Record<string, string>;
 }
 
@@ -30,9 +34,24 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onNewProfile,
   onOpenSyncBootstrap,
   onNavigateToTabBar,
+  onQuickConnectSSH,
   shortcuts,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [quickConnect, setQuickConnect] = useState('');
+  const quickConnectTarget = parseAdHocTarget(quickConnect);
+
+  const buildQuickConnectConfig = (): SSHConnectionConfig | null => {
+    if (!quickConnectTarget) return null;
+    return {
+      id: crypto.randomUUID(),
+      name: quickConnectTarget.username ? `${quickConnectTarget.username}@${quickConnectTarget.host}` : quickConnectTarget.host,
+      host: quickConnectTarget.host,
+      port: quickConnectTarget.port,
+      username: quickConnectTarget.username || '',
+      authType: 'password',
+    };
+  };
 
   // Auto-focus the first actionable element on mount so keyboard navigation is immediately active
   useEffect(() => {
@@ -55,16 +74,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
         ).filter(isElementVisible);
         const active = document.activeElement as HTMLElement | null;
 
-        // If the topmost element is already focused, jumping up moves to TabBar
-        if (active && candidates.length > 0 && onNavigateToTabBar) {
-          if (candidates[0] === active) {
-            onNavigateToTabBar();
-            return;
-          }
-          if (candidates[1] === active && candidates[0]?.closest?.('.recent-card') === candidates[1]?.closest?.('.recent-card')) {
-            onNavigateToTabBar();
-            return;
-          }
+        // Jumping up from anywhere in the first visual row (the quick-connect form, or — once
+        // past it — the first Recent Connections row) moves to TabBar instead of doing nothing.
+        const rowKeyOf = (el: HTMLElement | null) => el?.closest('.quick-connect-row') ?? el?.closest('.recent-card') ?? el;
+        if (active && candidates.length > 0 && onNavigateToTabBar && rowKeyOf(active) === rowKeyOf(candidates[0])) {
+          onNavigateToTabBar();
+          return;
         }
       }
 
@@ -105,6 +120,45 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </p>
           )}
         </div>
+
+        {/* Quick Connect */}
+        <form
+          className="quick-connect-row flex w-full items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const config = buildQuickConnectConfig();
+            if (config) {
+              onQuickConnectSSH(config);
+              setQuickConnect('');
+            }
+          }}
+        >
+          <input
+            type="text"
+            value={quickConnect}
+            onChange={(e) => setQuickConnect(e.target.value)}
+            placeholder="Type user@host to connect over SSH..."
+            className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+          />
+          <button
+            type="submit"
+            data-testid="quick-connect-btn"
+            disabled={!quickConnectTarget}
+            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors disabled:opacity-40"
+          >
+            Connect
+          </button>
+          <SftpButton
+            authType="password"
+            onOpen={() => {
+              const config = buildQuickConnectConfig();
+              if (config) {
+                onConnectSFTP(config);
+                setQuickConnect('');
+              }
+            }}
+          />
+        </form>
 
         {/* Recent Connections */}
         {recentSSH.length > 0 && (

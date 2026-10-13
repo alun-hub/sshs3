@@ -351,6 +351,17 @@ export const App: React.FC = () => {
             onNewProfile={handleNewProfile}
             onOpenSyncBootstrap={() => setSyncBootstrapModalOpen(true)}
             onNavigateToTabBar={() => setTabBarFocused(true)}
+            onQuickConnectSSH={(config) => {
+              const newId = `term-${Date.now()}`;
+              const newTab: AppTab = {
+                id: newId,
+                type: 'terminal',
+                title: config.name,
+                paneTree: createLeaf(`${newId}-root`, { config }),
+              };
+              setTabs((prev) => [...prev, newTab]);
+              setActiveTabId(newId);
+            }}
             shortcuts={settings.shortcuts}
           />
         )}
