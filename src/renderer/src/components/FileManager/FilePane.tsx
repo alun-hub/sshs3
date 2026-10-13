@@ -6,6 +6,7 @@ import type { FileEntry } from '@shared/types/storage';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import type { GitRepoStatus } from '@shared/types/git';
 import { joinPath, parentPath, describeIpcError, formatBytes } from '../../lib/format';
+import { makeNameMatcher } from '../../lib/nameFilter';
 import { FileList } from './FileList';
 import { useDragDrop } from './DragDropContext';
 import { useConfirm } from '../ConfirmDialog';
@@ -87,6 +88,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
       showHiddenFiles || recursiveActive ? activeEntries : activeEntries.filter((e) => !e.name.startsWith('.')),
     [activeEntries, showHiddenFiles, recursiveActive]
   );
+  // What FileList actually renders once its own (non-recursive) text filter narrows the list —
+  // recursive mode already reflects filterText in recursiveEntries itself, so only the plain
+  // case needs the same matcher FileList applies internally.
+  const displayedEntries = useMemo(() => {
+    if (recursiveActive || !filterText.trim()) return visibleEntries;
+    const matches = makeNameMatcher(filterText);
+    return visibleEntries.filter((e) => matches(e.name.slice(e.name.lastIndexOf('/') + 1)));
+  }, [visibleEntries, filterText, recursiveActive]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -874,7 +883,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* Status Bar (§24): item count, selection count, and total size of the selection. */}
       <div className="flex items-center justify-between gap-2 border-t border-divider bg-app-surface-subtle px-2.5 py-1 text-2xs text-txt-muted">
         <span>
-          {visibleEntries.length} item{visibleEntries.length === 1 ? '' : 's'}
+          {displayedEntries.length} item{displayedEntries.length === 1 ? '' : 's'}
         </span>
         {selectedEntries.length > 0 && (
           <span>

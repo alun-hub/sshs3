@@ -338,4 +338,41 @@ describe('FilePane Home Button', () => {
     fireEvent.click(screen.getByText('a.txt'));
     expect(screen.getByText(/1 selected.*1\.00 KB/)).toBeInTheDocument();
   });
+
+  it("reflects the active text filter in the status bar's item count, not the pre-filter count", async () => {
+    (window as any).multissh.storageList = vi.fn().mockResolvedValue([
+      { name: 'apple.txt', path: '/var/log/apple.txt', size: 100, isDirectory: false },
+      { name: 'banana.txt', path: '/var/log/banana.txt', size: 100, isDirectory: false },
+      { name: 'cherry.txt', path: '/var/log/cherry.txt', size: 100, isDirectory: false },
+    ]);
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await screen.findByText('apple.txt');
+    expect(screen.getByText('3 items')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Search / Filter files (Ctrl+F)'));
+    const filterInput = await screen.findByPlaceholderText(/Filter files in current folder/);
+    fireEvent.change(filterInput, { target: { value: 'an' } });
+
+    await waitFor(() => {
+      expect(screen.queryByText('apple.txt')).not.toBeInTheDocument();
+      expect(screen.getByText('banana.txt')).toBeInTheDocument();
+    });
+    expect(screen.getByText('1 item')).toBeInTheDocument();
+  });
 });
