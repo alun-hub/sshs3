@@ -54,6 +54,21 @@ export function updateLeaf(node: PaneNode, id: string, updater: (leaf: PaneLeaf)
   return changed ? { ...node, children } : node;
 }
 
+/** Returns a new tree with the split node `splitId`'s `weights` set (§23) — other nodes keep
+ * their identity, same convention as `updateLeaf`. No-op (returns the same tree) if `splitId`
+ * isn't found or isn't a split. */
+export function updateSplitWeights(node: PaneNode, splitId: string, weights: number[]): PaneNode {
+  if (node.type === 'leaf') return node;
+  if (node.id === splitId) return { ...node, weights };
+  let changed = false;
+  const children = node.children.map((c) => {
+    const next = updateSplitWeights(c, splitId, weights);
+    if (next !== c) changed = true;
+    return next;
+  });
+  return changed ? { ...node, children } : node;
+}
+
 /**
  * Splits the pane `paneId` in the given orientation, mirroring Konsole's ViewSplitter::addTerminalWidget:
  * when the pane's parent split already has the same orientation the new leaf is inserted as a sibling

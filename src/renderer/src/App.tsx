@@ -116,6 +116,7 @@ export const App: React.FC = () => {
     handleCloseTab,
     handleNewTab,
     handleSplitPane,
+    handleResizeSplit,
     handleClosePane,
     handleUnsplit,
     handleSelectPane,
@@ -451,6 +452,7 @@ export const App: React.FC = () => {
                         platform={platform}
                         onSelectPane={(paneId) => handleSelectPane(tab.id, paneId)}
                         onSplitPane={(paneId, orientation) => handleSplitPane(tab.id, orientation, paneId)}
+                        onResizeSplit={(splitId, weights) => handleResizeSplit(tab.id, splitId, weights)}
                         onClosePane={(paneId) => handleClosePane(tab.id, paneId)}
                         onChangeConnection={(paneId) => setConnectTarget({ tabId: tab.id, paneId })}
                         onOpenLocalTerminal={(paneId, shellType, wslDistro) =>

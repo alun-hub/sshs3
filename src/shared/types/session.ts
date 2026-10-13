@@ -30,6 +30,11 @@ export interface PaneSplit {
   id: string;
   orientation: PaneOrientation;
   children: PaneNode[];
+  /** Relative flex-grow weight per child, parallel to `children` (§23) — absent or
+   * length-mismatched means "equal split", so older saved sessions restore unchanged. Only the
+   * 2-child case is user-resizable today (PaneTree.tsx); a 3+-child split still renders equally
+   * sized panes regardless of this field. */
+  weights?: number[];
 }
 
 /**

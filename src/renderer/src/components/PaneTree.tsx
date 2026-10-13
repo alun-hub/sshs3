@@ -9,6 +9,7 @@ import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import type { LocalShellType, SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
 import { UnconnectedPanePlaceholder } from './UnconnectedPanePlaceholder';
+import { SplitDivider } from './ui/SplitDivider';
 
 export interface PaneTreeViewProps {
   node: PaneNode;
@@ -19,6 +20,8 @@ export interface PaneTreeViewProps {
   platform: string;
   onSelectPane: (paneId: string) => void;
   onSplitPane: (paneId: string, orientation: PaneOrientation) => void;
+  /** Sets a 2-child split node's relative pane sizes (§23) — the divider drag handler. */
+  onResizeSplit?: (splitId: string, weights: number[]) => void;
   onClosePane: (paneId: string) => void;
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
@@ -63,8 +66,36 @@ const PaneSlot: React.FC<{
 
 const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
   const { node } = props;
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   if (node.type === 'split') {
+    // Only the common 2-child case is user-resizable (§23) — a 3+-child split still renders
+    // equally sized panes, same as before.
+    if (node.children.length === 2) {
+      const [a, b] = node.children;
+      const weights = node.weights?.length === 2 ? node.weights : [1, 1];
+      const ratio = weights[0] / (weights[0] + weights[1]);
+      return (
+        <div
+          ref={splitContainerRef}
+          className={`flex h-full w-full ${node.orientation === 'row' ? 'flex-row' : 'flex-col'}`}
+        >
+          <div style={{ flexGrow: ratio, flexBasis: 0, minHeight: 0, minWidth: 0 }} className="flex flex-col overflow-hidden">
+            <PaneTreeLayout {...props} node={a} />
+          </div>
+          <SplitDivider
+            orientation={node.orientation === 'row' ? 'vertical' : 'horizontal'}
+            ratio={ratio}
+            onChange={(r) => props.onResizeSplit?.(node.id, [r, 1 - r])}
+            containerRef={splitContainerRef}
+            label="Resize terminal panes"
+          />
+          <div style={{ flexGrow: 1 - ratio, flexBasis: 0, minHeight: 0, minWidth: 0 }} className="flex flex-col overflow-hidden">
+            <PaneTreeLayout {...props} node={b} />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={`flex h-full w-full ${node.orientation === 'row' ? 'flex-row' : 'flex-col'}`}>
         {node.children.map((child, i) => (

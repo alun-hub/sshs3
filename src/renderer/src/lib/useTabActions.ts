@@ -7,7 +7,7 @@ import type { PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { AppTab } from './tabs';
 import { formatDateTime } from './format';
-import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf } from './paneTree';
+import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 
 export interface TabActionsContext {
@@ -99,6 +99,16 @@ export function useTabActions(ctx: TabActionsContext) {
         const targetPaneId = paneId ?? t.activePaneId ?? getFirstLeafId(t.paneTree);
         const { tree, newPaneId } = splitPane(t.paneTree, targetPaneId, orientation, t.id);
         return { ...t, paneTree: tree, activePaneId: newPaneId };
+      })
+    );
+  }, [setTabs]);
+
+  /** Sets a split node's relative pane sizes (§23) — only the 2-child case is draggable today. */
+  const handleResizeSplit = useCallback((tabId: string, splitId: string, weights: number[]) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        return { ...t, paneTree: updateSplitWeights(t.paneTree, splitId, weights) };
       })
     );
   }, [setTabs]);
@@ -437,6 +447,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handleCloseTab,
     handleNewTab,
     handleSplitPane,
+    handleResizeSplit,
     handleClosePane,
     handleUnsplit,
     handleSelectPane,
