@@ -307,6 +307,7 @@ export class IpcBridge {
         // time `buildInvite()` actually calls it, not at this object literal's own construction.
         configStore: {
           getConfig: (vaultId) => this.teamVaultConfigStore.getConfig(vaultId),
+          setLastKnownRemoteEntry: (vaultId, entry) => this.teamVaultConfigStore.setLastKnownRemoteEntry(vaultId, entry),
         },
       });
     this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();

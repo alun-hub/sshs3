@@ -18,6 +18,9 @@ import type { AskpassPromptKind, StorageConnectConfig } from '../../shared/types
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { joinPaths } from '../transfer/TransferPipeline';
 import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultCryptoService';
+import { createLogger } from '../log/Logger';
+
+const teamVaultLog = createLogger('team-vault');
 
 const FORMAT_VERSION = 1 as const;
 /** A real vault file (JSON, base64-wrapped keys, every shared SSH/S3 profile) stays well under
@@ -459,11 +462,16 @@ export interface TeamVaultPinPrompter {
   ): { onPresenceRequested: () => void; onPresenceCleared: () => void };
 }
 
-/** The narrow slice of `TeamVaultConfigStore` that `buildInvite()` needs to learn the vault's
- * configured S3 target — injected rather than taking the whole config store, same reasoning as
- * `TeamVaultPinPrompter` above (keeps the dependency explicit and easy to fake in tests). */
+/** The narrow slice of `TeamVaultConfigStore` this service needs — originally just for
+ * `buildInvite()` to learn the vault's configured S3 target, now also used to persist/restore
+ * `VaultRuntimeState.lastKnownRemoteEntry` across restarts (see `hydratedState`) — injected
+ * rather than taking the whole config store, same reasoning as `TeamVaultPinPrompter` above
+ * (keeps the dependency explicit and easy to fake in tests). */
 export interface TeamVaultConfigReader {
-  getConfig(vaultId: string): Promise<{ target?: StorageConnectConfig; remoteBasePath?: string }>;
+  getConfig(
+    vaultId: string
+  ): Promise<{ target?: StorageConnectConfig; remoteBasePath?: string; lastKnownRemoteEntry?: FileEntry | null }>;
+  setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null): Promise<void>;
 }
 
 export interface TeamVaultServiceOptions {
@@ -599,6 +607,44 @@ export class TeamVaultService {
       this.states.set(vaultId, state);
     }
     return state;
+  }
+
+  /** Same as `stateFor`, but also restores `lastKnownRemoteEntry` from `TeamVaultConfigStore` the
+   * first time this process sees `vaultId`, instead of leaving it `undefined` (== "never synced,
+   * from this instance's point of view") on every fresh app start. Only affects the sync preview's
+   * "remote changed" hint and `pushToRemote`'s optimistic-concurrency check — never the actual
+   * trust-boundary checks (foreign-vault/rollback detection), which always re-verify fresh against
+   * the remote regardless of this value (see `TeamVaultConfigEntry.lastKnownRemoteEntry`'s doc
+   * comment and docs/team-vault-plan.md's 2026-10-08 security review). Best-effort: a missing
+   * `configStore` (most tests) or a read failure just leaves the state as `stateFor` would. */
+  private async hydratedState(vaultId: string): Promise<VaultRuntimeState> {
+    const state = this.stateFor(vaultId);
+    if (state.lastKnownRemoteEntry === undefined && this.configStore) {
+      try {
+        const config = await this.configStore.getConfig(vaultId);
+        if (config.lastKnownRemoteEntry !== undefined) {
+          state.lastKnownRemoteEntry = config.lastKnownRemoteEntry;
+        }
+      } catch (err) {
+        teamVaultLog.warn(`Failed to restore the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
+      }
+    }
+    return state;
+  }
+
+  /** Sets `state.lastKnownRemoteEntry` and persists it via `TeamVaultConfigStore`, so the next
+   * process start can restore it via `hydratedState` instead of starting blank — see that
+   * method's doc comment. Best-effort on the persist: an in-memory-only failure here would just
+   * reproduce today's "always unknown after restart" behavior, not corrupt anything. */
+  private async setLastKnownRemoteEntry(vaultId: string, state: VaultRuntimeState, entry: FileEntry | null): Promise<void> {
+    state.lastKnownRemoteEntry = entry;
+    if (this.configStore) {
+      try {
+        await this.configStore.setLastKnownRemoteEntry(vaultId, entry);
+      } catch (err) {
+        teamVaultLog.warn(`Failed to persist the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
+      }
+    }
   }
 
   isUnlocked(vaultId: string): boolean {
@@ -1484,7 +1530,7 @@ export class TeamVaultService {
     return this.queueMutation(vaultId, async () => {
       const file = await this.requireFile(vaultId);
       const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
-      const state = this.stateFor(vaultId);
+      const state = await this.hydratedState(vaultId);
 
       const current = await this.statOrNull(provider, remotePath);
       if (current !== null) {
@@ -1505,7 +1551,7 @@ export class TeamVaultService {
       }
 
       await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
-      state.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath));
       state.lastSyncedRevision = file.revision;
     });
   }
@@ -1663,7 +1709,7 @@ export class TeamVaultService {
       }
 
       await this.writeFile(vaultId, file);
-      state.lastKnownRemoteEntry = await this.statOrNull(provider, remotePath);
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath));
       state.lastSyncedRevision = file.revision;
       // Only lock when the held key ISN'T proven still valid — e.g. after a removeMember
       // elsewhere rotated it (accessHeader.length dropped, so the check above never ran). A
@@ -1678,13 +1724,15 @@ export class TeamVaultService {
   /** Lightweight pre-check for a background poll (see `IpcBridge.runTeamVaultAutoPoll`): a
    * metadata-only `stat()` (no body download — `S3StorageProvider.stat()` issues a
    * `HeadObjectCommand`), compared against `lastKnownRemoteEntry` the same way `pushToRemote`'s
-   * own freshness check does. Deliberately NOT run through `queueMutation` (read-only, mutates no
-   * state) so a poll never has to wait behind an unrelated pending push/pull. */
+   * own freshness check does (`hydratedState` restores it from disk on first use after a
+   * restart). Deliberately NOT run through `queueMutation` (never writes to `configStore` or
+   * conflicts with a push/pull's own state) so a poll never has to wait behind an unrelated
+   * pending push/pull. */
   async hasRemoteChangedSinceLastSync(vaultId: string, provider: IStorageProvider, remoteBasePath = ''): Promise<boolean> {
     const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
     const current = await this.statOrNull(provider, remotePath);
-    const state = this.states.get(vaultId);
-    if (!state || state.lastKnownRemoteEntry === undefined) {
+    const state = await this.hydratedState(vaultId);
+    if (state.lastKnownRemoteEntry === undefined) {
       return current !== null;
     }
     const known = state.lastKnownRemoteEntry;

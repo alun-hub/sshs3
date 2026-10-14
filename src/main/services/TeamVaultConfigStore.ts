@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
-import type { S3Config } from '../../shared/types/storage';
+import type { FileEntry, S3Config } from '../../shared/types/storage';
 import { TEAM_VAULT_PENDING_VAULT_ID } from '../../shared/types/teamVault';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 import { createLogger } from '../log/Logger';
@@ -27,6 +27,15 @@ export interface TeamVaultConfigEntry {
    * not a key; see `TeamVaultCryptoService.enrollOwnPivRecipient`'s doc comment). */
   selfRecipientId?: string;
   selfIdentityFilePath?: string;
+  /** The remote vault file's size+mtime as of the last successful push/pull — `TeamVaultService`'s
+   * optimistic-concurrency check (`pushToRemote`) and sync preview (`hasRemoteChangedSinceLastSync`)
+   * hydrate their in-memory `VaultRuntimeState.lastKnownRemoteEntry` from this on first use after a
+   * restart, instead of starting blank every time: not a secret, and not involved in either
+   * push/pull's actual trust-boundary checks (those always re-verify vaultId/revision against the
+   * remote fresh, regardless of this value — see docs/team-vault-plan.md's 2026-10-08 security
+   * review) — this only drives the "remote changed" UI hint and a softer overwrite-conflict check,
+   * both previously defaulting to "always assume changed"/"skip the check" on every fresh process. */
+  lastKnownRemoteEntry?: FileEntry | null;
 }
 
 /** On-disk shape, keyed by `vaultId` — one entry per team this device knows about (multi-team
@@ -166,6 +175,13 @@ export class TeamVaultConfigStore {
     return this.queueMutation(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, { ...current, lastSyncAt: timestamp });
+    });
+  }
+
+  public async setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig(vaultId);
+      await this.persistEntry(vaultId, { ...current, lastKnownRemoteEntry: entry });
     });
   }
 

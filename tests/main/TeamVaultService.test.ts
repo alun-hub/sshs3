@@ -1436,6 +1436,33 @@ describe('TeamVaultService', () => {
         remoteChanged: true,
       });
     });
+
+    it('still reports up to date for a fresh service instance backed by the same configStore (regression: restart must not forget the last known remote state)', async () => {
+      // A bare in-memory stand-in for TeamVaultConfigStore's own persistence — enough to prove
+      // TeamVaultService actually reads/writes through the injected configStore, without pulling
+      // in the real encrypted-at-rest store.
+      const persisted = new Map<string, { lastKnownRemoteEntry?: import('../../src/shared/types/storage').FileEntry | null }>();
+      const configStore = {
+        getConfig: async (vaultId: string) => persisted.get(vaultId) ?? {},
+        setLastKnownRemoteEntry: async (vaultId: string, entry: import('../../src/shared/types/storage').FileEntry | null) => {
+          persisted.set(vaultId, { ...persisted.get(vaultId), lastKnownRemoteEntry: entry });
+        },
+      };
+      const provider = fakeProvider();
+
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir, configStore });
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await first.pushToRemote(vaultId, provider);
+
+      // Simulate an app restart: a brand-new TeamVaultService, same on-disk vault file and same
+      // (persisted) configStore, but an empty in-memory `states` map — nothing in this instance
+      // has ever called pushToRemote/pullFromRemote/hydratedState for this vaultId yet.
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir, configStore });
+      expect(await second.getSyncPreview(vaultId, provider)).toEqual({
+        hasUnpushedLocalChanges: false,
+        remoteChanged: false,
+      });
+    });
   });
 
   describe('shared SSH/S3 profiles (getPayload / save*Profile / delete*Profile)', () => {
@@ -1989,7 +2016,10 @@ describe('TeamVaultService', () => {
       return new TeamVaultService({
         cryptoService: fakeCrypto(),
         baseDir: tempDir,
-        configStore: { getConfig: async () => ({ target: fakeTarget, remoteBasePath }) },
+        configStore: {
+          getConfig: async () => ({ target: fakeTarget, remoteBasePath }),
+          setLastKnownRemoteEntry: async () => {},
+        },
       });
     }
 
