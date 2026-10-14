@@ -127,6 +127,21 @@ export class TeamVaultConfigStore {
     return { ...entry, target: entry.target ? decryptTarget(entry.target) : undefined };
   }
 
+  /** `readRaw()` plus decrypting every entry's target — `persistAll()` always encrypts its input
+   * fresh, so anything that rebuilds the full map before writing it back (`persistEntry`,
+   * `clear`, `promotePendingConfig`) must start from decrypted data, not raw `readRaw()`: feeding
+   * `persistAll()` an already-encrypted target for an untouched vault would double-encrypt it on
+   * every unrelated write (e.g. every `setLastSyncAt` from another team's auto-sync), compounding
+   * with each call until no number of decrypt passes recovers the original secret. */
+  private async readDecrypted(): Promise<TeamVaultConfigData> {
+    const data = await this.readRaw();
+    return {
+      byVaultId: Object.fromEntries(
+        Object.entries(data.byVaultId).map(([vaultId, entry]) => [vaultId, this.decryptEntry(entry)])
+      ),
+    };
+  }
+
   public async getConfig(vaultId: string): Promise<TeamVaultConfigEntry> {
     const data = await this.readRaw();
     const entry = data.byVaultId[vaultId];
@@ -136,12 +151,8 @@ export class TeamVaultConfigStore {
   /** Every known team's config in one round trip — drives the renderer's team list
    * (`IpcBridge.buildAllTeamVaultStatuses`) without an N-call fan-out. */
   public async getAllConfigs(): Promise<Record<string, TeamVaultConfigEntry>> {
-    const data = await this.readRaw();
-    const result: Record<string, TeamVaultConfigEntry> = {};
-    for (const [vaultId, entry] of Object.entries(data.byVaultId)) {
-      result[vaultId] = this.decryptEntry(entry);
-    }
-    return result;
+    const data = await this.readDecrypted();
+    return data.byVaultId;
   }
 
   public async setTarget(vaultId: string, target: StorageConnectConfig, remoteBasePath = ''): Promise<void> {
@@ -190,7 +201,7 @@ export class TeamVaultConfigStore {
    * itself, and never any OTHER team's entry. */
   public async clear(vaultId: string): Promise<void> {
     return this.queueMutation(async () => {
-      const data = await this.readRaw();
+      const data = await this.readDecrypted();
       delete data.byVaultId[vaultId];
       await this.persistAll(data);
     });
@@ -204,7 +215,7 @@ export class TeamVaultConfigStore {
    * default if it somehow does). */
   public async promotePendingConfig(vaultId: string): Promise<void> {
     return this.queueMutation(async () => {
-      const data = await this.readRaw();
+      const data = await this.readDecrypted();
       const pending = data.byVaultId[TEAM_VAULT_PENDING_VAULT_ID];
       if (!pending) return;
       delete data.byVaultId[TEAM_VAULT_PENDING_VAULT_ID];
@@ -225,7 +236,7 @@ export class TeamVaultConfigStore {
   }
 
   private async persistEntry(vaultId: string, entry: TeamVaultConfigEntry): Promise<void> {
-    const data = await this.readRaw();
+    const data = await this.readDecrypted();
     data.byVaultId[vaultId] = entry;
     await this.persistAll(data);
   }

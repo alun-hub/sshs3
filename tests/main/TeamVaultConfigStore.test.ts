@@ -89,6 +89,33 @@ describe('TeamVaultConfigStore', () => {
     expect(config.remoteBasePath).toBe('team-bucket/prefix');
   });
 
+  it('does not re-encrypt an untouched vault\'s secret when a different vault is written (regression: compounding double-encryption)', async () => {
+    const store = new TeamVaultConfigStore(storePath);
+    const target: StorageConnectConfig = {
+      id: 'team-vault-target',
+      name: 'Team Vault Bucket',
+      type: 's3',
+      s3Config: {
+        id: 'team-vault-target',
+        name: 'Team Vault Bucket',
+        region: 'us-east-1',
+        accessKeyId: 'AKIA',
+        secretAccessKey: 'top-secret', // pragma: allowlist secret
+      },
+    };
+    await store.setTarget(VAULT_ID, target, 'team-bucket/prefix');
+
+    // Simulate another team's unrelated writes (e.g. its own auto-sync's setLastSyncAt), which
+    // must not touch VAULT_ID's already-encrypted target at all.
+    await store.setLastSyncAt(OTHER_VAULT_ID, '2026-01-01T00:00:00.000Z');
+    await store.setSelfIdentity(OTHER_VAULT_ID, 'bob@piv:yubikey-2', '/some/other/path.txt');
+    await store.setLastSyncAt(OTHER_VAULT_ID, '2026-01-02T00:00:00.000Z');
+
+    // A single decrypt pass must still recover the real secret, not a still-encrypted value.
+    const config = await store.getConfig(VAULT_ID);
+    expect(config.target?.s3Config?.secretAccessKey).toBe('top-secret');
+  });
+
   it('records the last successful sync timestamp', async () => {
     const store = new TeamVaultConfigStore(storePath);
     await store.setLastSyncAt(VAULT_ID, '2026-01-01T00:00:00.000Z');
