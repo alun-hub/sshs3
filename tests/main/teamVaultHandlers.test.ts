@@ -530,7 +530,7 @@ describe('Team Vault IPC handlers', () => {
 
     it('preserves the existing secret when the same target is re-saved with a blank one (accidental-clobber guard)', async () => {
       teamVaultConfigStore.getConfig.mockResolvedValue({
-        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } }, // pragma: allowlist secret
       });
       const resubmitted = { id: 't1', name: 'Team bucket', type: 's3' as const, s3Config: { region: 'eu-north-1', secretAccessKey: '' } };
 
@@ -538,14 +538,14 @@ describe('Team Vault IPC handlers', () => {
 
       expect(teamVaultConfigStore.setTarget).toHaveBeenCalledWith(
         VAULT_ID,
-        expect.objectContaining({ s3Config: expect.objectContaining({ secretAccessKey: 'real-secret' }) }),
+        expect.objectContaining({ s3Config: expect.objectContaining({ secretAccessKey: 'real-secret' }) }), // pragma: allowlist secret
         'team-bucket'
       );
     });
 
     it('does not borrow a secret from a DIFFERENT target id (switching providers with a blank secret stays blank)', async () => {
       teamVaultConfigStore.getConfig.mockResolvedValue({
-        target: { id: 'old-target', name: 'Old', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+        target: { id: 'old-target', name: 'Old', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } }, // pragma: allowlist secret
       });
       const newTarget = { id: 'new-target', name: 'New', type: 's3' as const, s3Config: { region: 'eu-north-1', secretAccessKey: '' } };
 
@@ -561,21 +561,21 @@ describe('Team Vault IPC handlers', () => {
 
   describe('TEAM_VAULT_TEST_TARGET', () => {
     it('passes the submitted config through untouched when a secret is present', async () => {
-      const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: 'typed-secret' };
+      const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: 'typed-secret' }; // pragma: allowlist secret
       await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, config);
       expect(mockTestS3ConnectionConfig).toHaveBeenCalledWith(config);
     });
 
     it('borrows the saved secret when the submitted config has a blank one (matches the redacted-form design)', async () => {
       teamVaultConfigStore.getConfig.mockResolvedValue({
-        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } }, // pragma: allowlist secret
       });
       const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: '' };
 
       await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, config);
 
       expect(mockTestS3ConnectionConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ secretAccessKey: 'real-secret' })
+        expect.objectContaining({ secretAccessKey: 'real-secret' }) // pragma: allowlist secret
       );
     });
 
