@@ -14,6 +14,21 @@ import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel
 app.setName('sshs3');
 if (process.platform === 'linux') {
   app.setDesktopName('sshs3.desktop');
+  // Chromium's os_crypt auto-detection picks the native 'kwallet6' backend on a KDE session
+  // (safeStorage.isEncryptionAvailable() === true, getSelectedStorageBackend() === 'kwallet6'),
+  // but on at least one real KDE Plasma 6 / kwalletd6 setup that backend never actually writes
+  // the encryption key into KWallet — confirmed by inspecting KWallet's on-disk store directly
+  // (~/.local/share/kwalletd/kdewallet_attributes.json) before and after an encrypt call: no
+  // entry appears, and no file mtime changes, even though encryptString() "succeeds". The key
+  // then lives only in that process's memory, so every restart gets a fresh one and everything
+  // encrypted in a prior run (saved passwords, Team Vault's S3 secret, ...) becomes
+  // undecryptable — surfacing downstream as garbage credentials (e.g. AWS SignatureDoesNotMatch).
+  // Forcing 'gnome-libsecret' instead routes through the same KDE session's ksecretd (KWallet's
+  // freedesktop Secret Service compatibility layer) via libsecret, which was verified (via
+  // `secret-tool search`) to actually persist the key and survive a restart.
+  if (process.env.XDG_CURRENT_DESKTOP?.toLowerCase().includes('kde') || process.env.KDE_FULL_SESSION === 'true') {
+    app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+  }
 }
 
 // Redirect userData to <exe-dir>/data if running as a portable executable (set by electron-builder)
