@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, safeStorage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -335,6 +335,19 @@ async function initializeApp(): Promise<void> {
       'no OS keyring available (safeStorage.isEncryptionAvailable() === false): ' +
         'saved credentials will be stored in PLAINTEXT on disk instead of encrypted'
     );
+  } else {
+    // On Linux, safeStorage auto-selects a keyring backend (gnome_libsecret/kwallet*/basic_text)
+    // at startup unless pinned via `--password-store=...`, which this app doesn't do — if the
+    // backend selected differs between runs (e.g. depending on which keyring daemon happens to be
+    // reachable at the exact moment Electron starts), a secret encrypted under one backend's key
+    // can silently fail to decrypt under a different one chosen on a later run (see
+    // decryptSecretValue's empty-string-on-failure fallback). Logged every startup specifically so
+    // a future "my saved credentials stopped working" report can be checked against this.
+    try {
+      log.info(`OS keyring backend for encrypted credentials: ${safeStorage.getSelectedStorageBackend?.() ?? '(unknown — Electron API unavailable)'}`);
+    } catch (err) {
+      log.warn('Failed to read the selected OS keyring backend (non-fatal):', err);
+    }
   }
 }
 
