@@ -10,6 +10,9 @@ This chapter provides a complete reference across all configuration panels in **
 
 Access the preferences dialog via the gear icon in the top toolbar or via the keyboard shortcut <kbd>Ctrl+,</kbd>.
 
+### Settings Search & Filter
+The Settings modal features an instant search filter at the top of the sidebar. Typing a search keyword filters across all 11 settings categories, options, and descriptions in real time, making it easy to jump straight to any configuration option.
+
 ### 1.1 General & Appearance
 ![General Settings](/img/docs/settings-general.png)
 - **Color Theme**: **Dark** (slate dark), **Light** (clean gray), **Breeze** (KDE-inspired theme with cyan accents), or **System** (tracks OS dark/light mode).

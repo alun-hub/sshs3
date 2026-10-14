@@ -4,6 +4,9 @@
 
 ![Landing Screen](/img/landing-screen.png)
 
+### Quick Connect
+When launching sshs3 without an open session, the start screen provides a **Quick Connect** bar. Type `user@host` (or `user@host:port`, e.g. `root@192.168.1.50:2222`) and press <kbd>Enter</kbd> to immediately launch an interactive SSH terminal without creating a saved profile first. It inherits your local SSH configuration, default keys, and active SSH agent.
+
 ---
 
 ## 1. Package Installation & Platform Matrix

@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.36] - 2026-10-14
+
+### Added
+- **Resizable split panes.** Drag the divider line between split terminal panes and between the left and right file manager panes to customize their sizes. Double-click any divider to reset to equal 50/50 sizing.
+- **Quick Connect on landing screen.** Launch an SSH terminal session directly from the start screen by typing `user@host` (or `user@host:port`) and pressing Enter, without creating a saved profile first.
+- **File manager breadcrumb & status bar.** The breadcrumb navigation has a dedicated toolbar row with direct path editing via <kbd>Ctrl+L</kbd> / <kbd>Alt+D</kbd>. Each file pane features a bottom status bar showing total item count, filter count, and selected files and size.
+- **Cross-source connection search.** Searching in Connection Manager now queries across all sources simultaneously (Personal, Remote Profile Sync, and all joined Team Vaults), badging results with their origin.
+- **Unlock all action.** When multiple Team Vaults are locked, an "Unlock all" button in the Connection Manager sequentially prompts for your PIN to unlock all teams in one pass.
+- **Settings search & accessible controls.** Instant real-time search across all 11 settings categories in the settings dialog sidebar. Improved keyboard accessibility for settings cards and radio buttons.
+- **Team Vault UX improvements:**
+  - Clear 3-step guide for enrolling new members.
+  - "Promote <member>" quick-action when a vault has only a single admin to prevent accidental lockout.
+  - Quick lock/unlock action and sync status badge in the team list overview.
+  - Live pre-sync status preview on Push and Pull buttons.
+  - "Lock now" button directly in the vault detail view.
+  - S3 target configuration editor pre-fills existing non-secret settings.
+
+### Security
+- **Strict credential redaction over IPC.** Decrypted S3 target secrets for Team Vaults are completely redacted before crossing the IPC bridge to the renderer, replacing them with a boolean indicator.
+- **Linux OS keyring persistence fix.** Unconditionally force `gnome-libsecret` on Linux so encryption keys persist reliably in the Secret Service across restarts, eliminating silent credential decryption failures and `SignatureDoesNotMatch` errors under KDE Plasma 6.
+- **Multi-vault store integrity.** Fixed an issue where saving or updating an unrelated vault's configuration could compound double-encryption on other vaults' secrets.
+- **Physical smartcard serialization.** Serialized `age-plugin-yubikey` execution through `withPkcs11Lock` to prevent PC/SC concurrency conflicts during multi-vault unlocks.
+- **Protection against self-lockout and self-invites in Team Vault.**
+
+### Fixed
+- Fixed empty team folders showing in the Connection Manager when switching protocol tabs.
+- Fixed TeamProfileTreeList cache not refreshing immediately after "Unlock all".
+
 ## [0.96.35] - 2026-10-12
 
 ### Added

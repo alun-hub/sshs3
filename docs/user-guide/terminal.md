@@ -46,6 +46,7 @@ Allow operators to split workspace real estate horizontally and vertically witho
    - **Sequential Cycling**: Use <kbd>Ctrl+Shift+N</kbd> (next pane in tree) and <kbd>Ctrl+Shift+P</kbd> (previous pane).
 4. **Close a Pane**: Click the close button on its mini-toolbar or type `exit`. The tree automatically collapses to fill the remaining area.
 5. **Unsplit (Maximize)**: Click the "Unsplit" icon on the active pane to keep the focused session and close all siblings.
+6. **Resizable Splits**: Drag the divider line between any two split panes to resize them horizontally or vertically. Double-click the divider to reset to equal sizing.
 
 #### ⚠️ Limitations & Caveats
 - Splitting a terminal too many times on smaller displays can reduce column width below 40 characters, causing line wrapping in wide tabular tools.

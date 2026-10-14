@@ -22,6 +22,17 @@ Allow system administrators managing fleets of hundreds or thousands of servers 
 3. In the **Folder** field, choose or type a folder hierarchy using forward slashes (e.g., `Clients/EnterpriseA/Prod`).
 4. Type in the filter bar at the top of the manager to search immediately across profile names, hostnames, IPs, tags, or usernames.
 
+### Cross-Source Search & Origin Badges
+Searching in the Connection Manager finds matching profiles across **all** your profile sources simultaneously:
+- Local personal connections
+- Remote Profile Sync connections
+- All joined Team Vaults
+
+Matches from outside the current view display an **origin badge** (e.g. `Team: Infra` or `Sync`), making it effortless to jump to any server across all your teams without switching tabs.
+
+### "Unlock all" for Locked Teams
+When one or more Team Vaults are currently locked, an **Unlock all** action button is available. Clicking it sequentially prompts your hardware security key or smartcard PIN to unlock all your team vaults in one go, without requiring you to switch into each tab individually.
+
 #### ⚠️ Limitations & Caveats
 - Folder names cannot include reserved characters (`<`, `>`, `:`, `"`, `|`, `?`, `*`).
 - Empty folders are purged automatically when all member profiles are deleted or moved.

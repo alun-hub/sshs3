@@ -60,6 +60,8 @@ A YubiKey PIV applet contains three distinct secrets: the **PIN**, the **PUK**, 
 2. Enter the S3 endpoint, credentials (Access Key ID and Secret Access Key), and the target bucket (optionally with a prefix, e.g. `company-vaults/production`). The vault file is stored at `team-vault/<vault-id>/vault.json` under that path. All credentials are encrypted with your OS keychain (`safeStorage`).
 3. Click **Push** to upload the initial vault payload to S3.
 
+When editing an existing target later via **Edit target**, non-secret fields (endpoint, region, access key ID, bucket) are pre-filled automatically. The **Secret Access Key** field is left blank to retain your existing saved key, or you can type a new one to replace it. A **Test Connection** button is available to verify S3 connectivity before saving.
+
 Admins can update the team name or provide a multiline **Description** at any time.
 
 ---
@@ -143,18 +145,19 @@ When an Admin removes a member (**Remove member**):
 4. The file's cryptographic rotation proof (`prevKeyProof`) is signed with the old Vault Key.
 5. The removed member retains only whatever local snapshot they had previously downloaded; they are permanently locked out of all subsequent pulls, profile updates, and key rotations.
 
-Keep **at least two admins** in every vault. The settings view warns whenever a vault has only one admin, as losing that single card leaves the emergency recovery key as the only administrative path.
+Keep **at least two admins** in every vault. The settings view warns whenever a vault has only one admin, as losing that single card leaves the emergency recovery key as the only administrative path. When another member is present, the warning provides a direct **"Promote <member>"** action to elevate them to co-admin with one click.
 
 ---
 
 ## 5. Unlocking & Session Management
 
 Shared profiles and credentials remain accessible in memory only while the vault is unlocked. You can unlock from:
-- **Connection Manager** → click the team's tab → click **Unlock as *your-id***, or
-- **Settings → Team Vault** → select the team → click **Unlock**.
+- **Connection Manager** → click the team's tab → click **Unlock as *your-id*** (or use the **Unlock all** button in the top bar to unlock multiple teams sequentially), or
+- **Settings → Team Vault** → select the team → click **Unlock** (the team list overview also provides a quick unlock/lock button and sync status indicator for each team).
 
 Enter your PIV PIN and touch the YubiKey when prompted. sshs3 remembers which identity file and recipient ID you used for each team (never your PIN), allowing one-click unlocking on subsequent launches.
 
+- **Lock Now:** An unlocked vault can be locked at any time by clicking **Lock now** in the team's detail panel or in the team list.
 - **Use a different identity...**: Expands manual inputs to supply a custom recipient ID or identity file path (useful on fresh installations).
 - **Session Security**: The decrypted Vault Key is held exclusively in volatile RAM and is scrubbed immediately when you click **Lock** or quit sshs3. It is never cached to disk, swap, or the operating system keychain.
 
@@ -191,6 +194,7 @@ Typing into the search bar instantly searches across **all** profiles in the act
 #### 🔄 Automatic Synchronization & Conflict Handling
 - **Local Changes:** Edits to profiles, folders, or team metadata are automatically pushed to S3 approximately two seconds after saving.
 - **Background Polling:** While unlocked, sshs3 checks S3 every 3 minutes for remote revisions. New changes are pulled automatically, updating the interface with *"Updated from another member"*.
+- **Sync Status Preview:** In Settings, the **Push** and **Pull** buttons display a live status preview (indicating whether there are unpushed local changes or remote updates waiting to be pulled) before initiating a sync.
 - **Conflict Resolution:** If remote changes occur while you have unpushed local modifications, sshs3 halts automatic overwrites and displays a **"Get latest"** conflict action. You can inspect the divergence and choose whether to push your version or discard local changes to pull the remote state.
 
 ---

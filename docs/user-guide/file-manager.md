@@ -33,6 +33,23 @@ Opens **Search in Files** for the active pane's source: local disk, SFTP or S3.
 - Matches stream in as they are found; select one to preview the surrounding lines, and use **Jump to file in pane** to open its location.
 - The search stops at 500 matches (**Result limit reached — narrow your search to see more.**). On local disk, files larger than 50 MB are skipped, and on S3 objects larger than 10 MB; unreadable entries (sockets, system-protected files) are reported as warnings.
 
+### Resizable Panes & Split Divider
+The dual-pane explorer features a draggable vertical divider between the left and right file panes.
+- Click and drag the divider line to adjust the ratio between panes.
+- Double-click the divider to immediately reset to an equal 50/50 split.
+
+### Breadcrumb Toolbar & Editable Path (<kbd>Ctrl+L</kbd> / <kbd>Alt+D</kbd>)
+The navigation breadcrumb has a dedicated toolbar row with clickable path segments.
+- Press <kbd>Ctrl+L</kbd> or <kbd>Alt+D</kbd> (or click an empty area of the breadcrumb row) to toggle into **Text Edit Mode**.
+- Type or paste a path directly, then press <kbd>Enter</kbd> to navigate or <kbd>Escape</kbd> to return to breadcrumb buttons.
+
+### Pane Status Bar
+A persistent status bar at the bottom of each pane displays:
+- Total items in the folder (e.g. `42 items`).
+- Active filter counts when filtering with <kbd>Ctrl+F</kbd> (e.g. `5 of 42 items`).
+- Current selection count and total size of selected files (e.g. `3 selected (14.2 MB)`).
+- Filesystem free space or volume fill indicators.
+
 ### Keyboard Ergonomics & Spatial Navigation
 
 The file manager is designed to be fully operable without a mouse:
@@ -50,6 +67,7 @@ The file manager is designed to be fully operable without a mouse:
 | <kbd>Enter</kbd> | Open / Edit | Opens the selected folder, or opens the file in the built-in text editor. |
 | <kbd>Backspace</kbd> / <kbd>Alt+Up</kbd> | Up Directory | Ascends one directory level up the tree. |
 | <kbd>Alt+Left</kbd> / <kbd>Alt+Right</kbd> | History Back / Forward | Navigates through previously visited folders. |
+| <kbd>Ctrl+L</kbd> / <kbd>Alt+D</kbd> | Edit Path | Edits the current breadcrumb path directly as text. |
 | <kbd>Ctrl+C</kbd> / <kbd>Ctrl+X</kbd> / <kbd>Ctrl+V</kbd> | Copy / Cut / Paste | Clipboard operations across folders and protocols (cut items dim until pasted). |
 | <kbd>Ctrl+A</kbd> | Select All | Highlights all files and folders in the active pane. |
 | <kbd>Escape</kbd> | Clear Selection | Clears current file selections without changing directory. |
