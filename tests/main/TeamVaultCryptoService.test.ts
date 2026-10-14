@@ -147,7 +147,7 @@ describe('TeamVaultCryptoService', () => {
       // A real subprocess round trip (age-keygen + age wrap + age unwrap via pty) is slower than
       // the default 5s under full-suite parallel load (many vitest workers competing for CPU) —
       // seen flaking in pre-commit's `npm test` even though it's consistently <1s in isolation.
-      20000
+      60000
     );
   });
 
@@ -180,7 +180,7 @@ describe('TeamVaultCryptoService', () => {
         expect(decrypted).toBe(plaintext);
       },
       // Same reasoning as the real round-trip test above — a real subprocess, not mocked.
-      20000
+      60000
     );
   });
 
