@@ -453,7 +453,7 @@ describe('TeamVaultDetailPanel', () => {
       });
     });
 
-    it('prefills "Edit target" from the saved target instead of starting blank', async () => {
+    it('prefills "Edit target" from the saved target (minus the secret, which never reaches the renderer) and offers to keep it unchanged', async () => {
       mockApi({
         teamVaultGetStatus: vi.fn().mockResolvedValue({
           ...baseStatus,
@@ -464,7 +464,8 @@ describe('TeamVaultDetailPanel', () => {
             s3Config: {
               region: 'eu-north-1',
               accessKeyId: 'AKIASAVED',
-              secretAccessKey: 'saved-secret',
+              secretAccessKey: '',
+              hasSecretAccessKey: true,
               endpoint: 'https://s3.example.com',
             },
           },
@@ -477,8 +478,38 @@ describe('TeamVaultDetailPanel', () => {
 
       expect(await screen.findByLabelText(/Region/i)).toHaveValue('eu-north-1');
       expect(screen.getByLabelText(/Access Key ID/i)).toHaveValue('AKIASAVED');
-      expect(screen.getByLabelText(/Secret Access Key/i)).toHaveValue('saved-secret');
+      // The secret itself is never sent to the renderer — only a flag that one is saved.
+      expect(screen.getByLabelText(/Secret Access Key/i)).toHaveValue('');
       expect(screen.getByLabelText(/Bucket/i)).toHaveValue('team-bucket/prefix');
+      expect(screen.getByText(/already saved.*Leave "Secret Access Key" blank to keep it/)).toBeInTheDocument();
+    });
+
+    it('saves "Edit target" with a blank secret when one is already saved, relying on the main process to preserve it', async () => {
+      mockApi({
+        teamVaultGetStatus: vi.fn().mockResolvedValue({
+          ...baseStatus,
+          remoteConfigured: true,
+          remoteBasePath: 'team-bucket/prefix',
+          targetConfig: {
+            type: 's3',
+            s3Config: { region: 'eu-north-1', accessKeyId: 'AKIASAVED', secretAccessKey: '', hasSecretAccessKey: true },
+          },
+        }),
+      });
+      renderPanel();
+      await waitFor(() => expect(screen.getByText('S3 target configured')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Edit target/i }));
+      await screen.findByLabelText(/Region/i);
+      fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+      await waitFor(() => {
+        expect(window.multissh.teamVaultSetTarget).toHaveBeenCalledWith(
+          VAULT_ID,
+          expect.objectContaining({ s3Config: expect.objectContaining({ accessKeyId: 'AKIASAVED', secretAccessKey: '' }) }),
+          'team-bucket/prefix'
+        );
+      });
     });
 
     it('pushes and pulls once a target is configured, scoped to this vaultId', async () => {

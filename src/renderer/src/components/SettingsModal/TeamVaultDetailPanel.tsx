@@ -368,7 +368,11 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
       setTargetError('A bucket (optionally "bucket/prefix") is required.');
       return;
     }
-    if (!targetDraft.accessKeyId?.trim() || !targetDraft.secretAccessKey) {
+    // A blank secret is only acceptable when a secret is already saved for this target (the
+    // secret itself never round-trips to this form — see TeamVaultStatus.targetConfig's doc
+    // comment — so "blank" here means "keep the saved one", which the IPC handler enforces).
+    const hasSavedSecret = Boolean(status?.targetConfig?.s3Config.hasSecretAccessKey);
+    if (!targetDraft.accessKeyId?.trim() || (!targetDraft.secretAccessKey && !hasSavedSecret)) {
       setTargetError('Access key ID and secret access key are required.');
       return;
     }
@@ -978,6 +982,11 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
                     {targetError}
                   </div>
+                )}
+                {status?.targetConfig?.s3Config.hasSecretAccessKey && (
+                  <p className="text-2xs text-txt-muted">
+                    A secret access key is already saved. Leave "Secret Access Key" blank to keep it, or type a new one to replace it.
+                  </p>
                 )}
                 <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
                 <div className="flex justify-end gap-2">

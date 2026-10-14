@@ -168,10 +168,18 @@ export interface TeamVaultStatus {
    * `TeamVaultConfigStore`'s job) — only `IpcBridge.buildTeamVaultStatus()`, which merges both,
    * always sets it for a real IPC response. */
   remoteConfigured?: boolean;
-  /** Complete target connection configuration (decrypted), for autofilling the target editor
-   * form — same precedent `ProfileSyncStatus.targetConfig` already set for the general
-   * Synchronization settings panel, now matched here (the admin previously had to retype the
-   * bucket/region/credentials from scratch every time, since nothing round-tripped them back). */
+  /** Non-secret target connection fields (region, endpoint, access key id, ...), for autofilling
+   * the target editor form without re-typing them — the admin previously had to retype everything
+   * from scratch every time, since nothing round-tripped them back. Redacted the same way a
+   * member's own shared S3 profile already is (`TeamVaultService.redactS3Secrets`):
+   * `secretAccessKey`/`sessionToken`/`proxy.password` are stripped and never sent to the renderer
+   * at all — unlike `ProfileSyncStatus.targetConfig` (which does send those, for the general
+   * Synchronization panel), a Team Vault's target secret is shared infrastructure for a whole
+   * team, not a single user's own credential, so it's held to a stricter bar.
+   * `s3Config.hasSecretAccessKey` tells the editor a secret is already saved, so it can show the
+   * field as optional ("leave blank to keep it") instead of requiring a retype;
+   * `teamVaultHandlers.ts`'s `TEAM_VAULT_SET_TARGET` preserves the existing secret when the
+   * resubmitted one for the same target id is blank. */
   targetConfig?: { type: 's3'; s3Config: S3Config };
   /** `bucket[/prefix]` the vault syncs under — an S3 target carries no bucket of its own (see
    * `TeamVaultService.remoteVaultPath`'s doc comment), so this is also needed to fully prefill

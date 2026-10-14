@@ -171,8 +171,11 @@ function redactSshSecrets(profile: SSHConnectionConfig): SSHConnectionConfig {
 
 /** Strips an S3 profile's secret fields for a non-admin reader — see `redactSshSecrets`.
  * Includes `proxy.password` (the S3 traffic proxy's credential, same shape as the SSH one) —
- * easy to miss since it lives one level down from the fields this is named after. */
-function redactS3Secrets(profile: S3Config): S3Config {
+ * easy to miss since it lives one level down from the fields this is named after. Also reused by
+ * `IpcBridge.buildTeamVaultStatus` to redact the vault's own sync *target* config before it ever
+ * reaches the renderer (not just member profiles) — the target's secret is shared team
+ * infrastructure, not a single member's own credential, so it gets no exception. */
+export function redactS3Secrets(profile: S3Config): S3Config {
   const { secretAccessKey, sessionToken, proxy, ...rest } = profile;
   return {
     ...rest,

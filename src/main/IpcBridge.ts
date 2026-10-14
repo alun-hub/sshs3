@@ -32,7 +32,7 @@ import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
-import { TeamVaultService } from './services/TeamVaultService';
+import { TeamVaultService, redactS3Secrets } from './services/TeamVaultService';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
 import {
   migrateLegacyTeamVaultLayout,
@@ -1158,7 +1158,7 @@ export class IpcBridge {
       // already set for the general Synchronization panel's own target (§ edit-target prefill).
       targetConfig:
         config.target?.type === 's3' && config.target.s3Config
-          ? { type: 's3', s3Config: config.target.s3Config }
+          ? { type: 's3', s3Config: redactS3Secrets(config.target.s3Config) }
           : undefined,
       remoteBasePath: config.remoteBasePath,
       lastSyncAt: config.lastSyncAt,
