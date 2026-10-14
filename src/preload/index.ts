@@ -538,6 +538,8 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_HAS_REMOTE_VAULT, vaultId),
   teamVaultGetSyncPreview: (vaultId: string): Promise<TeamVaultSyncPreview> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_SYNC_PREVIEW, vaultId),
+  teamVaultTestTarget: (vaultId: string, config: S3Config): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, vaultId, config),
   teamVaultGetPayload: (vaultId: string): Promise<TeamVaultPayload | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_GET_PAYLOAD, vaultId),
   teamVaultSaveSSHProfile: (vaultId: string, profile: SSHConnectionConfig): Promise<void> =>

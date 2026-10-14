@@ -179,6 +179,13 @@ interface SyncTargetFormProps {
   draft: SyncTargetDraft;
   onChange: (draft: SyncTargetDraft) => void;
   disabled?: boolean;
+  /** Overrides the default `window.multissh.testS3Connection` call for "Test Connection" (S3
+   * only) — needed by a caller whose draft can have a deliberately blank `secretAccessKey`
+   * meaning "keep the saved one" (Team Vault's target editor, which never round-trips the real
+   * secret to this form at all — see `TeamVaultStatus.targetConfig`'s doc comment). The default
+   * path would otherwise always fail test-connection with "Secret Access Key is required" for
+   * exactly the case where a secret genuinely is saved, just not visible here. */
+  onTestS3Connection?: (config: S3Config) => Promise<{ success: boolean; error?: string }>;
 }
 
 const inputClass =
@@ -207,7 +214,7 @@ function Field({
   );
 }
 
-export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange, disabled }) => {
+export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange, disabled, onTestS3Connection }) => {
   const [savedProfiles, setSavedProfiles] = useState<{ ssh: SSHConnectionConfig[]; s3: S3Config[] }>({
     ssh: [],
     s3: [],
@@ -386,7 +393,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
           setTestResult({ success: false, message: res?.error || 'Connection failed' });
         }
       } else {
-        const res = await window.multissh?.testS3Connection?.({
+        const s3Config: S3Config = {
           id: 'test',
           name: 'test',
           endpoint: draft.endpoint || undefined,
@@ -397,7 +404,10 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
           sessionToken: draft.sessionToken || undefined,
           forcePathStyle: draft.forcePathStyle,
           sso: draft.sso,
-        });
+        };
+        const res = onTestS3Connection
+          ? await onTestS3Connection(s3Config)
+          : await window.multissh?.testS3Connection?.(s3Config);
         if (res?.success) {
           setTestResult({ success: true, message: 'Connection to S3 succeeded!' });
         } else {

@@ -11,6 +11,7 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateReader';
+import { testS3ConnectionConfig } from './connectionTestHandlers';
 import { createLogger } from '../log';
 
 const teamVaultLog = createLogger('team-vault');
@@ -449,6 +450,24 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
         teamVaultLog.warn(`Failed to build sync preview (vaultId=${vid}):`, err);
         return { hasUnpushedLocalChanges: false, remoteChanged: false };
       }
+    }
+  );
+
+  // "Test Connection" from the target editor: the form's secret can be deliberately blank
+  // (meaning "use the saved one" — see TeamVaultStatus.targetConfig's doc comment), so substitute
+  // it the same way TEAM_VAULT_SET_TARGET's own guard does before handing off to the same S3
+  // connection check the generic "Test Connection" flow uses.
+  bridge.registerHandler(
+    IPC_CHANNELS.TEAM_VAULT_TEST_TARGET,
+    async (_event, vaultId: string, config: S3Config): Promise<{ success: boolean; error?: string }> => {
+      const vid = requireVaultId(vaultId);
+      if (!config?.secretAccessKey) {
+        const existingTarget = (await bridge.teamVaultConfigStore.getConfig(vid)).target;
+        if (existingTarget?.type === 's3' && existingTarget.s3Config?.secretAccessKey) {
+          config = { ...config, secretAccessKey: existingTarget.s3Config.secretAccessKey };
+        }
+      }
+      return testS3ConnectionConfig(config);
     }
   );
 

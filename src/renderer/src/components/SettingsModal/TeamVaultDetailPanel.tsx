@@ -988,7 +988,12 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     A secret access key is already saved. Leave "Secret Access Key" blank to keep it, or type a new one to replace it.
                   </p>
                 )}
-                <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
+                <SyncTargetForm
+                  draft={targetDraft}
+                  onChange={setTargetDraft}
+                  disabled={savingTarget}
+                  onTestS3Connection={(config) => window.multissh.teamVaultTestTarget(vaultId, config)}
+                />
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"

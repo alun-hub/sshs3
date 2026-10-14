@@ -228,6 +228,7 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_PULL: 'team-vault:pull',
   TEAM_VAULT_HAS_REMOTE_VAULT: 'team-vault:has-remote-vault',
   TEAM_VAULT_GET_SYNC_PREVIEW: 'team-vault:get-sync-preview',
+  TEAM_VAULT_TEST_TARGET: 'team-vault:test-target',
   TEAM_VAULT_GET_PAYLOAD: 'team-vault:get-payload',
   TEAM_VAULT_SAVE_SSH_PROFILE: 'team-vault:save-ssh-profile',
   TEAM_VAULT_DELETE_SSH_PROFILE: 'team-vault:delete-ssh-profile',
@@ -699,6 +700,11 @@ export interface MultiSSHApi {
    * as "Up to date") if the preview check itself fails, e.g. no target configured yet or the
    * vault is locked — see teamVaultHandlers.ts. */
   teamVaultGetSyncPreview(vaultId: string): Promise<TeamVaultSyncPreview>;
+  /** Like `testS3Connection`, but for a Team Vault's own sync target: if `config.secretAccessKey`
+   * is blank, substitutes the vault's already-saved secret before testing — the target editor
+   * never round-trips the real secret to the renderer (see `TeamVaultStatus.targetConfig`'s doc
+   * comment), so a blank field here means "use the saved one", not "no secret". */
+  teamVaultTestTarget(vaultId: string, config: S3Config): Promise<{ success: boolean; error?: string }>;
   /** Null when the vault doesn't exist or isn't unlocked — best-effort, see teamVaultHandlers.ts. */
   teamVaultGetPayload(vaultId: string): Promise<TeamVaultPayload | null>;
   teamVaultSaveSSHProfile(vaultId: string, profile: SSHConnectionConfig): Promise<void>;

@@ -7,6 +7,11 @@ vi.mock('../../src/main/smartcard/SmartcardCertificateReader', () => ({
   readSmartcardCertificates: mockReadSmartcardCertificates,
 }));
 
+const { mockTestS3ConnectionConfig } = vi.hoisted(() => ({ mockTestS3ConnectionConfig: vi.fn() }));
+vi.mock('../../src/main/ipc/connectionTestHandlers', () => ({
+  testS3ConnectionConfig: mockTestS3ConnectionConfig,
+}));
+
 import { registerTeamVaultHandlers, type TeamVaultHost } from '../../src/main/ipc/teamVaultHandlers';
 
 type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
@@ -81,6 +86,7 @@ describe('Team Vault IPC handlers', () => {
     teamVaultConfigStore.getAllConfigs.mockResolvedValue({});
     syncConfigStore.getConfig.mockResolvedValue({});
     mockReadSmartcardCertificates.mockResolvedValue(new Map());
+    mockTestS3ConnectionConfig.mockResolvedValue({ success: true });
     storageRegistry.getOrCreate.mockResolvedValue({});
     buildTeamVaultStatus.mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' });
     buildAllTeamVaultStatuses.mockResolvedValue([]);
@@ -550,6 +556,46 @@ describe('Team Vault IPC handlers', () => {
         expect.objectContaining({ s3Config: expect.objectContaining({ secretAccessKey: '' }) }),
         'team-bucket'
       );
+    });
+  });
+
+  describe('TEAM_VAULT_TEST_TARGET', () => {
+    it('passes the submitted config through untouched when a secret is present', async () => {
+      const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: 'typed-secret' };
+      await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, config);
+      expect(mockTestS3ConnectionConfig).toHaveBeenCalledWith(config);
+    });
+
+    it('borrows the saved secret when the submitted config has a blank one (matches the redacted-form design)', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({
+        target: { id: 't1', name: 'Team bucket', type: 's3', s3Config: { region: 'eu-north-1', secretAccessKey: 'real-secret' } },
+      });
+      const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: '' };
+
+      await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, config);
+
+      expect(mockTestS3ConnectionConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ secretAccessKey: 'real-secret' })
+      );
+    });
+
+    it('leaves the secret blank when there is no saved S3 target to borrow from', async () => {
+      teamVaultConfigStore.getConfig.mockResolvedValue({ target: undefined });
+      const config = { region: 'eu-north-1', accessKeyId: 'ak', secretAccessKey: '' };
+
+      await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, config);
+
+      expect(mockTestS3ConnectionConfig).toHaveBeenCalledWith(expect.objectContaining({ secretAccessKey: '' }));
+    });
+
+    it('returns whatever testS3ConnectionConfig reports', async () => {
+      mockTestS3ConnectionConfig.mockResolvedValue({ success: false, error: 'boom' });
+      const result = await call(IPC_CHANNELS.TEAM_VAULT_TEST_TARGET, VAULT_ID, {
+        region: 'eu-north-1',
+        accessKeyId: 'ak',
+        secretAccessKey: 'x',
+      });
+      expect(result).toEqual({ success: false, error: 'boom' });
     });
   });
 

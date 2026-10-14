@@ -92,33 +92,35 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
     }
   );
 
-  bridge.registerHandler(
-    IPC_CHANNELS.CONNECTION_TEST_S3,
-    async (_event, config: S3Config): Promise<{ success: boolean; error?: string }> => {
-      if (!config || !config.region?.trim()) {
-        return { success: false, error: 'Region is required' };
-      }
-      if (config.authMode === 'sso') {
-        if (!config.sso?.startUrl?.trim() || !config.sso?.accountId?.trim() || !config.sso?.roleName?.trim()) {
-          return { success: false, error: 'Start URL, Account, and Role are required for AWS SSO' };
-        }
-      } else if (!config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
-        return { success: false, error: 'Access Key ID and Secret Access Key are required' };
-      }
-      try {
-        const provider = new S3StorageProvider({
-          ...config,
-          id: `test-${crypto.randomUUID()}`,
-          name: 'Test S3',
-        });
-        await provider.client.send(new ListBucketsCommand({}));
-        return { success: true };
-      } catch (err: any) {
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
+  bridge.registerHandler(IPC_CHANNELS.CONNECTION_TEST_S3, async (_event, config: S3Config) => testS3ConnectionConfig(config));
+}
+
+/** Shared by the generic "Test Connection" handler above and Team Vault's own test-target
+ * handler (`teamVaultHandlers.ts`'s `TEAM_VAULT_TEST_TARGET`), which needs to substitute an
+ * already-saved secret into `config` before calling this — see that handler's doc comment. */
+export async function testS3ConnectionConfig(config: S3Config): Promise<{ success: boolean; error?: string }> {
+  if (!config || !config.region?.trim()) {
+    return { success: false, error: 'Region is required' };
+  }
+  if (config.authMode === 'sso') {
+    if (!config.sso?.startUrl?.trim() || !config.sso?.accountId?.trim() || !config.sso?.roleName?.trim()) {
+      return { success: false, error: 'Start URL, Account, and Role are required for AWS SSO' };
     }
-  );
+  } else if (!config.accessKeyId?.trim() || !config.secretAccessKey?.trim()) {
+    return { success: false, error: 'Access Key ID and Secret Access Key are required' };
+  }
+  try {
+    const provider = new S3StorageProvider({
+      ...config,
+      id: `test-${crypto.randomUUID()}`,
+      name: 'Test S3',
+    });
+    await provider.client.send(new ListBucketsCommand({}));
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
