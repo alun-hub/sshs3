@@ -23,12 +23,18 @@ if (process.platform === 'linux') {
   // then lives only in that process's memory, so every restart gets a fresh one and everything
   // encrypted in a prior run (saved passwords, Team Vault's S3 secret, ...) becomes
   // undecryptable — surfacing downstream as garbage credentials (e.g. AWS SignatureDoesNotMatch).
-  // Forcing 'gnome-libsecret' instead routes through the same KDE session's ksecretd (KWallet's
-  // freedesktop Secret Service compatibility layer) via libsecret, which was verified (via
-  // `secret-tool search`) to actually persist the key and survive a restart.
-  if (process.env.XDG_CURRENT_DESKTOP?.toLowerCase().includes('kde') || process.env.KDE_FULL_SESSION === 'true') {
-    app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
-  }
+  //
+  // Forcing 'gnome-libsecret' instead routes through ksecretd (KWallet's freedesktop Secret
+  // Service compatibility layer) via libsecret, verified via `secret-tool search` to actually
+  // persist the key and survive a restart. This used to be gated on detecting a KDE session via
+  // XDG_CURRENT_DESKTOP/KDE_FULL_SESSION, but that's unreliable: a real user's app process
+  // (launched via `npm run dev:prod` from their own terminal) had neither variable in its
+  // environment at all, despite genuinely running on KDE, so the override silently never
+  // applied and the bug kept recurring. Apply it unconditionally on Linux instead:
+  // gnome-libsecret is also the normal, already-working backend on a vanilla GNOME session, and
+  // if no Secret-Service-compatible store exists at all, Chromium just falls back to
+  // 'basic_text', which the `!isEncryptionAvailable()` check below already warns about.
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
 }
 
 // Redirect userData to <exe-dir>/data if running as a portable executable (set by electron-builder)
