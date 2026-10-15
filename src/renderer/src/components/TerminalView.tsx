@@ -117,7 +117,7 @@ const XTERM_BREEZE_THEME = {
   foreground: '#fcfcfc',
   cursor: '#3daee9',
   cursorAccent: '#232627',
-  selectionBackground: '#31363b',
+  selectionBackground: '#1e5774',
   black: '#232627',
   red: '#ed1515',
   green: '#11d116',
@@ -409,6 +409,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       minimumContrastRatio: minContrastFor(currentTheme),
       scrollback: scrollbackRef.current ?? 5000,
       allowProposedApi: true,
+      linkHandler: {
+        activate: (_event, text) => {
+          void window.multissh?.openExternal(text);
+        },
+      },
     });
     termRef.current = term;
 

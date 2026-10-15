@@ -387,5 +387,29 @@ describe('TerminalView Component', () => {
     // Terminal container handles DOM paste listener without errors
     expect(container).toBeInTheDocument();
   });
+
+  it('configures linkHandler to open external URLs via window.multissh.openExternal', async () => {
+    const mockOpenExternal = vi.fn();
+    window.multissh.openExternal = mockOpenExternal;
+
+    let capturedLinkHandler: any = null;
+    const { Terminal } = await import('xterm');
+    const openSpy = vi.spyOn(Terminal.prototype, 'open').mockImplementation(function (this: any, element: HTMLElement) {
+      capturedLinkHandler = this.options.linkHandler;
+      return openSpy.getMockImplementation() ? undefined : (openSpy as any)(element);
+    });
+
+    render(<TerminalView config={sampleConfig} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(capturedLinkHandler).toBeDefined();
+    capturedLinkHandler.activate({} as any, 'https://github.com/remotion-dev/remotion');
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://github.com/remotion-dev/remotion');
+
+    openSpy.mockRestore();
+  });
 });
+
 

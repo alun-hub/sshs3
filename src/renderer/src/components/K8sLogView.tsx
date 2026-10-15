@@ -72,6 +72,11 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       fontSize,
       fontFamily,
       theme: { background: '#0f172a', foreground: '#f8fafc' },
+      linkHandler: {
+        activate: (_event, text) => {
+          void window.multissh?.openExternal(text);
+        },
+      },
     });
     const fitAddon = new FitAddon();
     termRef.current = term;
