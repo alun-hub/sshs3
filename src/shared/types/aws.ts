@@ -1,3 +1,12 @@
+import type { ProxyConfig } from './storage';
+
+/** Network settings so the SSO OIDC calls honor the same CA/proxy config as the S3 client. */
+export interface AwsSsoNetworkOptions {
+  customCaPath?: string;
+  rejectUnauthorized?: boolean;
+  proxy?: ProxyConfig;
+}
+
 export interface AwsSsoDevicePrompt {
   verificationUri: string;
   verificationUriComplete?: string;

@@ -32,7 +32,13 @@ import type {
   SpaceInfo,
   VolumeInfo,
 } from './storage';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoDevicePrompt, AwsSsoLoginResult } from './aws';
+import type {
+  AwsSsoAccount,
+  AwsSsoAccountRole,
+  AwsSsoDevicePrompt,
+  AwsSsoLoginResult,
+  AwsSsoNetworkOptions,
+} from './aws';
 import type { SessionData } from './session';
 import type { ClipboardHistoryEntry } from './clipboard';
 import type { Snippet } from './snippets';
@@ -752,11 +758,20 @@ export interface MultiSSHApi {
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin(startUrl: string, region: string): Promise<AwsSsoLoginResult>;
+  awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
-  awsSsoListAccounts(accessToken: string, region: string): Promise<AwsSsoAccount[]>;
-  awsSsoListRoles(accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]>;
+  awsSsoListAccounts(
+    accessToken: string,
+    region: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccount[]>;
+  awsSsoListRoles(
+    accessToken: string,
+    region: string,
+    accountId: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccountRole[]>;
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;

@@ -34,7 +34,7 @@ import type {
   K8sLoginResult,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../shared/types/aws';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -607,8 +607,11 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin: (startUrl: string, region: string): Promise<AwsSsoLoginResult> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region),
+  awsSsoLogin: (
+    startUrl: string,
+    region: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoLoginResult> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, network),
 
   awsSsoCancelLogin: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id),
@@ -621,11 +624,20 @@ export const api: MultiSSHApi = {
     };
   },
 
-  awsSsoListAccounts: (accessToken: string, region: string): Promise<AwsSsoAccount[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, accessToken, region),
+  awsSsoListAccounts: (
+    accessToken: string,
+    region: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccount[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, accessToken, region, network),
 
-  awsSsoListRoles: (accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId),
+  awsSsoListRoles: (
+    accessToken: string,
+    region: string,
+    accountId: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccountRole[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
 
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>

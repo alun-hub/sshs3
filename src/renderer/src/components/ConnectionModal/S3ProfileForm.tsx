@@ -72,6 +72,15 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
     setTestResult(null);
   };
 
+  // Same proxy/custom-CA override the S3 client itself uses, so SSO sign-in
+  // behind a corporate TLS-intercepting proxy hits the OIDC endpoint the
+  // same way the S3 calls will once the profile is saved.
+  const ssoNetworkOptions = () => ({
+    customCaPath: config.customCaPath,
+    rejectUnauthorized: config.rejectUnauthorized,
+    proxy: config.proxy,
+  });
+
   const handleAwsSsoLogin = async () => {
     const startUrl = config.sso?.startUrl?.trim();
     const region = config.sso?.region?.trim() || config.region || 'us-east-1';
@@ -84,10 +93,10 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
     setSsoManualEntry(false);
     setSsoLoggingIn(true);
     try {
-      const { accessToken } = await window.multissh.awsSsoLogin(startUrl, region);
+      const { accessToken } = await window.multissh.awsSsoLogin(startUrl, region, ssoNetworkOptions());
       setSsoAccessToken(accessToken);
       try {
-        const accounts = await window.multissh.awsSsoListAccounts(accessToken, region);
+        const accounts = await window.multissh.awsSsoListAccounts(accessToken, region, ssoNetworkOptions());
         setSsoAccounts(accounts);
       } catch {
         // Some IAM Identity Center permission sets can't list accounts/roles
@@ -108,7 +117,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
     const region = config.sso?.region?.trim() || config.region || 'us-east-1';
     setLoadingRoles(true);
     try {
-      const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId);
+      const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId, ssoNetworkOptions());
       setSsoRoles(roles);
     } catch (err) {
       setSsoError(describeIpcError(err, 'Failed to list roles for this account'));

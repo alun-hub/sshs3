@@ -2,7 +2,12 @@ import crypto from 'node:crypto';
 import { shell as electronShell } from 'electron';
 import { AwsSsoLoginCancelledError } from '../aws/AwsSsoAuthService';
 import { IPC_CHANNELS, type AwsSsoPromptEvent } from '../../shared/types/ipc';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult } from '../../shared/types/aws';
+import type {
+  AwsSsoAccount,
+  AwsSsoAccountRole,
+  AwsSsoLoginResult,
+  AwsSsoNetworkOptions,
+} from '../../shared/types/aws';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
@@ -21,7 +26,12 @@ export type AwsSsoHost = Pick<
 export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LOGIN,
-    async (_event, startUrl: string, region: string): Promise<AwsSsoLoginResult> => {
+    async (
+      _event,
+      startUrl: string,
+      region: string,
+      network?: AwsSsoNetworkOptions
+    ): Promise<AwsSsoLoginResult> => {
       if (!startUrl?.trim() || !region?.trim()) {
         throw new Error('Start URL and region are required');
       }
@@ -32,6 +42,7 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
 
       try {
         return await bridge.awsSsoAuthService.login(startUrl, region, {
+          network,
           onPrompt: (prompt) => {
             const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;
             if (
@@ -67,15 +78,26 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
 
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS,
-    async (_event, accessToken: string, region: string): Promise<AwsSsoAccount[]> => {
-      return await bridge.awsSsoAuthService.listAccounts(accessToken, region);
+    async (
+      _event,
+      accessToken: string,
+      region: string,
+      network?: AwsSsoNetworkOptions
+    ): Promise<AwsSsoAccount[]> => {
+      return await bridge.awsSsoAuthService.listAccounts(accessToken, region, network);
     }
   );
 
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LIST_ROLES,
-    async (_event, accessToken: string, region: string, accountId: string): Promise<AwsSsoAccountRole[]> => {
-      return await bridge.awsSsoAuthService.listAccountRoles(accessToken, region, accountId);
+    async (
+      _event,
+      accessToken: string,
+      region: string,
+      accountId: string,
+      network?: AwsSsoNetworkOptions
+    ): Promise<AwsSsoAccountRole[]> => {
+      return await bridge.awsSsoAuthService.listAccountRoles(accessToken, region, accountId, network);
     }
   );
 }

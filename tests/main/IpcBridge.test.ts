@@ -1268,11 +1268,11 @@ describe('IpcBridge', () => {
     it('lists accounts and roles via the injected AwsSsoAuthService', async () => {
       const accounts = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, 'token', 'us-east-1');
       expect(accounts).toEqual([{ accountId: '123', accountName: 'Prod' }]);
-      expect(mockAwsSsoAuthService.listAccounts).toHaveBeenCalledWith('token', 'us-east-1');
+      expect(mockAwsSsoAuthService.listAccounts).toHaveBeenCalledWith('token', 'us-east-1', undefined);
 
       const roles = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, 'token', 'us-east-1', '123');
       expect(roles).toEqual([{ roleName: 'Admin' }]);
-      expect(mockAwsSsoAuthService.listAccountRoles).toHaveBeenCalledWith('token', 'us-east-1', '123');
+      expect(mockAwsSsoAuthService.listAccountRoles).toHaveBeenCalledWith('token', 'us-east-1', '123', undefined);
     });
   });
 
