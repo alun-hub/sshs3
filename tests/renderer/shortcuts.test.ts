@@ -27,6 +27,24 @@ describe('comboFromKeyboardEvent', () => {
     expect(swedishLayout).toBe('Ctrl+Shift+,');
   });
 
+  it('keeps Swedish/Nordic å/ä/ö letters instead of the US punctuation that shares their physical key code', () => {
+    // On a Swedish ISO layout, å/ä/ö sit at the same physical codes as US [ / ' / ; — Shift+å
+    // must stay 'Å', not get overwritten with the US-layout bracket that shares BracketLeft.
+    expect(comboFromKeyboardEvent({ key: 'Å', code: 'BracketLeft', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Å'
+    );
+    expect(comboFromKeyboardEvent({ key: 'Ä', code: 'Quote', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Ä'
+    );
+    expect(comboFromKeyboardEvent({ key: 'Ö', code: 'Semicolon', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(
+      'Ctrl+Shift+Ö'
+    );
+    // Unshifted å/ä/ö (no Shift held) were already unaffected, but keep covering them too.
+    expect(comboFromKeyboardEvent({ key: 'å', code: 'BracketLeft', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(
+      'Ctrl+Å'
+    );
+  });
+
   it('falls back to the raw e.key when e.code is missing or unrecognized, so recorder and matcher stay consistent with each other even then', () => {
     const withoutCode = comboFromKeyboardEvent({ key: ';', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true });
     expect(withoutCode).toBe('Ctrl+Shift+;');

@@ -62,6 +62,15 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // While the Settings shortcut recorder is capturing a new binding, every app-level shortcut
+      // must stay silent — otherwise a combo that matches an existing binding (including the one
+      // being rebound) gets consumed here first (preventDefault+stopPropagation in the capture
+      // phase, before the recorder's own onKeyDown ever runs), so the recorder looks unresponsive
+      // and the matched action fires in the background instead (e.g. closing a tab on Ctrl+W).
+      if (document.querySelector('[data-shortcut-recording="true"]')) {
+        return;
+      }
+
       // If TabBar is focused and user presses Enter or Escape: descend into active tab
       if (tabBarFocused && (e.key === 'Enter' || e.key === 'Escape') && !getTopmostOverlay()) {
         e.preventDefault();

@@ -67,7 +67,16 @@ export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
   let key = e.key;
   if (key === 'ISO_Left_Tab' || e.code === 'Tab') {
     key = 'Tab';
-  } else if (e.shiftKey && e.code && PHYSICAL_KEY_BASE_SYMBOLS[e.code]) {
+  } else if (
+    e.shiftKey &&
+    e.code &&
+    PHYSICAL_KEY_BASE_SYMBOLS[e.code] &&
+    // Only for a genuine punctuation key: on Swedish/Nordic ISO layouts, the physical keys at
+    // these same codes (BracketLeft, Quote, Semicolon) are the å/ä/ö letter keys, so Shift+å
+    // must stay 'Å' rather than being overwritten with the US-layout punctuation ('[', "'", ';')
+    // that happens to share that physical position.
+    !/^\p{L}$/u.test(key)
+  ) {
     key = PHYSICAL_KEY_BASE_SYMBOLS[e.code];
   }
   if (key === ' ') key = 'Space';
@@ -79,6 +88,20 @@ export function comboFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
   parts.push(key);
 
   return parts.join('+');
+}
+
+/**
+ * Live preview of the modifiers currently held during shortcut recording (before a non-modifier
+ * key completes the combo), so the recorder UI can show "Ctrl+..." instead of looking unresponsive
+ * while a modifier alone is held. Returns null once no modifier is held.
+ */
+export function modifierPreviewFromKeyboardEvent(e: ShortcutKeyEventLike): string | null {
+  const parts: string[] = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.metaKey) parts.push('Cmd');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  return parts.length > 0 ? parts.join('+') : null;
 }
 
 /**

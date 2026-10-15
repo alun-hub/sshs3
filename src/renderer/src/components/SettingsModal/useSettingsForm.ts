@@ -5,7 +5,7 @@ import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/
 import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppTheme, type SessionExitAction, type SmartcardAuthMode } from '@shared/types/settings';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
-import { comboFromKeyboardEvent } from '../../lib/shortcuts';
+import { comboFromKeyboardEvent, modifierPreviewFromKeyboardEvent } from '../../lib/shortcuts';
 import { type SettingsCategory, normalizeAgentMode } from './settingsConstants';
 
 interface UseSettingsFormArgs {
@@ -93,6 +93,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     ...(currentSettings.shortcuts ?? {}),
   }));
   const [recordingAction, setRecordingAction] = useState<string | null>(null);
+  const [recordingPreview, setRecordingPreview] = useState<string | null>(null);
   const [shortcutSearch, setShortcutSearch] = useState('');
 
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
@@ -316,15 +317,28 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     e.stopPropagation();
     if (e.key === 'Escape') {
       setRecordingAction(null);
+      setRecordingPreview(null);
       return;
     }
     // Shares its combo-building logic with the runtime shortcut matcher in App.tsx: a shortcut
     // recorded here for a given physical key must resolve to the exact same string that pressing
     // that key produces at runtime, or the saved binding silently never fires.
     const combo = comboFromKeyboardEvent(e);
-    if (combo === null) return;
+    if (combo === null) {
+      // A lone modifier (or a dead-key/compose event with no `key`) isn't a complete combo yet —
+      // show it as a live preview so the recorder doesn't look unresponsive while it's held.
+      setRecordingPreview(modifierPreviewFromKeyboardEvent(e));
+      return;
+    }
     setShortcuts((prev) => ({ ...prev, [actionId]: combo }));
     setRecordingAction(null);
+    setRecordingPreview(null);
+  };
+
+  const handleKeyUpRecord = (e: React.KeyboardEvent) => {
+    if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      setRecordingPreview(null);
+    }
   };
 
   const filteredShortcuts = SHORTCUT_DEFINITIONS.filter(
@@ -402,6 +416,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     setShortcuts,
     recordingAction,
     setRecordingAction,
+    recordingPreview,
+    handleKeyUpRecord,
     shortcutSearch,
     setShortcutSearch,
     smartcardLibs,
