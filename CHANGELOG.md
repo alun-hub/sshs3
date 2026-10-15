@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.37] - 2026-10-15
+
+### Fixed
+- **AWS SSO sign-in behind a TLS-intercepting corporate proxy.** The SSO device-authorization calls now trust the system CA store and honor the profile's proxy/custom-CA settings, the same way the S3 client already did, and fail with a visible error instead of spinning forever when the connection hangs.
+- **Keyboard shortcut rebinding.** The "press keys to rebind" recorder no longer gets its keystrokes swallowed by the app's own global shortcuts (e.g. recording <kbd>Ctrl+W</kbd> no longer closes a tab in the background), now shows a live preview while a modifier is held, and no longer mangles Swedish/Nordic å/ä/ö into US-layout punctuation.
+
 ## [0.96.36] - 2026-10-14
 
 ### Added
