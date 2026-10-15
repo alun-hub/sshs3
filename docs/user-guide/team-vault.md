@@ -4,6 +4,10 @@
 
 Team Vault is completely independent from [Remote Profile Synchronization](/docs/sync-environment/), which synchronizes *your personal* profiles between *your own* workstations. Personal profiles never enter any Team Vault, and shared profiles never land in your personal profile store. Furthermore, you can belong to **multiple Team Vaults** concurrently (e.g. *Infra Team*, *Database Ops*, *Customer Staging*), each with its own isolated vault file, membership list, and S3 backend.
 
+<video autoplay loop muted playsinline width="100%" style="border-radius: 12px; border: 1px solid #334155; margin: 1.5rem 0;">
+  <source src="/img/docs/team-vault-architecture.mp4" type="video/mp4" />
+</video>
+
 ![Team Vault settings](/img/docs/team-vault-settings.png)
 
 ```mermaid
