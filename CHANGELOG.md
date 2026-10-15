@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.38] - 2026-10-15
+
+### Fixed
+- **Terminal & Kubernetes log links.** Configured xterm's link handler so clicking hyperlinks in terminal panes and Kubernetes log views properly launches the target URL in the default system browser.
+- **Breeze theme contrast.** Adjusted the selection background color in the Breeze terminal theme for clearer contrast against dark backgrounds.
+
+### Changed
+- **Dependencies & CI.** Updated npm dependencies across AWS SDK, Vite, Vitest, Lucide React, and bumped `actions/setup-node` to v7 in GitHub Actions.
+- **Team Vault documentation.** Added an animated architecture video walkthrough to the Team Vault user guide.
+
 ## [0.96.37] - 2026-10-15
 
 ### Fixed
