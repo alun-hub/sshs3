@@ -357,7 +357,8 @@ export class IpcBridge {
         : undefined;
     });
     this.k8sLogManager = options.k8sLogManager ?? new K8sLogManager();
-    this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager();
+    this.k8sPortForwardManager = options.k8sPortForwardManager ?? new K8sPortForwardManager(undefined, this.k8sDiscoveryService);
+    this.k8sPortForwardManager.setDiscoveryService(this.k8sDiscoveryService);
     this.sshTunnelManager = options.sshTunnelManager ?? new SSHTunnelManager();
     this.getWebContents = options.getWebContents ?? (() => null);
     this.confirmQuit = options.confirmQuit;

@@ -19,6 +19,7 @@ import {
   Server,
   Tag,
   TerminalSquare,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -26,6 +27,8 @@ import type {
   K8sPodDescription,
   K8sTerminalTarget,
 } from '@shared/types/kubernetes';
+import { useConfirm } from '../ConfirmDialog';
+import { K8sPodMetrics } from './K8sPodMetrics';
 import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
@@ -40,6 +43,7 @@ interface K8sPodDetailModalProps {
   onBrowseFiles?: (target: K8sTerminalTarget) => void;
   onPortForward?: (contextName: string, namespace: string, podName: string, containerPort?: number) => void;
   onDebug?: (contextName: string, namespace: string, podName: string, containers: string[]) => void;
+  onDeleted?: () => void;
 }
 
 type TabType = 'overview' | 'containers' | 'events' | 'yaml';
@@ -54,13 +58,41 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
   onBrowseFiles,
   onPortForward,
   onDebug,
+  onDeleted,
 }) => {
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pod, setPod] = useState<K8sPodDescription | null>(null);
   const [copied, setCopied] = useState(false);
   useEscapeToClose(onClose, true);
+
+  const handleDeletePod = async () => {
+    const confirmed = await confirm({
+      title: 'Delete Pod',
+      message: (
+        <span>
+          Are you sure you want to delete pod <strong className="text-txt-primary">{podName}</strong>?
+          If managed by a Deployment, StatefulSet, or DaemonSet, a new pod will be started in its place.
+        </span>
+      ),
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await window.multissh.k8sDeletePod(contextName, namespace, podName);
+      onDeleted?.();
+      onClose();
+    } catch (err) {
+      setError(describeIpcError(err, String(err)));
+      setDeleting(false);
+    }
+  };
 
   const fetchPod = useCallback(() => {
     setLoading(true);
@@ -147,7 +179,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                   const containerNames = pod ? pod.containers.map((c) => c.name) : [];
                   onDebug(contextName, namespace, podName, containerNames);
                 }}
-                disabled={loading}
+                disabled={loading || deleting}
                 title="Attach ephemeral debug container (kubectl debug)"
                 className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 transition-colors disabled:opacity-50"
               >
@@ -157,8 +189,22 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
             )}
             <button
               type="button"
+              onClick={handleDeletePod}
+              disabled={deleting}
+              title="Delete or restart pod"
+              className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-colors disabled:opacity-50"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete Pod
+            </button>
+            <button
+              type="button"
               onClick={fetchPod}
-              disabled={loading}
+              disabled={loading || deleting}
               title="Refresh pod details"
               className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors disabled:opacity-50"
             >
@@ -285,6 +331,14 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Live Resource Metrics */}
+                  <K8sPodMetrics
+                    contextName={contextName}
+                    namespace={namespace}
+                    podName={podName}
+                    containers={pod.containers.map((c) => c.name)}
+                  />
 
                   {/* Conditions */}
                   <div className="space-y-2">

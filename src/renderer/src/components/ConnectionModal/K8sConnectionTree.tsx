@@ -16,65 +16,18 @@ import {
   ScrollText,
   Search,
   TerminalSquare,
+  Trash2,
   X,
 } from 'lucide-react';
 import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget } from '@shared/types/kubernetes';
+import { useConfirm } from '../ConfirmDialog';
 import { K8sPodDetailModal } from '../K8s/K8sPodDetailModal';
 import { K8sPortForwardModal } from '../K8s/K8sPortForwardModal';
 import { K8sDebugModal } from '../K8s/K8sDebugModal';
 import { K8sLoginModal } from '../K8s/K8sLoginModal';
+import { describeError } from '../../lib/k8sErrors';
 
 type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T };
-
-// Electron wraps every main-process throw with this prefix, which leaks the
-// internal IPC channel name (e.g. "k8s:list-namespaces") to the user.
-const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
-
-/** Known technical failure substrings mapped to actionable, user-facing text. */
-const KNOWN_ERROR_HINTS: Array<{ match: RegExp; hint: string }> = [
-  {
-    match: /HTTP protocol is not allowed when skipTLSVerify is not set or false/i,
-    hint:
-      "This cluster's API server uses plain HTTP. Enable \"Skip TLS verification\" for this context, or update your kubeconfig to use an HTTPS endpoint.",
-  },
-  {
-    match: /ECONNREFUSED/,
-    hint:
-      "Connection refused — the cluster's API server is unreachable at this address. Check that any required port-forward, VPN or proxy is running.",
-  },
-  {
-    match: /ENOTFOUND|EAI_AGAIN/,
-    hint: "Host not found — check the cluster's API server address in your kubeconfig.",
-  },
-  {
-    match: /certificate|x509|self[- ]signed/i,
-    hint:
-      'TLS certificate problem — this app does not trust the certificate presented by the cluster. Check your kubeconfig\'s certificate authority, or enable "Skip TLS verification" if you trust this cluster.',
-  },
-  {
-    match: /\b401\b|unauthorized/i,
-    hint: 'Not authorized — your credentials for this context have expired or are invalid. Try logging in again.',
-  },
-];
-
-/**
- * The k8s client wraps connection failures in a bare `TypeError: fetch failed`
- * with the actual reason (e.g. ECONNREFUSED) nested in `.cause`. Walk the
- * chain, strip Electron's internal IPC error prefix, and map known causes to
- * actionable text instead of showing raw system errors (UX review #12).
- */
-function describeError(err: unknown): string {
-  if (!(err instanceof Error)) return String(err);
-  const parts: string[] = [err.message];
-  let cause: unknown = (err as { cause?: unknown }).cause;
-  while (cause instanceof Error) {
-    parts.push(cause.message);
-    cause = (cause as { cause?: unknown }).cause;
-  }
-  const raw = parts.join(' — caused by: ').replace(ELECTRON_IPC_PREFIX, '');
-  const known = KNOWN_ERROR_HINTS.find((h) => h.match.test(raw));
-  return known ? known.hint : raw;
-}
 
 const stateDotClass: Record<string, string> = {
   running: 'bg-emerald-500',
@@ -236,6 +189,42 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
     });
   };
 
+  const confirm = useConfirm();
+
+  const refreshPods = (contextName: string, namespace: string) => {
+    const key = `${contextName}/${namespace}`;
+    window.multissh
+      .k8sListPods(contextName, namespace)
+      .then((data) => setPodsByNamespace((p) => ({ ...p, [key]: { status: 'ready', data } })))
+      .catch((err) =>
+        setPodsByNamespace((p) => ({
+          ...p,
+          [key]: { status: 'error', error: describeError(err) },
+        }))
+      );
+  };
+
+  const handleDeletePod = async (contextName: string, namespace: string, podName: string) => {
+    const confirmed = await confirm({
+      title: 'Delete Pod',
+      message: (
+        <span>
+          Are you sure you want to delete pod <strong className="text-txt-primary">{podName}</strong>?
+          If managed by a controller, a replacement will start automatically.
+        </span>
+      ),
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await window.multissh.k8sDeletePod(contextName, namespace, podName);
+      refreshPods(contextName, namespace);
+    } catch {
+      refreshPods(contextName, namespace);
+    }
+  };
+
   const toggleNamespace = (contextName: string, namespace: string) => {
     const key = `${contextName}/${namespace}`;
     setExpandedNamespaces((prev) => {
@@ -247,15 +236,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
       next.add(key);
       if (!podsByNamespace[key]) {
         setPodsByNamespace((p) => ({ ...p, [key]: { status: 'loading' } }));
-        window.multissh
-          .k8sListPods(contextName, namespace)
-          .then((data) => setPodsByNamespace((p) => ({ ...p, [key]: { status: 'ready', data } })))
-          .catch((err) =>
-            setPodsByNamespace((p) => ({
-              ...p,
-              [key]: { status: 'error', error: describeError(err) },
-            }))
-          );
+        refreshPods(contextName, namespace);
       }
       return next;
     });
@@ -522,7 +503,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                         <span className="truncate">{pod.name}</span>
                                         <span className="truncate text-2xs text-txt-muted">{pod.phase}</span>
                                       </button>
-                                      <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <div className="flex shrink-0 items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                                         <button
                                           type="button"
                                           onClick={(e) => {
@@ -533,11 +514,11 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                               podName: pod.name,
                                             });
                                           }}
-                                          title="Describe pod details & events"
+                                          title="View pod metrics, details & events"
                                           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-txt-muted hover:bg-app-surface hover:text-txt-primary border border-transparent hover:border-border-subtle transition-colors"
                                         >
                                           <Info className="h-3 w-3" />
-                                          <span className="hidden sm:inline">Describe</span>
+                                          <span className="hidden sm:inline">Metrics</span>
                                         </button>
                                         <button
                                           type="button"
@@ -575,6 +556,18 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
                                         >
                                           <Bug className="h-3 w-3" />
                                           <span className="hidden sm:inline">Debug</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeletePod(ctx.contextName, ns.name, pod.name);
+                                          }}
+                                          title="Delete or restart pod"
+                                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-rose-400 hover:bg-app-surface hover:text-rose-300 border border-transparent hover:border-rose-500/30 transition-colors"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                          <span className="hidden sm:inline">Delete</span>
                                         </button>
                                       </div>
                                     </div>
@@ -707,6 +700,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
           namespace={describeTarget.namespace}
           podName={describeTarget.podName}
           onClose={() => setDescribeTarget(null)}
+          onDeleted={() => refreshPods(describeTarget.contextName, describeTarget.namespace)}
           onExec={onExec}
           onViewLogs={onViewLogs}
           onBrowseFiles={onBrowseFiles}

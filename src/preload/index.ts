@@ -912,11 +912,21 @@ export const api: MultiSSHApi = {
   ): Promise<K8sPodDescription> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_POD_DESCRIBE, contextName, namespace, podName),
 
+  k8sDeletePod: (
+    contextName: string,
+    namespace: string,
+    podName: string
+  ): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_POD_DELETE, contextName, namespace, podName),
+
   k8sStartPortForward: (target: K8sPortForwardTarget): Promise<K8sActivePortForward> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_START, target),
 
   k8sStopPortForward: (id: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_STOP, id),
+
+  k8sReconnectPortForward: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_RECONNECT, id),
 
   k8sListPortForwards: (): Promise<K8sActivePortForward[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_PORT_FORWARD_LIST),

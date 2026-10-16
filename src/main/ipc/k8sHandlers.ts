@@ -115,6 +115,18 @@ export function registerK8sHandlers(bridge: K8sHost): void {
   );
 
   bridge.registerHandler(
+    IPC_CHANNELS.K8S_POD_DELETE,
+    async (
+      _event,
+      contextName: string,
+      namespace: string,
+      podName: string
+    ): Promise<void> => {
+      await bridge.k8sDiscoveryService.deletePod(contextName, namespace, podName);
+    }
+  );
+
+  bridge.registerHandler(
     IPC_CHANNELS.K8S_PORT_FORWARD_START,
     async (_event, target: K8sPortForwardTarget): Promise<K8sActivePortForward> => {
       return await bridge.k8sPortForwardManager.startPortForward(target);
@@ -125,6 +137,13 @@ export function registerK8sHandlers(bridge: K8sHost): void {
     IPC_CHANNELS.K8S_PORT_FORWARD_STOP,
     async (_event, id: string): Promise<boolean> => {
       return await bridge.k8sPortForwardManager.stopPortForward(id);
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.K8S_PORT_FORWARD_RECONNECT,
+    async (_event, id: string): Promise<boolean> => {
+      return await bridge.k8sPortForwardManager.reconnect(id);
     }
   );
 

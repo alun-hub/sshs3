@@ -7,6 +7,7 @@ import {
   Loader2,
   Network,
   Radio,
+  RotateCcw,
   Square,
   X,
   XCircle,
@@ -60,6 +61,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 
   // Sync props when initialTarget changes
   useEffect(() => {
@@ -172,6 +174,19 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
       log.error('Failed to stop port forward:', err);
     } finally {
       setStoppingId(null);
+    }
+  };
+
+  const handleReconnect = async (id: string) => {
+    setReconnectingId(id);
+    try {
+      await window.multissh.k8sReconnectPortForward(id);
+      const updated = await window.multissh.k8sListPortForwards();
+      setActiveForwards(updated);
+    } catch (err) {
+      log.error('Failed to reconnect port forward:', err);
+    } finally {
+      setReconnectingId(null);
     }
   };
 
@@ -407,6 +422,19 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {pf.error && (
+                        <button
+                          type="button"
+                          onClick={() => handleReconnect(pf.id)}
+                          disabled={reconnectingId === pf.id}
+                          title="Reconnect port forward"
+                          className="flex items-center gap-1 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 transition-colors disabled:opacity-50"
+                        >
+                          <RotateCcw className={`h-3 w-3 ${reconnectingId === pf.id ? 'animate-spin' : ''}`} />
+                          Reconnect
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {

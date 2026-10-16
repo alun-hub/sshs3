@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import { K8sConnectionTree } from '../../src/renderer/src/components/ConnectionModal/K8sConnectionTree';
+
+function renderTree(ui: React.ReactElement) {
+  return render(<ConfirmProvider>{ui}</ConfirmProvider>);
+}
 
 describe('K8sConnectionTree', () => {
   beforeEach(() => {
@@ -37,6 +42,7 @@ describe('K8sConnectionTree', () => {
           ],
         },
       ]),
+      k8sDeletePod: vi.fn().mockResolvedValue(undefined),
       k8sListPortForwards: vi.fn().mockResolvedValue([]),
       onK8sPortForwardEvent: vi.fn().mockReturnValue(() => {}),
       k8sReload: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +68,7 @@ describe('K8sConnectionTree', () => {
     const handleExec = vi.fn();
     const handleViewLogs = vi.fn();
 
-    render(
+    renderTree(
       <K8sConnectionTree
         onBrowseFiles={handleBrowseFiles}
         onExec={handleExec}
@@ -107,7 +113,7 @@ describe('K8sConnectionTree', () => {
   });
 
   it('does not show OpenShift login button when enableOpenShift is false or omitted', async () => {
-    render(<K8sConnectionTree enableOpenShift={false} />);
+    renderTree(<K8sConnectionTree enableOpenShift={false} />);
 
     expect(await screen.findByText('minikube')).toBeInTheDocument();
     expect(screen.queryByTitle('Log in to OpenShift or Kubernetes with token')).not.toBeInTheDocument();
@@ -117,14 +123,14 @@ describe('K8sConnectionTree', () => {
   it('does not show OpenShift login button in empty state when enableOpenShift is false', async () => {
     (window as any).multissh.k8sListContexts.mockResolvedValueOnce([]);
 
-    render(<K8sConnectionTree enableOpenShift={false} />);
+    renderTree(<K8sConnectionTree enableOpenShift={false} />);
 
     expect(await screen.findByText('No contexts found in ~/.kube/config')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /OpenShift \/ Kubernetes Login/ })).not.toBeInTheDocument();
   });
 
   it('opens OpenShift Login modal and performs token login when enableOpenShift is true', async () => {
-    render(<K8sConnectionTree enableOpenShift={true} />);
+    renderTree(<K8sConnectionTree enableOpenShift={true} />);
 
     expect(await screen.findByText('minikube')).toBeInTheDocument();
 
@@ -166,7 +172,7 @@ describe('K8sConnectionTree', () => {
   it('shows OpenShift / Kubernetes Login button when no contexts exist and enableOpenShift is true', async () => {
     (window as any).multissh.k8sListContexts.mockResolvedValueOnce([]);
 
-    render(<K8sConnectionTree enableOpenShift={true} />);
+    renderTree(<K8sConnectionTree enableOpenShift={true} />);
 
     expect(await screen.findByText('No contexts found in ~/.kube/config')).toBeInTheDocument();
     const loginBtn = screen.getByRole('button', { name: /OpenShift \/ Kubernetes Login/ });
@@ -177,5 +183,37 @@ describe('K8sConnectionTree', () => {
     });
 
     expect(screen.getByText('OpenShift / Kubernetes Token Login')).toBeInTheDocument();
+  });
+
+  it('deletes pod when clicking delete button and confirming dialog', async () => {
+    renderTree(<K8sConnectionTree />);
+
+    expect(await screen.findByText('minikube')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText('minikube'));
+    });
+
+    expect(await screen.findByText('default')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText('default'));
+    });
+
+    expect(await screen.findByText('nginx-pod')).toBeInTheDocument();
+
+    const deleteBtn = screen.getByTitle('Delete or restart pod');
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to delete pod/i)).toBeInTheDocument();
+
+    const confirmBtn = within(dialog).getByRole('button', { name: 'Delete' });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    expect((window as any).multissh.k8sDeletePod).toHaveBeenCalledWith('minikube', 'default', 'nginx-pod');
   });
 });

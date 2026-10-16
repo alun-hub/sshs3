@@ -11,6 +11,7 @@ export interface K8sPodNode {
   name: string;
   namespace: string;
   phase: string;
+  creationTimestamp?: string;
   containers: K8sContainerNode[];
 }
 

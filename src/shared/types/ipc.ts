@@ -380,10 +380,12 @@ export const IPC_CHANNELS = {
 
   // Kubernetes / OpenShift pod describe & details
   K8S_POD_DESCRIBE: 'k8s:pod-describe',
+  K8S_POD_DELETE: 'k8s:pod-delete',
 
   // Kubernetes / OpenShift port forward
   K8S_PORT_FORWARD_START: 'k8s-port-forward:start',
   K8S_PORT_FORWARD_STOP: 'k8s-port-forward:stop',
+  K8S_PORT_FORWARD_RECONNECT: 'k8s-port-forward:reconnect',
   K8S_PORT_FORWARD_LIST: 'k8s-port-forward:list',
   K8S_PORT_FORWARD_EVENT: 'k8s-port-forward:event',
 
@@ -854,8 +856,10 @@ export interface MultiSSHApi {
   onK8sLogData(callback: (sessionId: string, data: string) => void): () => void;
   onK8sLogEnd(callback: (sessionId: string) => void): () => void;
   k8sDescribePod(contextName: string, namespace: string, podName: string): Promise<K8sPodDescription>;
+  k8sDeletePod(contextName: string, namespace: string, podName: string): Promise<void>;
   k8sStartPortForward(target: K8sPortForwardTarget): Promise<K8sActivePortForward>;
   k8sStopPortForward(id: string): Promise<boolean>;
+  k8sReconnectPortForward(id: string): Promise<boolean>;
   k8sListPortForwards(): Promise<K8sActivePortForward[]>;
   onK8sPortForwardEvent(callback: (activeForwards: K8sActivePortForward[]) => void): () => void;
   k8sAttachDebugContainer(target: K8sDebugTarget): Promise<{ containerName: string }>;
