@@ -46,6 +46,8 @@ export function buildLinuxRelaunchScript(options: LinuxRelaunchOptions = {}): st
 
   const execAppImage = [appImagePathQuoted, argsQuoted].filter(Boolean).join(' ');
   const execPackage = [execPathQuoted, argsQuoted].filter(Boolean).join(' ');
+  const isAppImage = Boolean(appImagePath);
+  const targetCmd = isAppImage ? execAppImage : execPackage;
 
   return `
 OLD_PID=${pid}
@@ -58,34 +60,38 @@ while kill -0 "$OLD_PID" 2>/dev/null; do
   fi
 done
 
-if [ -n ${appImagePathQuoted} ]; then
-  unset APPDIR OWD APPIMAGE_SILENT_INSTALL
-  if command -v restorecon >/dev/null 2>&1; then
-    restorecon -F ${appImagePathQuoted} 2>/dev/null || true
+SYSTEMD_ENV_ARGS=""
+for var in DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS SSH_AUTH_SOCK; do
+  if [ -n "$(eval "echo \\$$var")" ]; then
+    SYSTEMD_ENV_ARGS="$SYSTEMD_ENV_ARGS --setenv=$var"
   fi
-  if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slice true 2>/dev/null; then
-    exec systemd-run --user --slice=app.slice ${execAppImage}
-  else
-    for fd in $(ls /proc/self/fd 2>/dev/null); do
-      case "$fd" in ""|*[!0-9]*) continue ;; esac
-      if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi
-    done
-    exec ${execAppImage}
-  fi
+done
+
+${
+  isAppImage
+    ? `unset APPDIR OWD APPIMAGE_SILENT_INSTALL
+if command -v restorecon >/dev/null 2>&1; then
+  restorecon -F ${appImagePathQuoted} 2>/dev/null || true
+fi`
+    : ''
+}
+
+if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slice true 2>/dev/null; then
+  exec systemd-run --user --slice=app.slice --description="sshs3" $SYSTEMD_ENV_ARGS ${targetCmd}
+${
+  !isAppImage
+    ? `elif [ -z "${argsQuoted}" ] && command -v gtk-launch >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+  exec gtk-launch ${desktopNameQuoted}
+elif [ -z "${argsQuoted}" ] && command -v gio >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+  exec gio launch ${desktopFileQuoted}`
+    : ''
+}
 else
-  if [ -z "${argsQuoted}" ] && command -v gtk-launch >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
-    exec gtk-launch ${desktopNameQuoted}
-  elif [ -z "${argsQuoted}" ] && command -v gio >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
-    exec gio launch ${desktopFileQuoted}
-  elif command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slice true 2>/dev/null; then
-    exec systemd-run --user --slice=app.slice ${execPackage}
-  else
-    for fd in $(ls /proc/self/fd 2>/dev/null); do
-      case "$fd" in ""|*[!0-9]*) continue ;; esac
-      if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi
-    done
-    exec ${execPackage}
-  fi
+  for fd in $(ls /proc/self/fd 2>/dev/null); do
+    case "$fd" in ""|*[!0-9]*) continue ;; esac
+    if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi
+  done
+  exec ${targetCmd}
 fi
 `.trim();
 }
