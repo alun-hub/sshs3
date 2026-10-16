@@ -10,6 +10,7 @@ import type { UpdateState } from '../../shared/types/update';
 class FakeUpdater extends EventEmitter {
   autoDownload = true;
   autoInstallOnAppQuit = false;
+  autoRunAppAfterInstall = true;
   allowPrerelease = true;
   allowDowngrade = true;
   checkForUpdates = vi.fn(async () => {
@@ -79,7 +80,7 @@ describe('UpdateService', () => {
     expect(service.getState().status).toBe('ready');
 
     await service.install();
-    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, false);
     expect(send).toHaveBeenCalled();
   });
 
@@ -183,5 +184,24 @@ describe('UpdateService', () => {
     await service.download();
     await service.check();
     expect(updater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it('invokes relaunchOnLinux and sets autoRunAppAfterInstall to false on Linux install', async () => {
+    const relaunchOnLinux = vi.fn();
+    const { updater, service } = create({ platform: 'linux', relaunchOnLinux });
+    updater.emit('update-downloaded', { version: '2.0.0' });
+    await service.install();
+    expect(relaunchOnLinux).toHaveBeenCalledOnce();
+    expect((updater as any).autoRunAppAfterInstall).toBe(false);
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, false);
+  });
+
+  it('calls quitAndInstall(false, true) on non-Linux platforms', async () => {
+    const relaunchOnLinux = vi.fn();
+    const { updater, service } = create({ platform: 'darwin', relaunchOnLinux });
+    updater.emit('update-downloaded', { version: '2.0.0' });
+    await service.install();
+    expect(relaunchOnLinux).not.toHaveBeenCalled();
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 });

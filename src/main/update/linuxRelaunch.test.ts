@@ -1,0 +1,74 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { buildLinuxRelaunchScript, scheduleLinuxRelaunch } from './linuxRelaunch';
+import { spawn } from 'node:child_process';
+
+vi.mock('node:child_process', () => ({
+  spawn: vi.fn(),
+}));
+
+describe('linuxRelaunch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('buildLinuxRelaunchScript', () => {
+    it('generates an AppImage relaunch script that restores SELinux and unsets stale mounts', () => {
+      const script = buildLinuxRelaunchScript({
+        pid: 1234,
+        appImagePath: '/home/user/sshs3.AppImage',
+        maxWaitSeconds: 30,
+      });
+
+      expect(script).toContain('OLD_PID=1234');
+      expect(script).toContain('unset APPDIR OWD APPIMAGE_SILENT_INSTALL');
+      expect(script).toContain('restorecon -F "/home/user/sshs3.AppImage"');
+      expect(script).toContain('systemd-run --user --slice=app.slice "/home/user/sshs3.AppImage"');
+      expect(script).toContain('exec "/home/user/sshs3.AppImage"');
+    });
+
+    it('generates a package relaunch script that uses desktop launcher and systemd-run', () => {
+      const script = buildLinuxRelaunchScript({
+        pid: 5678,
+        execPath: '/opt/sshs3/sshs3',
+        desktopName: 'sshs3.desktop',
+        args: [],
+      });
+
+      expect(script).toContain('OLD_PID=5678');
+      expect(script).toContain('gtk-launch "sshs3.desktop"');
+      expect(script).toContain('gio launch "/usr/share/applications/sshs3.desktop"');
+      expect(script).toContain('systemd-run --user --slice=app.slice "/opt/sshs3/sshs3"');
+      expect(script).toContain('exec "/opt/sshs3/sshs3"');
+    });
+
+    it('properly quotes arguments in the relaunch script', () => {
+      const script = buildLinuxRelaunchScript({
+        pid: 100,
+        execPath: '/opt/sshs3/sshs3',
+        args: ['--test', "arg with 'quotes'"],
+      });
+
+      expect(script).toContain("'--test' 'arg with '\\''quotes'\\'''");
+    });
+  });
+
+  describe('scheduleLinuxRelaunch', () => {
+    it('spawns a detached /bin/sh process when on Linux', () => {
+      const unref = vi.fn();
+      vi.mocked(spawn).mockReturnValue({ unref } as any);
+
+      const scheduled = scheduleLinuxRelaunch({ pid: 9999, maxWaitSeconds: 10 });
+      if (process.platform === 'linux') {
+        expect(scheduled).toBe(true);
+        expect(spawn).toHaveBeenCalledWith('/bin/sh', ['-c', expect.stringContaining('OLD_PID=9999')], {
+          detached: true,
+          stdio: 'ignore',
+          env: expect.any(Object),
+        });
+        expect(unref).toHaveBeenCalled();
+      } else {
+        expect(scheduled).toBe(false);
+      }
+    });
+  });
+});

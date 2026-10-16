@@ -400,9 +400,25 @@ app.on('before-quit', (event) => {
         quitLog.info('dispose finished; quitting');
         // Bounded so a stuck disk can never block quit (or the relaunch that follows an update).
         await Promise.race([flushLogs(), new Promise((resolve) => setTimeout(resolve, 1000))]);
+        if (hasSingleInstanceLock) {
+          hasSingleInstanceLock = false;
+          try {
+            app.releaseSingleInstanceLock();
+          } catch {
+            // ignore
+          }
+        }
         app.quit();
       } else {
         AgentLifecycleManager.killAllPrivateAgents();
+        if (hasSingleInstanceLock) {
+          hasSingleInstanceLock = false;
+          try {
+            app.releaseSingleInstanceLock();
+          } catch {
+            // ignore
+          }
+        }
         app.quit();
       }
     })();

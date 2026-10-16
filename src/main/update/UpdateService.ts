@@ -2,6 +2,7 @@ import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 import { createLogger } from '../log';
 import type { UpdateState, UpdateUnsupportedReason } from '../../shared/types/update';
+import { scheduleLinuxRelaunch } from './linuxRelaunch';
 
 const INITIAL_CHECK_DELAY_MS = 30_000;
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -22,6 +23,7 @@ export interface UpdaterLike {
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;
   allowDowngrade: boolean;
+  autoRunAppAfterInstall?: boolean;
   /** electron-updater's own diagnostics (download, install command, relaunch) go here. */
   logger?: unknown;
   on(event: 'checking-for-update', cb: () => void): unknown;
@@ -59,6 +61,8 @@ export interface UpdateServiceOptions {
    * synchronous installer blocks the main process. Defaults to 300 ms; 0 skips the wait.
    */
   paintDelayMs?: number;
+  /** Custom Linux relaunch hook (overrides scheduleLinuxRelaunch, e.g. in tests). */
+  relaunchOnLinux?: () => boolean | void;
 }
 
 /** Reduces an updater error to one short line; never forwards stacks or raw payloads. */
@@ -189,7 +193,14 @@ export class UpdateService {
       const paintDelay = this.options.paintDelayMs ?? 300;
       if (paintDelay > 0) await new Promise((resolve) => setTimeout(resolve, paintDelay));
       log.info('quitAndInstall', { version: this.state.version });
-      this.updater.quitAndInstall(false, true);
+      if ((this.options.platform ?? process.platform) === 'linux') {
+        const relaunch = this.options.relaunchOnLinux ?? scheduleLinuxRelaunch;
+        relaunch();
+        this.updater.autoRunAppAfterInstall = false;
+        this.updater.quitAndInstall(false, false);
+      } else {
+        this.updater.quitAndInstall(false, true);
+      }
     } finally {
       this.installing = false;
     }
