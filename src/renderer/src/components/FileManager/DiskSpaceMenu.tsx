@@ -125,7 +125,7 @@ export const DiskSpaceMenu: React.FC<DiskSpaceMenuProps> = ({ providerId, canLis
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-border-subtle bg-app-card py-1 text-xs shadow-2xl"
+          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-border-subtle bg-app-card py-1 text-xs shadow-2xl"
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
