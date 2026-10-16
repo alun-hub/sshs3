@@ -22,14 +22,30 @@ export interface LinuxRelaunchOptions {
  * under app.slice, an active logind/PAM session, and proper SELinux domain transition,
  * preventing 'sudo' and PAM failures in the integrated local terminal.
  */
+function quoteShell(str: string): string {
+  return `'${str.replace(/'/g, "'\\''")}'`;
+}
+
 export function buildLinuxRelaunchScript(options: LinuxRelaunchOptions = {}): string {
-  const pid = options.pid ?? process.pid;
+  const pid = typeof options.pid === 'number' && Number.isInteger(options.pid) ? options.pid : process.pid;
   const execPath = options.execPath ?? process.execPath;
   const appImagePath = options.appImagePath ?? (process.env.APPIMAGE || '');
   const desktopName = options.desktopName ?? 'sshs3.desktop';
-  const maxWaitTicks = Math.max(10, (options.maxWaitSeconds ?? 60) * 10);
+  const maxWaitSeconds =
+    typeof options.maxWaitSeconds === 'number' && options.maxWaitSeconds > 0
+      ? options.maxWaitSeconds
+      : 60;
+  const maxWaitTicks = Math.max(10, Math.floor(maxWaitSeconds * 10));
   const args = options.args ?? process.argv.slice(1);
-  const argsQuoted = args.map((arg) => `'${arg.replace(/'/g, "'\\''")}'`).join(' ');
+  const argsQuoted = args.map(quoteShell).join(' ');
+
+  const appImagePathQuoted = quoteShell(appImagePath);
+  const execPathQuoted = quoteShell(execPath);
+  const desktopNameQuoted = quoteShell(desktopName);
+  const desktopFileQuoted = quoteShell(`/usr/share/applications/${desktopName}`);
+
+  const execAppImage = [appImagePathQuoted, argsQuoted].filter(Boolean).join(' ');
+  const execPackage = [execPathQuoted, argsQuoted].filter(Boolean).join(' ');
 
   return `
 OLD_PID=${pid}
@@ -42,33 +58,33 @@ while kill -0 "$OLD_PID" 2>/dev/null; do
   fi
 done
 
-if [ -n "${appImagePath}" ]; then
+if [ -n ${appImagePathQuoted} ]; then
   unset APPDIR OWD APPIMAGE_SILENT_INSTALL
   if command -v restorecon >/dev/null 2>&1; then
-    restorecon -F "${appImagePath}" 2>/dev/null || true
+    restorecon -F ${appImagePathQuoted} 2>/dev/null || true
   fi
   if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slice true 2>/dev/null; then
-    exec systemd-run --user --slice=app.slice "${appImagePath}" ${argsQuoted}
+    exec systemd-run --user --slice=app.slice ${execAppImage}
   else
     for fd in $(ls /proc/self/fd 2>/dev/null); do
       case "$fd" in ""|*[!0-9]*) continue ;; esac
       if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi
     done
-    exec "${appImagePath}" ${argsQuoted}
+    exec ${execAppImage}
   fi
 else
-  if [ -z "${argsQuoted}" ] && command -v gtk-launch >/dev/null 2>&1 && [ -f "/usr/share/applications/${desktopName}" ]; then
-    exec gtk-launch "${desktopName}"
-  elif [ -z "${argsQuoted}" ] && command -v gio >/dev/null 2>&1 && [ -f "/usr/share/applications/${desktopName}" ]; then
-    exec gio launch "/usr/share/applications/${desktopName}"
+  if [ -z "${argsQuoted}" ] && command -v gtk-launch >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+    exec gtk-launch ${desktopNameQuoted}
+  elif [ -z "${argsQuoted}" ] && command -v gio >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+    exec gio launch ${desktopFileQuoted}
   elif command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slice true 2>/dev/null; then
-    exec systemd-run --user --slice=app.slice "${execPath}" ${argsQuoted}
+    exec systemd-run --user --slice=app.slice ${execPackage}
   else
     for fd in $(ls /proc/self/fd 2>/dev/null); do
       case "$fd" in ""|*[!0-9]*) continue ;; esac
       if [ "$fd" -gt 2 ]; then eval "exec $fd>&-" 2>/dev/null; fi
     done
-    exec "${execPath}" ${argsQuoted}
+    exec ${execPackage}
   fi
 fi
 `.trim();

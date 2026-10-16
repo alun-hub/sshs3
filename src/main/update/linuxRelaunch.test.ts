@@ -21,9 +21,9 @@ describe('linuxRelaunch', () => {
 
       expect(script).toContain('OLD_PID=1234');
       expect(script).toContain('unset APPDIR OWD APPIMAGE_SILENT_INSTALL');
-      expect(script).toContain('restorecon -F "/home/user/sshs3.AppImage"');
-      expect(script).toContain('systemd-run --user --slice=app.slice "/home/user/sshs3.AppImage"');
-      expect(script).toContain('exec "/home/user/sshs3.AppImage"');
+      expect(script).toContain("restorecon -F '/home/user/sshs3.AppImage'");
+      expect(script).toContain("systemd-run --user --slice=app.slice '/home/user/sshs3.AppImage'");
+      expect(script).toContain("exec '/home/user/sshs3.AppImage'");
     });
 
     it('generates a package relaunch script that uses desktop launcher and systemd-run', () => {
@@ -35,10 +35,10 @@ describe('linuxRelaunch', () => {
       });
 
       expect(script).toContain('OLD_PID=5678');
-      expect(script).toContain('gtk-launch "sshs3.desktop"');
-      expect(script).toContain('gio launch "/usr/share/applications/sshs3.desktop"');
-      expect(script).toContain('systemd-run --user --slice=app.slice "/opt/sshs3/sshs3"');
-      expect(script).toContain('exec "/opt/sshs3/sshs3"');
+      expect(script).toContain("gtk-launch 'sshs3.desktop'");
+      expect(script).toContain("gio launch '/usr/share/applications/sshs3.desktop'");
+      expect(script).toContain("systemd-run --user --slice=app.slice '/opt/sshs3/sshs3'");
+      expect(script).toContain("exec '/opt/sshs3/sshs3'");
     });
 
     it('properly quotes arguments in the relaunch script', () => {
@@ -49,6 +49,21 @@ describe('linuxRelaunch', () => {
       });
 
       expect(script).toContain("'--test' 'arg with '\\''quotes'\\'''");
+    });
+
+    it('safely escapes special characters and quotes in paths to prevent shell command injection', () => {
+      const script = buildLinuxRelaunchScript({
+        pid: 100,
+        appImagePath: '/home/user/app"$(calc)\';whoami.AppImage',
+        execPath: '/opt/app"$(id)\';whoami/sshs3',
+        desktopName: 'sshs3"$(reboot)\';.desktop',
+      });
+
+      // Confirm no unescaped double-quoted strings or command substitutions can trigger in the shell
+      expect(script).not.toContain('"/home/user/app');
+      expect(script).toContain("'/home/user/app\"$(calc)'\\''");
+      expect(script).toContain("'/opt/app\"$(id)'\\''");
+      expect(script).toContain("'sshs3\"$(reboot)'\\''");
     });
   });
 
