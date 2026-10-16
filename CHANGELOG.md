@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.40] - 2026-10-16
+
+### Fixed
+- **Linux in-app update privilege reset (`sudo` / `NoNewPrivs`):** Resolved an issue where running `sudo` in the integrated local terminal after an in-app update failed with `The "no new privileges" flag is set`. Prioritized relaunching via `systemd-run --user --slice=app.slice` for all Linux installations (RPM, DEB, AppImage) to spawn a fresh, top-level user session that sheds Chromium's `PR_SET_NO_NEW_PRIVS` flag and dynamically forwards graphical display session variables (`DISPLAY`, `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`, `DBUS_SESSION_BUS_ADDRESS`, `SSH_AUTH_SOCK`).
+
 ## [0.96.39] - 2026-10-16
 
 ### Added
