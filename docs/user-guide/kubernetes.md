@@ -31,42 +31,49 @@ Monitors `~/.kube/config` via `fs.watch`. To guarantee sub-500ms application lau
 
 ![Interactive Container Exec](/img/ks8.png)
 
-### Feature: WebSocket-Backed Exec & Live Log Viewer
+### Feature: WebSocket-Backed Exec & Live Log Viewer with Auto-Reconnect
 
 #### 🎯 Purpose
-Provide full interactive terminal sessions inside running containers directly within sshs3's split-pane layout without requiring external terminal windows.
+Provide full interactive terminal sessions inside running containers directly within sshs3's split-pane layout without requiring external terminal windows, alongside resilient live log streaming that automatically recovers when containers restart.
 
 #### 🛠️ How to Use
 - **Launch Container Terminal**: Select a container in the tree and click **Exec** (or double-click it). Choose the shell binary (`/bin/sh`, `/bin/bash`, or custom). The session opens in a normal terminal tab that can be split (<kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd>).
-- **Stream Container Logs**: Select a container and click **Logs**. The logs open in a new tab that follows the container in real time: the last 1,000 lines first, then new output as it is written, with auto-scroll. The view is read-only; search it with <kbd>Ctrl+F</kbd> (<kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> for next / previous match).
+- **Stream Container Logs**: Select a container and click **Logs**. The logs open in a dedicated tab with a top toolbar:
+  - **Auto-reconnect**: If the container restarts or crashes, sshs3 automatically pauses, calculates an exponential backoff countdown, and reconnects to the stream without requiring you to reopen the tab. If the pod itself was deleted and recreated (e.g. by a Deployment rollout or OpenShift DeploymentConfig), sshs3 automatically detects the newly created replacement pod and switches the stream to it.
+  - **Previous Logs (kubectl logs -p)**: Click **Previous** in the toolbar to inspect the logs of the last terminated/crashed container instance. If the container has not yet crashed, sshs3 provides clear guidance and a 1-click **Live Logs** switch button.
+  - **Live CPU & Memory Metrics**: Click **Metrics** in the toolbar to toggle a live resource telemetry card showing real-time CPU (millicores) and memory consumption alongside container limits.
+  - **Restart Pod**: Click **Restart Pod** directly from the log toolbar (or right-click the pod in the connection tree) to delete the pod and trigger its controller to spin up a clean instance.
+  - **Log Search & Timestamps**: Search log output in real time with <kbd>Ctrl+F</kbd> (<kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> for next / previous match), and toggle RFC3339 timestamps with the **Timestamps** button.
 
 #### ⚠️ Limitations & Caveats
 - Exec requires a shell binary (`sh`, `bash`) inside the container. For minimal distroless images, exec fails with `executable file not found in $PATH` (use *Ephemeral Debug* below!).
+- Streaming previous logs requires at least one prior restart (`restartCount > 0`).
 
 #### ⚙️ Technical Internals & Architecture
-`K8sTerminalManager` establishes a WebSocket/SPDY exec connection to the Kubernetes API server `/exec` endpoint. Streams connect directly to xterm.js, supporting full terminal mouse tracking and VT100 escape sequences.
+`K8sTerminalManager` establishes a WebSocket/SPDY exec connection to the Kubernetes API server `/exec` endpoint. `K8sLogManager` streams chunked HTTP logs directly via `@kubernetes/client-node` into an xterm.js instance with an attached `SearchAddon` and `FitAddon`. Reconnection watches pod phases and matches deployment prefixes (`findReplacementPod`) to preserve uninterrupted logging during cluster rollouts.
 
 ---
 
 ## 3. Kubernetes Port Forwarding
 
-### Feature: Local Loopback Tunneling with Live Byte Counters
+### Feature: Local Loopback Tunneling with Auto-Reconnect & Live Byte Counters
 
 #### 🎯 Purpose
-Access private pod endpoints, internal database instances, or cluster microservices directly from local desktop tools (Postman, DBeaver, web browser) without defining public Ingress routes.
+Access private pod endpoints, internal database instances, or cluster microservices directly from local desktop tools (Postman, DBeaver, web browser) without defining public Ingress routes, with resilience against pod rollouts.
 
 #### 🛠️ How to Use
 1. Select a pod or container in the cluster tree and click **Port Forward into pod** (or **Port Forward to this container**).
 2. Specify the **Container port** (e.g. `5432` for Postgres, `8080` for web apps) and the **Local port**.
 3. Start the forward.
 4. The Port Forwarding view displays connection state, local address (`127.0.0.1:<port>`), and real-time inbound/outbound transfer rates (KB/s, MB/s) with total transferred byte counters.
+5. **Auto-Reconnect on Pod Restart / Rollout**: If the target pod terminates or is replaced during a deployment rollout, sshs3 automatically searches for the new controller-managed replacement pod and re-targets the active TCP forwarding tunnel without interrupting your workstation's local listening port.
 
 #### ⚠️ Limitations & Caveats
 - Forwarded ports remain active only while sshs3 remains running.
 - If the local port is already bound by another application on your workstation, the forward fails.
 
 #### ⚙️ Technical Internals & Architecture
-Utilizes the Kubernetes API server `/portforward` subresource over SPDY/HTTP2, tunneling bidirectional TCP sockets directly to the target pod.
+Utilizes the Kubernetes API server `/portforward` subresource over SPDY/HTTP2, tunneling bidirectional TCP sockets directly to the target pod via local loopback sockets bound strictly to `127.0.0.1`. When pod connections encounter `404 Not Found`, `K8sPortForwardManager` queries replacement pods matching the controller's label/name prefix and re-targets subsequent connections transparently.
 
 ---
 

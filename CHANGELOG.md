@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.39] - 2026-10-16
+
+### Added
+- **Kubernetes log auto-reconnection:** Streaming container logs now automatically recover when containers restart or crash. An exponential backoff timer with a visible countdown reconnects the stream seamlessly. If a pod is deleted and recreated (e.g. by a Deployment rollout or OpenShift DeploymentConfig), sshs3 automatically detects the new replacement pod.
+- **Previous container logs (`kubectl logs -p`):** Quickly toggle between live logs and the previous crashed/terminated container instance directly from the log header. If no previous instance exists, sshs3 provides clear guidance and a 1-click shortcut to switch back to live logs.
+- **Live CPU & Memory metrics panel:** Added an expandable resource metrics bar in the Kubernetes log view and pod detail modal, displaying real-time CPU (millicores) and memory usage alongside pod resource limits.
+- **Restart pod quick-action:** Added a "Restart Pod" action in both the log viewer header bar and the connection tree context menu to easily trigger controller-backed pod re-creation.
+- **Dedicated Kubernetes log header:** Restructured the log view with a permanent top header bar (`K8sLogHeader`) so all action buttons (Metrics, Previous, Timestamps, Search, Auto-reconnect, Restart Pod) remain visible and accessible at all times.
+- **Kubernetes port-forward auto-reconnect:** Active port-forward sessions now automatically discover and reconnect to replacement pods when pods terminate or roll out, keeping your local listening port open.
+
+### Fixed
+- **Linux desktop relaunch:** Ensured reliable app relaunches on Linux under systemd scopes (`app.slice`), preserving active PAM/logind sessions and restoring SELinux contexts for AppImages to prevent `sudo` failures in the integrated local terminal.
+- **File manager dropdown alignment:** Corrected Git status and disk space dropdown menus to align properly to the left edge to avoid being clipped off-screen.
+
+### Security
+- **Shell argument escaping in Linux relaunch:** Hardened the standalone Linux relaunch script to strictly quote all path variables and AppImage paths using POSIX single-quote escaping, eliminating command injection risks from environment variables or special characters in installation directories.
+
 ## [0.96.38] - 2026-10-15
 
 ### Fixed
