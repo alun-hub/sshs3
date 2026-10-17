@@ -429,4 +429,30 @@ describe('SettingsModal', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Learn more' })[0]);
     expect(screen.getByText(/Use this if your organization requires re-authentication/)).toBeInTheDocument();
   });
+
+  it('toggles terminalPathHoverPreview setting and saves it', () => {
+    const onSave = vi.fn();
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    const checkbox = screen.getByLabelText(/Enable file path hover preview/i);
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalPathHoverPreview: false,
+      })
+    );
+  });
 });

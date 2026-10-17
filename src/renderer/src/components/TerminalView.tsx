@@ -50,6 +50,8 @@ export interface TerminalViewProps {
   copyOnSelect?: boolean;
   /** Whether the selection history is shared by all hosts or kept per connection. */
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
+  /** Whether hovering over file paths shows an interactive preview card. Default true. */
+  pathHoverPreview?: boolean;
   /** Ctrl+click on a file path in the output (SSH sessions only). Receives the path as printed, e.g. `/var/log/x` or `~/x`. */
   onOpenPath?: (path: string) => void;
   /** Open a file path in editor. */
@@ -179,6 +181,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   sessionExitAction = 'reconnect',
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
+  pathHoverPreview = true,
   onOpenPath,
   onOpenEditor,
   perfMetrics,
@@ -242,6 +245,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onOpenPathRef.current = onOpenPath;
   const onOpenEditorRef = useRef(onOpenEditor);
   onOpenEditorRef.current = onOpenEditor;
+  const pathHoverPreviewRef = useRef(pathHoverPreview);
+  pathHoverPreviewRef.current = pathHoverPreview;
   const rootRef = useRef<HTMLDivElement>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -360,6 +365,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   }, [local, config]);
 
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (!pathHoverPreview) {
+      clearTimeout(hoverDwellTimerRef.current);
+      clearTimeout(hoverLeaveTimerRef.current);
+      isMouseOverCardRef.current = false;
+      setHoverCardData(null);
+    }
+  }, [pathHoverPreview]);
+
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
   // Tracks the size last reported to the PTY, shared between the resize observer and the
@@ -552,6 +567,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           }
         : undefined,
       hoverPath: (e, path) => {
+        if (!pathHoverPreviewRef.current) return;
         if (isMouseOverCardRef.current) return;
         if (hoverCardDataRef.current?.path === path) return;
 
@@ -560,7 +576,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
         const delay = hoverCardDataRef.current ? 500 : 150;
         hoverDwellTimerRef.current = setTimeout(async () => {
-          if (isMouseOverCardRef.current) return;
+          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
           await refreshCwd();
 
           const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
@@ -585,12 +601,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             }
           }
 
-          if (isMouseOverCardRef.current) return;
+          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
           setHoverCardData({ path, x: e.clientX, y: e.clientY });
         }, delay);
       },
       leavePath: () => {
         clearTimeout(hoverDwellTimerRef.current);
+        if (!pathHoverPreviewRef.current) return;
         if (isMouseOverCardRef.current) return;
         hoverLeaveTimerRef.current = setTimeout(() => {
           if (!isMouseOverCardRef.current) {
@@ -666,35 +683,43 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }, 350);
     });
 
-    // Shift+Insert and middle-click paste the most recent history entry; without
-    // copy-on-select (or with an empty history) they fall back to the system clipboard.
-    const pasteLatest = (): void => {
-      const fallback = (): void => {
+    // Shift+Insert, Ctrl+Shift+V and middle-click paste from the system clipboard,
+    // falling back to the most recent encrypted history entry if clipboard access is denied.
+    const pasteFromClipboard = (): void => {
+      const fallbackToHistory = (): void => {
+        if (!window.multissh?.clipboardHistoryList) return;
+        window.multissh
+          .clipboardHistoryList(historyScope())
+          .then((entries) => {
+            if (entries.length > 0) term.paste(entries[0].text);
+          })
+          .catch(() => {});
+      };
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
         navigator.clipboard
-          ?.readText()
+          .readText()
           .then((text) => {
-            if (text) term.paste(text);
+            if (text) {
+              term.paste(text);
+            } else {
+              fallbackToHistory();
+            }
           })
           .catch(() => {
-            // Ignore: clipboard access can be denied
+            fallbackToHistory();
           });
-      };
-      if (!copyOnSelectRef.current || !window.multissh?.clipboardHistoryList) {
-        fallback();
-        return;
+      } else {
+        fallbackToHistory();
       }
-      window.multissh
-        .clipboardHistoryList(historyScope())
-        .then((entries) => (entries.length > 0 ? term.paste(entries[0].text) : fallback()))
-        .catch(fallback);
     };
 
     const handleMiddleClick = (e: MouseEvent) => {
       if (e.button !== 1 || !copyOnSelectRef.current) return;
-      // Stop Chromium's native PRIMARY-selection paste so only the history entry is pasted.
+      // Stop Chromium's native PRIMARY-selection paste so the system clipboard/history entry is pasted.
       e.preventDefault();
       e.stopPropagation();
-      if (e.type === 'auxclick') pasteLatest();
+      if (e.type === 'auxclick') pasteFromClipboard();
     };
     container.addEventListener('mouseup', handleMiddleClick, true);
     container.addEventListener('auxclick', handleMiddleClick, true);
@@ -802,9 +827,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         copyLastCommandOutput();
         return false;
       }
-      if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
+      if (
+        (e.type === 'keydown' && e.shiftKey && (e.key === 'Insert' || e.code === 'Insert')) ||
+        (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV'))
+      ) {
         e.preventDefault();
-        pasteLatest();
+        pasteFromClipboard();
         return false;
       }
       if (
@@ -1246,7 +1274,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         </div>
       )}
 
-      {hoverCardData && (
+      {hoverCardData && pathHoverPreview && (
         <TerminalPathHoverCard
           path={hoverCardData.path}
           x={hoverCardData.x}

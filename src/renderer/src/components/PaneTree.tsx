@@ -267,6 +267,7 @@ const PaneLeafContent: React.FC<{
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
+        pathHoverPreview={settings.terminalPathHoverPreview}
         initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
@@ -286,6 +287,7 @@ const PaneLeafContent: React.FC<{
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
+        pathHoverPreview={settings.terminalPathHoverPreview}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
@@ -314,6 +316,7 @@ const PaneLeafContent: React.FC<{
         fontFamily={settings.terminalFontFamily}
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
+        pathHoverPreview={settings.terminalPathHoverPreview}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}

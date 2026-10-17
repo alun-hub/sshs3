@@ -16,6 +16,8 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setCursorStyle,
     scrollback,
     setScrollback,
+    terminalPathHoverPreview,
+    setTerminalPathHoverPreview,
     copyOnSelect,
     setCopyOnSelect,
     clipboardScope,
@@ -158,7 +160,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
         <span className="text-xs text-txt-primary">Copy text automatically on selection</span>
       </label>
       <p className="text-xs text-txt-muted -mt-1 pl-6">
-        Selections are kept in an encrypted history. Shift+Insert and middle-click paste the latest one;
+        Selections are kept in an encrypted history. Ctrl+Shift+V, Shift+Insert and middle-click paste from the clipboard;
         right-click opens the full history.
       </p>
 
@@ -309,6 +311,23 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             <span className="block text-txt-muted">
               Maintains a managed block so plain <code>ssh &lt;profile&gt;</code> works in any terminal.
               Only the sshs3 block is touched.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div className="space-y-2 pt-3 border-t border-divider">
+        <label className="flex items-start gap-2 text-xs text-txt-primary cursor-pointer">
+          <input
+            type="checkbox"
+            checked={terminalPathHoverPreview}
+            onChange={(e) => setTerminalPathHoverPreview(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+          />
+          <span>
+            Enable file path hover preview
+            <span className="block text-txt-muted">
+              Shows an interactive preview card with file details, thumbnail, and actions when hovering over paths in the terminal.
             </span>
           </span>
         </label>

@@ -124,6 +124,7 @@ Hovering your mouse over any recognized file or directory path in the terminal d
   - **Reveal in File Manager**: Navigates the dual-pane file manager to the file's parent folder and highlights the file.
   - **Edit File**: Opens the file directly in the built-in [CodeMirror 6 Editor](file-manager.md#5-built-in-editor-rich-previews--external-editor) without switching tabs.
 - **Dwell Protection & Collision Avoidance**: A subtle dwell timer prevents accidental popup flicker while moving the cursor across the terminal, and intelligent viewport edge detection flips the card smoothly to keep it within the visible window.
+- **Configuration Toggle**: Can be enabled or disabled anytime under *Settings → Terminal* (**Enable file path hover preview**). When disabled, <kbd>Ctrl+Click</kbd> path activation remains fully operational.
 
 ### 4.4 Saved Command Snippets Palette (<kbd>Ctrl+Shift+L</kbd>)
 - Searchable palette of pre-saved shell commands and runbooks.
@@ -143,7 +144,7 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 ### 4.6 Encrypted Clipboard History (<kbd>Ctrl+Shift+R</kbd>)
 - When *Copy text automatically on selection* is enabled, every highlighted string is stored in an encrypted history ring.
 - Press <kbd>Ctrl+Shift+R</kbd> or right-click to search and paste previous selections (<kbd>↑</kbd>/<kbd>↓</kbd> navigate, <kbd>Enter</kbd> pastes).
-- <kbd>Shift+Insert</kbd> and middle-click paste the latest entry.
+- <kbd>Ctrl+Shift+V</kbd>, <kbd>Shift+Insert</kbd> and middle-click paste from the clipboard.
 - Encrypted at rest via the OS keyring (`safeStorage`). If the OS keyring is unavailable, history is retained in volatile memory only. Can be scoped per connection or configured to purge on application exit.
 
 ### 4.7 Terminal Settings Reference Table
@@ -154,6 +155,7 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 | **Terminal Font Family** | Monospace stack | Select from curated monospaced fonts or enter a custom font name. |
 | **Cursor Style** | `Block` | Visual cursor appearance: `Block`, `Underline`, or `Bar`. |
 | **Scrollback Buffer (lines)** | `5000` | Retained terminal history per pane, searchable with <kbd>Ctrl+Shift+S</kbd>. |
+| **Enable file path hover preview** | `On` | Interactive preview card with file details, thumbnail, and actions when hovering over paths. |
 | **Copy text automatically on selection** | `Off` | Copies highlighted text to the clipboard and records it in encrypted clipboard history. |
 | **Clipboard history scope** | `Global` | Share clipboard history across all sessions or isolate history per host. |
 | **Empty clipboard history on exit** | `Off` | Automatically wipes the encrypted clipboard history when sshs3 shuts down. |

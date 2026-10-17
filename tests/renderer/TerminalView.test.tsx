@@ -463,6 +463,120 @@ describe('TerminalView Component', () => {
 
     registerSpy.mockRestore();
   });
+
+  it('pastes from system clipboard on Shift+Insert and Ctrl+Shift+V', async () => {
+    let capturedKeyHandler: any = null;
+    const { Terminal } = await import('xterm');
+    const pasteSpy = vi.spyOn(Terminal.prototype, 'paste').mockImplementation(() => {});
+    const attachSpy = vi.spyOn(Terminal.prototype, 'attachCustomKeyEventHandler').mockImplementation(function (this: any, handler: any) {
+      capturedKeyHandler = handler;
+    });
+
+    const mockReadText = vi.fn().mockResolvedValue('git status --short');
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { readText: mockReadText },
+      configurable: true,
+      writable: true,
+    });
+
+    render(<TerminalView config={sampleConfig} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(capturedKeyHandler).toBeDefined();
+
+    // 1. Shift+Insert
+    const shiftInsertEvt = {
+      type: 'keydown',
+      shiftKey: true,
+      key: 'Insert',
+      preventDefault: vi.fn(),
+    };
+    const resShiftInsert = capturedKeyHandler(shiftInsertEvt);
+    expect(resShiftInsert).toBe(false);
+    expect(shiftInsertEvt.preventDefault).toHaveBeenCalled();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockReadText).toHaveBeenCalled();
+    expect(pasteSpy).toHaveBeenCalledWith('git status --short');
+
+    // 2. Ctrl+Shift+V
+    pasteSpy.mockClear();
+    mockReadText.mockResolvedValueOnce('curl -s https://api.example.com');
+    const ctrlShiftVEvt = {
+      type: 'keydown',
+      ctrlKey: true,
+      shiftKey: true,
+      key: 'V',
+      code: 'KeyV',
+      preventDefault: vi.fn(),
+    };
+    const resCtrlShiftV = capturedKeyHandler(ctrlShiftVEvt);
+    expect(resCtrlShiftV).toBe(false);
+    expect(ctrlShiftVEvt.preventDefault).toHaveBeenCalled();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(pasteSpy).toHaveBeenCalledWith('curl -s https://api.example.com');
+
+    // 3. Fallback to clipboard history if navigator.clipboard fails
+    pasteSpy.mockClear();
+    mockReadText.mockRejectedValueOnce(new Error('Permission denied'));
+    window.multissh.clipboardHistoryList = vi.fn().mockResolvedValueOnce([
+      { id: '1', text: 'fallback-from-history', timestamp: Date.now() },
+    ]);
+
+    const resFallback = capturedKeyHandler(ctrlShiftVEvt);
+    expect(resFallback).toBe(false);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pasteSpy).toHaveBeenCalledWith('fallback-from-history');
+
+    attachSpy.mockRestore();
+    pasteSpy.mockRestore();
+  });
+
+  it('suppresses hover card preview when pathHoverPreview is false', async () => {
+    let capturedHandlers: any;
+    const registerSpy = vi.spyOn(terminalLinksModule, 'registerTerminalLinks').mockImplementation((_term, handlers) => {
+      capturedHandlers = handlers;
+      return { dispose: vi.fn() };
+    });
+
+    render(
+      <TerminalView
+        config={sampleConfig}
+        pathHoverPreview={false}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(capturedHandlers).toBeDefined();
+
+    // Trigger hoverPath
+    act(() => {
+      capturedHandlers.hoverPath({ clientX: 100, clientY: 100 }, '/var/log/syslog');
+    });
+
+    // Advance dwell timer
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    // Hover card should NOT be in document
+    expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+
+    registerSpy.mockRestore();
+  });
 });
+
 
 

@@ -27,6 +27,9 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
   const [scrollback, setScrollback] = useState<number>(
     currentSettings.terminalScrollback ?? 5000
   );
+  const [terminalPathHoverPreview, setTerminalPathHoverPreview] = useState<boolean>(
+    currentSettings.terminalPathHoverPreview ?? true
+  );
   const [copyOnSelect, setCopyOnSelect] = useState<boolean>(
     currentSettings.copyOnSelect ?? false
   );
@@ -142,6 +145,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       setFontFamily(currentSettings.terminalFontFamily);
       setCursorStyle(currentSettings.terminalCursorStyle ?? 'block');
       setScrollback(currentSettings.terminalScrollback ?? 5000);
+      setTerminalPathHoverPreview(currentSettings.terminalPathHoverPreview ?? true);
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
       setClipboardScope(currentSettings.clipboardHistoryScope ?? 'global');
       setClipboardClearOnExit(currentSettings.clipboardHistoryClearOnExit ?? false);
@@ -267,6 +271,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       terminalFontFamily: fontFamily,
       terminalCursorStyle: cursorStyle,
       terminalScrollback: scrollback,
+      terminalPathHoverPreview,
       copyOnSelect,
       clipboardHistoryScope: clipboardScope,
       clipboardHistoryClearOnExit: clipboardClearOnExit,
@@ -362,6 +367,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     setCursorStyle,
     scrollback,
     setScrollback,
+    terminalPathHoverPreview,
+    setTerminalPathHoverPreview,
     copyOnSelect,
     setCopyOnSelect,
     clipboardScope,

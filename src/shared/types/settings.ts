@@ -77,6 +77,8 @@ export interface AppSettings {
   terminalFontFamily: string;
   terminalCursorStyle?: 'block' | 'underline' | 'bar';
   terminalScrollback?: number;
+  /** Show interactive preview card when hovering over file paths in the terminal. Default true. */
+  terminalPathHoverPreview?: boolean;
   copyOnSelect?: boolean;
   /** Whether the terminal selection history is shared by all hosts ('global') or kept per connection ('host'). */
   clipboardHistoryScope?: 'global' | 'host';
@@ -174,6 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalFontFamily: 'JetBrains Mono, monospace',
   terminalCursorStyle: 'block',
   terminalScrollback: 5000,
+  terminalPathHoverPreview: true,
   copyOnSelect: false,
   clipboardHistoryScope: 'global',
   clipboardHistoryClearOnExit: false,
