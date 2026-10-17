@@ -227,9 +227,10 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
     const view = viewRef.current;
     if (!view) return;
     const currentVal = view.state.doc.toString();
-    if (value !== currentVal) {
+    const normalizedValue = value.replace(/\r\n/g, '\n');
+    if (normalizedValue !== currentVal) {
       view.dispatch({
-        changes: { from: 0, to: currentVal.length, insert: value },
+        changes: { from: 0, to: currentVal.length, insert: normalizedValue },
       });
     }
   }, [value]);

@@ -732,5 +732,59 @@ describe('FileEditorModal', () => {
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     });
   });
+
+  it('does not flag unsaved changes when opening a file with CRLF line endings in source mode, and preserves CRLF on save', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: 'col1,col2\r\nval1,val2\r\n',
+      size: 22,
+      isBinary: false,
+      truncated: false,
+      mimeType: 'text/csv',
+    });
+
+    const csvEntry: FileEntry = {
+      name: 'data.csv',
+      path: '/var/data.csv',
+      size: 22,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={csvEntry}
+        initialMode="source"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    // Must NOT flag unsaved changes right after loading
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+    const saveButton = screen.getByRole('button', { name: /Save/i });
+    expect(saveButton).toBeDisabled();
+
+    // Now edit document and verify CRLF is preserved on save
+    const editor = screen.getByTestId('code-editor');
+    act(() => {
+      (editor as any).__cmChangeDoc('col1,col2\nval1,val3\n');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+    expect(saveButton).toBeEnabled();
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockFileSave).toHaveBeenCalledWith('sftp-1', '/var/data.csv', 'col1,col2\r\nval1,val3\r\n');
+    });
+  });
 });
 

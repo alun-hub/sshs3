@@ -15,7 +15,7 @@ import { PerfBar } from './PerfBar';
 import { ClipboardHistoryModal } from './ClipboardHistoryModal';
 import { TerminalPathHoverCard } from './TerminalPathHoverCard';
 import { FileEditorModal } from './FileManager/FileEditorModal';
-import { isDirectPreviewFile, isSvgFile } from './FileManager/fileTypeHelpers';
+import { isDirectPreviewFile, isDualModeFile } from './FileManager/fileTypeHelpers';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { FileEntry, SFTPConfig } from '@shared/types/storage';
@@ -1254,7 +1254,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 : (config ? `sftp-${config.id || config.host}` : '')
           }
           sourceType={local ? 'local' : k8sTarget ? 'k8s' : 'sftp'}
-          initialMode={isDirectPreviewFile(editorEntry.name) || isSvgFile(editorEntry.name) ? 'preview' : 'source'}
+          initialMode={isDirectPreviewFile(editorEntry.name) || isDualModeFile(editorEntry.name) ? 'preview' : 'source'}
           entry={editorEntry}
           onSaved={() => {
             setCopyNotice(`Saved: ${editorEntry.name}`);

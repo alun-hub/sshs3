@@ -123,9 +123,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   const editorRef = useRef<CodeEditorHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const originalEolRef = useRef<'\r\n' | '\n'>('\n');
 
   const isDirty = useMemo(
-    () => !tailModeActive && content !== originalContent,
+    () => !tailModeActive && content.replace(/\r\n/g, '\n') !== originalContent.replace(/\r\n/g, '\n'),
     [tailModeActive, content, originalContent]
   );
 
@@ -152,8 +153,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       const res: FileReadResult = isDirectPreview
         ? await window.multissh.fileRead(providerId, entryPath, 100 * 1024 * 1024)
         : await window.multissh.fileRead(providerId, entryPath);
-      setContent(res.content);
-      setOriginalContent(res.content);
+      const hasCrlf = typeof res.content === 'string' && res.content.includes('\r\n');
+      originalEolRef.current = hasCrlf ? '\r\n' : '\n';
+      const normalized = hasCrlf ? res.content.replace(/\r\n/g, '\n') : res.content;
+      setContent(normalized);
+      setOriginalContent(normalized);
       setIsBinary(res.isBinary);
       setTruncated(res.truncated);
       setNotUtf8(!!res.notUtf8);
@@ -205,6 +209,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     if (!open || !entry) {
       setContent('');
       setOriginalContent('');
+      originalEolRef.current = '\n';
       setBase64(undefined);
       setMimeType(undefined);
       setError(null);
@@ -306,7 +311,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     setSaving(true);
     setError(null);
     try {
-      await window.multissh.fileSave(providerId, entry.path, content);
+      const contentToSave = originalEolRef.current === '\r\n'
+        ? content.replace(/\r?\n/g, '\r\n')
+        : content;
+      await window.multissh.fileSave(providerId, entry.path, contentToSave);
       setOriginalContent(content);
       const timestamp = formatDateTime(new Date());
       setSaveStatus(`Saved at ${timestamp}`);
