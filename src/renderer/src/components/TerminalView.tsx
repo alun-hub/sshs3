@@ -275,6 +275,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [currentCwd, setCurrentCwd] = useState<string>(
     initialCwd || (config?.username === 'root' ? '/root' : config?.username ? `/home/${config.username}` : '')
   );
+  const currentCwdRef = useRef(currentCwd);
+  currentCwdRef.current = currentCwd;
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const editingFileRef = useRef(editingFile);
   editingFileRef.current = editingFile;
@@ -282,7 +284,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const editorEntry = useMemo<FileEntry | null>(() => {
     if (!editingFile) return null;
     return {
-      name: editingFile.split('/').pop() || editingFile,
+      name: editingFile.split(/[\\/]/).filter(Boolean).pop() || editingFile,
       path: editingFile,
       size: 0,
       isDirectory: false,
@@ -290,12 +292,33 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   }, [editingFile]);
 
   const refreshCwd = useCallback(async () => {
+    const term = termRef.current;
+    if (term) {
+      const buf = term.buffer.active;
+      const cursorLine = buf.baseY + buf.cursorY;
+      for (let i = cursorLine; i >= Math.max(0, cursorLine - 8); i--) {
+        const line = buf.getLine(i);
+        if (!line) continue;
+        const text = line.translateToString(true).trim();
+        if (!text) continue;
+        const detected = extractCwdFromPrompt(text, userHomeDirRef.current);
+        if (detected) {
+          currentCwdRef.current = detected;
+          setCurrentCwd(detected);
+          break;
+        }
+      }
+    }
+
     const sid = sessionIdRef.current;
     if (!sid) return;
     if (local && window.multissh?.terminalGetCwd) {
       try {
         const dir = await window.multissh.terminalGetCwd(sid);
-        if (dir) setCurrentCwd(dir);
+        if (dir) {
+          currentCwdRef.current = dir;
+          setCurrentCwd(dir);
+        }
       } catch {
         // Safe to ignore
       }
@@ -521,9 +544,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         clearTimeout(hoverDwellTimerRef.current);
 
         const delay = hoverCardDataRef.current ? 500 : 150;
-        hoverDwellTimerRef.current = setTimeout(() => {
+        hoverDwellTimerRef.current = setTimeout(async () => {
           if (isMouseOverCardRef.current) return;
-          void refreshCwd();
+          await refreshCwd();
           setHoverCardData({ path, x: e.clientX, y: e.clientY });
         }, delay);
       },
@@ -551,6 +574,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         }
         if (p && p.startsWith('/')) {
           const decoded = decodeURIComponent(p);
+          currentCwdRef.current = decoded;
           setCurrentCwd(decoded);
         }
       } catch {
@@ -570,6 +594,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     const titleSub = term.onTitleChange((title) => {
       onTitleChangeRef.current?.(title);
+      const detected = extractCwdFromPrompt(title, userHomeDirRef.current);
+      if (detected) {
+        currentCwdRef.current = detected;
+        setCurrentCwd(detected);
+      }
     });
 
     // Copy-on-select mirrors the selection into the system CLIPBOARD (not just the
@@ -879,6 +908,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 sendInitialCwd();
                 const detectedCwd = extractCwdFromPrompt(data, userHomeDirRef.current);
                 if (detectedCwd) {
+                  currentCwdRef.current = detectedCwd;
                   setCurrentCwd(detectedCwd);
                 }
                 if (!k8sTarget) {
@@ -1153,7 +1183,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           x={hoverCardData.x}
           y={hoverCardData.y}
           userHome={userHomeDir}
-          currentCwd={currentCwd || initialCwd || userHomeDir}
+          currentCwd={currentCwdRef.current || currentCwd || initialCwd || userHomeDir}
           onMouseEnter={() => {
             isMouseOverCardRef.current = true;
             clearTimeout(hoverLeaveTimerRef.current);

@@ -27,7 +27,7 @@ export const CsvTablePreview: React.FC<CsvTablePreviewProps> = ({ csvContent, fi
         const valB = b[sortCol] || '';
         const numA = Number(valA);
         const numB = Number(valB);
-        if (!isNaN(numA) && !isNaN(numB)) {
+        if (valA.trim() !== '' && valB.trim() !== '' && !isNaN(numA) && !isNaN(numB)) {
           return sortAsc ? numA - numB : numB - numA;
         }
         return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);

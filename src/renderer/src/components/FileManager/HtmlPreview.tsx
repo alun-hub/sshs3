@@ -196,7 +196,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
             key={refreshKey}
             title={`Preview for ${fileName}`}
             srcDoc={safeDoc}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            sandbox="allow-scripts allow-forms allow-popups allow-modals"
             className="w-full h-full border-none block"
           />
         </div>

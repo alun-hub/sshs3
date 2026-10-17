@@ -77,4 +77,21 @@ describe('TerminalPathHoverCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /browse/i }));
     expect(onOpenPath).toHaveBeenCalledWith('/var/log/');
   });
+
+  it('resolves relative file paths against currentCwd when provided', () => {
+    render(
+      <TerminalPathHoverCard
+        path="nginx.conf"
+        currentCwd="/etc/nginx"
+        userHome="/home/alun"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('nginx.conf')).toBeInTheDocument();
+    expect(screen.getByText('/etc/nginx/nginx.conf')).toBeInTheDocument();
+  });
 });

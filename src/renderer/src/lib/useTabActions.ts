@@ -354,7 +354,8 @@ export function useTabActions(ctx: TabActionsContext) {
     const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
     const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
     const isDir = absolute.endsWith('/');
-    const folder = isDir ? absolute : absolute.slice(0, absolute.lastIndexOf('/')) || '/';
+    const lastSlash = absolute.lastIndexOf('/');
+    const folder = isDir ? absolute : lastSlash === -1 ? home : absolute.slice(0, lastSlash) || '/';
     const selectPath = isDir ? undefined : absolute;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
@@ -371,7 +372,8 @@ export function useTabActions(ctx: TabActionsContext) {
   // Click on a file path in a local terminal: browse that folder on Local Disk in a new file manager tab.
   const handleOpenLocalPath = useCallback((rawPath: string) => {
     const isDir = rawPath.endsWith('/');
-    const folder = isDir ? rawPath : rawPath.slice(0, rawPath.lastIndexOf('/')) || '/';
+    const lastSlash = rawPath.lastIndexOf('/');
+    const folder = isDir ? rawPath : lastSlash === -1 ? '/' : rawPath.slice(0, lastSlash) || '/';
     const selectPath = isDir ? undefined : rawPath;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
