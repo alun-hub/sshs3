@@ -522,7 +522,7 @@ An automated deployment script handles patch version bumping, staging, committin
 # Bump patch version, commit all code, tag (e.g. v0.96.3), and push to GitHub
 npm run deploy
 # or with a custom commit message:
-./deploy.sh "feat: describe your change"
+./scripts/deploy.sh "feat: describe your change"
 ```
 
 ---

@@ -91,7 +91,7 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     -h|--help)
-      echo -e "${BOLD}Usage:${RESET} ./deploy.sh [options] [commit_message]"
+      echo -e "${BOLD}Usage:${RESET} ./scripts/deploy.sh [options] [commit_message]"
       echo ""
       echo "Bumps the patch version, drafts a CHANGELOG entry, commits all changes, tags, and pushes to trigger release.yml."
       echo ""
@@ -111,9 +111,9 @@ while [[ $# -gt 0 ]]; do
       echo "             SSHS3_KEEP_RELEASES sets the default for --keep-releases."
       echo ""
       echo -e "${BOLD}Examples:${RESET}"
-      echo "  ./deploy.sh"
-      echo "  ./deploy.sh \"feat: add smartcard support\""
-      echo "  ./deploy.sh --message \"fix: askpass prompt fix\" --skip-checks"
+      echo "  ./scripts/deploy.sh"
+      echo "  ./scripts/deploy.sh \"feat: add smartcard support\""
+      echo "  ./scripts/deploy.sh --message \"fix: askpass prompt fix\" --skip-checks"
       exit 0
       ;;
     *)

@@ -124,7 +124,7 @@ Releases can be deployed automatically via:
 ```bash
 npm run deploy
 # or
-./deploy.sh "chore: release notes"
+./scripts/deploy.sh "chore: release notes"
 ```
 
 ---

@@ -18,6 +18,8 @@ GEMINI.md
 *.claude*
 .antigravity/
 skills-lock.json
+AI-*.md
+*-audit.md
 
 
 # Test coverage output
