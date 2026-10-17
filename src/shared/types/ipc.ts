@@ -928,6 +928,10 @@ export interface FileReadResult {
   truncated: boolean;
   /** The content is not valid UTF-8, so saving it back would corrupt the file. */
   notUtf8?: boolean;
+  /** Base64-encoded file bytes, provided for binary media (images, PDFs). */
+  base64?: string;
+  /** Inferred or detected MIME type (e.g. image/png, application/pdf). */
+  mimeType?: string;
 }
 
 export interface ExternalFileStatusEvent {

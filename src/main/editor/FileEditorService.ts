@@ -47,6 +47,30 @@ export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platf
   return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
 }
 
+const MIME_MAP: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  pdf: 'application/pdf',
+  html: 'text/html',
+  htm: 'text/html',
+  json: 'application/json',
+  csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
+  txt: 'text/plain',
+  log: 'text/plain',
+};
+
+export function detectMimeType(filePath: string): string | undefined {
+  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+  return MIME_MAP[ext];
+}
+
 export interface ShellOpener {
   openPath(path: string): Promise<string> | any;
 }
@@ -136,12 +160,20 @@ export class FileEditorService {
       }
     }
 
+    const mimeType = detectMimeType(remotePath);
+    const shouldProvideBase64 =
+      isBinary ||
+      mimeType?.startsWith('image/') ||
+      mimeType === 'application/pdf';
+
     return {
       content: isBinary ? '' : fullBuffer.toString('utf-8'),
       size: totalBytes,
       isBinary,
       truncated,
       notUtf8,
+      base64: shouldProvideBase64 ? fullBuffer.toString('base64') : undefined,
+      mimeType,
     };
   }
 

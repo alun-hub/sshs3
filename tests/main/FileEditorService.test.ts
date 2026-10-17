@@ -125,6 +125,22 @@ describe('FileEditorService', () => {
       expect(res.size).toBe(50);
       expect(res.content).toBe('a'.repeat(50));
     });
+
+    it('returns base64 and mimeType for binary media like PNG images', async () => {
+      const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00]);
+      const mockProvider = {
+        id: 'mock-png',
+        name: 'Mock PNG',
+        type: 'local' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([pngHeader])),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      const res = await service.readFile(storageRegistry, 'mock-png', '/assets/logo.png');
+      expect(res.isBinary).toBe(true);
+      expect(res.mimeType).toBe('image/png');
+      expect(res.base64).toBe(pngHeader.toString('base64'));
+    });
   });
 
   describe('saveFile', () => {

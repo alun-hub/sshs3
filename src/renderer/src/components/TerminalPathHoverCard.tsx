@@ -10,6 +10,7 @@ import {
   Copy,
   ExternalLink,
   Edit3,
+  Eye,
   X,
 } from 'lucide-react';
 import { resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
@@ -143,8 +144,12 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
             onClick={() => onOpenEditor(details.fullPath)}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-divider bg-app-card px-2 py-1 text-txt-secondary hover:border-sky-500/40 hover:text-sky-300 hover:bg-app-surface-hover transition-colors font-medium"
           >
-            <Edit3 className="h-3 w-3 text-sky-400" />
-            <span>Edit</span>
+            {details.category === 'image' || details.extension === 'pdf' ? (
+              <Eye className="h-3 w-3 text-sky-400" />
+            ) : (
+              <Edit3 className="h-3 w-3 text-sky-400" />
+            )}
+            <span>{details.category === 'image' || details.extension === 'pdf' ? 'View' : 'Edit'}</span>
           </button>
         )}
 

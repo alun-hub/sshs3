@@ -495,5 +495,241 @@ describe('FileEditorModal', () => {
       expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
   });
+
+  it('renders ImageViewer for raster image without binary warning banner', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: '',
+      size: 1024,
+      isBinary: true,
+      truncated: false,
+      base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      mimeType: 'image/png',
+    });
+
+    const imageEntry: FileEntry = {
+      name: 'logo.png',
+      path: '/var/www/logo.png',
+      size: 1024,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={imageEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('image-viewer')).toBeInTheDocument();
+    });
+
+    // Binary warning banner should NOT be displayed for supported image files
+    expect(screen.queryByText(/Binary file detected/i)).not.toBeInTheDocument();
+    // Tail -f button should be hidden for image files
+    expect(screen.queryByRole('button', { name: /Tail -f/i })).not.toBeInTheDocument();
+  });
+
+  it('renders dual-mode segmented control for SVG and toggles between Preview and Source', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>',
+      size: 65,
+      isBinary: false,
+      truncated: false,
+      mimeType: 'image/svg+xml',
+    });
+
+    const svgEntry: FileEntry = {
+      name: 'icon.svg',
+      path: '/var/www/icon.svg',
+      size: 65,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={svgEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    // Defaults to preview mode
+    await waitFor(() => {
+      expect(screen.getByTestId('image-viewer')).toBeInTheDocument();
+    });
+
+    // Switch to Source
+    const sourceBtn = screen.getByRole('button', { name: /Source/i });
+    fireEvent.click(sourceBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+  });
+
+  it('renders HtmlPreview for HTML files and supports switching to Source', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: '<h1>Hello World</h1><p>Test HTML</p>',
+      size: 35,
+      isBinary: false,
+      truncated: false,
+      mimeType: 'text/html',
+    });
+
+    const htmlEntry: FileEntry = {
+      name: 'index.html',
+      path: '/var/www/index.html',
+      size: 35,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={htmlEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    // HTML opens in preview mode by default
+    await waitFor(() => {
+      expect(screen.getByTestId('html-preview')).toBeInTheDocument();
+    });
+
+    // Switch to Source
+    const sourceBtn = screen.getByRole('button', { name: /Source/i });
+    fireEvent.click(sourceBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+  });
+
+  it('renders CsvTablePreview with Table tab for CSV/TSV files', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: 'name,role,age\nAlice,Admin,30\nBob,User,25',
+      size: 40,
+      isBinary: false,
+      truncated: false,
+      mimeType: 'text/csv',
+    });
+
+    const csvEntry: FileEntry = {
+      name: 'users.csv',
+      path: '/var/data/users.csv',
+      size: 40,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={csvEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    // CSV opens in table preview mode by default
+    await waitFor(() => {
+      expect(screen.getByTestId('csv-table-preview')).toBeInTheDocument();
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.getByText('Bob')).toBeInTheDocument();
+    });
+
+    // Switch to Source
+    const sourceBtn = screen.getByRole('button', { name: /Source/i });
+    fireEvent.click(sourceBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+  });
+
+  it('renders PdfViewer for PDF files with document badge', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: '',
+      size: 2048,
+      isBinary: true,
+      truncated: false,
+      base64: 'JVBERi0xLjQKJcTl8uXr...',
+      mimeType: 'application/pdf',
+    });
+
+    const pdfEntry: FileEntry = {
+      name: 'invoice.pdf',
+      path: '/var/docs/invoice.pdf',
+      size: 2048,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={pdfEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pdf-viewer')).toBeInTheDocument();
+      expect(screen.getAllByText(/PDF Document/).length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Binary warning banner should NOT be displayed for PDF files
+    expect(screen.queryByText(/Binary file detected/i)).not.toBeInTheDocument();
+  });
+
+  it('formats JSON file when Format button is clicked', async () => {
+    mockFileRead.mockResolvedValueOnce({
+      content: '{"a":1,"b":2}',
+      size: 13,
+      isBinary: false,
+      truncated: false,
+      mimeType: 'application/json',
+    });
+
+    const jsonEntry: FileEntry = {
+      name: 'settings.json',
+      path: '/etc/settings.json',
+      size: 13,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={jsonEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    const formatBtn = screen.getByRole('button', { name: /Format/i });
+    expect(formatBtn).toBeInTheDocument();
+
+    fireEvent.click(formatBtn);
+
+    // Unsaved changes should now be detected
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+  });
 });
 
