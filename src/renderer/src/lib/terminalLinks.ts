@@ -44,6 +44,10 @@ export interface TerminalLinkHandlers {
   openUrl: (url: string) => void;
   /** Provide to make absolute / `~/` file paths Ctrl+clickable. */
   openPath?: (path: string) => void;
+  /** Optional hover callback when mouse enters a file path link. */
+  hoverPath?: (event: MouseEvent, path: string) => void;
+  /** Optional leave callback when mouse leaves a file path link. */
+  leavePath?: (event: MouseEvent, path: string) => void;
 }
 
 /**
@@ -74,21 +78,27 @@ export function registerTerminalLinks(term: Terminal, handlers: TerminalLinkHand
         last = i;
       }
 
-      const matches: (TextMatch & { open: (text: string) => void })[] = findUrls(text).map(({ index, url }) => ({
+      const matches: (TextMatch & { open: (text: string) => void; isPath?: boolean })[] = findUrls(text).map(({ index, url }) => ({
         index,
         text: url,
         length: url.length,
         open: handlers.openUrl,
       }));
-      if (handlers.openPath) {
+      if (handlers.openPath || handlers.hoverPath) {
         for (const p of findPaths(text)) {
           const insideUrl = matches.some((u) => p.index >= u.index && p.index < u.index + u.length);
-          if (!insideUrl) matches.push({ ...p, open: handlers.openPath });
+          if (!insideUrl) {
+            matches.push({
+              ...p,
+              open: handlers.openPath ?? (() => {}),
+              isPath: true,
+            });
+          }
         }
       }
 
       const links: ILink[] = [];
-      for (const { index, text: linkText, length, open } of matches) {
+      for (const { index, text: linkText, length, open, isPath } of matches) {
         const startCell = cellOf[index];
         const endCell = cellOf[Math.min(index + length - 1, cellOf.length - 1)];
         if (startCell === undefined || endCell === undefined) continue;
@@ -103,6 +113,16 @@ export function registerTerminalLinks(term: Terminal, handlers: TerminalLinkHand
           text: linkText,
           activate: (event, activated) => {
             if (event.ctrlKey || event.metaKey) open(activated);
+          },
+          hover: (event, activated) => {
+            if (isPath && handlers.hoverPath) {
+              handlers.hoverPath(event, activated);
+            }
+          },
+          leave: (event, activated) => {
+            if (isPath && handlers.leavePath) {
+              handlers.leavePath(event, activated);
+            }
           },
         });
       }

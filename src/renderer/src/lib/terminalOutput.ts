@@ -2,9 +2,29 @@ import type { IMarker, Terminal } from 'xterm';
 
 const MAX_MARKERS = 50;
 
+// Matches typical shell prompts ending in $, #, %, >, ❯, or ➜ followed by whitespace,
+// including git branch decorators like `➜ git:(main) ` or `[user@host /dir]# `
+const PROMPT_RE =
+  /^(?:(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s]+|[\w.-]+)?\s*[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+
+/**
+ * Strips shell prompt prefix from a command line if present.
+ */
+export function stripPrompt(line: string): string {
+  return line.replace(PROMPT_RE, '').trim();
+}
+
+export interface CleanOutputInfo {
+  text: string;
+  lineCount: number;
+  charCount: number;
+}
+
 interface OscRegion {
   start: IMarker;
   end?: IMarker;
+  commandMarker?: IMarker;
+  exitCode?: number;
   /** The cursor was past column 0 when the output ended, i.e. the last output line has no newline yet. */
   partialLastLine?: boolean;
 }
@@ -21,22 +41,41 @@ interface OscRegion {
 export class CommandOutputTracker {
   private markers: IMarker[] = [];
   private regions: OscRegion[] = [];
+  private pendingCommandMarker?: IMarker;
   private readonly oscHandler: { dispose(): void };
 
   constructor(private readonly term: Terminal) {
     this.oscHandler = term.parser.registerOscHandler(133, (data) => {
       const kind = data.charAt(0);
-      if (kind === 'C') {
+      if (kind === 'B') {
+        const marker = term.registerMarker(0);
+        if (marker) this.pendingCommandMarker = marker;
+      } else if (kind === 'C') {
         const start = term.registerMarker(0);
         if (start) {
-          this.regions.push({ start });
-          if (this.regions.length > MAX_MARKERS) this.regions.shift()?.start.dispose();
+          const region: OscRegion = { start };
+          if (this.pendingCommandMarker) {
+            region.commandMarker = this.pendingCommandMarker;
+            this.pendingCommandMarker = undefined;
+          }
+          this.regions.push(region);
+          if (this.regions.length > MAX_MARKERS) {
+            const evicted = this.regions.shift();
+            evicted?.start.dispose();
+            evicted?.commandMarker?.dispose();
+            evicted?.end?.dispose();
+          }
         }
       } else if (kind === 'A' || kind === 'D') {
         const open = this.regions[this.regions.length - 1];
         if (open && !open.end) {
           open.end = term.registerMarker(0);
           open.partialLastLine = term.buffer.active.cursorX > 0;
+          if (kind === 'D' && data.length > 1) {
+            const rawCode = data.slice(1).replace(/^;/, '');
+            const parsed = parseInt(rawCode, 10);
+            if (!Number.isNaN(parsed)) open.exitCode = parsed;
+          }
         }
       }
       return true;
@@ -69,9 +108,13 @@ export class CommandOutputTracker {
 
   private lastOscOutput(): string | null {
     for (let i = this.regions.length - 1; i >= 0; i--) {
-      const { start, end, partialLastLine } = this.regions[i];
+      const { start, end, commandMarker, partialLastLine } = this.regions[i];
       if (start.isDisposed || start.line < 0 || !end || end.isDisposed || end.line < 0) continue;
-      const text = this.readLines(start.line, end.line + (partialLastLine ? 1 : 0));
+      const fromLine =
+        commandMarker && !commandMarker.isDisposed && start.line === commandMarker.line
+          ? start.line + 1
+          : start.line;
+      const text = this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0));
       if (text.trim()) return text;
     }
     return null;
@@ -92,14 +135,81 @@ export class CommandOutputTracker {
     return lines.join('\n');
   }
 
+  /**
+   * Text of the command that produced the last output, or null if unknown.
+   */
+  public lastCommand(): string | null {
+    const buf = this.term.buffer.active;
+    if (buf.type !== 'normal') return null;
+
+    if (this.regions.length > 0) {
+      for (let i = this.regions.length - 1; i >= 0; i--) {
+        const { commandMarker, start } = this.regions[i];
+        if (commandMarker && !commandMarker.isDisposed && commandMarker.line >= 0) {
+          const toLine =
+            start && !start.isDisposed && start.line >= commandMarker.line
+              ? start.line + 1
+              : commandMarker.line + 1;
+          const text = this.readLines(commandMarker.line, toLine).trim();
+          if (text) return stripPrompt(text);
+        }
+      }
+    }
+
+    const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
+    for (let i = live.length - 1; i >= 0; i--) {
+      const line = buf.getLine(live[i].line);
+      if (line) {
+        const text = line.translateToString(true).trim();
+        if (text) return stripPrompt(text);
+      }
+    }
+    return null;
+  }
+
+  /** Details of the most recent command output, or null when there is none. */
+  public getCleanOutput(): CleanOutputInfo | null {
+    const text = this.lastOutput();
+    if (!text || !text.trim()) return null;
+    const lines = text.split('\n');
+    return {
+      text,
+      lineCount: lines.length,
+      charCount: text.length,
+    };
+  }
+
   public dispose(): void {
     this.oscHandler.dispose();
+    this.pendingCommandMarker?.dispose();
+    this.pendingCommandMarker = undefined;
     for (const m of this.markers) m.dispose();
     for (const r of this.regions) {
       r.start.dispose();
+      r.commandMarker?.dispose();
       r.end?.dispose();
     }
     this.markers = [];
     this.regions = [];
   }
+}
+
+/**
+ * Copies the clean output of the most recent command to the system clipboard.
+ * Returns information about the copied text, or null if no output exists.
+ */
+export async function copyCleanOutputToClipboard(
+  tracker: CommandOutputTracker
+): Promise<CleanOutputInfo | null> {
+  const info = tracker.getCleanOutput();
+  if (!info) return null;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(info.text);
+      return info;
+    }
+  } catch {
+    // Clipboard permission denied or document not focused
+  }
+  return null;
 }

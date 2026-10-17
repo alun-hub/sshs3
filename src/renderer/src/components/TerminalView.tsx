@@ -13,6 +13,7 @@ import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActio
 import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
 import { ClipboardHistoryModal } from './ClipboardHistoryModal';
+import { TerminalPathHoverCard } from './TerminalPathHoverCard';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
@@ -250,6 +251,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  const [hoverCardData, setHoverCardData] = useState<{ path: string; x: number; y: number } | null>(null);
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
   // Tracks the size last reported to the PTY, shared between the resize observer and the
@@ -429,6 +432,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     registerTerminalLinks(term, {
       openUrl: (url) => void window.multissh.openExternal(url),
       openPath: onOpenPathRef.current ? (path) => onOpenPathRef.current?.(path) : undefined,
+      hoverPath: (e, path) => {
+        clearTimeout(hoverLeaveTimerRef.current);
+        setHoverCardData({ path, x: e.clientX, y: e.clientY });
+      },
+      leavePath: () => {
+        hoverLeaveTimerRef.current = setTimeout(() => {
+          setHoverCardData(null);
+        }, 400);
+      },
     });
     const outputTracker = new CommandOutputTracker(term);
     outputTrackerRef.current = outputTracker;
@@ -538,22 +550,27 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       } else if (action === 'snippets') {
         setSnippetsOpen(true);
       } else if (action === 'copyLastOutput') {
-        const output = outputTracker.lastOutput();
-        if (!output) {
-          showNotice('No command output to copy');
-          return;
-        }
-        const lines = output.split('\n').length;
-        (navigator.clipboard ? navigator.clipboard.writeText(output) : Promise.reject(new Error('no clipboard')))
-          .then(() => {
-            if (copyOnSelectRef.current) {
-              void window.multissh?.clipboardHistoryAdd(output, hostKeyRef.current, hostLabelRef.current).catch(() => {});
-            }
-            showNotice(`Copied last output (${lines} line${lines === 1 ? '' : 's'})`);
-          })
-          .catch(() => showNotice('Could not access the clipboard'));
+        copyLastCommandOutput();
       }
     };
+
+    const copyLastCommandOutput = (): void => {
+      const output = outputTracker.lastOutput();
+      if (!output) {
+        showNotice('No command output to copy');
+        return;
+      }
+      const lines = output.split('\n').length;
+      (navigator.clipboard ? navigator.clipboard.writeText(output) : Promise.reject(new Error('no clipboard')))
+        .then(() => {
+          if (copyOnSelectRef.current) {
+            void window.multissh?.clipboardHistoryAdd(output, hostKeyRef.current, hostLabelRef.current).catch(() => {});
+          }
+          showNotice(`Copied last output (${lines} line${lines === 1 ? '' : 's'})`);
+        })
+        .catch(() => showNotice('Could not access the clipboard'));
+    };
+
     window.addEventListener(TERMINAL_ACTION_EVENT, handleTerminalAction);
     container.addEventListener('contextmenu', handleContextMenu, true);
 
@@ -587,6 +604,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // so it's wired up explicitly here.
     // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        copyLastCommandOutput();
+        return false;
+      }
       if (e.type === 'keydown' && e.shiftKey && e.key === 'Insert') {
         e.preventDefault();
         pasteLatest();
@@ -809,6 +831,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       searchAddonRef.current = null;
       clearTimeout(settleTimer);
       clearTimeout(noticeTimer);
+      clearTimeout(hoverLeaveTimerRef.current);
       const sid = sessionIdRef.current;
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
       if (sid && killSession) {
@@ -985,6 +1008,34 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         >
           {copyNotice}
         </div>
+      )}
+
+      {hoverCardData && (
+        <TerminalPathHoverCard
+          path={hoverCardData.path}
+          x={hoverCardData.x}
+          y={hoverCardData.y}
+          userHome={config?.username === 'root' ? '/root' : `/home/${config?.username || 'user'}`}
+          onMouseEnter={() => clearTimeout(hoverLeaveTimerRef.current)}
+          onMouseLeave={() => {
+            hoverLeaveTimerRef.current = setTimeout(() => setHoverCardData(null), 300);
+          }}
+          onClose={() => setHoverCardData(null)}
+          onCopyPath={(p) => {
+            navigator.clipboard?.writeText(p);
+            setCopyNotice(`Copied path: ${p}`);
+            setTimeout(() => setCopyNotice(null), 2000);
+            setHoverCardData(null);
+          }}
+          onOpenPath={
+            onOpenPathRef.current
+              ? (p) => {
+                  onOpenPathRef.current?.(p);
+                  setHoverCardData(null);
+                }
+              : undefined
+          }
+        />
       )}
 
       {snippetsOpen && (
