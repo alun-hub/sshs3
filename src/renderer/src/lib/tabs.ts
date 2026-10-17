@@ -17,6 +17,8 @@ export interface AppTab extends TabItem {
   initialSSHConfig?: SSHConnectionConfig;
   /** Set when opening a filemanager tab focused on a local directory. */
   initialLocalPath?: string;
+  /** Optional file or directory path to select and highlight once the directory contents load. */
+  initialSelectedPath?: string;
 }
 
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */

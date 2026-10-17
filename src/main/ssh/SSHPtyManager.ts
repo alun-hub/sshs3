@@ -248,6 +248,20 @@ export class InternalSSHPtySession implements SSHPtySession {
     }
   }
 
+  public getCwd(): string | null {
+    if (this.disposed || !this.pty) return null;
+    const pid = (this.pty as any).pid;
+    if (!pid) return null;
+    if (process.platform === 'linux') {
+      try {
+        return fs.readlinkSync(`/proc/${pid}/cwd`);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   public kill(signal?: string): void {
     if (this.reconnectStableTimer) {
       clearTimeout(this.reconnectStableTimer);
@@ -847,6 +861,14 @@ export class SSHPtyManager extends EventEmitter {
     if (session) {
       session.kill(signal);
     }
+  }
+
+  /**
+   * Returns the current working directory of an active local shell session, or null if unknown.
+   */
+  public getSessionCwd(sessionId: string): string | null {
+    const session = this.sessions.get(sessionId);
+    return session && 'getCwd' in session ? (session as any).getCwd() : null;
   }
 
   /**

@@ -131,4 +131,12 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
       return false;
     }
   );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.TERMINAL_GET_CWD,
+    async (_event, sessionId: string): Promise<string | null> => {
+      if (typeof sessionId !== 'string') return null;
+      return bridge.sshPtyManager.getSessionCwd(sessionId);
+    }
+  );
 }

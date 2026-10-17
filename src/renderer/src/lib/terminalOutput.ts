@@ -4,12 +4,13 @@ const MAX_MARKERS = 50;
 
 // Matches typical shell prompts ending in $, #, %, >, ❯, or ➜ followed by whitespace,
 // including git branch decorators like `➜ git:(main) ` or `[user@host /dir]# `
+// and box-drawing prompt footers like `╰─$ ` or `╰─❯ `
 const PROMPT_PREFIX_RE =
-  /^(?:(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+  /^(?:[╰└┗][─━\s]*[$#%>❯➜]\s*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
 
-// Matches an entire line that consists only of a prompt
+// Matches an entire line that consists only of a prompt or multi-line prompt header/footer
 const FULL_PROMPT_LINE_RE =
-  /^(?:(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)$/;
+  /^(?:[╰└┗][─━\s]*[$#%>❯➜]?\s*|[╭┌┏][─━\s].*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?|[\w.-]+@[\w.-]+(?:\s+in\s+[^\s]+|:[^\s$#%>]*)\s*(?:\[[^\]]+\])?\s*)$/;
 
 /**
  * Strips shell prompt prefix from a command line if present.
@@ -41,6 +42,32 @@ export function stripTrailingPrompt(text: string): string {
     }
   }
   return lines.join('\n');
+}
+
+/**
+ * Extracts current working directory from shell prompt text (e.g. starship, oh-my-zsh, default bash).
+ */
+export function extractCwdFromPrompt(line: string, userHome = '/home/user'): string | null {
+  const trimmed = line.trim();
+  // 1. Starship / multi-line: `╭─ alun@fedora in ~ [2026-10-17 15:51]` or `in /etc`
+  const inMatch = trimmed.match(/\bin\s+([~/\w.@+-]+)/);
+  if (inMatch) {
+    const raw = inMatch[1];
+    return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;
+  }
+  // 2. Standard bash/zsh prompt: `alun@host:/etc$ ` or `user@host:~$ `
+  const colonMatch = trimmed.match(/[@:][^:\s]+:([~/\w.@+-]+)[$#%>]/);
+  if (colonMatch) {
+    const raw = colonMatch[1];
+    return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;
+  }
+  // 3. Bracketed prompt: `[user@host /etc]# `
+  const bracketMatch = trimmed.match(/\[[^\]\s]+\s+([~/\w.@+-]+)\]/);
+  if (bracketMatch) {
+    const raw = bracketMatch[1];
+    return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;
+  }
+  return null;
 }
 
 export interface CleanOutputInfo {

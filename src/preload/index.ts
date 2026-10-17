@@ -123,6 +123,9 @@ export const api: MultiSSHApi = {
   terminalReconnect: (sessionId: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RECONNECT, sessionId),
 
+  terminalGetCwd: (sessionId: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_GET_CWD, sessionId),
+
   onTerminalData: (callback: (sessionId: string, data: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, sessionId: string, data: string) =>
       callback(sessionId, data);

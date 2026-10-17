@@ -375,4 +375,33 @@ describe('FilePane Home Button', () => {
     });
     expect(screen.getByText('1 item')).toBeInTheDocument();
   });
+
+  it('pre-selects and highlights initialSelectedPath upon directory load', async () => {
+    (window as any).multissh.storageList = vi.fn().mockResolvedValue([
+      { name: 'apple.txt', path: '/var/log/apple.txt', size: 100, isDirectory: false },
+      { name: 'banana.txt', path: '/var/log/banana.txt', size: 200, isDirectory: false },
+    ]);
+
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 'local', sourceType: 'local', label: 'Local Disk' }}
+            currentPath="/var/log"
+            initialSelectedPath="/var/log/banana.txt"
+            onPathChange={() => {}}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+    await screen.findByText('banana.txt');
+    await waitFor(() => {
+      expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    });
+  });
 });

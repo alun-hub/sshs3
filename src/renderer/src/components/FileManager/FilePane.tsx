@@ -46,6 +46,8 @@ interface FilePaneProps {
   showHiddenFiles?: boolean;
   /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
   gitIntegrationEnabled?: boolean;
+  /** Optional file or folder path to highlight upon loading. */
+  initialSelectedPath?: string;
 }
 
 export const FilePane: React.FC<FilePaneProps> = ({
@@ -63,10 +65,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
   shortcuts,
   showHiddenFiles = false,
   gitIntegrationEnabled = true,
+  initialSelectedPath,
 }) => {
   const onPathChangeRef = useRef(onPathChange);
   onPathChangeRef.current = onPathChange;
   const lastPasteTimeRef = useRef(0);
+  const pendingSelectPathRef = useRef<string | undefined>(initialSelectedPath);
+
+  useEffect(() => {
+    if (initialSelectedPath) {
+      pendingSelectPathRef.current = initialSelectedPath;
+    }
+  }, [initialSelectedPath]);
 
   const [entries, setEntries] = useState<FileEntry[]>([]);
   // UX audit finding #1: Settings > Files & Storage > "Show hidden files and
@@ -82,11 +92,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const recursiveActive = recursiveFilter && filterText.trim().length > 0;
   // While a recursive filter is active the list shows the walk's hits (names are
   // relative paths, `path` is the real full path) instead of the current folder.
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const activeEntries = recursiveActive ? recursiveEntries : entries;
   const visibleEntries = useMemo(
     () =>
-      showHiddenFiles || recursiveActive ? activeEntries : activeEntries.filter((e) => !e.name.startsWith('.')),
-    [activeEntries, showHiddenFiles, recursiveActive]
+      showHiddenFiles || recursiveActive
+        ? activeEntries
+        : activeEntries.filter((e) => !e.name.startsWith('.') || selectedPaths.has(e.path)),
+    [activeEntries, showHiddenFiles, recursiveActive, selectedPaths]
   );
   // What FileList actually renders once its own (non-recursive) text filter narrows the list —
   // recursive mode already reflects filterText in recursiveEntries itself, so only the plain
@@ -98,7 +111,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [visibleEntries, filterText, recursiveActive]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [chmodOpen, setChmodOpen] = useState(false);
@@ -208,6 +220,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
         // a stale response instead of clobbering the pane with the wrong host's content.
         if (latestRequestRef.current !== requestKey) return;
         setEntries(result);
+
+        if (pendingSelectPathRef.current) {
+          const target = pendingSelectPathRef.current;
+          const targetBasename = target.split(/[\\/]/).filter(Boolean).pop();
+          const match = result.find(
+            (e) =>
+              e.path === target ||
+              e.path === target.replace(/\/+$/, '') ||
+              (targetBasename && e.name === targetBasename)
+          );
+          if (match) {
+            setSelectedPaths(new Set([match.path]));
+            pendingSelectPathRef.current = undefined;
+          }
+        }
 
         if (gitIntegrationEnabled && (source.sourceType === 'local' || source.sourceType === 'sftp')) {
           window.multissh

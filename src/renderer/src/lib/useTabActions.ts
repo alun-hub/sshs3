@@ -353,14 +353,16 @@ export function useTabActions(ctx: TabActionsContext) {
   const handleOpenRemotePath = useCallback((config: SSHConnectionConfig, rawPath: string) => {
     const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
     const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
-    // The terminal can't tell files from folders: a trailing slash means folder, anything else opens its parent.
-    const folder = absolute.endsWith('/') ? absolute : absolute.slice(0, absolute.lastIndexOf('/')) || '/';
+    const isDir = absolute.endsWith('/');
+    const folder = isDir ? absolute : absolute.slice(0, absolute.lastIndexOf('/')) || '/';
+    const selectPath = isDir ? undefined : absolute;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
       id: newId,
       type: 'filemanager',
       title: `${config.name} (SFTP)`,
       initialSSHConfig: { ...config, initialPath: folder },
+      initialSelectedPath: selectPath,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
@@ -368,13 +370,16 @@ export function useTabActions(ctx: TabActionsContext) {
 
   // Click on a file path in a local terminal: browse that folder on Local Disk in a new file manager tab.
   const handleOpenLocalPath = useCallback((rawPath: string) => {
-    const folder = rawPath.endsWith('/') ? rawPath : rawPath.slice(0, rawPath.lastIndexOf('/')) || '/';
+    const isDir = rawPath.endsWith('/');
+    const folder = isDir ? rawPath : rawPath.slice(0, rawPath.lastIndexOf('/')) || '/';
+    const selectPath = isDir ? undefined : rawPath;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
       id: newId,
       type: 'filemanager',
       title: 'Local Files',
       initialLocalPath: folder,
+      initialSelectedPath: selectPath,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);

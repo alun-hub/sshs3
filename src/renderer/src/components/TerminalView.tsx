@@ -8,7 +8,7 @@ import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shar
 import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { registerTerminalLinks } from '../lib/terminalLinks';
-import { CommandOutputTracker } from '../lib/terminalOutput';
+import { CommandOutputTracker, extractCwdFromPrompt } from '../lib/terminalOutput';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
 import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
@@ -258,12 +258,32 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const [hoverCardData, setHoverCardData] = useState<{ path: string; x: number; y: number } | null>(null);
+  const hoverCardDataRef = useRef<{ path: string; x: number; y: number } | null>(null);
+  hoverCardDataRef.current = hoverCardData;
+  const hoverDwellTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isMouseOverCardRef = useRef(false);
+  const [currentCwd, setCurrentCwd] = useState<string>(initialCwd || '');
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [userHomeDir, setUserHomeDir] = useState<string>(() => {
     if (config?.username === 'root') return '/root';
     if (config?.username) return `/home/${config.username}`;
     return '/home/user';
   });
+  const userHomeDirRef = useRef(userHomeDir);
+  userHomeDirRef.current = userHomeDir;
+
+  const refreshCwd = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    if (local && window.multissh?.terminalGetCwd) {
+      try {
+        const dir = await window.multissh.terminalGetCwd(sid);
+        if (dir) setCurrentCwd(dir);
+      } catch {
+        // Safe to ignore
+      }
+    }
+  }, [local]);
 
   useEffect(() => {
     const providerId = local ? 'local' : config?.id;
@@ -458,13 +478,27 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       openUrl: (url) => void window.multissh.openExternal(url),
       openPath: onOpenPathRef.current ? (path) => onOpenPathRef.current?.(path) : undefined,
       hoverPath: (e, path) => {
+        if (isMouseOverCardRef.current) return;
+        if (hoverCardDataRef.current?.path === path) return;
+
         clearTimeout(hoverLeaveTimerRef.current);
-        setHoverCardData({ path, x: e.clientX, y: e.clientY });
+        clearTimeout(hoverDwellTimerRef.current);
+
+        const delay = hoverCardDataRef.current ? 250 : 150;
+        hoverDwellTimerRef.current = setTimeout(() => {
+          if (isMouseOverCardRef.current) return;
+          void refreshCwd();
+          setHoverCardData({ path, x: e.clientX, y: e.clientY });
+        }, delay);
       },
       leavePath: () => {
+        clearTimeout(hoverDwellTimerRef.current);
+        if (isMouseOverCardRef.current) return;
         hoverLeaveTimerRef.current = setTimeout(() => {
-          setHoverCardData(null);
-        }, 400);
+          if (!isMouseOverCardRef.current) {
+            setHoverCardData(null);
+          }
+        }, 350);
       },
     });
     const outputTracker = new CommandOutputTracker(term);
@@ -629,6 +663,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // so it's wired up explicitly here.
     // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.key === 'Escape' && hoverCardDataRef.current) {
+        e.preventDefault();
+        isMouseOverCardRef.current = false;
+        clearTimeout(hoverLeaveTimerRef.current);
+        clearTimeout(hoverDwellTimerRef.current);
+        setHoverCardData(null);
+        return false;
+      }
       if (e.type === 'keydown' && e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         copyLastCommandOutput();
@@ -772,6 +814,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               if (sessId === sessionIdRef.current) {
                 term.write(data);
                 sendInitialCwd();
+                const detectedCwd = extractCwdFromPrompt(data, userHomeDirRef.current);
+                if (detectedCwd) {
+                  setCurrentCwd(detectedCwd);
+                }
                 if (!k8sTarget) {
                   const detectedHost = scanOutputForHost(data);
                   if (detectedHost) {
@@ -857,6 +903,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       clearTimeout(settleTimer);
       clearTimeout(noticeTimer);
       clearTimeout(hoverLeaveTimerRef.current);
+      clearTimeout(hoverDwellTimerRef.current);
+      isMouseOverCardRef.current = false;
       const sid = sessionIdRef.current;
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
       if (sid && killSession) {
@@ -1041,22 +1089,36 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           x={hoverCardData.x}
           y={hoverCardData.y}
           userHome={userHomeDir}
-          currentCwd={initialCwd || userHomeDir}
-          onMouseEnter={() => clearTimeout(hoverLeaveTimerRef.current)}
-          onMouseLeave={() => {
-            hoverLeaveTimerRef.current = setTimeout(() => setHoverCardData(null), 300);
+          currentCwd={currentCwd || initialCwd || userHomeDir}
+          onMouseEnter={() => {
+            isMouseOverCardRef.current = true;
+            clearTimeout(hoverLeaveTimerRef.current);
+            clearTimeout(hoverDwellTimerRef.current);
           }}
-          onClose={() => setHoverCardData(null)}
+          onMouseLeave={() => {
+            isMouseOverCardRef.current = false;
+            hoverLeaveTimerRef.current = setTimeout(() => {
+              if (!isMouseOverCardRef.current) {
+                setHoverCardData(null);
+              }
+            }, 300);
+          }}
+          onClose={() => {
+            isMouseOverCardRef.current = false;
+            setHoverCardData(null);
+          }}
           onCopyPath={(p) => {
             navigator.clipboard?.writeText(p);
             setCopyNotice(`Copied path: ${p}`);
             setTimeout(() => setCopyNotice(null), 2000);
+            isMouseOverCardRef.current = false;
             setHoverCardData(null);
           }}
           onOpenPath={
             onOpenPathRef.current
               ? (p) => {
                   onOpenPathRef.current?.(p);
+                  isMouseOverCardRef.current = false;
                   setHoverCardData(null);
                 }
               : undefined
@@ -1080,6 +1142,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 setEditingFile(p);
               }
             }
+            isMouseOverCardRef.current = false;
             setHoverCardData(null);
           }}
         />

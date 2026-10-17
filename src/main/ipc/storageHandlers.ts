@@ -259,15 +259,15 @@ export function registerStorageHandlers(bridge: StorageHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.STORAGE_GET_HOMEDIR,
     async (_event, providerId: string): Promise<string> => {
+      if (providerId === 'local') {
+        return os.homedir();
+      }
       const provider = bridge.storageRegistry.get(providerId);
       if (!provider) {
         throw new Error(`Storage provider not found: ${providerId}`);
       }
       if (typeof provider.getHomeDir === 'function') {
         return await provider.getHomeDir();
-      }
-      if (provider.type === 'local') {
-        return os.homedir();
       }
       return '/';
     }

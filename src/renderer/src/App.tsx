@@ -478,6 +478,7 @@ export const App: React.FC = () => {
                       initialK8sTarget={tab.initialK8sTarget}
                       initialSSHConfig={tab.initialSSHConfig}
                       initialLocalPath={tab.initialLocalPath}
+                      initialSelectedPath={tab.initialSelectedPath}
                       showHiddenFiles={settings.showHiddenFiles ?? false}
                       gitIntegrationEnabled={settings.fileManagerGitIntegration ?? true}
                     />

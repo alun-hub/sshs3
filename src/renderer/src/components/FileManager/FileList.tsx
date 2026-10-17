@@ -279,13 +279,6 @@ export const FileList: React.FC<FileListProps> = ({
     }
   }, [entries, loading]);
 
-  useEffect(() => {
-    if (!activePath) return;
-    focusElement(activePath);
-    const timer = setTimeout(() => focusElement(activePath), 30);
-    return () => clearTimeout(timer);
-  }, [activePath, focusElement]);
-
   const rowVirtualizer = useVirtualizer({
     count: sorted.length,
     getScrollElement: () => containerRef.current,
@@ -309,6 +302,17 @@ export const FileList: React.FC<FileListProps> = ({
       return () => observer.disconnect();
     },
   });
+
+  useEffect(() => {
+    if (!activePath) return;
+    const idx = sorted.findIndex((e) => e.path === activePath);
+    if (idx >= 0) {
+      rowVirtualizer.scrollToIndex(idx, { align: 'auto' });
+    }
+    focusElement(activePath);
+    const timer = setTimeout(() => focusElement(activePath), 40);
+    return () => clearTimeout(timer);
+  }, [activePath, focusElement, sorted, rowVirtualizer]);
 
   const searchAndSelect = useCallback(
     (query: string, currentIndex: number) => {

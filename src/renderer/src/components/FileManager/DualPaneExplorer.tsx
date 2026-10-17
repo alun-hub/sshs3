@@ -39,6 +39,8 @@ interface DualPaneExplorerProps {
   initialSSHConfig?: SSHConnectionConfig;
   /** Focus local disk pane on this folder on mount. */
   initialLocalPath?: string;
+  /** Optional file or folder path to highlight and scroll to upon loading. */
+  initialSelectedPath?: string;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default. */
   showHiddenFiles?: boolean;
   /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
@@ -52,6 +54,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   initialK8sTarget,
   initialSSHConfig,
   initialLocalPath,
+  initialSelectedPath,
   showHiddenFiles = false,
   gitIntegrationEnabled = true,
 }) => {
@@ -59,7 +62,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
   });
-  const [activeSide, setActiveSide] = useState<PaneSide>('left');
+  const [activeSide, setActiveSide] = useState<PaneSide>(initialSSHConfig ? 'right' : 'left');
   const [refreshToken, setRefreshToken] = useState(0);
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -232,10 +235,15 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           };
         };
 
-        const left = await restoreSide('left', session?.panes?.left);
+        const left = initialLocalPath
+          ? { source: { providerId: 'local', sourceType: 'local' as const, label: 'Local Disk' }, path: initialLocalPath }
+          : await restoreSide('left', session?.panes?.left);
         const right = await restoreSide('right', session?.panes?.right);
 
         if (mounted) {
+          if (initialLocalPath) {
+            autoConnectedLocalRef.current = true;
+          }
           setPanes({ left, right });
           setReady(true);
           // UX audit finding #7: a brand-new File Manager tab used to default
@@ -645,6 +653,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             side="left"
             source={panes.left.source}
             currentPath={panes.left.path}
+            initialSelectedPath={initialLocalPath ? initialSelectedPath : undefined}
             isActive={activeSide === 'left'}
             onFocus={handleLeftFocus}
             onPathChange={handleLeftPathChange}
@@ -670,6 +679,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             side="right"
             source={panes.right.source}
             currentPath={panes.right.path}
+            initialSelectedPath={initialSSHConfig ? initialSelectedPath : undefined}
             isActive={activeSide === 'right'}
             onFocus={handleRightFocus}
             onPathChange={handleRightPathChange}

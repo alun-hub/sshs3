@@ -124,6 +124,26 @@ describe('CommandOutputTracker', () => {
 
     const rawOutput = 'total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt\nalun@host:~$';
     expect(stripTrailingPrompt(rawOutput)).toBe('total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt');
+
+    // Multi-line starship / box-drawing prompts
+    expect(isPromptLine('╭─ alun@fedora in ~ [2026-10-17 15:51]')).toBe(true);
+    expect(isPromptLine('╰─$ ')).toBe(true);
+    expect(isPromptLine('╰─❯')).toBe(true);
+    expect(stripPrompt('╰─$ ls -la')).toBe('ls -la');
+
+    const multiLinePromptOutput =
+      'output line 1\noutput line 2\n╭─ alun@fedora in ~ [2026-10-17 15:51]\n╰─$ ';
+    expect(stripTrailingPrompt(multiLinePromptOutput)).toBe('output line 1\noutput line 2');
+  });
+
+  it('extracts CWD from diverse prompt formats', async () => {
+    const { extractCwdFromPrompt } = await import('./terminalOutput');
+    expect(extractCwdFromPrompt('╭─ alun@fedora in ~ [2026-10-17 15:51]', '/home/alun')).toBe('/home/alun');
+    expect(extractCwdFromPrompt('╭─ alun@fedora in /etc [2026-10-17 15:51]', '/home/alun')).toBe('/etc');
+    expect(extractCwdFromPrompt('╭─ alun@fedora in ~/projects [2026-10-17 15:51]', '/home/alun')).toBe('/home/alun/projects');
+    expect(extractCwdFromPrompt('alun@host:/var/log$ ', '/home/alun')).toBe('/var/log');
+    expect(extractCwdFromPrompt('[root@box /etc/nginx]# ', '/home/alun')).toBe('/etc/nginx');
+    expect(extractCwdFromPrompt('total 16', '/home/alun')).toBe(null);
   });
 
   it('copies clean output to clipboard via copyCleanOutputToClipboard helper', async () => {
