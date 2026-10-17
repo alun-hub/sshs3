@@ -43,9 +43,6 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ├── docs/                           # Architecture, comparison, and subsystem guides
 │   ├── COMPARISON.md               # Detailed comparison vs PuTTY, MobaXterm, WinSCP, S3 Browser
 │   ├── KUBERNETES.md               # Kubernetes architecture, file access & ephemeral container limits
-│   ├── team-vault-plan.md          # Team Vault design (age encryption, whole-file reject-and-pull-first sync)
-│   ├── yubikey-fido2-plan.md       # FIDO2/YubiKey design
-│   ├── openssh-sftp-migration-plan.md # OpenSSH-based SFTP engine design
 │   └── user-guide/                 # End-user docs, published at docs.sshs3.com
 ├── scripts/                        # Automated deploy and release scripts (deploy.sh)
 ├── src/
@@ -147,8 +144,6 @@ export interface IStorageProvider {
 - `SftpPacketProtocol` implements SFTP v3 framing and request/response routing; `SftpStreams` provides `SftpReadStream`/`SftpWriteStream` with Node backpressure.
 - `OpenSshSftpClientAdapter` exposes the `ssh2-sftp-client`-style surface that `SFTPStorageProvider` consumes, and provides `exec()`/`createExecStream()` for tail and remote search (multiplexed over the `ControlPath` socket, kept in a private 0700 temp directory).
 - Password profiles pass `PubkeyAuthentication=no` (in `buildSSHArguments`) so a touch/PIN-protected agent key can't block the password login.
-
-See `docs/openssh-sftp-migration-plan.md` for the design and deviations.
 
 ### In-Memory Streaming Pipeline
 Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Local -> SFTP) stream directly in-memory via Node.js streams through [`TransferPipeline.ts`](src/main/transfer/TransferPipeline.ts):

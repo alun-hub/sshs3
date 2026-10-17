@@ -21,6 +21,10 @@ skills-lock.json
 AI-*.md
 *-audit.md
 
+# Design specifications & roadmaps (local only)
+docs/*plan*.md
+todo.md
+
 
 # Test coverage output
 coverage/

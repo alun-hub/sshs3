@@ -247,4 +247,3 @@ sshs3 never stores the recovery key on disk; the pasted text is piped to `age` o
 - `TeamVaultCryptoService` (`src/main/services/TeamVaultCryptoService.ts`): Manages AES-256-GCM payload encryption, HMAC access-header MAC calculation, rotation proofs, and age envelope wrapping.
 - `AgePtyPinRelay` (`src/main/services/AgePtyPinRelay.ts`): Spawns bundled `age` and `age-plugin-yubikey` processes in an isolated pseudo-terminal, relaying PIN and touch events directly to Electron modals.
 - `TeamVaultConfigStore` (`src/main/services/TeamVaultConfigStore.ts`): Stores per-vault S3 connection parameters and remembered local identity mappings.
-- Complete design history and decision logs: [`docs/team-vault-plan.md`](https://github.com/alun-hub/sshs3/blob/master/docs/team-vault-plan.md).
