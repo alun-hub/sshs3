@@ -90,7 +90,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{ left: `${left}px`, top: `${top}px` }}
-      className="fixed z-50 flex flex-col w-80 rounded-xl border border-border-subtle bg-app-surface/95 p-3 shadow-2xl backdrop-blur-md animate-fade-in text-txt-primary select-none pointer-events-auto"
+      className="fixed z-50 flex flex-col w-80 rounded-xl border border-border-subtle bg-app-surface/95 p-3 shadow-2xl backdrop-blur-md animate-fade-in text-txt-primary select-none pointer-events-auto before:content-[''] before:absolute before:-top-4 before:-left-3 before:-right-3 before:h-5"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2 border-b border-divider pb-2">

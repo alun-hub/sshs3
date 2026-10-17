@@ -6,11 +6,11 @@ const MAX_MARKERS = 50;
 // including git branch decorators like `➜ git:(main) ` or `[user@host /dir]# `
 // and box-drawing prompt footers like `╰─$ ` or `╰─❯ `
 const PROMPT_PREFIX_RE =
-  /^(?:[╰└┗][─━\s]*[$#%>❯➜]\s*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+  /^(?:[╰└┗].*?[$#%>❯➜]\s*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
 
 // Matches an entire line that consists only of a prompt or multi-line prompt header/footer
 const FULL_PROMPT_LINE_RE =
-  /^(?:[╰└┗][─━\s]*[$#%>❯➜]?\s*|[╭┌┏][─━\s].*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?|[\w.-]+@[\w.-]+(?:\s+in\s+[^\s]+|:[^\s$#%>]*)\s*(?:\[[^\]]+\])?\s*)$/;
+  /^(?:[╰└┗].*|[╭┌┏].*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?|[\w.-]+@[\w.-]+(?:\s+in\s+[^\s]+|:[^\s$#%>]*)\s*(?:\[[^\]]+\])?\s*)$/;
 
 /**
  * Strips shell prompt prefix from a command line if present.

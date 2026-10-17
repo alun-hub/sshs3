@@ -125,15 +125,22 @@ describe('CommandOutputTracker', () => {
     const rawOutput = 'total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt\nalun@host:~$';
     expect(stripTrailingPrompt(rawOutput)).toBe('total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt');
 
-    // Multi-line starship / box-drawing prompts
+    // Multi-line starship / box-drawing prompts (Unicode and ASCII dash variants)
     expect(isPromptLine('╭─ alun@fedora in ~ [2026-10-17 15:51]')).toBe(true);
+    expect(isPromptLine('╭- alun@fedora in ~ [2026-10-17 15:51]')).toBe(true);
     expect(isPromptLine('╰─$ ')).toBe(true);
+    expect(isPromptLine('╰-$ ')).toBe(true);
     expect(isPromptLine('╰─❯')).toBe(true);
     expect(stripPrompt('╰─$ ls -la')).toBe('ls -la');
+    expect(stripPrompt('╰-$ ls -la')).toBe('ls -la');
 
     const multiLinePromptOutput =
       'output line 1\noutput line 2\n╭─ alun@fedora in ~ [2026-10-17 15:51]\n╰─$ ';
     expect(stripTrailingPrompt(multiLinePromptOutput)).toBe('output line 1\noutput line 2');
+
+    const asciiPromptOutput =
+      'output line 1\noutput line 2\n╭- alun@fedora in ~ [2026-10-17 15:51]\n╰-$ ';
+    expect(stripTrailingPrompt(asciiPromptOutput)).toBe('output line 1\noutput line 2');
   });
 
   it('extracts CWD from diverse prompt formats', async () => {

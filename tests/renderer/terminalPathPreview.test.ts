@@ -60,6 +60,15 @@ describe('terminalPathPreview', () => {
     const cwdDetails = resolvePathDetails('./src/App.tsx', '/home/alun', '/home/alun/sshs3');
     expect(cwdDetails.fullPath).toBe('/home/alun/sshs3/src/App.tsx');
     expect(cwdDetails.basename).toBe('App.tsx');
+
+    const quotedDetails = resolvePathDetails("'windows 11.png'", '/home/alun', '/home/alun/sshs3');
+    expect(quotedDetails.fullPath).toBe('/home/alun/sshs3/windows 11.png');
+    expect(quotedDetails.basename).toBe('windows 11.png');
+
+    const escapedDetails = resolvePathDetails('my\\ file\\ with\\ spaces.pdf', '/home/alun', '/home/alun/sshs3');
+    expect(escapedDetails.fullPath).toBe('/home/alun/sshs3/my file with spaces.pdf');
+    expect(escapedDetails.basename).toBe('my file with spaces.pdf');
+    expect(escapedDetails.extension).toBe('pdf');
   });
 
   it('truncates snippets with line count and width limits', () => {

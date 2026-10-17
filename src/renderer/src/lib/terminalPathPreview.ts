@@ -174,8 +174,17 @@ export function resolvePathDetails(
   userHome = '/home/user',
   currentCwd?: string
 ): PathDetails {
-  const isDir = rawPath.endsWith('/') || rawPath.endsWith('\\');
-  const normalized = rawPath.replace(/[\\/]+$/, '');
+  let cleaned = rawPath.trim();
+  if (
+    (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length >= 2) ||
+    (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2)
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  cleaned = cleaned.replace(/\\ /g, ' ');
+
+  const isDir = cleaned.endsWith('/') || cleaned.endsWith('\\');
+  const normalized = cleaned.replace(/[\\/]+$/, '');
 
   let fullPath: string;
   if (normalized === '~') {

@@ -661,7 +661,7 @@ describe('FileEditorModal', () => {
       size: 2048,
       isBinary: true,
       truncated: false,
-      base64: 'JVBERi0xLjQKJcTl8uXr...',
+      base64: 'JVBERi0xLjQKJXRlc3Q=',
       mimeType: 'application/pdf',
     });
 

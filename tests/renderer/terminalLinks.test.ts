@@ -56,6 +56,32 @@ describe('terminalLinks - findPaths', () => {
     expect(matches).toHaveLength(1);
     expect(matches[0].text).toBe('src/index.ts');
   });
+
+  it('matches single-quoted and double-quoted filenames with spaces (e.g. GNU ls output)', () => {
+    const text = "-rw-r--r-- 1 alun alun 0 Oct 17 17:28 'windows 11.png' \"My Project Plan.pdf\"";
+    const matches = findPaths(text);
+    expect(matches).toHaveLength(2);
+    expect(matches[0].text).toBe('windows 11.png');
+    expect(matches[0].length).toBe("'windows 11.png'".length);
+    expect(matches[1].text).toBe('My Project Plan.pdf');
+    expect(matches[1].length).toBe('"My Project Plan.pdf"'.length);
+  });
+
+  it('matches quoted absolute paths and paths with line numbers', () => {
+    const text = "See '/home/alun/My Documents/report.txt':12:4";
+    const matches = findPaths(text);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].text).toBe('/home/alun/My Documents/report.txt');
+    expect(matches[0].length).toBe("'/home/alun/My Documents/report.txt':12:4".length);
+  });
+
+  it('matches backslash-escaped paths with spaces', () => {
+    const text = 'cat /var/log/my\\ service\\ error.log and windows\\ 11.png';
+    const matches = findPaths(text);
+    expect(matches).toHaveLength(2);
+    expect(matches[0].text).toBe('/var/log/my service error.log');
+    expect(matches[1].text).toBe('windows 11.png');
+  });
 });
 
 describe('terminalLinks - findUrls', () => {

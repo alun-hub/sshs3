@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, ExternalLink, AlertCircle } from 'lucide-react';
 
 export interface PdfViewerProps {
@@ -8,9 +8,33 @@ export interface PdfViewerProps {
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({ fileName, base64, onOpenExternal }) => {
-  const pdfUrl = useMemo(() => {
-    if (!base64) return '';
-    return `data:application/pdf;base64,${base64}#toolbar=1&navpanes=1`;
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!base64) {
+      setBlobUrl('');
+      return undefined;
+    }
+
+    try {
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } catch (e) {
+      console.error('Failed to create Blob from PDF base64:', e);
+      setBlobUrl('');
+      return undefined;
+    }
   }, [base64]);
 
   return (
@@ -43,12 +67,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ fileName, base64, onOpenEx
 
       {/* Embedded PDF Viewport */}
       <div className="flex-1 w-full h-full overflow-hidden bg-slate-900">
-        {pdfUrl ? (
-          <embed
-            src={pdfUrl}
-            type="application/pdf"
+        {blobUrl ? (
+          <iframe
+            src={`${blobUrl}#toolbar=1&navpanes=1`}
             className="w-full h-full border-none block"
-            aria-label={`PDF viewer for ${fileName}`}
+            title={`PDF viewer for ${fileName}`}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-txt-muted text-sm">

@@ -301,12 +301,27 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   }, [local]);
 
   useEffect(() => {
-    const providerId = local ? 'local' : config?.id;
-    if (providerId && window.multissh?.storageGetHomeDir) {
+    if (local) {
+      if (window.multissh?.getHomeDir) {
+        window.multissh
+          .getHomeDir()
+          .then((h) => {
+            if (h) {
+              setUserHomeDir(h);
+              userHomeDirRef.current = h;
+              setCurrentCwd((prev) => prev || h);
+            }
+          })
+          .catch(() => {});
+      }
+    } else if (config?.id && window.multissh?.storageGetHomeDir) {
       window.multissh
-        .storageGetHomeDir(providerId)
+        .storageGetHomeDir(config.id)
         .then((h) => {
-          if (h) setUserHomeDir(h);
+          if (h) {
+            setUserHomeDir(h);
+            userHomeDirRef.current = h;
+          }
         })
         .catch(() => {});
     }
@@ -499,7 +514,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         clearTimeout(hoverLeaveTimerRef.current);
         clearTimeout(hoverDwellTimerRef.current);
 
-        const delay = hoverCardDataRef.current ? 250 : 150;
+        const delay = hoverCardDataRef.current ? 500 : 150;
         hoverDwellTimerRef.current = setTimeout(() => {
           if (isMouseOverCardRef.current) return;
           void refreshCwd();
@@ -513,7 +528,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           if (!isMouseOverCardRef.current) {
             setHoverCardData(null);
           }
-        }, 350);
+        }, 400);
       },
     });
     const outputTracker = new CommandOutputTracker(term);
@@ -765,6 +780,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           }
           sessionIdRef.current = sessionId;
           setPerfSessionId(sessionId);
+          if (local && window.multissh?.terminalGetCwd) {
+            window.multissh.terminalGetCwd(sessionId).then((dir) => {
+              if (dir) setCurrentCwd(dir);
+            }).catch(() => {});
+          }
 
           // Force PTY size synchronization once session ID is established.
           // On app launch or tab restoration, the session was spawned with provisional

@@ -2,15 +2,19 @@ import type { IDisposable, ILink, Terminal } from 'xterm';
 
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
 const TRAILING_PUNCT_RE = /[.,;:!?)\]}>]+$/;
+// Quoted paths: single or double quoted paths containing spaces/characters
+const QUOTED_PATH_RE =
+  /(?<![\w:/.~-])(['"])([^'"\r\n\t]+)\1(?::\d+(?::\d+)?)?/g;
+
 // Slashed paths: absolute (`/var/log/x`), home-relative (`~/x`), explicit relative (`./x`, `../x`),
-// or subpaths (`src/file.ts`, `dir/`), optionally followed by `:line[:col]`.
+// or subpaths (`src/file.ts`, `dir/`), optionally with backslash-escaped spaces, optionally followed by `:line[:col]`.
 const SLASH_PATH_RE =
-  /(?<![\w:/.~-])((?:~?\/|\.\.?\/|[\w.@+-]+\/)(?:[\w.@%+~-]+\/)*(?:[\w.@%+~-]+)?)(?::\d+(?::\d+)?)?/g;
+  /(?<![\w:/.~-])((?:~?\/|\.\.?\/|(?:[\w.@+-]|\\ )+\/)(?:(?:[\w.@%+~-]|\\ )+\/)*(?:(?:[\w.@%+~-]|\\ )+)?)(?::\d+(?::\d+)?)?/g;
 
 // Standalone filenames with extensions (e.g. `index.html`, `test.txt`, `windows.png`, `.bashrc`),
-// or well-known filenames (e.g. `Dockerfile`, `Makefile`), optionally followed by `:line[:col]`.
+// or well-known filenames (e.g. `Dockerfile`, `Makefile`), optionally with backslash-escaped spaces, optionally followed by `:line[:col]`.
 const STANDALONE_FILE_RE =
-  /(?<![\w:/.~-])(?:\b([A-Za-z0-9_~-]+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|(Dockerfile|Makefile|Containerfile|Vagrantfile|Procfile|Gemfile|Rakefile|LICENSE|README))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
+  /(?<![\w:/.~-])(?:\b((?:[A-Za-z0-9_~-]|\\ )+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|(Dockerfile|Makefile|Containerfile|Vagrantfile|Procfile|Gemfile|Rakefile|LICENSE|README))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
 
 const KNOWN_FILENAMES = new Set([
   'Dockerfile',
@@ -72,19 +76,32 @@ function isValidStandaloneFile(raw: string): boolean {
   const dot = raw.lastIndexOf('.');
   if (dot <= 0) return false;
   const ext = raw.slice(dot + 1);
-  return ext.length >= 1 && ext.length <= 10 && /[A-Za-z]/.test(ext);
+  return ext.length >= 1 && ext.length <= 10 && /^[A-Za-z0-9_-]+$/.test(ext) && /[A-Za-z]/.test(ext);
 }
 
 export function findPaths(text: string): TextMatch[] {
   const candidates: TextMatch[] = [];
 
+  for (const m of text.matchAll(QUOTED_PATH_RE)) {
+    const rawContent = (m[2] || '').trim();
+    const unescaped = rawContent.replace(/\\ /g, ' ');
+    if (isValidSlashedPath(unescaped) || isValidStandaloneFile(unescaped)) {
+      candidates.push({
+        index: m.index ?? 0,
+        text: unescaped,
+        length: m[0].length,
+      });
+    }
+  }
+
   for (const m of text.matchAll(SLASH_PATH_RE)) {
     const rawMatch = m[1].replace(/[.,;]+$/, '');
-    if (!isValidSlashedPath(rawMatch)) continue;
+    const unescaped = rawMatch.replace(/\\ /g, ' ');
+    if (!isValidSlashedPath(unescaped)) continue;
     const suffix = m[0].length - m[1].length;
     candidates.push({
       index: m.index ?? 0,
-      text: rawMatch,
+      text: unescaped,
       length: rawMatch.length + (rawMatch.length === m[1].length ? suffix : 0),
     });
   }
@@ -93,16 +110,17 @@ export function findPaths(text: string): TextMatch[] {
     const matchedToken = m[1] || m[2] || m[3];
     if (!matchedToken) continue;
     const rawMatch = matchedToken.replace(/[.,;]+$/, '');
-    if (!isValidStandaloneFile(rawMatch)) continue;
+    const unescaped = rawMatch.replace(/\\ /g, ' ');
+    if (!isValidStandaloneFile(unescaped)) continue;
     const suffix = m[0].length - matchedToken.length;
     candidates.push({
       index: m.index ?? 0,
-      text: rawMatch,
+      text: unescaped,
       length: rawMatch.length + (rawMatch.length === matchedToken.length ? suffix : 0),
     });
   }
 
-  candidates.sort((a, b) => a.index - b.index);
+  candidates.sort((a, b) => a.index - b.index || b.length - a.length);
 
   const out: TextMatch[] = [];
   let lastEnd = -1;

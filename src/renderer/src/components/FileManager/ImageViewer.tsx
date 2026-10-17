@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize, RotateCcw, AlertCircle } from 'lucide-react';
 import { classNames, formatBytes } from '../../lib/format';
 
@@ -35,6 +35,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     }
     return '';
   }, [base64, svgContent, mimeType]);
+
+  useEffect(() => {
+    setHasError(false);
+    setNaturalSize(null);
+  }, [imageSrc, fileName]);
 
   const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
