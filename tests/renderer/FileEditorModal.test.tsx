@@ -430,4 +430,70 @@ describe('FileEditorModal', () => {
     fireEvent.keyDown(searchInput, { key: 'Escape' });
     expect(screen.queryByPlaceholderText(/Find in file/i)).not.toBeInTheDocument();
   });
+
+  it('does not re-read or discard unsaved changes when entry reference changes with same path', async () => {
+    const { rerender } = render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={{ ...sampleEntry }}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    const editor = screen.getByTestId('code-editor');
+    act(() => {
+      (editor as any).__cmChangeDoc('{\n  "port": 9000\n}');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+
+    // Parent re-renders (e.g. perf metrics sample arrived in TerminalView)
+    // passing a new entry object with same path
+    rerender(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={{ ...sampleEntry }}
+        onClose={vi.fn()}
+      />
+    );
+
+    // Unsaved changes MUST remain, and fileRead should NOT have been called again
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(mockFileRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors initialMode="source" for markdown files to open directly in edit mode', async () => {
+    const markdownEntry: FileEntry = {
+      name: 'notes.md',
+      path: '/home/user/notes.md',
+      size: 100,
+      isDirectory: false,
+    };
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        initialMode="source"
+        entry={markdownEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+  });
 });
+

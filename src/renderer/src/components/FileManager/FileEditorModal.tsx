@@ -43,6 +43,7 @@ interface FileEditorModalProps {
   sourceType: SourceType;
   entry: FileEntry | null;
   isTailMode?: boolean;
+  initialMode?: 'source' | 'preview';
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -53,6 +54,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   sourceType,
   entry,
   isTailMode = false,
+  initialMode,
   onClose,
   onSaved,
 }) => {
@@ -111,15 +113,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     setTailModeActive(false);
   }, [tailId]);
 
+  const entryPath = entry?.path;
+  const isDirectory = entry?.isDirectory;
+
   // Load file content normally
   const loadFile = useCallback(async () => {
-    if (!entry || entry.isDirectory) return;
+    if (!entryPath || isDirectory) return;
     await stopTailSession();
     setLoading(true);
     setError(null);
     setSaveStatus(null);
     try {
-      const res: FileReadResult = await window.multissh.fileRead(providerId, entry.path);
+      const res: FileReadResult = await window.multissh.fileRead(providerId, entryPath);
       setContent(res.content);
       setOriginalContent(res.content);
       setIsBinary(res.isBinary);
@@ -131,11 +136,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [providerId, entry, stopTailSession]);
+  }, [providerId, entryPath, isDirectory, stopTailSession]);
 
   // Start tail session
   const startTailSession = useCallback(async () => {
-    if (!entry || entry.isDirectory) return;
+    if (!entryPath || isDirectory) return;
     setLoading(true);
     setError(null);
     setSaveStatus(null);
@@ -148,7 +153,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     }
 
     try {
-      const res = await window.multissh.fileTailStart(providerId, entry.path);
+      const res = await window.multissh.fileTailStart(providerId, entryPath);
       setTailId(res.tailId);
       setContent(res.initialContent);
       setOriginalContent(res.initialContent);
@@ -164,7 +169,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [providerId, entry, tailId]);
+  }, [providerId, entryPath, isDirectory, tailId]);
 
   // Open modal effect
   useEffect(() => {
@@ -186,7 +191,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       return;
     }
 
-    setMarkdownPreview(isMarkdownFile(entry.name));
+    if (initialMode) {
+      setMarkdownPreview(initialMode === 'preview');
+    } else {
+      setMarkdownPreview(isMarkdownFile(entry.name));
+    }
 
     if (isTailMode) {
       void startTailSession();
@@ -194,7 +203,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       void loadFile();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, entry, isTailMode, providerId]);
+  }, [open, entryPath, isTailMode, providerId, initialMode]);
+
+  // Auto-focus editor when loaded and not preview/binary
+  useEffect(() => {
+    if (open && !loading && !markdownPreview && !isBinary) {
+      const timer = setTimeout(() => {
+        editorRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [open, loading, markdownPreview, isBinary]);
 
   // Tail data stream listener
   useEffect(() => {

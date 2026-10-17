@@ -17,6 +17,7 @@ import { TerminalPathHoverCard } from './TerminalPathHoverCard';
 import { FileEditorModal } from './FileManager/FileEditorModal';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
+import type { FileEntry, SFTPConfig } from '@shared/types/storage';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
 
@@ -264,6 +265,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const isMouseOverCardRef = useRef(false);
   const [currentCwd, setCurrentCwd] = useState<string>(initialCwd || '');
   const [editingFile, setEditingFile] = useState<string | null>(null);
+  const editingFileRef = useRef(editingFile);
+  editingFileRef.current = editingFile;
+
+  const editorEntry = useMemo<FileEntry | null>(() => {
+    if (!editingFile) return null;
+    return {
+      name: editingFile.split('/').pop() || editingFile,
+      path: editingFile,
+      size: 0,
+      isDirectory: false,
+    };
+  }, [editingFile]);
+
   const [userHomeDir, setUserHomeDir] = useState<string>(() => {
     if (config?.username === 'root') return '/root';
     if (config?.username) return `/home/${config.username}`;
@@ -663,6 +677,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // so it's wired up explicitly here.
     // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
+      if (editingFileRef.current) {
+        return false;
+      }
       if (e.type === 'keydown' && e.key === 'Escape' && hoverCardDataRef.current) {
         e.preventDefault();
         isMouseOverCardRef.current = false;
@@ -1123,23 +1140,54 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }
               : undefined
           }
-          onOpenEditor={(p) => {
+          onOpenEditor={async (p) => {
             if (onOpenEditorRef.current) {
               onOpenEditorRef.current(p);
             } else {
-              const providerId = local ? 'local' : (config?.id || '');
-              if (providerId) {
-                if (local) {
-                  window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' }).catch(() => {});
-                } else if (config) {
-                  window.multissh?.connectStorage?.({
-                    id: config.id,
-                    name: config.name || config.host,
-                    type: 'sftp',
-                    sftpConfig: { ...config, port: config.port ?? 22 },
-                  }).catch(() => {});
+              const targetProviderId = local
+                ? 'local'
+                : k8sTarget
+                  ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
+                  : (config ? `sftp-${config.id || config.host}` : '');
+
+              if (targetProviderId) {
+                try {
+                  if (local) {
+                    await window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' });
+                  } else if (k8sTarget) {
+                    await window.multissh?.connectStorage?.({
+                      id: targetProviderId,
+                      name: `${k8sTarget.podName}/${k8sTarget.containerName}`,
+                      type: 'k8s',
+                      k8sConfig: {
+                        id: targetProviderId,
+                        name: `${k8sTarget.podName}/${k8sTarget.containerName}`,
+                        contextName: k8sTarget.contextName,
+                        namespace: k8sTarget.namespace,
+                        podName: k8sTarget.podName,
+                        containerName: k8sTarget.containerName,
+                      },
+                    });
+                  } else if (config) {
+                    const sftpConfig: SFTPConfig = {
+                      ...config,
+                      id: config.id || config.host,
+                      name: config.name || config.host,
+                      port: config.port ?? 22,
+                    };
+                    await window.multissh?.connectStorage?.({
+                      id: targetProviderId,
+                      name: config.name || config.host,
+                      type: 'sftp',
+                      sftpConfig,
+                    });
+                  }
+                  termRef.current?.blur();
+                  setEditingFile(p);
+                } catch (err: any) {
+                  setCopyNotice(`Failed to open storage: ${err?.message || String(err)}`);
+                  setTimeout(() => setCopyNotice(null), 3000);
                 }
-                setEditingFile(p);
               }
             }
             isMouseOverCardRef.current = false;
@@ -1148,16 +1196,22 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         />
       )}
 
-      {editingFile && (
+      {editingFile && editorEntry && (
         <FileEditorModal
           open={true}
-          providerId={local ? 'local' : (config?.id || '')}
-          sourceType={local ? 'local' : 'sftp'}
-          entry={{
-            name: editingFile.split('/').pop() || editingFile,
-            path: editingFile,
-            size: 0,
-            isDirectory: false,
+          providerId={
+            local
+              ? 'local'
+              : k8sTarget
+                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
+                : (config ? `sftp-${config.id || config.host}` : '')
+          }
+          sourceType={local ? 'local' : k8sTarget ? 'k8s' : 'sftp'}
+          initialMode="source"
+          entry={editorEntry}
+          onSaved={() => {
+            setCopyNotice(`Saved: ${editorEntry.name}`);
+            setTimeout(() => setCopyNotice(null), 2500);
           }}
           onClose={() => {
             setEditingFile(null);

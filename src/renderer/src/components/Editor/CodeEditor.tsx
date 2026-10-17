@@ -28,6 +28,7 @@ export interface CodeEditorProps {
   onCursorChange?: (pos: { line: number; col: number }) => void;
   onMatchesCountChange?: (count: number) => void;
   onScrollNearBottomChange?: (isNearBottom: boolean) => void;
+  autoFocus?: boolean;
   className?: string;
 }
 
@@ -84,6 +85,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
   onCursorChange,
   onMatchesCountChange,
   onScrollNearBottomChange,
+  autoFocus = true,
   className = '',
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,6 +191,9 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
       parent: container,
     });
     viewRef.current = view;
+    if (autoFocus && !readOnly) {
+      view.focus();
+    }
 
     (container as any).__cmView = view;
     (container as any).__cmChangeDoc = (newDoc: string) => {

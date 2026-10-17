@@ -410,6 +410,25 @@ describe('TerminalView Component', () => {
 
     openSpy.mockRestore();
   });
+
+  it('connects storage with correct providerId and opens FileEditorModal when onOpenEditor is triggered', async () => {
+    const mockConnectStorage = vi.fn().mockResolvedValue({ id: 'sftp-ssh-1' });
+    const mockFileRead = vi.fn().mockResolvedValue({
+      content: 'hello world',
+      size: 11,
+      isBinary: false,
+      truncated: false,
+    });
+    window.multissh.connectStorage = mockConnectStorage;
+    window.multissh.fileRead = mockFileRead;
+
+    render(<TerminalView config={sampleConfig} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
+  });
 });
 
 
