@@ -126,6 +126,27 @@ describe('FileEditorService', () => {
       expect(res.content).toBe('a'.repeat(50));
     });
 
+    it('safely clamps invalid or excessive maxBytes', async () => {
+      const data = Buffer.from('b'.repeat(100), 'utf-8');
+      const mockProvider = {
+        id: 'mock-clamp',
+        name: 'Mock Clamp',
+        type: 's3' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([data])),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      // NaN defaults safely to 5MB (not truncated for 100 bytes)
+      const resNan = await service.readFile(storageRegistry, 'mock-clamp', '/test.txt', NaN as any);
+      expect(resNan.content).toBe('b'.repeat(100));
+      expect(resNan.truncated).toBe(false);
+
+      // Negative number defaults safely to 5MB
+      const resNeg = await service.readFile(storageRegistry, 'mock-clamp', '/test.txt', -10);
+      expect(resNeg.content).toBe('b'.repeat(100));
+      expect(resNeg.truncated).toBe(false);
+    });
+
     it('returns base64 and mimeType for binary media like PNG images', async () => {
       const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00]);
       const mockProvider = {
@@ -140,6 +161,71 @@ describe('FileEditorService', () => {
       expect(res.isBinary).toBe(true);
       expect(res.mimeType).toBe('image/png');
       expect(res.base64).toBe(pngHeader.toString('base64'));
+    });
+
+    it('returns isDirectory: true when provider.stat reports directory', async () => {
+      const mockProvider = {
+        id: 'mock-dir-stat',
+        name: 'Mock Dir Stat',
+        type: 'sftp' as const,
+        stat: vi.fn().mockResolvedValue({
+          name: 'my_folder',
+          path: '/var/my_folder',
+          size: 4096,
+          isDirectory: true,
+        }),
+        createReadStream: vi.fn(),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      const res = await service.readFile(storageRegistry, 'mock-dir-stat', '/var/my_folder');
+      expect(res.isDirectory).toBe(true);
+      expect(res.content).toBe('');
+      expect(res.size).toBe(4096);
+      expect(mockProvider.createReadStream).not.toHaveBeenCalled();
+    });
+
+    it('returns isDirectory: true when createReadStream throws EISDIR or SftpError failure', async () => {
+      const sftpFailure = new Error('Failure');
+      (sftpFailure as any).statusCode = 4;
+      (sftpFailure as any).name = 'SftpError';
+
+      const mockProvider = {
+        id: 'mock-dir-create-err',
+        name: 'Mock Dir Create Err',
+        type: 'sftp' as const,
+        stat: vi.fn().mockRejectedValue(new Error('stat not supported')),
+        createReadStream: vi.fn().mockRejectedValue(sftpFailure),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      const res = await service.readFile(storageRegistry, 'mock-dir-create-err', '/var/my_folder');
+      expect(res.isDirectory).toBe(true);
+      expect(res.content).toBe('');
+      expect(res.size).toBe(0);
+    });
+
+    it('returns isDirectory: true when stream emits EISDIR or SftpError failure', async () => {
+      const sftpFailure = new Error('Failure');
+      (sftpFailure as any).statusCode = 4;
+      (sftpFailure as any).name = 'SftpError';
+
+      const stream = new PassThrough();
+      const mockProvider = {
+        id: 'mock-dir-stream-err',
+        name: 'Mock Dir Stream Err',
+        type: 'sftp' as const,
+        createReadStream: vi.fn().mockResolvedValue(stream),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      process.nextTick(() => {
+        stream.emit('error', sftpFailure);
+      });
+
+      const res = await service.readFile(storageRegistry, 'mock-dir-stream-err', '/var/my_folder');
+      expect(res.isDirectory).toBe(true);
+      expect(res.content).toBe('');
     });
   });
 

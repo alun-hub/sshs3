@@ -114,8 +114,30 @@ const EXTENSION_LABELS: Record<string, string> = {
   dockerfile: 'Dockerfile',
   md: 'Markdown',
   sql: 'SQL',
+  txt: 'Text Document',
   log: 'Log File',
   pdf: 'PDF Document',
+};
+
+const KNOWN_EXACT_NAMES: Record<string, { category: FileTypeCategory; label: string }> = {
+  dockerfile: { category: 'config', label: 'Dockerfile' },
+  containerfile: { category: 'config', label: 'Containerfile' },
+  makefile: { category: 'code', label: 'Makefile' },
+  vagrantfile: { category: 'config', label: 'Vagrantfile' },
+  procfile: { category: 'config', label: 'Procfile' },
+  gemfile: { category: 'code', label: 'Gemfile' },
+  rakefile: { category: 'code', label: 'Rakefile' },
+  license: { category: 'document', label: 'License' },
+  licence: { category: 'document', label: 'License' },
+  copying: { category: 'document', label: 'License' },
+  readme: { category: 'markdown', label: 'Readme' },
+  todo: { category: 'document', label: 'Todo' },
+  notes: { category: 'document', label: 'Notes' },
+  changelog: { category: 'document', label: 'Changelog' },
+  hosts: { category: 'document', label: 'Hosts File' },
+  passwd: { category: 'config', label: 'Passwd Config' },
+  id_rsa: { category: 'config', label: 'SSH Private Key' },
+  id_ed25519: { category: 'config', label: 'SSH Private Key' },
 };
 
 /**
@@ -136,22 +158,37 @@ export function getFileExtension(filePath: string): string {
 
 /**
  * Classifies a file path into a category (code, image, config, directory, etc.)
+ * Files without an extension are assumed to be text files ('document').
  */
 export function detectFileType(filePath: string): FileTypeCategory {
   if (filePath.endsWith('/') || filePath.endsWith('\\')) return 'directory';
+  const clean = filePath.split(/[?#]/)[0];
+  const lastSegment = (clean.split(/[\\/]/).pop() || '').toLowerCase();
+  if (KNOWN_EXACT_NAMES[lastSegment]) {
+    return KNOWN_EXACT_NAMES[lastSegment].category;
+  }
   const ext = getFileExtension(filePath);
+  if (!ext) {
+    // Files without an extension are assumed to be text files
+    return 'document';
+  }
   return EXTENSION_CATEGORIES[ext] ?? 'unknown';
 }
 
 /**
- * Returns a human-friendly label for the file type (e.g. "TypeScript", "YAML").
+ * Returns a human-friendly label for the file type (e.g. "TypeScript", "YAML", "Text File").
  */
 export function getLanguageLabel(filePath: string): string {
   if (filePath.endsWith('/') || filePath.endsWith('\\')) return 'Directory';
+  const clean = filePath.split(/[?#]/)[0];
+  const lastSegment = (clean.split(/[\\/]/).pop() || '').toLowerCase();
+  if (KNOWN_EXACT_NAMES[lastSegment]) {
+    return KNOWN_EXACT_NAMES[lastSegment].label;
+  }
   const ext = getFileExtension(filePath);
   if (EXTENSION_LABELS[ext]) return EXTENSION_LABELS[ext];
   if (ext) return ext.toUpperCase();
-  return 'File';
+  return 'Text File';
 }
 
 export interface PathDetails {

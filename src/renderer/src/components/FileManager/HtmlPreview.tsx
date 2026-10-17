@@ -20,6 +20,7 @@ const INTERCEPT_SCRIPT = `
 <script>
 (function() {
   document.addEventListener('click', function(e) {
+    if (!e.isTrusted) return;
     var a = e.target.closest('a');
     if (!a) return;
     var href = a.getAttribute('href');
@@ -43,9 +44,17 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    let lastOpenTime = 0;
     const handleMessage = (e: MessageEvent) => {
+      if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) return;
       if (e.data?.type === 'html-preview-open-url' && typeof e.data.url === 'string') {
-        window.multissh?.openExternal?.(e.data.url);
+        const url = e.data.url;
+        const now = Date.now();
+        if (now - lastOpenTime < 1000) return;
+        if (/^(https?|mailto):/i.test(url)) {
+          lastOpenTime = now;
+          window.multissh?.openExternal?.(url);
+        }
       }
     };
     window.addEventListener('message', handleMessage);
@@ -196,7 +205,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
             key={refreshKey}
             title={`Preview for ${fileName}`}
             srcDoc={safeDoc}
-            sandbox="allow-scripts allow-forms allow-popups allow-modals"
+            sandbox="allow-scripts allow-forms"
             className="w-full h-full border-none block"
           />
         </div>

@@ -12,21 +12,115 @@ const SLASH_PATH_RE =
   /(?<![\w:/.~-])((?:~?\/|\.\.?\/|(?:[\w.@+-]|\\ )+\/)(?:(?:[\w.@%+~-]|\\ )+\/)*(?:(?:[\w.@%+~-]|\\ )+)?)(?::\d+(?::\d+)?)?/g;
 
 // Standalone filenames with extensions (e.g. `index.html`, `test.txt`, `windows.png`, `.bashrc`),
-// or well-known filenames (e.g. `Dockerfile`, `Makefile`), optionally with backslash-escaped spaces, optionally followed by `:line[:col]`.
+// well-known filenames (e.g. `Dockerfile`, `Makefile`, `notes`, `hosts`), or identifiers with `_`.
 const STANDALONE_FILE_RE =
-  /(?<![\w:/.~-])(?:\b((?:[A-Za-z0-9_~-]|\\ )+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|(Dockerfile|Makefile|Containerfile|Vagrantfile|Procfile|Gemfile|Rakefile|LICENSE|README))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
+  /(?<![\w:/.~-])(?:\b((?:[A-Za-z0-9_~-]|\\ )+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|([A-Za-z0-9_~-]+))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
 
-const KNOWN_FILENAMES = new Set([
-  'Dockerfile',
-  'Makefile',
-  'Containerfile',
-  'Vagrantfile',
-  'Procfile',
-  'Gemfile',
-  'Rakefile',
-  'LICENSE',
-  'README',
+export const KNOWN_FILENAMES = new Set([
+  'dockerfile',
+  'containerfile',
+  'makefile',
+  'vagrantfile',
+  'procfile',
+  'gemfile',
+  'rakefile',
+  'brewfile',
+  'justfile',
+  'earthfile',
+  'tiltfile',
+  'podfile',
+  'cartfile',
+  'fastfile',
+  'jenkinsfile',
+  'license',
+  'licence',
+  'copying',
+  'readme',
+  'install',
+  'notice',
+  'authors',
+  'changelog',
+  'contributing',
+  'todo',
+  'notes',
+  'build',
+  'workspace',
+  'version',
+  'news',
+  'porting',
+  'thanks',
+  'hosts',
+  'passwd',
+  'shadow',
+  'fstab',
+  'sudoers',
+  'crontab',
+  'environment',
+  'hostname',
+  'id_rsa',
+  'id_ed25519',
+  'id_ecdsa',
+  'id_dsa',
+  'authorized_keys',
+  'known_hosts',
 ]);
+
+export function isKnownFilename(name: string): boolean {
+  return KNOWN_FILENAMES.has(name.toLowerCase());
+}
+
+const NON_PATH_WORD_PAIRS = new Set([
+  'and/or',
+  'either/or',
+  'true/false',
+  'yes/no',
+  'on/off',
+  'in/out',
+  'read/write',
+  'r/w',
+  'w/o',
+  'w/e',
+  'n/a',
+  'c/o',
+  'i/o',
+]);
+
+const COLUMN_HEADERS_STOP = new Set([
+  'user',
+  'pid',
+  'cpu',
+  '%cpu',
+  'mem',
+  '%mem',
+  'vsz',
+  'rss',
+  'tty',
+  'stat',
+  'start',
+  'time',
+  'command',
+  'uid',
+  'gid',
+  'total',
+  'size',
+  'date',
+  'name',
+]);
+
+// Matches standard ls -l / ll line prefix
+// e.g. -rw-r--r-- 1 user group 1234 Oct 17 15:00 filename
+// or   drwxr-xr-x 2 user group 4096 2026-10-17 15:00 dirname
+// or   lrwxrwxrwx 1 user group    6 Oct 17 15:00 link -> target
+const LS_L_RE =
+  /^(\s*[-bcdlps][-rwxstST-]{9}[.+@]?\s+\d+\s+\S+\s+\S+\s+\d+\s+(?:[A-Za-z]{3}\s+[\s\d]\d|\d{1,2}\s+[A-Za-z]{3}|\d{4}-\d{2}-\d{2})\s+(?:[\d:]{4,5}|\d{4})\s+)(.+)$/;
+
+// Matches arguments to common file inspection / editing commands
+const FILE_CMD_ARG_RE =
+  /(?<=\b(?:cat|nano|vim|vi|view|touch|less|more|head|tail|code|subl|gedit|bat|rm)\s+(?:-[A-Za-z0-9_-]+\s+)*)([A-Za-z0-9_.-]+)(?::\d+(?::\d+)?)?/g;
+
+// Multi-column ls output: tokens separated by 2 or more spaces or tabs
+const LS_COLUMNS_RE =
+  /(?<=^|\s{2,}|\t)([A-Za-z0-9_.-]{2,})(?=\s{2,}|\t|$)/g;
 
 export interface TextMatch {
   index: number;
@@ -57,16 +151,21 @@ function isValidSlashedPath(raw: string): boolean {
     return true;
   }
   if (raw.endsWith('/')) return true;
+  if (/^\d+\/\d+/.test(raw)) return false;
+  if (NON_PATH_WORD_PAIRS.has(raw.toLowerCase())) return false;
   const parts = raw.split('/');
-  if (parts.length > 2) return true;
-  // Two parts (e.g. `src/foo.ts` vs `and/or`): require an extension with letters in the last part
-  const last = parts[parts.length - 1];
-  const dot = last.lastIndexOf('.');
-  return dot > 0 && /[A-Za-z]/.test(last.slice(dot + 1));
+  if (parts.length >= 2) {
+    for (const p of parts) {
+      if (!p || p === '.' || p === '..') continue;
+      if (!/^[A-Za-z0-9_.@%+ -]+$/.test(p)) return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function isValidStandaloneFile(raw: string): boolean {
-  if (KNOWN_FILENAMES.has(raw)) return true;
+  if (isKnownFilename(raw)) return true;
   if (raw.startsWith('.')) {
     return raw.length >= 2 && /[A-Za-z]/.test(raw);
   }
@@ -74,9 +173,32 @@ function isValidStandaloneFile(raw: string): boolean {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(raw)) return false;
   if (/^v?\d+(\.\d+)+$/.test(raw)) return false;
   const dot = raw.lastIndexOf('.');
-  if (dot <= 0) return false;
-  const ext = raw.slice(dot + 1);
-  return ext.length >= 1 && ext.length <= 10 && /^[A-Za-z0-9_-]+$/.test(ext) && /[A-Za-z]/.test(ext);
+  if (dot > 0) {
+    const ext = raw.slice(dot + 1);
+    return ext.length >= 1 && ext.length <= 10 && /^[A-Za-z0-9_-]+$/.test(ext) && /[A-Za-z]/.test(ext);
+  }
+  // Standalone tokens with underscore (e.g. `my_script`, `test_data`)
+  if (raw.includes('_') && /[A-Za-z]/.test(raw) && raw.length >= 3 && !raw.startsWith('-')) {
+    return true;
+  }
+  return false;
+}
+
+function isValidQuotedPath(raw: string): boolean {
+  if (!raw || raw.length < 1 || raw.length > 255) return false;
+  if (raw.startsWith('-')) return false; // command flags like '-la'
+  if (isValidSlashedPath(raw) || isValidStandaloneFile(raw)) return true;
+  return /^[A-Za-z0-9_.~@%+ -]+$/.test(raw) && /[A-Za-z0-9]/.test(raw);
+}
+
+function isValidColumnToken(token: string): boolean {
+  if (token.length < 2 || token.length > 80) return false;
+  if (!/[A-Za-z]/.test(token)) return false;
+  if (token.startsWith('-')) return false;
+  if (COLUMN_HEADERS_STOP.has(token.toLowerCase())) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(token)) return false;
+  if (/^v?\d+(\.\d+)+$/.test(token)) return false;
+  return true;
 }
 
 export function findPaths(text: string): TextMatch[] {
@@ -85,7 +207,7 @@ export function findPaths(text: string): TextMatch[] {
   for (const m of text.matchAll(QUOTED_PATH_RE)) {
     const rawContent = (m[2] || '').trim();
     const unescaped = rawContent.replace(/\\ /g, ' ');
-    if (isValidSlashedPath(unescaped) || isValidStandaloneFile(unescaped)) {
+    if (isValidQuotedPath(unescaped)) {
       candidates.push({
         index: m.index ?? 0,
         text: unescaped,
@@ -106,6 +228,47 @@ export function findPaths(text: string): TextMatch[] {
     });
   }
 
+  // Parse standard ls -l / ll output lines
+  const lsMatch = text.match(LS_L_RE);
+  if (lsMatch) {
+    const prefix = lsMatch[1];
+    const fullRest = lsMatch[2];
+    const restTrimmed = fullRest.trimEnd();
+    const alreadyMatched = candidates.some(
+      (c) => c.index >= prefix.length && c.index < prefix.length + fullRest.length
+    );
+    if (!alreadyMatched) {
+      const isDir = /^\s*d/.test(prefix);
+      const arrowIdx = restTrimmed.indexOf(' -> ');
+      if (arrowIdx > 0) {
+        // Symlink: link -> target
+        const linkName = restTrimmed.slice(0, arrowIdx).trim();
+        const targetName = restTrimmed.slice(arrowIdx + 4).trim();
+        if (linkName) {
+          candidates.push({
+            index: prefix.length,
+            text: linkName,
+            length: linkName.length,
+          });
+        }
+        if (targetName) {
+          const targetStart = prefix.length + arrowIdx + 4;
+          candidates.push({
+            index: targetStart,
+            text: targetName,
+            length: targetName.length,
+          });
+        }
+      } else if (restTrimmed) {
+        candidates.push({
+          index: prefix.length,
+          text: isDir ? `${restTrimmed}/` : restTrimmed,
+          length: restTrimmed.length,
+        });
+      }
+    }
+  }
+
   for (const m of text.matchAll(STANDALONE_FILE_RE)) {
     const matchedToken = m[1] || m[2] || m[3];
     if (!matchedToken) continue;
@@ -118,6 +281,32 @@ export function findPaths(text: string): TextMatch[] {
       text: unescaped,
       length: rawMatch.length + (rawMatch.length === matchedToken.length ? suffix : 0),
     });
+  }
+
+  // Parse command line file arguments (e.g. `cat notes`, `vim server`)
+  for (const m of text.matchAll(FILE_CMD_ARG_RE)) {
+    const token = m[1];
+    if (!token) continue;
+    if (isValidColumnToken(token)) {
+      candidates.push({
+        index: m.index ?? 0,
+        text: token,
+        length: m[0].length,
+      });
+    }
+  }
+
+  // Parse multi-column ls output (tokens separated by 2+ spaces or tabs)
+  for (const m of text.matchAll(LS_COLUMNS_RE)) {
+    const token = m[1];
+    if (!token) continue;
+    if (isValidColumnToken(token)) {
+      candidates.push({
+        index: m.index ?? 0,
+        text: token,
+        length: token.length,
+      });
+    }
   }
 
   candidates.sort((a, b) => a.index - b.index || b.length - a.length);

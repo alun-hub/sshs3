@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { FileEditorModal } from '../../src/renderer/src/components/FileManager/FileEditorModal';
+import { OPEN_EDITOR_TAB_EVENT } from '../../src/renderer/src/lib/editorTabEvents';
 import type { FileEntry } from '../../src/shared/types/storage';
 
 describe('FileEditorModal', () => {
@@ -131,7 +132,8 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+      const editor = screen.getByTestId('code-editor');
+      expect(editor.textContent).toContain('port');
     });
 
     const editor = screen.getByTestId('code-editor');
@@ -354,6 +356,41 @@ describe('FileEditorModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('does not trigger window.confirm when closing in embedded mode even if dirty', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const onClose = vi.fn();
+
+    render(
+      <FileEditorModal
+        open={true}
+        embedded={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={sampleEntry}
+        onClose={onClose}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    const editor = screen.getByTestId('code-editor');
+    act(() => {
+      (editor as any).__cmChangeDoc('dirty change in tab');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+
+    const closeBtn = screen.getByTitle('Close tab');
+    fireEvent.click(closeBtn);
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('highlights search hits and scrolls in markdown view mode and edit mode', async () => {
     const markdownEntry: FileEntry = {
       name: 'README.md',
@@ -509,7 +546,7 @@ describe('FileEditorModal', () => {
     const imageEntry: FileEntry = {
       name: 'logo.png',
       path: '/var/www/logo.png',
-      size: 1024,
+      size: 0,
       isDirectory: false,
     };
 
@@ -526,6 +563,9 @@ describe('FileEditorModal', () => {
     await waitFor(() => {
       expect(screen.getByTestId('image-viewer')).toBeInTheDocument();
     });
+
+    // Should display size from fileRead (1024 bytes -> 1.00 KB) even though entry.size was 0
+    expect(screen.getByText('1.00 KB')).toBeInTheDocument();
 
     // Binary warning banner should NOT be displayed for supported image files
     expect(screen.queryByText(/Binary file detected/i)).not.toBeInTheDocument();
@@ -785,6 +825,88 @@ describe('FileEditorModal', () => {
     await waitFor(() => {
       expect(mockFileSave).toHaveBeenCalledWith('sftp-1', '/var/data.csv', 'col1,col2\r\nval1,val3\r\n');
     });
+  });
+
+  it('dispatches OPEN_EDITOR_TAB_EVENT and closes modal when Detach to tab button is clicked', async () => {
+    const onClose = vi.fn();
+    const handleOpenTab = vi.fn();
+    window.addEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenTab);
+
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="local"
+        sourceType="local"
+        entry={sampleEntry}
+        onClose={onClose}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    const detachBtn = screen.getByRole('button', { name: /Detach to tab/i });
+    expect(detachBtn).toBeInTheDocument();
+
+    fireEvent.click(detachBtn);
+
+    expect(handleOpenTab).toHaveBeenCalledTimes(1);
+    const event = handleOpenTab.mock.calls[0][0] as CustomEvent;
+    expect(event.detail).toEqual({
+      providerId: 'local',
+      sourceType: 'local',
+      entry: sampleEntry,
+      initialMode: 'source',
+      isTailMode: false,
+      initialContent: '{\n  "port": 8080,\n  "host": "localhost"\n}',
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenTab);
+  });
+
+  it('hides Detach to tab and Maximize buttons when embedded=true', async () => {
+    render(
+      <FileEditorModal
+        open={true}
+        embedded={true}
+        providerId="local"
+        sourceType="local"
+        entry={sampleEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: /Detach to tab/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Maximize editor/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: `Editing ${sampleEntry.name}` })).toBeInTheDocument();
+  });
+
+  it('uses initialContentOverride and fires onDirtyChange', async () => {
+    const onDirtyChange = vi.fn();
+    render(
+      <FileEditorModal
+        open={true}
+        embedded={true}
+        providerId="local"
+        sourceType="local"
+        entry={sampleEntry}
+        initialContentOverride="modified content from detach"
+        onDirtyChange={onDirtyChange}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+
+    expect(onDirtyChange).toHaveBeenCalledWith(true);
   });
 });
 

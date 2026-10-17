@@ -2,6 +2,8 @@ import type { TabItem } from '../components/TabBar';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneNode } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import type { FileEntry } from '@shared/types/storage';
+import type { SourceType } from '../components/FileManager/types';
 import { sanitizePaneNode } from '@shared/sessionSanitize';
 import { createLeaf } from './paneTree';
 
@@ -19,6 +21,13 @@ export interface AppTab extends TabItem {
   initialLocalPath?: string;
   /** Optional file or directory path to select and highlight once the directory contents load. */
   initialSelectedPath?: string;
+  /** Set when opening an editor tab. */
+  editorEntry?: FileEntry;
+  editorProviderId?: string;
+  editorSourceType?: SourceType;
+  editorInitialMode?: 'source' | 'preview';
+  editorTailMode?: boolean;
+  editorInitialContent?: string;
 }
 
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */
@@ -35,6 +44,10 @@ export function normalizeTab(tab: AppTab): AppTab {
 }
 
 export function sanitizeTabForSession(tab: AppTab): AppTab {
+  if (tab.type === 'editor') {
+    const { editorInitialContent: _editorInitialContent, ...rest } = tab;
+    return rest;
+  }
   if (!tab.paneTree) return tab;
   return {
     ...tab,

@@ -47,9 +47,19 @@ export function stripTrailingPrompt(text: string): string {
 // eslint-disable-next-line no-control-regex
 const ANSI_REGEX = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\].*?(?:\x07|\x1b\\)/g;
 
-function resolveTildePath(raw: string, userHome: string): string {
-  if (raw === '~') return userHome;
-  if (raw.startsWith('~/')) return `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}`;
+function resolveTildePath(raw: string, userHome: string, promptUser?: string): string {
+  let effectiveHome = userHome;
+  if (promptUser) {
+    if (promptUser === 'root') {
+      effectiveHome = '/root';
+    } else if (userHome.startsWith('/Users/')) {
+      effectiveHome = `/Users/${promptUser}`;
+    } else {
+      effectiveHome = `/home/${promptUser}`;
+    }
+  }
+  if (raw === '~') return effectiveHome;
+  if (raw.startsWith('~/')) return `${effectiveHome.replace(/\/+$/, '')}/${raw.slice(2)}`;
   return raw;
 }
 
@@ -65,25 +75,28 @@ export function extractCwdFromPrompt(text: string, userHome = '/home/user'): str
   for (let i = lines.length - 1; i >= Math.max(0, lines.length - 4); i--) {
     const line = lines[i];
 
+    const userMatch = line.match(/(?:^|[\r\n\s╭[(])([a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+)/);
+    const promptUser = userMatch ? userMatch[1] : undefined;
+
     // 1. Starship / powerlevel10k / multi-line with "in <path>"
     const starshipMatch = line.match(/(?:[╭┌┏].*?|[\w.-]+@[\w.-]+\s+)\bin\s+([~/][^\s[\]]*)/);
-    if (starshipMatch) return resolveTildePath(starshipMatch[1], userHome);
+    if (starshipMatch) return resolveTildePath(starshipMatch[1], userHome, promptUser);
 
     // 2. Bracketed prompt: `[user@host /etc]$ ` or `[user@host: ~/dir]# `
     const bracketMatch = line.match(/\[[^\]\s]+[@\s:]\s*([~/][^\]\s]*?)\]/);
-    if (bracketMatch) return resolveTildePath(bracketMatch[1], userHome);
+    if (bracketMatch) return resolveTildePath(bracketMatch[1], userHome, promptUser);
 
     // 3. Colon prompt (standard bash/zsh, title bar, git decorated): `user@host:/var/log$ `, `user@host: /var/log`, `user@host:~/repo (main) $ `
     const colonMatch = line.match(/[@:][^:\s]+:\s*([~/][^\s$#%>()]*)(?:\s*(?:\([^)]+\)|git:[^\s]+))?\s*(?:[$#%>❯➜]|$)/);
-    if (colonMatch) return resolveTildePath(colonMatch[1], userHome);
+    if (colonMatch) return resolveTildePath(colonMatch[1], userHome, promptUser);
 
     // 4. Space-separated prompt: `user@host /var/log % `, `user@host ~/dir> `
     const spaceMatch = line.match(/[\w.-]+@[\w.-]+\s+([~/][^\s$#%>❯➜\])]*)\s*[$#%>❯➜]/);
-    if (spaceMatch) return resolveTildePath(spaceMatch[1], userHome);
+    if (spaceMatch) return resolveTildePath(spaceMatch[1], userHome, promptUser);
 
     // 5. Minimal prompt with just path and terminator: `/var/log # `, `~/repo $ `
     const minimalMatch = line.match(/^([~/][^\s$#%>❯➜]*)\s*[$#%>❯➜]\s*$/);
-    if (minimalMatch) return resolveTildePath(minimalMatch[1], userHome);
+    if (minimalMatch) return resolveTildePath(minimalMatch[1], userHome, promptUser);
   }
   return null;
 }

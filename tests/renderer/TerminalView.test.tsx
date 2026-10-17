@@ -4,6 +4,7 @@ import { render, screen, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import { TerminalView } from '../../src/renderer/src/components/TerminalView';
+import * as terminalLinksModule from '../../src/renderer/src/lib/terminalLinks';
 
 // Polyfill ResizeObserver and matchMedia for JSDOM
 let resizeCallback: ((entries: any[], observer: any) => void) | null = null;
@@ -428,6 +429,39 @@ describe('TerminalView Component', () => {
     });
 
     expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
+  });
+
+  it('resolves relative paths and standalone files against currentCwd when Ctrl+clicked via openPath', async () => {
+    let capturedHandlers: any;
+    const registerSpy = vi.spyOn(terminalLinksModule, 'registerTerminalLinks').mockImplementation((_term, handlers) => {
+      capturedHandlers = handlers;
+      return { dispose: vi.fn() };
+    });
+
+    const onOpenPath = vi.fn();
+    render(
+      <TerminalView
+        config={sampleConfig}
+        initialCwd="/var/www/html"
+        onOpenPath={onOpenPath}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(capturedHandlers).toBeDefined();
+    await capturedHandlers.openPath('notes');
+    expect(onOpenPath).toHaveBeenCalledWith('/var/www/html/notes');
+
+    await capturedHandlers.openPath('src/App.tsx');
+    expect(onOpenPath).toHaveBeenCalledWith('/var/www/html/src/App.tsx');
+
+    await capturedHandlers.openPath('/etc/nginx/nginx.conf');
+    expect(onOpenPath).toHaveBeenCalledWith('/etc/nginx/nginx.conf');
+
+    registerSpy.mockRestore();
   });
 });
 

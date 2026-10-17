@@ -4,7 +4,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { search, setSearchQuery, SearchQuery, SearchCursor, findNext, findPrevious } from '@codemirror/search';
+import { search, setSearchQuery, SearchQuery, findNext, findPrevious } from '@codemirror/search';
 import { getLanguageExtension } from './editorLanguages';
 
 export interface CodeEditorHandle {
@@ -268,13 +268,14 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
     const view = viewRef.current;
     if (!view) return;
     const q = searchQuery.trim();
+    const sq = new SearchQuery({ search: q, caseSensitive: false });
     view.dispatch({
-      effects: setSearchQuery.of(new SearchQuery({ search: q, caseSensitive: false })),
+      effects: setSearchQuery.of(sq),
     });
 
     if (q) {
       let count = 0;
-      const cursor = new SearchCursor(view.state.doc, q);
+      const cursor = sq.getCursor(view.state.doc);
       while (!cursor.next().done) {
         count++;
       }

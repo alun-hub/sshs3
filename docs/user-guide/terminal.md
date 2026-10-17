@@ -104,32 +104,49 @@ Managed by `AgentLifecycleManager` (`src/main/ssh/AgentLifecycleManager.ts`). Un
 ### 4.2 Clickable URLs and File Paths (<kbd>Ctrl+Click</kbd>)
 Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on macOS) and click:
 - **Web URLs**: Any `http://` or `https://` link opens in your workstation's default browser (supported in terminals and Kubernetes log streams).
-- **Remote File Paths**: Clicking a file or directory path in an SSH terminal (e.g. `/var/log/syslog`, `~/notes.md`, `/srv/app.py:42:7`) **immediately opens that folder in a new SFTP file manager tab**!
-  - Because terminal emulators cannot distinguish directories from files without filesystem access, clicking a file path without a trailing slash opens its containing parent directory.
-  - Tilde paths (`~/`) resolve automatically to `/home/<user>` (or `/root`).
+- **Remote & Local File Paths**: Clicking a file or directory path in an SSH or local terminal (e.g. `/var/log/syslog`, `~/notes.md`, `src/index.ts`, `./build.sh:42:7`) **immediately opens that folder in a file manager tab**!
+  - **Real-Time CWD Tracking**: Terminal sessions actively track the shell's current working directory (via Linux `/proc/<pid>/cwd`, OSC 7 directory sequences, and prompt heuristics), allowing **relative paths** (like `config/app.json` or `../backend`) to resolve accurately against the active directory.
+  - Paths enclosed in single or double quotes, and paths containing spaces (e.g. `'my documents/report.pdf'`), are automatically detected.
+  - Because terminal emulators cannot distinguish directories from files without filesystem access, clicking a file path without a trailing slash opens its containing parent directory in the file manager.
+  - Tilde paths (`~/`) resolve automatically to the remote user's home directory (`/home/<user>` or `/root`).
   - The SFTP tab always connects using the pane's underlying profile credentials, even if you hopped to another host using `ssh` inside the terminal.
-  - Note: Paths are not clickable in local shell or Kubernetes exec terminals.
 
-### 4.3 Saved Command Snippets Palette (<kbd>Ctrl+Shift+L</kbd>)
+### 4.3 Smart Path Detection & Interactive Hover Cards
+Hovering your mouse over any recognized file or directory path in the terminal displays an interactive **Path Hover Card**:
+
+- **Category Badge & Icon**: Instantly classifies the file by type: **Code**, **Config**, **Image**, **Markdown**, **Document**, **Archive**, or **Directory**.
+- **Basename & Full Path**: Displays the clean file name alongside its fully resolved absolute filesystem path.
+- **Live Quick Peek**: Asynchronously loads a preview snippet over the active connection without leaving the terminal:
+  - **Code & Text**: Displays the first three lines of the file, total line count, and file size.
+  - **Images**: Renders a live thumbnail image directly in the hover card for supported raster formats (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.svg`).
+- **Quick Action Buttons**:
+  - **Copy Path**: Copies the fully resolved absolute path to your system clipboard.
+  - **Reveal in File Manager**: Navigates the dual-pane file manager to the file's parent folder and highlights the file.
+  - **Edit File**: Opens the file directly in the built-in [CodeMirror 6 Editor](file-manager.md#5-built-in-editor-rich-previews--external-editor) without switching tabs.
+- **Dwell Protection & Collision Avoidance**: A subtle dwell timer prevents accidental popup flicker while moving the cursor across the terminal, and intelligent viewport edge detection flips the card smoothly to keep it within the visible window.
+
+### 4.4 Saved Command Snippets Palette (<kbd>Ctrl+Shift+L</kbd>)
 - Searchable palette of pre-saved shell commands and runbooks.
 - <kbd>Enter</kbd> types the command into the prompt; <kbd>Ctrl+Enter</kbd> types and executes it immediately. Multi-line snippets are pasted as an atomic batch.
 - Manage snippets with **New**, pencil (edit), and bin (delete). Snippets can be scoped to the current profile or made globally accessible.
 - Dynamic variables: `{{host}}`, `{{user}}`, and `{{date}}` (formatted as `yyyy-mm-dd HH:mm`).
 - *Security Note:* Snippets are saved unencrypted in `snippets.json`. Do not store passwords or API secrets in snippets!
 
-### 4.4 Copy Last Command Output (<kbd>Ctrl+Shift+G</kbd>)
-- Copies the terminal output of the immediately preceding command without manual mouse selection.
-- A toast notification confirms how many lines were copied to clipboard.
-- **Exact**: In modern shells emitting **OSC 133 semantic prompt marks** (`fish`, and `zsh`/`bash` with shell integration).
-- **Heuristic Fallback**: In standard shells, infers command boundaries from Enter keypresses. Full-screen terminal programs (`vim`, `less`, `htop`) are ignored.
+### 4.5 Clean Output Copy (<kbd>Alt+C</kbd>)
+- Copies the clean output of the immediately preceding command directly to the clipboard without manual mouse highlighting.
+- **Prompt Stripping**: Automatically strips shell prompt prefixes (e.g. `user@host:~$`, `[user@host /dir]#`, Starship / Powerlevel10k prompt headers/footers with `in <path>`, box-drawing lines like `╭─` and `╰─$`, and git branch decorators).
+- **ANSI & Trailing Prompts**: Strips ANSI escape color codes and trailing prompt lines, leaving only the pure command output.
+- **Exact (OSC 133)**: In modern shells emitting **OSC 133 semantic prompt marks** (`fish`, and `zsh`/`bash` with shell integration), boundaries are 100% exact.
+- **Heuristic Fallback**: In standard shells without OSC 133, accurately tracks command boundaries via Enter keypress markers while ignoring full-screen interactive programs (`vim`, `less`, `htop`).
+- A toast notification confirms the exact number of copied lines, and the output is recorded in the encrypted clipboard history ring when copy-on-select is active.
 
-### 4.5 Encrypted Clipboard History (<kbd>Ctrl+Shift+R</kbd>)
+### 4.6 Encrypted Clipboard History (<kbd>Ctrl+Shift+R</kbd>)
 - When *Copy text automatically on selection* is enabled, every highlighted string is stored in an encrypted history ring.
 - Press <kbd>Ctrl+Shift+R</kbd> or right-click to search and paste previous selections (<kbd>↑</kbd>/<kbd>↓</kbd> navigate, <kbd>Enter</kbd> pastes).
 - <kbd>Shift+Insert</kbd> and middle-click paste the latest entry.
 - Encrypted at rest via the OS keyring (`safeStorage`). If the OS keyring is unavailable, history is retained in volatile memory only. Can be scoped per connection or configured to purge on application exit.
 
-### 4.6 Terminal Settings Reference Table
+### 4.7 Terminal Settings Reference Table
 
 | Setting | Default | Purpose & Description |
 | :--- | :--- | :--- |
@@ -151,5 +168,5 @@ Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on macOS) and click:
 | :--- | :--- | :--- |
 | Terminal displays blank black screen | System exhausted available PTY descriptors | Check PTY availability via `cat /proc/sys/kernel/pty/nr`. Close unneeded sessions. |
 | Swedish / non-ASCII characters display garbled | Mismatched locale or encoding on remote host | Run `echo $LANG` on the server. Ensure a UTF-8 locale is exported (e.g., `export LANG=en_US.UTF-8`). |
-| <kbd>Ctrl+Click</kbd> on path does nothing | Path is relative or lacks a leading `/` or `~/` | Clickable filesystem paths must be absolute (`/etc/...`) or home-relative (`~/...`). |
+| <kbd>Ctrl+Click</kbd> on path does nothing | Path does not exist or remote CWD could not be determined | Verify that the file exists and that the shell exports its directory (or use standard prompt formats). Absolute paths (`/...`) and home paths (`~/...`) always resolve directly. |
 | Clipboard history is empty | "Copy text automatically on selection" is disabled | Open *Settings → Terminal* and check **Copy text automatically on selection**. |

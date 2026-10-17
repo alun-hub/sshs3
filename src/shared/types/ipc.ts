@@ -926,6 +926,8 @@ export interface FileReadResult {
   size: number;
   isBinary: boolean;
   truncated: boolean;
+  /** True when the target path is a directory rather than a file. */
+  isDirectory?: boolean;
   /** The content is not valid UTF-8, so saving it back would corrupt the file. */
   notUtf8?: boolean;
   /** Base64-encoded file bytes, provided for binary media (images, PDFs). */

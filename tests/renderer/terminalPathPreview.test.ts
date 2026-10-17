@@ -25,7 +25,10 @@ describe('terminalPathPreview', () => {
     expect(detectFileType('/etc/app/config.yaml')).toBe('config');
     expect(detectFileType('README.md')).toBe('markdown');
     expect(detectFileType('bundle.tar.gz')).toBe('archive');
-    expect(detectFileType('/var/log/syslog')).toBe('unknown');
+    expect(detectFileType('/var/log/syslog')).toBe('document');
+    expect(detectFileType('/etc/hosts')).toBe('document');
+    expect(detectFileType('Makefile')).toBe('code');
+    expect(detectFileType('Dockerfile')).toBe('config');
     expect(detectFileType('/var/log/')).toBe('directory');
   });
 
@@ -33,6 +36,10 @@ describe('terminalPathPreview', () => {
     expect(getLanguageLabel('app.ts')).toBe('TypeScript');
     expect(getLanguageLabel('config.json')).toBe('JSON');
     expect(getLanguageLabel('vector.svg')).toBe('SVG Vector');
+    expect(getLanguageLabel('document.txt')).toBe('Text Document');
+    expect(getLanguageLabel('syslog')).toBe('Text File');
+    expect(getLanguageLabel('Makefile')).toBe('Makefile');
+    expect(getLanguageLabel('Dockerfile')).toBe('Dockerfile');
     expect(getLanguageLabel('folder/')).toBe('Directory');
   });
 

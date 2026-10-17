@@ -254,6 +254,27 @@ export class InternalSSHPtySession implements SSHPtySession {
     if (!pid) return null;
     if (process.platform === 'linux') {
       try {
+        // If the shell process has spawned an interactive ssh client, its local /proc/pid/cwd
+        // is just the local directory where ssh was launched, not the remote CWD.
+        // In that case, return null so caller falls back to remote prompt detection.
+        try {
+          const childrenStr = fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim();
+          if (childrenStr) {
+            const childPids = childrenStr.split(/\s+/).filter(Boolean);
+            for (const cPid of childPids) {
+              try {
+                const comm = fs.readFileSync(`/proc/${cPid}/comm`, 'utf8').trim();
+                if (comm.startsWith('ssh')) {
+                  return null;
+                }
+              } catch {
+                // Child process may have already exited
+              }
+            }
+          }
+        } catch {
+          // Ignore error checking children
+        }
         return fs.readlinkSync(`/proc/${pid}/cwd`);
       } catch {
         return null;

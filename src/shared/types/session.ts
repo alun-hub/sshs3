@@ -1,5 +1,5 @@
 import type { SSHConnectionConfig, LocalShellType } from './ssh';
-import type { StorageType } from './storage';
+import type { StorageType, FileEntry } from './storage';
 import type { K8sTerminalTarget } from './kubernetes';
 
 /** 'row' places children side by side (a vertical divider); 'column' stacks them (a horizontal divider). */
@@ -47,13 +47,19 @@ export type PaneNode = PaneLeaf | PaneSplit;
 
 export interface SavedTab {
   id: string;
-  type: 'terminal' | 'filemanager';
+  type: 'terminal' | 'filemanager' | 'editor';
   title: string;
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
   paneTree?: PaneNode;
   /** The pane the user last interacted with; keyboard shortcuts (split/close) target this pane. */
   activePaneId?: string;
   initialCwd?: string;
+  /** Set when saving/restoring an editor tab. */
+  editorEntry?: FileEntry;
+  editorProviderId?: string;
+  editorSourceType?: StorageType;
+  editorInitialMode?: 'source' | 'preview';
+  editorTailMode?: boolean;
 }
 
 export interface SavedPaneState {

@@ -172,25 +172,39 @@ Compare a source directory with a target directory (on the same or different ser
 
 ---
 
-## 5. Built-in Editor, Live Log Tail & External Editor
+## 5. Built-in Editor, Rich Previews & External Editor
 
-### Feature: In-App Editing, Live Markdown & `tail -f`
+### Feature: CodeMirror 6 Code Editor, Multi-Format Previews & `tail -f`
 
 #### 🎯 Purpose
-Inspect and modify remote files or monitor server logs without launching an external editor or switching to a terminal window.
+Inspect, edit, and preview remote files or monitor server logs with syntax highlighting and rich visual formats without launching an external application or terminal session.
 
 #### 🛠️ How to Use
-- **Built-in Editor**: Double-click or press <kbd>Enter</kbd> on a text file to open it in the built-in viewer. Press <kbd>Ctrl+S</kbd> to save directly back to the remote server. For documentation files, toggle the **Source / Preview** switch for an instant live-rendered Markdown preview.
-- **Live Log Tail**: Right-click a growing log file (e.g. `access.log`, `app.log`) and select **Tail -f (Stream Log)**. The editor streams new lines in real time and is read-only while tailing; click **Stop Tail -f** to end the stream.
+- **CodeMirror 6 In-App Code Editor**: Double-click or press <kbd>Enter</kbd> on any text or code file to open it in the built-in editor:
+  - **Language Syntax Highlighting**: Automatically detects and highlights 15+ languages: JavaScript, TypeScript, Python, Shell/Bash, Dockerfile, Nginx configuration, YAML, JSON, HTML, CSS/SCSS, SQL, XML/SVG, C/C++, Java, Rust, Go, and TOML.
+  - **Editor Ergonomics**: Monospaced typography with line numbers, active line highlight, matching bracket pairs, cursor coordinates (`Ln X, Col Y`), and word-wrap toggle.
+  - **Search & Replace**: Press <kbd>Ctrl+F</kbd> inside the editor to open the in-editor search bar with real-time match count. Step forward with <kbd>Enter</kbd> and backward with <kbd>Shift+Enter</kbd>.
+  - **Format JSON**: For JSON files, click **Format JSON** to automatically beautify and re-indent unformatted or minified payloads.
+  - **Save Directly (<kbd>Ctrl+S</kbd>)**: Saves changes directly back to the remote SFTP server, S3 bucket, or K8s container with a confirmation timestamp (`yyyy-mm-dd HH:mm`). CRLF line endings are normalized to prevent false dirty states on cross-platform files.
+- **Rich Multi-Format Previews**:
+  - **Markdown**: Toggle the **Source / Preview** switch to view rendered GitHub-flavored Markdown with formatted code blocks, tables, and task lists.
+  - **HTML**: Instant rendering in a sandboxed iframe (`sandbox="allow-same-origin"` with external network access and script executions isolated).
+  - **SVG Vector Graphics**: Live rendering of SVG illustrations on an adaptive checkerboard canvas.
+  - **CSV / TSV Data Table**: Automatically parses comma- and tab-separated files into an interactive, sortable tabular data grid with row numbering, column headers, and real-time text filter.
+  - **Image Viewer**: Built-in viewer for raster formats (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.ico`) with interactive zoom, pan dragging, 90° rotation, pixel dimensions inspection (`W × H px`), and file size display.
+  - **PDF Viewer**: Embedded PDF document preview powered by Chromium's native PDF engine.
+- **Live Log Tail**: Right-click a growing log file (e.g. `access.log`, `syslog`) and select **Tail -f (Stream Log)**. The editor streams new log entries in real time with auto-scroll and search, read-only protection, and pause/resume controls without loading huge log files into memory.
 - **External Editor**: Right-click any file and select **Open in External Editor**. The file opens in your local desktop IDE (VS Code, Neovim, Sublime). Press <kbd>Ctrl+S</kbd> locally, and sshs3 automatically detects the file write and streams updates back to the server in the background!
 
 #### ⚠️ Limitations & Caveats
-- The built-in editor is optimized for lightweight text/markdown editing without heavy syntax trees. For complex multi-file projects, use External Editor hand-off.
-- Files larger than 5 MB (only the first 5 MB are loaded), binary files and files that are not valid UTF-8 (for example ISO-8859-1) open **read-only**, and the lock button is disabled, so saving can never overwrite the file with a partial or re-encoded copy. Use **Open in External Editor** to change them.
+- Visual previews (raster images and PDFs) stream up to 100 MB directly from remote SFTP or S3.
+- Text files load up to 5 MB into the editor. Files larger than 5 MB (only the first 5 MB are loaded), binary files, and non-UTF-8 files open **read-only**, and save operations are strictly blocked to prevent corrupting remote files with partial or re-encoded data. Use **Open in External Editor** to modify them.
 - External editors must save files in place without breaking filesystem inode watches.
 
 #### ⚙️ Technical Internals & Architecture
-`FileEditorService` downloads target files into an isolated temporary directory with `0700` permissions, launches the local application via Electron `shell.openPath()`, and registers an `fs.watch` event listener. When change events fire, modified buffers stream back across `TransferPipeline`.
+- `CodeEditor` (`src/renderer/src/components/Editor/CodeEditor.tsx`) wraps CodeMirror 6 with dynamic language extensions (`editorLanguages.ts`) and theme synchronization matching sshs3's active color scheme.
+- Direct preview streaming (`SftpStreams.ts`) streams up to 100 MB for media files into memory buffers converted to Base64 data URIs.
+- `FileEditorService` downloads target files into an isolated temporary directory with `0700` permissions, launches the local application via Electron `shell.openPath()`, and registers an `fs.watch` event listener. When change events fire, modified buffers stream back across `TransferPipeline`.
 
 ---
 

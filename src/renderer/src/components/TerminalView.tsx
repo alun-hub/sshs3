@@ -7,7 +7,8 @@ import { ChevronDown, ChevronUp, RotateCcw, Search, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
-import { registerTerminalLinks } from '../lib/terminalLinks';
+import { registerTerminalLinks, isKnownFilename } from '../lib/terminalLinks';
+import { resolvePathDetails } from '../lib/terminalPathPreview';
 import { CommandOutputTracker, extractCwdFromPrompt } from '../lib/terminalOutput';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
 import { SnippetPaletteModal } from './SnippetPaletteModal';
@@ -292,6 +293,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   }, [editingFile]);
 
   const refreshCwd = useCallback(async () => {
+    let detectedFromPrompt: string | null = null;
     const term = termRef.current;
     if (term) {
       const buf = term.buffer.active;
@@ -303,6 +305,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         if (!text) continue;
         const detected = extractCwdFromPrompt(text, userHomeDirRef.current);
         if (detected) {
+          detectedFromPrompt = detected;
           currentCwdRef.current = detected;
           setCurrentCwd(detected);
           break;
@@ -312,7 +315,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     const sid = sessionIdRef.current;
     if (!sid) return;
-    if (local && window.multissh?.terminalGetCwd) {
+    if (local && !detectedFromPrompt && window.multissh?.terminalGetCwd) {
       try {
         const dir = await window.multissh.terminalGetCwd(sid);
         if (dir) {
@@ -535,7 +538,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     );
     registerTerminalLinks(term, {
       openUrl: (url) => void window.multissh.openExternal(url),
-      openPath: onOpenPathRef.current ? (path) => onOpenPathRef.current?.(path) : undefined,
+      openPath: onOpenPathRef.current
+        ? async (path) => {
+            clearTimeout(hoverDwellTimerRef.current);
+            clearTimeout(hoverLeaveTimerRef.current);
+            isMouseOverCardRef.current = false;
+            setHoverCardData(null);
+
+            await refreshCwd();
+
+            const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
+            onOpenPathRef.current?.(details.fullPath);
+          }
+        : undefined,
       hoverPath: (e, path) => {
         if (isMouseOverCardRef.current) return;
         if (hoverCardDataRef.current?.path === path) return;
@@ -547,6 +562,30 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         hoverDwellTimerRef.current = setTimeout(async () => {
           if (isMouseOverCardRef.current) return;
           await refreshCwd();
+
+          const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
+          const hasSlash = path.includes('/') || path.includes('\\');
+          const isKnown = isKnownFilename(details.basename);
+
+          // For standalone tokens without an extension or slash that aren't well-known files,
+          // verify that the file actually exists on storage/disk before showing the hover card.
+          if (!hasSlash && !details.extension && !isKnown) {
+            const providerId = local
+              ? 'local'
+              : k8sTarget
+                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
+                : (config ? `sftp-${config.id || config.host}` : '');
+
+            if (providerId && window.multissh?.storageStat) {
+              try {
+                await window.multissh.storageStat(providerId, details.fullPath);
+              } catch {
+                return;
+              }
+            }
+          }
+
+          if (isMouseOverCardRef.current) return;
           setHoverCardData({ path, x: e.clientX, y: e.clientY });
         }, delay);
       },
@@ -836,8 +875,38 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           setPerfSessionId(sessionId);
           if (local && window.multissh?.terminalGetCwd) {
             window.multissh.terminalGetCwd(sessionId).then((dir) => {
-              if (dir) setCurrentCwd(dir);
+              if (!isDisposed && dir) {
+                currentCwdRef.current = dir;
+                setCurrentCwd(dir);
+              }
             }).catch(() => {});
+          } else if (!local && activeConfig && window.multissh?.connectStorage) {
+            const sftpConfig: SFTPConfig = {
+              ...activeConfig,
+              id: activeConfig.id || activeConfig.host,
+              name: activeConfig.name || activeConfig.host,
+              port: activeConfig.port ?? 22,
+            };
+            const sftpProviderId = `sftp-${activeConfig.id || activeConfig.host}`;
+            window.multissh
+              .connectStorage({
+                id: sftpProviderId,
+                name: activeConfig.name || activeConfig.host,
+                type: 'sftp',
+                sftpConfig,
+              })
+              .then(() => {
+                if (!isDisposed && window.multissh?.storageGetHomeDir) {
+                  window.multissh.storageGetHomeDir(sftpProviderId).then((h) => {
+                    if (!isDisposed && h) {
+                      setUserHomeDir(h);
+                      userHomeDirRef.current = h;
+                      setCurrentCwd((prev) => prev || h);
+                    }
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
           }
 
           // Force PTY size synchronization once session ID is established.
@@ -1184,6 +1253,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           y={hoverCardData.y}
           userHome={userHomeDir}
           currentCwd={currentCwdRef.current || currentCwd || initialCwd || userHomeDir}
+          providerId={
+            local
+              ? 'local'
+              : k8sTarget
+                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
+                : (config ? `sftp-${config.id || config.host}` : '')
+          }
           onMouseEnter={() => {
             isMouseOverCardRef.current = true;
             clearTimeout(hoverLeaveTimerRef.current);
@@ -1218,14 +1294,29 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               : undefined
           }
           onOpenEditor={async (p) => {
+            const targetProviderId = local
+              ? 'local'
+              : k8sTarget
+                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
+                : (config ? `sftp-${config.id || config.host}` : '');
+
+            if (targetProviderId && window.multissh?.storageStat) {
+              try {
+                const stat = await window.multissh.storageStat(targetProviderId, p);
+                if (stat?.isDirectory) {
+                  onOpenPathRef.current?.(p);
+                  isMouseOverCardRef.current = false;
+                  setHoverCardData(null);
+                  return;
+                }
+              } catch {
+                // Proceed if stat fails
+              }
+            }
+
             if (onOpenEditorRef.current) {
               onOpenEditorRef.current(p);
             } else {
-              const targetProviderId = local
-                ? 'local'
-                : k8sTarget
-                  ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
-                  : (config ? `sftp-${config.id || config.host}` : '');
 
               if (targetProviderId) {
                 try {

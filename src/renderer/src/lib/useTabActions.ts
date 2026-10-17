@@ -9,6 +9,7 @@ import type { AppTab } from './tabs';
 import { formatDateTime } from './format';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
+import type { OpenEditorTabDetail } from './editorTabEvents';
 
 export interface TabActionsContext {
   activeTabId: string;
@@ -32,6 +33,12 @@ export function useTabActions(ctx: TabActionsContext) {
 
   const handleCloseTab = useCallback((id: string) => {
     setTabs((prev) => {
+      const tab = prev.find((t) => t.id === id);
+      if (tab?.isDirty) {
+        if (!window.confirm('You have unsaved changes. Discard them?')) {
+          return prev;
+        }
+      }
       const index = prev.findIndex((t) => t.id === id);
       const remaining = prev.filter((t) => t.id !== id);
 
@@ -350,10 +357,21 @@ export function useTabActions(ctx: TabActionsContext) {
   );
 
   // Ctrl+click on a file path in an SSH terminal: browse that folder over SFTP in a new file manager tab.
-  const handleOpenRemotePath = useCallback((config: SSHConnectionConfig, rawPath: string) => {
+  const handleOpenRemotePath = useCallback(async (config: SSHConnectionConfig, rawPath: string) => {
     const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
     const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
-    const isDir = absolute.endsWith('/');
+    let isDir = absolute.endsWith('/');
+    if (!isDir && window.multissh?.storageStat) {
+      const providerId = `sftp-${config.id || config.host}`;
+      try {
+        const stat = await window.multissh.storageStat(providerId, absolute);
+        if (stat?.isDirectory) {
+          isDir = true;
+        }
+      } catch {
+        // Fall back to filename check
+      }
+    }
     const lastSlash = absolute.lastIndexOf('/');
     const folder = isDir ? absolute : lastSlash === -1 ? home : absolute.slice(0, lastSlash) || '/';
     const selectPath = isDir ? undefined : absolute;
@@ -370,11 +388,28 @@ export function useTabActions(ctx: TabActionsContext) {
   }, [setActiveTabId, setTabs]);
 
   // Click on a file path in a local terminal: browse that folder on Local Disk in a new file manager tab.
-  const handleOpenLocalPath = useCallback((rawPath: string) => {
-    const isDir = rawPath.endsWith('/');
-    const lastSlash = rawPath.lastIndexOf('/');
-    const folder = isDir ? rawPath : lastSlash === -1 ? '/' : rawPath.slice(0, lastSlash) || '/';
-    const selectPath = isDir ? undefined : rawPath;
+  const handleOpenLocalPath = useCallback(async (rawPath: string) => {
+    let resolved = rawPath;
+    if (resolved === '~' || resolved.startsWith('~/')) {
+      const home = (await window.multissh?.getHomeDir?.()) || '';
+      if (home) {
+        resolved = resolved === '~' ? home : `${home.replace(/\/+$/, '')}/${resolved.slice(2)}`;
+      }
+    }
+    let isDir = resolved.endsWith('/');
+    if (!isDir && window.multissh?.storageStat) {
+      try {
+        const stat = await window.multissh.storageStat('local', resolved);
+        if (stat?.isDirectory) {
+          isDir = true;
+        }
+      } catch {
+        // Fall back to filename check
+      }
+    }
+    const lastSlash = resolved.lastIndexOf('/');
+    const folder = isDir ? resolved : lastSlash === -1 ? '/' : resolved.slice(0, lastSlash) || '/';
+    const selectPath = isDir ? undefined : resolved;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
       id: newId,
@@ -463,6 +498,23 @@ export function useTabActions(ctx: TabActionsContext) {
     setActiveTabId(newId);
   }, [setActiveTabId, setTabs]);
 
+  const handleOpenEditorTab = useCallback((detail: OpenEditorTabDetail) => {
+    const newId = `editor-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'editor',
+      title: detail.entry.name || 'Editor',
+      editorEntry: detail.entry,
+      editorProviderId: detail.providerId,
+      editorSourceType: detail.sourceType,
+      editorInitialMode: detail.initialMode,
+      editorTailMode: detail.isTailMode,
+      editorInitialContent: detail.initialContent,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, [setActiveTabId, setTabs]);
+
   return {
     handleSelectTab,
     handleCloseTab,
@@ -485,5 +537,6 @@ export function useTabActions(ctx: TabActionsContext) {
     handleConnectSFTP,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
+    handleOpenEditorTab,
   };
 }

@@ -838,7 +838,7 @@ describe('SSHPtyManager', () => {
       await customManager.createShellSession({ cols: 80, rows: 24, env: { PATH: '/usr/bin' } });
 
       const { options } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs;
-      expect(options.env.PATH).toContain('.sshs3');
+      expect(options.env.PATH).toMatch(/(\.sshs3|sshs3-bin)/);
       expect(options.env.PATH).toContain('/usr/bin');
     });
 

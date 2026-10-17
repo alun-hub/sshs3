@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import {
   AlertCircle,
   AlertTriangle,
+  AppWindow,
   Check,
   Code,
   Eye,
@@ -27,6 +28,7 @@ import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc'
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { openEditorTab } from '../../lib/editorTabEvents';
 import { CodeEditor, type CodeEditorHandle } from '../Editor/CodeEditor';
 import {
   isMarkdownFile,
@@ -55,8 +57,11 @@ interface FileEditorModalProps {
   entry: FileEntry | null;
   isTailMode?: boolean;
   initialMode?: 'source' | 'preview';
+  embedded?: boolean;
+  initialContentOverride?: string;
   onClose: () => void;
   onSaved?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export const FileEditorModal: React.FC<FileEditorModalProps> = ({
@@ -66,8 +71,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   entry,
   isTailMode = false,
   initialMode,
+  embedded = false,
+  initialContentOverride,
   onClose,
   onSaved,
+  onDirtyChange,
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,6 +87,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [notUtf8, setNotUtf8] = useState(false);
   const [base64, setBase64] = useState<string | undefined>(undefined);
   const [mimeType, setMimeType] = useState<string | undefined>(undefined);
+  const [loadedSize, setLoadedSize] = useState<number | undefined>(undefined);
   const [readOnly, setReadOnly] = useState(false);
 
   const entryName = entry?.name ?? '';
@@ -124,11 +133,16 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const editorRef = useRef<CodeEditorHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const originalEolRef = useRef<'\r\n' | '\n'>('\n');
+  const initialContentUsedRef = useRef(false);
 
   const isDirty = useMemo(
     () => !tailModeActive && content.replace(/\r\n/g, '\n') !== originalContent.replace(/\r\n/g, '\n'),
     [tailModeActive, content, originalContent]
   );
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // Stop tail session helper
   const stopTailSession = useCallback(async () => {
@@ -153,23 +167,34 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       const res: FileReadResult = isDirectPreview
         ? await window.multissh.fileRead(providerId, entryPath, 100 * 1024 * 1024)
         : await window.multissh.fileRead(providerId, entryPath);
+      if (res.isDirectory) {
+        setError('Target is a directory, not a regular file.');
+        setReadOnly(true);
+        return;
+      }
       const hasCrlf = typeof res.content === 'string' && res.content.includes('\r\n');
       originalEolRef.current = hasCrlf ? '\r\n' : '\n';
       const normalized = hasCrlf ? res.content.replace(/\r\n/g, '\n') : res.content;
-      setContent(normalized);
+      let initialVal = normalized;
+      if (!initialContentUsedRef.current && initialContentOverride !== undefined) {
+        initialVal = initialContentOverride;
+        initialContentUsedRef.current = true;
+      }
+      setContent(initialVal);
       setOriginalContent(normalized);
       setIsBinary(res.isBinary);
       setTruncated(res.truncated);
       setNotUtf8(!!res.notUtf8);
       setBase64(res.base64);
       setMimeType(res.mimeType);
+      setLoadedSize(res.size);
       setReadOnly(res.isBinary || res.truncated || !!res.notUtf8);
     } catch (err: any) {
       setError(describeIpcError(err, 'Failed to load file content'));
     } finally {
       setLoading(false);
     }
-  }, [providerId, entryPath, isDirectory, isDirectPreview, stopTailSession]);
+  }, [providerId, entryPath, isDirectory, isDirectPreview, stopTailSession, initialContentOverride]);
 
   // Start tail session
   const startTailSession = useCallback(async () => {
@@ -212,6 +237,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       originalEolRef.current = '\n';
       setBase64(undefined);
       setMimeType(undefined);
+      setLoadedSize(undefined);
       setError(null);
       setSaveStatus(null);
       setExternalStatus(null);
@@ -344,7 +370,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Close confirmation if dirty
   const handleRequestClose = useCallback(() => {
-    if (isDirty && !tailModeActive) {
+    if (!embedded && isDirty && !tailModeActive) {
       if (!window.confirm('You have unsaved changes. Discard them?')) {
         return;
       }
@@ -358,7 +384,29 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setExternalSessionToken(null);
     }
     onClose();
-  }, [isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
+  }, [embedded, isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
+
+  // Detach modal to a standalone tab
+  const handleDetachToTab = useCallback(() => {
+    if (!entry) return;
+    openEditorTab({
+      providerId,
+      sourceType,
+      entry,
+      initialMode: viewMode,
+      isTailMode: tailModeActive,
+      initialContent: content,
+    });
+    if (tailId) {
+      void window.multissh?.fileTailStop?.(tailId);
+      setTailId(null);
+    }
+    if (externalSessionToken) {
+      void window.multissh?.fileCloseExternal?.(externalSessionToken);
+      setExternalSessionToken(null);
+    }
+    onClose();
+  }, [entry, providerId, sourceType, viewMode, tailModeActive, content, tailId, externalSessionToken, onClose]);
 
   // Global Escape key handling
   useEscapeToClose(() => {
@@ -366,8 +414,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setShowSearch(false);
       return;
     }
-    handleRequestClose();
-  }, open);
+    if (!embedded) {
+      handleRequestClose();
+    }
+  }, open && !embedded);
 
   // Format JSON helper
   const handleFormatJson = useCallback(() => {
@@ -411,25 +461,24 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   if (!open || !entry) return null;
 
-  return (
+  const innerContent = (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Editing ${entry.name}`}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 sm:p-5 animate-in fade-in duration-150"
+      className={classNames(
+        'flex flex-col bg-app-card overflow-hidden transition-all duration-150',
+        embedded
+          ? 'h-full w-full'
+          : classNames(
+              'rounded-xl border border-border-subtle shadow-2xl',
+              isMaximized ? 'w-[98vw] h-[96vh] max-w-none' : 'w-[94vw] max-w-[1500px] h-[88vh]'
+            )
+      )}
     >
+      {/* Header */}
       <div
-        className={classNames(
-          'flex flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden transition-all duration-150',
-          isMaximized ? 'w-[98vw] h-[96vh] max-w-none' : 'w-[94vw] max-w-[1500px] h-[88vh]'
-        )}
+        onDoubleClick={embedded ? undefined : () => setIsMaximized((m) => !m)}
+        title={embedded ? undefined : 'Double-click header to maximize / restore'}
+        className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-2.5 select-none shrink-0 cursor-default"
       >
-        {/* Header */}
-        <div
-          onDoubleClick={() => setIsMaximized((m) => !m)}
-          title="Double-click header to maximize / restore"
-          className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-2.5 select-none shrink-0 cursor-default"
-        >
           <div className="flex items-center gap-2.5 min-w-0">
             <FileText className="h-4 w-4 text-sky-400 shrink-0" />
             <div className="flex items-center gap-2 min-w-0">
@@ -646,20 +695,37 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               </button>
             )}
 
+            {/* Detach to Tab */}
+            {!embedded && (
+              <button
+                type="button"
+                title="Detach to tab"
+                aria-label="Detach to tab"
+                onClick={handleDetachToTab}
+                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
+              >
+                <AppWindow className="h-4 w-4" />
+              </button>
+            )}
+
             {/* Maximize / Restore toggle */}
-            <button
-              type="button"
-              title={isMaximized ? 'Restore size' : 'Maximize editor'}
-              onClick={() => setIsMaximized((m) => !m)}
-              className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
-            >
-              {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                title={isMaximized ? 'Restore size' : 'Maximize editor'}
+                aria-label={isMaximized ? 'Restore size' : 'Maximize editor'}
+                onClick={() => setIsMaximized((m) => !m)}
+                className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
+              >
+                {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
+            )}
 
             {/* Close button */}
             <button
               type="button"
-              title="Close editor (Esc)"
+              title={embedded ? 'Close tab' : 'Close editor (Esc)'}
+              aria-label={embedded ? 'Close tab' : 'Close editor'}
               onClick={handleRequestClose}
               className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
             >
@@ -884,8 +950,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             >
               <ImageViewer
                 fileName={entry.name}
-                fileSize={entry.size}
-                mimeType={mimeType}
+                fileSize={loadedSize ?? entry.size}
+                mimeType={mimeType || 'image/png'}
                 base64={base64}
               />
             </Suspense>
@@ -900,7 +966,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             >
               <ImageViewer
                 fileName={entry.name}
-                fileSize={entry.size}
+                fileSize={loadedSize ?? entry.size}
                 mimeType="image/svg+xml"
                 svgContent={content}
               />
@@ -1040,7 +1106,29 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             </div>
           </div>
         )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        role="region"
+        aria-label={`Editing ${entry.name}`}
+        className="flex flex-col h-full w-full bg-app-card overflow-hidden"
+      >
+        {innerContent}
       </div>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Editing ${entry.name}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 sm:p-5 animate-in fade-in duration-150"
+    >
+      {innerContent}
     </div>
   );
 };

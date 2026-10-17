@@ -23,6 +23,8 @@ import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import { countLeaves, createLeaf, findLeaf, getFirstLeafId } from './lib/paneTree';
 import { installSpatialNavPointerReset } from './lib/spatialNavigation';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
+import { FileEditorModal } from './components/FileManager/FileEditorModal';
+import { OPEN_EDITOR_TAB_EVENT, type OpenEditorTabDetail } from './lib/editorTabEvents';
 
 export const App: React.FC = () => {
   // Starts empty rather than seeded with a default terminal tab so that a
@@ -133,6 +135,7 @@ export const App: React.FC = () => {
     handleConnectSFTP,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
+    handleOpenEditorTab,
   } = useTabActions({
     activeTabId,
     settings,
@@ -143,6 +146,23 @@ export const App: React.FC = () => {
     setConnectTarget,
     setProfilesModalOpen,
   });
+
+  const handleUpdateTabDirty = useCallback((tabId: string, isDirty: boolean) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId && t.isDirty !== isDirty ? { ...t, isDirty } : t))
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleOpenEditor = (e: Event) => {
+      const customEvent = e as CustomEvent<OpenEditorTabDetail>;
+      if (customEvent.detail) {
+        handleOpenEditorTab(customEvent.detail);
+      }
+    };
+    window.addEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenEditor);
+    return () => window.removeEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenEditor);
+  }, [handleOpenEditorTab]);
 
   // UX audit finding #14: the landing page shown whenever no tabs are open
   // was a static onboarding screen — four cards explaining what the app can
@@ -239,6 +259,11 @@ export const App: React.FC = () => {
       window.dispatchEvent(
         new CustomEvent(FILEMANAGER_FOCUS_SIDE_EVENT, { detail: 'left' })
       );
+    } else if (activeTab?.type === 'editor') {
+      const editorEl = document.querySelector<HTMLElement>(
+        `[data-testid="editor-panel-${activeTab.id}"] .cm-content`
+      );
+      editorEl?.focus();
     }
   }, [tabs, activeTabId, handleSelectPane]);
 
@@ -468,6 +493,23 @@ export const App: React.FC = () => {
                         initialCwd={tab.initialCwd}
                       />
                     </div>
+                  </div>
+                ) : tab.type === 'editor' ? (
+                  <div data-testid={`editor-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">
+                    {tab.editorEntry && (
+                      <FileEditorModal
+                        open={true}
+                        embedded={true}
+                        providerId={tab.editorProviderId || 'local'}
+                        sourceType={tab.editorSourceType || 'local'}
+                        entry={tab.editorEntry}
+                        initialMode={tab.editorInitialMode}
+                        isTailMode={tab.editorTailMode}
+                        initialContentOverride={tab.editorInitialContent}
+                        onDirtyChange={(dirty) => handleUpdateTabDirty(tab.id, dirty)}
+                        onClose={() => handleCloseTab(tab.id)}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div data-testid={`filemanager-panel-${tab.id}`} className="flex min-h-0 flex-1 flex-col">

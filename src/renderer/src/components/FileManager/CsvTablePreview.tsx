@@ -94,7 +94,7 @@ export const CsvTablePreview: React.FC<CsvTablePreviewProps> = ({ csvContent, fi
                 <th
                   key={idx}
                   onClick={() => handleHeaderClick(idx)}
-                  className="px-3 py-2 text-txt-primary font-semibold border-r border-divider hover:bg-app-surface-hover cursor-pointer transition-colors whitespace-nowrap select-none"
+                  className="group px-3 py-2 text-txt-primary font-semibold border-r border-divider hover:bg-app-surface-hover cursor-pointer transition-colors whitespace-nowrap select-none"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate">{header}</span>

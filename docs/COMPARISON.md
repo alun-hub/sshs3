@@ -28,6 +28,7 @@ This document provides a comprehensive, objective technical comparison between *
 | **Local Shell Integration** | ✅ Native `$SHELL` (Linux) / PowerShell, CMD, WSL (Windows) | ❌ Windows CMD/PS via separate utilities | ✅ Local Bash shell (Cygwin emulation) | ❌ No | ❌ N/A |
 | **Session Persistence** | ✅ Restores tabs, splits & working directories | ❌ Manual saved sessions | ✅ Full session manager | ⚠️ Saves open sites | ❌ N/A |
 | **Dynamic Host Tracking** | ✅ Real-time hostname & command tab renaming | ❌ Static window titles | ⚠️ Window title updates | ❌ N/A | ❌ N/A |
+| **Smart Links & Hover Cards** | ✅ CWD tracking, path hover cards with live peek & edit, OSC 133 clean copy | ❌ None | ⚠️ URLs only | ❌ N/A | ❌ N/A |
 | **SSH Agent Lifecycle** | ✅ Auto-detects or spawns managed `ssh-agent` / Windows pipe | ⚠️ External Pageant required | ✅ Internal MobaAgent / Pageant | ⚠️ Uses external Pageant | ❌ N/A |
 | **Font Zoom Shortcuts** | ✅ `Ctrl++` / `Ctrl+-` / `Ctrl+0` live scaling | ⚠️ Window reconfiguration menu | ⚠️ `Ctrl+Mousewheel` | ❌ N/A | ❌ N/A |
 
@@ -43,7 +44,7 @@ This document provides a comprehensive, objective technical comparison between *
 | **AWS SSO (IAM Identity Center)** | ✅ Built-in browser OIDC approval & role picker | ❌ No | ❌ No | ❌ Manual static keys or AWS CLI cache | ⚠️ External AWS CLI credentials |
 | **S3 Bucket Operations** | ✅ Bucket policies, CORS, tagging, object versioning | ❌ No | ❌ No | ⚠️ Bucket properties, basic lifecycle | ✅ Advanced lifecycle, CORS, policies, CloudFront |
 | **Directory Synchronization** | ✅ **Local ↔ SFTP ↔ S3** (Diff & sync engine with preview) | ❌ No | ⚠️ Basic folder sync | ✅ Strong local ↔ SFTP/S3 sync | ✅ S3 backup & sync engine |
-| **In-App File Editor** | ✅ Multi-syntax editor + **Live Markdown Preview** | ❌ No | ✅ MobaTextEditor | ✅ Built-in internal text editor | ⚠️ Text viewing/editing |
+| **In-App File Editor** | ✅ **CodeMirror 6** (15+ languages) + **Rich Previews** (Markdown, HTML, SVG, CSV, Image, PDF) | ❌ No | ✅ MobaTextEditor | ✅ Built-in internal text editor | ⚠️ Text viewing/editing |
 | **File Permissions (`chmod`)** | ✅ Visual rwx grid & octal calculation | ❌ No | ⚠️ Properties menu | ✅ Visual permissions dialog | ❌ S3 ACLs only |
 | **Live Log Streaming (`tail -f`)** | ✅ Embedded streaming viewer with search | ❌ Manual `tail -f` in shell | ⚠️ Shell session | ❌ No | ❌ No |
 | **File Content Search** | ✅ Streaming regex search across SFTP, S3 & local | ❌ No | ⚠️ Local grep in terminal | ✅ Find files dialog | ⚠️ Bucket prefix search |

@@ -17,17 +17,19 @@ import {
   ChevronDown,
   Boxes,
   Cable,
+  FileText,
 } from 'lucide-react';
 import type { CachedSmartcardAgent, SSHActiveTunnel } from '@shared/types/ssh';
 import { Shortcut } from './ui/Shortcut';
 import { getShortcutKeys } from '../lib/shortcuts';
 
-export type TabType = 'terminal' | 'filemanager';
+export type TabType = 'terminal' | 'filemanager' | 'editor';
 
 export interface TabItem {
   id: string;
   type: TabType;
   title: string;
+  isDirty?: boolean;
 }
 
 export interface TabBarProps {
@@ -215,6 +217,13 @@ export const TabBar: React.FC<TabBarProps> = ({
                     }`}
                     data-testid={`tab-icon-${tab.id}`}
                   />
+                ) : tab.type === 'editor' ? (
+                  <FileText
+                    className={`h-3.5 w-3.5 flex-shrink-0 ${
+                      isActive ? 'text-emerald-400' : 'text-txt-muted group-hover:text-txt-secondary'
+                    }`}
+                    data-testid={`tab-icon-${tab.id}`}
+                  />
                 ) : (
                   <Folder
                     className={`h-3.5 w-3.5 flex-shrink-0 ${
@@ -224,6 +233,13 @@ export const TabBar: React.FC<TabBarProps> = ({
                   />
                 )}
                 <span className="truncate">{tab.title}</span>
+                {tab.isDirty && (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0"
+                    title="Unsaved changes"
+                    data-testid={`tab-dirty-${tab.id}`}
+                  />
+                )}
               </div>
 
               <button

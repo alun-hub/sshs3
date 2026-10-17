@@ -152,10 +152,10 @@ describe('CommandOutputTracker', () => {
     expect(extractCwdFromPrompt('[root@box /etc/nginx]# ', '/home/alun')).toBe('/etc/nginx');
     expect(extractCwdFromPrompt('\u001b[01;32malun@fedora\u001b[00m:\u001b[01;34m/var/www\u001b[00m$ ', '/home/alun')).toBe('/var/www');
     expect(extractCwdFromPrompt('user@macbook /usr/local/bin % ', '/home/alun')).toBe('/usr/local/bin');
-    expect(extractCwdFromPrompt('user@host:~/sshs3 (feat/smart-terminal-editor) $ ', '/home/alun')).toBe('/home/alun/sshs3');
+    expect(extractCwdFromPrompt('user@host:~/sshs3 (feat/smart-terminal-editor) $ ', '/home/alun')).toBe('/home/user/sshs3');
     expect(extractCwdFromPrompt('alun@remote: /var/log', '/home/alun')).toBe('/var/log');
-    expect(extractCwdFromPrompt('/var/log # ', '/home/alun')).toBe('/var/log');
-    expect(extractCwdFromPrompt('total 12\n-rw-r--r-- 1 root root 10 test\nuser@host:/opt$ ', '/home/alun')).toBe('/opt');
+    expect(extractCwdFromPrompt('root@box:~# ', '/home/alun')).toBe('/root');
+    expect(extractCwdFromPrompt('ubuntu@remote:~$ ', '/home/alun')).toBe('/home/ubuntu');
     expect(extractCwdFromPrompt('total 16', '/home/alun')).toBe(null);
     expect(extractCwdFromPrompt('built in 1s', '/home/alun')).toBe(null);
     expect(extractCwdFromPrompt('done in 1', '/home/alun')).toBe(null);

@@ -82,6 +82,52 @@ describe('terminalLinks - findPaths', () => {
     expect(matches[0].text).toBe('/var/log/my service error.log');
     expect(matches[1].text).toBe('windows 11.png');
   });
+
+  it('matches files without extension in ls -l output', () => {
+    const text = '-rw-r--r-- 1 alun alun 500 Oct 17 15:00 notes';
+    const matches = findPaths(text);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].text).toBe('notes');
+
+    const execText = '-rwxr-xr-x 1 root root 2048 2026-10-17 15:00 deploy';
+    const execMatches = findPaths(execText);
+    expect(execMatches).toHaveLength(1);
+    expect(execMatches[0].text).toBe('deploy');
+
+    const linkText = 'lrwxrwxrwx 1 alun alun 6 Oct 17 15:00 run -> deploy';
+    const linkMatches = findPaths(linkText);
+    expect(linkMatches).toHaveLength(2);
+    expect(linkMatches.map((m) => m.text)).toEqual(['run', 'deploy']);
+
+    const dirText = 'drwxr-xr-x 2 alun alun 4096 Oct 17 15:00 docs';
+    const dirMatches = findPaths(dirText);
+    expect(dirMatches).toHaveLength(1);
+    expect(dirMatches[0].text).toBe('docs/');
+  });
+
+  it('matches files without extension in two-part relative paths', () => {
+    const text = 'Check src/notes and docs/guide and bin/server';
+    const matches = findPaths(text);
+    expect(matches.map((m) => m.text)).toEqual(['src/notes', 'docs/guide', 'bin/server']);
+  });
+
+  it('matches quoted files without extension', () => {
+    const text = "Open 'notes' or \"deploy\" or 'my script'";
+    const matches = findPaths(text);
+    expect(matches.map((m) => m.text)).toEqual(['notes', 'deploy', 'my script']);
+  });
+
+  it('matches common file inspection command arguments without extension', () => {
+    const text = 'cat notes && nano mytest && head -n 20 custom_script';
+    const matches = findPaths(text);
+    expect(matches.map((m) => m.text)).toEqual(['notes', 'mytest', 'custom_script']);
+  });
+
+  it('matches files without extension in multi-column ls output', () => {
+    const text = 'notes   mytest   server';
+    const matches = findPaths(text);
+    expect(matches.map((m) => m.text)).toEqual(['notes', 'mytest', 'server']);
+  });
 });
 
 describe('terminalLinks - findUrls', () => {

@@ -14,42 +14,51 @@ export class SftpReadStream extends Readable {
   private currentOffset = 0;
   private endOffset: number | null = null;
   private chunkSize: number;
-  private isOpening = false;
-  private isReading = false;
   private isClosed = false;
+  private reading = false;
+  private readRequested = false;
 
   constructor(
     private protocol: SftpPacketProtocol,
     private remotePath: string,
     options?: SftpReadStreamOptions
   ) {
-    super();
+    super({ highWaterMark: 64 * 1024 });
     this.currentOffset = options?.start ?? 0;
     this.endOffset = typeof options?.end === 'number' ? options.end : null;
-    this.chunkSize = options?.chunkSize ?? 64 * 1024;
+    this.chunkSize = Math.min(64 * 1024, Math.max(1, Math.floor(options?.chunkSize ?? 64 * 1024)));
   }
 
-  public override _read(size: number): void {
-    if (this.isClosed || this.isReading) return;
-    this.isReading = true;
+  public override _read(_size: number): void {
+    if (this.isClosed) return;
 
-    void (async () => {
-      try {
-        if (!this.handle) {
-          if (this.isOpening) return;
-          this.isOpening = true;
-          this.handle = await this.protocol.open(this.remotePath, FXF.READ);
-          this.isOpening = false;
-          if (this.isClosed) {
-            await this.closeHandle();
-            return;
-          }
+    if (this.reading) {
+      this.readRequested = true;
+      return;
+    }
+
+    this.reading = true;
+    void this.readLoop();
+  }
+
+  private async readLoop(): Promise<void> {
+    try {
+      if (!this.handle) {
+        this.handle = await this.protocol.open(this.remotePath, FXF.READ);
+        if (this.isClosed) {
+          await this.closeHandle();
+          return;
         }
+      }
 
-        let bytesToRead = Math.max(size, this.chunkSize);
+      while (!this.isClosed) {
+        this.readRequested = false;
+
+        let bytesToRead = this.chunkSize;
         if (this.endOffset !== null) {
           const remaining = this.endOffset - this.currentOffset + 1;
           if (remaining <= 0) {
+            await this.closeHandle();
             this.push(null);
             return;
           }
@@ -57,19 +66,31 @@ export class SftpReadStream extends Readable {
         }
 
         const data = await this.protocol.read(this.handle, this.currentOffset, bytesToRead);
+        if (this.isClosed) return;
+
         if (data === null || data.length === 0) {
+          await this.closeHandle();
           this.push(null);
           return;
         }
 
         this.currentOffset += data.length;
-        this.push(data);
-      } catch (err: any) {
-        this.destroy(err);
-      } finally {
-        this.isReading = false;
+        const pushOk = this.push(data);
+
+        // If downstream buffer is full and no further read was requested during push, pause reading
+        if (!pushOk && !this.readRequested) {
+          break;
+        }
       }
-    })();
+    } catch (err: any) {
+      this.destroy(err);
+    } finally {
+      this.reading = false;
+      if (this.readRequested && !this.isClosed) {
+        this.reading = true;
+        void this.readLoop();
+      }
+    }
   }
 
   private async closeHandle(): Promise<void> {

@@ -247,4 +247,33 @@ describe('TabBar Component', () => {
       expect(screen.queryByTestId('smartcard-unlock-now-btn')).not.toBeInTheDocument();
     });
   });
+
+  describe('Editor Tabs', () => {
+    it('renders editor tabs with file icon and dirty indicator when unsaved', () => {
+      const tabs: TabItem[] = [
+        { id: 'tab-edit-1', type: 'editor', title: 'server.ts', isDirty: true },
+        { id: 'tab-edit-2', type: 'editor', title: 'README.md', isDirty: false },
+      ];
+
+      render(
+        <TabBar
+          tabs={tabs}
+          activeTabId="tab-edit-1"
+          onSelectTab={vi.fn()}
+          onCloseTab={vi.fn()}
+          onNewTab={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText('server.ts')).toBeInTheDocument();
+      expect(screen.getByText('README.md')).toBeInTheDocument();
+
+      const icon1 = screen.getByTestId('tab-icon-tab-edit-1');
+      expect(icon1).toBeInTheDocument();
+      expect(icon1).toHaveClass('text-emerald-400');
+
+      expect(screen.getByTestId('tab-dirty-tab-edit-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('tab-dirty-tab-edit-2')).not.toBeInTheDocument();
+    });
+  });
 });

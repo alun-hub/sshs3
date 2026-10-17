@@ -94,4 +94,185 @@ describe('TerminalPathHoverCard', () => {
     expect(screen.getByText('nginx.conf')).toBeInTheDocument();
     expect(screen.getByText('/etc/nginx/nginx.conf')).toBeInTheDocument();
   });
+
+  it('shows Copied! feedback when copy button is clicked', () => {
+    const onCopyPath = vi.fn();
+    render(
+      <TerminalPathHoverCard
+        path="/var/log/app.log"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={onCopyPath}
+      />
+    );
+
+    const copyBtn = screen.getByRole('button', { name: /copy path/i });
+    fireEvent.click(copyBtn);
+    expect(screen.getByText('Copied!')).toBeInTheDocument();
+  });
+
+  it('shows View button for image files and Edit for editable files', () => {
+    const onOpenEditor = vi.fn();
+    const { rerender } = render(
+      <TerminalPathHoverCard
+        path="/var/www/logo.png"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+        onOpenEditor={onOpenEditor}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /^view$/i })).toBeInTheDocument();
+
+    rerender(
+      <TerminalPathHoverCard
+        path="/var/www/server.py"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+        onOpenEditor={onOpenEditor}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it('loads and renders preview snippet for text files when providerId is supplied', async () => {
+    const mockFileRead = vi.fn().mockResolvedValue({
+      content: 'flask==3.0.0\nrequests>=2.31.0\npandas==2.1.0\n',
+      size: 50,
+      isBinary: false,
+    });
+    (window as any).multissh = { fileRead: mockFileRead };
+
+    render(
+      <TerminalPathHoverCard
+        path="/app/requirements.txt"
+        providerId="local"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText('flask==3.0.0')).toBeInTheDocument();
+    expect(screen.getByText('requests>=2.31.0')).toBeInTheDocument();
+  });
+
+  it('loads and renders image thumbnail preview when providerId is supplied for images', async () => {
+    const mockFileRead = vi.fn().mockResolvedValue({
+      content: '',
+      isBinary: true,
+      base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      mimeType: 'image/png',
+      size: 68,
+      truncated: false,
+    });
+    (window as any).multissh = { fileRead: mockFileRead };
+
+    render(
+      <TerminalPathHoverCard
+        path="/images/icon.png"
+        providerId="local"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+      />
+    );
+
+    const img = await screen.findByRole('img');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('src', expect.stringContaining('data:image/png;base64,'));
+    expect(screen.getByText('68 B')).toBeInTheDocument();
+  });
+
+  it('renders extensionless file as text file with preview snippet and Edit button', async () => {
+    const mockFileRead = vi.fn().mockResolvedValue({
+      content: '# My Notes\nTask 1\nTask 2\n',
+      size: 25,
+      isBinary: false,
+    });
+    (window as any).multissh = { fileRead: mockFileRead };
+
+    render(
+      <TerminalPathHoverCard
+        path="notes"
+        currentCwd="/home/alun"
+        providerId="local"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+        onOpenEditor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('notes')).toBeInTheDocument();
+    expect(screen.getByText('Notes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument();
+    expect(await screen.findByText('# My Notes')).toBeInTheDocument();
+    expect(screen.getByText('Task 1')).toBeInTheDocument();
+  });
+
+  it('adapts dynamically to directory when fileRead reports isDirectory: true', async () => {
+    const mockFileRead = vi.fn().mockResolvedValue({
+      content: '',
+      size: 4096,
+      isBinary: false,
+      truncated: false,
+      isDirectory: true,
+    });
+    (window as any).multissh = { fileRead: mockFileRead };
+
+    render(
+      <TerminalPathHoverCard
+        path="src"
+        currentCwd="/home/alun/sshs3"
+        providerId="local"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+        onOpenEditor={vi.fn()}
+        onOpenPath={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('src')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^browse$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Directory')).toBeInTheDocument();
+    expect(screen.getByText(/click to browse/i)).toBeInTheDocument();
+  });
+
+  it('renders all action buttons with consistent height and whitespace-nowrap', () => {
+    render(
+      <TerminalPathHoverCard
+        path="/home/alun/windows.png"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+        onOpenEditor={vi.fn()}
+        onOpenPath={vi.fn()}
+      />
+    );
+
+    const viewBtn = screen.getByRole('button', { name: /^view$/i });
+    const revealBtn = screen.getByRole('button', { name: /^reveal$/i });
+    const copyBtn = screen.getByRole('button', { name: /copy path/i });
+
+    for (const btn of [viewBtn, revealBtn, copyBtn]) {
+      expect(btn.className).toContain('h-8');
+      expect(btn.className).toContain('flex-1');
+      expect(btn.className).toContain('whitespace-nowrap');
+    }
+  });
 });
+

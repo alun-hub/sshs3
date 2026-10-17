@@ -105,15 +105,54 @@ export class FileEditorService {
       throw new Error(`Storage provider not found: ${providerId}`);
     }
 
-    const stream = await provider.createReadStream(remotePath);
+    try {
+      const stats = await provider.stat(remotePath);
+      if (stats?.isDirectory) {
+        return {
+          content: '',
+          size: stats.size || 0,
+          isBinary: false,
+          truncated: false,
+          isDirectory: true,
+        };
+      }
+    } catch {
+      // If stat fails or is not supported by provider, proceed to createReadStream
+    }
+
+    let stream: NodeJS.ReadableStream;
+    try {
+      stream = await provider.createReadStream(remotePath);
+    } catch (err: any) {
+      if (
+        err?.code === 'EISDIR' ||
+        (err?.statusCode === 4 && (err?.name === 'SftpError' || err?.message?.includes('Failure')))
+      ) {
+        return {
+          content: '',
+          size: 0,
+          isBinary: false,
+          truncated: false,
+          isDirectory: true,
+        };
+      }
+      throw err;
+    }
+
+    const effectiveMaxBytes =
+      typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes > 0
+        ? Math.min(Math.floor(maxBytes), 100 * 1024 * 1024)
+        : 5 * 1024 * 1024;
+
     const chunks: Buffer[] = [];
     let totalBytes = 0;
     let truncated = false;
+    let isDirDetected = false;
 
     await new Promise<void>((resolve, reject) => {
       stream.on('data', (chunk: Buffer) => {
-        if (totalBytes + chunk.length > maxBytes) {
-          const remaining = maxBytes - totalBytes;
+        if (totalBytes + chunk.length > effectiveMaxBytes) {
+          const remaining = effectiveMaxBytes - totalBytes;
           if (remaining > 0) {
             chunks.push(chunk.subarray(0, remaining));
             totalBytes += remaining;
@@ -129,14 +168,30 @@ export class FileEditorService {
         }
       });
       stream.on('end', () => resolve());
-      stream.on('error', (err) => {
+      stream.on('error', (err: any) => {
         if (truncated) {
+          resolve();
+        } else if (
+          err?.code === 'EISDIR' ||
+          (err?.statusCode === 4 && (err?.name === 'SftpError' || err?.message?.includes('Failure')))
+        ) {
+          isDirDetected = true;
           resolve();
         } else {
           reject(err);
         }
       });
     });
+
+    if (isDirDetected) {
+      return {
+        content: '',
+        size: 0,
+        isBinary: false,
+        truncated: false,
+        isDirectory: true,
+      };
+    }
 
     const fullBuffer = Buffer.concat(chunks);
     const checkLength = Math.min(fullBuffer.length, 8000);

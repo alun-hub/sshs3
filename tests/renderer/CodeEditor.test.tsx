@@ -82,4 +82,19 @@ describe('CodeEditor', () => {
 
     expect(onChange).toHaveBeenCalledWith('second');
   });
+
+  it('reports case-insensitive match count using SearchQuery cursor', () => {
+    const onMatchesCountChange = vi.fn();
+    render(
+      <CodeEditor
+        value="Alpha beta ALPHA gamma Alpha"
+        fileName="test.txt"
+        searchQuery="alpha"
+        onMatchesCountChange={onMatchesCountChange}
+      />
+    );
+
+    expect(onMatchesCountChange).toHaveBeenCalledWith(3);
+  });
 });
+
