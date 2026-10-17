@@ -15,6 +15,8 @@ export interface AppTab extends TabItem {
   initialK8sTarget?: K8sTerminalTarget;
   /** Set when opening a filemanager tab focused on an SSH/SFTP profile. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Set when opening a filemanager tab focused on a local directory. */
+  initialLocalPath?: string;
 }
 
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */

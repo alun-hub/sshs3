@@ -37,6 +37,8 @@ interface DualPaneExplorerProps {
   initialK8sTarget?: K8sTerminalTarget;
   /** Automatically connect the right pane to this SSH/SFTP profile on mount. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Focus local disk pane on this folder on mount. */
+  initialLocalPath?: string;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default. */
   showHiddenFiles?: boolean;
   /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
@@ -49,6 +51,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   shortcuts,
   initialK8sTarget,
   initialSSHConfig,
+  initialLocalPath,
   showHiddenFiles = false,
   gitIntegrationEnabled = true,
 }) => {
@@ -75,6 +78,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   const [splitRatio, setSplitRatio] = useState(0.5);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
+  const autoConnectedLocalRef = useRef(false);
 
   useEffect(() => {
     const handleFocusSide = (e: Event) => {
@@ -518,6 +522,19 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     // Runs once per mount, for the same reason as the k8s effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSSHConfig, ready]);
+
+  useEffect(() => {
+    if (initialLocalPath && ready && !autoConnectedLocalRef.current) {
+      autoConnectedLocalRef.current = true;
+      setPanes((prev) => ({
+        ...prev,
+        left: {
+          source: { providerId: 'local', sourceType: 'local', label: 'Local Disk' },
+          path: initialLocalPath,
+        },
+      }));
+    }
+  }, [initialLocalPath, ready]);
 
   const handleOpenTerminal = useCallback(
     async (providerId: string, path: string) => {

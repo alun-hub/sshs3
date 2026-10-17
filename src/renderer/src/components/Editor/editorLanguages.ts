@@ -5,6 +5,7 @@ import { yaml } from '@codemirror/lang-yaml';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { markdown } from '@codemirror/lang-markdown';
+import { html } from '@codemirror/lang-html';
 
 // StreamLanguage legacy modes
 import { shell } from '@codemirror/legacy-modes/mode/shell';
@@ -12,6 +13,11 @@ import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile';
 import { toml } from '@codemirror/legacy-modes/mode/toml';
 import { nginx } from '@codemirror/legacy-modes/mode/nginx';
 import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
+import { css } from '@codemirror/legacy-modes/mode/css';
+import { xml } from '@codemirror/legacy-modes/mode/xml';
+import { c, cpp, java } from '@codemirror/legacy-modes/mode/clike';
+import { rust } from '@codemirror/legacy-modes/mode/rust';
+import { go } from '@codemirror/legacy-modes/mode/go';
 
 /**
  * Returns the appropriate CodeMirror 6 language extension for a given file name.
@@ -29,6 +35,18 @@ export function getLanguageExtension(fileName: string): Extension | null {
   }
 
   switch (ext) {
+    case 'html':
+    case 'htm':
+    case 'xhtml':
+      return html();
+    case 'css':
+    case 'scss':
+    case 'less':
+      return StreamLanguage.define(css);
+    case 'xml':
+    case 'svg':
+    case 'plist':
+      return StreamLanguage.define(xml);
     case 'json':
     case 'json5':
       return json();
@@ -65,6 +83,20 @@ export function getLanguageExtension(fileName: string): Extension | null {
       return StreamLanguage.define(toml);
     case 'sql':
       return StreamLanguage.define(standardSQL);
+    case 'c':
+    case 'h':
+      return StreamLanguage.define(c);
+    case 'cpp':
+    case 'hpp':
+    case 'cc':
+    case 'cxx':
+      return StreamLanguage.define(cpp);
+    case 'java':
+      return StreamLanguage.define(java);
+    case 'rs':
+      return StreamLanguage.define(rust);
+    case 'go':
+      return StreamLanguage.define(go);
     default:
       return null;
   }

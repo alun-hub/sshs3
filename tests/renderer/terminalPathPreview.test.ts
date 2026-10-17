@@ -49,6 +49,17 @@ describe('terminalPathPreview', () => {
     expect(dirDetails.isDir).toBe(true);
     expect(dirDetails.category).toBe('directory');
     expect(dirDetails.basename).toBe('log');
+
+    const relFileDetails = resolvePathDetails('todo.html', '/home/alun');
+    expect(relFileDetails.basename).toBe('todo.html');
+    expect(relFileDetails.fullPath).toBe('/home/alun/todo.html');
+    expect(relFileDetails.parentDir).toBe('/home/alun');
+    expect(relFileDetails.category).toBe('code');
+    expect(relFileDetails.label).toBe('HTML');
+
+    const cwdDetails = resolvePathDetails('./src/App.tsx', '/home/alun', '/home/alun/sshs3');
+    expect(cwdDetails.fullPath).toBe('/home/alun/sshs3/src/App.tsx');
+    expect(cwdDetails.basename).toBe('App.tsx');
   });
 
   it('truncates snippets with line count and width limits', () => {

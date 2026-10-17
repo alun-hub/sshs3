@@ -127,6 +127,7 @@ export const App: React.FC = () => {
     handlePaneTitleChange,
     handleOpenTerminalAt,
     handleOpenRemotePath,
+    handleOpenLocalPath,
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,
@@ -461,6 +462,7 @@ export const App: React.FC = () => {
                         onCloseTab={() => handleCloseTab(tab.id)}
                         onTitleChange={(paneId, title) => handlePaneTitleChange(tab.id, paneId, title)}
                         onOpenRemotePath={handleOpenRemotePath}
+                        onOpenLocalPath={handleOpenLocalPath}
                         onNavigateToTabBar={() => setTabBarFocused(true)}
                         initialCwdPaneId={rootLeaf?.id}
                         initialCwd={tab.initialCwd}
@@ -475,6 +477,7 @@ export const App: React.FC = () => {
                       shortcuts={settings.shortcuts}
                       initialK8sTarget={tab.initialK8sTarget}
                       initialSSHConfig={tab.initialSSHConfig}
+                      initialLocalPath={tab.initialLocalPath}
                       showHiddenFiles={settings.showHiddenFiles ?? false}
                       gitIntegrationEnabled={settings.fileManagerGitIntegration ?? true}
                     />

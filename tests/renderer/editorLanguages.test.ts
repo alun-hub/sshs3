@@ -12,6 +12,12 @@ describe('editorLanguages', () => {
     expect(getLanguageExtension('deploy.sh')).not.toBeNull();
     expect(getLanguageExtension('Dockerfile')).not.toBeNull();
     expect(getLanguageExtension('nginx.conf')).not.toBeNull();
+    expect(getLanguageExtension('index.html')).not.toBeNull();
+    expect(getLanguageExtension('todo.html')).not.toBeNull();
+    expect(getLanguageExtension('style.css')).not.toBeNull();
+    expect(getLanguageExtension('main.rs')).not.toBeNull();
+    expect(getLanguageExtension('main.go')).not.toBeNull();
+    expect(getLanguageExtension('main.cpp')).not.toBeNull();
   });
 
   it('returns null for unknown extensions or empty names', () => {

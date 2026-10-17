@@ -366,6 +366,20 @@ export function useTabActions(ctx: TabActionsContext) {
     setActiveTabId(newId);
   }, [setActiveTabId, setTabs]);
 
+  // Click on a file path in a local terminal: browse that folder on Local Disk in a new file manager tab.
+  const handleOpenLocalPath = useCallback((rawPath: string) => {
+    const folder = rawPath.endsWith('/') ? rawPath : rawPath.slice(0, rawPath.lastIndexOf('/')) || '/';
+    const newId = `fm-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'filemanager',
+      title: 'Local Files',
+      initialLocalPath: folder,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, [setActiveTabId, setTabs]);
+
   const handleOpenK8sTerminalAt = useCallback((target: K8sTerminalTarget, folderPath: string) => {
     const newId = `term-${Date.now()}`;
     const shellCommand = folderPath && folderPath !== '/' ? `cd ${JSON.stringify(folderPath)} && exec /bin/sh` : undefined;
@@ -458,6 +472,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handlePaneTitleChange,
     handleOpenTerminalAt,
     handleOpenRemotePath,
+    handleOpenLocalPath,
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,

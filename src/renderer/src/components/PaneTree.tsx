@@ -28,6 +28,7 @@ export interface PaneTreeViewProps {
   onCloseTab: () => void;
   onTitleChange?: (paneId: string, title: string) => void;
   onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
+  onOpenLocalPath?: (path: string) => void;
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
   initialCwd?: string;
@@ -221,6 +222,7 @@ const PaneLeafContent: React.FC<{
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onTitleChange?: (paneId: string, title: string) => void;
   onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
+  onOpenLocalPath?: (path: string) => void;
   onSelectPane: (paneId: string) => void;
   onNavigateToTabBar?: () => void;
 }> = ({
@@ -237,6 +239,7 @@ const PaneLeafContent: React.FC<{
   onOpenLocalTerminal,
   onTitleChange,
   onOpenRemotePath,
+  onOpenLocalPath,
   onSelectPane,
   onNavigateToTabBar,
 }) => {
@@ -314,6 +317,7 @@ const PaneLeafContent: React.FC<{
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
+        onOpenPath={onOpenLocalPath ? (path) => onOpenLocalPath(path) : undefined}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
       />
@@ -405,6 +409,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onOpenLocalTerminal={props.onOpenLocalTerminal}
             onTitleChange={props.onTitleChange}
             onOpenRemotePath={props.onOpenRemotePath}
+            onOpenLocalPath={props.onOpenLocalPath}
             onSelectPane={props.onSelectPane}
             onNavigateToTabBar={props.onNavigateToTabBar}
           />,

@@ -14,6 +14,7 @@ import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
 import { ClipboardHistoryModal } from './ClipboardHistoryModal';
 import { TerminalPathHoverCard } from './TerminalPathHoverCard';
+import { FileEditorModal } from './FileManager/FileEditorModal';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
@@ -257,6 +258,25 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const [hoverCardData, setHoverCardData] = useState<{ path: string; x: number; y: number } | null>(null);
+  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [userHomeDir, setUserHomeDir] = useState<string>(() => {
+    if (config?.username === 'root') return '/root';
+    if (config?.username) return `/home/${config.username}`;
+    return '/home/user';
+  });
+
+  useEffect(() => {
+    const providerId = local ? 'local' : config?.id;
+    if (providerId && window.multissh?.storageGetHomeDir) {
+      window.multissh
+        .storageGetHomeDir(providerId)
+        .then((h) => {
+          if (h) setUserHomeDir(h);
+        })
+        .catch(() => {});
+    }
+  }, [local, config?.id]);
+
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
@@ -1020,7 +1040,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           path={hoverCardData.path}
           x={hoverCardData.x}
           y={hoverCardData.y}
-          userHome={config?.username === 'root' ? '/root' : `/home/${config?.username || 'user'}`}
+          userHome={userHomeDir}
+          currentCwd={initialCwd || userHomeDir}
           onMouseEnter={() => clearTimeout(hoverLeaveTimerRef.current)}
           onMouseLeave={() => {
             hoverLeaveTimerRef.current = setTimeout(() => setHoverCardData(null), 300);
@@ -1040,18 +1061,45 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 }
               : undefined
           }
-          onOpenEditor={
-            (onOpenEditorRef.current || onOpenPathRef.current)
-              ? (p) => {
-                  if (onOpenEditorRef.current) {
-                    onOpenEditorRef.current(p);
-                  } else {
-                    onOpenPathRef.current?.(p);
-                  }
-                  setHoverCardData(null);
+          onOpenEditor={(p) => {
+            if (onOpenEditorRef.current) {
+              onOpenEditorRef.current(p);
+            } else {
+              const providerId = local ? 'local' : (config?.id || '');
+              if (providerId) {
+                if (local) {
+                  window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' }).catch(() => {});
+                } else if (config) {
+                  window.multissh?.connectStorage?.({
+                    id: config.id,
+                    name: config.name || config.host,
+                    type: 'sftp',
+                    sftpConfig: { ...config, port: config.port ?? 22 },
+                  }).catch(() => {});
                 }
-              : undefined
-          }
+                setEditingFile(p);
+              }
+            }
+            setHoverCardData(null);
+          }}
+        />
+      )}
+
+      {editingFile && (
+        <FileEditorModal
+          open={true}
+          providerId={local ? 'local' : (config?.id || '')}
+          sourceType={local ? 'local' : 'sftp'}
+          entry={{
+            name: editingFile.split('/').pop() || editingFile,
+            path: editingFile,
+            size: 0,
+            isDirectory: false,
+          }}
+          onClose={() => {
+            setEditingFile(null);
+            termRef.current?.focus();
+          }}
         />
       )}
 

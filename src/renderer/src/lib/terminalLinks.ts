@@ -2,9 +2,27 @@ import type { IDisposable, ILink, Terminal } from 'xterm';
 
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
 const TRAILING_PUNCT_RE = /[.,;:!?)\]}>]+$/;
-// Absolute (`/var/log/x`) or home-relative (`~/x`) paths, optionally followed by `:line[:col]`.
-// The lookbehind keeps us out of URLs (`https://host/x`), words (`and/or`) and dates (`1/2`).
-const PATH_RE = /(?<![\w:/.~-])(~?\/[\w.@%+~-]+(?:\/[\w.@%+~-]*)*)(?::\d+(?::\d+)?)?/g;
+// Slashed paths: absolute (`/var/log/x`), home-relative (`~/x`), explicit relative (`./x`, `../x`),
+// or subpaths (`src/file.ts`, `dir/`), optionally followed by `:line[:col]`.
+const SLASH_PATH_RE =
+  /(?<![\w:/.~-])((?:~?\/|\.\.?\/|[\w.@+-]+\/)(?:[\w.@%+~-]+\/)*(?:[\w.@%+~-]+)?)(?::\d+(?::\d+)?)?/g;
+
+// Standalone filenames with extensions (e.g. `index.html`, `test.txt`, `windows.png`, `.bashrc`),
+// or well-known filenames (e.g. `Dockerfile`, `Makefile`), optionally followed by `:line[:col]`.
+const STANDALONE_FILE_RE =
+  /(?<![\w:/.~-])(?:\b([A-Za-z0-9_~-]+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|(Dockerfile|Makefile|Containerfile|Vagrantfile|Procfile|Gemfile|Rakefile|LICENSE|README))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
+
+const KNOWN_FILENAMES = new Set([
+  'Dockerfile',
+  'Makefile',
+  'Containerfile',
+  'Vagrantfile',
+  'Procfile',
+  'Gemfile',
+  'Rakefile',
+  'LICENSE',
+  'README',
+]);
 
 export interface TextMatch {
   index: number;
@@ -29,13 +47,70 @@ export function findUrls(text: string): { index: number; url: string }[] {
   return out;
 }
 
+function isValidSlashedPath(raw: string): boolean {
+  if (raw.length < 2 || !/[A-Za-z]/.test(raw)) return false;
+  if (raw.startsWith('/') || raw.startsWith('~/') || raw.startsWith('./') || raw.startsWith('../')) {
+    return true;
+  }
+  if (raw.endsWith('/')) return true;
+  const parts = raw.split('/');
+  if (parts.length > 2) return true;
+  // Two parts (e.g. `src/foo.ts` vs `and/or`): require an extension with letters in the last part
+  const last = parts[parts.length - 1];
+  const dot = last.lastIndexOf('.');
+  return dot > 0 && /[A-Za-z]/.test(last.slice(dot + 1));
+}
+
+function isValidStandaloneFile(raw: string): boolean {
+  if (KNOWN_FILENAMES.has(raw)) return true;
+  if (raw.startsWith('.')) {
+    return raw.length >= 2 && /[A-Za-z]/.test(raw);
+  }
+  // Reject IP addresses (1.1.1.1) and version numbers (0.96.7, v1.2.3)
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(raw)) return false;
+  if (/^v?\d+(\.\d+)+$/.test(raw)) return false;
+  const dot = raw.lastIndexOf('.');
+  if (dot <= 0) return false;
+  const ext = raw.slice(dot + 1);
+  return ext.length >= 1 && ext.length <= 10 && /[A-Za-z]/.test(ext);
+}
+
 export function findPaths(text: string): TextMatch[] {
-  const out: TextMatch[] = [];
-  for (const m of text.matchAll(PATH_RE)) {
-    const path = m[1].replace(/[.,;]+$/, '');
-    if (path.length < 2 || !/[A-Za-z]/.test(path)) continue;
+  const candidates: TextMatch[] = [];
+
+  for (const m of text.matchAll(SLASH_PATH_RE)) {
+    const rawMatch = m[1].replace(/[.,;]+$/, '');
+    if (!isValidSlashedPath(rawMatch)) continue;
     const suffix = m[0].length - m[1].length;
-    out.push({ index: m.index ?? 0, text: path, length: path.length + (path.length === m[1].length ? suffix : 0) });
+    candidates.push({
+      index: m.index ?? 0,
+      text: rawMatch,
+      length: rawMatch.length + (rawMatch.length === m[1].length ? suffix : 0),
+    });
+  }
+
+  for (const m of text.matchAll(STANDALONE_FILE_RE)) {
+    const matchedToken = m[1] || m[2] || m[3];
+    if (!matchedToken) continue;
+    const rawMatch = matchedToken.replace(/[.,;]+$/, '');
+    if (!isValidStandaloneFile(rawMatch)) continue;
+    const suffix = m[0].length - matchedToken.length;
+    candidates.push({
+      index: m.index ?? 0,
+      text: rawMatch,
+      length: rawMatch.length + (rawMatch.length === matchedToken.length ? suffix : 0),
+    });
+  }
+
+  candidates.sort((a, b) => a.index - b.index);
+
+  const out: TextMatch[] = [];
+  let lastEnd = -1;
+  for (const c of candidates) {
+    if (c.index >= lastEnd) {
+      out.push(c);
+      lastEnd = c.index + c.length;
+    }
   }
   return out;
 }

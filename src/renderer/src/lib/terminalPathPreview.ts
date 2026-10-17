@@ -166,17 +166,28 @@ export interface PathDetails {
 }
 
 /**
- * Parses path details, resolving ~ to userHome and computing basename/parentDir.
+ * Parses path details, resolving ~ to userHome and relative paths to currentCwd || userHome,
+ * computing basename and parentDir.
  */
-export function resolvePathDetails(rawPath: string, userHome = '/home/user'): PathDetails {
+export function resolvePathDetails(
+  rawPath: string,
+  userHome = '/home/user',
+  currentCwd?: string
+): PathDetails {
   const isDir = rawPath.endsWith('/') || rawPath.endsWith('\\');
   const normalized = rawPath.replace(/[\\/]+$/, '');
 
-  let fullPath = normalized;
+  let fullPath: string;
   if (normalized === '~') {
     fullPath = userHome;
   } else if (normalized.startsWith('~/')) {
     fullPath = `${userHome.replace(/\/+$/, '')}/${normalized.slice(2)}`;
+  } else if (normalized.startsWith('/') || /^[A-Za-z]:[\\/]/.test(normalized)) {
+    fullPath = normalized;
+  } else {
+    const base = (currentCwd || userHome).replace(/\/+$/, '');
+    const rel = normalized.replace(/^\.\//, '');
+    fullPath = `${base}/${rel}`;
   }
 
   const lastSlash = fullPath.lastIndexOf('/');

@@ -112,6 +112,20 @@ describe('CommandOutputTracker', () => {
     expect(stripPrompt('echo $HOME')).toBe('echo $HOME');
   });
 
+  it('identifies full prompt lines and strips trailing prompt lines from output', async () => {
+    const { isPromptLine, stripTrailingPrompt } = await import('./terminalOutput');
+    expect(isPromptLine('alun@host:~$')).toBe(true);
+    expect(isPromptLine('alun@host:~$ ')).toBe(true);
+    expect(isPromptLine('[user@host dir]#')).toBe(true);
+    expect(isPromptLine('$')).toBe(true);
+    expect(isPromptLine('❯')).toBe(true);
+    expect(isPromptLine('echo $HOME')).toBe(false);
+    expect(isPromptLine('total 16')).toBe(false);
+
+    const rawOutput = 'total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt\nalun@host:~$';
+    expect(stripTrailingPrompt(rawOutput)).toBe('total 16\n-rw-r--r-- 1 alun alun 100 Oct 17 15:00 test.txt');
+  });
+
   it('copies clean output to clipboard via copyCleanOutputToClipboard helper', async () => {
     const { copyCleanOutputToClipboard } = await import('./terminalOutput');
     const f = fakeTerm([{ text: '$ echo test' }]);

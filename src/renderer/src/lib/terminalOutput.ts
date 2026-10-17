@@ -4,14 +4,43 @@ const MAX_MARKERS = 50;
 
 // Matches typical shell prompts ending in $, #, %, >, ❯, or ➜ followed by whitespace,
 // including git branch decorators like `➜ git:(main) ` or `[user@host /dir]# `
-const PROMPT_RE =
-  /^(?:(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s]+|[\w.-]+)?\s*[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+const PROMPT_PREFIX_RE =
+  /^(?:(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+
+// Matches an entire line that consists only of a prompt
+const FULL_PROMPT_LINE_RE =
+  /^(?:(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)$/;
 
 /**
  * Strips shell prompt prefix from a command line if present.
  */
 export function stripPrompt(line: string): string {
-  return line.replace(PROMPT_RE, '').trim();
+  return line.replace(PROMPT_PREFIX_RE, '').trim();
+}
+
+/**
+ * Checks whether a given line consists solely of a shell prompt.
+ */
+export function isPromptLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  return FULL_PROMPT_LINE_RE.test(trimmed);
+}
+
+/**
+ * Strips any trailing prompt line(s) from command output.
+ */
+export function stripTrailingPrompt(text: string): string {
+  const lines = text.split('\n');
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (!last || isPromptLine(last)) {
+      lines.pop();
+    } else {
+      break;
+    }
+  }
+  return lines.join('\n');
 }
 
 export interface CleanOutputInfo {
@@ -96,12 +125,15 @@ export class CommandOutputTracker {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
     const cursorLine = buf.baseY + buf.cursorY;
-    if (this.regions.length > 0) return this.lastOscOutput();
+    if (this.regions.length > 0) {
+      const osc = this.lastOscOutput();
+      return osc ? stripTrailingPrompt(osc) : null;
+    }
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     for (let i = live.length - 1; i >= 0; i--) {
       const end = i + 1 < live.length ? live[i + 1].line : cursorLine;
       const text = this.readLines(live[i].line + 1, end);
-      if (text.trim()) return text;
+      if (text.trim()) return stripTrailingPrompt(text);
     }
     return null;
   }

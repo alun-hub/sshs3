@@ -19,6 +19,7 @@ export interface TerminalPathHoverCardProps {
   x: number;
   y: number;
   userHome?: string;
+  currentCwd?: string;
   onClose: () => void;
   onCopyPath: (path: string) => void;
   onOpenPath?: (path: string) => void;
@@ -54,6 +55,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   x,
   y,
   userHome,
+  currentCwd,
   onClose,
   onCopyPath,
   onOpenPath,
@@ -61,7 +63,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   onMouseEnter,
   onMouseLeave,
 }) => {
-  const details = useMemo(() => resolvePathDetails(path, userHome), [path, userHome]);
+  const details = useMemo(() => resolvePathDetails(path, userHome, currentCwd), [path, userHome, currentCwd]);
   const Icon = CATEGORY_ICONS[details.category] || File;
   const badgeStyle = CATEGORY_BADGES[details.category] || CATEGORY_BADGES.unknown;
 
