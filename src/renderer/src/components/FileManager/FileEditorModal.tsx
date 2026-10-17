@@ -25,6 +25,7 @@ import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc'
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { CodeEditor, type CodeEditorHandle } from '../Editor/CodeEditor';
 
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
 
@@ -83,6 +84,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
   const [previewMatchesCount, setPreviewMatchesCount] = useState(0);
+  const [editorMatchesCount, setEditorMatchesCount] = useState(0);
 
   // Cursor position
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -92,9 +94,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [externalStatus, setExternalStatus] = useState<string | null>(null);
   const [externalLaunching, setExternalLaunching] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<CodeEditorHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isDirty = useMemo(
@@ -156,9 +156,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setTruncated(false);
 
       setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
-        }
+        editorRef.current?.scrollToBottom();
       }, 50);
     } catch (err: any) {
       setError(describeIpcError(err, 'Failed to start live log stream'));
@@ -207,9 +205,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         setContent((prev) => prev + event.chunk);
         if (autoScroll) {
           setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
-            }
+            editorRef.current?.scrollToBottom();
           }, 10);
         }
       }
@@ -247,35 +243,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     return () => cleanup();
   }, [open, externalSessionToken, entry?.path, loadFile, onSaved]);
 
-  // Sync scroll & auto-scroll tracking
-  const handleScroll = useCallback(() => {
-    if (textareaRef.current) {
-      if (lineNumbersRef.current) {
-        lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
-      }
-      if (backdropRef.current) {
-        backdropRef.current.scrollTop = textareaRef.current.scrollTop;
-        backdropRef.current.scrollLeft = textareaRef.current.scrollLeft;
-      }
-      if (tailModeActive) {
-        const el = textareaRef.current;
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-        setAutoScroll(isNearBottom);
-      }
-    }
-  }, [tailModeActive]);
 
-  // Track cursor line & col
-  const updateCursorPosition = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const pos = el.selectionStart;
-    const textBefore = el.value.slice(0, pos);
-    const lines = textBefore.split('\n');
-    const line = lines.length;
-    const col = lines[lines.length - 1].length + 1;
-    setCursorPos({ line, col });
-  }, []);
 
   // Save file content
   const handleSave = useCallback(async () => {
@@ -338,154 +306,29 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     handleRequestClose();
   }, open);
 
-  // Textarea key handling
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        void handleSave();
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        setShowSearch(true);
-        setTimeout(() => searchInputRef.current?.focus(), 50);
-        return;
-      }
-
-      if (e.key === 'Tab' && !readOnly) {
-        e.preventDefault();
-        const el = textareaRef.current;
-        if (!el) return;
-        const start = el.selectionStart;
-        const end = el.selectionEnd;
-        const insertText = '  ';
-        const newText = el.value.slice(0, start) + insertText + el.value.slice(end);
-        setContent(newText);
-        setTimeout(() => {
-          el.selectionStart = el.selectionEnd = start + insertText.length;
-          updateCursorPosition();
-        }, 0);
-      }
-    },
-    [handleSave, readOnly, updateCursorPosition]
-  );
-
   // Search logic
-  const searchMatches = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase();
-    const matches: number[] = [];
-    let pos = 0;
-    const lowerContent = content.toLowerCase();
-    while ((pos = lowerContent.indexOf(query, pos)) !== -1) {
-      matches.push(pos);
-      pos += query.length;
-    }
-    return matches;
-  }, [content, searchQuery]);
-
-  const totalMatches = isMarkdown && markdownPreview ? previewMatchesCount : searchMatches.length;
+  const totalMatches = isMarkdown && markdownPreview ? previewMatchesCount : editorMatchesCount;
   const safeCurrentMatchIdx = totalMatches > 0 ? Math.min(currentMatchIdx, totalMatches - 1) : 0;
 
   const handleSearchNext = useCallback(() => {
     if (totalMatches === 0) return;
-    setCurrentMatchIdx((prev) => (prev + 1) % totalMatches);
-  }, [totalMatches]);
+    if (isMarkdown && markdownPreview) {
+      setCurrentMatchIdx((prev) => (prev + 1) % totalMatches);
+    } else {
+      editorRef.current?.findNext();
+      setCurrentMatchIdx((prev) => (prev + 1) % totalMatches);
+    }
+  }, [totalMatches, isMarkdown, markdownPreview]);
 
   const handleSearchPrev = useCallback(() => {
     if (totalMatches === 0) return;
-    setCurrentMatchIdx((prev) => (prev - 1 + totalMatches) % totalMatches);
-  }, [totalMatches]);
-
-  // Scroll to current match in Edit mode
-  const scrollToCurrentEditMatch = useCallback(() => {
-    if (searchMatches.length === 0 || safeCurrentMatchIdx >= searchMatches.length) return;
-    const matchPos = searchMatches[safeCurrentMatchIdx];
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    // Update selection range
-    textarea.setSelectionRange(matchPos, matchPos + searchQuery.length);
-    updateCursorPosition();
-
-    // Scroll textarea to the match
-    const activeMark = backdropRef.current?.querySelector('[data-active="true"]') as HTMLElement | null;
-    if (activeMark) {
-      const targetTop = Math.max(0, activeMark.offsetTop - textarea.clientHeight / 2 + activeMark.clientHeight / 2);
-      textarea.scrollTop = targetTop;
-      if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = targetTop;
-      if (backdropRef.current) backdropRef.current.scrollTop = targetTop;
-
-      if (!wordWrap) {
-        const targetLeft = Math.max(0, activeMark.offsetLeft - textarea.clientWidth / 2);
-        textarea.scrollLeft = targetLeft;
-        if (backdropRef.current) backdropRef.current.scrollLeft = targetLeft;
-      }
+    if (isMarkdown && markdownPreview) {
+      setCurrentMatchIdx((prev) => (prev - 1 + totalMatches) % totalMatches);
     } else {
-      const linesBefore = content.slice(0, matchPos).split('\n');
-      const lineIndex = linesBefore.length - 1;
-      const lineHeight = 20; // 20px per line
-      const targetTop = Math.max(0, lineIndex * lineHeight - textarea.clientHeight / 2 + lineHeight / 2);
-      textarea.scrollTop = targetTop;
-      if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = targetTop;
-      if (backdropRef.current) backdropRef.current.scrollTop = targetTop;
+      editorRef.current?.findPrevious();
+      setCurrentMatchIdx((prev) => (prev - 1 + totalMatches) % totalMatches);
     }
-  }, [searchMatches, safeCurrentMatchIdx, searchQuery.length, updateCursorPosition, wordWrap, content]);
-
-  useEffect(() => {
-    if (!showSearch || !searchQuery.trim() || searchMatches.length === 0) return;
-    if (isMarkdown && markdownPreview) return;
-
-    scrollToCurrentEditMatch();
-  }, [showSearch, searchQuery, safeCurrentMatchIdx, searchMatches, isMarkdown, markdownPreview, scrollToCurrentEditMatch]);
-
-  // Render search highlight backdrop in Edit mode
-  const renderBackdrop = useCallback(() => {
-    if (!showSearch || !searchQuery.trim() || searchMatches.length === 0) return null;
-
-    const elements: React.ReactNode[] = [];
-    let lastIdx = 0;
-    const matchLen = searchQuery.length;
-    const maxMatches = Math.min(searchMatches.length, 1000);
-
-    for (let i = 0; i < maxMatches; i++) {
-      const matchPos = searchMatches[i];
-      if (matchPos > lastIdx) {
-        elements.push(
-          <span key={`text-${lastIdx}`} className="text-transparent">
-            {content.slice(lastIdx, matchPos)}
-          </span>
-        );
-      }
-      const isCurrent = i === safeCurrentMatchIdx;
-      elements.push(
-        <mark
-          key={`mark-${matchPos}`}
-          data-match-idx={i}
-          data-active={isCurrent ? 'true' : undefined}
-          className={classNames(
-            'text-transparent rounded-xs',
-            isCurrent ? 'bg-sky-500/60 ring-1 ring-sky-400' : 'bg-amber-400/35'
-          )}
-        >
-          {content.slice(matchPos, matchPos + matchLen)}
-        </mark>
-      );
-      lastIdx = matchPos + matchLen;
-    }
-
-    if (lastIdx < content.length) {
-      elements.push(
-        <span key="text-tail" className="text-transparent">
-          {content.slice(lastIdx)}
-        </span>
-      );
-    }
-
-    return elements;
-  }, [showSearch, searchQuery, searchMatches, content, safeCurrentMatchIdx]);
+  }, [totalMatches, isMarkdown, markdownPreview]);
 
   // Line count
   const lineCount = useMemo(() => {
@@ -798,7 +641,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
                 }
                 if (e.key === 'Escape') {
                   setShowSearch(false);
-                  textareaRef.current?.focus();
+                  editorRef.current?.focus();
                 }
               }}
               className="flex-1 bg-transparent text-xs text-txt-primary placeholder-txt-muted outline-none"
@@ -830,7 +673,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               type="button"
               onClick={() => {
                 setShowSearch(false);
-                textareaRef.current?.focus();
+                editorRef.current?.focus();
               }}
               className="rounded p-1 text-txt-muted hover:text-txt-primary"
             >
@@ -935,61 +778,32 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               </div>
             </div>
           ) : (
-            <>
-              {/* Line Numbers Gutter */}
-              <div
-                ref={lineNumbersRef}
-                aria-hidden="true"
-                className="w-12 sm:w-14 shrink-0 select-none bg-app-surface border-r border-divider text-right font-mono text-xs leading-5 text-txt-muted py-2.5 pr-2.5 overflow-hidden"
-              >
-                {Array.from({ length: lineCount }, (_, i) => (
-                  <div key={i + 1} className="h-5 leading-5">
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-
-              {/* Text Area Container */}
-              <div className="relative flex-1 h-full min-w-0 overflow-hidden">
-                {/* Search Highlight Backdrop */}
-                {showSearch && searchQuery.trim() && searchMatches.length > 0 && (
-                  <div
-                    ref={backdropRef}
-                    aria-hidden="true"
-                    className={classNames(
-                      'absolute inset-0 pointer-events-none p-2.5 font-mono text-xs leading-5 overflow-hidden select-none z-0',
-                      wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
-                    )}
-                  >
-                    {renderBackdrop()}
-                  </div>
-                )}
-
-                {/* Text Area */}
-                <textarea
-                  aria-label={`Contents of ${entry.name}`}
-                  ref={textareaRef}
-                  value={content}
-                  readOnly={readOnly || saving || tailModeActive}
-                  spellCheck={false}
-                  wrap={wordWrap ? 'soft' : 'off'}
-                  onChange={(e) => {
-                    setContent(e.target.value);
-                    updateCursorPosition();
-                  }}
-                  onScroll={handleScroll}
-                  onClick={updateCursorPosition}
-                  onKeyUp={updateCursorPosition}
-                  onSelect={updateCursorPosition}
-                  onKeyDown={handleKeyDown}
-                  className={classNames(
-                    'relative z-10 flex-1 h-full w-full bg-transparent p-2.5 font-mono text-xs leading-5 text-txt-primary outline-none resize-none overflow-auto border-none select-text',
-                    (readOnly || tailModeActive) && 'opacity-90'
-                  )}
-                  placeholder="Empty file"
-                />
-              </div>
-            </>
+            <CodeEditor
+              ref={editorRef}
+              value={content}
+              fileName={entry.name}
+              readOnly={readOnly || saving || tailModeActive}
+              wordWrap={wordWrap}
+              searchQuery={showSearch ? searchQuery : ''}
+              ariaLabel={`Contents of ${entry.name}`}
+              onChange={setContent}
+              onSave={() => void handleSave()}
+              onSearchRequested={() => {
+                setShowSearch(true);
+                setTimeout(() => searchInputRef.current?.focus(), 50);
+              }}
+              onCursorChange={setCursorPos}
+              onMatchesCountChange={(count) => {
+                if (!isMarkdown || !markdownPreview) {
+                  setEditorMatchesCount(count);
+                }
+              }}
+              onScrollNearBottomChange={(nearBottom) => {
+                if (tailModeActive) {
+                  setAutoScroll(nearBottom);
+                }
+              }}
+            />
           )}
         </div>
 

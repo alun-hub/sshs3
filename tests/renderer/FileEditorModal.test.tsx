@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { FileEditorModal } from '../../src/renderer/src/components/FileManager/FileEditorModal';
 import type { FileEntry } from '../../src/shared/types/storage';
@@ -25,6 +25,18 @@ describe('FileEditorModal', () => {
   };
 
   beforeEach(() => {
+    Range.prototype.getClientRects = () => [] as any;
+    Range.prototype.getBoundingClientRect = () => ({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 0,
+      top: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }) as any;
     mockFileRead.mockResolvedValue({
       content: '{\n  "port": 8080,\n  "host": "localhost"\n}',
       size: 45,
@@ -97,8 +109,8 @@ describe('FileEditorModal', () => {
 
     await waitFor(() => {
       expect(mockFileRead).toHaveBeenCalledWith('sftp-1', '/etc/app/config.json');
-      const textarea = screen.getByRole('textbox');
-      expect(textarea).toHaveValue('{\n  "port": 8080,\n  "host": "localhost"\n}');
+      const editor = screen.getByTestId('code-editor');
+      expect(editor.textContent).toContain('port');
     });
 
     // Check statusbar line count
@@ -119,14 +131,18 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox')).toHaveValue('{\n  "port": 8080,\n  "host": "localhost"\n}');
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
 
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: '{\n  "port": 9000\n}' } });
+    const editor = screen.getByTestId('code-editor');
+    act(() => {
+      (editor as any).__cmChangeDoc('{\n  "port": 9000\n}');
+    });
 
     // Should indicate unsaved changes
-    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
 
     // Save button should be enabled
     const saveButton = screen.getByRole('button', { name: /Save/i });
@@ -177,7 +193,7 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox')).toHaveValue('{\n  "port": 8080,\n  "host": "localhost"\n}');
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
 
     // Toggle search
@@ -206,21 +222,17 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox')).toBeInTheDocument();
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
-
-    const textarea = screen.getByRole('textbox');
-    expect(textarea).toHaveAttribute('wrap', 'soft');
 
     // Toggle wrap
     const wrapBtn = screen.getByTitle('Disable Word Wrap');
     fireEvent.click(wrapBtn);
-    expect(textarea).toHaveAttribute('wrap', 'off');
+    expect(screen.getByTitle('Enable Word Wrap')).toBeInTheDocument();
 
     // Toggle read-only
     const lockBtn = screen.getByTitle('Switch to Read-Only Mode');
     fireEvent.click(lockBtn);
-    expect(textarea).toHaveAttribute('readonly');
     expect(screen.getByText('Read-Only')).toBeInTheDocument();
   });
 
@@ -236,7 +248,7 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox')).toBeInTheDocument();
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
 
     const extBtn = screen.getByRole('button', { name: /External Editor/i });
@@ -263,7 +275,7 @@ describe('FileEditorModal', () => {
     await waitFor(() => {
       expect(mockFileTailStart).toHaveBeenCalledWith('sftp-1', '/etc/app/config.json');
       expect(screen.getByText(/TAIL -F STREAM ACTIVE/i)).toBeInTheDocument();
-      expect(screen.getByRole('textbox')).toHaveValue('Log line 1\nLog line 2\n');
+      expect(screen.getByTestId('code-editor').textContent).toContain('Log line 1');
     });
   });
 
@@ -314,11 +326,18 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox')).toBeInTheDocument();
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
     });
 
     // Make change
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'dirty change' } });
+    const editor = screen.getByTestId('code-editor');
+    act(() => {
+      (editor as any).__cmChangeDoc('dirty change');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
 
     // Close button
     const closeBtn = screen.getByTitle('Close editor (Esc)');
@@ -403,11 +422,7 @@ describe('FileEditorModal', () => {
     fireEvent.click(editBtn);
 
     await waitFor(() => {
-      const textarea = document.querySelector('textarea');
-      expect(textarea).toBeInTheDocument();
-      // In edit mode, search backdrop renders the marks
-      const backdropMarks = document.querySelectorAll('mark[data-match-idx]');
-      expect(backdropMarks.length).toBe(2);
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
       expect(screen.getByText('2 of 2')).toBeInTheDocument();
     });
 

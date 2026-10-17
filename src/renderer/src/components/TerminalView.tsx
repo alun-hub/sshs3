@@ -48,6 +48,8 @@ export interface TerminalViewProps {
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
   /** Ctrl+click on a file path in the output (SSH sessions only). Receives the path as printed, e.g. `/var/log/x` or `~/x`. */
   onOpenPath?: (path: string) => void;
+  /** Open a file path in editor. */
+  onOpenEditor?: (path: string) => void;
   /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
   perfMetrics?: { layout: PerfLayout; items: PerfMetricId[]; intervalSec?: number };
   /** Callback to close the enclosing tab. */
@@ -174,6 +176,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
   onOpenPath,
+  onOpenEditor,
   perfMetrics,
   onCloseTab,
   onTitleChange,
@@ -233,6 +236,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   clipboardScopeRef.current = clipboardHistoryScope;
   const onOpenPathRef = useRef(onOpenPath);
   onOpenPathRef.current = onOpenPath;
+  const onOpenEditorRef = useRef(onOpenEditor);
+  onOpenEditorRef.current = onOpenEditor;
   const rootRef = useRef<HTMLDivElement>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1031,6 +1036,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             onOpenPathRef.current
               ? (p) => {
                   onOpenPathRef.current?.(p);
+                  setHoverCardData(null);
+                }
+              : undefined
+          }
+          onOpenEditor={
+            (onOpenEditorRef.current || onOpenPathRef.current)
+              ? (p) => {
+                  if (onOpenEditorRef.current) {
+                    onOpenEditorRef.current(p);
+                  } else {
+                    onOpenPathRef.current?.(p);
+                  }
                   setHoverCardData(null);
                 }
               : undefined
