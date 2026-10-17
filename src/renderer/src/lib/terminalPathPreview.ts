@@ -194,7 +194,17 @@ export function resolvePathDetails(
   } else if (normalized.startsWith('/') || /^[A-Za-z]:[\\/]/.test(normalized)) {
     fullPath = normalized;
   } else {
-    const base = (currentCwd || userHome).replace(/\/+$/, '');
+    const effectiveCwd =
+      currentCwd && (currentCwd.startsWith('/') || currentCwd.startsWith('~') || /^[A-Za-z]:[\\/]/.test(currentCwd))
+        ? currentCwd
+        : userHome;
+    const resolvedBase =
+      effectiveCwd === '~'
+        ? userHome
+        : effectiveCwd.startsWith('~/')
+          ? `${userHome.replace(/\/+$/, '')}/${effectiveCwd.slice(2)}`
+          : effectiveCwd;
+    const base = resolvedBase.replace(/\/+$/, '');
     const rel = normalized.replace(/^\.\//, '');
     fullPath = `${base}/${rel}`;
   }

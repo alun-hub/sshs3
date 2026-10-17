@@ -151,6 +151,10 @@ describe('CommandOutputTracker', () => {
     expect(extractCwdFromPrompt('alun@host:/var/log$ ', '/home/alun')).toBe('/var/log');
     expect(extractCwdFromPrompt('[root@box /etc/nginx]# ', '/home/alun')).toBe('/etc/nginx');
     expect(extractCwdFromPrompt('total 16', '/home/alun')).toBe(null);
+    expect(extractCwdFromPrompt('built in 1s', '/home/alun')).toBe(null);
+    expect(extractCwdFromPrompt('done in 1', '/home/alun')).toBe(null);
+    expect(extractCwdFromPrompt('finished in 12ms', '/home/alun')).toBe(null);
+    expect(extractCwdFromPrompt('1/avanza.png', '/home/alun')).toBe(null);
   });
 
   it('copies clean output to clipboard via copyCleanOutputToClipboard helper', async () => {

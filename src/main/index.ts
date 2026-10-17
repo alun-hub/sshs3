@@ -223,6 +223,7 @@ function createWindow(): BrowserWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      plugins: true,
     },
   });
 

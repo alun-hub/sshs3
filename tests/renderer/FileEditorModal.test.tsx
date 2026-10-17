@@ -683,6 +683,7 @@ describe('FileEditorModal', () => {
     );
 
     await waitFor(() => {
+      expect(mockFileRead).toHaveBeenCalledWith('sftp-1', '/var/docs/invoice.pdf', 100 * 1024 * 1024);
       expect(screen.getByTestId('pdf-viewer')).toBeInTheDocument();
       expect(screen.getAllByText(/PDF Document/).length).toBeGreaterThanOrEqual(1);
     });

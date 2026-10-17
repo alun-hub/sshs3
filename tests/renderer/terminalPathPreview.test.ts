@@ -69,6 +69,12 @@ describe('terminalPathPreview', () => {
     expect(escapedDetails.fullPath).toBe('/home/alun/sshs3/my file with spaces.pdf');
     expect(escapedDetails.basename).toBe('my file with spaces.pdf');
     expect(escapedDetails.extension).toBe('pdf');
+
+    const invalidCwdDetails = resolvePathDetails('avanza.png', '/home/alun', '1');
+    expect(invalidCwdDetails.fullPath).toBe('/home/alun/avanza.png');
+
+    const tildeCwdDetails = resolvePathDetails('avanza.png', '/home/alun', '~');
+    expect(tildeCwdDetails.fullPath).toBe('/home/alun/avanza.png');
   });
 
   it('truncates snippets with line count and width limits', () => {

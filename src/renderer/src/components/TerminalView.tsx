@@ -264,7 +264,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   hoverCardDataRef.current = hoverCardData;
   const hoverDwellTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isMouseOverCardRef = useRef(false);
-  const [currentCwd, setCurrentCwd] = useState<string>(initialCwd || '');
+  const [userHomeDir, setUserHomeDir] = useState<string>(() => {
+    if (config?.username === 'root') return '/root';
+    if (config?.username) return `/home/${config.username}`;
+    return '/home/user';
+  });
+  const userHomeDirRef = useRef(userHomeDir);
+  userHomeDirRef.current = userHomeDir;
+
+  const [currentCwd, setCurrentCwd] = useState<string>(
+    initialCwd || (config?.username === 'root' ? '/root' : config?.username ? `/home/${config.username}` : '')
+  );
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const editingFileRef = useRef(editingFile);
   editingFileRef.current = editingFile;
@@ -278,14 +288,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       isDirectory: false,
     };
   }, [editingFile]);
-
-  const [userHomeDir, setUserHomeDir] = useState<string>(() => {
-    if (config?.username === 'root') return '/root';
-    if (config?.username) return `/home/${config.username}`;
-    return '/home/user';
-  });
-  const userHomeDirRef = useRef(userHomeDir);
-  userHomeDirRef.current = userHomeDir;
 
   const refreshCwd = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -314,18 +316,22 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           })
           .catch(() => {});
       }
-    } else if (config?.id && window.multissh?.storageGetHomeDir) {
-      window.multissh
-        .storageGetHomeDir(config.id)
-        .then((h) => {
-          if (h) {
-            setUserHomeDir(h);
-            userHomeDirRef.current = h;
-          }
-        })
-        .catch(() => {});
+    } else if (config) {
+      const sftpProviderId = `sftp-${config.id || config.host}`;
+      if (window.multissh?.storageGetHomeDir) {
+        window.multissh
+          .storageGetHomeDir(sftpProviderId)
+          .then((h) => {
+            if (h) {
+              setUserHomeDir(h);
+              userHomeDirRef.current = h;
+              setCurrentCwd((prev) => prev || h);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [local, config?.id]);
+  }, [local, config]);
 
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isActiveRef = useRef(isActive);
@@ -533,6 +539,25 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     });
     const outputTracker = new CommandOutputTracker(term);
     outputTrackerRef.current = outputTracker;
+
+    const osc7Handler = term.parser.registerOscHandler(7, (data) => {
+      try {
+        let p = data;
+        if (p.startsWith('file://')) {
+          const slashIdx = p.indexOf('/', 7);
+          if (slashIdx >= 0) {
+            p = p.slice(slashIdx);
+          }
+        }
+        if (p && p.startsWith('/')) {
+          const decoded = decodeURIComponent(p);
+          setCurrentCwd(decoded);
+        }
+      } catch {
+        // Safe to ignore malformed OSC 7
+      }
+      return true;
+    });
 
     term.open(containerRef.current);
     if (isActiveRef.current) {
@@ -936,6 +961,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       selectionSub.dispose();
       resultsSub.dispose();
       outputTracker.dispose();
+      osc7Handler.dispose();
       outputTrackerRef.current = null;
       searchAddonRef.current = null;
       clearTimeout(settleTimer);

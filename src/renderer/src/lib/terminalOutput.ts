@@ -49,20 +49,20 @@ export function stripTrailingPrompt(text: string): string {
  */
 export function extractCwdFromPrompt(line: string, userHome = '/home/user'): string | null {
   const trimmed = line.trim();
-  // 1. Starship / multi-line: `╭─ alun@fedora in ~ [2026-10-17 15:51]` or `in /etc`
-  const inMatch = trimmed.match(/\bin\s+([~/\w.@+-]+)/);
-  if (inMatch) {
-    const raw = inMatch[1];
+  // 1. Starship / multi-line: `╭─ alun@fedora in ~ [2026-10-17 15:51]` or `alun@fedora in /etc`
+  const starshipMatch = trimmed.match(/(?:[╭┌┏].*?|[\w.-]+@[\w.-]+\s+)\bin\s+([~/][^\s[\]]*)/);
+  if (starshipMatch) {
+    const raw = starshipMatch[1];
     return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;
   }
   // 2. Standard bash/zsh prompt: `alun@host:/etc$ ` or `user@host:~$ `
-  const colonMatch = trimmed.match(/[@:][^:\s]+:([~/\w.@+-]+)[$#%>]/);
+  const colonMatch = trimmed.match(/[@:][^:\s]+:([~/][^\s$#%>]*)[$#%>]/);
   if (colonMatch) {
     const raw = colonMatch[1];
     return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;
   }
   // 3. Bracketed prompt: `[user@host /etc]# `
-  const bracketMatch = trimmed.match(/\[[^\]\s]+\s+([~/\w.@+-]+)\]/);
+  const bracketMatch = trimmed.match(/\[[^\]\s]+[@\s]([~/][^\]]*?)\]/);
   if (bracketMatch) {
     const raw = bracketMatch[1];
     return raw === '~' ? userHome : raw.startsWith('~/') ? `${userHome.replace(/\/+$/, '')}/${raw.slice(2)}` : raw;

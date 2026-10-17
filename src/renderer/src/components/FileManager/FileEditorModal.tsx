@@ -149,7 +149,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     setError(null);
     setSaveStatus(null);
     try {
-      const res: FileReadResult = await window.multissh.fileRead(providerId, entryPath);
+      const res: FileReadResult = isDirectPreview
+        ? await window.multissh.fileRead(providerId, entryPath, 100 * 1024 * 1024)
+        : await window.multissh.fileRead(providerId, entryPath);
       setContent(res.content);
       setOriginalContent(res.content);
       setIsBinary(res.isBinary);
@@ -163,7 +165,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [providerId, entryPath, isDirectory, stopTailSession]);
+  }, [providerId, entryPath, isDirectory, isDirectPreview, stopTailSession]);
 
   // Start tail session
   const startTailSession = useCallback(async () => {
@@ -809,7 +811,11 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         {truncated && !tailModeActive && (
           <div className="flex items-center gap-1.5 border-b border-amber-900/60 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-300">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-            <span>File exceeds 5 MB. Displaying the first 5 MB (read-only, so the file cannot be overwritten with a partial copy).</span>
+            <span>
+              {isDirectPreview
+                ? 'File exceeds 100 MB. Displaying the first 100 MB.'
+                : 'File exceeds 5 MB. Displaying the first 5 MB (read-only, so the file cannot be overwritten with a partial copy).'}
+            </span>
           </div>
         )}
 
