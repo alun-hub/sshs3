@@ -233,6 +233,20 @@ function createWindow(): BrowserWindow {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
+  // The application menu is removed (see initializeApp), which also removes its DevTools
+  // accelerators — give unpackaged builds F12 / Ctrl+Shift+I back so a renderer problem can be
+  // inspected. Packaged releases keep DevTools unreachable.
+  if (!app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const isToggle = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i');
+      if (isToggle) {
+        mainWindow?.webContents.toggleDevTools();
+        event.preventDefault();
+      }
+    });
+  }
+
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
       return;

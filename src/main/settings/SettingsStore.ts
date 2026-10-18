@@ -4,6 +4,25 @@ import os from 'node:os';
 import { app } from 'electron';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types/settings';
 
+/**
+ * The settings UI saves the whole shortcut map, defaults included, so a binding that was still the
+ * default when it was saved keeps overriding a later change of that default. A value equal to a
+ * previous default is indistinguishable from an untouched one, so it is dropped to let the
+ * current default apply.
+ */
+const SUPERSEDED_DEFAULT_SHORTCUTS: Record<string, string> = {
+  copyLastOutput: 'Ctrl+Shift+G',
+};
+
+export function migrateShortcuts<T extends { shortcuts?: Record<string, string> }>(data: T): T {
+  const shortcuts = data?.shortcuts;
+  if (!shortcuts || typeof shortcuts !== 'object') return data;
+  const kept = Object.fromEntries(
+    Object.entries(shortcuts).filter(([id, keys]) => SUPERSEDED_DEFAULT_SHORTCUTS[id] !== keys)
+  );
+  return Object.keys(kept).length === Object.keys(shortcuts).length ? data : { ...data, shortcuts: kept };
+}
+
 export class SettingsStore {
   private filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -41,7 +60,7 @@ export class SettingsStore {
   public async getSettings(): Promise<AppSettings> {
     try {
       const raw = await fs.readFile(this.filePath, 'utf-8');
-      const data = JSON.parse(raw);
+      const data = migrateShortcuts(JSON.parse(raw));
       return {
         ...DEFAULT_SETTINGS,
         ...data,

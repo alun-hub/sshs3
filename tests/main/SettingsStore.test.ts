@@ -27,6 +27,20 @@ describe('SettingsStore', () => {
     expect(settings).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('drops a saved copyLastOutput binding that is still the superseded default', async () => {
+    await fs.writeFile(
+      settingsFile,
+      JSON.stringify({ shortcuts: { closeTab: 'Ctrl+W', copyLastOutput: 'Ctrl+Shift+G', snippets: 'Ctrl+Alt+S' } })
+    );
+    const { shortcuts } = await store.getSettings();
+    expect(shortcuts).toEqual({ closeTab: 'Ctrl+W', snippets: 'Ctrl+Alt+S' });
+  });
+
+  it('keeps a copyLastOutput binding the user chose themselves', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ shortcuts: { copyLastOutput: 'Alt+Y' } }));
+    expect((await store.getSettings()).shortcuts).toEqual({ copyLastOutput: 'Alt+Y' });
+  });
+
   it('saves partial settings and updates values while retaining defaults', async () => {
     await store.saveSettings({ theme: 'light', terminalFontSize: 16 });
     const settings = await store.getSettings();
