@@ -20,8 +20,8 @@ const BUILT_IN_PORT_REGEXES: RegExp[] = [
   // Explicit http/https URL with host & port (e.g. http://localhost:3000, https://127.0.0.1:8443, http://0.0.0.0:5000)
   /(https?):\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|::1):(\d{2,5})/gi,
 
-  // Common framework "Listening on / Server started on" logs
-  /(?:listening|running|started|serving|bound|ready)\s+(?:at|on|port)?\s*:?\s*(?:(https?):\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::|\[::1?\])?:?(\d{2,5})\b/gi,
+  // Common framework "Listening on / Server started on :3000" logs. The port must follow a host or ':'.
+  /(?:listening|running|started|serving|bound|ready)\s+(?:at|on)\s+(?:(https?):\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|::)?:(\d{2,5})\b/gi,
 
   // Vite: Local: http://localhost:5173/
   /Local:\s+(https?):\/\/localhost:(\d{2,5})/gi,
@@ -35,8 +35,8 @@ const BUILT_IN_PORT_REGEXES: RegExp[] = [
   // Go / Gin / Fiber: Listening and serving HTTP on :8080
   /Listening and serving\s+(https?|HTTP)?\s+on\s+:(\d{2,5})/gi,
 
-  // Explicit "port <number>" phrases with listening/ready indicator
-  /(?:port)\s*[:=]?\s*(\d{2,5})\b/gi,
+  // "Listening on port 3000", "Server running at port 8080": the port must follow a listening indicator
+  /(?:listening|running|started|serving|bound|ready)\b[^\n]{0,40}?\bport\s*[:=]?\s*(\d{2,5})\b/gi,
 ];
 
 /** Validates whether a port number is acceptable for a user-facing service. */
@@ -60,6 +60,10 @@ export function validateCustomPortRegex(pattern: string): { valid: boolean; erro
   }
   try {
     const reg = new RegExp(trimmed);
+    // Nested quantifiers such as (a+)+ or (.*)* are the classic catastrophic-backtracking shape
+    if (/\([^)]*[+*][^)]*\)[+*{]/.test(trimmed)) {
+      return { valid: false, error: 'Regular expression is too complex or susceptible to backtracking.' };
+    }
     // Check if regex can execute safely on a test string without catastrophic backtracking
     const start = performance.now();
     reg.test('test string with port 8080');

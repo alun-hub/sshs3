@@ -54,6 +54,10 @@ describe('portDetection', () => {
       expect(res.error).toBeDefined();
     });
 
+    it('rejects nested quantifiers prone to catastrophic backtracking', () => {
+      expect(validateCustomPortRegex('(a+)+$').valid).toBe(false);
+    });
+
     it('rejects excessively long regex', () => {
       const longPattern = 'a'.repeat(301);
       const res = validateCustomPortRegex(longPattern);
@@ -152,6 +156,12 @@ describe('portDetection', () => {
       const results = detectPortsInOutput(output);
       expect(results).toHaveLength(1);
       expect(results[0].port).toBe(3000);
+    });
+
+    it('ignores numbers that merely follow a keyword or the word port', () => {
+      expect(detectPortsInOutput('Running 120 tests')).toEqual([]);
+      expect(detectPortsInOutput('ssh: connect to host x port 2222: refused')).toEqual([]);
+      expect(detectPortsInOutput('Server listening on port 9000')[0]?.port).toBe(9000);
     });
 
     it('returns empty array when no port is found', () => {

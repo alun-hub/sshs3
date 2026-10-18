@@ -296,7 +296,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const dropUpload = useTerminalDropUpload({
     isRemote: Boolean(config),
     config,
-    targetFolder: pathHover.currentCwd || initialCwd || '',
+    k8sTarget,
+    targetFolder: pathHover.cardCwd || '',
     onPaste: (text) => {
       termRef.current?.paste(text);
       termRef.current?.focus();
@@ -986,8 +987,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     >
       <TerminalDropOverlay
         isDragging={dropUpload.isDragging}
-        isRemote={Boolean(config)}
-        targetFolder={pathHover.currentCwd || initialCwd || ''}
+        isRemote={Boolean(config || k8sTarget)}
+        targetFolder={pathHover.cardCwd || ''}
       />
       {perfMetrics && perfKind && (
         <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} title={perfTitle} local={Boolean(local)} />

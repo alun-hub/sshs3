@@ -357,7 +357,6 @@ export function useTerminalPathHover({
   return {
     hoverCardData: pathHoverPreview ? hoverCardData : null,
     cardProps,
-    currentCwd: currentCwdRef.current || currentCwd || initialCwd || userHomeDir,
     cardCwd: currentCwdRef.current || currentCwd || initialCwd || userHomeDir,
     userHomeDir,
     providerId,

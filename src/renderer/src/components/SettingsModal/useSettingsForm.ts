@@ -6,6 +6,7 @@ import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppThem
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import { comboFromKeyboardEvent, modifierPreviewFromKeyboardEvent } from '../../lib/shortcuts';
+import { validateCustomPortRegex } from '../../lib/portDetection';
 import { type SettingsCategory, normalizeAgentMode } from './settingsConstants';
 
 interface UseSettingsFormArgs {
@@ -281,7 +282,9 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       terminalScrollback: scrollback,
       terminalPathHoverPreview,
       terminalPortForwardAutoDetect,
-      terminalPortForwardCustomRegex: terminalPortForwardCustomRegex.trim(),
+      terminalPortForwardCustomRegex: validateCustomPortRegex(terminalPortForwardCustomRegex).valid
+        ? terminalPortForwardCustomRegex.trim()
+        : '',
       copyOnSelect,
       clipboardHistoryScope: clipboardScope,
       clipboardHistoryClearOnExit: clipboardClearOnExit,

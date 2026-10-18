@@ -3,6 +3,7 @@ import { X, Terminal, RotateCcw } from 'lucide-react';
 import { FONT_PRESETS } from './settingsConstants';
 import { X11ServerSection } from './X11ServerSection';
 import type { SettingsForm } from './useSettingsForm';
+import { validateCustomPortRegex } from '../../lib/portDetection';
 
 /** The "Terminal" page of the settings dialog. */
 export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -35,6 +36,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     localTerminalAgentMode,
     setLocalTerminalAgentMode,
   } = form;
+  const portRegexError = validateCustomPortRegex(terminalPortForwardCustomRegex).error;
 
   return (
     <div className="space-y-4">
@@ -366,9 +368,15 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               placeholder="e.g. Service started on :(?<port>\d+) or port (\d+)"
               className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
             />
-            <p className="text-[11px] text-txt-muted">
-              Optional regular expression to capture service ports from proprietary or custom application logs.
-            </p>
+            {portRegexError ? (
+              <p className="text-[11px] text-rose-400" role="alert">
+                {portRegexError} The pattern is ignored until fixed.
+              </p>
+            ) : (
+              <p className="text-[11px] text-txt-muted">
+                Optional regular expression to capture service ports from proprietary or custom application logs.
+              </p>
+            )}
           </div>
         )}
       </div>

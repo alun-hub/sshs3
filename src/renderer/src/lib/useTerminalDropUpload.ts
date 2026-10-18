@@ -1,10 +1,14 @@
 import { useState, useRef, useCallback } from 'react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
-import type { SFTPConfig } from '@shared/types/storage';
+import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import { isValidDragPayload, DRAG_MIME_TYPE } from '../components/FileManager/types';
+import { terminalProviderId, terminalStorageConnectConfig } from './terminalStorage';
 
 export interface UseTerminalDropUploadOptions {
   isRemote: boolean;
   config?: SSHConnectionConfig;
+  /** Kubernetes terminals upload into the container through the k8s storage provider. */
+  k8sTarget?: K8sTerminalTarget;
   targetFolder: string;
   onPaste: (text: string) => void;
   onNotice: (message: string) => void;
@@ -26,17 +30,32 @@ export function getFilePath(file: File): string {
   return (file as File & { path?: string }).path || '';
 }
 
-const DRAG_MIME_TYPE = 'application/x-multissh-file-entries';
+/** True for a plain file name that cannot escape the destination directory. */
+export function isSafeEntryName(name: string): boolean {
+  return Boolean(name) && name !== '.' && name !== '..' && !/[\\/\0]/.test(name);
+}
+
+/** Joins a destination directory and a file name using POSIX separators. */
+export function joinRemotePath(dir: string, name: string): string {
+  const clean = (dir || '/tmp').replace(/\/+$/, '');
+  return `${clean}/${name}`;
+}
+
+interface TransferItem {
+  sourceProviderId: string;
+  sourcePath: string;
+  name: string;
+}
 
 export function useTerminalDropUpload({
   isRemote,
   config,
+  k8sTarget,
   targetFolder,
   onPaste,
   onNotice,
 }: UseTerminalDropUploadOptions) {
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadingState, setUploadingState] = useState<{ fileName: string; progress?: number } | null>(null);
   const dragCounterRef = useRef(0);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -73,183 +92,106 @@ export function useTerminalDropUpload({
       dragCounterRef.current = 0;
       setIsDragging(false);
 
-      // Support internal drag from sshs3 file manager
+      const storageTarget = { config: isRemote ? config : undefined, k8sTarget };
+      const targetProviderId = terminalProviderId(storageTarget);
+      const targetConnect = terminalStorageConnectConfig(storageTarget);
+      const canUpload = Boolean(targetProviderId && targetConnect);
+
+      /** Copies the items into the terminal's current directory and pastes the resulting paths. */
+      const uploadAndPaste = async (items: TransferItem[]) => {
+        if (!targetConnect) return;
+        const pasted: string[] = [];
+        try {
+          await window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' });
+          await window.multissh?.connectStorage?.(targetConnect);
+          for (const item of items) {
+            const remotePath = joinRemotePath(targetFolder, item.name);
+            await window.multissh?.transferAdd?.({
+              sourceProviderId: item.sourceProviderId,
+              sourcePath: item.sourcePath,
+              targetProviderId,
+              targetPath: remotePath,
+            });
+            pasted.push(shellQuote(remotePath));
+          }
+          onNotice(items.length === 1 ? `Uploading ${items[0].name}...` : `Uploading ${items.length} files...`);
+        } catch (err: any) {
+          onNotice(`Upload failed: ${err?.message || String(err)}`);
+        }
+        if (pasted.length > 0) onPaste(pasted.join(' '));
+      };
+
+      // Internal drag from the sshs3 file manager
       const internalData =
         typeof e.dataTransfer?.getData === 'function' ? e.dataTransfer.getData(DRAG_MIME_TYPE) : '';
       if (internalData) {
+        let payload: unknown = null;
         try {
-          const parsed = JSON.parse(internalData);
-          if (parsed && Array.isArray(parsed.entries) && parsed.entries.length > 0) {
-            const entries: Array<{ name: string; path: string }> = parsed.entries;
-            const sourceProviderId: string = parsed.providerId || 'local';
-
-            if (!isRemote || !config) {
-              if (sourceProviderId === 'local') {
-                const paths = entries.map((entry) => shellQuote(entry.path));
-                onPaste(paths.join(' '));
-                return;
-              }
-            } else {
-              const targetProviderId = `sftp-${config.id || config.host}`;
-              const destinationDir = targetFolder || '/tmp';
-              const cleanDestination = destinationDir.replace(/\/+$/, '') || '/';
-
-              if (sourceProviderId === targetProviderId) {
-                const paths = entries.map((entry) => shellQuote(entry.path));
-                onPaste(paths.join(' '));
-                return;
-              }
-
-              await window.multissh?.connectStorage?.({
-                id: 'local',
-                name: 'Local Disk',
-                type: 'local',
-              });
-
-              const sftpConfig: SFTPConfig = {
-                ...config,
-                id: config.id || config.host,
-                name: config.name || config.host,
-                port: config.port ?? 22,
-              };
-
-              await window.multissh?.connectStorage?.({
-                id: targetProviderId,
-                name: config.name || config.host,
-                type: 'sftp',
-                sftpConfig,
-              });
-
-              const transferredPaths: string[] = [];
-              for (const entry of entries) {
-                const remotePath = cleanDestination === '/' ? `/${entry.name}` : `${cleanDestination}/${entry.name}`;
-                if (window.multissh?.transferAdd) {
-                  await window.multissh.transferAdd({
-                    sourceProviderId,
-                    sourcePath: entry.path,
-                    targetProviderId,
-                    targetPath: remotePath,
-                  });
-                }
-                transferredPaths.push(shellQuote(remotePath));
-              }
-
-              if (entries.length === 1) {
-                onNotice(`Uploading ${entries[0].name}...`);
-              } else {
-                onNotice(`Uploading ${entries.length} files...`);
-              }
-
-              if (transferredPaths.length > 0) {
-                onPaste(transferredPaths.join(' '));
-              }
-              return;
-            }
-          }
+          payload = JSON.parse(internalData);
         } catch {
-          // fallback to standard files below
+          // not ours; fall through to the standard file/text handling below
+        }
+        if (isValidDragPayload(payload) && payload.entries.length > 0) {
+          const { entries, providerId: sourceProviderId } = payload;
+          if (!entries.every((entry) => isSafeEntryName(entry.name))) {
+            onNotice('Cannot drop files with unsupported names');
+            return;
+          }
+          if (!canUpload || sourceProviderId === targetProviderId) {
+            if (sourceProviderId === 'local' || sourceProviderId === targetProviderId) {
+              onPaste(entries.map((entry) => shellQuote(entry.path)).join(' '));
+            } else {
+              onNotice('Cannot paste remote files into this terminal; copy them to the local disk first');
+            }
+            return;
+          }
+          await uploadAndPaste(entries.map((entry) => ({ sourceProviderId, sourcePath: entry.path, name: entry.name })));
+          return;
         }
       }
 
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length === 0) {
         // Text drop fallback
-        const text =
-          typeof e.dataTransfer?.getData === 'function' ? e.dataTransfer.getData('text/plain') : '';
+        const text = typeof e.dataTransfer?.getData === 'function' ? e.dataTransfer.getData('text/plain') : '';
         if (text) {
           onPaste(text);
         }
         return;
       }
 
-      // 1. Local session: paste local path(s) directly
-      if (!isRemote || !config) {
+      // Local session: paste local path(s) directly
+      if (!canUpload) {
         const paths = files
           .map((f) => getFilePath(f) || f.name)
           .filter(Boolean)
           .map(shellQuote);
-
         if (paths.length > 0) {
           onPaste(paths.join(' '));
         }
         return;
       }
 
-      // 2. Remote SSH session: upload to targetFolder via SFTP and paste remote path(s)
-      const targetProviderId = `sftp-${config.id || config.host}`;
-      const destinationDir = targetFolder || '/tmp';
-      const cleanDestination = destinationDir.replace(/\/+$/, '') || '/';
-
-      try {
-        // Ensure local storage is connected for source
-        await window.multissh?.connectStorage?.({
-          id: 'local',
-          name: 'Local Disk',
-          type: 'local',
-        });
-
-        // Ensure target storage is connected
-        const sftpConfig: SFTPConfig = {
-          ...config,
-          id: config.id || config.host,
-          name: config.name || config.host,
-          port: config.port ?? 22,
-        };
-
-        await window.multissh?.connectStorage?.({
-          id: targetProviderId,
-          name: config.name || config.host,
-          type: 'sftp',
-          sftpConfig,
-        });
-
-        const uploadedPaths: string[] = [];
-
-        for (const file of files) {
-          const localPath = getFilePath(file);
-          if (!localPath) {
-            uploadedPaths.push(shellQuote(file.name));
-            onNotice(`Could not resolve local path for ${file.name}`);
-            continue;
-          }
-
-          const remotePath = cleanDestination === '/' ? `/${file.name}` : `${cleanDestination}/${file.name}`;
-          setUploadingState({ fileName: file.name, progress: 0 });
-
-          // Start transfer job
-          if (window.multissh?.transferAdd) {
-            await window.multissh.transferAdd({
-              sourceProviderId: 'local',
-              sourcePath: localPath,
-              targetProviderId,
-              targetPath: remotePath,
-            });
-          }
-
-          uploadedPaths.push(shellQuote(remotePath));
+      // Remote session: upload to the current directory and paste the remote path(s)
+      const items: TransferItem[] = [];
+      const unresolved: string[] = [];
+      for (const file of files) {
+        const localPath = getFilePath(file);
+        if (localPath && isSafeEntryName(file.name)) {
+          items.push({ sourceProviderId: 'local', sourcePath: localPath, name: file.name });
+        } else {
+          unresolved.push(file.name);
+          onNotice(`Could not resolve local path for ${file.name}`);
         }
-
-        if (files.length === 1) {
-          onNotice(`Uploading ${files[0].name}...`);
-        } else if (files.length > 1) {
-          onNotice(`Uploading ${files.length} files...`);
-        }
-
-        if (uploadedPaths.length > 0) {
-          onPaste(uploadedPaths.join(' '));
-        }
-      } catch (err: any) {
-        onNotice(`Upload failed: ${err?.message || String(err)}`);
-      } finally {
-        setUploadingState(null);
       }
+      if (unresolved.length > 0) onPaste(unresolved.map(shellQuote).join(' '));
+      if (items.length > 0) await uploadAndPaste(items);
     },
-    [isRemote, config, targetFolder, onPaste, onNotice]
+    [isRemote, config, k8sTarget, targetFolder, onPaste, onNotice]
   );
 
   return {
     isDragging,
-    uploadingState,
     dragHandlers: {
       onDragEnter: handleDragEnter,
       onDragOver: handleDragOver,

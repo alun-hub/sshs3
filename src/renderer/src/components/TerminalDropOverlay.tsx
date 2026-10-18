@@ -35,7 +35,7 @@ export const TerminalDropOverlay: React.FC<TerminalDropOverlayProps> = ({
               <span className="truncate" title={targetFolder}>{targetFolder}</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              File will be uploaded to the active directory via SFTP and quoted into your terminal prompt.
+              File will be uploaded to the active directory and quoted into your terminal prompt.
             </p>
           </div>
         ) : (
