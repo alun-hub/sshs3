@@ -2,7 +2,7 @@ import type { TabItem } from '../components/TabBar';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneNode } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
-import type { FileEntry } from '@shared/types/storage';
+import type { FileEntry, S3Config } from '@shared/types/storage';
 import type { SourceType } from '../components/FileManager/types';
 import { sanitizePaneNode } from '@shared/sessionSanitize';
 import { createLeaf } from './paneTree';
@@ -17,6 +17,8 @@ export interface AppTab extends TabItem {
   initialK8sTarget?: K8sTerminalTarget;
   /** Set when opening a filemanager tab focused on an SSH/SFTP profile. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Set when opening a filemanager tab focused on an S3 profile. */
+  initialS3Config?: S3Config;
   /** Set when opening a filemanager tab focused on a local directory. */
   initialLocalPath?: string;
   /** Optional file or directory path to select and highlight once the directory contents load. */

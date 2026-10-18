@@ -133,6 +133,7 @@ export const App: React.FC = () => {
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,
+    handleConnectS3,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
     handleOpenEditorTab,
@@ -371,6 +372,7 @@ export const App: React.FC = () => {
         {(tabs.length === 0 || activeTabId === '') && (
           <LandingView
             recentSSH={recentSSH}
+            allSSH={recentSSHProfiles}
             onConnectRecentSSH={handleConnectRecentSSH}
             onConnectSFTP={handleConnectSFTP}
             onQuickStartTerminal={handleQuickStartTerminal}
@@ -520,6 +522,7 @@ export const App: React.FC = () => {
                       shortcuts={settings.shortcuts}
                       initialK8sTarget={tab.initialK8sTarget}
                       initialSSHConfig={tab.initialSSHConfig}
+                      initialS3Config={tab.initialS3Config}
                       initialLocalPath={tab.initialLocalPath}
                       initialSelectedPath={tab.initialSelectedPath}
                       showHiddenFiles={settings.showHiddenFiles ?? false}
@@ -584,6 +587,7 @@ export const App: React.FC = () => {
           setProfilesModalOpen(false);
         }}
         onConnectSFTP={handleConnectSFTP}
+        onConnectS3={handleConnectS3}
         onConnectK8s={(target) => {
           const activeTab = tabs.find((t) => t.id === activeTabId);
           if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {

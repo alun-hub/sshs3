@@ -53,3 +53,15 @@ describe('useTabActions handleCloseTab', () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useTabActions handleConnectS3', () => {
+  it('opens a file manager tab focused on the S3 profile', () => {
+    const { result, setTabs } = setup([{ id: 'a', type: 'terminal', title: 'a' } as AppTab]);
+    const profile = { id: 'b1', name: 'Archive' } as any;
+    act(() => result.current.handleConnectS3(profile));
+    const updater = setTabs.mock.calls[0][0] as (prev: AppTab[]) => AppTab[];
+    const next = updater([]);
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ type: 'filemanager', title: 'Archive (S3)', initialS3Config: profile });
+  });
+});

@@ -2,6 +2,8 @@
 
 **sshs3** provides a high-throughput, enterprise-grade cloud object storage client powered by the official **AWS SDK v3 for JavaScript**, integrated alongside your SSH servers and Kubernetes pods in the dual-pane file manager.
 
+In the Connection Manager (<kbd>Ctrl+Shift+O</kbd>), the **S3 Object Storage** tab has a **Connect** button on every profile (or press <kbd>Enter</kbd> on a single search match). It opens a new File Manager tab with the profile in the right pane.
+
 ![S3 Profile Form](/img/docs/s3-profile-form.png)
 
 ---

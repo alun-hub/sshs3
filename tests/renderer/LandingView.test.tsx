@@ -57,6 +57,77 @@ describe('LandingView Component', () => {
     expect(screen.getByTestId('landing-file-manager-btn')).toBeInTheDocument();
   });
 
+  describe('searching saved profiles from the quick-connect box', () => {
+    const allSSH: SSHConnectionConfig[] = [
+      ...mockRecentSSH,
+      { id: 'conn-3', name: 'build-box', host: 'ci.example.com', port: 22, username: 'deploy', authType: 'password' },
+    ];
+
+    const renderLanding = (overrides: Partial<React.ComponentProps<typeof LandingView>> = {}) =>
+      render(
+        <LandingView
+          recentSSH={mockRecentSSH}
+          allSSH={allSSH}
+          onConnectRecentSSH={vi.fn()}
+          onConnectSFTP={vi.fn()}
+          onQuickConnectSSH={vi.fn()}
+          onQuickStartTerminal={vi.fn()}
+          onNewTab={vi.fn()}
+          onOpenProfiles={vi.fn()}
+          onNewProfile={vi.fn()}
+          onOpenSyncBootstrap={vi.fn()}
+          onNavigateToTabBar={vi.fn()}
+          {...overrides}
+        />
+      );
+
+    const type = (text: string) =>
+      fireEvent.change(screen.getByPlaceholderText(/search saved profiles/i), { target: { value: text } });
+
+    it('lists profiles outside the recent ones that match what is typed', () => {
+      renderLanding();
+      type('build');
+      expect(screen.getByText('Matching Profiles')).toBeInTheDocument();
+      expect(screen.getByText('build-box')).toBeInTheDocument();
+      expect(screen.queryByText('demoserver')).not.toBeInTheDocument();
+    });
+
+    it('matches on host and user too, and says so when nothing matches', () => {
+      renderLanding();
+      type('ci.example');
+      expect(screen.getByText('build-box')).toBeInTheDocument();
+      type('zzz-nothing');
+      expect(screen.getByText(/No saved profile matches/)).toBeInTheDocument();
+    });
+
+    it('connects to the first match on submit', () => {
+      const onConnectRecentSSH = vi.fn();
+      const onQuickConnectSSH = vi.fn();
+      renderLanding({ onConnectRecentSSH, onQuickConnectSSH });
+      type('build');
+      fireEvent.click(screen.getByTestId('quick-connect-btn'));
+      expect(onConnectRecentSSH).toHaveBeenCalledWith(expect.objectContaining({ id: 'conn-3' }));
+      expect(onQuickConnectSSH).not.toHaveBeenCalled();
+    });
+
+    it('keeps user@host as an ad-hoc connection', () => {
+      const onConnectRecentSSH = vi.fn();
+      const onQuickConnectSSH = vi.fn();
+      renderLanding({ onConnectRecentSSH, onQuickConnectSSH });
+      type('deploy@ci.example.com');
+      fireEvent.click(screen.getByTestId('quick-connect-btn'));
+      expect(onQuickConnectSSH).toHaveBeenCalledWith(expect.objectContaining({ host: 'ci.example.com', username: 'deploy' }));
+      expect(onConnectRecentSSH).not.toHaveBeenCalled();
+    });
+
+    it('shows recent connections again when the box is cleared', () => {
+      renderLanding();
+      type('build');
+      type('');
+      expect(screen.getByText('Recent Connections')).toBeInTheDocument();
+    });
+  });
+
   it('auto-focuses the quick-connect field after mount', () => {
     render(
       <LandingView

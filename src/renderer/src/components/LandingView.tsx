@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Clock, Cloud, Folder, Plus, Server, Terminal } from 'lucide-react';
+import { Clock, Cloud, Folder, Plus, Search, Server, Terminal } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SftpButton } from './SftpButton';
 import { Shortcut } from './ui/Shortcut';
-import { parseAdHocTarget } from './ConnectionModal/connectionGrouping';
+import { filterSshProfiles, parseAdHocTarget } from './ConnectionModal/connectionGrouping';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
 
 export interface LandingViewProps {
   recentSSH: SSHConnectionConfig[];
+  /** Every saved SSH profile; typing in the quick-connect box searches these. */
+  allSSH?: SSHConnectionConfig[];
   onConnectRecentSSH: (profile: SSHConnectionConfig) => void;
   onConnectSFTP: (profile: SSHConnectionConfig) => void;
   onQuickStartTerminal: () => void;
@@ -24,8 +26,11 @@ export interface LandingViewProps {
   shortcuts?: Record<string, string>;
 }
 
+const MAX_SEARCH_RESULTS = 8;
+
 export const LandingView: React.FC<LandingViewProps> = ({
   recentSSH,
+  allSSH = [],
   onConnectRecentSSH,
   onConnectSFTP,
   onQuickStartTerminal,
@@ -40,6 +45,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [quickConnect, setQuickConnect] = useState('');
   const quickConnectTarget = parseAdHocTarget(quickConnect);
+  const searchQuery = quickConnect.trim().toLowerCase();
+  const profileMatches = searchQuery ? filterSshProfiles(allSSH, searchQuery).slice(0, MAX_SEARCH_RESULTS) : [];
+  const searching = searchQuery.length > 0;
+  // "user@host" stays an ad-hoc connect; any other text that matches a saved profile connects to the first match.
+  const quickConnectProfile = !quickConnectTarget && profileMatches.length > 0 ? profileMatches[0] : null;
+  const listedProfiles = searching ? profileMatches : recentSSH;
 
   const buildQuickConnectConfig = (): SSHConnectionConfig | null => {
     if (!quickConnectTarget) return null;
@@ -130,6 +141,9 @@ export const LandingView: React.FC<LandingViewProps> = ({
             if (config) {
               onQuickConnectSSH(config);
               setQuickConnect('');
+            } else if (quickConnectProfile) {
+              onConnectRecentSSH(quickConnectProfile);
+              setQuickConnect('');
             }
           }}
         >
@@ -137,13 +151,13 @@ export const LandingView: React.FC<LandingViewProps> = ({
             type="text"
             value={quickConnect}
             onChange={(e) => setQuickConnect(e.target.value)}
-            placeholder="Type user@host to connect over SSH..."
+            placeholder="Type user@host to connect, or search saved profiles..."
             className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
           />
           <button
             type="submit"
             data-testid="quick-connect-btn"
-            disabled={!quickConnectTarget}
+            disabled={!quickConnectTarget && !quickConnectProfile}
             className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500 shadow-sm transition-colors disabled:opacity-40"
           >
             Connect
@@ -155,20 +169,26 @@ export const LandingView: React.FC<LandingViewProps> = ({
               if (config) {
                 onConnectSFTP(config);
                 setQuickConnect('');
+              } else if (quickConnectProfile) {
+                onConnectSFTP(quickConnectProfile);
+                setQuickConnect('');
               }
             }}
           />
         </form>
 
         {/* Recent Connections */}
-        {recentSSH.length > 0 && (
+        {(listedProfiles.length > 0 || searching) && (
           <div className="w-full rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 text-left">
             <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-sky-400">
-              <Clock className="h-3.5 w-3.5" />
-              <span>Recent Connections</span>
+              {searching ? <Search className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+              <span>{searching ? 'Matching Profiles' : 'Recent Connections'}</span>
             </div>
             <div className="flex flex-col gap-1.5">
-              {recentSSH.map((profile) => (
+              {searching && listedProfiles.length === 0 && (
+                <div className="px-1 py-1 text-xs text-txt-muted">No saved profile matches "{quickConnect.trim()}".</div>
+              )}
+              {listedProfiles.map((profile) => (
                 <div
                   key={profile.id}
                   className="recent-card flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-strong transition-colors"

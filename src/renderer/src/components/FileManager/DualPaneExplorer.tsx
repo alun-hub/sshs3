@@ -37,6 +37,8 @@ interface DualPaneExplorerProps {
   initialK8sTarget?: K8sTerminalTarget;
   /** Automatically connect the right pane to this SSH/SFTP profile on mount. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Automatically connect the right pane to this S3 profile on mount. */
+  initialS3Config?: S3Config;
   /** Focus local disk pane on this folder on mount. */
   initialLocalPath?: string;
   /** Optional file or folder path to highlight and scroll to upon loading. */
@@ -53,6 +55,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   shortcuts,
   initialK8sTarget,
   initialSSHConfig,
+  initialS3Config,
   initialLocalPath,
   initialSelectedPath,
   showHiddenFiles = false,
@@ -62,7 +65,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
   });
-  const [activeSide, setActiveSide] = useState<PaneSide>(initialSSHConfig ? 'right' : 'left');
+  const [activeSide, setActiveSide] = useState<PaneSide>(initialSSHConfig || initialS3Config ? 'right' : 'left');
   const [refreshToken, setRefreshToken] = useState(0);
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   const [splitRatio, setSplitRatio] = useState(0.5);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
+  const autoConnectedS3Ref = useRef(false);
   const autoConnectedLocalRef = useRef(false);
 
   useEffect(() => {
@@ -251,7 +255,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           // same folder. When there's nothing saved for the right pane and
           // it isn't being auto-connected to a specific target, prompt for a
           // remote connection instead of silently leaving it on Local Disk.
-          if (!session?.panes?.right && !initialSSHConfig && !initialK8sTarget) {
+          if (!session?.panes?.right && !initialSSHConfig && !initialS3Config && !initialK8sTarget) {
             setConnectionRequest({ side: 'right', type: 'sftp' });
           }
         }
@@ -436,9 +440,9 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   };
 
   const connectPaneToS3 = useCallback(
-    async (config: S3Config) => {
-      if (!connectionRequest) return;
-      const { side } = connectionRequest;
+    async (config: S3Config, targetSide?: PaneSide) => {
+      const side = targetSide || connectionRequest?.side;
+      if (!side) return;
       setConnecting(true);
       try {
         const providerId = `s3-${config.id}`;
@@ -530,6 +534,15 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
     // Runs once per mount, for the same reason as the k8s effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSSHConfig, ready]);
+
+  useEffect(() => {
+    if (initialS3Config && ready && !autoConnectedS3Ref.current) {
+      autoConnectedS3Ref.current = true;
+      void connectPaneToS3(initialS3Config, 'right');
+    }
+    // Runs once per mount, for the same reason as the k8s effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialS3Config, ready]);
 
   useEffect(() => {
     if (initialLocalPath && ready && !autoConnectedLocalRef.current) {

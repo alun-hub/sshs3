@@ -59,6 +59,22 @@ describe('DualPaneExplorer SFTP default start path', () => {
     });
   });
 
+  it('connects the right pane to initialS3Config on mount', async () => {
+    const s3 = { id: 'bucket-1', name: 'Archive', region: 'eu-north-1', initialPath: '/logs' } as any;
+
+    render(
+      <ConfirmProvider>
+        <DualPaneExplorer initialS3Config={s3} />
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect((window as any).multissh.connectStorage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 's3', id: 's3-bucket-1', name: 'Archive' })
+      );
+    });
+  });
+
   it('starts at explicit initialPath when provided in profile', async () => {
     const config: SSHConnectionConfig = {
       id: 'test-profile-2',

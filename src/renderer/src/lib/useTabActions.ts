@@ -5,6 +5,7 @@ import type { AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
+import type { S3Config } from '@shared/types/storage';
 import type { AppTab } from './tabs';
 import { formatDateTime } from './format';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
@@ -466,6 +467,19 @@ export function useTabActions(ctx: TabActionsContext) {
     setConnectTarget(null);
   }, [setActiveTabId, setConnectTarget, setProfilesModalOpen, setTabs]);
 
+  const handleConnectS3 = useCallback((config: S3Config) => {
+    const newId = `fm-${Date.now()}`;
+    const newTab: AppTab = {
+      id: newId,
+      type: 'filemanager',
+      title: `${config.name} (S3)`,
+      initialS3Config: config,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+    setProfilesModalOpen(false);
+  }, [setActiveTabId, setProfilesModalOpen, setTabs]);
+
   // UX audit finding #3: clicking this landing-page card used to create an
   // empty, unconnected leaf — landing on a "No connection selected for this
   // tab" screen that then needed a second click ("Open Local Terminal") for
@@ -537,6 +551,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,
+    handleConnectS3,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
     handleOpenEditorTab,
