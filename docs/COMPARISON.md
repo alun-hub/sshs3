@@ -175,6 +175,179 @@ This document provides a comprehensive, objective technical comparison between *
 
 ---
 
+## Modern Linux & Cross-Platform SSH Clients
+
+A second group of tools targets the same audience as sshs3: developers and administrators on Linux and Windows, some also on macOS and mobile. This section compares sshs3 with **sshpilot**, **SSH-Studio**, **RustConn**, and **Termius**. The three open-source projects were cloned and searched (source code and documentation), and Termius was read from its public pricing, feature, and documentation pages. See "Sources and method" at the end of the section.
+
+✅ supported, ⚠️ partial or with limits, ❌ confirmed absent in the sources reviewed, — not found (it may still exist), N/A does not apply to this kind of tool (SSH-Studio has no terminal or file manager).
+
+### Overview
+
+| | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Type** | SSH terminal + dual-pane file manager + K8s tools | SSH manager with terminal, file manager, and plugins | GUI editor & validator for `ssh_config` | Multi-protocol connection manager | Commercial SSH client |
+| **License** | MIT | GPL-3.0 | GPL-3.0 | GPL-3.0 | Freemium, proprietary |
+| **Price** | Free | Free | Free | Free | Free tier; Pro US$10/month, Team US$20 and Business US$30 per seat (billed annually) |
+| **Platforms** | Linux, Windows | Linux, macOS, Windows | Linux (Flatpak) | Linux, macOS, FreeBSD, Windows (WSLg) | macOS, Windows, Linux, iOS, Android |
+| **UI languages** | English | ✅ Translations | ✅ Translations | ✅ 18 languages | — |
+
+### Terminal & workflow
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Uses `~/.ssh/config`** | ✅ Real system OpenSSH; managed block; imports from it | ✅ Native OpenSSH | ✅ (edits it) | ✅ (imports it) | — |
+| **Split panes** | ✅ Recursive, nested | ✅ | N/A | ✅ | ✅ |
+| **Session persistence** | ✅ Tabs, splits, working directories | ✅ Session restore, background daemon | N/A | ✅ Workspace profiles | ✅ Workspaces |
+| **Local shell tabs** | ✅ `$SHELL`, PowerShell, CMD, WSL | ✅ | N/A | ✅ | ✅ |
+| **Scrollback search** | ✅ Match counter | ✅ | N/A | ✅ | — |
+| **Snippets** | ✅ Variables `{{host}}`, `{{user}}`, `{{date}}` | ✅ | N/A | ✅ Plus global variables | ✅ Plus multi-execution and startup snippets |
+| **Command autocomplete** | — | ✅ History, shell history, snippets | N/A | — | ✅ AI-powered, also in the free tier |
+| **Broadcast input / multi-exec** | — | ✅ Broadcast mode | N/A | ✅ Broadcast and clusters | ✅ Snippet multi-execution |
+| **Command palette** | ⚠️ Quick Connect bar | ✅ Omni-search | N/A | ✅ | — |
+| **Themes, font zoom, shortcuts** | ✅ Dark, light, Breeze; per-tab zoom; fully rebindable | ✅ Custom themes, shortcut editor | — | ✅ Terminal themes, custom keybindings | — |
+| **Keyboard-first navigation** | ✅ `Ctrl+Shift+Arrows` spatial navigation | ⚠️ Keyboard navigation | — | — | — |
+| **Dynamic tab titles** | ✅ Tracks remote host and running command | — | N/A | — | — |
+| **Path hover cards** | ✅ Live peek, copy path, reveal, edit, drag out | — | N/A | — | — |
+| **Clean output copy** | ✅ Exact in shells with OSC 133 prompt marks | — | N/A | ⚠️ OSC 133 only for exit status | — |
+| **Encrypted clipboard history** | ✅ Searchable, per host or global | — | N/A | — | — |
+| **Remote host monitoring** | ✅ Opt-in bar with history charts, also for K8s pods | ✅ Host dashboard | N/A | ✅ Agentless metrics bar | — |
+| **Session logs / recording** | — | — | N/A | ✅ Logging and recording | ✅ Session logs (Pro and up) |
+| **Automation (expect rules)** | — | — | N/A | ✅ | ⚠️ Startup snippets |
+| **Terminal sharing** | — | — | N/A | — | ✅ Terminal multiplayer |
+| **Command-line interface** | — | ✅ `sshpilot-cli` | — | ✅ `rustconn-cli` | — |
+| **Wake-on-LAN** | — | ✅ | — | ✅ | — |
+| **Port knocking / SPA** | — | ✅ | — | ✅ | — |
+| **Organization** | ✅ Folders and tags | ✅ Groups, tags, colors | ⚠️ Search and filter | ✅ Groups, tags, smart and dynamic folders | ✅ Groups |
+
+### Connectivity & SSH
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Port forwarding (`-L`/`-R`/`-D`)** | ✅ Saved per profile, tunnels panel | ✅ | — | ✅ Plus visual tunnel builder | ✅ |
+| **Jump hosts** | ✅ ProxyJump in terminal and SFTP | ✅ `ProxyJump` / `ProxyCommand` | — | ✅ Multi-hop chains | ✅ Host chains |
+| **Agent forwarding** | ✅ Per profile | ✅ | — | — | ✅ |
+| **X11 forwarding** | ✅ Trusted `-Y` | ✅ Connection option | — | ✅ Connection option; Waypipe for Wayland | — |
+| **Bundled X server on Windows** | ✅ Managed VcXsrv, firewall rule | — | — | — | — |
+| **SSH agent lifecycle** | ✅ Detects or spawns a managed `ssh-agent` / uses the Windows service | — | — | — | — |
+| **Known hosts** | ✅ Trust dialog (TOFU), appends to `known_hosts` | ✅ Editor for local and remote | — | — | — |
+| **Key transfer (`ssh-copy-id`)** | ✅ | ✅ | — | — | — |
+| **`authorized_keys` editor** | — | ✅ Local and remote | — | — | — |
+| **`ssh_config` editor** | — | ✅ | ✅ Visual editor with validation and diff | — | — |
+| **Cloud and inventory import** | — | — | — | ✅ Dynamic folders (AWS EC2, Proxmox, Kubernetes nodes), Ansible inventory | ✅ AWS, DigitalOcean, Azure |
+
+### Files & storage
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **File manager** | ✅ Dual-pane over local, SFTP, S3, and K8s pods | ✅ Dual-pane over local and SFTP, plus SCP | N/A | ⚠️ System file manager or Midnight Commander | ✅ SFTP |
+| **Drag and drop** | ✅ Between panes and to/from the OS file manager | ✅ Between panes | N/A | — | — |
+| **Transfer queue and conflicts** | ✅ Pause, resume, cancel; overwrite, skip, rename | ✅ Progress and conflict prompt | N/A | — | — |
+| **Visual `chmod` editor** | ✅ rwx grid, octal, recursive | ✅ Permissions dialog | N/A | — | — |
+| **In-app text editor** | ✅ CodeMirror 6, 15+ languages, saves back to SFTP, S3, or pod | ✅ Syntax highlighting | N/A | — | — |
+| **Edit as root (sudo)** | — | ✅ Privileged save | N/A | — | — |
+| **Rich previews** | ✅ Markdown, HTML, SVG, CSV/TSV table, images, PDF | — | N/A | — | — |
+| **Edit in external IDE** | ✅ Auto-upload on save | — | N/A | — | — |
+| **Live log streaming (`tail -f`)** | ✅ Pause, resume, search | — | N/A | — | — |
+| **File content search** | ✅ Regex across local, SFTP, and S3 | — | N/A | — | — |
+| **Folder sync / diff** | ✅ Local, SFTP, S3, saved sync profiles | — | N/A | — | — |
+| **Git integration** | ✅ Clone, pull, status, commit signing, dotfile import | — | N/A | — | — |
+| **Dotfile sync** | ✅ Opt-in pools per profile | — | N/A | — | — |
+
+### Cloud-native: S3 & Kubernetes
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **S3 object storage** | ✅ AWS, MinIO, NetApp, custom endpoints | ❌ | ❌ | ❌ | — |
+| **AWS SSO (IAM Identity Center)** | ✅ Browser approval and role picker | ❌ | ❌ | ❌ | — |
+| **S3 bucket operations** | ✅ Policy editor, CORS, tagging, versioning | ❌ | ❌ | ❌ | — |
+| **Kubernetes cluster tree** | ✅ Lazy loading, live `~/.kube/config` watching | ⚠️ Pickers for context, namespace, workload, and container in a form; no tree | ❌ | ❌ Fields typed by hand | — |
+| **Container exec terminal** | ✅ In split panes | ✅ `kubectl exec` plugin | ❌ | ✅ `kubectl exec` via external client | — |
+| **Container log viewer** | ✅ Live, searchable | ❌ | ❌ | ❌ | — |
+| **Ephemeral pod debugging (`kubectl debug`)** | ✅ Netshoot and other presets | ❌ | ❌ | ⚠️ Temporary busybox pod | — |
+| **Pod file explorer** | ✅ Browse, edit, upload, download inside running pods | ❌ | ❌ | ❌ | — |
+| **Pod inspector and metrics** | ✅ YAML, events, requests and limits | ❌ | ❌ | ❌ | — |
+| **Kubernetes port forwarding** | ✅ Pods and services | ❌ | ❌ | ❌ | — |
+| **OpenShift login** | ✅ Built-in `oc login` parser and CLI shim | ❌ | ❌ | ❌ | — |
+| **Docker / Podman** | — | ✅ Console for containers, images, volumes, networks, compose, logs, stats | ❌ | — | — |
+
+### Security, keys & sync
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **FIDO2 security keys** | ✅ Resident key discovery, generation, visual touch banner | ⚠️ Provider path configured per connection | — | ⚠️ Via OpenSSH and `libfido2` | ✅ |
+| **Smartcards / PKCS#11** | ✅ SITHS, Net iD, OpenSC, YubiKey PIV, p11-kit, auto-detected | ⚠️ Provider path configured per connection | — | ⚠️ `PKCS11Provider` directive | — |
+| **PIN caching modes and in-app PIN dialog** | ✅ Always prompt, once per terminal, app lifetime | — | — | — | — |
+| **Biometric keys** | — | — | — | — | ✅ Windows Hello, Touch ID / Face ID |
+| **SSH certificates** | — | — | — | — | ✅ |
+| **Profile sync / backup** | ✅ Zero-knowledge AES-256-GCM to your own S3 or SFTP; smartcard unlock | ✅ Bitwarden/Vaultwarden or own servers | — | ✅ Shared cloud folder (Drive, Syncthing, Nextcloud, Dropbox) | ✅ E2E encrypted vault on Termius servers |
+| **Team sharing** | ✅ Team Vault in your own S3 bucket, YubiKey PIV, no shared password | — | — | ⚠️ Group sync over a shared folder | ✅ Hosted team vaults |
+| **Password storage** | ⚠️ OS keyring (libsecret on Linux, DPAPI on Windows) | ✅ libsecret, KeePass, Bitwarden, pass | — | ✅ KeePassXC, Bitwarden, 1Password, Passbolt, pass | ⚠️ Built-in keychain |
+| **Verifiable releases** | ✅ `SHA256SUMS` and build-provenance attestations | — | — | ✅ Build-provenance attestations | — |
+| **Compliance** | — | — | — | — | ✅ SOC 2 Type II, SAML SSO (add-on) |
+
+### Ecosystem & reach
+
+| Feature | sshs3 | sshpilot | SSH-Studio | RustConn | Termius |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Non-SSH protocols** | ❌ Not offered | ✅ Telnet, serial, Mosh, RDP, Docker, Kubernetes exec via plugins | — | ✅ RDP, VNC, SPICE, Mosh, Telnet, serial, Zero Trust bastions, web | ✅ Telnet, Mosh, serial |
+| **Importers from other tools** | ⚠️ `~/.ssh/config` only | — | — | ✅ Many (MobaXterm, PuTTY, Remmina, mRemoteNG, and more) | — |
+| **Plugins** | — | ✅ | — | — | — |
+| **AI / coding-agent integration** | — | ✅ MCP server for coding agents | — | — | ⚠️ AI-powered autocomplete |
+
+### What none of the four offer
+
+In the sources reviewed, none of the four modern tools has these sshs3 features:
+
+- **Rich file handling:** rich previews (Markdown, HTML, SVG, CSV, images, PDF), external-IDE round trip, `tail -f`, regex content search, folder sync and diff, and Git integration.
+- **S3 and cloud storage:** S3 and S3-compatible storage, AWS SSO, and bucket policy, CORS, tagging, and versioning tools. Searching the sshpilot, RustConn, and SSH-Studio source for S3 found nothing relevant.
+- **Kubernetes beyond `kubectl exec`:** cluster tree with live kubeconfig watching, searchable log viewer, `kubectl debug`, pod file explorer, pod inspector with metrics, Kubernetes port forwarding, and OpenShift login. sshpilot and RustConn open a shell in a pod with `kubectl exec`. sshpilot suggests contexts, namespaces, workloads, and containers in its connection form, and RustConn needs them typed in. Both require `kubectl` to be installed.
+- **Smartcard workflow:** PIN caching modes with an in-app PIN dialog, and unlocking encrypted sync with a card. Team Vault with YubiKey PIV on the team's own S3 bucket, with no hosted service.
+- **Terminal ergonomics:** path hover cards, clean output copy with OSC 133, and an encrypted clipboard history.
+- **Windows extras:** a bundled and managed X server with firewall setup, and `ssh-agent` lifecycle management.
+- **Dotfile pools** applied to servers on connect, and **zero-knowledge profile sync** to the user's own S3 or SFTP.
+
+### Where the competitors overlap with sshs3
+
+These are not differentiators:
+
+- **X11 forwarding:** sshpilot and RustConn both have a connection option for it. Only the bundled, managed X server on Windows is sshs3-specific.
+- **Key transfer, visual `chmod`, a built-in editor with syntax highlighting, and a dual-pane SFTP manager:** sshpilot has all four.
+- **Scrollback search, local shell tabs, snippets, split panes, port forwarding, and jump hosts:** at least two of the four have each.
+- **Hardware keys:** sshpilot and RustConn can use FIDO2 and PKCS#11 through OpenSSH. sshs3's advantage is the workflow around them (discovery, touch banner, PIN dialog, PIN caching), not basic support.
+- **OS keyring storage:** sshs3 uses libsecret on Linux through Electron `safeStorage`, as sshpilot does as one of several backends. sshs3 has no KeePass, Bitwarden, or `pass` integration.
+- **Windows support:** sshpilot also runs on Windows.
+
+### Per-application notes
+
+**sshpilot** is the closest in shape and the broadest of the three open-source tools in everyday features: tabs, split view, a dual-pane SFTP manager with `chmod`, conflict handling, and a built-in editor, plus a Docker console, broadcast mode, Omni-search, Wake-on-LAN, port knocking, a CLI, a background daemon, key and `authorized_keys` managers, an MCP server, and plugins for Telnet, serial, Mosh, RDP, Docker, and Kubernetes exec. It runs on Linux, macOS, and Windows. sshs3 is ahead on file-manager depth beyond the basics (previews, `tail -f`, search, folder sync, Git, S3), Kubernetes, smartcard workflow, and sync to infrastructure the user controls.
+
+**SSH-Studio** is not a terminal or file client. It is a visual editor and validator for `ssh_config`, with inline validation, a raw/diff view, key management, a connection test, and atomic saves with backups. It complements sshs3 more than it competes with it. sshs3 has no visual `ssh_config` editor.
+
+**RustConn** has the broadest protocol and integration coverage: RDP, VNC, SPICE, Mosh, Telnet, serial, Zero Trust bastions (AWS SSM, GCP IAP, Azure Bastion, Cloudflare, Teleport, Tailscale), many importers, several password managers, dynamic folders, Wake-on-LAN, expect rules, session recording, and a CLI. Its SFTP support hands off to the system file manager or Midnight Commander. sshs3 is ahead on an integrated file manager, S3, Kubernetes depth, and zero-knowledge sync.
+
+**Termius** is a polished commercial product with mobile apps, AI-powered autocomplete, workspaces, terminal multiplayer, session logs, hosted team vaults, and enterprise compliance (SOC 2 Type II, SAML SSO). Its free tier covers local vault, SSH, SFTP, port forwarding, and autocomplete. Cloud sync, session logs, and team features need paid plans. Its feature list shows no S3, Kubernetes, or X11 support. sshs3 is ahead on being free and open source, self-hosted sync and team sharing, the file-manager depth, S3 and Kubernetes integration, and smartcard PIN management.
+
+### Where sshs3 should not claim leadership
+
+- **macOS and mobile:** sshpilot, RustConn, and Termius run on macOS. Termius also has iOS and Android apps. sshs3 does not.
+- **Protocol breadth:** RustConn, sshpilot, and Termius cover more protocols than sshs3, including RDP (RustConn, sshpilot), Telnet, serial, and Mosh.
+- **Automation and CLI:** RustConn has expect rules, broadcast, session recording, Wake-on-LAN, and a CLI. sshpilot has a CLI, broadcast mode, Wake-on-LAN, and port knocking. sshs3 has none of these.
+- **Terminal convenience:** sshpilot and Termius offer command autocomplete. Termius also has terminal sharing, biometric keys, and SSH certificates.
+- **Migration:** RustConn imports from many tools. sshs3 only imports from `~/.ssh/config`.
+- **Secret backends:** sshpilot and RustConn integrate KeePass, Bitwarden, and `pass`. sshs3 uses only the OS keyring.
+- **Editing as root:** sshpilot can save remote files with sudo. sshs3 cannot.
+- **Ecosystem:** sshpilot has plugins and an MCP server for coding agents. sshs3 has neither. RustConn is translated into 18 languages. The sshs3 interface is English only.
+- **Maturity:** the sshs3 README carries an early-development notice, and Windows builds are not code-signed yet. Termius has compliance certifications and an established user base.
+
+### Sources and method
+
+- **sshs3:** `README.md`, `docs/user-guide/` (all pages searched, `terminal.md`, `file-manager.md`, `connections.md`, `getting-started.md`, and `team-vault.md` read), and source modules under `src/main/`.
+- **sshpilot, RustConn, SSH-Studio:** shallow clones of the GitHub repositories, retrieved 2026-10-18 13:43. Source code and documentation were searched, and sshpilot's wiki and RustConn's `USER_GUIDE.md` were read. A "❌" means the feature was not found in either the code or the documentation. Test files were excluded from the searches.
+- **Termius:** the homepage, pricing page (including its feature comparison), security, vault, and documentation pages, retrieved the same day. The product is closed source, so features that its public pages do not list may still exist.
+- Pricing and feature lists change. Re-check them before quoting in marketing material.
+
+---
+
 ## When Should You Choose sshs3?
 
 **Choose sshs3 if you:**
