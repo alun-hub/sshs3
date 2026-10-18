@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.45] - 2026-10-18
+
+### Fixed
+- **Dropped Windows file names with typographic quotes or `&`/`|`/`<`/`>`/`^` are quoted safely.** PowerShell treats typographic quotes (`‘ ’ “ ”`) as string delimiters, so such names could end the quoting early; they are now quoted literally. A name that needs literal quoting and also contains a cmd.exe metacharacter cannot be pasted safely into both shells and is skipped with a notice.
+
 ## [0.96.44] - 2026-10-18
 
 ### Fixed
