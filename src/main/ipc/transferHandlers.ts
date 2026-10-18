@@ -29,6 +29,8 @@ export function registerTransferHandlers(bridge: TransferHost): void {
       skipped?: boolean;
       resolvedPolicy?: TransferConflictResolution;
       appliedToAll?: boolean;
+      /** The path the transfer writes to (differs from the requested one after nesting or "rename"). */
+      targetPath?: string;
     }> => {
       if (!options?.sourceProviderId || !options?.targetProviderId) {
         throw new Error('sourceProviderId and targetProviderId are required for transfer');
@@ -77,7 +79,7 @@ export function registerTransferHandlers(bridge: TransferHost): void {
         }
 
         if (resolvedPolicy === 'skip') {
-          return { jobId: null, skipped: true, resolvedPolicy, appliedToAll };
+          return { jobId: null, skipped: true, resolvedPolicy, appliedToAll, targetPath: resolvedTargetPath };
         }
         if (resolvedPolicy === 'rename') {
           resolvedTargetPath = await resolveNonConflictingPath(
@@ -104,7 +106,7 @@ export function registerTransferHandlers(bridge: TransferHost): void {
         expectedChecksum: options.expectedChecksum,
       });
 
-      return { jobId: job.id, resolvedPolicy, appliedToAll };
+      return { jobId: job.id, resolvedPolicy, appliedToAll, targetPath: resolvedTargetPath };
     }
   );
 

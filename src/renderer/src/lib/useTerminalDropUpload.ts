@@ -100,21 +100,37 @@ export function useTerminalDropUpload({
       /** Copies the items into the terminal's current directory and pastes the resulting paths. */
       const uploadAndPaste = async (items: TransferItem[]) => {
         if (!targetConnect) return;
+        if (!targetFolder) {
+          onNotice('The current directory is not known yet. Press Enter in the terminal and drop again.');
+          return;
+        }
         const pasted: string[] = [];
+        const uploaded: string[] = [];
+        let skipped = 0;
         try {
           await window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' });
           await window.multissh?.connectStorage?.(targetConnect);
           for (const item of items) {
             const remotePath = joinRemotePath(targetFolder, item.name);
-            await window.multissh?.transferAdd?.({
+            const res = await window.multissh?.transferAdd?.({
               sourceProviderId: item.sourceProviderId,
               sourcePath: item.sourcePath,
               targetProviderId,
               targetPath: remotePath,
             });
-            pasted.push(shellQuote(remotePath));
+            if (res?.skipped) {
+              skipped++;
+              continue;
+            }
+            // The transfer may have written elsewhere (e.g. "keep both" renames the file)
+            pasted.push(shellQuote(res?.targetPath || remotePath));
+            uploaded.push(item.name);
           }
-          onNotice(items.length === 1 ? `Uploading ${items[0].name}...` : `Uploading ${items.length} files...`);
+          if (uploaded.length > 0) {
+            onNotice(uploaded.length === 1 ? `Uploading ${uploaded[0]}...` : `Uploading ${uploaded.length} files...`);
+          } else if (skipped > 0) {
+            onNotice(skipped === 1 ? 'Upload skipped' : `${skipped} uploads skipped`);
+          }
         } catch (err: any) {
           onNotice(`Upload failed: ${err?.message || String(err)}`);
         }

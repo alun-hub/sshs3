@@ -166,4 +166,20 @@ describe('usePortDetection', () => {
     );
     expect(window.multissh.openExternal).toHaveBeenCalledWith('http://localhost:9080');
   });
+
+  it('reopens the forwarded local port, not the remote one, when the tunnel already exists', async () => {
+    window.multissh.sshTunnelCheckPort = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const { result } = renderHook(() => usePortDetection({ enabled: true, isRemote: true, config: sampleConfig }));
+
+    await act(async () => {
+      await result.current.handleForwardAndOpen(8080, 'http');
+    });
+    await act(async () => {
+      await result.current.handleForwardAndOpen(8080, 'http');
+    });
+
+    expect(window.multissh.sshTunnelStart).toHaveBeenCalledTimes(1);
+    expect(window.multissh.openExternal).toHaveBeenNthCalledWith(1, 'http://localhost:9080');
+    expect(window.multissh.openExternal).toHaveBeenNthCalledWith(2, 'http://localhost:9080');
+  });
 });

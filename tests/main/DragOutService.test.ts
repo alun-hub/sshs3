@@ -60,10 +60,37 @@ describe('DragOutService', () => {
     expect(addJob).toHaveBeenCalledTimes(1);
   });
 
-  it('stages directories as directory jobs', async () => {
-    stat.mockResolvedValue({ name: 'dir', size: 0, isDirectory: true });
-    await service.prepare('sftp-1', ['/srv/dir']).catch(() => {});
+  it('downloads a directory again every time and removes the previous copy', async () => {
+    stat.mockResolvedValue({ name: 'dir', size: 0, isDirectory: true, mtimeMs: 1 });
+    addJob.mockImplementation((opts: { targetPath: string }) => {
+      fs.mkdirSync(opts.targetPath, { recursive: true });
+      return { id: 'job-d' };
+    });
+    const [first] = await service.prepare('sftp-1', ['/srv/dir']);
+    const [second] = await service.prepare('sftp-1', ['/srv/dir']);
+    expect(addJob).toHaveBeenCalledTimes(2);
     expect(addJob).toHaveBeenCalledWith(expect.objectContaining({ isDirectory: true }));
+    expect(second).not.toBe(first);
+    expect(fs.existsSync(first)).toBe(false);
+    expect(fs.existsSync(second)).toBe(true);
+  });
+
+  it('creates a single staging root for concurrent first requests and removes it on dispose', async () => {
+    stat.mockImplementation(async (p: string) => ({ name: path.basename(p), size: 1, isDirectory: false, mtimeMs: 1 }));
+    await Promise.all([service.prepare('sftp-1', ['/srv/a.txt']), service.prepare('sftp-1', ['/srv/b.txt'])]);
+    expect(fs.readdirSync(base)).toHaveLength(1);
+    await service.dispose();
+    expect(fs.readdirSync(base)).toEqual([]);
+  });
+
+  it('sweeps stale roots only on the first request', async () => {
+    await service.prepare('sftp-1', ['/srv/a.txt']);
+    const stale = fs.mkdtempSync(path.join(base, 'sshs3-dragout-'));
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    fs.utimesSync(stale, old, old);
+    stat.mockResolvedValue({ name: 'a.txt', size: 10, isDirectory: false, mtimeMs: 5 });
+    await service.prepare('sftp-1', ['/srv/a.txt']);
+    expect(fs.existsSync(stale)).toBe(true);
   });
 
   it('refuses unknown providers, bad input, special and oversized files', async () => {
@@ -95,7 +122,7 @@ describe('DragOutService', () => {
     const decoy = path.join(base, 'sshs3-dragout-1000');
     fs.mkdirSync(decoy);
     const stale = fs.mkdtempSync(path.join(base, 'sshs3-dragout-'));
-    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
     fs.utimesSync(stale, old, old);
     const [local] = await service.prepare('sftp-1', ['/srv/a.txt']);
     expect(local.startsWith(decoy)).toBe(false);

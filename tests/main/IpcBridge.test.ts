@@ -1598,7 +1598,7 @@ describe('IpcBridge', () => {
       await mockIpc.invoke(IPC_CHANNELS.TRANSFER_CONFLICT_RESPOND, promptId, 'skip', true);
 
       const res = await resultPromise;
-      expect(res).toEqual({ jobId: null, skipped: true, resolvedPolicy: 'skip', appliedToAll: true });
+      expect(res).toEqual({ jobId: null, skipped: true, resolvedPolicy: 'skip', appliedToAll: true, targetPath: '/dst/exists.txt' });
       expect(mockTransferQueue.addJob).not.toHaveBeenCalled();
     });
 

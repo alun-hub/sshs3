@@ -610,7 +610,7 @@ export interface MultiSSHApi {
     verifyIntegrity?: boolean;
     verifyChecksum?: boolean | 'sha256' | 'md5';
     expectedChecksum?: string;
-  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean }>;
+  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean; targetPath?: string }>;
   transferPause(jobId: string): Promise<void>;
   transferResume(jobId: string): Promise<void>;
   transferCancel(jobId: string): Promise<void>;

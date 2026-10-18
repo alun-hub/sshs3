@@ -17,7 +17,7 @@ export function usePortDetection({
 }: UsePortDetectionOptions) {
   const [detectedPorts, setDetectedPorts] = useState<PortDetectionResult[]>([]);
   const dismissedPortsRef = useRef<Set<number>>(new Set());
-  const activeTunnelsRef = useRef<Map<number, string>>(new Map()); // port -> active tunnel ID
+  const activeTunnelsRef = useRef<Map<number, { id: string; localPort: number }>>(new Map()); // remote port -> tunnel
   const configRef = useRef(config);
   configRef.current = config;
   const isRemoteRef = useRef(isRemote);
@@ -39,8 +39,8 @@ export function usePortDetection({
     const activeTunnels = activeTunnelsRef.current;
     return () => {
       const tunnels = Array.from(activeTunnels.values());
-      for (const tunnelId of tunnels) {
-        window.multissh?.sshTunnelStop?.(tunnelId).catch(() => {});
+      for (const tunnel of tunnels) {
+        window.multissh?.sshTunnelStop?.(tunnel.id).catch(() => {});
       }
       activeTunnels.clear();
     };
@@ -84,9 +84,12 @@ export function usePortDetection({
 
       // Remote SSH session: check if tunnel already active
       let targetLocalPort = port;
-      const existingTunnelId = activeTunnelsRef.current.get(port);
+      const existingTunnel = activeTunnelsRef.current.get(port);
 
-      if (!existingTunnelId) {
+      if (existingTunnel) {
+        // Reuse the local port the tunnel was actually created on (it may differ from the remote port)
+        targetLocalPort = existingTunnel.localPort;
+      } else {
         // Check if preferred local port is free
         const isPortFree = await window.multissh?.sshTunnelCheckPort?.(port).catch(() => true);
         if (!isPortFree) {
@@ -113,7 +116,7 @@ export function usePortDetection({
 
         const activeTunnel = await window.multissh?.sshTunnelStart?.(configRef.current, tunnelConfig);
         if (activeTunnel?.id) {
-          activeTunnelsRef.current.set(port, activeTunnel.id);
+          activeTunnelsRef.current.set(port, { id: activeTunnel.id, localPort: targetLocalPort });
         }
       }
 

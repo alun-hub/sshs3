@@ -103,4 +103,25 @@ describe('TerminalPortPill', () => {
 
     expect(screen.getByText('Port 8080 already bound')).toBeInTheDocument();
   });
+
+  it('offers a retry after a failure', async () => {
+    const onForward = vi.fn().mockRejectedValueOnce(new Error('Tunnel timed out')).mockResolvedValueOnce(undefined);
+    render(
+      <TerminalPortPill
+        ports={[{ port: 8080, protocol: 'http', matchedText: 'http://localhost:8080' }]}
+        isRemote={true}
+        onForwardAndOpen={onForward}
+        onDismiss={vi.fn()}
+      />
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Forward & Open/i }));
+    });
+    expect(screen.getByText('Tunnel timed out')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Retry/i }));
+    });
+    expect(onForward).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Tunnel timed out')).not.toBeInTheDocument();
+  });
 });

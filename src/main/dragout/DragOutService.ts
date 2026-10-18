@@ -7,8 +7,8 @@ import type { TransferQueue } from '../transfer/TransferQueue';
 
 /** Largest single file that may be staged for a drag-out (folders are not capped up front). */
 export const MAX_STAGED_FILE_BYTES = 500 * 1024 * 1024;
-/** Staged copies older than this are removed on the next start. */
-const STALE_AFTER_MS = 60 * 60 * 1000;
+/** Staging roots of earlier runs older than this are removed (long enough not to touch another running instance). */
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const MAX_PREPARE_PATHS = 100;
 const ROOT_PREFIX = 'sshs3-dragout-';
 
@@ -33,7 +33,10 @@ function baseName(p: string): string {
  * provider/path/mtime/size and removed when the app quits or on the next start.
  */
 export class DragOutService {
-  private root: string | null = null;
+  private rootPromise: Promise<string> | null = null;
+  private swept = false;
+  /** Latest staged copy of each directory, replaced (and the old one deleted) when it is staged again. */
+  private readonly stagedDirs = new Map<string, string>();
   private readonly staged = new Map<string, string>();
   private readonly inFlight = new Map<string, Promise<string>>();
 
@@ -41,9 +44,10 @@ export class DragOutService {
   constructor(private readonly deps: DragOutStageDeps, private readonly parentDir: string = os.tmpdir()) {}
 
   /** Creates the staging root on first use. mkdtemp gives an unpredictable name and mode 0700, so no other user can pre-create or read it. */
-  private async ensureRoot(): Promise<string> {
-    if (!this.root) this.root = await fsp.mkdtemp(path.join(this.parentDir, ROOT_PREFIX));
-    return this.root;
+  private ensureRoot(): Promise<string> {
+    // Memoized as a promise so concurrent first calls share one root
+    this.rootPromise ??= fsp.mkdtemp(path.join(this.parentDir, ROOT_PREFIX));
+    return this.rootPromise;
   }
 
   /** Stages every path and resolves to the local paths, in the same order. */
@@ -54,7 +58,10 @@ export class DragOutService {
     }
     const source = this.deps.getSource(providerId);
     if (!source) throw new Error(`Storage provider not found: ${providerId}`);
-    await this.removeStale();
+    if (!this.swept) {
+      this.swept = true;
+      await this.removeStale();
+    }
 
     const result: string[] = [];
     for (const remote of remotePaths) {
@@ -73,8 +80,13 @@ export class DragOutService {
       throw new Error('File is too large to drag out (limit 500 MB); download it with the file manager instead');
     }
 
-    const key = [providerId, remotePath, String(stats.mtimeMs ?? stats.mtime ?? ''), String(stats.size ?? '')].join('\0');
-    const cached = this.staged.get(key);
+    // A directory's own mtime/size do not change when files inside it do, so directories are never
+    // served from cache; they are downloaded again each time.
+    const isDir = Boolean(stats.isDirectory);
+    const key = isDir
+      ? [providerId, remotePath, 'dir'].join('\0')
+      : [providerId, remotePath, String(stats.mtimeMs ?? stats.mtime ?? ''), String(stats.size ?? '')].join('\0');
+    const cached = isDir ? undefined : this.staged.get(key);
     if (cached && (await fsp.stat(cached).then(() => true, () => false))) return cached;
     const running = this.inFlight.get(key);
     if (running) return running;
@@ -98,7 +110,13 @@ export class DragOutService {
         await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
         throw new Error(finished.error || `Could not download ${name}`);
       }
-      this.staged.set(key, target);
+      if (isDir) {
+        const previous = this.stagedDirs.get(key);
+        this.stagedDirs.set(key, target);
+        if (previous) await fsp.rm(path.dirname(previous), { recursive: true, force: true }).catch(() => {});
+      } else {
+        this.staged.set(key, target);
+      }
       return target;
     })();
     this.inFlight.set(key, job);
@@ -121,7 +139,6 @@ export class DragOutService {
     for (const entry of names) {
       if (!entry.startsWith(ROOT_PREFIX)) continue;
       const full = path.join(this.parentDir, entry);
-      if (full === this.root) continue;
       const stat = await fsp.lstat(full).catch(() => null);
       if (!stat || !stat.isDirectory() || (uid !== undefined && stat.uid !== uid)) continue;
       if (Date.now() - stat.mtimeMs > STALE_AFTER_MS) {
@@ -133,8 +150,11 @@ export class DragOutService {
   /** Removes every staged copy. */
   public async dispose(): Promise<void> {
     this.staged.clear();
-    const root = this.root;
-    this.root = null;
+    this.stagedDirs.clear();
+    const rootPromise = this.rootPromise;
+    this.rootPromise = null;
+    if (!rootPromise) return;
+    const root = await rootPromise.catch(() => null);
     if (root) await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
   }
 }

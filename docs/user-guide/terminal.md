@@ -157,8 +157,9 @@ Dragging files or folders directly into a terminal pane provides seamless contex
 The terminal engine actively monitors output streams for web servers, dev tools, and listening services:
 - **Built-in Framework Support**: Automatically recognizes output from **Vite**, **Next.js**, **Django**, **Flask**, **Express**, **Spring Boot / Tomcat**, **Python `http.server`**, **Go (Gin/Fiber)**, and standard `http://localhost:<port>` / `http://127.0.0.1:<port>` URLs.
 - **Interactive Action Banner**: Displays a floating pill when a service is detected:
-  - **SSH Sessions**: Clicking **Forward & Open** automatically starts a background SSH local tunnel (`window.multissh.sshTunnelStart`) on a free local port and immediately opens the forwarded URL in your workstation's default browser.
+  - **SSH Sessions**: Clicking **Forward & Open** (or **Retry** after a failure) automatically starts a background SSH local tunnel (`window.multissh.sshTunnelStart`) on a free local port and immediately opens the forwarded URL in your workstation's default browser.
   - **Local Sessions**: Clicking **Open in Browser** opens `http://localhost:<port>` directly.
+  - **Kubernetes Sessions**: Port detection is not offered, because there is no port-forward path for pods here.
   - **Dismiss**: Silences the port for the active session.
 - **Custom Regex Support**: Under *Settings → Terminal*, operators can provide custom regular expressions to match proprietary server logs or unique port announcements. The feature can also be toggled completely off.
 

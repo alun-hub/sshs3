@@ -354,21 +354,28 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           </button>
         )}
 
-        {canDragOut && (
+        {canDragOut && isLocalProvider && (
           <div
-            draggable={isLocalProvider}
-            role={isLocalProvider ? undefined : 'button'}
+            draggable
             onDragStart={handleDragStart}
-            onClick={isLocalProvider ? undefined : () => onDragOut?.(details.fullPath)}
             data-testid="path-hover-drag-handle"
-            title={isLocalProvider ? `Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app` : 'Drag out of sshs3…'}
-            className={classNames(
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover hover:border-border-subtle transition-all',
-              isLocalProvider ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-            )}
+            title={`Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app`}
+            className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted transition-all hover:border-border-subtle hover:bg-app-surface-hover hover:text-txt-primary active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" />
           </div>
+        )}
+        {canDragOut && !isLocalProvider && (
+          <button
+            type="button"
+            aria-label="Drag out of sshs3"
+            onClick={() => onDragOut?.(details.fullPath)}
+            data-testid="path-hover-drag-handle"
+            title="Drag out of sshs3…"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted transition-all hover:border-border-subtle hover:bg-app-surface-hover hover:text-txt-primary"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
         )}
 
         <button

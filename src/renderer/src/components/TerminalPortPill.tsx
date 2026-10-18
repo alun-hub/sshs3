@@ -59,31 +59,30 @@ export const TerminalPortPill: React.FC<TerminalPortPillProps> = ({
               </span>
             </div>
 
-            {err ? (
+            {err && (
               <span className="text-[11px] text-rose-400 max-w-[200px] truncate" title={err}>
                 {err}
               </span>
-            ) : (
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => void handleAction(item)}
-                data-testid={`port-pill-action-${item.port}`}
-                className="flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors"
-              >
-                {isBusy ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Connecting...</span>
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="h-3 w-3" />
-                    <span>{isRemote ? 'Forward & Open' : 'Open in Browser'}</span>
-                  </>
-                )}
-              </button>
             )}
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => void handleAction(item)}
+              data-testid={`port-pill-action-${item.port}`}
+              className="flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors"
+            >
+              {isBusy ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Connecting...</span>
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="h-3 w-3" />
+                  <span>{err ? 'Retry' : isRemote ? 'Forward & Open' : 'Open in Browser'}</span>
+                </>
+              )}
+            </button>
 
             <button
               type="button"

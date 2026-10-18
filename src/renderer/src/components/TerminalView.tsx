@@ -286,7 +286,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   pathHoverRef.current = pathHover;
 
   const portDetection = usePortDetection({
-    enabled: portForwardAutoDetect,
+    // Kubernetes terminals have no port-forward path here, so a pod's ports must not be offered as local ones
+    enabled: portForwardAutoDetect && !k8sTarget,
     customRegex: portForwardCustomRegex,
     isRemote: Boolean(config),
     config,

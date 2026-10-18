@@ -282,4 +282,51 @@ describe('useTerminalDropUpload', () => {
     );
     expect(onPaste).toHaveBeenCalledWith("'/app/a.txt'");
   });
+
+  it('pastes the path the transfer really wrote to and skips skipped uploads', async () => {
+    const onPaste = vi.fn();
+    const onNotice = vi.fn();
+    (window.multissh.transferAdd as any)
+      .mockResolvedValueOnce({ jobId: 'j1', targetPath: '/srv/a (1).txt' })
+      .mockResolvedValueOnce({ jobId: null, skipped: true, targetPath: '/srv/b.txt' });
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({ isRemote: true, config: sampleConfig, targetFolder: '/srv', onPaste, onNotice })
+    );
+
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(
+        dropWith(internalDrag('local', [entry('a.txt', '/tmp/a.txt'), entry('b.txt', '/tmp/b.txt')]))
+      );
+    });
+    expect(onPaste).toHaveBeenCalledWith("'/srv/a (1).txt'");
+    expect(onNotice).toHaveBeenCalledWith('Uploading a.txt...');
+  });
+
+  it('says so when every upload was skipped and pastes nothing', async () => {
+    const onPaste = vi.fn();
+    const onNotice = vi.fn();
+    (window.multissh.transferAdd as any).mockResolvedValue({ jobId: null, skipped: true });
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({ isRemote: true, config: sampleConfig, targetFolder: '/srv', onPaste, onNotice })
+    );
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(dropWith(internalDrag('local', [entry('a.txt', '/tmp/a.txt')])));
+    });
+    expect(onNotice).toHaveBeenCalledWith('Upload skipped');
+    expect(onPaste).not.toHaveBeenCalled();
+  });
+
+  it('refuses to upload while the current directory is unknown', async () => {
+    const onPaste = vi.fn();
+    const onNotice = vi.fn();
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({ isRemote: true, config: sampleConfig, targetFolder: '', onPaste, onNotice })
+    );
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(dropWith(internalDrag('local', [entry('a.txt', '/tmp/a.txt')])));
+    });
+    expect(onNotice).toHaveBeenCalledWith(expect.stringContaining('current directory is not known'));
+    expect(window.multissh.transferAdd).not.toHaveBeenCalled();
+    expect(onPaste).not.toHaveBeenCalled();
+  });
 });

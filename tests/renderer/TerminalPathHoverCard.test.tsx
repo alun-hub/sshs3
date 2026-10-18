@@ -318,7 +318,8 @@ describe('TerminalPathHoverCard', () => {
           onDragOut={onDragOut}
         />
       );
-      const handle = screen.getByTestId('path-hover-drag-handle');
+      const handle = screen.getByRole('button', { name: /drag out of sshs3/i }); // a real button: reachable by keyboard
+      expect(handle).toBe(screen.getByTestId('path-hover-drag-handle'));
       fireEvent.mouseEnter(handle);
       fireEvent.click(handle);
       expect(onDragOut).toHaveBeenCalledWith('/home/me/report.pdf');

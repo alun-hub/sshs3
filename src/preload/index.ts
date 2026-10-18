@@ -345,7 +345,7 @@ export const api: MultiSSHApi = {
     targetProviderId: string;
     targetPath: string;
     conflictPolicy?: TransferConflictResolution;
-  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean }> =>
+  }): Promise<{ jobId: string | null; skipped?: boolean; resolvedPolicy?: TransferConflictResolution; appliedToAll?: boolean; targetPath?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.TRANSFER_ADD, options),
 
   transferPause: (jobId: string): Promise<void> =>

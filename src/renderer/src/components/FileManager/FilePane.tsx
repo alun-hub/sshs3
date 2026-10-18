@@ -21,7 +21,7 @@ import { FilePaneToolbar } from './FilePaneToolbar';
 import type { BreadcrumbsHandle } from './Breadcrumbs';
 import { FilePaneFilterBar } from './FilePaneFilterBar';
 import { useNavHistory } from '../../lib/useNavHistory';
-import { SOURCE_ICONS } from './filePaneHelpers';
+import { SOURCE_ICONS, isNoopOsDrop } from './filePaneHelpers';
 import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursiveFilter';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
@@ -497,8 +497,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setDragOverPath(null);
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
-        // A native drag from this list dropped onto one of its own entries
-        if (osPaths.includes(targetEntry.path)) {
+        // A native drag from this list dropped onto one of its own entries, or onto the folder it is already in
+        if (source.sourceType === 'local' && isNoopOsDrop(osPaths, targetEntry.path)) {
           endDrag();
           return;
         }
@@ -523,7 +523,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       });
       endDrag();
     },
-    [readOsFilePaths, readDropPayload, onTransferRequested, endDrag]
+    [readOsFilePaths, readDropPayload, onTransferRequested, endDrag, source.sourceType]
   );
 
   const handlePaneDrop = useCallback(
@@ -533,7 +533,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
         // A native drag from this very folder dropped back onto it is a no-op
-        if (source.sourceType === 'local' && osPaths.every((p) => parentPath(p) === currentPath)) {
+        if (source.sourceType === 'local' && isNoopOsDrop(osPaths, currentPath)) {
           endDrag();
           return;
         }
@@ -568,6 +568,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setDragOverPath(null);
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
+        if (source.sourceType === 'local' && isNoopOsDrop(osPaths, targetPath)) {
+          endDrag();
+          return;
+        }
         onTransferRequested({
           sourceProviderId: 'local',
           sourcePaths: osPaths,
@@ -593,7 +597,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       });
       endDrag();
     },
-    [readOsFilePaths, readDropPayload, onTransferRequested, endDrag, side, source.providerId, currentPath]
+    [readOsFilePaths, readDropPayload, onTransferRequested, endDrag, side, source.providerId, source.sourceType, currentPath]
   );
 
   const supportsChmod = source.sourceType !== 's3';
