@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.43] - 2026-10-18
+
+### Changed
+- **Drag remote files from the path hover card more easily.** On SSH and Kubernetes terminals you can now drag the file icon, the preview or the handle (not only click the handle) to start the "Drag out of sshs3" dialog. The preview text can no longer be selected while the card is draggable; use Copy Path or the editor instead.
+
+### Fixed
+- **Drop overlay stuck after dragging a local file out of the hover card.** "Drop to Paste File Path" now disappears as soon as the drag ends.
+
 ## [0.96.42] - 2026-10-18
 
 ### Fixed
