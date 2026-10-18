@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.41] - 2026-10-18
+
+### Added
+- **Smart terminal paths.** The terminal tracks the shell's working directory (OSC 7 / OSC 133, `/proc` and prompt detection) and recognises file and folder paths in the output, including quoted names with spaces. Hovering a path shows a card with a live peek (first lines or an image thumbnail) and actions: **View/Edit**, **Reveal** in the file manager and **Copy Path**. Ctrl+click still opens the path. Switch it off under *Settings → Terminal → Enable file path hover preview*.
+- **Built-in editor and previews from the terminal.** Files open in a CodeMirror 6 editor (syntax highlighting, including HTML/CSS) with rich previews for images, PDF, Markdown, CSV/TSV tables and JSON formatting, working on SSH, local and Kubernetes sessions.
+- **Copy last command output (`Alt+C`).** Copies the output of the last command without the prompt lines.
+- **Drop onto the terminal.** Dropping files on a local terminal pastes their quoted paths. On SSH and Kubernetes terminals they are uploaded to the current directory and the remote path is pasted (the path the transfer really wrote, e.g. after "keep both"). Files dragged from the file manager work too.
+- **Port forward auto-detection.** Web servers and listening ports printed in an SSH or local terminal (Vite, Next.js, Django, Flask, Spring Boot, `http.server`, Go, or your own regex) show a pill with **Forward & Open** / **Open in Browser** and **Retry** after a failure. Configure it under *Settings → Terminal*; it is not offered on Kubernetes terminals.
+- **Drag files out of sshs3.** Local files and folders can be dragged from the file manager and from the path hover card into other applications. For remote items (SFTP, S3, Kubernetes) choose **Drag out of sshs3...** in the right-click menu, use the handle on the hover card, or simply drag them out of the window and release; a dialog asks before a temporary copy is downloaded, then shows an item to drag. Copies live in a private temporary folder and are deleted when sshs3 quits; files over 500 MB are not supported.
+
+### Changed
+- **Default shortcut for "Copy Last Command Output" is now `Alt+C`** (was `Ctrl+Shift+G`).
+- **HTML preview is a static, script-free sandbox** (`sandbox=""`). Scripts, forms, popups and navigation are disabled, and the preview is labelled "Static preview · scripts disabled".
+- `transferAdd` now also returns the `targetPath` the transfer writes to.
+
+### Fixed
+- Dropping a local file onto the folder it already lives in (rows, pane or breadcrumbs) no longer copies it onto itself.
+- Reopening a forwarded port after the first click uses the local port the tunnel was actually created on.
+- Terminal links: ALL_CAPS names such as environment variables are no longer treated as files.
+- Closing a dirty editor tab asks for confirmation reliably, and external-editor and tail sessions are released when the editor closes.
+
+### Security
+- **Previews and editor.** The path hover card does not read credential-like files (`.env`, private keys, `shadow`, `kubeconfig`, `*.pem`, …). Non-regular files (FIFOs, devices) are refused and file reads time out after 30 s of silence. The unused `object-src` was removed from the CSP.
+- **Drag and drop.** File-manager payloads dropped on a terminal are shape-checked and names containing `/`, `\` or `..` are rejected. Pasted paths are shell-quoted.
+- **Temporary copies.** Staging uses an unpredictable `mkdtemp` folder (mode 0700), never reuses a pre-created path, and only sweeps leftovers owned by the current user. Custom port-detection patterns with nested quantifiers are rejected.
+
 ## [0.96.40] - 2026-10-16
 
 ### Fixed
