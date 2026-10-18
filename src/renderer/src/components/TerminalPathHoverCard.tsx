@@ -200,10 +200,14 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   // Local files are dragged out of the card in place; remote ones first ask to copy them here.
   const isLocalProvider = providerId === 'local';
   const canDragOut = Boolean(providerId) && (isLocalProvider ? Boolean(window.multissh?.dragOutStart) : Boolean(onDragOut));
+  // Dragging the file icon, the preview or the handle all start the same flow; a remote drag opens the confirmation instead.
   const handleDragStart = (e: React.DragEvent) => {
     e.preventDefault();
     if (isLocalProvider) void window.multissh?.dragOutStart?.([details.fullPath]).catch(() => {});
+    else onDragOut?.(details.fullPath);
   };
+  const dragSource = canDragOut ? { draggable: true, onDragStart: handleDragStart } : {};
+  const dragCursor = canDragOut ? 'cursor-grab active:cursor-grabbing' : '';
 
   const handleCopy = () => {
     onCopyPath(details.fullPath);
@@ -239,8 +243,11 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       <div className="flex items-start justify-between gap-2.5 border-b border-divider pb-2.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
+            {...dragSource}
+            data-testid="path-hover-drag-icon"
             className={classNames(
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-xs transition-colors',
+              dragCursor,
               catStyle.iconBg
             )}
           >
@@ -288,7 +295,15 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
 
       {/* Quick Peek Preview (Snippet or Image Thumbnail) */}
       {snippet && (
-        <div className="my-2.5 overflow-hidden rounded-xl border border-divider/70 bg-slate-950/70 p-2 text-xs font-mono select-text">
+        <div
+          {...dragSource}
+          data-testid="path-hover-drag-preview"
+          className={classNames(
+            'my-2.5 overflow-hidden rounded-xl border border-divider/70 bg-slate-950/70 p-2 text-xs font-mono',
+            canDragOut ? 'select-none' : 'select-text',
+            dragCursor
+          )}
+        >
           {snippet.isImage && snippet.imageSrc ? (
             <div className="flex flex-col items-center justify-center py-1">
               <img
@@ -356,8 +371,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
 
         {canDragOut && isLocalProvider && (
           <div
-            draggable
-            onDragStart={handleDragStart}
+            {...dragSource}
             data-testid="path-hover-drag-handle"
             title={`Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app`}
             className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted transition-all hover:border-border-subtle hover:bg-app-surface-hover hover:text-txt-primary active:cursor-grabbing"
@@ -369,10 +383,11 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           <button
             type="button"
             aria-label="Drag out of sshs3"
+            {...dragSource}
             onClick={() => onDragOut?.(details.fullPath)}
             data-testid="path-hover-drag-handle"
-            title="Drag out of sshs3…"
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted transition-all hover:border-border-subtle hover:bg-app-surface-hover hover:text-txt-primary"
+            title="Drag out of sshs3 (asks before copying)…"
+            className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted transition-all hover:border-border-subtle hover:bg-app-surface-hover hover:text-txt-primary"
           >
             <GripVertical className="h-4 w-4" />
           </button>

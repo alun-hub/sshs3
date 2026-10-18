@@ -83,6 +83,29 @@ describe('useTerminalDropUpload', () => {
     expect(result.current.isDragging).toBe(false);
   });
 
+  it('clears the overlay when the drag ends without a drop or dragleave on the terminal', () => {
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({ isRemote: false, targetFolder: '/home/user', onPaste: vi.fn(), onNotice: vi.fn() })
+    );
+    const enter = () =>
+      act(() => {
+        result.current.dragHandlers.onDragEnter({
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          dataTransfer: { types: ['Files'] },
+        } as any);
+      });
+
+    for (const name of ['dragend', 'pointermove', 'keydown']) {
+      enter();
+      expect(result.current.isDragging).toBe(true);
+      act(() => {
+        window.dispatchEvent(new Event(name));
+      });
+      expect(result.current.isDragging).toBe(false);
+    }
+  });
+
   it('pastes local file paths directly when dropping in local session', async () => {
     const onPaste = vi.fn();
     const { result } = renderHook(() =>

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { isValidDragPayload, DRAG_MIME_TYPE } from '../components/FileManager/types';
@@ -57,6 +57,22 @@ export function useTerminalDropUpload({
 }: UseTerminalDropUploadOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
+
+  // A drag that ends without a drop or dragleave on the terminal (e.g. a native drag started from the path hover
+  // card and released elsewhere) would leave the overlay up. Chromium sends no mouse events during a drag, so any
+  // dragend/drop, pointer movement, click or key press means the drag is over.
+  useEffect(() => {
+    if (!isDragging) return;
+    const clear = () => {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    };
+    const events = ['dragend', 'drop', 'pointermove', 'pointerdown', 'mousemove', 'keydown'] as const;
+    for (const name of events) window.addEventListener(name, clear, true);
+    return () => {
+      for (const name of events) window.removeEventListener(name, clear, true);
+    };
+  }, [isDragging]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();

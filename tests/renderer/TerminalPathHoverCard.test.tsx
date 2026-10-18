@@ -325,5 +325,28 @@ describe('TerminalPathHoverCard', () => {
       expect(onDragOut).toHaveBeenCalledWith('/home/me/report.pdf');
       expect(dragOutPrepare).not.toHaveBeenCalled();
     });
+
+    it('asks first when a remote file is dragged by its handle or icon, nothing is downloaded', () => {
+      const dragOutPrepare = vi.fn();
+      const onDragOut = vi.fn();
+      (window as any).multissh = { dragOutStart: vi.fn(), dragOutPrepare };
+      render(
+        <TerminalPathHoverCard
+          path="/home/me/report.pdf"
+          x={50}
+          y={50}
+          providerId="sftp-host"
+          onClose={vi.fn()}
+          onCopyPath={vi.fn()}
+          onDragOut={onDragOut}
+        />
+      );
+      for (const id of ['path-hover-drag-handle', 'path-hover-drag-icon']) {
+        onDragOut.mockClear();
+        expect(fireEvent.dragStart(screen.getByTestId(id))).toBe(false);
+        expect(onDragOut).toHaveBeenCalledWith('/home/me/report.pdf');
+      }
+      expect(dragOutPrepare).not.toHaveBeenCalled();
+    });
   });
 });
