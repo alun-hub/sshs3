@@ -188,7 +188,7 @@ Inspect, edit, and preview remote files or monitor server logs with syntax highl
   - **Save Directly (<kbd>Ctrl+S</kbd>)**: Saves changes directly back to the remote SFTP server, S3 bucket, or K8s container with a confirmation timestamp (`yyyy-mm-dd HH:mm`). CRLF line endings are normalized to prevent false dirty states on cross-platform files.
 - **Rich Multi-Format Previews**:
   - **Markdown**: Toggle the **Source / Preview** switch to view rendered GitHub-flavored Markdown with formatted code blocks, tables, and task lists.
-  - **HTML**: Instant rendering in a sandboxed iframe (`sandbox="allow-same-origin"` with external network access and script executions isolated).
+  - **HTML**: Instant static rendering in a fully sandboxed iframe (`sandbox=""`): scripts, forms, popups and link navigation are disabled, and remote resources are blocked by the app's content security policy. Use **Browser** to open the file in your system browser for the full page.
   - **SVG Vector Graphics**: Live rendering of SVG illustrations on an adaptive checkerboard canvas.
   - **CSV / TSV Data Table**: Automatically parses comma- and tab-separated files into an interactive, sortable tabular data grid with row numbering, column headers, and real-time text filter.
   - **Image Viewer**: Built-in viewer for raster formats (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.ico`) with interactive zoom, pan dragging, 90° rotation, pixel dimensions inspection (`W × H px`), and file size display.

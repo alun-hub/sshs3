@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ExternalLink, RotateCw, Monitor, Tablet, Smartphone, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ExternalLink, RotateCw, Monitor, Tablet, Smartphone } from 'lucide-react';
 import { classNames } from '../../lib/format';
 
 export interface HtmlPreviewProps {
@@ -16,24 +16,6 @@ const VIEWPORT_WIDTHS: Record<ViewportMode, string> = {
   mobile: '375px',
 };
 
-const INTERCEPT_SCRIPT = `
-<script>
-(function() {
-  document.addEventListener('click', function(e) {
-    if (!e.isTrusted) return;
-    var a = e.target.closest('a');
-    if (!a) return;
-    var href = a.getAttribute('href');
-    if (!href) return;
-    if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
-      e.preventDefault();
-      window.parent.postMessage({ type: 'html-preview-open-url', url: href }, '*');
-    }
-  }, true);
-})();
-</script>
-`;
-
 export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
   htmlContent,
   fileName,
@@ -41,50 +23,13 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
 }) => {
   const [viewport, setViewport] = useState<ViewportMode>('desktop');
   const [refreshKey, setRefreshKey] = useState<number>(0);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    let lastOpenTime = 0;
-    const handleMessage = (e: MessageEvent) => {
-      if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) return;
-      if (e.data?.type === 'html-preview-open-url' && typeof e.data.url === 'string') {
-        const url = e.data.url;
-        const now = Date.now();
-        if (now - lastOpenTime < 1000) return;
-        if (/^(https?|mailto):/i.test(url)) {
-          lastOpenTime = now;
-          window.multissh?.openExternal?.(url);
-        }
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  const handleBack = () => {
-    try {
-      iframeRef.current?.contentWindow?.history.back();
-    } catch {
-      // Safe to ignore
-    }
-  };
-
-  const handleForward = () => {
-    try {
-      iframeRef.current?.contentWindow?.history.forward();
-    } catch {
-      // Safe to ignore
-    }
-  };
-
+  // The app CSP blocks scripts in the srcdoc frame; `sandbox=""` makes that explicit (no scripts, forms,
+  // popups or navigation) so the preview never depends on the CSP alone.
   const safeDoc = useMemo(() => {
-    const raw =
+    return (
       htmlContent ||
-      '<!DOCTYPE html><html><body><p style="color:#888;font-family:sans-serif;padding:20px;">Empty HTML document</p></body></html>';
-    if (raw.includes('</body>')) {
-      return raw.replace('</body>', `${INTERCEPT_SCRIPT}</body>`);
-    }
-    return `${raw}${INTERCEPT_SCRIPT}`;
+      '<!DOCTYPE html><html><body><p style="color:#888;font-family:sans-serif;padding:20px;">Empty HTML document</p></body></html>'
+    );
   }, [htmlContent]);
 
   return (
@@ -97,31 +42,11 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
         <div className="flex items-center gap-1.5">
           <span className="font-semibold text-txt-primary">{fileName}</span>
           <span className="rounded bg-sky-500/20 text-sky-400 px-1.5 py-0.5 text-2xs font-mono font-medium">
-            Sandboxed Preview
+            Static preview · scripts disabled
           </span>
         </div>
 
         <div className="flex items-center gap-1">
-          {/* History Navigation Buttons */}
-          <div className="flex items-center gap-0.5 mr-1 border-r border-divider pr-1.5">
-            <button
-              type="button"
-              title="Back"
-              onClick={handleBack}
-              className="rounded p-1 hover:bg-app-surface-hover hover:text-txt-primary transition-colors text-txt-secondary"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Forward"
-              onClick={handleForward}
-              className="rounded p-1 hover:bg-app-surface-hover hover:text-txt-primary transition-colors text-txt-secondary"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
           {/* Responsive Viewport Switcher */}
           <div
             role="group"
@@ -201,11 +126,10 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
           className="h-full transition-all duration-200 shadow-2xl rounded-lg overflow-hidden border border-border-subtle bg-white"
         >
           <iframe
-            ref={iframeRef}
             key={refreshKey}
             title={`Preview for ${fileName}`}
             srcDoc={safeDoc}
-            sandbox="allow-scripts allow-forms"
+            sandbox=""
             className="w-full h-full border-none block"
           />
         </div>
