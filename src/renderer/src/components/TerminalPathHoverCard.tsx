@@ -200,7 +200,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [providerId, details.fullPath, isEffectiveDir, details.category]);
+  }, [providerId, details.fullPath, isEffectiveDir, details.category, toStoragePath]);
 
   // Local files are dragged out of the card in place; remote ones first ask to copy them here.
   const isLocalProvider = providerId === 'local';

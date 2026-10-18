@@ -21,7 +21,12 @@ export interface UseTerminalDropUploadOptions {
 export function shellQuote(path: string): string {
   // Local Windows paths go to PowerShell or cmd.exe, which both take double quotes (cmd has no
   // single-quote quoting, and PowerShell escapes `'` as `''`, not the POSIX `'\''`).
-  if (isWindowsPath(path)) return `"${path}"`;
+  if (isWindowsPath(path)) {
+    // `$`, a backtick or `%` are legal in file names but expand inside double quotes ($(...) in PowerShell,
+    // %VAR% in cmd), so those paths get PowerShell literal quoting instead.
+    if (/[$`%]/.test(path)) return `'${path.replace(/'/g, "''")}'`;
+    return `"${path}"`;
+  }
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 

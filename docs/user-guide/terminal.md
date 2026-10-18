@@ -151,7 +151,7 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 ### 4.7 Smart Drag-and-Drop: Drop-to-Upload & Paste Path
 Dragging files or folders directly into a terminal pane provides seamless context-aware integration:
 - **SSH Terminals**: Dropping a file onto a remote SSH terminal activates an animated frosted drop overlay indicating the remote working directory. The file is uploaded to the remote directory via SFTP in the background, and its properly shell-quoted remote path (e.g. `'/var/www/site/dump.sql'`) is automatically typed into the prompt upon completion.
-- **Local Terminals**: Dropping a file into a local shell immediately quotes and pastes the workstation path (`'/home/user/Downloads/archive.tar.gz'`) into the prompt.
+- **Local Terminals**: Dropping a file into a local shell immediately quotes and pastes the workstation path (`'/home/user/Downloads/archive.tar.gz'`) into the prompt. On Windows, paths are pasted in double quotes (PowerShell and cmd); a path containing `$`, a backtick or `%` is pasted in single quotes instead, so it is never expanded. In a WSL terminal, dropped Windows files are pasted as `/mnt/<drive>/...` paths, and hovering a WSL path opens the Windows-side file.
 
 ### 4.8 Web Service & Port Forward Auto-Detection
 The terminal engine actively monitors output streams for web servers, dev tools, and listening services:

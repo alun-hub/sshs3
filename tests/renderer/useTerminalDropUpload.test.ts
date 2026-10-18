@@ -44,6 +44,13 @@ describe('useTerminalDropUpload', () => {
     it('double-quotes a local Windows path', () => {
       expect(shellQuote('C:\\Users\\alun\\my file.txt')).toBe('"C:\\Users\\alun\\my file.txt"');
     });
+
+    it('uses PowerShell literal quoting when the path could expand inside double quotes', () => {
+      expect(shellQuote('C:\\tmp\\a$(calc).txt')).toBe("'C:\\tmp\\a$(calc).txt'");
+      expect(shellQuote('C:\\tmp\\50%.txt')).toBe("'C:\\tmp\\50%.txt'");
+      expect(shellQuote('C:\\tmp\\a`b.txt')).toBe("'C:\\tmp\\a`b.txt'");
+      expect(shellQuote("C:\\tmp\\it's $x.txt")).toBe("'C:\\tmp\\it''s $x.txt'");
+    });
   });
 
   describe('shellQuote', () => {
