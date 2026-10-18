@@ -15,6 +15,7 @@ export interface ShortcutDefinition {
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'newTerminal', name: 'New Terminal', defaultKeys: 'Ctrl+Shift+T', category: 'Tabs' },
   { id: 'newFileManager', name: 'New File Manager', defaultKeys: 'Ctrl+Shift+F', category: 'Tabs' },
+  { id: 'newRemoteFileManager', name: 'New Remote File Manager', defaultKeys: 'Ctrl+Shift+Alt+F', category: 'Tabs' },
   { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+W', category: 'Tabs' },
   { id: 'nextTab', name: 'Next Tab', defaultKeys: 'Ctrl+Tab', category: 'Tabs' },
   { id: 'prevTab', name: 'Previous Tab', defaultKeys: 'Ctrl+Shift+Tab', category: 'Tabs' },

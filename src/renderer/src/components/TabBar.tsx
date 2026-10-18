@@ -3,6 +3,7 @@ import { pkcs11LibDisplayName, looksLikeLibraryPath } from '../lib/smartcard';
 import {
   Terminal,
   Folder,
+  FolderSymlink,
   X,
   Plus,
   Server,
@@ -38,7 +39,7 @@ export interface TabBarProps {
   tabBarFocused?: boolean;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
-  onNewTab: (type: TabType) => void;
+  onNewTab: (type: TabType, options?: { remote?: boolean }) => void;
   /** Opens the Connection Manager directly on the Kubernetes tab, for picking a pod/container to exec into or follow logs from. */
   onNewK8sSession?: () => void;
   onOpenProfiles?: () => void;
@@ -308,6 +309,22 @@ export const TabBar: React.FC<TabBarProps> = ({
                 <span>New File Manager</span>
               </div>
               <Shortcut id="newFileManager" shortcuts={shortcuts} />
+            </button>
+            <button
+              role="menuitem"
+              type="button"
+              data-testid="new-remote-filemanager-btn"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onNewTab('filemanager', { remote: true });
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-xs text-txt-primary hover:bg-app-surface-hover transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <FolderSymlink className="h-3.5 w-3.5 text-amber-400" />
+                <span>New Remote File Manager…</span>
+              </div>
+              <Shortcut id="newRemoteFileManager" shortcuts={shortcuts} />
             </button>
             {onNewK8sSession && (
               <button

@@ -17,6 +17,8 @@ export interface AppTab extends TabItem {
   initialK8sTarget?: K8sTerminalTarget;
   /** Set when opening a filemanager tab focused on an SSH/SFTP profile. */
   initialSSHConfig?: SSHConnectionConfig;
+  /** Filemanager tab opened as "remote": the right pane asks for a connection straight away. */
+  promptRemote?: boolean;
   /** Set when opening a filemanager tab focused on an S3 profile. */
   initialS3Config?: S3Config;
   /** Set when opening a filemanager tab focused on a local directory. */

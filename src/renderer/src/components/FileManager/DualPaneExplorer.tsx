@@ -39,6 +39,8 @@ interface DualPaneExplorerProps {
   initialSSHConfig?: SSHConnectionConfig;
   /** Automatically connect the right pane to this S3 profile on mount. */
   initialS3Config?: S3Config;
+  /** Ask for a remote connection for the right pane when the tab opens ("New Remote File Manager"). */
+  promptRemote?: boolean;
   /** Focus local disk pane on this folder on mount. */
   initialLocalPath?: string;
   /** Optional file or folder path to highlight and scroll to upon loading. */
@@ -56,6 +58,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   initialK8sTarget,
   initialSSHConfig,
   initialS3Config,
+  promptRemote = false,
   initialLocalPath,
   initialSelectedPath,
   showHiddenFiles = false,
@@ -255,7 +258,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           // same folder. When there's nothing saved for the right pane and
           // it isn't being auto-connected to a specific target, prompt for a
           // remote connection instead of silently leaving it on Local Disk.
-          if (!session?.panes?.right && !initialSSHConfig && !initialS3Config && !initialK8sTarget) {
+          if (promptRemote && !session?.panes?.right && !initialSSHConfig && !initialS3Config && !initialK8sTarget) {
             setConnectionRequest({ side: 'right', type: 'sftp' });
           }
         }

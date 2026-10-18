@@ -65,3 +65,16 @@ describe('useTabActions handleConnectS3', () => {
     expect(next[0]).toMatchObject({ type: 'filemanager', title: 'Archive (S3)', initialS3Config: profile });
   });
 });
+
+describe('useTabActions handleNewTab file manager', () => {
+  const create = (remote?: boolean) => {
+    const { result, setTabs } = setup([{ id: 'a', type: 'terminal', title: 'a' } as AppTab]);
+    act(() => result.current.handleNewTab('filemanager', remote ? { remote: true } : undefined));
+    return (setTabs.mock.calls[0][0] as (prev: AppTab[]) => AppTab[])([])[0];
+  };
+
+  it('opens locally by default and prompts for a connection when remote', () => {
+    expect(create().promptRemote).toBeUndefined();
+    expect(create(true).promptRemote).toBe(true);
+  });
+});

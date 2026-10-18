@@ -59,6 +59,24 @@ describe('DualPaneExplorer SFTP default start path', () => {
     });
   });
 
+  it('only prompts for a remote connection when promptRemote is set', async () => {
+    const { unmount } = render(
+      <ConfirmProvider>
+        <DualPaneExplorer />
+      </ConfirmProvider>
+    );
+    await waitFor(() => expect((window as any).multissh.connectStorage).toHaveBeenCalled());
+    expect(screen.queryByText(/SSH \/ SFTP/)).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <ConfirmProvider>
+        <DualPaneExplorer promptRemote />
+      </ConfirmProvider>
+    );
+    expect(await screen.findByText(/SSH \/ SFTP/)).toBeInTheDocument();
+  });
+
   it('connects the right pane to initialS3Config on mount', async () => {
     const s3 = { id: 'bucket-1', name: 'Archive', region: 'eu-north-1', initialPath: '/logs' } as any;
 

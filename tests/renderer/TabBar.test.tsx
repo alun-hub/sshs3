@@ -124,6 +124,11 @@ describe('TabBar Component', () => {
     fireEvent.click(addBtn);
     fireEvent.click(screen.getByTestId('new-filemanager-btn'));
     expect(onNewTab).toHaveBeenCalledWith('filemanager');
+
+    // The remote variant asks for a connection straight away
+    fireEvent.click(addBtn);
+    fireEvent.click(screen.getByTestId('new-remote-filemanager-btn'));
+    expect(onNewTab).toHaveBeenCalledWith('filemanager', { remote: true });
   });
 
   it('triggers quick links for profiles and settings', () => {

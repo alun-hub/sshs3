@@ -54,7 +54,7 @@ export function useTabActions(ctx: TabActionsContext) {
     });
   }, [activeTabId, setActiveTabId, setTabs]);
 
-  const handleNewTab = useCallback((type?: TabType) => {
+  const handleNewTab = useCallback((type?: TabType, options?: { remote?: boolean }) => {
     const tabType = type || settings.defaultNewTabType || 'terminal';
     const newId = `${tabType === 'terminal' ? 'term' : 'fm'}-${Date.now()}`;
 
@@ -93,6 +93,7 @@ export function useTabActions(ctx: TabActionsContext) {
           id: newId,
           type: 'filemanager',
           title: `File Manager ${nextNum}`,
+          ...(options?.remote ? { promptRemote: true } : {}),
         };
         return [...prev, newTab];
       }

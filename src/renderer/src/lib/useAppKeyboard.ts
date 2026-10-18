@@ -29,7 +29,7 @@ export interface AppKeyboardContext {
   setProfilesModalOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsModalOpen: Dispatch<SetStateAction<boolean>>;
   openTopLevelModal: (open: () => void) => void;
-  handleNewTab: (type?: TabType) => void;
+  handleNewTab: (type?: TabType, options?: { remote?: boolean }) => void;
   handleCloseTab: (id: string) => void;
   handleSplitPane: (tabId: string, orientation: PaneOrientation, paneId?: string) => void;
   handleSelectPane: (tabId: string, paneId: string) => void;
@@ -185,6 +185,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               break;
             case 'newFileManager':
               handleNewTab('filemanager');
+              break;
+            case 'newRemoteFileManager':
+              handleNewTab('filemanager', { remote: true });
               break;
             case 'closeTab':
               if (activeTabId) handleCloseTab(activeTabId);
