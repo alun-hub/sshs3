@@ -322,6 +322,7 @@ export const IPC_CHANNELS = {
   SEARCH_DONE: 'search:done',
 
   // General
+  DRAG_OUT_START: 'drag-out:start',
   APP_OPEN_EXTERNAL: 'app:open-external',
   APP_GET_VERSION: 'app:get-version',
   UPDATE_GET_STATE: 'update:get-state',
@@ -875,6 +876,8 @@ export interface MultiSSHApi {
   sshTunnelCheckPort(port: number): Promise<boolean>;
 
   // Window / General
+  /** Starts a native OS drag of local files/folders (call from a `dragstart` handler after `preventDefault()`). Resolves false when no path was draggable. */
+  dragOutStart(paths: string[]): Promise<boolean>;
   openExternal(url: string): Promise<void>;
   getVersion(): Promise<string>;
   getUpdateState(): Promise<UpdateState>;

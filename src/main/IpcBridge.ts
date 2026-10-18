@@ -56,6 +56,7 @@ import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
+import { registerDragOutHandlers } from './ipc/dragOutHandlers';
 import { registerGeneralHandlers } from './ipc/generalHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
 import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
@@ -373,6 +374,7 @@ export class IpcBridge {
     registerSmartcardHandlers(this);
     registerStorageHandlers(this);
     registerTransferHandlers(this);
+    registerDragOutHandlers(this);
     registerProfileHandlers(this);
     registerDotfileHandlers(this);
     registerSessionHandlers(this);

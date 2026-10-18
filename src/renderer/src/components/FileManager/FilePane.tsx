@@ -493,6 +493,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setDragOverPath(null);
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
+        // A native drag from this list dropped onto one of its own entries
+        if (osPaths.includes(targetEntry.path)) {
+          endDrag();
+          return;
+        }
         onTransferRequested({
           sourceProviderId: 'local',
           sourcePaths: osPaths,
@@ -523,6 +528,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       e.stopPropagation();
       const osPaths = readOsFilePaths(e.dataTransfer);
       if (osPaths.length > 0) {
+        // A native drag from this very folder dropped back onto it is a no-op
+        if (source.sourceType === 'local' && osPaths.every((p) => parentPath(p) === currentPath)) {
+          endDrag();
+          return;
+        }
         onTransferRequested({
           sourceProviderId: 'local',
           sourcePaths: osPaths,
@@ -544,7 +554,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       });
       endDrag();
     },
-    [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, side, endDrag]
+    [readOsFilePaths, readDropPayload, onTransferRequested, currentPath, source.providerId, source.sourceType, side, endDrag]
   );
 
   const handleBreadcrumbDrop = useCallback(
@@ -876,6 +886,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
             const items = selectedPaths.has(entry.path)
               ? activeEntries.filter((it) => selectedPaths.has(it.path))
               : [entry];
+            // Local files become a native OS drag so they can also be dropped outside sshs3
+            // (in-app drops then arrive as OS file drops, see readOsFilePaths).
+            if (source.sourceType === 'local' && window.multissh?.dragOutStart) {
+              e.preventDefault();
+              void window.multissh.dragOutStart(items.map((it) => it.path)).catch(() => {});
+              return;
+            }
             beginDrag(buildDragPayload(side, source.providerId, currentPath, items), e.dataTransfer);
           }}
           onDraggableEnd={endDrag}

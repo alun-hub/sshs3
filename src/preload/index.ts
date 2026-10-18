@@ -972,6 +972,9 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.SSH_TUNNEL_CHECK_PORT, port),
 
   // Window / General
+  dragOutStart: (paths: string[]): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DRAG_OUT_START, paths),
+
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_EXTERNAL, url),
 

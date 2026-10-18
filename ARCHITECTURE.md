@@ -173,6 +173,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    | Smartcard / host key / FIDO2 prompts | `ipc/smartcardHandlers.ts` |
    | Storage providers | `ipc/storageHandlers.ts` |
    | Transfers, quit confirm | `ipc/transferHandlers.ts` |
+   | Native drag-out of local files | `ipc/dragOutHandlers.ts` |
    | Saved profiles | `ipc/profileHandlers.ts` |
    | Dotfile pools | `ipc/dotfileHandlers.ts` |
    | Profile sync | `ipc/syncHandlers.ts` |
