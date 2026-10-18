@@ -77,6 +77,21 @@ describe('DualPaneExplorer SFTP default start path', () => {
     expect(await screen.findByText(/SSH \/ SFTP/)).toBeInTheDocument();
   });
 
+  it('prompts for a remote connection even when the right pane was saved in the session', async () => {
+    (window as any).multissh.sessionGet = vi.fn().mockResolvedValue({
+      panes: {
+        left: { providerId: 'local', sourceType: 'local', label: 'Local Disk', path: '/' },
+        right: { providerId: 'local', sourceType: 'local', label: 'Local Disk', path: '/tmp' },
+      },
+    });
+    render(
+      <ConfirmProvider>
+        <DualPaneExplorer promptRemote />
+      </ConfirmProvider>
+    );
+    expect(await screen.findByText(/SSH \/ SFTP/)).toBeInTheDocument();
+  });
+
   it('connects the right pane to initialS3Config on mount', async () => {
     const s3 = { id: 'bucket-1', name: 'Archive', region: 'eu-north-1', initialPath: '/logs' } as any;
 

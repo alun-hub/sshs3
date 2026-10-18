@@ -253,12 +253,10 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           }
           setPanes({ left, right });
           setReady(true);
-          // UX audit finding #7: a brand-new File Manager tab used to default
-          // both panes to Local Disk — two identical, useless mirrors of the
-          // same folder. When there's nothing saved for the right pane and
-          // it isn't being auto-connected to a specific target, prompt for a
-          // remote connection instead of silently leaving it on Local Disk.
-          if (promptRemote && !session?.panes?.right && !initialSSHConfig && !initialS3Config && !initialK8sTarget) {
+          // "New Remote File Manager" opens the Connection Manager on top of the file manager for the right
+          // pane, even when a previous connection was restored there (Escape keeps that one). A plain new
+          // File Manager never asks.
+          if (promptRemote && !initialSSHConfig && !initialS3Config && !initialK8sTarget) {
             setConnectionRequest({ side: 'right', type: 'sftp' });
           }
         }
