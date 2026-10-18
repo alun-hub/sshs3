@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Edit3,
   Eye,
+  GripVertical,
   X,
 } from 'lucide-react';
 import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
@@ -193,6 +194,13 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     };
   }, [providerId, details.fullPath, isEffectiveDir, details.category]);
 
+  // Local files can be dragged straight out of the card into other apps
+  const canDragOut = providerId === 'local' && Boolean(window.multissh?.dragOutStart);
+  const handleDragStart = (e: React.DragEvent) => {
+    e.preventDefault();
+    void window.multissh?.dragOutStart?.([details.fullPath]).catch(() => {});
+  };
+
   const handleCopy = () => {
     onCopyPath(details.fullPath);
     setCopied(true);
@@ -340,6 +348,18 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
             <ExternalLink className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             <span>{isEffectiveDir ? 'Browse' : 'Reveal'}</span>
           </button>
+        )}
+
+        {canDragOut && (
+          <div
+            draggable
+            onDragStart={handleDragStart}
+            data-testid="path-hover-drag-handle"
+            title={`Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app`}
+            className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover hover:border-border-subtle transition-all active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
         )}
 
         <button

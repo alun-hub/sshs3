@@ -274,5 +274,33 @@ describe('TerminalPathHoverCard', () => {
       expect(btn.className).toContain('whitespace-nowrap');
     }
   });
-});
 
+  describe('drag out', () => {
+    const renderCard = (providerId?: string) =>
+      render(
+        <TerminalPathHoverCard
+          path="/home/me/report.pdf"
+          x={50}
+          y={50}
+          providerId={providerId}
+          onClose={vi.fn()}
+          onCopyPath={vi.fn()}
+        />
+      );
+
+    it('starts a native drag of the file from the handle for local terminals', () => {
+      const dragOutStart = vi.fn().mockResolvedValue(true);
+      (window as any).multissh = { dragOutStart };
+      renderCard('local');
+      const event = fireEvent.dragStart(screen.getByTestId('path-hover-drag-handle'));
+      expect(event).toBe(false); // default prevented, the native drag takes over
+      expect(dragOutStart).toHaveBeenCalledWith(['/home/me/report.pdf']);
+    });
+
+    it('shows no handle for remote terminals', () => {
+      (window as any).multissh = { dragOutStart: vi.fn() };
+      renderCard('sftp-host');
+      expect(screen.queryByTestId('path-hover-drag-handle')).not.toBeInTheDocument();
+    });
+  });
+});

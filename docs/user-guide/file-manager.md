@@ -16,7 +16,7 @@ Replace vulnerable JavaScript SSH libraries with the operating system's native O
 #### 🛠️ How to Use
 1. Launch the file manager via <kbd>Ctrl+Shift+F</kbd> or double-click an SFTP profile.
 2. Navigate via keyboard (<kbd>Tab</kbd> switches active pane, <kbd>Enter</kbd> enters directories or opens files, <kbd>Backspace</kbd> ascends to parent folder).
-3. Drag and drop files between panes or directly from your workstation's desktop.
+3. Drag and drop files between panes or directly from your workstation's desktop. Files and folders on the **Local** pane can also be dragged out of sshs3 into other applications.
 4. Manage permissions via right-click → **Change Permissions (chmod)...** with octal (e.g. `0755`, `0644`) and symbolic checkboxes. Tick **Apply recursively to underlying files and folders** to apply the mode to everything inside a selected folder.
 
 ### Drives, Volumes & Free Space
