@@ -38,15 +38,18 @@ export class OpenSshSftpClientAdapter extends EventEmitter implements ISftpBacke
   private onPresence?: (prompt: string) => void;
   private onPresenceCleared?: () => void;
   private hostKeyPromptHandler?: (info: HostKeyPromptInfo) => Promise<boolean>;
+  private sharedControlPath?: string;
 
   constructor(
     config: SFTPConfig,
     pinPromptHandler?: (prompt: string) => Promise<string> | string,
     onPresence?: (prompt: string) => void,
     hostKeyPromptHandler?: (info: HostKeyPromptInfo) => Promise<boolean>,
-    onPresenceCleared?: () => void
+    onPresenceCleared?: () => void,
+    controlPath?: string
   ) {
     super();
+    this.sharedControlPath = controlPath;
     this.config = config;
     this.pinPromptHandler = pinPromptHandler;
     this.onPresence = onPresence;
@@ -61,8 +64,12 @@ export class OpenSshSftpClientAdapter extends EventEmitter implements ISftpBacke
   }
 
   public async connect(): Promise<void> {
+    // The shared master belongs to a terminal and may be gone on a reconnect, so only the first connect uses it.
+    const controlPath = this.sharedControlPath;
+    this.sharedControlPath = undefined;
     this.protocol = await this.process.start({
       config: this.config,
+      controlPath,
       pinPromptHandler: this.pinPromptHandler,
       onPresence: this.onPresence,
       onPresenceCleared: this.onPresenceCleared,

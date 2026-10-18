@@ -516,6 +516,8 @@ export interface StorageConnectConfig {
   sftpConfig?: SFTPConfig;
   s3Config?: S3Config;
   k8sConfig?: K8sStorageConfig;
+  /** SSH terminal this provider serves; main lets its SFTP channel share the terminal's SSH connection. */
+  terminalSessionId?: string;
 }
 
 export interface MultiSSHApi {

@@ -127,6 +127,8 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 - **Dwell Protection & Collision Avoidance**: A subtle dwell timer prevents accidental popup flicker while moving the cursor across the terminal, and intelligent viewport edge detection flips the card smoothly to keep it within the visible window.
 - **Configuration Toggle**: Can be enabled or disabled anytime under *Settings → Terminal* (**Enable file path hover preview**). When disabled, <kbd>Ctrl+Click</kbd> path activation remains fully operational.
 
+On Linux and macOS the hover card reads files through the terminal's own SSH connection, so a security key (FIDO2) is touched once per terminal, not again for the preview. Windows opens a second connection, which asks for the key again.
+
 ### 4.4 Saved Command Snippets Palette (<kbd>Ctrl+Shift+L</kbd>)
 - Searchable palette of pre-saved shell commands and runbooks.
 - <kbd>Enter</kbd> types the command into the prompt; <kbd>Ctrl+Enter</kbd> types and executes it immediately. Multi-line snippets are pasted as an atomic batch.

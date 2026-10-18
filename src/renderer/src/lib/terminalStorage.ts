@@ -7,6 +7,8 @@ export interface TerminalStorageTarget {
   local?: boolean;
   config?: SSHConnectionConfig;
   k8sTarget?: K8sTerminalTarget;
+  /** The SSH terminal's session id; lets main share that terminal's SSH connection with the SFTP channel. */
+  sessionId?: string | null;
 }
 
 /** Storage provider id for the host a terminal is attached to ('' when it has none). */
@@ -23,7 +25,7 @@ export function terminalProviderId({ local, config, k8sTarget }: TerminalStorage
 export function terminalStorageConnectConfig(target: TerminalStorageTarget): StorageConnectConfig | null {
   const id = terminalProviderId(target);
   if (!id) return null;
-  const { local, config, k8sTarget } = target;
+  const { local, config, k8sTarget, sessionId } = target;
   if (local) return { id, name: 'Local Disk', type: 'local' };
   if (k8sTarget) {
     const name = `${k8sTarget.podName}/${k8sTarget.containerName}`;
@@ -48,7 +50,13 @@ export function terminalStorageConnectConfig(target: TerminalStorageTarget): Sto
     name: config.name || config.host,
     port: config.port ?? 22,
   };
-  return { id, name: config.name || config.host, type: 'sftp', sftpConfig };
+  return {
+    id,
+    name: config.name || config.host,
+    type: 'sftp',
+    sftpConfig,
+    ...(sessionId ? { terminalSessionId: sessionId } : {}),
+  };
 }
 
 /** Name of the file at the end of a path (either separator). */

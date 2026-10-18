@@ -151,7 +151,7 @@ export function useTerminalPathHover({
   const statCacheRef = useRef(new Map<string, { exists: boolean; at: number }>());
   const ensureProvider = useCallback((): Promise<void> => {
     const t = targetRef.current;
-    const connectConfig = terminalStorageConnectConfig(t);
+    const connectConfig = terminalStorageConnectConfig({ ...t, sessionId: sessionIdRef.current });
     if (!connectConfig || !window.multissh?.connectStorage) return Promise.resolve();
     if (providerPromiseRef.current?.id === connectConfig.id) return providerPromiseRef.current.promise;
     const failure = connectFailureRef.current;
@@ -173,7 +173,7 @@ export function useTerminalPathHover({
       });
     providerPromiseRef.current = { id: connectConfig.id, promise };
     return promise;
-  }, [applyHome]);
+  }, [applyHome, sessionIdRef]);
 
   // A different host/pod means a different provider.
   useEffect(() => {

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type {
@@ -13,11 +14,12 @@ import type {
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
+import { resolveTerminalControlPath } from '../storage/terminalControlPath';
 
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
   IpcBridge,
-  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry' | 'teamVaultService'
+  'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry' | 'teamVaultService' | 'sshPtyManager'
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
@@ -64,7 +66,18 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         sftpConfig = await bridge.smartcard.prepareFido2SftpConfig(sftpConfig, config.id);
         resolvedConfig = { ...resolvedConfig, sftpConfig };
       }
-      await bridge.storageRegistry.getOrCreate(resolvedConfig);
+      // Only an id comes from the renderer; the socket path is read from the terminal session itself.
+      const terminalSessionId = typeof config.terminalSessionId === 'string' ? config.terminalSessionId : undefined;
+      const terminalControlPath =
+        resolvedConfig.type === 'sftp' && resolvedConfig.sftpConfig && terminalSessionId
+          ? resolveTerminalControlPath(
+              bridge.sshPtyManager.getSession(terminalSessionId),
+              resolvedConfig.sftpConfig,
+              process.platform,
+              fs.existsSync
+            )
+          : undefined;
+      await bridge.storageRegistry.getOrCreate(resolvedConfig, { controlPath: terminalControlPath });
       return { id: config.id };
     }
   );

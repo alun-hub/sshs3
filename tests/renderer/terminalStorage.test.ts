@@ -32,6 +32,14 @@ describe('terminalStorage', () => {
     });
   });
 
+  it('names the terminal session only for SSH hosts', () => {
+    expect(terminalStorageConnectConfig({ config, sessionId: 's1' })).toMatchObject({ terminalSessionId: 's1' });
+    expect(terminalStorageConnectConfig({ config })).not.toHaveProperty('terminalSessionId');
+    expect(terminalStorageConnectConfig({ config, sessionId: null })).not.toHaveProperty('terminalSessionId');
+    expect(terminalStorageConnectConfig({ local: true, sessionId: 's1' })).not.toHaveProperty('terminalSessionId');
+    expect(terminalStorageConnectConfig({ k8sTarget, sessionId: 's1' })).not.toHaveProperty('terminalSessionId');
+  });
+
   it('takes the last path segment', () => {
     expect(pathBasename('/a/b/c.txt')).toBe('c.txt');
     expect(pathBasename('C:\\dir\\file.md')).toBe('file.md');

@@ -26,7 +26,10 @@ export class StorageRegistry {
   /**
    * Returns an existing provider or instantiates and stores a new one.
    */
-  public async getOrCreate(config: StorageConnectConfig): Promise<IStorageProvider> {
+  public async getOrCreate(
+    config: StorageConnectConfig,
+    connection: { controlPath?: string } = {}
+  ): Promise<IStorageProvider> {
     if (!config || !config.id) {
       throw new Error('Storage config must have an id');
     }
@@ -62,7 +65,8 @@ export class StorageRegistry {
           undefined,
           hostVerifier,
           this.options.sftpPinPromptHandlerFactory?.(config.sftpConfig),
-          this.options.sftpPresenceFactory?.(config.sftpConfig)
+          this.options.sftpPresenceFactory?.(config.sftpConfig),
+          connection.controlPath
         );
         break;
       }

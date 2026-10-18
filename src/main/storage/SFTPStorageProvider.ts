@@ -124,7 +124,9 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     client?: ISftpBackendClient | any,
     hostVerifier?: SshHostVerifier,
     pinPromptHandler?: (prompt: string) => Promise<string> | string,
-    presence?: { onPresence?: (prompt: string) => void; onPresenceCleared?: () => void }
+    presence?: { onPresence?: (prompt: string) => void; onPresenceCleared?: () => void },
+    /** SSH master socket to share for the first connect (a terminal's), instead of authenticating again. */
+    controlPath?: string
   ) {
     super();
     this.config = { ...config };
@@ -137,7 +139,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
         this.pinPromptHandler,
         presence?.onPresence,
         hostVerifier?.hostKeyPrompt,
-        presence?.onPresenceCleared
+        presence?.onPresenceCleared,
+        controlPath
       );
     this.attachLifecycleListeners(this.client);
   }

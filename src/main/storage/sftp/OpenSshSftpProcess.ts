@@ -315,7 +315,8 @@ export class OpenSshSftpProcess {
       this.askpassServer = undefined;
     }
 
-    if (this.controlPath && fs.existsSync(this.controlPath)) {
+    // A socket handed in by the caller (a terminal's master) is not ours to remove.
+    if (this.controlDir && this.controlPath && fs.existsSync(this.controlPath)) {
       try {
         fs.unlinkSync(this.controlPath);
       } catch {

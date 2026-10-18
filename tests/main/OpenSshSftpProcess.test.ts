@@ -104,6 +104,38 @@ describe('OpenSshSftpProcess', () => {
     expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'shares a given control socket and leaves it in place on close',
+    async () => {
+      const { default: fs } = await import('node:fs');
+      const { default: os } = await import('node:os');
+      const { default: path } = await import('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-test-'));
+      const socket = path.join(dir, 'terminal.sock');
+      fs.writeFileSync(socket, '');
+      try {
+        const proc = new OpenSshSftpProcess();
+        const startPromise = proc.start({
+          config: { id: 't', host: 'myserver.com', port: 22, username: 'alice', authType: 'password', password: 'x' }, // pragma: allowlist secret
+          controlPath: socket,
+        });
+        setTimeout(() => {
+          const resp = Buffer.alloc(9);
+          resp.writeUInt32BE(5, 0);
+          resp.writeUInt8(FXP.VERSION, 4);
+          resp.writeUInt32BE(3, 5);
+          mockChild.stdout.write(resp);
+        }, 10);
+        await startPromise;
+        expect(mockSpawn.mock.calls[0][1] as string[]).toContain(`ControlPath=${socket}`);
+        await proc.close();
+        expect(fs.existsSync(socket)).toBe(true);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
+
   it('removes its control dir and stops askpass when building the ssh arguments throws, and can start again', async () => {
     const { SmartcardDetector } = await import('../../src/main/smartcard/SmartcardDetector');
     const { default: fs } = await import('node:fs');
