@@ -107,3 +107,21 @@ describe('terminalPathPreview', () => {
     }
   });
 });
+
+describe('resolvePathDetails on Windows', () => {
+  it('joins a relative file onto a Windows cwd with backslashes', () => {
+    const d = resolvePathDetails('README.md', 'C:\\Users\\alun', 'C:\\Users\\alun\\sshs3');
+    expect(d.fullPath).toBe('C:\\Users\\alun\\sshs3\\README.md');
+    expect(d.basename).toBe('README.md');
+    expect(d.parentDir).toBe('C:\\Users\\alun\\sshs3');
+  });
+
+  it('falls back to the Windows home without mixing separators', () => {
+    expect(resolvePathDetails('./a/b.txt', 'C:\\Users\\alun').fullPath).toBe('C:\\Users\\alun\\a\\b.txt');
+  });
+
+  it('keeps absolute Windows paths and resolves ~ against a Windows home', () => {
+    expect(resolvePathDetails('D:\\x\\y.md', 'C:\\Users\\alun').fullPath).toBe('D:\\x\\y.md');
+    expect(resolvePathDetails('~/notes.md', 'C:\\Users\\alun').fullPath).toBe('C:\\Users\\alun\\notes.md');
+  });
+});

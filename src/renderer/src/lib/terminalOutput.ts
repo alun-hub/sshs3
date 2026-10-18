@@ -6,11 +6,11 @@ const MAX_MARKERS = 50;
 // including git branch decorators like `➜ git:(main) ` or `[user@host /dir]# `
 // and box-drawing prompt footers like `╰─$ ` or `╰─❯ `
 const PROMPT_PREFIX_RE =
-  /^(?:[╰└┗].*?[$#%>❯➜]\s*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
+  /^(?:[╰└┗].*?[$#%>❯➜]\s*|(?:PS\s+)?[A-Za-z]:\\[^<>|?*"]*?>\s*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>]\s+|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?)/;
 
 // Matches an entire line that consists only of a prompt or multi-line prompt header/footer
 const FULL_PROMPT_LINE_RE =
-  /^(?:[╰└┗].*|[╭┌┏].*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?|[\w.-]+@[\w.-]+(?:\s+in\s+[^\s]+|:[^\s$#%>]*)\s*(?:\[[^\]]+\])?\s*)$/;
+  /^(?:[╰└┗].*|(?:PS\s+)?[A-Za-z]:\\[^<>|?*"]*>\s*|[╭┌┏].*|(?:(?:\([^)]+\)\s+)?(?:\[[^\]]+\]|[\w.@:~/-]+[@:][^\s$#%>]*)\s*)?[$#%>❯➜]\s*|[❯➜]\s*(?:.*?\s*git:\([^)]+\)\s*)?|[\w.-]+@[\w.-]+(?:\s+in\s+[^\s]+|:[^\s$#%>]*)\s*(?:\[[^\]]+\])?\s*)$/;
 
 /**
  * Strips shell prompt prefix from a command line if present.
@@ -74,6 +74,12 @@ export function extractCwdFromPrompt(text: string, userHome = '/home/user'): str
 
   for (let i = lines.length - 1; i >= Math.max(0, lines.length - 4); i--) {
     const line = lines[i];
+
+    // 0. Windows shells: PowerShell `PS C:\Users\me\proj> ` and cmd.exe `C:\Users\me\proj>`.
+    // Non-greedy up to the first `>` followed by whitespace/end, so a typed command after the
+    // prompt (`PS C:\x> cat a.md`) and paths containing spaces both work.
+    const windowsMatch = line.match(/^(?:PS\s+)?([A-Za-z]:\\[^<>|?*"]*?)>(?:\s|$)/);
+    if (windowsMatch) return windowsMatch[1].length > 3 ? windowsMatch[1].replace(/\\+$/, '') : windowsMatch[1];
 
     const userMatch = line.match(/(?:^|[\r\n\s╭[(])([a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+)/);
     const promptUser = userMatch ? userMatch[1] : undefined;

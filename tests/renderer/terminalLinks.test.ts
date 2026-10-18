@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { findPaths, findUrls } from '../../src/renderer/src/lib/terminalLinks';
 
+describe('terminalLinks - Windows paths', () => {
+  it('links an absolute Windows path as one match, not as a bare filename', () => {
+    const text = 'Error in C:\\Users\\alun\\sshs3\\src\\main.ts:42:7 (see log)';
+    const m = findPaths(text);
+    expect(m).toHaveLength(1);
+    expect(m[0].text).toBe('C:\\Users\\alun\\sshs3\\src\\main.ts');
+    expect(m[0].length).toBe('C:\\Users\\alun\\sshs3\\src\\main.ts:42:7'.length);
+  });
+
+  it('links forward-slash drive paths and quoted paths with spaces', () => {
+    expect(findPaths('open C:/Users/alun/a.md now')[0].text).toBe('C:/Users/alun/a.md');
+    expect(findPaths('"C:\\Program Files\\App\\x.txt"')[0].text).toBe('C:\\Program Files\\App\\x.txt');
+  });
+});
+
 describe('terminalLinks - findPaths', () => {
   it('does not treat ALL_CAPS names as files', () => {
     expect(findPaths('export MY_VAR_NAME=1')).toHaveLength(0);

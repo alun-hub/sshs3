@@ -187,3 +187,22 @@ describe('CommandOutputTracker', () => {
     });
   });
 });
+
+describe('Windows prompts in clean output', () => {
+  it('strips PowerShell and cmd prompts', async () => {
+    const { stripPrompt, stripTrailingPrompt } = await import('./terminalOutput');
+    expect(stripPrompt('PS C:\\Users\\alun> Get-ChildItem')).toBe('Get-ChildItem');
+    expect(stripPrompt('C:\\Users\\alun>dir')).toBe('dir');
+    expect(stripTrailingPrompt('line one\nline two\nPS C:\\Users\\alun>')).toBe('line one\nline two');
+  });
+});
+
+describe('extractCwdFromPrompt on Windows shells', () => {
+  it('reads PowerShell and cmd prompts, including paths with spaces and a typed command', async () => {
+    const { extractCwdFromPrompt } = await import('./terminalOutput');
+    expect(extractCwdFromPrompt('PS C:\\Users\\alun\\sshs3> ')).toBe('C:\\Users\\alun\\sshs3');
+    expect(extractCwdFromPrompt('PS C:\\Users\\alun\\sshs3> cat README.md')).toBe('C:\\Users\\alun\\sshs3');
+    expect(extractCwdFromPrompt('C:\\Program Files\\App>')).toBe('C:\\Program Files\\App');
+    expect(extractCwdFromPrompt('PS C:\\>')).toBe('C:\\');
+  });
+});

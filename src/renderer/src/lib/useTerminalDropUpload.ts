@@ -3,6 +3,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { isValidDragPayload, DRAG_MIME_TYPE } from '../components/FileManager/types';
 import { terminalProviderId, terminalStorageConnectConfig } from './terminalStorage';
+import { isWindowsPath } from './terminalPathPreview';
 
 export interface UseTerminalDropUploadOptions {
   isRemote: boolean;
@@ -15,6 +16,9 @@ export interface UseTerminalDropUploadOptions {
 }
 
 export function shellQuote(path: string): string {
+  // Local Windows paths go to PowerShell or cmd.exe, which both take double quotes (cmd has no
+  // single-quote quoting, and PowerShell escapes `'` as `''`, not the POSIX `'\''`).
+  if (isWindowsPath(path)) return `"${path}"`;
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 

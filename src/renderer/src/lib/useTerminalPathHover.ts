@@ -106,7 +106,12 @@ export function useTerminalPathHover({
           const slashIdx = p.indexOf('/', 7);
           if (slashIdx >= 0) p = p.slice(slashIdx);
         }
-        if (p.startsWith('/')) setCwd(decodeURIComponent(p));
+        // Windows shells report `file:///C:/Users/me` — drop the slash before the drive letter.
+        if (/^\/[A-Za-z]:[\\/]/.test(p)) {
+          setCwd(decodeURIComponent(p.slice(1)).replace(/\//g, '\\'));
+        } else if (p.startsWith('/')) {
+          setCwd(decodeURIComponent(p));
+        }
       } catch {
         // Safe to ignore malformed OSC 7
       }

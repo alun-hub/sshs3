@@ -40,6 +40,12 @@ describe('useTerminalDropUpload', () => {
       },
     }) as any;
 
+  describe('shellQuote on Windows paths', () => {
+    it('double-quotes a local Windows path', () => {
+      expect(shellQuote('C:\\Users\\alun\\my file.txt')).toBe('"C:\\Users\\alun\\my file.txt"');
+    });
+  });
+
   describe('shellQuote', () => {
     it('wraps paths in single quotes and escapes single quotes inside', () => {
       expect(shellQuote('/var/log/syslog')).toBe("'/var/log/syslog'");

@@ -1,4 +1,5 @@
 import type { IDisposable, ILink, Terminal } from 'xterm';
+import { isWindowsPath } from './terminalPathPreview';
 
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
 const TRAILING_PUNCT_RE = /[.,;:!?)\]}>]+$/;
@@ -10,6 +11,11 @@ const QUOTED_PATH_RE =
 // or subpaths (`src/file.ts`, `dir/`), optionally with backslash-escaped spaces, optionally followed by `:line[:col]`.
 const SLASH_PATH_RE =
   /(?<![\w:/.~-])((?:~?\/|\.\.?\/|(?:[\w.@+-]|\\ )+\/)(?:(?:[\w.@%+~-]|\\ )+\/)*(?:(?:[\w.@%+~-]|\\ )+)?)(?::\d+(?::\d+)?)?/g;
+
+// Windows absolute paths without spaces (`C:\Users\me\a.txt`, `C:/x/y`, `\\server\share\f`),
+// optionally followed by `:line[:col]`. Paths with spaces are only linked when quoted.
+const WINDOWS_PATH_RE =
+  /(?<![\w:/.~\\-])((?:[A-Za-z]:[\\/]|\\\\[\w.-]+\\)(?:[\w.@%+~$#()-]+[\\/])*[\w.@%+~$#()-]*)(?::\d+(?::\d+)?)?/g;
 
 // Standalone filenames with extensions (e.g. `index.html`, `test.txt`, `windows.png`, `.bashrc`),
 // well-known filenames (e.g. `Dockerfile`, `Makefile`, `notes`, `hosts`), or identifiers with `_`.
@@ -147,6 +153,7 @@ export function findUrls(text: string): { index: number; url: string }[] {
 
 function isValidSlashedPath(raw: string): boolean {
   if (raw.length < 2 || !/[A-Za-z]/.test(raw)) return false;
+  if (isWindowsPath(raw)) return true;
   if (raw.startsWith('/') || raw.startsWith('~/') || raw.startsWith('./') || raw.startsWith('../')) {
     return true;
   }
@@ -225,6 +232,17 @@ export function findPaths(text: string): TextMatch[] {
     candidates.push({
       index: m.index ?? 0,
       text: unescaped,
+      length: rawMatch.length + (rawMatch.length === m[1].length ? suffix : 0),
+    });
+  }
+
+  for (const m of text.matchAll(WINDOWS_PATH_RE)) {
+    const rawMatch = m[1].replace(/[.,;)]+$/, '');
+    if (rawMatch.length < 4 || !/[A-Za-z0-9]/.test(rawMatch.slice(3))) continue;
+    const suffix = m[0].length - m[1].length;
+    candidates.push({
+      index: m.index ?? 0,
+      text: rawMatch,
       length: rawMatch.length + (rawMatch.length === m[1].length ? suffix : 0),
     });
   }

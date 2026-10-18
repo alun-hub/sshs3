@@ -185,6 +185,11 @@ export function getLanguageLabel(filePath: string): string {
   return 'Text File';
 }
 
+/** `C:\dir`, `C:/dir` or a UNC path (`\\server\share`). */
+export function isWindowsPath(p: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(p) || /^\\\\[^\\]/.test(p);
+}
+
 export interface PathDetails {
   raw: string;
   basename: string;
@@ -217,30 +222,38 @@ export function resolvePathDetails(
   const isDir = cleaned.endsWith('/') || cleaned.endsWith('\\');
   const normalized = cleaned.replace(/[\\/]+$/, '');
 
+  // A Windows base (drive letter or UNC) is joined with backslashes so the result stays a valid
+  // native path instead of a `C:\Users\alun/README.md` mix.
+  const joinUnder = (base: string, rel: string): string => {
+    const windows = isWindowsPath(base);
+    const sep = windows ? '\\' : '/';
+    const trimmedBase = base.replace(/[\\/]+$/, '');
+    const trimmedRel = windows ? rel.replace(/\//g, '\\') : rel;
+    return `${trimmedBase}${sep}${trimmedRel}`;
+  };
+
   let fullPath: string;
   if (normalized === '~') {
     fullPath = userHome;
-  } else if (normalized.startsWith('~/')) {
-    fullPath = `${userHome.replace(/\/+$/, '')}/${normalized.slice(2)}`;
-  } else if (normalized.startsWith('/') || /^[A-Za-z]:[\\/]/.test(normalized)) {
+  } else if (/^~[\\/]/.test(normalized)) {
+    fullPath = joinUnder(userHome, normalized.slice(2));
+  } else if (normalized.startsWith('/') || isWindowsPath(normalized)) {
     fullPath = normalized;
   } else {
     const effectiveCwd =
-      currentCwd && (currentCwd.startsWith('/') || currentCwd.startsWith('~') || /^[A-Za-z]:[\\/]/.test(currentCwd))
+      currentCwd && (currentCwd.startsWith('/') || currentCwd.startsWith('~') || isWindowsPath(currentCwd))
         ? currentCwd
         : userHome;
     const resolvedBase =
       effectiveCwd === '~'
         ? userHome
-        : effectiveCwd.startsWith('~/')
-          ? `${userHome.replace(/\/+$/, '')}/${effectiveCwd.slice(2)}`
+        : /^~[\\/]/.test(effectiveCwd)
+          ? joinUnder(userHome, effectiveCwd.slice(2))
           : effectiveCwd;
-    const base = resolvedBase.replace(/\/+$/, '');
-    const rel = normalized.replace(/^\.\//, '');
-    fullPath = `${base}/${rel}`;
+    fullPath = joinUnder(resolvedBase, normalized.replace(/^\.[\\/]/, ''));
   }
 
-  const lastSlash = fullPath.lastIndexOf('/');
+  const lastSlash = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
   const basename = lastSlash >= 0 ? fullPath.slice(lastSlash + 1) : fullPath;
   const parentDir = lastSlash > 0 ? fullPath.slice(0, lastSlash) : '/';
 
@@ -252,7 +265,7 @@ export function resolvePathDetails(
     raw: rawPath,
     basename: basename || '/',
     parentDir,
-    fullPath: isDir ? `${fullPath}/` : fullPath,
+    fullPath: isDir ? `${fullPath}${isWindowsPath(fullPath) ? '\\' : '/'}` : fullPath,
     isDir,
     extension,
     category,
