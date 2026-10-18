@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.44] - 2026-10-18
+
+### Fixed
+- **Windows terminals: paths and prompts.** Relative names such as `README.md` are now resolved against the real working directory (read from PowerShell and cmd prompts and OSC 7 `file:///C:/...`) and joined with backslashes, so the hover card and editor no longer fail with ENOENT. Absolute Windows paths (`C:\`, `C:/`, UNC) are linked, and `Alt+C` strips PowerShell and cmd prompts.
+- **WSL terminals.** Linux paths (`/mnt/c/...`, `\\wsl.localhost\<distro>`) are translated to Windows paths for the hover card, preview, editor, reveal and drag-out. Windows files dropped on a WSL terminal are pasted as `/mnt/<drive>` paths, and the Windows home directory is no longer used as the WSL home.
+- **`Alt+C` works on upgraded installs.** A saved `Ctrl+Shift+G` left over from the old default no longer overrides the new `Alt+C` default (a binding you chose yourself is kept). `F12` / `Ctrl+Shift+I` open DevTools again in unpackaged builds.
+- **Dropped Windows file names are no longer expanded by the shell.** A path containing `$`, a backtick or `%` is pasted in single quotes (PowerShell literal quoting) instead of double quotes, so a file named like `a$(calc).txt` cannot run a command.
+
+### Security
+- Replaced an overlapping-quantifier regex in the custom port-detection validator with a linear check (CodeQL `js/redos`). Behaviour is unchanged: nested quantifiers such as `(a+)+` are still rejected.
+
 ## [0.96.43] - 2026-10-18
 
 ### Changed
