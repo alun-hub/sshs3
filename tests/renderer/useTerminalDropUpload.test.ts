@@ -99,6 +99,8 @@ describe('useTerminalDropUpload', () => {
   it('uploads to remote CWD via SFTP and pastes remote path when dropping in SSH session', async () => {
     const onPaste = vi.fn();
     const onNotice = vi.fn();
+    window.multissh.getPathForFile = vi.fn().mockReturnValue('/home/user/Downloads/archive.tar.gz');
+
     const { result } = renderHook(() =>
       useTerminalDropUpload({
         isRemote: true,
@@ -109,9 +111,9 @@ describe('useTerminalDropUpload', () => {
       })
     );
 
+    // In modern Electron, DOM File has no .path property:
     const fakeFile = {
       name: 'archive.tar.gz',
-      path: '/home/user/Downloads/archive.tar.gz',
     };
 
     const fakeDropEvent = {
@@ -119,12 +121,22 @@ describe('useTerminalDropUpload', () => {
       stopPropagation: vi.fn(),
       dataTransfer: {
         files: [fakeFile],
+        getData: vi.fn(),
       },
     } as any;
 
     await act(async () => {
       await result.current.dragHandlers.onDrop(fakeDropEvent);
     });
+
+    expect(window.multissh.getPathForFile).toHaveBeenCalledWith(fakeFile);
+
+    expect(window.multissh.connectStorage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'local',
+        type: 'local',
+      })
+    );
 
     expect(window.multissh.connectStorage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -140,7 +152,43 @@ describe('useTerminalDropUpload', () => {
       targetPath: '/var/www/site/archive.tar.gz',
     });
 
-    expect(onNotice).toHaveBeenCalledWith('Uploaded archive.tar.gz');
+    expect(onNotice).toHaveBeenCalledWith('Uploading archive.tar.gz...');
     expect(onPaste).toHaveBeenCalledWith("'/var/www/site/archive.tar.gz'");
+  });
+
+  it('handles internal drag from sshs3 file manager on remote SSH host', async () => {
+    const onPaste = vi.fn();
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({
+        isRemote: true,
+        config: sampleConfig,
+        targetFolder: '/var/www/site',
+        onPaste,
+        onNotice: vi.fn(),
+      })
+    );
+
+    const internalPayload = {
+      providerId: 'sftp-ssh-1',
+      basePath: '/var/log',
+      entries: [{ name: 'app.log', path: '/var/log/app.log' }],
+    };
+
+    const fakeDropEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        getData: vi.fn((mime: string) =>
+          mime === 'application/x-multissh-file-entries' ? JSON.stringify(internalPayload) : ''
+        ),
+      },
+    } as any;
+
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(fakeDropEvent);
+    });
+
+    expect(onPaste).toHaveBeenCalledWith("'/var/log/app.log'");
+    expect(window.multissh.transferAdd).not.toHaveBeenCalled();
   });
 });
