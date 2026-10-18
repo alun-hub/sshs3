@@ -4,9 +4,12 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { isValidDragPayload, DRAG_MIME_TYPE } from '../components/FileManager/types';
 import { terminalProviderId, terminalStorageConnectConfig } from './terminalStorage';
 import { isWindowsPath } from './terminalPathPreview';
+import { windowsToWslPath } from './wslPaths';
 
 export interface UseTerminalDropUploadOptions {
   isRemote: boolean;
+  /** A local WSL shell: dropped Windows paths are pasted as `/mnt/c/...` paths. */
+  wsl?: boolean;
   config?: SSHConnectionConfig;
   /** Kubernetes terminals upload into the container through the k8s storage provider. */
   k8sTarget?: K8sTerminalTarget;
@@ -53,6 +56,7 @@ interface TransferItem {
 
 export function useTerminalDropUpload({
   isRemote,
+  wsl = false,
   config,
   k8sTarget,
   targetFolder,
@@ -116,6 +120,7 @@ export function useTerminalDropUpload({
       const targetProviderId = terminalProviderId(storageTarget);
       const targetConnect = terminalStorageConnectConfig(storageTarget);
       const canUpload = Boolean(targetProviderId && targetConnect);
+      const quoteLocal = (p: string): string => shellQuote(wsl ? windowsToWslPath(p) : p);
 
       /** Copies the items into the terminal's current directory and pastes the resulting paths. */
       const uploadAndPaste = async (items: TransferItem[]) => {
@@ -175,7 +180,7 @@ export function useTerminalDropUpload({
           }
           if (!canUpload || sourceProviderId === targetProviderId) {
             if (sourceProviderId === 'local' || sourceProviderId === targetProviderId) {
-              onPaste(entries.map((entry) => shellQuote(entry.path)).join(' '));
+              onPaste(entries.map((entry) => quoteLocal(entry.path)).join(' '));
             } else {
               onNotice('Cannot paste remote files into this terminal; copy them to the local disk first');
             }
@@ -201,7 +206,7 @@ export function useTerminalDropUpload({
         const paths = files
           .map((f) => getFilePath(f) || f.name)
           .filter(Boolean)
-          .map(shellQuote);
+          .map(quoteLocal);
         if (paths.length > 0) {
           onPaste(paths.join(' '));
         }
@@ -223,7 +228,7 @@ export function useTerminalDropUpload({
       if (unresolved.length > 0) onPaste(unresolved.map(shellQuote).join(' '));
       if (items.length > 0) await uploadAndPaste(items);
     },
-    [isRemote, config, k8sTarget, targetFolder, onPaste, onNotice]
+    [isRemote, wsl, config, k8sTarget, targetFolder, onPaste, onNotice]
   );
 
   return {

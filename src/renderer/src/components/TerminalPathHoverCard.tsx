@@ -25,6 +25,8 @@ export interface TerminalPathHoverCardProps {
   userHome?: string;
   currentCwd?: string;
   providerId?: string;
+  /** Maps the path as the shell shows it to the one the storage provider opens (WSL). */
+  toStoragePath?: (p: string) => string;
   onClose: () => void;
   onCopyPath: (path: string) => void;
   onOpenPath?: (path: string) => void;
@@ -114,6 +116,8 @@ const CATEGORY_STYLES: Record<
   },
 };
 
+const identityPath = (p: string): string => p;
+
 export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   path,
   x,
@@ -121,6 +125,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   userHome,
   currentCwd,
   providerId,
+  toStoragePath = identityPath,
   onClose,
   onCopyPath,
   onOpenPath,
@@ -162,7 +167,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     const timer = setTimeout(() => {
       const maxBytes = details.category === 'image' ? 5 * 1024 * 1024 : 2048;
       window.multissh
-        ?.fileRead(providerId, details.fullPath, maxBytes)
+        ?.fileRead(providerId, toStoragePath(details.fullPath), maxBytes)
         .then((res) => {
           if (cancelled || !res) return;
           if (res.isDirectory) {
@@ -203,7 +208,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   // Dragging the file icon, the preview or the handle all start the same flow; a remote drag opens the confirmation instead.
   const handleDragStart = (e: React.DragEvent) => {
     e.preventDefault();
-    if (isLocalProvider) void window.multissh?.dragOutStart?.([details.fullPath]).catch(() => {});
+    if (isLocalProvider) void window.multissh?.dragOutStart?.([toStoragePath(details.fullPath)]).catch(() => {});
     else onDragOut?.(details.fullPath);
   };
   const dragSource = canDragOut ? { draggable: true, onDragStart: handleDragStart } : {};

@@ -276,6 +276,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const pathHover = useTerminalPathHover({
     target: { local, config, k8sTarget },
     initialCwd,
+    wsl: Boolean(local && shellType === 'wsl'),
+    wslDistro,
     pathHoverPreview,
     onOpenPath,
     termRef,
@@ -297,6 +299,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
   const dropUpload = useTerminalDropUpload({
     isRemote: Boolean(config),
+    wsl: Boolean(local && shellType === 'wsl'),
     config,
     k8sTarget,
     targetFolder: pathHover.cardCwd || '',
@@ -1088,6 +1091,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           userHome={pathHover.userHomeDir}
           currentCwd={pathHover.cardCwd}
           providerId={pathHover.providerId}
+          toStoragePath={pathHover.toStoragePath}
           {...pathHover.cardProps}
         />
       )}

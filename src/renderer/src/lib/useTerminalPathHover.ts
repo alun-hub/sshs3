@@ -5,6 +5,7 @@ import type { TerminalLinkHandlers } from './terminalLinks';
 import { isKnownFilename } from './terminalLinks';
 import { resolvePathDetails } from './terminalPathPreview';
 import { extractCwdFromPrompt } from './terminalOutput';
+import { wslToWindowsPath } from './wslPaths';
 import { pathBasename, terminalProviderId, terminalStorageConnectConfig, type TerminalStorageTarget } from './terminalStorage';
 
 const STAT_CACHE_TTL_MS = 5000;
@@ -19,6 +20,9 @@ interface HoverCardData {
 export interface UseTerminalPathHoverOptions {
   target: TerminalStorageTarget;
   initialCwd?: string;
+  /** A WSL shell reports Linux paths that the Windows side must translate before opening them. */
+  wsl?: boolean;
+  wslDistro?: string;
   pathHoverPreview: boolean;
   onOpenPath?: (path: string) => void;
   termRef: RefObject<Terminal | null>;
@@ -39,6 +43,8 @@ function guessHome(username?: string): string {
 export function useTerminalPathHover({
   target,
   initialCwd,
+  wsl = false,
+  wslDistro,
   pathHoverPreview,
   onOpenPath,
   termRef,
@@ -49,6 +55,9 @@ export function useTerminalPathHover({
   const targetRef = useRef(target);
   targetRef.current = target;
   const providerId = terminalProviderId(target);
+  const toStoragePath = useCallback((p: string) => (wsl ? wslToWindowsPath(p, wslDistro) : p), [wsl, wslDistro]);
+  const toStoragePathRef = useRef(toStoragePath);
+  toStoragePathRef.current = toStoragePath;
   const onOpenPathRef = useRef(onOpenPath);
   onOpenPathRef.current = onOpenPath;
   const pathHoverPreviewRef = useRef(pathHoverPreview);
@@ -74,8 +83,11 @@ export function useTerminalPathHover({
   const editingFileRef = useRef(editingFile);
   editingFileRef.current = editingFile;
   const editorEntry = useMemo<FileEntry | null>(
-    () => (editingFile ? { name: pathBasename(editingFile), path: editingFile, size: 0, isDirectory: false } : null),
-    [editingFile]
+    () =>
+      editingFile
+        ? { name: pathBasename(editingFile), path: toStoragePath(editingFile), size: 0, isDirectory: false }
+        : null,
+    [editingFile, toStoragePath]
   );
 
   const setCwd = useCallback((dir: string) => {
@@ -122,14 +134,15 @@ export function useTerminalPathHover({
 
   // Local shells: the home directory is known immediately.
   useEffect(() => {
-    if (!local) return;
+    // A WSL shell's home is a Linux path; the Windows home directory would be wrong for it.
+    if (!local || wsl) return;
     window.multissh
       ?.getHomeDir?.()
       .then((h) => {
         if (h) applyHome(h);
       })
       .catch(() => {});
-  }, [local, applyHome]);
+  }, [local, wsl, applyHome]);
 
   // Remote hosts: connect the storage provider on first use and share the in-flight attempt.
   const providerPromiseRef = useRef<{ id: string; promise: Promise<void> } | null>(null);
@@ -245,7 +258,7 @@ export function useTerminalPathHover({
     if (cached && Date.now() - cached.at < STAT_CACHE_TTL_MS) return cached.exists;
     let exists = true;
     try {
-      await window.multissh.storageStat(id, fullPath);
+      await window.multissh.storageStat(id, toStoragePathRef.current(fullPath));
     } catch {
       exists = false;
     }
@@ -268,7 +281,7 @@ export function useTerminalPathHover({
             dismissCard();
             await prepare();
             const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
-            onOpenPathRef.current?.(details.fullPath);
+            onOpenPathRef.current?.(toStoragePathRef.current(details.fullPath));
           }
         : undefined,
       hoverPath: (e, path) => {
@@ -311,9 +324,9 @@ export function useTerminalPathHover({
       }
       if (window.multissh?.storageStat) {
         try {
-          const stat = await window.multissh.storageStat(id, p);
+          const stat = await window.multissh.storageStat(id, toStoragePathRef.current(p));
           if (stat?.isDirectory) {
-            onOpenPathRef.current?.(p);
+            onOpenPathRef.current?.(toStoragePathRef.current(p));
             dismissCard();
             return;
           }
@@ -372,7 +385,7 @@ export function useTerminalPathHover({
     },
     onOpenPath: onOpenPath
       ? (p: string) => {
-          onOpenPathRef.current?.(p);
+          onOpenPathRef.current?.(toStoragePathRef.current(p));
           dismissCard();
         }
       : undefined,
@@ -386,6 +399,7 @@ export function useTerminalPathHover({
     cardCwd: currentCwdRef.current || currentCwd || initialCwd || userHomeDir,
     userHomeDir,
     providerId,
+    toStoragePath,
     editingFile,
     editorEntry,
     isEditorOpen: () => editingFileRef.current !== null,
