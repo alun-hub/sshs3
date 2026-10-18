@@ -21,6 +21,10 @@ import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
+import { usePortDetection } from '../lib/usePortDetection';
+import { TerminalPortPill } from './TerminalPortPill';
+import { useTerminalDropUpload } from '../lib/useTerminalDropUpload';
+import { TerminalDropOverlay } from './TerminalDropOverlay';
 
 export interface TerminalViewProps {
   /** Omit together with `local` to spawn a local shell instead of an SSH session. */
@@ -51,6 +55,10 @@ export interface TerminalViewProps {
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
   /** Whether hovering over file paths shows an interactive preview card. Default true. */
   pathHoverPreview?: boolean;
+  /** Whether web services/listening ports in output are auto-detected for quick port forwarding. Default true. */
+  portForwardAutoDetect?: boolean;
+  /** Optional custom regular expression for matching service ports in terminal output. */
+  portForwardCustomRegex?: string;
   /** Ctrl+click on a file path in the output (SSH sessions only). Receives the path as printed, e.g. `/var/log/x` or `~/x`. */
   onOpenPath?: (path: string) => void;
   /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
@@ -179,6 +187,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
   pathHoverPreview = true,
+  portForwardAutoDetect = true,
+  portForwardCustomRegex,
   onOpenPath,
   perfMetrics,
   onCloseTab,
@@ -273,6 +283,26 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   });
   const pathHoverRef = useRef(pathHover);
   pathHoverRef.current = pathHover;
+
+  const portDetection = usePortDetection({
+    enabled: portForwardAutoDetect,
+    customRegex: portForwardCustomRegex,
+    isRemote: Boolean(config),
+    config,
+  });
+  const scanPortsRef = useRef(portDetection.scanOutput);
+  scanPortsRef.current = portDetection.scanOutput;
+
+  const dropUpload = useTerminalDropUpload({
+    isRemote: Boolean(config),
+    config,
+    targetFolder: pathHover.currentCwd || initialCwd || '',
+    onPaste: (text) => {
+      termRef.current?.paste(text);
+      termRef.current?.focus();
+    },
+    onNotice: notify,
+  });
 
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
@@ -777,6 +807,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 term.write(data);
                 sendInitialCwd();
                 pathHoverRef.current.detectCwdFromText(data);
+                scanPortsRef.current(data);
                 if (!k8sTarget) {
                   const detectedHost = scanOutputForHost(data);
                   if (detectedHost) {
@@ -951,7 +982,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       className={`relative flex h-full w-full flex-col overflow-hidden ${
         isBreeze ? 'bg-[#232627]' : isLight ? 'bg-[#f8fafc]' : 'bg-[#0f172a]'
       } ${className}`}
+      {...dropUpload.dragHandlers}
     >
+      <TerminalDropOverlay
+        isDragging={dropUpload.isDragging}
+        isRemote={Boolean(config)}
+        targetFolder={pathHover.currentCwd || initialCwd || ''}
+      />
       {perfMetrics && perfKind && (
         <PerfBar kind={perfKind} state={perfState} layout={perfMetrics.layout} items={perfMetrics.items} title={perfTitle} local={Boolean(local)} />
       )}
@@ -1152,6 +1189,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           </div>
         </div>
       )}
+
+      <TerminalPortPill
+        ports={portDetection.detectedPorts}
+        isRemote={Boolean(config)}
+        onForwardAndOpen={portDetection.handleForwardAndOpen}
+        onDismiss={portDetection.dismissPort}
+      />
     </div>
   );
 };

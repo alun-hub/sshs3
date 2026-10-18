@@ -455,4 +455,31 @@ describe('SettingsModal', () => {
       })
     );
   });
+
+  it('toggles terminalPortForwardAutoDetect and saves custom regex', () => {
+    const onSave = vi.fn();
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    const checkbox = screen.getByLabelText(/Enable web service & port forward auto-detection/i);
+    expect(checkbox).toBeChecked();
+
+    const regexInput = screen.getByPlaceholderText(/Service started on/i);
+    fireEvent.change(regexInput, { target: { value: 'port: (\\d+)' } });
+
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalPortForwardAutoDetect: true,
+        terminalPortForwardCustomRegex: 'port: (\\d+)',
+      })
+    );
+  });
 });

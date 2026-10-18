@@ -79,6 +79,10 @@ export interface AppSettings {
   terminalScrollback?: number;
   /** Show interactive preview card when hovering over file paths in the terminal. Default true. */
   terminalPathHoverPreview?: boolean;
+  /** Auto-detect web services/ports in terminal output and prompt to port forward. Default true. */
+  terminalPortForwardAutoDetect?: boolean;
+  /** Optional custom regular expression for matching service ports in terminal output. */
+  terminalPortForwardCustomRegex?: string;
   copyOnSelect?: boolean;
   /** Whether the terminal selection history is shared by all hosts ('global') or kept per connection ('host'). */
   clipboardHistoryScope?: 'global' | 'host';
@@ -177,6 +181,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalCursorStyle: 'block',
   terminalScrollback: 5000,
   terminalPathHoverPreview: true,
+  terminalPortForwardAutoDetect: true,
+  terminalPortForwardCustomRegex: '',
   copyOnSelect: false,
   clipboardHistoryScope: 'global',
   clipboardHistoryClearOnExit: false,

@@ -582,6 +582,61 @@ describe('TerminalView Component', () => {
 
     registerSpy.mockRestore();
   });
+
+  it('detects listening ports in terminal output and displays TerminalPortPill', async () => {
+    render(<TerminalView config={sampleConfig} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      dataCallback?.('session-123', 'Vite dev server running at: http://localhost:5173\n');
+    });
+
+    expect(screen.getByTestId('terminal-port-pill-5173')).toBeInTheDocument();
+    expect(screen.getByText('5173')).toBeInTheDocument();
+  });
+
+  it('shows drop overlay on drag enter and handles file drop', async () => {
+    window.multissh.connectStorage = vi.fn().mockResolvedValue({ id: 'sftp-ssh-1' });
+    window.multissh.transferAdd = vi.fn().mockResolvedValue({ jobId: 'job-1' });
+
+    render(<TerminalView config={sampleConfig} initialCwd="/var/www/site" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const terminalView = screen.getByTestId('terminal-view');
+
+    // 1. Drag enter
+    act(() => {
+      const dragEnterEvt = new Event('dragenter', { bubbles: true }) as any;
+      dragEnterEvt.dataTransfer = { types: ['Files'] };
+      terminalView.dispatchEvent(dragEnterEvt);
+    });
+
+    expect(screen.getByTestId('terminal-drop-overlay')).toBeInTheDocument();
+    expect(screen.getByText('/var/www/site')).toBeInTheDocument();
+
+    // 2. Drop file
+    await act(async () => {
+      const dropEvt = new Event('drop', { bubbles: true }) as any;
+      dropEvt.dataTransfer = {
+        files: [{ name: 'bundle.js', path: '/home/user/build/bundle.js' }],
+      };
+      terminalView.dispatchEvent(dropEvt);
+    });
+
+    expect(screen.queryByTestId('terminal-drop-overlay')).not.toBeInTheDocument();
+    expect(window.multissh.transferAdd).toHaveBeenCalledWith({
+      sourceProviderId: 'local',
+      sourcePath: '/home/user/build/bundle.js',
+      targetProviderId: 'sftp-ssh-1',
+      targetPath: '/var/www/site/bundle.js',
+    });
+  });
 });
 
 

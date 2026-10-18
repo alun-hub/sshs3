@@ -18,6 +18,10 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setScrollback,
     terminalPathHoverPreview,
     setTerminalPathHoverPreview,
+    terminalPortForwardAutoDetect,
+    setTerminalPortForwardAutoDetect,
+    terminalPortForwardCustomRegex,
+    setTerminalPortForwardCustomRegex,
     copyOnSelect,
     setCopyOnSelect,
     clipboardScope,
@@ -331,6 +335,42 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             </span>
           </span>
         </label>
+      </div>
+
+      <div className="space-y-3 pt-3 border-t border-divider">
+        <label className="flex items-start gap-2 text-xs text-txt-primary cursor-pointer">
+          <input
+            type="checkbox"
+            checked={terminalPortForwardAutoDetect}
+            onChange={(e) => setTerminalPortForwardAutoDetect(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+          />
+          <span>
+            Enable web service & port forward auto-detection
+            <span className="block text-txt-muted">
+              Detects web servers and listening ports (e.g. Vite, Next.js, Django, Flask, Express) in terminal output and shows a quick-forward banner.
+            </span>
+          </span>
+        </label>
+
+        {terminalPortForwardAutoDetect && (
+          <div className="pl-6 space-y-1.5">
+            <label className="text-xs font-medium text-txt-primary" htmlFor="custom-port-regex">
+              Custom port detection regex (optional)
+            </label>
+            <input
+              id="custom-port-regex"
+              type="text"
+              value={terminalPortForwardCustomRegex}
+              onChange={(e) => setTerminalPortForwardCustomRegex(e.target.value)}
+              placeholder="e.g. Service started on :(?<port>\d+) or port (\d+)"
+              className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+            />
+            <p className="text-[11px] text-txt-muted">
+              Optional regular expression to capture service ports from proprietary or custom application logs.
+            </p>
+          </div>
+        )}
       </div>
 
       <X11ServerSection form={form} />

@@ -268,6 +268,8 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
+        portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
@@ -288,6 +290,8 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
+        portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
@@ -317,6 +321,8 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
+        portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}

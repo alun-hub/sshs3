@@ -30,6 +30,12 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
   const [terminalPathHoverPreview, setTerminalPathHoverPreview] = useState<boolean>(
     currentSettings.terminalPathHoverPreview ?? true
   );
+  const [terminalPortForwardAutoDetect, setTerminalPortForwardAutoDetect] = useState<boolean>(
+    currentSettings.terminalPortForwardAutoDetect ?? true
+  );
+  const [terminalPortForwardCustomRegex, setTerminalPortForwardCustomRegex] = useState<string>(
+    currentSettings.terminalPortForwardCustomRegex ?? ''
+  );
   const [copyOnSelect, setCopyOnSelect] = useState<boolean>(
     currentSettings.copyOnSelect ?? false
   );
@@ -146,6 +152,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       setCursorStyle(currentSettings.terminalCursorStyle ?? 'block');
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setTerminalPathHoverPreview(currentSettings.terminalPathHoverPreview ?? true);
+      setTerminalPortForwardAutoDetect(currentSettings.terminalPortForwardAutoDetect ?? true);
+      setTerminalPortForwardCustomRegex(currentSettings.terminalPortForwardCustomRegex ?? '');
       setCopyOnSelect(currentSettings.copyOnSelect ?? false);
       setClipboardScope(currentSettings.clipboardHistoryScope ?? 'global');
       setClipboardClearOnExit(currentSettings.clipboardHistoryClearOnExit ?? false);
@@ -272,6 +280,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       terminalCursorStyle: cursorStyle,
       terminalScrollback: scrollback,
       terminalPathHoverPreview,
+      terminalPortForwardAutoDetect,
+      terminalPortForwardCustomRegex: terminalPortForwardCustomRegex.trim(),
       copyOnSelect,
       clipboardHistoryScope: clipboardScope,
       clipboardHistoryClearOnExit: clipboardClearOnExit,
@@ -369,6 +379,10 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     setScrollback,
     terminalPathHoverPreview,
     setTerminalPathHoverPreview,
+    terminalPortForwardAutoDetect,
+    setTerminalPortForwardAutoDetect,
+    terminalPortForwardCustomRegex,
+    setTerminalPortForwardCustomRegex,
     copyOnSelect,
     setCopyOnSelect,
     clipboardScope,

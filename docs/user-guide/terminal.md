@@ -147,7 +147,21 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 - <kbd>Ctrl+Shift+V</kbd>, <kbd>Shift+Insert</kbd> and middle-click paste from the clipboard.
 - Encrypted at rest via the OS keyring (`safeStorage`). If the OS keyring is unavailable, history is retained in volatile memory only. Can be scoped per connection or configured to purge on application exit.
 
-### 4.7 Terminal Settings Reference Table
+### 4.7 Smart Drag-and-Drop: Drop-to-Upload & Paste Path
+Dragging files or folders directly into a terminal pane provides seamless context-aware integration:
+- **SSH Terminals**: Dropping a file onto a remote SSH terminal activates an animated frosted drop overlay indicating the remote working directory. The file is uploaded to the remote directory via SFTP in the background, and its properly shell-quoted remote path (e.g. `'/var/www/site/dump.sql'`) is automatically typed into the prompt upon completion.
+- **Local Terminals**: Dropping a file into a local shell immediately quotes and pastes the workstation path (`'/home/user/Downloads/archive.tar.gz'`) into the prompt.
+
+### 4.8 Web Service & Port Forward Auto-Detection
+The terminal engine actively monitors output streams for web servers, dev tools, and listening services:
+- **Built-in Framework Support**: Automatically recognizes output from **Vite**, **Next.js**, **Django**, **Flask**, **Express**, **Spring Boot / Tomcat**, **Python `http.server`**, **Go (Gin/Fiber)**, and standard `http://localhost:<port>` / `http://127.0.0.1:<port>` URLs.
+- **Interactive Action Banner**: Displays a floating pill when a service is detected:
+  - **SSH Sessions**: Clicking **Forward & Open** automatically starts a background SSH local tunnel (`window.multissh.sshTunnelStart`) on a free local port and immediately opens the forwarded URL in your workstation's default browser.
+  - **Local Sessions**: Clicking **Open in Browser** opens `http://localhost:<port>` directly.
+  - **Dismiss**: Silences the port for the active session.
+- **Custom Regex Support**: Under *Settings → Terminal*, operators can provide custom regular expressions to match proprietary server logs or unique port announcements. The feature can also be toggled completely off.
+
+### 4.9 Terminal Settings Reference Table
 
 | Setting | Default | Purpose & Description |
 | :--- | :--- | :--- |
@@ -156,6 +170,8 @@ Hovering your mouse over any recognized file or directory path in the terminal d
 | **Cursor Style** | `Block` | Visual cursor appearance: `Block`, `Underline`, or `Bar`. |
 | **Scrollback Buffer (lines)** | `5000` | Retained terminal history per pane, searchable with <kbd>Ctrl+Shift+S</kbd>. |
 | **Enable file path hover preview** | `On` | Interactive preview card with file details, thumbnail, and actions when hovering over paths. |
+| **Enable web service & port forward auto-detection** | `On` | Detects listening ports in terminal output and displays a quick-forward banner. |
+| **Custom port detection regex** | `Empty` | Optional regular expression with capture group `(\d+)` to detect custom application ports. |
 | **Copy text automatically on selection** | `Off` | Copies highlighted text to the clipboard and records it in encrypted clipboard history. |
 | **Clipboard history scope** | `Global` | Share clipboard history across all sessions or isolate history per host. |
 | **Empty clipboard history on exit** | `Off` | Automatically wipes the encrypted clipboard history when sshs3 shuts down. |
