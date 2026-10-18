@@ -39,8 +39,11 @@ describe('DragOutService', () => {
     expect(addJob).toHaveBeenCalledWith(
       expect.objectContaining({ sourcePath: '/srv/a.txt', isDirectory: false, verifyIntegrity: false })
     );
-    expect(fs.statSync(path.dirname(local)).mode & 0o077).toBe(0);
-    expect(fs.statSync(path.dirname(path.dirname(local))).mode & 0o077).toBe(0);
+    if (process.platform !== 'win32') {
+      // POSIX permission bits do not exist on Windows
+      expect(fs.statSync(path.dirname(local)).mode & 0o077).toBe(0);
+      expect(fs.statSync(path.dirname(path.dirname(local))).mode & 0o077).toBe(0);
+    }
     expect(path.basename(path.dirname(path.dirname(local)))).toMatch(/^sshs3-dragout-.{6}$/);
   });
 

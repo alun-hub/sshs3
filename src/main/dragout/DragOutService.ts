@@ -34,8 +34,9 @@ export function isSafeStageName(name: string, platform: NodeJS.Platform = proces
   return platform !== 'win32' || !isWindowsUnsafeName(name);
 }
 
-function baseName(p: string): string {
-  return p.split('/').filter(Boolean).pop() ?? '';
+/** Last path segment. Local Windows paths use backslashes; elsewhere a backslash is part of the name (and rejected later). */
+function baseName(p: string, platform: NodeJS.Platform = process.platform): string {
+  return p.split(platform === 'win32' ? /[\\/]/ : '/').filter(Boolean).pop() ?? '';
 }
 
 /**
