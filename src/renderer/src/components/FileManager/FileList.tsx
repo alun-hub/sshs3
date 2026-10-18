@@ -14,7 +14,8 @@ interface FileListProps {
   selectedPaths: Set<string>;
   onSelectionChange: (paths: Set<string>) => void;
   onOpen: (entry: FileEntry) => void;
-  onDraggableStart?: (entry: FileEntry, e: React.DragEvent) => void;
+  /** Return true when the drag was handed to the OS (default prevented): the click that follows then must not change the selection. */
+  onDraggableStart?: (entry: FileEntry, e: React.DragEvent) => boolean | void;
   onDraggableEnd?: () => void;
   isDropTarget?: (entry: FileEntry) => boolean;
   onEntryDrop?: (entry: FileEntry, e: React.DragEvent) => void;
@@ -151,8 +152,14 @@ export const FileList: React.FC<FileListProps> = ({
     [sortKey]
   );
 
+  const suppressNextClickRef = useRef(false);
+
   const handleRowClick = useCallback(
     (entry: FileEntry, index: number, e: React.MouseEvent) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
       clearTypeahead();
       setFocusedPath(entry.path);
       if (e.shiftKey && lastClickedIndex !== null) {
@@ -714,9 +721,12 @@ export const FileList: React.FC<FileListProps> = ({
                   aria-selected={selected}
                   data-focused={isFocused ? 'true' : undefined}
                   draggable
+                  onMouseDown={() => {
+                    suppressNextClickRef.current = false;
+                  }}
                   onFocus={() => setFocusedPath(entry.path)}
                   onDragStart={(e) => {
-                    onDraggableStart?.(entry, e);
+                    if (onDraggableStart?.(entry, e) === true) suppressNextClickRef.current = true;
                   }}
                   onDragEnd={() => {
                     stopAutoScroll();

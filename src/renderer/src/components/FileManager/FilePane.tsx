@@ -6,6 +6,8 @@ import type { FileEntry } from '@shared/types/storage';
 import type { TransferConflictResolution } from '@shared/types/ipc';
 import type { GitRepoStatus } from '@shared/types/git';
 import { joinPath, parentPath, describeIpcError, formatBytes } from '../../lib/format';
+import { DragOutDialog } from './DragOutDialog';
+import { watchDragReleasedOutsideWindow } from '../../lib/dragLeaveWindow';
 import { makeNameMatcher } from '../../lib/nameFilter';
 import { FileList } from './FileList';
 import { useDragDrop } from './DragDropContext';
@@ -111,6 +113,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [visibleEntries, filterText, recursiveActive]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Remote paths the user asked to drag out of sshs3 (shows DragOutDialog). */
+  const [dragOutPaths, setDragOutPaths] = useState<string[] | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [chmodOpen, setChmodOpen] = useState(false);
@@ -605,6 +609,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     !selectedEntries[0].isDirectory;
   const selectedAreAllFiles = selectedEntries.length > 0 && selectedEntries.every((e) => !e.isDirectory);
 
+  const stopOutsideWatchRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopOutsideWatchRef.current?.(), []);
+  const canDragOut = source.sourceType !== 'local' && Boolean(window.multissh?.dragOutPrepare);
+
   const contextMenuItems: ContextMenuItem[] = buildContextMenuItems({
     contextMenuOpen: contextMenu !== null,
     selectedEntries,
@@ -624,6 +632,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     handlePaste,
     handleRenameStart,
     handleDownloadTo,
+    handleDragOut: canDragOut ? () => setDragOutPaths(selectedEntries.map((e) => e.path)) : undefined,
     handleGitPull,
     handleDelete,
     handleNewFolder,
@@ -891,7 +900,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             if (source.sourceType === 'local' && window.multissh?.dragOutStart) {
               e.preventDefault();
               void window.multissh.dragOutStart(items.map((it) => it.path)).catch(() => {});
-              return;
+              return true;
+            }
+            // A remote item released outside the window can not be handed to another app directly:
+            // offer the "Drag out of sshs3" copy instead.
+            if (canDragOut) {
+              stopOutsideWatchRef.current?.();
+              stopOutsideWatchRef.current = watchDragReleasedOutsideWindow(() =>
+                setDragOutPaths(items.map((it) => it.path))
+              );
             }
             beginDrag(buildDragPayload(side, source.providerId, currentPath, items), e.dataTransfer);
           }}
@@ -945,6 +962,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           items={contextMenuItems}
           onClose={() => setContextMenu(null)}
         />
+      )}
+
+      {dragOutPaths && (
+        <DragOutDialog providerId={source.providerId} paths={dragOutPaths} onClose={() => setDragOutPaths(null)} />
       )}
 
       <FilePaneModals

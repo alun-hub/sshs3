@@ -323,6 +323,7 @@ export const IPC_CHANNELS = {
 
   // General
   DRAG_OUT_START: 'drag-out:start',
+  DRAG_OUT_PREPARE: 'drag-out:prepare',
   APP_OPEN_EXTERNAL: 'app:open-external',
   APP_GET_VERSION: 'app:get-version',
   UPDATE_GET_STATE: 'update:get-state',
@@ -878,6 +879,8 @@ export interface MultiSSHApi {
   // Window / General
   /** Starts a native OS drag of local files/folders (call from a `dragstart` handler after `preventDefault()`). Resolves false when no path was draggable. */
   dragOutStart(paths: string[]): Promise<boolean>;
+  /** Downloads remote files/folders into a private temp dir and resolves to the local paths (same order), ready for `dragOutStart`. */
+  dragOutPrepare(providerId: string, paths: string[]): Promise<string[]>;
   openExternal(url: string): Promise<void>;
   getVersion(): Promise<string>;
   getUpdateState(): Promise<UpdateState>;

@@ -4,9 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { nativeImage } from 'electron';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
+import { DragOutService } from '../dragout/DragOutService';
 
 /** The part of IpcBridge this handler group may use. */
-export type DragOutHost = Pick<IpcBridge, 'registerHandler'>;
+export type DragOutHost = Pick<IpcBridge, 'registerHandler' | 'dragOutService'>;
 
 const MAX_DRAG_OUT_PATHS = 500;
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,20 @@ function dragIcon(): Electron.NativeImage {
   return icon.isEmpty() ? icon : icon.resize({ width: 48, height: 48 });
 }
 
+export function createDragOutService(host: Pick<IpcBridge, 'storageRegistry' | 'transferQueue'>): DragOutService {
+  return new DragOutService({
+    getSource: (id) => host.storageRegistry.get(id),
+    getLocal: () => host.storageRegistry.getOrCreate({ id: 'local', name: 'Local Disk', type: 'local' }),
+    queue: host.transferQueue,
+  });
+}
+
 export function registerDragOutHandlers(bridge: DragOutHost): void {
+  // Downloads remote files/folders to a private temp dir so they can be started as a native drag.
+  bridge.registerHandler(IPC_CHANNELS.DRAG_OUT_PREPARE, async (_event, providerId: unknown, paths: unknown) =>
+    bridge.dragOutService.prepare(providerId, paths)
+  );
+
   // Starts a native OS drag of local files/folders so they can be dropped outside sshs3.
   bridge.registerHandler(IPC_CHANNELS.DRAG_OUT_START, async (event, paths: unknown): Promise<boolean> => {
     const files = await validateDragOutPaths(paths);

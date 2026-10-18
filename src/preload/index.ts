@@ -975,6 +975,9 @@ export const api: MultiSSHApi = {
   dragOutStart: (paths: string[]): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.DRAG_OUT_START, paths),
 
+  dragOutPrepare: (providerId: string, paths: string[]): Promise<string[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DRAG_OUT_PREPARE, providerId, paths),
+
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_EXTERNAL, url),
 

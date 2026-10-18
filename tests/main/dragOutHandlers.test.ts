@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,7 @@ describe('dragOutHandlers', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-dragout-test-'));
   const file = path.join(dir, 'a.txt');
   fs.writeFileSync(file, 'x');
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   it('keeps existing absolute files and directories only', async () => {
     const result = await validateDragOutPaths([file, dir, 'relative.txt', path.join(dir, 'missing'), 'a\0b', 42, '']);
@@ -29,6 +30,7 @@ describe('dragOutHandlers', () => {
       registerHandler: ((channel: string, h: typeof handler) => {
         if (channel === IPC_CHANNELS.DRAG_OUT_START) handler = h;
       }) as never,
+      dragOutService: {} as never,
     });
     const startDrag = vi.fn();
     expect(await handler({ sender: { startDrag } }, [file])).toBe(true);

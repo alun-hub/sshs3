@@ -817,5 +817,34 @@ describe('FileList Component', () => {
 
     expect(document.activeElement).toBe(list);
   });
-});
 
+  it('leaves the selection alone for the click that follows a drag handed to the OS', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <FileList
+        entries={mockEntries}
+        loading={false}
+        selectedPaths={new Set(['/config.json'])}
+        onSelectionChange={onSelectionChange}
+        onOpen={vi.fn()}
+        onDraggableStart={(_entry, e) => {
+          e.preventDefault();
+          return true;
+        }}
+      />
+    );
+    const row = screen.getByText('image.png').closest('[role="row"]') as HTMLElement;
+
+    fireEvent.dragStart(row);
+    fireEvent.click(row, { shiftKey: true });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+
+    // the suppression is single-use, and a new mousedown clears it
+    fireEvent.click(row);
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    fireEvent.dragStart(row);
+    fireEvent.mouseDown(row);
+    fireEvent.click(row);
+    expect(onSelectionChange).toHaveBeenCalledTimes(2);
+  });
+});

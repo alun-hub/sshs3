@@ -10,6 +10,7 @@ import {
   FolderPlus,
   FolderSync,
   GitBranch,
+  GripVertical,
   History,
   Info,
   Link2,
@@ -49,6 +50,8 @@ export interface FilePaneContextMenuInput {
   handlePaste: () => void;
   handleRenameStart: () => void;
   handleDownloadTo: () => Promise<void> | void;
+  /** Remote panes only: opens the "Drag out of sshs3" dialog for the selection. */
+  handleDragOut?: () => void;
   handleGitPull: () => Promise<void> | void;
   handleDelete: () => Promise<void> | void;
   handleNewFolder: () => Promise<void> | void;
@@ -89,6 +92,7 @@ export function buildContextMenuItems(input: FilePaneContextMenuInput): ContextM
     handlePaste,
     handleRenameStart,
     handleDownloadTo,
+    handleDragOut,
     handleGitPull,
     handleDelete,
     handleNewFolder,
@@ -218,6 +222,16 @@ export function buildContextMenuItems(input: FilePaneContextMenuInput): ContextM
                   label: 'Download to...',
                   icon: Download,
                   onSelect: () => void handleDownloadTo(),
+                },
+              ]
+            : []),
+          ...(handleDragOut
+            ? [
+                {
+                  key: 'drag-out',
+                  label: 'Drag out of sshs3...',
+                  icon: GripVertical,
+                  onSelect: handleDragOut,
                 },
               ]
             : []),

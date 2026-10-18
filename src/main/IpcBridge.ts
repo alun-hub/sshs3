@@ -56,7 +56,8 @@ import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
-import { registerDragOutHandlers } from './ipc/dragOutHandlers';
+import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHandlers';
+import type { DragOutService } from './dragout/DragOutService';
 import { registerGeneralHandlers } from './ipc/generalHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
 import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
@@ -141,6 +142,7 @@ export class IpcBridge {
   public readonly sshPtyManager: SSHPtyManager;
   public readonly storageRegistry: StorageRegistry;
   public readonly transferQueue: TransferQueue;
+  public readonly dragOutService: DragOutService;
   public readonly profileStore: ProfileStore;
   public readonly sessionStore: SessionStore;
   public readonly clipboardHistoryStore: ClipboardHistoryStore;
@@ -281,6 +283,7 @@ export class IpcBridge {
           ),
       });
     this.transferQueue = options.transferQueue ?? new TransferQueue();
+    this.dragOutService = createDragOutService(this);
     this.profileStore = options.profileStore ?? new ProfileStore();
     this.sessionStore = options.sessionStore ?? new SessionStore();
     this.clipboardHistoryStore = options.clipboardHistoryStore ?? new ClipboardHistoryStore();
@@ -1730,6 +1733,7 @@ export class IpcBridge {
     await this.sshPtyManager.killAll();
     await this.storageRegistry.disconnectAll?.();
     await this.fileEditorService.dispose();
+    await this.dragOutService.dispose();
     this.fileTailService.dispose();
     this.searchOrchestrator.dispose();
     if (this.autoSyncTimer) {

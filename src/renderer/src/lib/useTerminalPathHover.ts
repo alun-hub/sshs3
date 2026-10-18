@@ -323,6 +323,26 @@ export function useTerminalPathHover({
     [ensureProvider, dismissCard, termRef]
   );
 
+  const [dragOutPath, setDragOutPath] = useState<string | null>(null);
+  const requestDragOut = useCallback(
+    async (p: string) => {
+      try {
+        await ensureProvider();
+      } catch (err: any) {
+        notifyRef.current(`Failed to open storage: ${err?.message || String(err)}`, 3000);
+        return;
+      }
+      termRef.current?.blur();
+      setDragOutPath(p);
+      dismissCard();
+    },
+    [ensureProvider, dismissCard, termRef]
+  );
+  const closeDragOut = useCallback(() => {
+    setDragOutPath(null);
+    termRef.current?.focus();
+  }, [termRef]);
+
   const closeEditor = useCallback(() => {
     setEditingFile(null);
     termRef.current?.focus();
@@ -352,6 +372,7 @@ export function useTerminalPathHover({
         }
       : undefined,
     onOpenEditor: openInEditor,
+    onDragOut: providerId && providerId !== 'local' ? requestDragOut : undefined,
   };
 
   return {
@@ -364,6 +385,8 @@ export function useTerminalPathHover({
     editorEntry,
     isEditorOpen: () => editingFileRef.current !== null,
     closeEditor,
+    dragOutPath,
+    closeDragOut,
     createLinkHandlers,
     detectCwdFromText,
     handleOsc7,

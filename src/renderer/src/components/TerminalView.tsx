@@ -16,6 +16,7 @@ import { PerfBar } from './PerfBar';
 import { ClipboardHistoryModal } from './ClipboardHistoryModal';
 import { TerminalPathHoverCard } from './TerminalPathHoverCard';
 import { FileEditorModal } from './FileManager/FileEditorModal';
+import { DragOutDialog } from './FileManager/DragOutDialog';
 import { isDirectPreviewFile, isDualModeFile } from './FileManager/fileTypeHelpers';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
@@ -1087,6 +1088,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           currentCwd={pathHover.cardCwd}
           providerId={pathHover.providerId}
           {...pathHover.cardProps}
+        />
+      )}
+
+      {pathHover.dragOutPath && pathHover.providerId && (
+        <DragOutDialog
+          providerId={pathHover.providerId}
+          paths={[pathHover.dragOutPath]}
+          onClose={pathHover.closeDragOut}
         />
       )}
 

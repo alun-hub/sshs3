@@ -29,6 +29,8 @@ export interface TerminalPathHoverCardProps {
   onCopyPath: (path: string) => void;
   onOpenPath?: (path: string) => void;
   onOpenEditor?: (path: string) => void;
+  /** Remote terminals: asks to copy the item here so it can be dragged into another app. */
+  onDragOut?: (path: string) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -123,6 +125,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   onCopyPath,
   onOpenPath,
   onOpenEditor,
+  onDragOut,
   onMouseEnter,
   onMouseLeave,
 }) => {
@@ -194,11 +197,12 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     };
   }, [providerId, details.fullPath, isEffectiveDir, details.category]);
 
-  // Local files can be dragged straight out of the card into other apps
-  const canDragOut = providerId === 'local' && Boolean(window.multissh?.dragOutStart);
+  // Local files are dragged out of the card in place; remote ones first ask to copy them here.
+  const isLocalProvider = providerId === 'local';
+  const canDragOut = Boolean(providerId) && (isLocalProvider ? Boolean(window.multissh?.dragOutStart) : Boolean(onDragOut));
   const handleDragStart = (e: React.DragEvent) => {
     e.preventDefault();
-    void window.multissh?.dragOutStart?.([details.fullPath]).catch(() => {});
+    if (isLocalProvider) void window.multissh?.dragOutStart?.([details.fullPath]).catch(() => {});
   };
 
   const handleCopy = () => {
@@ -352,11 +356,16 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
 
         {canDragOut && (
           <div
-            draggable
+            draggable={isLocalProvider}
+            role={isLocalProvider ? undefined : 'button'}
             onDragStart={handleDragStart}
+            onClick={isLocalProvider ? undefined : () => onDragOut?.(details.fullPath)}
             data-testid="path-hover-drag-handle"
-            title={`Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app`}
-            className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover hover:border-border-subtle transition-all active:cursor-grabbing"
+            title={isLocalProvider ? `Drag this ${isEffectiveDir ? 'folder' : 'file'} into another app` : 'Drag out of sshs3…'}
+            className={classNames(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-divider bg-app-card text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover hover:border-border-subtle transition-all',
+              isLocalProvider ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+            )}
           >
             <GripVertical className="h-4 w-4" />
           </div>

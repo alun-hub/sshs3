@@ -297,10 +297,32 @@ describe('TerminalPathHoverCard', () => {
       expect(dragOutStart).toHaveBeenCalledWith(['/home/me/report.pdf']);
     });
 
-    it('shows no handle for remote terminals', () => {
+    it('shows no handle for remote terminals that cannot drag out', () => {
       (window as any).multissh = { dragOutStart: vi.fn() };
       renderCard('sftp-host');
       expect(screen.queryByTestId('path-hover-drag-handle')).not.toBeInTheDocument();
+    });
+
+    it('asks first for remote files: clicking the handle requests a drag-out, nothing is downloaded', () => {
+      const dragOutPrepare = vi.fn();
+      const onDragOut = vi.fn();
+      (window as any).multissh = { dragOutStart: vi.fn(), dragOutPrepare };
+      render(
+        <TerminalPathHoverCard
+          path="/home/me/report.pdf"
+          x={50}
+          y={50}
+          providerId="sftp-host"
+          onClose={vi.fn()}
+          onCopyPath={vi.fn()}
+          onDragOut={onDragOut}
+        />
+      );
+      const handle = screen.getByTestId('path-hover-drag-handle');
+      fireEvent.mouseEnter(handle);
+      fireEvent.click(handle);
+      expect(onDragOut).toHaveBeenCalledWith('/home/me/report.pdf');
+      expect(dragOutPrepare).not.toHaveBeenCalled();
     });
   });
 });
