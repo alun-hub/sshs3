@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTerminalDropUpload, shellQuote } from '../../src/renderer/src/lib/useTerminalDropUpload';
+import { useTerminalDropUpload, shellQuote, isUnpasteableWindowsPath } from '../../src/renderer/src/lib/useTerminalDropUpload';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
 describe('useTerminalDropUpload', () => {
@@ -50,6 +50,18 @@ describe('useTerminalDropUpload', () => {
       expect(shellQuote('C:\\tmp\\50%.txt')).toBe("'C:\\tmp\\50%.txt'");
       expect(shellQuote('C:\\tmp\\a`b.txt')).toBe("'C:\\tmp\\a`b.txt'");
       expect(shellQuote("C:\\tmp\\it's $x.txt")).toBe("'C:\\tmp\\it''s $x.txt'");
+    });
+
+    it('doubles typographic single quotes and avoids double quotes around typographic double quotes', () => {
+      expect(shellQuote('C:\\tmp\\a\u2019b$.txt')).toBe("'C:\\tmp\\a\u2019\u2019b$.txt'");
+      expect(shellQuote('C:\\tmp\\a\u201Db.txt')).toBe("'C:\\tmp\\a\u201Db.txt'");
+    });
+
+    it('flags paths that no single quoting makes safe for both shells', () => {
+      expect(isUnpasteableWindowsPath('C:\\tmp\\a$&calc.txt')).toBe(true);
+      expect(isUnpasteableWindowsPath('C:\\tmp\\a&b.txt')).toBe(false);
+      expect(isUnpasteableWindowsPath('C:\\tmp\\a$b.txt')).toBe(false);
+      expect(isUnpasteableWindowsPath('/tmp/a$&b')).toBe(false);
     });
   });
 

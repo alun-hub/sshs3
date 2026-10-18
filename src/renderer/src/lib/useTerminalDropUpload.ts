@@ -23,11 +23,20 @@ export function shellQuote(path: string): string {
   // single-quote quoting, and PowerShell escapes `'` as `''`, not the POSIX `'\''`).
   if (isWindowsPath(path)) {
     // `$`, a backtick or `%` are legal in file names but expand inside double quotes ($(...) in PowerShell,
-    // %VAR% in cmd), so those paths get PowerShell literal quoting instead.
-    if (/[$`%]/.test(path)) return `'${path.replace(/'/g, "''")}'`;
+    // %VAR% in cmd); PowerShell also treats the typographic double quotes as string delimiters. Those paths
+    // get PowerShell literal quoting, where every typographic single quote has to be doubled as well.
+    if (/[$`%\u201C\u201D\u201E]/.test(path)) return `'${path.replace(/['\u2018\u2019\u201A\u201B]/g, (q) => q + q)}'`;
     return `"${path}"`;
   }
   return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * True for a local Windows path that only PowerShell literal quoting keeps inert (see shellQuote) but that also
+ * holds a cmd.exe metacharacter, so no single quoting is safe in both shells and the path is not pasted.
+ */
+export function isUnpasteableWindowsPath(path: string): boolean {
+  return isWindowsPath(path) && /[$`%\u201C\u201D\u201E]/.test(path) && /[&|<>^]/.test(path);
 }
 
 export function getFilePath(file: File): string {
@@ -126,6 +135,12 @@ export function useTerminalDropUpload({
       const targetConnect = terminalStorageConnectConfig(storageTarget);
       const canUpload = Boolean(targetProviderId && targetConnect);
       const quoteLocal = (p: string): string => shellQuote(wsl ? windowsToWslPath(p) : p);
+      /** Quotes local paths for pasting and reports the ones that cannot be quoted safely for the shell. */
+      const pasteLocal = (rawPaths: string[]) => {
+        const safe = wsl ? rawPaths : rawPaths.filter((p) => !isUnpasteableWindowsPath(p));
+        if (safe.length < rawPaths.length) onNotice('Skipped a file whose name cannot be pasted safely into the shell');
+        if (safe.length > 0) onPaste(safe.map(quoteLocal).join(' '));
+      };
 
       /** Copies the items into the terminal's current directory and pastes the resulting paths. */
       const uploadAndPaste = async (items: TransferItem[]) => {
@@ -185,7 +200,7 @@ export function useTerminalDropUpload({
           }
           if (!canUpload || sourceProviderId === targetProviderId) {
             if (sourceProviderId === 'local' || sourceProviderId === targetProviderId) {
-              onPaste(entries.map((entry) => quoteLocal(entry.path)).join(' '));
+              pasteLocal(entries.map((entry) => entry.path));
             } else {
               onNotice('Cannot paste remote files into this terminal; copy them to the local disk first');
             }
@@ -208,13 +223,7 @@ export function useTerminalDropUpload({
 
       // Local session: paste local path(s) directly
       if (!canUpload) {
-        const paths = files
-          .map((f) => getFilePath(f) || f.name)
-          .filter(Boolean)
-          .map(quoteLocal);
-        if (paths.length > 0) {
-          onPaste(paths.join(' '));
-        }
+        pasteLocal(files.map((f) => getFilePath(f) || f.name).filter(Boolean));
         return;
       }
 
