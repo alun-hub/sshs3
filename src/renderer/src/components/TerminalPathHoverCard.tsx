@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   File,
   FileCode,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
+import { placeHoverCard } from '../lib/hoverCardPlacement';
 
 export interface TerminalPathHoverCardProps {
   path: string;
@@ -135,6 +136,18 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   onMouseLeave,
 }) => {
   const details = useMemo(() => resolvePathDetails(path, userHome, currentCwd), [path, userHome, currentCwd]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const measure = () => setMeasuredHeight(el.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [isDirOverride, setIsDirOverride] = useState<boolean | null>(details.isDir ? true : null);
 
   useEffect(() => {
@@ -220,24 +233,22 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  // Viewport boundary collision avoidance
+  // Viewport boundary collision avoidance. The real height is measured (the preview and rows vary); the
+  // estimate only covers the first paint and environments without layout.
   const cardWidth = 380;
-  const cardHeight = snippet ? (snippet.isImage ? 230 : 200) : 135;
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
-  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-
-  let left = x + 12;
-  if (left + cardWidth > viewportWidth - 16) {
-    left = Math.max(16, x - cardWidth - 12);
-  }
-
-  let top = y + 16;
-  if (top + cardHeight > viewportHeight - 16) {
-    top = Math.max(16, y - cardHeight - 16);
-  }
+  const estimatedHeight = snippet ? (snippet.isImage ? 230 : 200) : 135;
+  const { left, top } = placeHoverCard({
+    x,
+    y,
+    width: cardWidth,
+    height: measuredHeight || estimatedHeight,
+    viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    viewportHeight: typeof window !== 'undefined' ? window.innerHeight : 800,
+  });
 
   return (
     <div
+      ref={cardRef}
       data-testid="terminal-path-hover-card"
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
