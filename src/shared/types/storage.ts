@@ -5,6 +5,8 @@ export interface FileEntry {
   path: string;
   size: number;
   isDirectory: boolean;
+  /** True for non-regular files (FIFOs, devices, sockets) that must not be read to completion. */
+  isSpecial?: boolean;
   /**
    * True when this entry is a symbolic link (reported via lstat-like
    * semantics, not resolved through to the link's target). Populated by

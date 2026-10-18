@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { findPaths, findUrls } from '../../src/renderer/src/lib/terminalLinks';
 
 describe('terminalLinks - findPaths', () => {
+  it('does not treat ALL_CAPS names as files', () => {
+    expect(findPaths('export MY_VAR_NAME=1')).toHaveLength(0);
+    expect(findPaths('see my_script for details').map((m) => m.text)).toContain('my_script');
+  });
+
   it('finds standalone filenames with extensions in ls -l style output', () => {
     const text = '-rw-r--r-- 1 alun alun 1234 Oct 17 15:00 index.html';
     const matches = findPaths(text);

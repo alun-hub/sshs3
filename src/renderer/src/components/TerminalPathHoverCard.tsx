@@ -14,7 +14,7 @@ import {
   Eye,
   X,
 } from 'lucide-react';
-import { resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
+import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
 
 export interface TerminalPathHoverCardProps {
@@ -151,7 +151,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   useEffect(() => {
     let cancelled = false;
     setSnippet(null);
-    if (!providerId || isEffectiveDir || !window.multissh?.fileRead) {
+    if (!providerId || isEffectiveDir || !window.multissh?.fileRead || isSensitiveFilePath(details.fullPath)) {
       return undefined;
     }
 

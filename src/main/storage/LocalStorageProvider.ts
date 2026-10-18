@@ -206,6 +206,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
       path: remotePath,
       size: stats.size,
       isDirectory: isDir,
+      isSpecial: !isDir && !stats.isFile(),
       mtime: formatDate(stats.mtime),
       mtimeMs: stats.mtime.getTime(),
       mimeType: isDir ? undefined : getMimeType(name),

@@ -178,7 +178,8 @@ function isValidStandaloneFile(raw: string): boolean {
     return ext.length >= 1 && ext.length <= 10 && /^[A-Za-z0-9_-]+$/.test(ext) && /[A-Za-z]/.test(ext);
   }
   // Standalone tokens with underscore (e.g. `my_script`, `test_data`)
-  if (raw.includes('_') && /[A-Za-z]/.test(raw) && raw.length >= 3 && !raw.startsWith('-')) {
+  // ALL_CAPS names are environment variables / constants, not files.
+  if (raw.includes('_') && /[A-Za-z]/.test(raw) && raw.length >= 3 && !raw.startsWith('-') && !/^[A-Z0-9_]+$/.test(raw)) {
     return true;
   }
   return false;

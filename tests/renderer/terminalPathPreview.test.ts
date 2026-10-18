@@ -3,6 +3,7 @@ import {
   detectFileType,
   getFileExtension,
   getLanguageLabel,
+  isSensitiveFilePath,
   resolvePathDetails,
   truncateSnippet,
 } from '../../src/renderer/src/lib/terminalPathPreview';
@@ -95,5 +96,14 @@ describe('terminalPathPreview', () => {
     const lineSnippet = truncateSnippet(longLine, 1, 50);
     expect(lineSnippet).toHaveLength(51); // 50 chars + ellipsis
     expect(lineSnippet.endsWith('…')).toBe(true);
+  });
+
+  it('flags files whose content must not be previewed', () => {
+    for (const p of ['/home/u/.ssh/id_ed25519', '/etc/shadow', '/srv/.env', '/srv/.env.production', 'cert/server.pem', 'tls.key', '/etc/shadow-', 'k.ppk', 'x.tfstate', '.git-credentials']) {
+      expect(isSensitiveFilePath(p)).toBe(true);
+    }
+    for (const p of ['/home/u/.ssh/id_ed25519.pub', '/srv/.env.example', '/etc/hosts', 'README.md', '/']) {
+      expect(isSensitiveFilePath(p)).toBe(false);
+    }
   });
 });

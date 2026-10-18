@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { TabType } from '../components/TabBar';
 import type { AppSettings } from '@shared/types/settings';
@@ -12,6 +12,7 @@ import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
 
 export interface TabActionsContext {
+  tabs: AppTab[];
   activeTabId: string;
   settings: AppSettings;
   localHostname: string;
@@ -24,21 +25,22 @@ export interface TabActionsContext {
 
 /** Everything that creates, closes, splits or connects tabs and panes. */
 export function useTabActions(ctx: TabActionsContext) {
-  const { activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen } = ctx;
+  const { tabs, activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen } = ctx;
 
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
     setTabBarFocused(false);
   };
 
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const handleCloseTab = useCallback((id: string) => {
+    // Confirm outside the state updater: updaters must stay pure (StrictMode runs them twice).
+    if (tabsRef.current.find((t) => t.id === id)?.isDirty && !window.confirm('You have unsaved changes. Discard them?')) {
+      return;
+    }
     setTabs((prev) => {
-      const tab = prev.find((t) => t.id === id);
-      if (tab?.isDirty) {
-        if (!window.confirm('You have unsaved changes. Discard them?')) {
-          return prev;
-        }
-      }
       const index = prev.findIndex((t) => t.id === id);
       const remaining = prev.filter((t) => t.id !== id);
 

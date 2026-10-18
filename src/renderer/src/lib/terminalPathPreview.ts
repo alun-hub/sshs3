@@ -3,6 +3,12 @@
  * and preview metadata formatting.
  */
 
+import {
+  MARKDOWN_EXTENSIONS,
+  RASTER_IMAGE_EXTENSIONS,
+  SVG_EXTENSIONS,
+} from './fileExtensions';
+
 export type FileTypeCategory =
   | 'image'
   | 'code'
@@ -14,15 +20,8 @@ export type FileTypeCategory =
   | 'unknown';
 
 const EXTENSION_CATEGORIES: Record<string, FileTypeCategory> = {
-  // Images
-  png: 'image',
-  jpg: 'image',
-  jpeg: 'image',
-  svg: 'image',
-  gif: 'image',
-  webp: 'image',
-  ico: 'image',
-  bmp: 'image',
+  ...Object.fromEntries([...RASTER_IMAGE_EXTENSIONS, ...SVG_EXTENSIONS].map((ext) => [ext, 'image' as const])),
+  ...Object.fromEntries([...MARKDOWN_EXTENSIONS].map((ext) => [ext, 'markdown' as const])),
 
   // Code
   ts: 'code',
@@ -66,11 +65,6 @@ const EXTENSION_CATEGORIES: Record<string, FileTypeCategory> = {
   plist: 'config',
   properties: 'config',
   dockerfile: 'config',
-
-  // Markdown
-  md: 'markdown',
-  markdown: 'markdown',
-  mdx: 'markdown',
 
   // Archives
   tar: 'archive',
@@ -276,4 +270,32 @@ export function truncateSnippet(text: string, maxLines = 15, maxCharsPerLine = 1
     line.length > maxCharsPerLine ? `${line.slice(0, maxCharsPerLine)}…` : line
   );
   return truncated.join('\n');
+}
+
+const SENSITIVE_NAMES = new Set([
+  'shadow',
+  'gshadow',
+  'authorized_keys',
+  '.netrc',
+  '.pgpass',
+  '.npmrc',
+  'credentials',
+  'secrets',
+  '.git-credentials',
+  '.htpasswd',
+  '.bash_history',
+  '.zsh_history',
+  'kubeconfig',
+]);
+const SENSITIVE_EXTENSIONS = new Set(['pem', 'key', 'p12', 'pfx', 'kdbx', 'env', 'ppk', 'jks', 'keystore', 'gpg', 'asc', 'tfstate', 'tfvars']);
+
+/** Files whose content must not be rendered in a hover snippet (private keys, credentials, .env files). */
+export function isSensitiveFilePath(filePath: string): boolean {
+  const name = (filePath.split(/[\\/]/).pop() || '').toLowerCase();
+  if (!name) return false;
+  if (SENSITIVE_NAMES.has(name)) return true;
+  if (/^id_(rsa|dsa|ecdsa|ed25519)(_sk)?(?!.*\.pub$)/.test(name)) return true;
+  if (/^(shadow|gshadow|credentials)[-.~]/.test(name)) return true;
+  if (name.startsWith('.env') && !name.endsWith('.example') && !name.endsWith('.sample')) return true;
+  return SENSITIVE_EXTENSIONS.has(getFileExtension(name));
 }

@@ -185,6 +185,43 @@ describe('FileEditorService', () => {
       expect(mockProvider.createReadStream).not.toHaveBeenCalled();
     });
 
+    it('refuses non-regular files such as FIFOs without opening a stream', async () => {
+      const mockProvider = {
+        id: 'mock-fifo',
+        name: 'Mock FIFO',
+        type: 'local' as const,
+        stat: vi.fn().mockResolvedValue({ name: 'pipe', path: '/tmp/pipe', size: 0, isDirectory: false, isSpecial: true }),
+        createReadStream: vi.fn(),
+      };
+      storageRegistry.register(mockProvider as any);
+
+      await expect(service.readFile(storageRegistry, 'mock-fifo', '/tmp/pipe')).rejects.toThrow('Not a regular file');
+      expect(mockProvider.createReadStream).not.toHaveBeenCalled();
+    });
+
+    it('gives up on a stream that never produces data', async () => {
+      vi.useFakeTimers();
+      try {
+        const stalled = new PassThrough();
+        const mockProvider = {
+          id: 'mock-stalled',
+          name: 'Mock Stalled',
+          type: 'sftp' as const,
+          stat: vi.fn().mockRejectedValue(new Error('no stat')),
+          createReadStream: vi.fn().mockResolvedValue(stalled),
+        };
+        storageRegistry.register(mockProvider as any);
+
+        const pending = service.readFile(storageRegistry, 'mock-stalled', '/hang');
+        const assertion = expect(pending).rejects.toThrow('Timed out');
+        await vi.advanceTimersByTimeAsync(31_000);
+        await assertion;
+        expect(stalled.destroyed).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('returns isDirectory: true when createReadStream throws EISDIR or SftpError failure', async () => {
       const sftpFailure = new Error('Failure');
       (sftpFailure as any).statusCode = 4;

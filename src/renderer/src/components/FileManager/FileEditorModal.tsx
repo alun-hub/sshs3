@@ -134,6 +134,23 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const originalEolRef = useRef<'\r\n' | '\n'>('\n');
   const initialContentUsedRef = useRef(false);
+  // Only the latest load may write state; a slower earlier read must not overwrite a newer file.
+  const loadSeqRef = useRef(0);
+  const sessionsRef = useRef<{ tailId: string | null; externalToken: string | null }>({
+    tailId: null,
+    externalToken: null,
+  });
+  sessionsRef.current = { tailId, externalToken: externalSessionToken };
+
+  // An embedded editor tab is unmounted by its parent; release the tail/external sessions then.
+  useEffect(
+    () => () => {
+      const { tailId: t, externalToken } = sessionsRef.current;
+      if (t) void window.multissh?.fileTailStop?.(t);
+      if (externalToken) void window.multissh?.fileCloseExternal?.(externalToken);
+    },
+    []
+  );
 
   const isDirty = useMemo(
     () => !tailModeActive && content.replace(/\r\n/g, '\n') !== originalContent.replace(/\r\n/g, '\n'),
@@ -158,6 +175,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Load file content normally
   const loadFile = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     if (!entryPath || isDirectory) return;
     await stopTailSession();
     setLoading(true);
@@ -167,6 +185,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       const res: FileReadResult = isDirectPreview
         ? await window.multissh.fileRead(providerId, entryPath, 100 * 1024 * 1024)
         : await window.multissh.fileRead(providerId, entryPath);
+      if (seq !== loadSeqRef.current) return;
       if (res.isDirectory) {
         setError('Target is a directory, not a regular file.');
         setReadOnly(true);
@@ -190,9 +209,10 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       setLoadedSize(res.size);
       setReadOnly(res.isBinary || res.truncated || !!res.notUtf8);
     } catch (err: any) {
+      if (seq !== loadSeqRef.current) return;
       setError(describeIpcError(err, 'Failed to load file content'));
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [providerId, entryPath, isDirectory, isDirectPreview, stopTailSession, initialContentOverride]);
 
@@ -375,13 +395,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
         return;
       }
     }
-    if (tailId) {
-      void window.multissh?.fileTailStop?.(tailId);
-      setTailId(null);
-    }
-    if (externalSessionToken) {
-      void window.multissh?.fileCloseExternal?.(externalSessionToken);
-      setExternalSessionToken(null);
+    // An embedded tab releases its sessions on unmount, once the parent has actually closed it.
+    if (!embedded) {
+      if (tailId) {
+        void window.multissh?.fileTailStop?.(tailId);
+        setTailId(null);
+      }
+      if (externalSessionToken) {
+        void window.multissh?.fileCloseExternal?.(externalSessionToken);
+        setExternalSessionToken(null);
+      }
+      // Already released: keep the unmount cleanup from stopping them a second time.
+      sessionsRef.current = { tailId: null, externalToken: null };
     }
     onClose();
   }, [embedded, isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
@@ -405,6 +430,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       void window.multissh?.fileCloseExternal?.(externalSessionToken);
       setExternalSessionToken(null);
     }
+    sessionsRef.current = { tailId: null, externalToken: null };
     onClose();
   }, [entry, providerId, sourceType, viewMode, tailModeActive, content, tailId, externalSessionToken, onClose]);
 

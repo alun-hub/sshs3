@@ -7,9 +7,9 @@ import { ChevronDown, ChevronUp, RotateCcw, Search, X } from 'lucide-react';
 import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shared/types/ssh';
 import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
-import { registerTerminalLinks, isKnownFilename } from '../lib/terminalLinks';
-import { resolvePathDetails } from '../lib/terminalPathPreview';
-import { CommandOutputTracker, extractCwdFromPrompt } from '../lib/terminalOutput';
+import { registerTerminalLinks } from '../lib/terminalLinks';
+import { useTerminalPathHover } from '../lib/useTerminalPathHover';
+import { CommandOutputTracker } from '../lib/terminalOutput';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
 import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
@@ -19,7 +19,6 @@ import { FileEditorModal } from './FileManager/FileEditorModal';
 import { isDirectPreviewFile, isDualModeFile } from './FileManager/fileTypeHelpers';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
-import type { FileEntry, SFTPConfig } from '@shared/types/storage';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
 
@@ -54,8 +53,6 @@ export interface TerminalViewProps {
   pathHoverPreview?: boolean;
   /** Ctrl+click on a file path in the output (SSH sessions only). Receives the path as printed, e.g. `/var/log/x` or `~/x`. */
   onOpenPath?: (path: string) => void;
-  /** Open a file path in editor. */
-  onOpenEditor?: (path: string) => void;
   /** Performance bar above the terminal (SSH, local shell and Kubernetes sessions). Omit to disable it entirely — nothing is polled. */
   perfMetrics?: { layout: PerfLayout; items: PerfMetricId[]; intervalSec?: number };
   /** Callback to close the enclosing tab. */
@@ -183,7 +180,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   clipboardHistoryScope = 'global',
   pathHoverPreview = true,
   onOpenPath,
-  onOpenEditor,
   perfMetrics,
   onCloseTab,
   onTitleChange,
@@ -241,12 +237,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelectRef.current = copyOnSelect;
   const clipboardScopeRef = useRef(clipboardHistoryScope);
   clipboardScopeRef.current = clipboardHistoryScope;
-  const onOpenPathRef = useRef(onOpenPath);
-  onOpenPathRef.current = onOpenPath;
-  const onOpenEditorRef = useRef(onOpenEditor);
-  onOpenEditorRef.current = onOpenEditor;
-  const pathHoverPreviewRef = useRef(pathHoverPreview);
-  pathHoverPreviewRef.current = pathHoverPreview;
   const rootRef = useRef<HTMLDivElement>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -265,115 +255,24 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
-  const [hoverCardData, setHoverCardData] = useState<{ path: string; x: number; y: number } | null>(null);
-  const hoverCardDataRef = useRef<{ path: string; x: number; y: number } | null>(null);
-  hoverCardDataRef.current = hoverCardData;
-  const hoverDwellTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const isMouseOverCardRef = useRef(false);
-  const [userHomeDir, setUserHomeDir] = useState<string>(() => {
-    if (config?.username === 'root') return '/root';
-    if (config?.username) return `/home/${config.username}`;
-    return '/home/user';
+  const notifyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const notify = useCallback((message: string, durationMs = 2000) => {
+    clearTimeout(notifyTimerRef.current);
+    setCopyNotice(message);
+    notifyTimerRef.current = setTimeout(() => setCopyNotice(null), durationMs);
+  }, []);
+  useEffect(() => () => clearTimeout(notifyTimerRef.current), []);
+  const pathHover = useTerminalPathHover({
+    target: { local, config, k8sTarget },
+    initialCwd,
+    pathHoverPreview,
+    onOpenPath,
+    termRef,
+    sessionIdRef,
+    notify,
   });
-  const userHomeDirRef = useRef(userHomeDir);
-  userHomeDirRef.current = userHomeDir;
-
-  const [currentCwd, setCurrentCwd] = useState<string>(
-    initialCwd || (config?.username === 'root' ? '/root' : config?.username ? `/home/${config.username}` : '')
-  );
-  const currentCwdRef = useRef(currentCwd);
-  currentCwdRef.current = currentCwd;
-  const [editingFile, setEditingFile] = useState<string | null>(null);
-  const editingFileRef = useRef(editingFile);
-  editingFileRef.current = editingFile;
-
-  const editorEntry = useMemo<FileEntry | null>(() => {
-    if (!editingFile) return null;
-    return {
-      name: editingFile.split(/[\\/]/).filter(Boolean).pop() || editingFile,
-      path: editingFile,
-      size: 0,
-      isDirectory: false,
-    };
-  }, [editingFile]);
-
-  const refreshCwd = useCallback(async () => {
-    let detectedFromPrompt: string | null = null;
-    const term = termRef.current;
-    if (term) {
-      const buf = term.buffer.active;
-      const cursorLine = buf.baseY + buf.cursorY;
-      for (let i = cursorLine; i >= Math.max(0, cursorLine - 8); i--) {
-        const line = buf.getLine(i);
-        if (!line) continue;
-        const text = line.translateToString(true).trim();
-        if (!text) continue;
-        const detected = extractCwdFromPrompt(text, userHomeDirRef.current);
-        if (detected) {
-          detectedFromPrompt = detected;
-          currentCwdRef.current = detected;
-          setCurrentCwd(detected);
-          break;
-        }
-      }
-    }
-
-    const sid = sessionIdRef.current;
-    if (!sid) return;
-    if (local && !detectedFromPrompt && window.multissh?.terminalGetCwd) {
-      try {
-        const dir = await window.multissh.terminalGetCwd(sid);
-        if (dir) {
-          currentCwdRef.current = dir;
-          setCurrentCwd(dir);
-        }
-      } catch {
-        // Safe to ignore
-      }
-    }
-  }, [local]);
-
-  useEffect(() => {
-    if (local) {
-      if (window.multissh?.getHomeDir) {
-        window.multissh
-          .getHomeDir()
-          .then((h) => {
-            if (h) {
-              setUserHomeDir(h);
-              userHomeDirRef.current = h;
-              setCurrentCwd((prev) => prev || h);
-            }
-          })
-          .catch(() => {});
-      }
-    } else if (config) {
-      const sftpProviderId = `sftp-${config.id || config.host}`;
-      if (window.multissh?.storageGetHomeDir) {
-        window.multissh
-          .storageGetHomeDir(sftpProviderId)
-          .then((h) => {
-            if (h) {
-              setUserHomeDir(h);
-              userHomeDirRef.current = h;
-              setCurrentCwd((prev) => prev || h);
-            }
-          })
-          .catch(() => {});
-      }
-    }
-  }, [local, config]);
-
-  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => {
-    if (!pathHoverPreview) {
-      clearTimeout(hoverDwellTimerRef.current);
-      clearTimeout(hoverLeaveTimerRef.current);
-      isMouseOverCardRef.current = false;
-      setHoverCardData(null);
-    }
-  }, [pathHoverPreview]);
+  const pathHoverRef = useRef(pathHover);
+  pathHoverRef.current = pathHover;
 
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
@@ -553,91 +452,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     );
     registerTerminalLinks(term, {
       openUrl: (url) => void window.multissh.openExternal(url),
-      openPath: onOpenPathRef.current
-        ? async (path) => {
-            clearTimeout(hoverDwellTimerRef.current);
-            clearTimeout(hoverLeaveTimerRef.current);
-            isMouseOverCardRef.current = false;
-            setHoverCardData(null);
-
-            await refreshCwd();
-
-            const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
-            onOpenPathRef.current?.(details.fullPath);
-          }
-        : undefined,
-      hoverPath: (e, path) => {
-        if (!pathHoverPreviewRef.current) return;
-        if (isMouseOverCardRef.current) return;
-        if (hoverCardDataRef.current?.path === path) return;
-
-        clearTimeout(hoverLeaveTimerRef.current);
-        clearTimeout(hoverDwellTimerRef.current);
-
-        const delay = hoverCardDataRef.current ? 500 : 150;
-        hoverDwellTimerRef.current = setTimeout(async () => {
-          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-          await refreshCwd();
-
-          const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
-          const hasSlash = path.includes('/') || path.includes('\\');
-          const isKnown = isKnownFilename(details.basename);
-
-          // For standalone tokens without an extension or slash that aren't well-known files,
-          // verify that the file actually exists on storage/disk before showing the hover card.
-          if (!hasSlash && !details.extension && !isKnown) {
-            const providerId = local
-              ? 'local'
-              : k8sTarget
-                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
-                : (config ? `sftp-${config.id || config.host}` : '');
-
-            if (providerId && window.multissh?.storageStat) {
-              try {
-                await window.multissh.storageStat(providerId, details.fullPath);
-              } catch {
-                return;
-              }
-            }
-          }
-
-          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-          setHoverCardData({ path, x: e.clientX, y: e.clientY });
-        }, delay);
-      },
-      leavePath: () => {
-        clearTimeout(hoverDwellTimerRef.current);
-        if (!pathHoverPreviewRef.current) return;
-        if (isMouseOverCardRef.current) return;
-        hoverLeaveTimerRef.current = setTimeout(() => {
-          if (!isMouseOverCardRef.current) {
-            setHoverCardData(null);
-          }
-        }, 400);
-      },
+      ...pathHoverRef.current.createLinkHandlers(),
     });
     const outputTracker = new CommandOutputTracker(term);
     outputTrackerRef.current = outputTracker;
 
-    const osc7Handler = term.parser.registerOscHandler(7, (data) => {
-      try {
-        let p = data;
-        if (p.startsWith('file://')) {
-          const slashIdx = p.indexOf('/', 7);
-          if (slashIdx >= 0) {
-            p = p.slice(slashIdx);
-          }
-        }
-        if (p && p.startsWith('/')) {
-          const decoded = decodeURIComponent(p);
-          currentCwdRef.current = decoded;
-          setCurrentCwd(decoded);
-        }
-      } catch {
-        // Safe to ignore malformed OSC 7
-      }
-      return true;
-    });
+    const osc7Handler = term.parser.registerOscHandler(7, (data) => pathHoverRef.current.handleOsc7(data));
 
     term.open(containerRef.current);
     if (isActiveRef.current) {
@@ -650,11 +470,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     const titleSub = term.onTitleChange((title) => {
       onTitleChangeRef.current?.(title);
-      const detected = extractCwdFromPrompt(title, userHomeDirRef.current);
-      if (detected) {
-        currentCwdRef.current = detected;
-        setCurrentCwd(detected);
-      }
+      pathHoverRef.current.detectCwdFromText(title);
     });
 
     // Copy-on-select mirrors the selection into the system CLIPBOARD (not just the
@@ -811,20 +627,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // so it's wired up explicitly here.
     // Also prevent xterm from intercepting/swallowing tab switching shortcuts (Ctrl+Tab, Ctrl+Shift+Tab).
     term.attachCustomKeyEventHandler((e) => {
-      if (editingFileRef.current) {
+      if (pathHoverRef.current.isEditorOpen()) {
         return false;
       }
-      if (e.type === 'keydown' && e.key === 'Escape' && hoverCardDataRef.current) {
+      if (e.type === 'keydown' && e.key === 'Escape' && pathHoverRef.current.dismissCardOnEscape()) {
         e.preventDefault();
-        isMouseOverCardRef.current = false;
-        clearTimeout(hoverLeaveTimerRef.current);
-        clearTimeout(hoverDwellTimerRef.current);
-        setHoverCardData(null);
-        return false;
-      }
-      if (e.type === 'keydown' && e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'c' || e.key === 'C')) {
-        e.preventDefault();
-        copyLastCommandOutput();
         return false;
       }
       if (
@@ -901,41 +708,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           }
           sessionIdRef.current = sessionId;
           setPerfSessionId(sessionId);
-          if (local && window.multissh?.terminalGetCwd) {
-            window.multissh.terminalGetCwd(sessionId).then((dir) => {
-              if (!isDisposed && dir) {
-                currentCwdRef.current = dir;
-                setCurrentCwd(dir);
-              }
-            }).catch(() => {});
-          } else if (!local && activeConfig && window.multissh?.connectStorage) {
-            const sftpConfig: SFTPConfig = {
-              ...activeConfig,
-              id: activeConfig.id || activeConfig.host,
-              name: activeConfig.name || activeConfig.host,
-              port: activeConfig.port ?? 22,
-            };
-            const sftpProviderId = `sftp-${activeConfig.id || activeConfig.host}`;
-            window.multissh
-              .connectStorage({
-                id: sftpProviderId,
-                name: activeConfig.name || activeConfig.host,
-                type: 'sftp',
-                sftpConfig,
-              })
-              .then(() => {
-                if (!isDisposed && window.multissh?.storageGetHomeDir) {
-                  window.multissh.storageGetHomeDir(sftpProviderId).then((h) => {
-                    if (!isDisposed && h) {
-                      setUserHomeDir(h);
-                      userHomeDirRef.current = h;
-                      setCurrentCwd((prev) => prev || h);
-                    }
-                  }).catch(() => {});
-                }
-              })
-              .catch(() => {});
-          }
+          pathHoverRef.current.onSessionStarted(sessionId, () => isDisposed);
 
           // Force PTY size synchronization once session ID is established.
           // On app launch or tab restoration, the session was spawned with provisional
@@ -1003,11 +776,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               if (sessId === sessionIdRef.current) {
                 term.write(data);
                 sendInitialCwd();
-                const detectedCwd = extractCwdFromPrompt(data, userHomeDirRef.current);
-                if (detectedCwd) {
-                  currentCwdRef.current = detectedCwd;
-                  setCurrentCwd(detectedCwd);
-                }
+                pathHoverRef.current.detectCwdFromText(data);
                 if (!k8sTarget) {
                   const detectedHost = scanOutputForHost(data);
                   if (detectedHost) {
@@ -1093,9 +862,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       searchAddonRef.current = null;
       clearTimeout(settleTimer);
       clearTimeout(noticeTimer);
-      clearTimeout(hoverLeaveTimerRef.current);
-      clearTimeout(hoverDwellTimerRef.current);
-      isMouseOverCardRef.current = false;
       const sid = sessionIdRef.current;
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
       if (sid && killSession) {
@@ -1274,145 +1040,31 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         </div>
       )}
 
-      {hoverCardData && pathHoverPreview && (
+      {pathHover.hoverCardData && (
         <TerminalPathHoverCard
-          path={hoverCardData.path}
-          x={hoverCardData.x}
-          y={hoverCardData.y}
-          userHome={userHomeDir}
-          currentCwd={currentCwdRef.current || currentCwd || initialCwd || userHomeDir}
-          providerId={
-            local
-              ? 'local'
-              : k8sTarget
-                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
-                : (config ? `sftp-${config.id || config.host}` : '')
-          }
-          onMouseEnter={() => {
-            isMouseOverCardRef.current = true;
-            clearTimeout(hoverLeaveTimerRef.current);
-            clearTimeout(hoverDwellTimerRef.current);
-          }}
-          onMouseLeave={() => {
-            isMouseOverCardRef.current = false;
-            hoverLeaveTimerRef.current = setTimeout(() => {
-              if (!isMouseOverCardRef.current) {
-                setHoverCardData(null);
-              }
-            }, 300);
-          }}
-          onClose={() => {
-            isMouseOverCardRef.current = false;
-            setHoverCardData(null);
-          }}
-          onCopyPath={(p) => {
-            navigator.clipboard?.writeText(p);
-            setCopyNotice(`Copied path: ${p}`);
-            setTimeout(() => setCopyNotice(null), 2000);
-            isMouseOverCardRef.current = false;
-            setHoverCardData(null);
-          }}
-          onOpenPath={
-            onOpenPathRef.current
-              ? (p) => {
-                  onOpenPathRef.current?.(p);
-                  isMouseOverCardRef.current = false;
-                  setHoverCardData(null);
-                }
-              : undefined
-          }
-          onOpenEditor={async (p) => {
-            const targetProviderId = local
-              ? 'local'
-              : k8sTarget
-                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
-                : (config ? `sftp-${config.id || config.host}` : '');
-
-            if (targetProviderId && window.multissh?.storageStat) {
-              try {
-                const stat = await window.multissh.storageStat(targetProviderId, p);
-                if (stat?.isDirectory) {
-                  onOpenPathRef.current?.(p);
-                  isMouseOverCardRef.current = false;
-                  setHoverCardData(null);
-                  return;
-                }
-              } catch {
-                // Proceed if stat fails
-              }
-            }
-
-            if (onOpenEditorRef.current) {
-              onOpenEditorRef.current(p);
-            } else {
-
-              if (targetProviderId) {
-                try {
-                  if (local) {
-                    await window.multissh?.connectStorage?.({ id: 'local', name: 'Local Disk', type: 'local' });
-                  } else if (k8sTarget) {
-                    await window.multissh?.connectStorage?.({
-                      id: targetProviderId,
-                      name: `${k8sTarget.podName}/${k8sTarget.containerName}`,
-                      type: 'k8s',
-                      k8sConfig: {
-                        id: targetProviderId,
-                        name: `${k8sTarget.podName}/${k8sTarget.containerName}`,
-                        contextName: k8sTarget.contextName,
-                        namespace: k8sTarget.namespace,
-                        podName: k8sTarget.podName,
-                        containerName: k8sTarget.containerName,
-                      },
-                    });
-                  } else if (config) {
-                    const sftpConfig: SFTPConfig = {
-                      ...config,
-                      id: config.id || config.host,
-                      name: config.name || config.host,
-                      port: config.port ?? 22,
-                    };
-                    await window.multissh?.connectStorage?.({
-                      id: targetProviderId,
-                      name: config.name || config.host,
-                      type: 'sftp',
-                      sftpConfig,
-                    });
-                  }
-                  termRef.current?.blur();
-                  setEditingFile(p);
-                } catch (err: any) {
-                  setCopyNotice(`Failed to open storage: ${err?.message || String(err)}`);
-                  setTimeout(() => setCopyNotice(null), 3000);
-                }
-              }
-            }
-            isMouseOverCardRef.current = false;
-            setHoverCardData(null);
-          }}
+          path={pathHover.hoverCardData.path}
+          x={pathHover.hoverCardData.x}
+          y={pathHover.hoverCardData.y}
+          userHome={pathHover.userHomeDir}
+          currentCwd={pathHover.cardCwd}
+          providerId={pathHover.providerId}
+          {...pathHover.cardProps}
         />
       )}
 
-      {editingFile && editorEntry && (
+      {pathHover.editorEntry && (
         <FileEditorModal
           open={true}
-          providerId={
-            local
-              ? 'local'
-              : k8sTarget
-                ? `k8s-${k8sTarget.contextName}/${k8sTarget.namespace}/${k8sTarget.podName}/${k8sTarget.containerName}`
-                : (config ? `sftp-${config.id || config.host}` : '')
-          }
+          providerId={pathHover.providerId}
           sourceType={local ? 'local' : k8sTarget ? 'k8s' : 'sftp'}
-          initialMode={isDirectPreviewFile(editorEntry.name) || isDualModeFile(editorEntry.name) ? 'preview' : 'source'}
-          entry={editorEntry}
-          onSaved={() => {
-            setCopyNotice(`Saved: ${editorEntry.name}`);
-            setTimeout(() => setCopyNotice(null), 2500);
-          }}
-          onClose={() => {
-            setEditingFile(null);
-            termRef.current?.focus();
-          }}
+          initialMode={
+            isDirectPreviewFile(pathHover.editorEntry.name) || isDualModeFile(pathHover.editorEntry.name)
+              ? 'preview'
+              : 'source'
+          }
+          entry={pathHover.editorEntry}
+          onSaved={() => notify(`Saved: ${pathHover.editorEntry?.name}`, 2500)}
+          onClose={pathHover.closeEditor}
         />
       )}
 

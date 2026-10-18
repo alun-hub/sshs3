@@ -412,23 +412,29 @@ describe('TerminalView Component', () => {
     openSpy.mockRestore();
   });
 
-  it('connects storage with correct providerId and opens FileEditorModal when onOpenEditor is triggered', async () => {
-    const mockConnectStorage = vi.fn().mockResolvedValue({ id: 'sftp-ssh-1' });
-    const mockFileRead = vi.fn().mockResolvedValue({
-      content: 'hello world',
-      size: 11,
-      isBinary: false,
-      truncated: false,
+  it('connects the SFTP provider lazily, only once a path is actually used', async () => {
+    let capturedHandlers: any;
+    const registerSpy = vi.spyOn(terminalLinksModule, 'registerTerminalLinks').mockImplementation((_term, handlers) => {
+      capturedHandlers = handlers;
+      return { dispose: vi.fn() };
     });
+    const mockConnectStorage = vi.fn().mockResolvedValue({ id: 'sftp-ssh-1' });
     window.multissh.connectStorage = mockConnectStorage;
-    window.multissh.fileRead = mockFileRead;
 
-    render(<TerminalView config={sampleConfig} />);
+    render(<TerminalView config={sampleConfig} initialCwd="/srv" onOpenPath={vi.fn()} />);
     await act(async () => {
       await Promise.resolve();
     });
+    expect(mockConnectStorage).not.toHaveBeenCalled();
 
-    expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
+    await capturedHandlers.openPath('notes.txt');
+    await capturedHandlers.openPath('other.txt');
+    expect(mockConnectStorage).toHaveBeenCalledTimes(1);
+    expect(mockConnectStorage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.stringMatching(/^sftp-/), type: 'sftp' })
+    );
+
+    registerSpy.mockRestore();
   });
 
   it('resolves relative paths and standalone files against currentCwd when Ctrl+clicked via openPath', async () => {

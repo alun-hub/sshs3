@@ -6,7 +6,7 @@ import path from 'node:path';
 import { shell as electronShell } from 'electron';
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { LocalStorageProvider } from '../storage/LocalStorageProvider';
-import { formatDate } from '../storage/StorageProvider';
+import { formatDate, getMimeType } from '../storage/StorageProvider';
 import type { FileReadResult, ExternalFileStatusEvent } from '../../shared/types/ipc';
 
 export interface ExternalEditorSession {
@@ -47,28 +47,18 @@ export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platf
   return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
 }
 
-const MIME_MAP: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  svg: 'image/svg+xml',
-  bmp: 'image/bmp',
-  ico: 'image/x-icon',
-  pdf: 'application/pdf',
-  html: 'text/html',
-  htm: 'text/html',
-  json: 'application/json',
-  csv: 'text/csv',
-  tsv: 'text/tab-separated-values',
-  txt: 'text/plain',
-  log: 'text/plain',
-};
+const READ_IDLE_TIMEOUT_MS = 30_000;
 
-export function detectMimeType(filePath: string): string | undefined {
-  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
-  return MIME_MAP[ext];
+function directoryResult(size: number): FileReadResult {
+  return { content: '', size, isBinary: false, truncated: false, isDirectory: true };
+}
+
+/** Reading a directory as a file fails with EISDIR locally and with a generic Failure status over SFTP. */
+function isDirectoryReadError(err: any): boolean {
+  return (
+    err?.code === 'EISDIR' ||
+    (err?.statusCode === 4 && (err?.name === 'SftpError' || err?.message?.includes('Failure')))
+  );
 }
 
 export interface ShellOpener {
@@ -107,16 +97,10 @@ export class FileEditorService {
 
     try {
       const stats = await provider.stat(remotePath);
-      if (stats?.isDirectory) {
-        return {
-          content: '',
-          size: stats.size || 0,
-          isBinary: false,
-          truncated: false,
-          isDirectory: true,
-        };
-      }
-    } catch {
+      if (stats?.isDirectory) return directoryResult(stats.size || 0);
+      if (stats?.isSpecial) throw new Error('Not a regular file');
+    } catch (err: any) {
+      if (err?.message === 'Not a regular file') throw err;
       // If stat fails or is not supported by provider, proceed to createReadStream
     }
 
@@ -124,18 +108,7 @@ export class FileEditorService {
     try {
       stream = await provider.createReadStream(remotePath);
     } catch (err: any) {
-      if (
-        err?.code === 'EISDIR' ||
-        (err?.statusCode === 4 && (err?.name === 'SftpError' || err?.message?.includes('Failure')))
-      ) {
-        return {
-          content: '',
-          size: 0,
-          isBinary: false,
-          truncated: false,
-          isDirectory: true,
-        };
-      }
+      if (isDirectoryReadError(err)) return directoryResult(0);
       throw err;
     }
 
@@ -150,7 +123,24 @@ export class FileEditorService {
     let isDirDetected = false;
 
     await new Promise<void>((resolve, reject) => {
+      // A stream that stops producing data (FIFO, stalled mount) would otherwise hold the read open forever.
+      let idleTimer: NodeJS.Timeout | undefined;
+      const destroyStream = (): void => {
+        if ('destroy' in stream && typeof (stream as any).destroy === 'function') {
+          (stream as any).destroy();
+        }
+      };
+      const armIdleTimer = (): void => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          destroyStream();
+          reject(new Error('Timed out waiting for file data'));
+        }, READ_IDLE_TIMEOUT_MS);
+      };
+      armIdleTimer();
+
       stream.on('data', (chunk: Buffer) => {
+        armIdleTimer();
         if (totalBytes + chunk.length > effectiveMaxBytes) {
           const remaining = effectiveMaxBytes - totalBytes;
           if (remaining > 0) {
@@ -158,23 +148,23 @@ export class FileEditorService {
             totalBytes += remaining;
           }
           truncated = true;
-          if ('destroy' in stream && typeof (stream as any).destroy === 'function') {
-            (stream as any).destroy();
-          }
+          clearTimeout(idleTimer);
+          destroyStream();
           resolve();
         } else {
           chunks.push(chunk);
           totalBytes += chunk.length;
         }
       });
-      stream.on('end', () => resolve());
+      stream.on('end', () => {
+        clearTimeout(idleTimer);
+        resolve();
+      });
       stream.on('error', (err: any) => {
+        clearTimeout(idleTimer);
         if (truncated) {
           resolve();
-        } else if (
-          err?.code === 'EISDIR' ||
-          (err?.statusCode === 4 && (err?.name === 'SftpError' || err?.message?.includes('Failure')))
-        ) {
+        } else if (isDirectoryReadError(err)) {
           isDirDetected = true;
           resolve();
         } else {
@@ -183,15 +173,7 @@ export class FileEditorService {
       });
     });
 
-    if (isDirDetected) {
-      return {
-        content: '',
-        size: 0,
-        isBinary: false,
-        truncated: false,
-        isDirectory: true,
-      };
-    }
+    if (isDirDetected) return directoryResult(0);
 
     const fullBuffer = Buffer.concat(chunks);
     const checkLength = Math.min(fullBuffer.length, 8000);
@@ -215,7 +197,7 @@ export class FileEditorService {
       }
     }
 
-    const mimeType = detectMimeType(remotePath);
+    const mimeType = getMimeType(remotePath);
     const shouldProvideBase64 =
       isBinary ||
       mimeType?.startsWith('image/') ||

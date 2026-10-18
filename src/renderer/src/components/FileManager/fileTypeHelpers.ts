@@ -1,10 +1,12 @@
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
-const HTML_EXTENSIONS = new Set(['html', 'htm']);
-const RASTER_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico']);
-const SVG_EXTENSIONS = new Set(['svg']);
-const PDF_EXTENSIONS = new Set(['pdf']);
-const CSV_EXTENSIONS = new Set(['csv', 'tsv']);
-const JSON_EXTENSIONS = new Set(['json']);
+import {
+  CSV_EXTENSIONS,
+  HTML_EXTENSIONS,
+  JSON_EXTENSIONS,
+  MARKDOWN_EXTENSIONS,
+  PDF_EXTENSIONS,
+  RASTER_IMAGE_EXTENSIONS,
+  SVG_EXTENSIONS,
+} from '../../lib/fileExtensions';
 
 export function getFileExtension(name: string): string {
   const idx = name.lastIndexOf('.');

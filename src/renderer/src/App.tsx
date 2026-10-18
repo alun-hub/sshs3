@@ -137,6 +137,7 @@ export const App: React.FC = () => {
     handleConnectRecentSSH,
     handleOpenEditorTab,
   } = useTabActions({
+    tabs,
     activeTabId,
     settings,
     localHostname,
