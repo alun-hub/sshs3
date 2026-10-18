@@ -60,8 +60,18 @@ export function validateCustomPortRegex(pattern: string): { valid: boolean; erro
   }
   try {
     const reg = new RegExp(trimmed);
-    // Nested quantifiers such as (a+)+ or (.*)* are the classic catastrophic-backtracking shape
-    if (/\([^)]*[+*][^)]*\)[+*{]/.test(trimmed)) {
+    // Nested quantifiers such as (a+)+ or (.*)* are the classic catastrophic-backtracking shape.
+    // Match the group body without overlapping quantifiers, then check it for +/* (linear, no ReDoS).
+    const quantifiedGroup = /\(([^()]*)\)[+*{]/g;
+    let group: RegExpExecArray | null;
+    let nested = false;
+    while ((group = quantifiedGroup.exec(trimmed)) !== null) {
+      if (/[+*]/.test(group[1])) {
+        nested = true;
+        break;
+      }
+    }
+    if (nested) {
       return { valid: false, error: 'Regular expression is too complex or susceptible to backtracking.' };
     }
     // Check if regex can execute safely on a test string without catastrophic backtracking
