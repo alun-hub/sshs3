@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.46] - 2026-10-18
+
+### Added
+- **Search all saved profiles from the start screen.** The quick-connect box now also searches every saved SSH profile (name, host, user, group) and lists the matches; Enter connects to the first one. `user@host` still connects ad hoc, and the SFTP button is greyed out together with Connect while there is nothing to open.
+- **Connect on S3 profiles in the Connection Manager.** Opening it from the toolbar showed no Connect button on the S3 tab; it now opens a File Manager tab with the profile in the right pane.
+- **New Remote File Manager…** in the **+** menu (`Ctrl+Shift+Alt+F`) opens the Connection Manager on top of a new File Manager to pick the right pane's connection.
+
+### Changed
+- **New File Manager opens locally.** `Ctrl+Shift+F`, the **+** menu and the start screen's File Manager card open straight away with Local Disk in both panes instead of asking for a connection first.
+
+### Fixed
+- **One FIDO2 touch for a terminal and its path hover card.** The hover card's SFTP channel now shares the terminal's SSH connection (Linux and macOS), so previewing a path no longer asks for the security key a second time. SFTP channels never start a profile's saved tunnels: a refused forward made `ssh` fall back to a brand-new, re-authenticating connection.
+- **Path hover card stays inside the window.** Its real height is measured and it is flipped and clamped to the viewport, so tall previews are no longer cut off at the bottom.
+
 ## [0.96.45] - 2026-10-18
 
 ### Fixed
