@@ -116,7 +116,15 @@ describe('OpenSshSftpProcess', () => {
       try {
         const proc = new OpenSshSftpProcess();
         const startPromise = proc.start({
-          config: { id: 't', host: 'myserver.com', port: 22, username: 'alice', authType: 'password', password: 'x' }, // pragma: allowlist secret
+          config: {
+            id: 't',
+            host: 'myserver.com',
+            port: 22,
+            username: 'alice',
+            authType: 'password',
+            password: 'x', // pragma: allowlist secret
+            tunnels: [{ id: 'tn', type: 'local', localPort: 8443, remoteHost: 'localhost', remotePort: 443 }],
+          } as any,
           controlPath: socket,
         });
         setTimeout(() => {
@@ -127,7 +135,10 @@ describe('OpenSshSftpProcess', () => {
           mockChild.stdout.write(resp);
         }, 10);
         await startPromise;
-        expect(mockSpawn.mock.calls[0][1] as string[]).toContain(`ControlPath=${socket}`);
+        const args = mockSpawn.mock.calls[0][1] as string[];
+        expect(args).toContain(`ControlPath=${socket}`);
+        // saved tunnels must not ride along: a mux client's -L is refused and ssh then re-authenticates
+        expect(args).not.toContain('-L');
         await proc.close();
         expect(fs.existsSync(socket)).toBe(true);
       } finally {
