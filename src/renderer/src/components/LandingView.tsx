@@ -164,6 +164,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </button>
           <SftpButton
             authType="password"
+            disabled={!quickConnectTarget && !quickConnectProfile}
             onOpen={() => {
               const config = buildQuickConnectConfig();
               if (config) {

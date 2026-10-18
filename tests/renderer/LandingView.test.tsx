@@ -120,6 +120,16 @@ describe('LandingView Component', () => {
       expect(onConnectRecentSSH).not.toHaveBeenCalled();
     });
 
+    it('greys out SFTP together with Connect while there is nothing to open', () => {
+      renderLanding();
+      const sftp = () => screen.getAllByRole('button', { name: /SFTP/ })[0];
+      expect(screen.getByTestId('quick-connect-btn')).toBeDisabled();
+      expect(sftp()).toBeDisabled();
+      type('build');
+      expect(screen.getByTestId('quick-connect-btn')).toBeEnabled();
+      expect(sftp()).toBeEnabled();
+    });
+
     it('shows recent connections again when the box is cleared', () => {
       renderLanding();
       type('build');
