@@ -18,9 +18,20 @@ export interface DragOutStageDeps {
   queue: Pick<TransferQueue, 'addJob' | 'waitForJob'>;
 }
 
-/** True for a plain entry name that cannot escape the staging directory. */
-export function isSafeStageName(name: string): boolean {
-  return Boolean(name) && name !== '.' && name !== '..' && !/[\\/\0]/.test(name);
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/** True when Windows cannot create a file with this name (a valid POSIX name may still be one). */
+export function isWindowsUnsafeName(name: string): boolean {
+  if (/[<>:"|?*]/.test(name) || /[. ]$/.test(name)) return true;
+  if ([...name].some((ch) => ch.charCodeAt(0) < 0x20)) return true;
+  // "CON" and "CON.txt" are both reserved; the part before the first dot decides
+  return WINDOWS_RESERVED_STEM.test(name.split('.')[0]);
+}
+
+/** True for a plain entry name that cannot escape the staging directory (and, on Windows, can be created there). */
+export function isSafeStageName(name: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (!name || name === '.' || name === '..' || /[\\/\0]/.test(name)) return false;
+  return platform !== 'win32' || !isWindowsUnsafeName(name);
 }
 
 function baseName(p: string): string {
@@ -73,7 +84,13 @@ export class DragOutService {
 
   private async stageOne(source: IStorageProvider, providerId: string, remotePath: string): Promise<string> {
     const name = baseName(remotePath);
-    if (!isSafeStageName(name)) throw new Error('Cannot drag an item with this name');
+    if (!isSafeStageName(name)) {
+      throw new Error(
+        process.platform === 'win32' && isSafeStageName(name, 'linux')
+          ? `"${name}" has a name Windows cannot store; download it with the file manager and rename it instead`
+          : 'Cannot drag an item with this name'
+      );
+    }
     const stats = await source.stat(remotePath);
     if (!stats.isDirectory && stats.isSpecial) throw new Error('Not a regular file');
     if (!stats.isDirectory && (stats.size ?? 0) > MAX_STAGED_FILE_BYTES) {

@@ -133,4 +133,13 @@ describe('DragOutService', () => {
     expect(isSafeStageName('ok.txt')).toBe(true);
     for (const bad of ['', '.', '..', 'a/b', 'a\\b']) expect(isSafeStageName(bad)).toBe(false);
   });
+
+  it('accepts POSIX-only names off Windows but rejects them on Windows', () => {
+    const windowsOnlyBad = ['12:30.log', 'a*b', 'what?.txt', 'q"uote', 'a|b', 'a<b', 'dots.', 'space ', 'CON', 'nul.txt', 'com1', 'LPT9.log'];
+    for (const name of windowsOnlyBad) {
+      expect(isSafeStageName(name, 'linux')).toBe(true);
+      expect(isSafeStageName(name, 'win32')).toBe(false);
+    }
+    for (const ok of ['ok.txt', 'console.log', 'com10', 'a b.txt', '.hidden']) expect(isSafeStageName(ok, 'win32')).toBe(true);
+  });
 });

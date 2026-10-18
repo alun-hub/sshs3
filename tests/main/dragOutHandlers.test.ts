@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-vi.mock('electron', () => ({ nativeImage: { createFromPath: () => ({ isEmpty: () => true }) } }));
+vi.mock('electron', () => ({
+  nativeImage: { createFromPath: () => ({ isEmpty: () => true }), createFromBuffer: () => ({ isEmpty: () => false }) },
+}));
 
 import { validateDragOutPaths, registerDragOutHandlers } from '../../src/main/ipc/dragOutHandlers';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';

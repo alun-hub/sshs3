@@ -11,6 +11,11 @@ export type DragOutHost = Pick<IpcBridge, 'registerHandler' | 'dragOutService'>;
 
 const MAX_DRAG_OUT_PATHS = 500;
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+/** 1x1 transparent PNG used when the app icon cannot be loaded. */
+const FALLBACK_ICON_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+);
 
 /**
  * Returns the paths that may be handed to the OS as a drag source: absolute, NUL-free
@@ -38,7 +43,8 @@ function dragIcon(): Electron.NativeImage {
     ? path.join(moduleDir, '../../build/icon.png')
     : path.join(moduleDir, '../build/icon.png');
   const icon = nativeImage.createFromPath(iconPath);
-  return icon.isEmpty() ? icon : icon.resize({ width: 48, height: 48 });
+  // startDrag needs a non-empty icon (an empty one can fail the drag on macOS/Windows), so fall back to a 1x1 pixel
+  return icon.isEmpty() ? nativeImage.createFromBuffer(FALLBACK_ICON_PNG) : icon.resize({ width: 48, height: 48 });
 }
 
 export function createDragOutService(host: Pick<IpcBridge, 'storageRegistry' | 'transferQueue'>): DragOutService {
