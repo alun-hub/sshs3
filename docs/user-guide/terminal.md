@@ -126,6 +126,8 @@ Hovering your mouse over any recognized file or directory path in the terminal d
   - **Drag handle**: Drag the grip icon, the file icon or the preview out of the card to drop the file or folder into another application, e.g. your desktop or a mail window. For SSH and Kubernetes terminals, clicking or dragging the handle (or the icon or preview) opens a dialog that asks whether to copy the item to this computer; after you confirm it downloads a temporary copy and shows an item to drag. Files over 500 MB are not draggable; copies are deleted when sshs3 quits.
 - **Dwell Protection & Collision Avoidance**: A subtle dwell timer prevents accidental popup flicker while moving the cursor across the terminal, and intelligent viewport edge detection flips the card smoothly to keep it within the visible window.
 - **Configuration Toggle**: Can be enabled or disabled anytime under *Settings → Terminal* (**Enable file path hover preview**). When disabled, <kbd>Ctrl+Click</kbd> path activation remains fully operational.
+- **Only real files get a card**: before the card opens, the path is looked up over the active connection. Text that merely looks like a path (`Node.js`, `example.com`, `and/or`, a filename an assistant only proposes) gets no card when the file does not exist. A relative path is only checked once the shell has reported its working directory (from the prompt or OSC 7); until then the card is shown as before. Hostnames, e-mail addresses, version numbers (`1.2.3-rc1`), units (`3.5MB/s`, `2.5s`), abbreviations (`e.g`) and capitalized words such as `Version` or `Notes` are not linked at all.
+- **Show the card only with Ctrl**: under *Settings → Terminal* (**Show the card**) you can choose *Only while Ctrl is held* (<kbd>Cmd</kbd> on macOS) instead of *When hovering over a path*. The card then opens when you press Ctrl while the pointer is on a path, which keeps it out of the way in text-heavy sessions such as an AI assistant.
 
 On Linux and macOS the hover card reads files through the terminal's own SSH connection, so a security key (FIDO2) is touched once per terminal, not again for the preview. Windows opens a second connection, which asks for the key again.
 
@@ -182,6 +184,7 @@ When a command fails with a permission error (for example `cat: /etc/shadow: Per
 | **Cursor Style** | `Block` | Visual cursor appearance: `Block`, `Underline`, or `Bar`. |
 | **Scrollback Buffer (lines)** | `5000` | Retained terminal history per pane, searchable with <kbd>Ctrl+Shift+S</kbd>. |
 | **Enable file path hover preview** | `On` | Interactive preview card with file details, thumbnail, and actions when hovering over paths. |
+| **Show the card** | `When hovering over a path` | Open the path hover card on hover, or only while <kbd>Ctrl</kbd> is held. |
 | **Offer to re-run failed commands with sudo** | `On` | After a permission error, offers to re-run the command with `sudo` (<kbd>Enter</kbd> to accept, <kbd>Esc</kbd> to dismiss). |
 | **Enable web service & port forward auto-detection** | `On` | Detects listening ports in terminal output and displays a quick-forward banner. |
 | **Custom port detection regex** | `Empty` | Optional regular expression with capture group `(\d+)` to detect custom application ports. |

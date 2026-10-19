@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { Terminal } from 'xterm';
 import type { FileEntry } from '@shared/types/storage';
 import type { TerminalLinkHandlers } from './terminalLinks';
-import { isKnownFilename } from './terminalLinks';
+import { isDistinctiveFilename } from './terminalLinks';
+import {
+  allowPreview,
+  hoverModifierSatisfied,
+  isRelativePath,
+  needsExistenceCheck,
+  type ExistenceCheck,
+  type PathHoverMode,
+} from './pathPreviewGate';
 import { resolvePathDetails } from './terminalPathPreview';
 import { extractCwdFromPrompt } from './terminalOutput';
 import { wslToWindowsPath } from './wslPaths';
@@ -24,6 +32,8 @@ export interface UseTerminalPathHoverOptions {
   wsl?: boolean;
   wslDistro?: string;
   pathHoverPreview: boolean;
+  /** Open the hover card on hover (default) or only while Ctrl/Cmd is held. */
+  pathHoverMode?: PathHoverMode;
   onOpenPath?: (path: string) => void;
   termRef: RefObject<Terminal | null>;
   sessionIdRef: RefObject<string | null>;
@@ -46,6 +56,7 @@ export function useTerminalPathHover({
   wsl = false,
   wslDistro,
   pathHoverPreview,
+  pathHoverMode = 'hover',
   onOpenPath,
   termRef,
   sessionIdRef,
@@ -62,6 +73,10 @@ export function useTerminalPathHover({
   onOpenPathRef.current = onOpenPath;
   const pathHoverPreviewRef = useRef(pathHoverPreview);
   pathHoverPreviewRef.current = pathHoverPreview;
+  const pathHoverModeRef = useRef(pathHoverMode);
+  pathHoverModeRef.current = pathHoverMode;
+  /** A path under the pointer that waits for Ctrl/Cmd (only in `ctrl` mode). */
+  const pendingHoverRef = useRef<{ clientX: number; clientY: number; path: string } | null>(null);
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
@@ -90,7 +105,10 @@ export function useTerminalPathHover({
     [editingFile, toStoragePath]
   );
 
+  /** The working directory came from the shell (prompt, OSC 7, the process), not just the home directory. */
+  const cwdKnownRef = useRef(Boolean(initialCwd));
   const setCwd = useCallback((dir: string) => {
+    cwdKnownRef.current = true;
     currentCwdRef.current = dir;
     setCurrentCwd(dir);
   }, []);
@@ -249,60 +267,99 @@ export function useTerminalPathHover({
   }, [dismissCard]);
 
   /** Handlers handed to `registerTerminalLinks`; stable because everything goes through refs. */
-  // Hovering sweeps over many bare words; remember recent existence checks instead of stat-ing each time.
-  const pathExists = useCallback(async (fullPath: string): Promise<boolean> => {
+  // Hovering sweeps over many words; remember recent existence checks instead of stat-ing each time.
+  const checkExistence = useCallback(async (fullPath: string): Promise<ExistenceCheck> => {
     const id = terminalProviderId(targetRef.current);
-    if (!id || !window.multissh?.storageStat) return true;
+    // Nothing to check against: behave as if the file exists.
+    if (!id || !window.multissh?.storageExists) return 'exists';
     const key = `${id}\0${fullPath}`;
     const cached = statCacheRef.current.get(key);
-    if (cached && Date.now() - cached.at < STAT_CACHE_TTL_MS) return cached.exists;
-    let exists = true;
+    if (cached && Date.now() - cached.at < STAT_CACHE_TTL_MS) return cached.exists ? 'exists' : 'missing';
+    let exists: boolean;
     try {
-      await window.multissh.storageStat(id, toStoragePathRef.current(fullPath));
+      exists = await window.multissh.storageExists(id, toStoragePathRef.current(fullPath));
     } catch {
       exists = false;
     }
     // A miss caused by a failed connection says nothing about the file.
-    if (!exists && connectFailureRef.current) return false;
+    if (!exists && connectFailureRef.current) return 'unknown';
     if (statCacheRef.current.size > 200) statCacheRef.current.clear();
     statCacheRef.current.set(key, { exists, at: Date.now() });
-    return exists;
+    return exists ? 'exists' : 'missing';
   }, []);
 
-  const createLinkHandlers = useCallback((): Pick<TerminalLinkHandlers, 'openPath' | 'hoverPath' | 'leavePath'> => {
-    const prepare = async (): Promise<void> => {
-      // Connect first so the real home directory is known before prompts are parsed against it.
-      if (!targetRef.current.local) await ensureProvider().catch(() => {});
-      await refreshCwd();
+  /** Connect first so the real home directory is known before prompts are parsed against it. */
+  const prepareHover = useCallback(async (): Promise<void> => {
+    if (!targetRef.current.local) await ensureProvider().catch(() => {});
+    await refreshCwd();
+  }, [ensureProvider, refreshCwd]);
+
+  /** Opens the card after a short dwell, unless the text turns out not to be a real file. */
+  const startHover = useCallback(
+    (point: { clientX: number; clientY: number }, path: string) => {
+      if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
+      if (hoverCardDataRef.current?.path === path) return;
+      clearHoverTimers();
+      const delay = hoverCardDataRef.current ? 500 : 150;
+      hoverDwellTimerRef.current = setTimeout(async () => {
+        if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
+        await prepareHover();
+        const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
+        const hasSlash = path.includes('/') || path.includes('\\');
+        // A bare word is only previewed when the file really exists; text that merely looks like a path
+        // (`Node.js`, a proposed `src/new.ts`) is dropped once the file is known not to exist.
+        const gate = {
+          bareToken: !hasSlash && !details.extension && !isDistinctiveFilename(details.basename),
+          relative: isRelativePath(path),
+          cwdKnown: cwdKnownRef.current,
+        };
+        const existence = needsExistenceCheck(gate) ? await checkExistence(details.fullPath) : 'unknown';
+        if (!allowPreview(gate, existence)) return;
+        if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
+        setHoverCardData({ path, x: point.clientX, y: point.clientY });
+      }, delay);
+    },
+    [clearHoverTimers, prepareHover, checkExistence]
+  );
+
+  // In `ctrl` mode a path under the pointer opens its card as soon as Ctrl/Cmd is pressed.
+  useEffect(() => {
+    if (pathHoverMode !== 'ctrl') {
+      pendingHoverRef.current = null;
+      return;
+    }
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Control' && ev.key !== 'Meta') return;
+      const pending = pendingHoverRef.current;
+      if (!pending) return;
+      pendingHoverRef.current = null;
+      startHover(pending, pending.path);
     };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pathHoverMode, startHover]);
+
+  const createLinkHandlers = useCallback((): Pick<TerminalLinkHandlers, 'openPath' | 'hoverPath' | 'leavePath'> => {
     return {
       openPath: onOpenPathRef.current
         ? async (path) => {
             dismissCard();
-            await prepare();
+            await prepareHover();
             const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
             onOpenPathRef.current?.(toStoragePathRef.current(details.fullPath));
           }
         : undefined,
       hoverPath: (e, path) => {
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-        if (hoverCardDataRef.current?.path === path) return;
-        clearHoverTimers();
-        const delay = hoverCardDataRef.current ? 500 : 150;
-        hoverDwellTimerRef.current = setTimeout(async () => {
-          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-          await prepare();
-          const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
-          const hasSlash = path.includes('/') || path.includes('\\');
-          // Bare tokens without an extension are only previewed when the file really exists.
-          if (!hasSlash && !details.extension && !isKnownFilename(details.basename)) {
-            if (!(await pathExists(details.fullPath))) return;
-          }
-          if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-          setHoverCardData({ path, x: e.clientX, y: e.clientY });
-        }, delay);
+        if (!hoverModifierSatisfied(pathHoverModeRef.current, e)) {
+          pendingHoverRef.current = { clientX: e.clientX, clientY: e.clientY, path };
+          return;
+        }
+        pendingHoverRef.current = null;
+        startHover(e, path);
       },
       leavePath: () => {
+        pendingHoverRef.current = null;
         clearTimeout(hoverDwellTimerRef.current);
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         hoverLeaveTimerRef.current = setTimeout(() => {
@@ -310,7 +367,7 @@ export function useTerminalPathHover({
         }, 400);
       },
     };
-  }, [refreshCwd, ensureProvider, dismissCard, clearHoverTimers, pathExists]);
+  }, [dismissCard, prepareHover, startHover]);
 
   const openInEditor = useCallback(
     async (p: string) => {

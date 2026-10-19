@@ -112,6 +112,28 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     }
   );
 
+  // A lookup for something that may well not exist (a word in the terminal that looks like a path):
+  // a miss is the normal answer, so it resolves to false instead of rejecting, which Electron would
+  // print as an "Error occurred in handler" line for every hover.
+  bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_EXISTS,
+    async (_event, providerId: string, remotePath: string): Promise<boolean> => {
+      if (typeof providerId !== 'string' || typeof remotePath !== 'string') {
+        throw new Error('Invalid arguments');
+      }
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      try {
+        await provider.stat(remotePath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  );
+
   bridge.registerHandler(
     IPC_CHANNELS.STORAGE_CREATE_FOLDER,
     async (_event, providerId: string, remotePath: string): Promise<void> => {

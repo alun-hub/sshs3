@@ -1298,6 +1298,8 @@ describe('IpcBridge', () => {
       const stat: FileEntry = await mockIpc.invoke(IPC_CHANNELS.STORAGE_STAT, 'test-storage', '/file.txt');
       expect(stat.size).toBe(100);
 
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_EXISTS, 'test-storage', '/file.txt')).resolves.toBe(true);
+
       await mockIpc.invoke(IPC_CHANNELS.STORAGE_CREATE_FOLDER, 'test-storage', '/new-folder');
       await mockIpc.invoke(IPC_CHANNELS.STORAGE_DELETE, 'test-storage', '/file.txt', false);
       await mockIpc.invoke(IPC_CHANNELS.STORAGE_RENAME, 'test-storage', '/file.txt', '/renamed.txt');
@@ -1306,6 +1308,13 @@ describe('IpcBridge', () => {
       expect(provider.createFolder).toHaveBeenCalledWith('/new-folder');
       expect(provider.delete).toHaveBeenCalledWith('/file.txt', false);
       expect(provider.rename).toHaveBeenCalledWith('/file.txt', '/renamed.txt');
+    });
+
+    it('storage:exists resolves to false instead of rejecting when the path is missing', async () => {
+      const provider = mockStorageRegistry.get('test-storage');
+      provider.stat.mockRejectedValueOnce(new Error('ENOENT: no such file or directory'));
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_EXISTS, 'test-storage', '/nope')).resolves.toBe(false);
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_EXISTS, 'test-storage', 42)).rejects.toThrow('Invalid arguments');
     });
 
     it('handles storage getHomeDir', async () => {
@@ -1323,6 +1332,9 @@ describe('IpcBridge', () => {
         'Storage provider not found: unknown-id'
       );
       await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_STAT, 'unknown-id', '/')).rejects.toThrow(
+        'Storage provider not found: unknown-id'
+      );
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_EXISTS, 'unknown-id', '/')).rejects.toThrow(
         'Storage provider not found: unknown-id'
       );
       await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_CREATE_FOLDER, 'unknown-id', '/')).rejects.toThrow(
@@ -1920,6 +1932,9 @@ describe('IpcBridge', () => {
 
       await preloadApi.storageStat('loc', '/f');
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_STAT, 'loc', '/f');
+
+      await preloadApi.storageExists('loc', '/f');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_EXISTS, 'loc', '/f');
 
       await preloadApi.storageCreateFolder('loc', '/dir');
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_CREATE_FOLDER, 'loc', '/dir');

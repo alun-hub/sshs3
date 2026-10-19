@@ -59,6 +59,8 @@ export interface TerminalViewProps {
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
   /** Whether hovering over file paths shows an interactive preview card. Default true. */
   pathHoverPreview?: boolean;
+  /** Open the hover card on hover (default) or only while Ctrl/Cmd is held. */
+  pathHoverMode?: 'hover' | 'ctrl';
   /** Whether a failed command with a permission error offers to re-run with sudo. Default true. */
   sudoRetryPrompt?: boolean;
   /** Whether web services/listening ports in output are auto-detected for quick port forwarding. Default true. */
@@ -193,6 +195,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
   pathHoverPreview = true,
+  pathHoverMode = 'hover',
   sudoRetryPrompt = true,
   portForwardAutoDetect = true,
   portForwardCustomRegex,
@@ -285,6 +288,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     wsl: Boolean(local && shellType === 'wsl'),
     wslDistro,
     pathHoverPreview,
+    pathHoverMode,
     onOpenPath,
     termRef,
     sessionIdRef,

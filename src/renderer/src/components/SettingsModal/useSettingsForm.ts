@@ -31,6 +31,9 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
   const [terminalPathHoverPreview, setTerminalPathHoverPreview] = useState<boolean>(
     currentSettings.terminalPathHoverPreview ?? true
   );
+  const [terminalPathHoverMode, setTerminalPathHoverMode] = useState<'hover' | 'ctrl'>(
+    currentSettings.terminalPathHoverMode ?? 'hover'
+  );
   const [terminalSudoRetryPrompt, setTerminalSudoRetryPrompt] = useState<boolean>(
     currentSettings.terminalSudoRetryPrompt ?? true
   );
@@ -156,6 +159,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       setCursorStyle(currentSettings.terminalCursorStyle ?? 'block');
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setTerminalPathHoverPreview(currentSettings.terminalPathHoverPreview ?? true);
+      setTerminalPathHoverMode(currentSettings.terminalPathHoverMode ?? 'hover');
       setTerminalSudoRetryPrompt(currentSettings.terminalSudoRetryPrompt ?? true);
       setTerminalPortForwardAutoDetect(currentSettings.terminalPortForwardAutoDetect ?? true);
       setTerminalPortForwardCustomRegex(currentSettings.terminalPortForwardCustomRegex ?? '');
@@ -285,6 +289,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
       terminalCursorStyle: cursorStyle,
       terminalScrollback: scrollback,
       terminalPathHoverPreview,
+      terminalPathHoverMode,
       terminalSudoRetryPrompt,
       terminalPortForwardAutoDetect,
       terminalPortForwardCustomRegex: validateCustomPortRegex(terminalPortForwardCustomRegex).valid
@@ -387,6 +392,8 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     setScrollback,
     terminalPathHoverPreview,
     setTerminalPathHoverPreview,
+    terminalPathHoverMode,
+    setTerminalPathHoverMode,
     terminalSudoRetryPrompt,
     setTerminalSudoRetryPrompt,
     terminalPortForwardAutoDetect,

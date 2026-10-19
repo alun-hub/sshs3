@@ -129,6 +129,7 @@ export const IPC_CHANNELS = {
   STORAGE_DISCONNECT: 'storage:disconnect',
   STORAGE_LIST: 'storage:list',
   STORAGE_STAT: 'storage:stat',
+  STORAGE_EXISTS: 'storage:exists',
   STORAGE_CREATE_FOLDER: 'storage:create-folder',
   STORAGE_DELETE: 'storage:delete',
   STORAGE_RENAME: 'storage:rename',
@@ -581,6 +582,8 @@ export interface MultiSSHApi {
   disconnectStorage(providerId: string): Promise<void>;
   storageList(providerId: string, remotePath: string, force?: boolean): Promise<FileEntry[]>;
   storageStat(providerId: string, remotePath: string): Promise<FileEntry>;
+  /** Whether the path can be stat'ed. A missing path resolves to `false` instead of rejecting. */
+  storageExists(providerId: string, remotePath: string): Promise<boolean>;
   storageCreateFolder(providerId: string, remotePath: string): Promise<void>;
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;

@@ -19,6 +19,8 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setScrollback,
     terminalPathHoverPreview,
     setTerminalPathHoverPreview,
+    terminalPathHoverMode,
+    setTerminalPathHoverMode,
     terminalSudoRetryPrompt,
     setTerminalSudoRetryPrompt,
     terminalPortForwardAutoDetect,
@@ -336,9 +338,25 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             Enable file path hover preview
             <span className="block text-txt-muted">
               Shows an interactive preview card with file details, thumbnail, and actions when hovering over paths in the terminal.
+              Only files that exist are previewed.
             </span>
           </span>
         </label>
+        <div className="flex items-center gap-2 pl-6">
+          <label htmlFor="path-hover-mode" className="text-xs text-txt-muted">
+            Show the card
+          </label>
+          <select
+            id="path-hover-mode"
+            value={terminalPathHoverMode}
+            disabled={!terminalPathHoverPreview}
+            onChange={(e) => setTerminalPathHoverMode(e.target.value === 'ctrl' ? 'ctrl' : 'hover')}
+            className="rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 disabled:opacity-50"
+          >
+            <option value="hover">When hovering over a path</option>
+            <option value="ctrl">Only while Ctrl is held</option>
+          </select>
+        </div>
       </div>
 
       <div className="space-y-2 pt-3 border-t border-divider">

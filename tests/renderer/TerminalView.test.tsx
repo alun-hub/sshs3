@@ -583,6 +583,114 @@ describe('TerminalView Component', () => {
     registerSpy.mockRestore();
   });
 
+  describe('path hover card gating', () => {
+    let capturedHandlers: any;
+    let registerSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      registerSpy = vi.spyOn(terminalLinksModule, 'registerTerminalLinks').mockImplementation((_term, handlers) => {
+        capturedHandlers = handlers;
+        return { dispose: vi.fn() };
+      });
+    });
+
+    afterEach(() => {
+      registerSpy.mockRestore();
+      delete (window.multissh as any).storageExists;
+    });
+
+    const dwell = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      });
+
+    it('does not open the card for a path that does not exist', async () => {
+      const storageExists = vi.fn().mockResolvedValue(false);
+      (window.multissh as any).storageExists = storageExists;
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/srv/app/not-there.ts');
+      });
+      await dwell();
+
+      expect(storageExists).toHaveBeenCalled();
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+    });
+
+    it('opens the card for a path that exists', async () => {
+      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('in ctrl mode waits for Ctrl before checking and opening the card', async () => {
+      const storageExists = vi.fn().mockResolvedValue(true);
+      (window.multissh as any).storageExists = storageExists;
+      render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+      expect(storageExists).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control' }));
+      });
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('in ctrl mode opens the card at once when Ctrl is already held', async () => {
+      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: true, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('forgets the waiting path when the pointer leaves it', async () => {
+      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control' }));
+      });
+      await dwell();
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+    });
+  });
+
   it('detects listening ports in terminal output and displays TerminalPortPill', async () => {
     render(<TerminalView config={sampleConfig} />);
 

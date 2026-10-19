@@ -1,0 +1,44 @@
+import { isWindowsPath } from './terminalPathPreview';
+
+/** When the hover card opens: as soon as the pointer dwells on a path, or only while Ctrl/Cmd is held. */
+export type PathHoverMode = 'hover' | 'ctrl';
+
+/** Result of looking a path up on the session's file system. */
+export type ExistenceCheck = 'exists' | 'missing' | 'unknown';
+
+export function hoverModifierSatisfied(mode: PathHoverMode, e: { ctrlKey: boolean; metaKey: boolean }): boolean {
+  return mode === 'hover' || e.ctrlKey || e.metaKey;
+}
+
+/** A path that is resolved against the working directory (not absolute, not `~`). */
+export function isRelativePath(raw: string): boolean {
+  const cleaned = raw.trim().replace(/^['"]/, '');
+  return !(cleaned.startsWith('/') || cleaned.startsWith('~') || isWindowsPath(cleaned));
+}
+
+export interface PreviewGateInput {
+  /** No slash, no extension and not a well-known filename: any word in the output could look like this. */
+  bareToken: boolean;
+  relative: boolean;
+  /** The working directory was reported by the shell, not just assumed to be the home directory. */
+  cwdKnown: boolean;
+}
+
+/**
+ * A relative path is looked up against the working directory, so while that is only a guess a miss
+ * says nothing about the file. Everything else is worth checking.
+ */
+export function needsExistenceCheck({ bareToken, relative, cwdKnown }: PreviewGateInput): boolean {
+  return bareToken || !relative || cwdKnown;
+}
+
+/**
+ * Whether the hover card may open. Text that merely looks like a path (`Node.js`, `and/or`, a proposed
+ * `src/new.ts`) is dropped when the file is known not to exist; bare words additionally need to exist.
+ * When the lookup was not possible (no connection, unknown cwd) the card is shown as before.
+ */
+export function allowPreview(input: PreviewGateInput, existence: ExistenceCheck): boolean {
+  if (input.bareToken) return existence === 'exists';
+  if (!needsExistenceCheck(input)) return true;
+  return existence !== 'missing';
+}

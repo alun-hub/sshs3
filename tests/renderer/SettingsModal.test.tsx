@@ -456,6 +456,26 @@ describe('SettingsModal', () => {
     );
   });
 
+  it('saves the path hover card mode, defaulting to hover', () => {
+    const onSave = vi.fn();
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    const select = screen.getByLabelText('Show the card') as HTMLSelectElement;
+    expect(select.value).toBe('hover');
+
+    fireEvent.change(select, { target: { value: 'ctrl' } });
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalPathHoverMode: 'ctrl' }));
+  });
+
   it('toggles terminalSudoRetryPrompt setting and saves it', () => {
     const onSave = vi.fn();
     render(

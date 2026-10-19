@@ -20,7 +20,7 @@ const WINDOWS_PATH_RE =
 // Standalone filenames with extensions (e.g. `index.html`, `test.txt`, `windows.png`, `.bashrc`),
 // well-known filenames (e.g. `Dockerfile`, `Makefile`, `notes`, `hosts`), or identifiers with `_`.
 const STANDALONE_FILE_RE =
-  /(?<![\w:/.~-])(?:\b((?:[A-Za-z0-9_~-]|\\ )+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+)|([A-Za-z0-9_~-]+))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
+  /(?<![\w:/.~@-])(?:\b((?:[A-Za-z0-9_~-]|\\ )+\.[A-Za-z0-9_.-]+)|(\.[A-Za-z0-9_~-]+(?:\.[A-Za-z0-9_~-]+)*)|([A-Za-z0-9_~-]+))(?::\d+(?::\d+)?)?(?![\w:/.~-])/g;
 
 export const KNOWN_FILENAMES = new Set([
   'dockerfile',
@@ -75,6 +75,77 @@ export function isKnownFilename(name: string): boolean {
   return KNOWN_FILENAMES.has(name.toLowerCase());
 }
 
+/** Well-known filenames that are also ordinary English words, so they turn up in prose all the time. */
+const GENERIC_WORD_FILENAMES = new Set([
+  'license',
+  'licence',
+  'copying',
+  'readme',
+  'install',
+  'notice',
+  'authors',
+  'changelog',
+  'contributing',
+  'todo',
+  'notes',
+  'build',
+  'workspace',
+  'version',
+  'news',
+  'porting',
+  'thanks',
+  'environment',
+  'hostname',
+]);
+
+/** A well-known filename that is not an ordinary word (`Dockerfile`, `id_rsa`, `fstab`): safe to link unchecked. */
+export function isDistinctiveFilename(name: string): boolean {
+  const lower = name.toLowerCase();
+  return KNOWN_FILENAMES.has(lower) && !GENERIC_WORD_FILENAMES.has(lower);
+}
+
+/** Top-level domains that are rarely file extensions; `notes.org` or `logo.ai` stay linkable. */
+const HOST_TLDS = 'com|io|net|edu|gov|eu|tv|se|uk|de|fr|nl|us|ru|cn|jp';
+/** More TLDs that are only treated as a host when followed by a path (`example.org/guide`). */
+const PATH_HOST_TLDS = `${HOST_TLDS}|org|info|dev|app|ai|co|me|cloud|xyz|tech`;
+const HOSTNAME_RE = new RegExp(`^(?:[a-z0-9-]+\\.)+(?:${HOST_TLDS})$`, 'i');
+const PATH_HOSTNAME_RE = new RegExp(`^(?:[a-z0-9-]+\\.)+(?:${PATH_HOST_TLDS})$`, 'i');
+
+/** Product names that end in `.js` or `.NET`; real files are almost always lowercase. */
+const PRODUCT_NAMES = new Set([
+  'Node.js',
+  'Next.js',
+  'Vue.js',
+  'Nuxt.js',
+  'React.js',
+  'Express.js',
+  'Three.js',
+  'D3.js',
+  'Chart.js',
+  'Ember.js',
+  'Nest.js',
+  'Angular.js',
+  'Electron.js',
+]);
+
+/** `e.g`, `i.e`, `a.k.a`: every part is a single letter. */
+const ABBREVIATION_RE = /^(?:[A-Za-z]\.)+[A-Za-z]$/;
+/** `1.5x`, `2.5s`, `12.5GB`, `1.2.3-rc1`: a number with a unit or a version suffix, not a filename. */
+const NUMBER_WITH_UNIT_RE = /^v?\d+(?:\.\d+)+(?:[-+][\w.]+|[A-Za-z]{1,3})?$/;
+/** `3.5MB/s`, `100km/h`, `10req/s`. */
+const RATE_RE = /^\d[\d.,]*[A-Za-z]{0,5}\/[A-Za-z]{1,5}$/;
+
+/** Words and tokens that look like a filename but are prose, a hostname, a version or a unit. */
+function isProseToken(raw: string): boolean {
+  return (
+    PRODUCT_NAMES.has(raw) ||
+    HOSTNAME_RE.test(raw) ||
+    /^www\./i.test(raw) ||
+    ABBREVIATION_RE.test(raw) ||
+    NUMBER_WITH_UNIT_RE.test(raw)
+  );
+}
+
 const NON_PATH_WORD_PAIRS = new Set([
   'and/or',
   'either/or',
@@ -89,6 +160,27 @@ const NON_PATH_WORD_PAIRS = new Set([
   'n/a',
   'c/o',
   'i/o',
+  'input/output',
+  'client/server',
+  'pass/fail',
+  'success/failure',
+  'enable/disable',
+  'start/stop',
+  'add/remove',
+  'create/update',
+  'push/pull',
+  'open/close',
+  'before/after',
+  'request/response',
+  'he/she',
+  's/he',
+  'his/her',
+  'him/her',
+  'km/h',
+  'm/s',
+  'mb/s',
+  'kb/s',
+  'gb/s',
 ]);
 
 const COLUMN_HEADERS_STOP = new Set([
@@ -157,7 +249,10 @@ function isValidSlashedPath(raw: string): boolean {
   if (raw.startsWith('/') || raw.startsWith('~/') || raw.startsWith('./') || raw.startsWith('../')) {
     return true;
   }
+  const firstSegment = raw.split('/')[0];
+  if (PATH_HOSTNAME_RE.test(firstSegment) || /^www\./i.test(firstSegment)) return false;
   if (raw.endsWith('/')) return true;
+  if (RATE_RE.test(raw)) return false;
   if (/^\d+\/\d+/.test(raw)) return false;
   if (NON_PATH_WORD_PAIRS.has(raw.toLowerCase())) return false;
   const parts = raw.split('/');
@@ -172,10 +267,12 @@ function isValidSlashedPath(raw: string): boolean {
 }
 
 function isValidStandaloneFile(raw: string): boolean {
-  if (isKnownFilename(raw)) return true;
+  // `Version` or `Notes` at the start of a sentence is prose; `LICENSE` and `notes` are still files.
+  if (isKnownFilename(raw)) return !(GENERIC_WORD_FILENAMES.has(raw.toLowerCase()) && /^[A-Z][a-z]+$/.test(raw));
   if (raw.startsWith('.')) {
     return raw.length >= 2 && /[A-Za-z]/.test(raw);
   }
+  if (isProseToken(raw)) return false;
   // Reject IP addresses (1.1.1.1) and version numbers (0.96.7, v1.2.3)
   if (/^\d+\.\d+\.\d+\.\d+$/.test(raw)) return false;
   if (/^v?\d+(\.\d+)+$/.test(raw)) return false;
