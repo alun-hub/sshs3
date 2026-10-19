@@ -1942,6 +1942,9 @@ describe('IpcBridge', () => {
       await preloadApi.storageLookup('loc', '/f');
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_LOOKUP, 'loc', '/f');
 
+      await preloadApi.terminalHasSshClient('sess-1');
+      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.TERMINAL_HAS_SSH_CLIENT, 'sess-1');
+
       await preloadApi.storageCreateFolder('loc', '/dir');
       expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(IPC_CHANNELS.STORAGE_CREATE_FOLDER, 'loc', '/dir');
 

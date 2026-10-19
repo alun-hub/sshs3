@@ -248,33 +248,40 @@ export class InternalSSHPtySession implements SSHPtySession {
     }
   }
 
+  /**
+   * True when the shell has spawned an interactive ssh client (Linux only; false when it cannot be
+   * told). What the terminal then shows belongs to the remote host, not to this machine.
+   */
+  public hasSshClient(): boolean {
+    if (this.disposed || !this.pty) return false;
+    const pid = (this.pty as any).pid;
+    if (!pid || process.platform !== 'linux') return false;
+    try {
+      const childrenStr = fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim();
+      if (!childrenStr) return false;
+      for (const cPid of childrenStr.split(/\s+/).filter(Boolean)) {
+        try {
+          if (fs.readFileSync(`/proc/${cPid}/comm`, 'utf8').trim().startsWith('ssh')) return true;
+        } catch {
+          // Child process may have already exited
+        }
+      }
+    } catch {
+      // Ignore error checking children
+    }
+    return false;
+  }
+
   public getCwd(): string | null {
     if (this.disposed || !this.pty) return null;
     const pid = (this.pty as any).pid;
     if (!pid) return null;
     if (process.platform === 'linux') {
+      // If the shell process has spawned an interactive ssh client, its local /proc/pid/cwd
+      // is just the local directory where ssh was launched, not the remote CWD.
+      // In that case, return null so caller falls back to remote prompt detection.
+      if (this.hasSshClient()) return null;
       try {
-        // If the shell process has spawned an interactive ssh client, its local /proc/pid/cwd
-        // is just the local directory where ssh was launched, not the remote CWD.
-        // In that case, return null so caller falls back to remote prompt detection.
-        try {
-          const childrenStr = fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim();
-          if (childrenStr) {
-            const childPids = childrenStr.split(/\s+/).filter(Boolean);
-            for (const cPid of childPids) {
-              try {
-                const comm = fs.readFileSync(`/proc/${cPid}/comm`, 'utf8').trim();
-                if (comm.startsWith('ssh')) {
-                  return null;
-                }
-              } catch {
-                // Child process may have already exited
-              }
-            }
-          }
-        } catch {
-          // Ignore error checking children
-        }
         return fs.readlinkSync(`/proc/${pid}/cwd`);
       } catch {
         return null;
@@ -890,6 +897,12 @@ export class SSHPtyManager extends EventEmitter {
   public getSessionCwd(sessionId: string): string | null {
     const session = this.sessions.get(sessionId);
     return session && 'getCwd' in session ? (session as any).getCwd() : null;
+  }
+
+  /** Whether the local shell of this session currently runs an interactive ssh client. */
+  public sessionHasSshClient(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    return session && 'hasSshClient' in session ? Boolean((session as any).hasSshClient()) : false;
   }
 
   /**

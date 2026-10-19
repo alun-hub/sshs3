@@ -22,3 +22,23 @@ export async function statIfExists(providerId: string, path: string): Promise<Fi
     return null;
   }
 }
+
+/**
+ * `lookupPath`, but gives up after `ms` so a slow or stuck connection cannot hold the answer back
+ * indefinitely: resolves to `'timeout'` then.
+ */
+export async function lookupPathWithin(
+  providerId: string,
+  path: string,
+  ms: number
+): Promise<FileEntry | null | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), ms);
+  });
+  try {
+    return await Promise.race([lookupPath(providerId, path), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

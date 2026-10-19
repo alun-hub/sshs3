@@ -20,16 +20,19 @@ export interface PreviewGateInput {
   /** No slash, no extension and not a well-known filename: any word in the output could look like this. */
   bareToken: boolean;
   relative: boolean;
-  /** The working directory was reported by the shell, not just assumed to be the home directory. */
-  cwdKnown: boolean;
+  /**
+   * The working directory comes from the shell itself (OSC 7) or from its process. A directory guessed
+   * from prompt-like text in the output is not reliable: any text that looks like a prompt changes it.
+   */
+  cwdReliable: boolean;
 }
 
 /**
  * A relative path is looked up against the working directory, so while that is only a guess a miss
  * says nothing about the file. Everything else is worth checking.
  */
-export function needsExistenceCheck({ bareToken, relative, cwdKnown }: PreviewGateInput): boolean {
-  return bareToken || !relative || cwdKnown;
+export function needsExistenceCheck({ bareToken, relative, cwdReliable }: PreviewGateInput): boolean {
+  return bareToken || !relative || cwdReliable;
 }
 
 /**

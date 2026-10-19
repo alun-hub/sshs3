@@ -101,6 +101,7 @@ export const IPC_CHANNELS = {
   TERMINAL_EXIT: 'terminal:exit',
   TERMINAL_RECONNECTING: 'terminal:reconnecting',
   TERMINAL_GET_CWD: 'terminal:getCwd',
+  TERMINAL_HAS_SSH_CLIENT: 'terminal:hasSshClient',
 
   // Smartcard
   SMARTCARD_DETECT: 'smartcard:detect',
@@ -533,6 +534,8 @@ export interface MultiSSHApi {
   terminalKill(sessionId: string): Promise<void>;
   terminalReconnect(sessionId: string): Promise<boolean>;
   terminalGetCwd(sessionId: string): Promise<string | null>;
+  /** Whether the local shell of a terminal currently runs an interactive ssh client (Linux only). */
+  terminalHasSshClient(sessionId: string): Promise<boolean>;
   onTerminalData(callback: (sessionId: string, data: string) => void): () => void;
   onTerminalExit(callback: (sessionId: string, event: SSHPtyExitEvent) => void): () => void;
   onTerminalReconnecting?(callback: (sessionId: string, event: { attempt: number; maxAttempts: number }) => void): () => void;

@@ -597,6 +597,8 @@ describe('TerminalView Component', () => {
     afterEach(() => {
       registerSpy.mockRestore();
       delete (window.multissh as any).storageLookup;
+      delete (window.multissh as any).connectStorage;
+      delete (window.multissh as any).terminalHasSshClient;
     });
 
     const dwell = () =>
@@ -633,6 +635,97 @@ describe('TerminalView Component', () => {
       });
       await dwell();
 
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('does not judge a relative path while the working directory is only a guess', async () => {
+      const storageLookup = vi.fn().mockResolvedValue(null);
+      (window.multissh as any).storageLookup = storageLookup;
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, 'src/app/main.ts');
+      });
+      await dwell();
+
+      // An SSH terminal has no OSC 7 or process to ask, so a miss would only reflect a wrong directory.
+      expect(storageLookup).not.toHaveBeenCalled();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('shows the card as before when the lookup is too slow to answer', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockReturnValue(new Promise(() => {}));
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      });
+
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('registers the local storage provider before looking a path up in a local terminal', async () => {
+      const calls: string[] = [];
+      (window.multissh as any).connectStorage = vi.fn().mockImplementation(async (config: { id: string }) => {
+        calls.push(`connect:${config.id}`);
+        return { id: config.id };
+      });
+      (window.multissh as any).storageLookup = vi.fn().mockImplementation(async () => {
+        calls.push('lookup');
+        return { name: 'syslog', isDirectory: false, size: 1 };
+      });
+      render(<TerminalView local />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+
+      expect(calls.indexOf('connect:local')).toBeGreaterThanOrEqual(0);
+      expect(calls.indexOf('connect:local')).toBeLessThan(calls.indexOf('lookup'));
+    });
+
+    it('does not offer the card while a local shell runs ssh, but does otherwise', async () => {
+      (window.multissh as any).connectStorage = vi.fn().mockResolvedValue({ id: 'local' });
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
+      const terminalHasSshClient = vi.fn().mockResolvedValue(true);
+      (window.multissh as any).terminalHasSshClient = terminalHasSshClient;
+      render(<TerminalView local />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const hover = { clientX: 10, clientY: 10, ctrlKey: false, metaKey: false };
+
+      act(() => {
+        capturedHandlers.hoverPath(hover, '/var/log/syslog');
+      });
+      await dwell();
+      expect(terminalHasSshClient).toHaveBeenCalled();
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+
+      terminalHasSshClient.mockResolvedValue(false);
+      act(() => {
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      act(() => {
+        capturedHandlers.hoverPath(hover, '/var/log/syslog');
+      });
+      await dwell();
       expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
     });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
 import type { IPty, IDisposable } from 'node-pty';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import { SSHPtyManager } from '../../src/main/ssh/SSHPtyManager';
@@ -514,6 +515,57 @@ describe('SSHPtyManager', () => {
       } finally {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
       }
+    });
+  });
+
+  describe('hasSshClient', () => {
+    const config: SSHConnectionConfig = {
+      id: 'sess-ssh-child',
+      name: 'Ssh child',
+      host: 'host.local',
+      username: 'tester',
+      authType: 'password',
+    };
+
+    // /proc is Linux only, and so is the detection.
+    const onLinux = it.skipIf(process.platform !== 'linux');
+
+    function fakeProc(children: string, comm: Record<string, string>) {
+      return vi.spyOn(fs, 'readFileSync').mockImplementation(((file: any) => {
+        const f = String(file);
+        if (f === '/proc/12345/task/12345/children') return children;
+        const m = f.match(/^\/proc\/(\d+)\/comm$/);
+        if (m && comm[m[1]] !== undefined) return comm[m[1]];
+        throw new Error(`ENOENT ${f}`);
+      }) as any);
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    onLinux('is true when the shell has an ssh child, and the cwd is then not reported', async () => {
+      const session = (await manager.createSession(config)) as any;
+      fakeProc('222 333', { '222': 'vim\n', '333': 'ssh\n' });
+      expect(session.hasSshClient()).toBe(true);
+      expect(manager.sessionHasSshClient(session.sessionId)).toBe(true);
+      expect(session.getCwd()).toBeNull();
+    });
+
+    onLinux('is false without children, with other children, or when /proc cannot be read', async () => {
+      const session = (await manager.createSession(config)) as any;
+      fakeProc('', {});
+      expect(session.hasSshClient()).toBe(false);
+      vi.restoreAllMocks();
+      fakeProc('222', { '222': 'vim\n' });
+      expect(session.hasSshClient()).toBe(false);
+      vi.restoreAllMocks();
+      vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+        throw new Error('EACCES');
+      });
+      expect(session.hasSshClient()).toBe(false);
+    });
+
+    it('is false for an unknown session', () => {
+      expect(manager.sessionHasSshClient('no-such-session')).toBe(false);
     });
   });
 

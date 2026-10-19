@@ -3,7 +3,8 @@ import type { Terminal } from 'xterm';
 import type { FileEntry } from '@shared/types/storage';
 import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';
-import { lookupPath, statIfExists } from './storageLookup';
+import { lookupPathWithin, statIfExists } from './storageLookup';
+import { createRendererLogger } from './log';
 import {
   allowPreview,
   hoverModifierSatisfied,
@@ -17,7 +18,11 @@ import { extractCwdFromPrompt } from './terminalOutput';
 import { wslToWindowsPath } from './wslPaths';
 import { pathBasename, terminalProviderId, terminalStorageConnectConfig, type TerminalStorageTarget } from './terminalStorage';
 
+const log = createRendererLogger('path-hover');
+
 const STAT_CACHE_TTL_MS = 5000;
+/** A lookup that has not answered by now is treated as inconclusive and the card is shown as before. */
+const LOOKUP_TIMEOUT_MS = 600;
 /**
  * xterm reports a link as left, and asks for it again, whenever the rows it sits on are repainted (a
  * spinner, streaming output), without the pointer moving. A leave that is followed by a hover of the same
@@ -117,10 +122,13 @@ export function useTerminalPathHover({
     [editingFile, toStoragePath]
   );
 
-  /** The working directory came from the shell (prompt, OSC 7, the process), not just the home directory. */
-  const cwdKnownRef = useRef(Boolean(initialCwd));
-  const setCwd = useCallback((dir: string) => {
-    cwdKnownRef.current = true;
+  /**
+   * The working directory comes from the shell itself (OSC 7) or from its process, as opposed to being
+   * guessed from prompt-like text in the output (which any such text can change) or the home directory.
+   */
+  const cwdReliableRef = useRef(false);
+  const setCwd = useCallback((dir: string, reliable = false) => {
+    cwdReliableRef.current = reliable;
     currentCwdRef.current = dir;
     setCurrentCwd(dir);
   }, []);
@@ -150,9 +158,9 @@ export function useTerminalPathHover({
         }
         // Windows shells report `file:///C:/Users/me` — drop the slash before the drive letter.
         if (/^\/[A-Za-z]:[\\/]/.test(p)) {
-          setCwd(decodeURIComponent(p.slice(1)).replace(/\//g, '\\'));
+          setCwd(decodeURIComponent(p.slice(1)).replace(/\//g, '\\'), true);
         } else if (p.startsWith('/')) {
-          setCwd(decodeURIComponent(p));
+          setCwd(decodeURIComponent(p), true);
         }
       } catch {
         // Safe to ignore malformed OSC 7
@@ -213,6 +221,20 @@ export function useTerminalPathHover({
   }, [providerId]);
 
   const refreshCwd = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    // A local shell's working directory is a property of its process: that is authoritative, unlike a
+    // prompt-like line in the output. (A WSL shell's process is the Windows side, so it is not used.)
+    if (sid && local && !wsl && window.multissh?.terminalGetCwd) {
+      try {
+        const dir = await window.multissh.terminalGetCwd(sid);
+        if (dir) {
+          setCwd(dir, true);
+          return;
+        }
+      } catch {
+        // Fall back to the prompt below
+      }
+    }
     let detectedFromPrompt = false;
     const term = termRef.current;
     if (term) {
@@ -229,8 +251,7 @@ export function useTerminalPathHover({
         }
       }
     }
-    const sid = sessionIdRef.current;
-    if (sid && local && !detectedFromPrompt && window.multissh?.terminalGetCwd) {
+    if (sid && local && wsl && !detectedFromPrompt && window.multissh?.terminalGetCwd) {
       try {
         const dir = await window.multissh.terminalGetCwd(sid);
         if (dir) setCwd(dir);
@@ -238,7 +259,7 @@ export function useTerminalPathHover({
         // Safe to ignore
       }
     }
-  }, [local, termRef, sessionIdRef, setCwd]);
+  }, [local, wsl, termRef, sessionIdRef, setCwd]);
 
   /** Local shells report their cwd as soon as the session exists. */
   const onSessionStarted = useCallback(
@@ -247,11 +268,11 @@ export function useTerminalPathHover({
       window.multissh
         .terminalGetCwd(sessionId)
         .then((dir) => {
-          if (!isDisposed() && dir) setCwd(dir);
+          if (!isDisposed() && dir) setCwd(dir, !wsl);
         })
         .catch(() => {});
     },
-    [local, setCwd]
+    [local, wsl, setCwd]
   );
 
   const clearHoverTimers = useCallback(() => {
@@ -292,9 +313,15 @@ export function useTerminalPathHover({
     if (cached && Date.now() - cached.at < STAT_CACHE_TTL_MS) return cached.exists ? 'exists' : 'missing';
     let exists: boolean;
     try {
-      exists = (await lookupPath(id, toStoragePathRef.current(fullPath))) !== null;
-    } catch {
-      // A lost connection, a timeout or a permission error says nothing about the file.
+      const found = await lookupPathWithin(id, toStoragePathRef.current(fullPath), LOOKUP_TIMEOUT_MS);
+      if (found === 'timeout') {
+        log.debug('lookup timed out, showing the card as before', { path: fullPath });
+        return 'unknown';
+      }
+      exists = found !== null;
+    } catch (err) {
+      // A lost connection or a permission error says nothing about the file.
+      log.debug('lookup failed, showing the card as before', { path: fullPath, error: String(err) });
       return 'unknown';
     }
     // A miss caused by a failed connection says nothing about the file.
@@ -306,9 +333,25 @@ export function useTerminalPathHover({
 
   /** Connect first so the real home directory is known before prompts are parsed against it. */
   const prepareHover = useCallback(async (): Promise<void> => {
-    if (!targetRef.current.local) await ensureProvider().catch(() => {});
+    // Also for a local terminal: the lookup and the preview go through the 'local' storage provider,
+    // which is only registered once something connects it.
+    await ensureProvider().catch(() => {});
     await refreshCwd();
   }, [ensureProvider, refreshCwd]);
+
+  /**
+   * A local shell that runs an interactive ssh client shows files of the remote host, but the card would
+   * look them up and preview them on this machine, so it is not offered then. Only Linux can tell.
+   */
+  const localShellRunsSsh = useCallback(async (): Promise<boolean> => {
+    const sid = sessionIdRef.current;
+    if (!sid || !targetRef.current.local || !window.multissh?.terminalHasSshClient) return false;
+    try {
+      return await window.multissh.terminalHasSshClient(sid);
+    } catch {
+      return false;
+    }
+  }, [sessionIdRef]);
 
   /** Opens the card after a short dwell, unless the text turns out not to be a real file. */
   const startHover = useCallback(
@@ -327,6 +370,11 @@ export function useTerminalPathHover({
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         await prepareHover();
         if (cancelled()) return;
+        if (await localShellRunsSsh()) {
+          log.debug('card skipped, the local shell is running ssh', { path });
+          return;
+        }
+        if (cancelled()) return;
         const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
         const hasSlash = path.includes('/') || path.includes('\\');
         // A bare word is only previewed when the file really exists; text that merely looks like a path
@@ -334,16 +382,25 @@ export function useTerminalPathHover({
         const gate = {
           bareToken: !hasSlash && !details.extension && !isDistinctiveFilename(details.basename),
           relative: isRelativePath(path),
-          cwdKnown: cwdKnownRef.current,
+          cwdReliable: cwdReliableRef.current,
         };
-        const existence = needsExistenceCheck(gate) ? await checkExistence(details.fullPath) : 'unknown';
+        const checked = needsExistenceCheck(gate);
+        const existence = checked ? await checkExistence(details.fullPath) : 'unknown';
         // The pointer may have left (or moved to another path) while the lookup was in flight.
-        if (cancelled() || !allowPreview(gate, existence)) return;
+        if (cancelled()) {
+          log.debug('card cancelled, the pointer left', { path, existence });
+          return;
+        }
+        if (!allowPreview(gate, existence)) {
+          log.debug('card suppressed', { path, fullPath: details.fullPath, existence, ...gate });
+          return;
+        }
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
+        log.debug('card shown', { path, existence, checked, ...gate });
         setHoverCardData({ path, x: point.clientX, y: point.clientY });
       }, delay);
     },
-    [clearHoverTimers, prepareHover, checkExistence]
+    [clearHoverTimers, prepareHover, checkExistence, localShellRunsSsh]
   );
 
   // In `ctrl` mode a path under the pointer opens its card as soon as Ctrl/Cmd is pressed.

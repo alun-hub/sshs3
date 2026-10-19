@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
-import { placeHoverCard } from '../lib/hoverCardPlacement';
+import { chooseHoverCardSide, placeHoverCard } from '../lib/hoverCardPlacement';
 
 export interface TerminalPathHoverCardProps {
   path: string;
@@ -118,6 +118,8 @@ const CATEGORY_STYLES: Record<
 };
 
 const identityPath = (p: string): string => p;
+/** The tallest the card gets: header, actions and an image or text preview. */
+const MAX_CARD_HEIGHT = 280;
 
 export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   path,
@@ -237,13 +239,22 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   // estimate only covers the first paint and environments without layout.
   const cardWidth = 380;
   const estimatedHeight = snippet ? (snippet.isImage ? 230 : 200) : 135;
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+  // The side is fixed from the room for a card with a preview, so it does not jump to the other side of
+  // the pointer when the preview loads and the card grows.
+  const side = useMemo(
+    () => chooseHoverCardSide({ y, reserveHeight: MAX_CARD_HEIGHT, viewportHeight }),
+    [y, viewportHeight]
+  );
   const { left, top } = placeHoverCard({
     x,
     y,
     width: cardWidth,
     height: measuredHeight || estimatedHeight,
-    viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1200,
-    viewportHeight: typeof window !== 'undefined' ? window.innerHeight : 800,
+    viewportWidth,
+    viewportHeight,
+    side,
   });
 
   return (

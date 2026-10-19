@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { lookupPath, statIfExists } from './storageLookup';
+import { lookupPath, lookupPathWithin, statIfExists } from './storageLookup';
 
 const entry = { name: 'a', path: '/a', size: 1, isDirectory: false };
 
@@ -44,5 +44,26 @@ describe('statIfExists', () => {
     await expect(statIfExists('p', '/a')).resolves.toBeNull();
     setApi({ storageLookup: vi.fn().mockRejectedValue(new Error('boom')) });
     await expect(statIfExists('p', '/a')).resolves.toBeNull();
+  });
+});
+
+describe('lookupPathWithin', () => {
+  afterEach(() => setApi(undefined));
+
+  it('passes the answer through when it arrives in time', async () => {
+    setApi({ storageLookup: vi.fn().mockResolvedValue(entry) });
+    await expect(lookupPathWithin('p', '/a', 500)).resolves.toEqual(entry);
+    setApi({ storageLookup: vi.fn().mockResolvedValue(null) });
+    await expect(lookupPathWithin('p', '/a', 500)).resolves.toBeNull();
+  });
+
+  it("resolves to 'timeout' when the lookup is too slow", async () => {
+    setApi({ storageLookup: vi.fn().mockReturnValue(new Promise(() => {})) });
+    await expect(lookupPathWithin('p', '/a', 20)).resolves.toBe('timeout');
+  });
+
+  it('still rejects for a failure that comes before the deadline', async () => {
+    setApi({ storageLookup: vi.fn().mockRejectedValue(new Error('Connection lost')) });
+    await expect(lookupPathWithin('p', '/a', 500)).rejects.toThrow('Connection lost');
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allowPreview, hoverModifierSatisfied, isRelativePath, needsExistenceCheck } from './pathPreviewGate';
 
-const slashed = { bareToken: false, relative: false, cwdKnown: true } as const;
+const slashed = { bareToken: false, relative: false, cwdReliable: true } as const;
 
 describe('allowPreview', () => {
   it('drops a path that is known not to exist', () => {
@@ -15,20 +15,20 @@ describe('allowPreview', () => {
   });
 
   it('requires bare words to exist', () => {
-    const bare = { bareToken: true, relative: true, cwdKnown: false };
+    const bare = { bareToken: true, relative: true, cwdReliable: false };
     expect(allowPreview(bare, 'exists')).toBe(true);
     expect(allowPreview(bare, 'missing')).toBe(false);
     expect(allowPreview(bare, 'unknown')).toBe(false);
   });
 
   it('does not judge a relative path while the working directory is only assumed', () => {
-    const guess = { bareToken: false, relative: true, cwdKnown: false };
+    const guess = { bareToken: false, relative: true, cwdReliable: false };
     expect(needsExistenceCheck(guess)).toBe(false);
     expect(allowPreview(guess, 'missing')).toBe(true);
   });
 
   it('still checks absolute paths when the working directory is unknown', () => {
-    expect(needsExistenceCheck({ bareToken: false, relative: false, cwdKnown: false })).toBe(true);
+    expect(needsExistenceCheck({ bareToken: false, relative: false, cwdReliable: false })).toBe(true);
   });
 });
 
