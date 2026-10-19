@@ -80,6 +80,8 @@ export interface AppSettings {
   terminalScrollback?: number;
   /** Show interactive preview card when hovering over file paths in the terminal. Default true. */
   terminalPathHoverPreview?: boolean;
+  /** Offer to re-run a command with sudo when it fails with a permission error. Default true. */
+  terminalSudoRetryPrompt?: boolean;
   /** Auto-detect web services/ports in terminal output and prompt to port forward. Default true. */
   terminalPortForwardAutoDetect?: boolean;
   /** Optional custom regular expression for matching service ports in terminal output. */
@@ -182,6 +184,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalCursorStyle: 'block',
   terminalScrollback: 5000,
   terminalPathHoverPreview: true,
+  terminalSudoRetryPrompt: true,
   terminalPortForwardAutoDetect: true,
   terminalPortForwardCustomRegex: '',
   copyOnSelect: false,

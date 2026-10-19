@@ -268,6 +268,7 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        sudoRetryPrompt={settings.terminalSudoRetryPrompt}
         portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
         portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         initialCwd={initialCwdPaneId === leaf.id ? initialCwd : undefined}
@@ -290,6 +291,7 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        sudoRetryPrompt={settings.terminalSudoRetryPrompt}
         portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
         portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         sessionExitAction={settings.sessionExitAction}
@@ -321,6 +323,7 @@ const PaneLeafContent: React.FC<{
         theme={settings.theme}
         scrollback={settings.terminalScrollback}
         pathHoverPreview={settings.terminalPathHoverPreview}
+        sudoRetryPrompt={settings.terminalSudoRetryPrompt}
         portForwardAutoDetect={settings.terminalPortForwardAutoDetect}
         portForwardCustomRegex={settings.terminalPortForwardCustomRegex}
         sessionExitAction={settings.sessionExitAction}

@@ -10,6 +10,9 @@ import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { registerTerminalLinks } from '../lib/terminalLinks';
 import { useTerminalPathHover } from '../lib/useTerminalPathHover';
 import { CommandOutputTracker } from '../lib/terminalOutput';
+import { useSudoRetry } from '../lib/useSudoRetry';
+import { IS_WINDOWS } from '../lib/platform';
+import { SudoRetryPrompt } from './SudoRetryPrompt';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
 import { SnippetPaletteModal } from './SnippetPaletteModal';
 import { PerfBar } from './PerfBar';
@@ -56,6 +59,8 @@ export interface TerminalViewProps {
   clipboardHistoryScope?: AppSettings['clipboardHistoryScope'];
   /** Whether hovering over file paths shows an interactive preview card. Default true. */
   pathHoverPreview?: boolean;
+  /** Whether a failed command with a permission error offers to re-run with sudo. Default true. */
+  sudoRetryPrompt?: boolean;
   /** Whether web services/listening ports in output are auto-detected for quick port forwarding. Default true. */
   portForwardAutoDetect?: boolean;
   /** Optional custom regular expression for matching service ports in terminal output. */
@@ -188,6 +193,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   copyOnSelect = false,
   clipboardHistoryScope = 'global',
   pathHoverPreview = true,
+  sudoRetryPrompt = true,
   portForwardAutoDetect = true,
   portForwardCustomRegex,
   onOpenPath,
@@ -286,6 +292,26 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   });
   const pathHoverRef = useRef(pathHover);
   pathHoverRef.current = pathHover;
+
+  // `sudo` does not exist in PowerShell or cmd.
+  const sudoRetry = useSudoRetry({
+    enabled: sudoRetryPrompt && !(local && (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))),
+    termRef,
+    trackerRef: outputTrackerRef,
+    run: (sudoCommand) => {
+      const term = termRef.current;
+      const sid = sessionIdRef.current;
+      if (!term || !sid) return;
+      const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
+      term.paste(sudoCommand);
+      outputTrackerRef.current?.recordEnter();
+      sudoRetryRef.current.notifyEnter();
+      write?.(sid, '\r');
+      term.focus();
+    },
+  });
+  const sudoRetryRef = useRef(sudoRetry);
+  sudoRetryRef.current = sudoRetry;
 
   const portDetection = usePortDetection({
     // Kubernetes terminals have no port-forward path here, so a pod's ports must not be offered as local ones
@@ -666,6 +692,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       if (pathHoverRef.current.isEditorOpen()) {
         return false;
       }
+      if (sudoRetryRef.current.handleKey(e)) {
+        return false;
+      }
       if (e.type === 'keydown' && e.key === 'Escape' && pathHoverRef.current.dismissCardOnEscape()) {
         e.preventDefault();
         return false;
@@ -783,6 +812,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             }
             if (data.includes('\r') || data.includes('\n')) {
               outputTracker.recordEnter();
+              sudoRetryRef.current.notifyEnter();
               const parts = data.split(/[\r\n]+/);
               const cmd = (inputLineBuffer + (parts[0] || '')).trim();
               inputLineBuffer = parts.length > 1 ? parts[parts.length - 1] : '';
@@ -793,11 +823,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 onTitleChangeRef.current?.('__EXIT__');
               }
             } else if (data === '\x04') {
+              sudoRetryRef.current.notifyInput();
               // Ctrl+D (EOF/exit)
               onTitleChangeRef.current?.('__EXIT__');
             } else if (data === '\x7f' || data === '\b') {
+              sudoRetryRef.current.notifyInput();
               inputLineBuffer = inputLineBuffer.slice(0, -1);
             } else {
+              sudoRetryRef.current.notifyInput();
               // Strip control escape characters, retain printable text (including pasted commands)
               // eslint-disable-next-line no-control-regex
               const printable = data.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
@@ -811,6 +844,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             unsubData = onData((sessId, data) => {
               if (sessId === sessionIdRef.current) {
                 term.write(data);
+                sudoRetryRef.current.notifyOutput();
                 sendInitialCwd();
                 pathHoverRef.current.detectCwdFromText(data);
                 scanPortsRef.current(data);
@@ -1010,6 +1044,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           className="h-full w-full overflow-hidden focus:outline-none"
         />
       </div>
+      {sudoRetry.suggestion && !exitEvent && <SudoRetryPrompt command={sudoRetry.suggestion.sudoCommand} />}
 
       {searchOpen && (
         <div

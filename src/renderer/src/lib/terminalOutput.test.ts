@@ -103,6 +103,17 @@ describe('CommandOutputTracker', () => {
     expect(t.lastOutput()).toBe('up 14 days');
   });
 
+  it('exposes the exit code of the newest closed OSC 133 command', () => {
+    const f = fakeTerm([{ text: '$ false' }]);
+    const t = new CommandOutputTracker(f.term);
+    expect(t.lastExitCode()).toBeUndefined();
+    f.osc('B');
+    f.osc('C');
+    f.lines.push({ text: 'boom' }, { text: '' });
+    f.osc('D;2');
+    expect(t.lastExitCode()).toBe(2);
+  });
+
   it('strips diverse prompt prefixes correctly without mutilating commands', () => {
     expect(stripPrompt('$ ls -la')).toBe('ls -la');
     expect(stripPrompt('user@host:~$ ping 1.1.1.1')).toBe('ping 1.1.1.1');

@@ -263,6 +263,14 @@ export class CommandOutputTracker {
     return null;
   }
 
+  /** Exit code of the newest closed OSC 133 command, or undefined when the shell does not report one. */
+  public lastExitCode(): number | undefined {
+    for (let i = this.regions.length - 1; i >= 0; i--) {
+      if (this.regions[i].end) return this.regions[i].exitCode;
+    }
+    return undefined;
+  }
+
   /** Details of the most recent command output, or null when there is none. */
   public getCleanOutput(): CleanOutputInfo | null {
     const text = this.lastOutput();

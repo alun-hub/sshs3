@@ -456,6 +456,26 @@ describe('SettingsModal', () => {
     );
   });
 
+  it('toggles terminalSudoRetryPrompt setting and saves it', () => {
+    const onSave = vi.fn();
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    const checkbox = screen.getByLabelText(/Offer to re-run failed commands with sudo/i);
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalSudoRetryPrompt: false }));
+  });
+
   it('toggles terminalPortForwardAutoDetect and saves custom regex', () => {
     const onSave = vi.fn();
     render(

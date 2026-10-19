@@ -165,7 +165,14 @@ The terminal engine actively monitors output streams for web servers, dev tools,
   - **Dismiss**: Silences the port for the active session.
 - **Custom Regex Support**: Under *Settings → Terminal*, operators can provide custom regular expressions to match proprietary server logs or unique port announcements. The feature can also be toggled completely off.
 
-### 4.9 Terminal Settings Reference Table
+### 4.9 Re-run with sudo
+When a command fails with a permission error (for example `cat: /etc/shadow: Permission denied`, `Operation not permitted`, or `Are you root?`), a prompt appears at the bottom of the terminal showing the exact command that would run:
+- <kbd>Enter</kbd> types `sudo <your command>` and runs it. `sudo` asks for the password in the shell as usual; sshs3 never sees it. Enter is ignored for a moment after the prompt appears, so a quick double press does not accept it.
+- <kbd>Esc</kbd>, or typing anything else, dismisses the prompt.
+- **Not offered** for `ssh`, `scp`, `sftp`, `rsync`, `git`, commands that already start with `sudo`/`su`/`doas`, commands with a `>` redirect (the shell opens the target before `sudo` runs), long output, or when the prompt is already root. Aliases are not expanded by `sudo`. In PowerShell and cmd the prompt is never shown.
+- It works in any shell, with or without OSC 133 prompt marks. The setting is under *Settings → Terminal* (**Offer to re-run failed commands with sudo**).
+
+### 4.10 Terminal Settings Reference Table
 
 | Setting | Default | Purpose & Description |
 | :--- | :--- | :--- |
@@ -174,6 +181,7 @@ The terminal engine actively monitors output streams for web servers, dev tools,
 | **Cursor Style** | `Block` | Visual cursor appearance: `Block`, `Underline`, or `Bar`. |
 | **Scrollback Buffer (lines)** | `5000` | Retained terminal history per pane, searchable with <kbd>Ctrl+Shift+S</kbd>. |
 | **Enable file path hover preview** | `On` | Interactive preview card with file details, thumbnail, and actions when hovering over paths. |
+| **Offer to re-run failed commands with sudo** | `On` | After a permission error, offers to re-run the command with `sudo` (<kbd>Enter</kbd> to accept, <kbd>Esc</kbd> to dismiss). |
 | **Enable web service & port forward auto-detection** | `On` | Detects listening ports in terminal output and displays a quick-forward banner. |
 | **Custom port detection regex** | `Empty` | Optional regular expression with capture group `(\d+)` to detect custom application ports. |
 | **Copy text automatically on selection** | `Off` | Copies highlighted text to the clipboard and records it in encrypted clipboard history. |
