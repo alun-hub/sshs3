@@ -26,6 +26,9 @@ const MAX_OUTPUT_LINES = 20;
 /** `Permission denied (publickey,...)` is an SSH authentication failure, not a local permission problem. */
 const SSH_AUTH_DENIED_RE = /Permission denied \(/;
 
+// eslint-disable-next-line no-control-regex
+const UNSAFE_COMMAND_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+
 const DENIED_PATTERNS: RegExp[] = [
   /: Permission denied\s*$/i,
   /Operation not permitted/i,
@@ -61,6 +64,10 @@ export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | nu
   if (exitCode === 0) return null;
   const cmd = command?.trim();
   if (!cmd || !output) return null;
+  // The command is read back from the screen, which remote output can influence. Anything that is not
+  // a single line of plain printable text (newlines, control or escape characters, bidi overrides and
+  // zero-width characters that make the shown text differ from what runs) is never offered.
+  if (UNSAFE_COMMAND_CHARS_RE.test(cmd)) return null;
   if (EXCLUDED_COMMANDS.has(firstWord(cmd))) return null;
   // The shell opens a redirect target before sudo runs, so a prefix would not help.
   if (cmd.includes('>')) return null;

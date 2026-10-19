@@ -35,6 +35,16 @@ describe('detectSudoRetry', () => {
     }
   );
 
+  it.each([
+    ['a newline', 'cat /x\nrm -rf ~'],
+    ['a carriage return', 'cat /x\rrm -rf ~'],
+    ['an escape character', 'cat /x\u001b[2K'],
+    ['a bidi override', 'cat /x\u202e'],
+    ['a zero-width space', 'cat\u200b /x'],
+  ])('refuses a command containing %s', (_name, command) => {
+    expect(detectSudoRetry({ ...base, command, output: 'cat: /x: Permission denied' })).toBeNull();
+  });
+
   it('skips redirects because the shell opens the target', () => {
     expect(detectSudoRetry({ ...base, command: 'echo x > /etc/foo', output: 'bash: /etc/foo: Permission denied' })).toBeNull();
   });

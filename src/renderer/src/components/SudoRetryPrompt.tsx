@@ -9,16 +9,16 @@ export function SudoRetryPrompt({ command }: SudoRetryPromptProps) {
     <div
       data-testid="sudo-retry-prompt"
       role="status"
-      className="flex shrink-0 items-center gap-3 border-t border-divider bg-app-surface px-3 py-1.5 text-xs text-txt-primary"
+      className="flex shrink-0 items-start gap-3 border-t border-divider bg-app-surface px-3 py-1.5 text-xs text-txt-primary"
     >
-      <span className="shrink-0 font-medium whitespace-nowrap">Re-run with sudo?</span>
+      <span className="shrink-0 py-0.5 font-medium whitespace-nowrap">Re-run with sudo?</span>
+      {/* The whole command is shown (wrapped, never truncated) so what is confirmed is what runs. */}
       <code
-        className="min-w-0 flex-1 truncate rounded border border-border-subtle bg-app-input px-2 py-0.5 font-mono"
-        title={command}
+        className="max-h-24 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all rounded border border-border-subtle bg-app-input px-2 py-0.5 font-mono"
       >
         {command}
       </code>
-      <span className="flex shrink-0 items-center gap-3 whitespace-nowrap text-txt-muted">
+      <span className="flex shrink-0 items-center gap-3 whitespace-nowrap py-0.5 text-txt-muted">
         <span>
           <kbd className="rounded border border-border-subtle bg-app-surface-subtle px-1.5 py-0.5 text-txt-primary">Enter</kbd> Yes
         </span>
