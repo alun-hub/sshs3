@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chooseHoverCardSide, placeHoverCard } from '../../src/renderer/src/lib/hoverCardPlacement';
+import { chooseHoverCardSide, hoverCardRoom, placeHoverCard } from '../../src/renderer/src/lib/hoverCardPlacement';
 
 const vp = { viewportWidth: 1000, viewportHeight: 700 };
 
@@ -50,5 +50,22 @@ describe('placeHoverCard with a fixed side', () => {
     const grown = placeHoverCard({ x: 100, y: 600, width: 380, height: 260, ...vp, side: 'above' });
     expect(small.top + 135).toBe(600 - 16);
     expect(grown.top + 260).toBe(600 - 16);
+  });
+});
+
+describe('hoverCardRoom', () => {
+  it('is the space between the pointer and the viewport edge on that side, less the margins', () => {
+    expect(hoverCardRoom({ y: 250, side: 'below', viewportHeight: 520 })).toBe(520 - 16 - 266);
+    expect(hoverCardRoom({ y: 250, side: 'above', viewportHeight: 520 })).toBe(250 - 32);
+  });
+
+  it('a card capped to the room on its side stays clear of the pointer', () => {
+    const viewportHeight = 520;
+    const y = 250;
+    const side = chooseHoverCardSide({ y, reserveHeight: 280, viewportHeight });
+    const room = hoverCardRoom({ y, side, viewportHeight });
+    const { top } = placeHoverCard({ x: 100, y, width: 380, height: room, ...vp, viewportHeight, side });
+    if (side === 'below') expect(top).toBeGreaterThanOrEqual(y + 16);
+    else expect(top + room).toBeLessThanOrEqual(y - 16);
   });
 });

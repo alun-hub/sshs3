@@ -17,6 +17,12 @@ export function chooseHoverCardSide(opts: { y: number; reserveHeight: number; vi
   return roomBelow >= roomAbove ? 'below' : 'above';
 }
 
+/** The height available for a card on `side` of the pointer, between the pointer and the viewport edge. */
+export function hoverCardRoom(opts: { y: number; side: HoverCardSide; viewportHeight: number }): number {
+  const { y, side, viewportHeight } = opts;
+  return side === 'below' ? viewportHeight - MARGIN - (y + MARGIN) : y - MARGIN - MARGIN;
+}
+
 /**
  * Top-left corner for a card opened at (x, y): right of the pointer and, unless `side` says otherwise,
  * below it when it fits, otherwise flipped to the left / above, and finally clamped so the whole card

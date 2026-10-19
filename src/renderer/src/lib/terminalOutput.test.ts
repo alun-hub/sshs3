@@ -8,7 +8,9 @@ interface FakeLine {
 }
 
 /** Minimal xterm stand-in: a flat list of buffer lines and a cursor on the last one. */
-function fakeTerm(lines: FakeLine[], opts: { type?: 'normal' | 'alternate' } = {}) {
+function fakeTerm(lines: FakeLine[], opts: { type?: 'normal' | 'alternate'; cols?: number } = {}) {
+  /** Row for the next markers; by default a marker lands on the last row, like the cursor row at Enter. */
+  let markerRow: number | undefined;
   const buffer = {
     type: opts.type ?? 'normal',
     baseY: 0,
@@ -20,8 +22,9 @@ function fakeTerm(lines: FakeLine[], opts: { type?: 'normal' | 'alternate' } = {
   };
   let osc: ((data: string) => boolean) | undefined;
   const term = {
+    cols: opts.cols,
     buffer: { active: buffer },
-    registerMarker: () => ({ line: lines.length - 1, isDisposed: false, dispose() {} }),
+    registerMarker: () => ({ line: markerRow ?? lines.length - 1, isDisposed: false, dispose() {} }),
     parser: {
       registerOscHandler: (_id: number, cb: (data: string) => boolean) => {
         osc = cb;
@@ -29,7 +32,14 @@ function fakeTerm(lines: FakeLine[], opts: { type?: 'normal' | 'alternate' } = {
       },
     },
   };
-  return { term: term as unknown as Terminal, lines, osc: (data: string) => osc?.(data) };
+  return {
+    term: term as unknown as Terminal,
+    lines,
+    osc: (data: string) => osc?.(data),
+    markAt: (row: number | undefined) => {
+      markerRow = row;
+    },
+  };
 }
 
 describe('CommandOutputTracker', () => {
@@ -162,6 +172,79 @@ describe('CommandOutputTracker', () => {
     it('is null in the alternate screen', () => {
       const f = fakeTerm([{ text: '$ vim x' }], { type: 'alternate' });
       expect(new CommandOutputTracker(f.term).lastCommandResult()).toBeNull();
+    });
+  });
+
+  describe('a command that wraps over several rows', () => {
+    const wrapped = () => [
+      { text: '$ sed -i x `ls -ld *|grep root |awk {print $9}|grep' },
+      { text: ' test`', wrapped: true },
+    ];
+
+    it('is read in full when the cursor was on the first row at Enter', () => {
+      const f = fakeTerm(wrapped());
+      const t = new CommandOutputTracker(f.term);
+      f.markAt(0); // Enter pressed with the cursor up in the command, e.g. after editing it
+      t.recordEnter();
+      f.markAt(undefined);
+      f.lines.push({ text: "sed: can't read test.txt: Permission denied" }, { text: '$ ' });
+
+      expect(t.lastCommand()).toBe('sed -i x `ls -ld *|grep root |awk {print $9}|grep test`');
+      expect(t.lastCommandResult()).toEqual({
+        command: 'sed -i x `ls -ld *|grep root |awk {print $9}|grep test`',
+        // The tail of the command line is not part of the output.
+        output: "sed: can't read test.txt: Permission denied",
+      });
+      expect(t.lastOutput()).toBe("sed: can't read test.txt: Permission denied");
+    });
+
+    it('is read in full when the cursor was on the last row at Enter', () => {
+      const f = fakeTerm(wrapped());
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: "sed: can't read test.txt: Permission denied" }, { text: '$ ' });
+      expect(t.lastCommandResult()?.command).toBe('sed -i x `ls -ld *|grep root |awk {print $9}|grep test`');
+    });
+  });
+
+  describe('a command line the shell breaks at the right edge itself', () => {
+    // Rows are not flagged as wrapped, but the first one is filled to the edge (cols 20).
+    const full = '$ sed -i x |grep a b';
+    const rows = () => [{ text: full }, { text: ' test`' }];
+
+    it('is read in full from the last row, or from the first', () => {
+      for (const markerRow of [0, 1]) {
+        const f = fakeTerm(rows(), { cols: 20 });
+        const t = new CommandOutputTracker(f.term);
+        f.markAt(markerRow);
+        t.recordEnter();
+        f.markAt(undefined);
+        f.lines.push({ text: 'sed: x: Permission denied' }, { text: '$ ' });
+        expect(t.lastCommandResult()).toEqual({
+          command: 'sed -i x |grep a b test`',
+          output: 'sed: x: Permission denied',
+        });
+      }
+    });
+
+    it('does not take the next row for a continuation when the row above is not full', () => {
+      const f = fakeTerm([{ text: '$ ls /etc' }, { text: 'ls: cannot access: Permission denied' }], { cols: 40 });
+      const t = new CommandOutputTracker(f.term);
+      f.markAt(0);
+      t.recordEnter();
+      f.markAt(undefined);
+      f.lines.push({ text: '$ ' });
+      expect(t.lastCommandResult()).toEqual({ command: 'ls /etc', output: 'ls: cannot access: Permission denied' });
+    });
+
+    it('never treats a row that starts with a prompt as a continuation', () => {
+      const f = fakeTerm([{ text: full }, { text: '$ echo hi' }], { cols: 20 });
+      const t = new CommandOutputTracker(f.term);
+      f.markAt(1);
+      t.recordEnter();
+      f.markAt(undefined);
+      f.lines.push({ text: 'hi' }, { text: '$ ' });
+      expect(t.lastCommand()).toBe('echo hi');
     });
   });
 

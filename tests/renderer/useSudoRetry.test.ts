@@ -12,6 +12,7 @@ interface SetupOptions {
   command?: string;
   output?: string;
   exitCode?: number;
+  typed?: string | null;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -38,6 +39,7 @@ function setup(opts: SetupOptions = {}) {
   } as unknown as Terminal;
   const tracker = {
     lastCommandResult: () => state.result,
+    debugSnapshot: () => ({ mode: 'none', cols: 80, markerRow: null, bounds: null, rows: [] }),
   } as unknown as CommandOutputTracker;
   const run = vi.fn();
   const view = renderHook(() =>
@@ -46,6 +48,7 @@ function setup(opts: SetupOptions = {}) {
       rootUser: opts.rootUser,
       termRef: { current: term },
       trackerRef: { current: tracker },
+      typedCommandRef: { current: opts.typed ?? null },
       run,
     })
   );
@@ -160,6 +163,18 @@ describe('useSudoRetry', () => {
       vi.advanceTimersByTime(300);
     });
     expect(r.result.current.suggestion).toBeNull();
+  });
+
+  it('offers the whole typed command when the screen read stopped at a row the shell broke itself', () => {
+    const r = setup({
+      command: "sed -i x `ls -ld *|grep root |awk '{print $9}'|grep",
+      output: "test`\nsed: can't read test.txt: Permission denied",
+      typed: "sed -i x `ls -ld *|grep root |awk '{print $9}'|grep test`",
+    });
+    fail(r);
+    expect(r.result.current.suggestion).toEqual({
+      sudoCommand: "sudo sed -i x `ls -ld *|grep root |awk '{print $9}'|grep test`",
+    });
   });
 
   it('does not arm on Enter inside a full-screen program', () => {

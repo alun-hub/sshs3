@@ -45,3 +45,18 @@ export function allowPreview(input: PreviewGateInput, existence: ExistenceCheck)
   if (!needsExistenceCheck(input)) return true;
   return existence !== 'missing';
 }
+
+export interface CwdState {
+  dir: string;
+  /** Reported by the shell (OSC 7) or read from its process, as opposed to guessed from the output. */
+  reliable: boolean;
+}
+
+/**
+ * The directory to keep when `incoming` is reported. A directory guessed from prompt-like text (any such
+ * line in the output looks like a prompt) never replaces one that came from the shell or its process;
+ * otherwise the next prompt redraw would turn a reliable directory back into a guess.
+ */
+export function mergeCwd(current: CwdState, incoming: CwdState): CwdState {
+  return current.reliable && !incoming.reliable ? current : incoming;
+}

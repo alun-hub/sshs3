@@ -33,6 +33,20 @@ describe('TerminalPathHoverCard', () => {
     expect(card.style.top).toBe('66px');
   });
 
+  it('caps its height to the room on its side of the pointer so it cannot slide over it', () => {
+    const original = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { value: 520, configurable: true, writable: true });
+    try {
+      render(<TerminalPathHoverCard path="/var/log/app.log" x={50} y={250} onClose={vi.fn()} onCopyPath={vi.fn()} />);
+      const card = screen.getByTestId('terminal-path-hover-card');
+      // 520 high with the pointer at 250: 238px of room below it (the side it opens on), 218px above it.
+      expect(card.style.maxHeight).toBe('238px');
+      expect(card.className).toContain('overflow-y-auto');
+    } finally {
+      Object.defineProperty(window, 'innerHeight', { value: original, configurable: true, writable: true });
+    }
+  });
+
   it('triggers onCopyPath when copy button is clicked', () => {
     const onCopyPath = vi.fn();
     render(

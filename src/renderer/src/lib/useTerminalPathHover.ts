@@ -9,6 +9,7 @@ import {
   allowPreview,
   hoverModifierSatisfied,
   isRelativePath,
+  mergeCwd,
   needsExistenceCheck,
   type ExistenceCheck,
   type PathHoverMode,
@@ -107,10 +108,14 @@ export function useTerminalPathHover({
    * by which time the pointer has moved on from where it entered the link; placing the card relative to
    * the entry point can put it under the pointer, which then enters and leaves it as it settles.
    */
-  const lastPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const lastPointerRef = useRef({ clientX: 0, clientY: 0, seen: false });
   useEffect(() => {
+    // Mutates one object: this runs for every mouse move in every terminal.
     const onMove = (e: MouseEvent) => {
-      lastPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+      const p = lastPointerRef.current;
+      p.clientX = e.clientX;
+      p.clientY = e.clientY;
+      p.seen = true;
     };
     window.addEventListener('mousemove', onMove, { capture: true, passive: true });
     return () => window.removeEventListener('mousemove', onMove, { capture: true });
@@ -118,9 +123,10 @@ export function useTerminalPathHover({
   /** Debug trace of what opens and closes the card; a line identical to the previous one is dropped. */
   const lastTraceRef = useRef('');
   const trace = useCallback((event: string, data?: Record<string, unknown>) => {
-    const line = `${event} ${JSON.stringify(data ?? {})}`;
-    if (line === lastTraceRef.current) return;
-    lastTraceRef.current = line;
+    // A cheap key: this is called for every hover and leave while a card is open.
+    const key = `${event}|${String(data?.path)}|${String(data?.open)}|${String(data?.replaced)}`;
+    if (key === lastTraceRef.current) return;
+    lastTraceRef.current = key;
     log.debug(event, data);
   }, []);
   const isMouseOverCardRef = useRef(false);
@@ -149,9 +155,11 @@ export function useTerminalPathHover({
    */
   const cwdReliableRef = useRef(false);
   const setCwd = useCallback((dir: string, reliable = false) => {
-    cwdReliableRef.current = reliable;
-    currentCwdRef.current = dir;
-    setCurrentCwd(dir);
+    const next = mergeCwd({ dir: currentCwdRef.current, reliable: cwdReliableRef.current }, { dir, reliable });
+    if (next.dir === currentCwdRef.current && next.reliable === cwdReliableRef.current) return;
+    cwdReliableRef.current = next.reliable;
+    currentCwdRef.current = next.dir;
+    setCurrentCwd(next.dir);
   }, []);
 
   const applyHome = useCallback((home: string) => {
@@ -300,8 +308,6 @@ export function useTerminalPathHover({
     hoverGenerationRef.current++;
     clearTimeout(hoverDwellTimerRef.current);
     clearTimeout(hoverLeaveTimerRef.current);
-    clearTimeout(leaveGraceTimerRef.current);
-    leaveGraceTimerRef.current = undefined;
   }, []);
 
   const dismissCard = useCallback(() => {
@@ -316,6 +322,9 @@ export function useTerminalPathHover({
   }, [pathHoverPreview, dismissCard]);
 
   useEffect(() => clearHoverTimers, [clearHoverTimers]);
+  // A leave still waiting out its grace time is confirmed by finishLeave, not dropped; only unmounting
+  // cancels it.
+  useEffect(() => () => clearTimeout(leaveGraceTimerRef.current), []);
 
   /** Escape closes an open card; returns whether it was consumed. */
   const dismissCardOnEscape = useCallback((): boolean => {
@@ -419,7 +428,8 @@ export function useTerminalPathHover({
         }
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         trace('card shown', { path, replaced: hoverCardDataRef.current?.path ?? null, existence, checked, ...gate });
-        const at = lastPointerRef.current ?? point;
+        const p = lastPointerRef.current;
+        const at = p.seen ? p : point;
         setHoverCardData({ path, x: at.clientX, y: at.clientY });
       }, delay);
     },

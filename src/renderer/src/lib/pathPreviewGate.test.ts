@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowPreview, hoverModifierSatisfied, isRelativePath, needsExistenceCheck } from './pathPreviewGate';
+import { allowPreview, hoverModifierSatisfied, isRelativePath, mergeCwd, needsExistenceCheck } from './pathPreviewGate';
 
 const slashed = { bareToken: false, relative: false, cwdReliable: true } as const;
 
@@ -54,5 +54,22 @@ describe('hoverModifierSatisfied', () => {
     expect(hoverModifierSatisfied('ctrl', { ctrlKey: false, metaKey: false })).toBe(false);
     expect(hoverModifierSatisfied('ctrl', { ctrlKey: true, metaKey: false })).toBe(true);
     expect(hoverModifierSatisfied('ctrl', { ctrlKey: false, metaKey: true })).toBe(true);
+  });
+});
+
+describe('mergeCwd', () => {
+  const reliable = { dir: '/srv/app', reliable: true };
+  const guess = { dir: '/home/me', reliable: false };
+
+  it('keeps a reliable directory when only a guess from the output arrives', () => {
+    expect(mergeCwd(reliable, guess)).toBe(reliable);
+  });
+
+  it('lets a reliable report replace anything, and a guess replace a guess', () => {
+    const next = { dir: '/srv/other', reliable: true };
+    expect(mergeCwd(guess, next)).toBe(next);
+    expect(mergeCwd(reliable, next)).toBe(next);
+    const newer = { dir: '/tmp', reliable: false };
+    expect(mergeCwd(guess, newer)).toBe(newer);
   });
 });

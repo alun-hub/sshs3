@@ -11,6 +11,7 @@ import { registerTerminalLinks } from '../lib/terminalLinks';
 import { useTerminalPathHover } from '../lib/useTerminalPathHover';
 import { CommandOutputTracker } from '../lib/terminalOutput';
 import { useSudoRetry } from '../lib/useSudoRetry';
+import { printableInput } from '../lib/terminalInput';
 import { IS_WINDOWS } from '../lib/platform';
 import { SudoRetryPrompt } from './SudoRetryPrompt';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
@@ -297,12 +298,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const pathHoverRef = useRef(pathHover);
   pathHoverRef.current = pathHover;
 
+  /** What was typed for the last command (see reconcileWithTyped). */
+  const lastTypedCommandRef = useRef<string | null>(null);
   // `sudo` does not exist in PowerShell or cmd.
   const sudoRetry = useSudoRetry({
     rootUser: config?.username === 'root',
     enabled: sudoRetryPrompt && !(local && (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))),
     termRef,
     trackerRef: outputTrackerRef,
+    typedCommandRef: lastTypedCommandRef,
     run: (sudoCommand) => {
       const term = termRef.current;
       const sid = sessionIdRef.current;
@@ -825,6 +829,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               sudoRetryRef.current.notifyEnter();
               const parts = data.split(/[\r\n]+/);
               const cmd = (inputLineBuffer + (parts[0] || '')).trim();
+              lastTypedCommandRef.current = cmd || null;
               inputLineBuffer = parts.length > 1 ? parts[parts.length - 1] : '';
               const target = extractHostnameFromCommand(cmd);
               if (target) {
@@ -841,9 +846,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               inputLineBuffer = inputLineBuffer.slice(0, -1);
             } else {
               sudoRetryRef.current.notifyInput();
-              // Strip control escape characters, retain printable text (including pasted commands)
-              // eslint-disable-next-line no-control-regex
-              const printable = data.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+              // Retain printable text (including pasted commands), not escape sequences or controls
+              const printable = printableInput(data);
               inputLineBuffer += printable;
             }
           });

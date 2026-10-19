@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
-import { chooseHoverCardSide, placeHoverCard } from '../lib/hoverCardPlacement';
+import { chooseHoverCardSide, hoverCardRoom, placeHoverCard } from '../lib/hoverCardPlacement';
 import { createRendererLogger } from '../lib/log';
 
 export interface TerminalPathHoverCardProps {
@@ -122,6 +122,8 @@ const log = createRendererLogger('path-card');
 const identityPath = (p: string): string => p;
 /** The tallest the card gets: header, actions and an image or text preview. */
 const MAX_CARD_HEIGHT = 280;
+/** However little room there is, the card keeps at least this much (then it may overlap the pointer). */
+const MIN_CARD_HEIGHT = 120;
 
 export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   path,
@@ -263,6 +265,9 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     () => chooseHoverCardSide({ y, reserveHeight: MAX_CARD_HEIGHT, viewportHeight }),
     [y, viewportHeight]
   );
+  // The card never grows past the room on its side of the pointer (the content scrolls instead), so it
+  // is not pushed back over the pointer in a short window.
+  const maxHeight = Math.max(hoverCardRoom({ y, side, viewportHeight }), MIN_CARD_HEIGHT);
   const { left, top } = placeHoverCard({
     x,
     y,
@@ -282,8 +287,8 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       data-testid="terminal-path-hover-card"
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      style={{ left: `${left}px`, top: `${top}px` }}
-      className="fixed z-50 flex flex-col w-[380px] rounded-2xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto"
+      style={{ left: `${left}px`, top: `${top}px`, maxHeight: `${maxHeight}px` }}
+      className="fixed z-50 flex flex-col w-[380px] overflow-y-auto rounded-2xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2.5 border-b border-divider pb-2.5">

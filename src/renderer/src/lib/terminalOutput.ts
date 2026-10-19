@@ -203,7 +203,7 @@ export class CommandOutputTracker {
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     for (let i = live.length - 1; i >= 0; i--) {
       const end = i + 1 < live.length ? live[i + 1].line : cursorLine;
-      const text = this.readLines(live[i].line + 1, end);
+      const text = this.readLines(this.logicalLineBounds(live[i].line).end + 1, end);
       if (text.trim()) return stripTrailingPrompt(text);
     }
     return null;
@@ -268,12 +268,60 @@ export class CommandOutputTracker {
     return null;
   }
 
-  /** The buffer rows of the logical line holding `row` (wrapped rows joined). */
-  private readLogicalLine(row: number): string {
+  /**
+   * First and last buffer row of the logical line holding `row`. The row may be any of the rows of a
+   * wrapped line: the marker sits where the cursor was when Enter was pressed, which is not the last
+   * row when the cursor had been moved up into a command that wraps.
+   */
+  private logicalLineBounds(row: number): { start: number; end: number } {
     const buf = this.term.buffer.active;
     let start = row;
-    while (start > 0 && buf.getLine(start)?.isWrapped) start--;
-    return this.readLines(start, row + 1);
+    while (start > 0 && this.continuesAbove(start)) start--;
+    let end = row;
+    while (buf.getLine(end + 1) && this.continuesAbove(end + 1)) end++;
+    return { start, end };
+  }
+
+  /** A row filled to the right edge, as far as its text goes (wide characters make this undercount). */
+  private rowIsFull(row: number): boolean {
+    const cols = this.term.cols;
+    return Boolean(cols) && (this.term.buffer.active.getLine(row)?.translateToString(true).length ?? 0) >= cols;
+  }
+
+  /**
+   * Row `row` continues the row above it: the terminal flags it as wrapped, or the row above is filled to
+   * the edge. Some shells break a long command line themselves instead of letting the terminal wrap it, so
+   * the continuation is not flagged; a row that starts with a prompt never continues anything.
+   */
+  private continuesAbove(row: number): boolean {
+    const line = this.term.buffer.active.getLine(row);
+    if (!line) return false;
+    if (line.isWrapped) return true;
+    if (row === 0 || !this.rowIsFull(row - 1)) return false;
+    const text = line.translateToString(true).trim();
+    const withoutPrompt = stripPrompt(text);
+    return !(withoutPrompt !== text && withoutPrompt !== '');
+  }
+
+  /** Like `readLines`, but joins the rows of a command line the way `logicalLineBounds` sees them. */
+  private readCommandRows(from: number, to: number): string {
+    const buf = this.term.buffer.active;
+    const rows: string[] = [];
+    for (let i = from; i < to; i++) {
+      const line = buf.getLine(i);
+      if (!line) continue;
+      const text = line.translateToString(true);
+      if (rows.length > 0 && this.continuesAbove(i)) rows[rows.length - 1] += text;
+      else rows.push(text);
+    }
+    while (rows.length > 0 && rows[rows.length - 1].trim() === '') rows.pop();
+    return rows.join('\n');
+  }
+
+  /** The text of the logical line holding `row` (all its rows joined). */
+  private readLogicalLine(row: number): string {
+    const { start, end } = this.logicalLineBounds(row);
+    return this.readCommandRows(start, end + 1);
   }
 
   /**
@@ -292,7 +340,7 @@ export class CommandOutputTracker {
       const { start, end, commandMarker, partialLastLine } = region;
       if (!commandMarker || commandMarker.isDisposed || commandMarker.line < 0) return null;
       if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
-      const command = stripPrompt(this.readLines(commandMarker.line, start.line + 1).trim());
+      const command = stripPrompt(this.readCommandRows(commandMarker.line, start.line + 1).trim());
       const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
       const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
       if (!command || !output.trim()) return null;
@@ -307,9 +355,51 @@ export class CommandOutputTracker {
     // The Enter must have been pressed on a prompt followed by a command; an answer typed into a
     // running program (`[Y/n]`, a password) has no prompt in front of it.
     if (!command || command === text) return null;
-    const output = stripTrailingPrompt(this.readLines(newest.line + 1, buf.baseY + buf.cursorY));
+    // The output starts after the last row of the command line, not after the row the cursor was on.
+    const outputFrom = this.logicalLineBounds(newest.line).end + 1;
+    const output = stripTrailingPrompt(this.readLines(outputFrom, buf.baseY + buf.cursorY));
     if (!output.trim()) return null;
     return { command, output };
+  }
+
+  /**
+   * How the newest command was read, for the debug log. Structure only, never text: row lengths and
+   * whether each row is flagged as a continuation of the one above.
+   */
+  public debugSnapshot(): {
+    mode: 'osc' | 'enter-marker' | 'none';
+    cols: number;
+    markerRow: number | null;
+    bounds: { start: number; end: number } | null;
+    rows: { row: number; len: number; wrapped: boolean }[];
+  } {
+    const buf = this.term.buffer.active;
+    const describe = (from: number, to: number) => {
+      const rows: { row: number; len: number; wrapped: boolean }[] = [];
+      for (let r = Math.max(0, from); r <= to; r++) {
+        const line = buf.getLine(r);
+        if (!line) break;
+        rows.push({ row: r, len: line.translateToString(true).length, wrapped: Boolean(line.isWrapped) });
+      }
+      return rows;
+    };
+    const cols = this.term.cols ?? 0;
+    if (this.regions.length > 0) {
+      const region = this.regions[this.regions.length - 1];
+      const at = region.commandMarker?.line ?? region.start.line;
+      return { mode: 'osc', cols, markerRow: at, bounds: null, rows: describe(at - 1, at + 3) };
+    }
+    const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
+    const newest = live[live.length - 1];
+    if (!newest) return { mode: 'none', cols, markerRow: null, bounds: null, rows: [] };
+    const bounds = this.logicalLineBounds(newest.line);
+    return {
+      mode: 'enter-marker',
+      cols,
+      markerRow: newest.line,
+      bounds,
+      rows: describe(Math.min(bounds.start, newest.line) - 1, Math.max(bounds.end, newest.line) + 2),
+    };
   }
 
   /** Details of the most recent command output, or null when there is none. */

@@ -550,6 +550,15 @@ describe('SSHPtyManager', () => {
       expect(session.getCwd()).toBeNull();
     });
 
+    onLinux('is false for ssh-add, ssh-agent and sshfs, which are not a login to another host', async () => {
+      const session = (await manager.createSession(config)) as any;
+      for (const comm of ['ssh-add\n', 'ssh-agent\n', 'sshfs\n']) {
+        vi.restoreAllMocks();
+        fakeProc('222', { '222': comm });
+        expect(session.hasSshClient()).toBe(false);
+      }
+    });
+
     onLinux('is false without children, with other children, or when /proc cannot be read', async () => {
       const session = (await manager.createSession(config)) as any;
       fakeProc('', {});

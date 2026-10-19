@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildSudoCommand, detectSudoRetry, isRootPromptLine, outputIndicatesPermissionDenied } from './sudoRetry';
+import {
+  buildSudoCommand,
+  detectSudoRetry,
+  isRootPromptLine,
+  outputIndicatesPermissionDenied,
+  reconcileWithTyped,
+} from './sudoRetry';
 
 const base = { exitCode: undefined, atRootPrompt: false } as const;
 
@@ -87,6 +93,21 @@ describe('detectSudoRetry', () => {
     expect(detectSudoRetry({ ...base, command, output: 'cat: /x: Permission denied' })).toBeNull();
   });
 
+  it.each(['env FOO=1 cat /etc/shadow', 'time FOO=1 cat /etc/shadow', 'nohup A=1 B=2 cat /etc/shadow'])(
+    'skips an assignment that follows a wrapper: %s',
+    (command) => {
+      expect(detectSudoRetry({ ...base, command, output: 'cat: /etc/shadow: Permission denied' })).toBeNull();
+    }
+  );
+
+  it('reads the real command after an env option that takes an argument', () => {
+    const output = 'x: Permission denied';
+    expect(detectSudoRetry({ ...base, command: 'env -u FOO npm i', output })).toBeNull();
+    expect(detectSudoRetry({ ...base, command: 'env -u FOO cat /etc/shadow', output })?.sudoCommand).toBe(
+      'sudo env -u FOO cat /etc/shadow'
+    );
+  });
+
   it.each(['time npm install', 'nohup pip install x', 'env cargo build', 'nice -n 5 npm i', '/usr/bin/time ssh host'])(
     'looks through a wrapper to find the real command: %s',
     (command) => {
@@ -146,5 +167,42 @@ describe('buildSudoCommand / isRootPromptLine', () => {
     expect(isRootPromptLine('root@host:~$ ')).toBe(true);
     expect(isRootPromptLine('root@host ~ % ')).toBe(true);
     expect(isRootPromptLine('alun@fedora in ~')).toBe(false);
+  });
+});
+
+describe('reconcileWithTyped', () => {
+  const screen = {
+    command: "sed -i 'x' `ls -ld *|grep root |awk '{print $9}'|grep",
+    output: "test`\nsed: can't read test.txt: Permission denied",
+  };
+  const typed = "sed -i 'x' `ls -ld *|grep root |awk '{print $9}'|grep test`";
+
+  it('takes the typed command and drops its tail from the output when the screen read cut it off', () => {
+    expect(reconcileWithTyped(screen, typed)).toEqual({
+      command: typed,
+      output: "sed: can't read test.txt: Permission denied",
+    });
+  });
+
+  it('copes with spaces eaten at the row break', () => {
+    expect(reconcileWithTyped({ command: 'cat /a/very/long/path', output: 'name.txt\ncat: x: Permission denied' }, 'cat /a/very/long/path name.txt')).toEqual({
+      command: 'cat /a/very/long/path name.txt',
+      output: 'cat: x: Permission denied',
+    });
+  });
+
+  it('leaves the screen reading alone when there is nothing to reconcile', () => {
+    expect(reconcileWithTyped(screen, null)).toBe(screen);
+    expect(reconcileWithTyped(screen, screen.command)).toBe(screen);
+    // Not what was typed (history recall, completion, an edited line):
+    expect(reconcileWithTyped(screen, 'something else entirely')).toBe(screen);
+    // The extra typed text is not what the screen shows as output:
+    const other = { ...screen, output: 'other\ncat: x: Permission denied' };
+    expect(reconcileWithTyped(other, typed)).toBe(other);
+  });
+
+  it('does not use the typed text when the output does not start with the remainder', () => {
+    const result = { command: 'cat /x', output: 'cat: /x: Permission denied' };
+    expect(reconcileWithTyped(result, 'cat /x --extra')).toBe(result);
   });
 });

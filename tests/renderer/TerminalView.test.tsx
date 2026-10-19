@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import { TerminalView } from '../../src/renderer/src/components/TerminalView';
@@ -802,6 +802,38 @@ describe('TerminalView Component', () => {
 
       const card = screen.getByTestId('terminal-path-hover-card');
       expect(card.style.left).toBe('312px');
+    });
+
+    it('keeps the card when the pointer enters it right after leaving the link, and closes it after it leaves', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'f', isDirectory: false, size: 1 });
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+      const card = screen.getByTestId('terminal-path-hover-card');
+
+      // The pointer leaves the link and is in the card before the leave has been confirmed.
+      act(() => {
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+        fireEvent.mouseEnter(card);
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+
+      act(() => {
+        fireEvent.mouseLeave(card);
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      });
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
     });
 
     it('still closes the card once the pointer really leaves', async () => {

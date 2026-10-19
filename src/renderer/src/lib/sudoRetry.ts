@@ -68,21 +68,37 @@ const WRAPPER_COMMANDS = new Set(['env', 'time', 'nohup', 'nice', 'ionice', 'std
 /** `NAME=value` in front of a command. `sudo` refuses most of these (env_reset), so no offer is made. */
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-/** The name of the command that actually runs, looking through `time`, `nohup` and the like. */
-function commandName(command: string): string {
+/** Options of `env` and friends that take the next word as their argument (`env -u FOO cmd`). */
+const OPTIONS_WITH_ARGUMENT = new Set(['-u', '-C', '--unset', '--chdir']);
+
+const basename = (word: string): string => word.replace(/^.*\//, '');
+
+/**
+ * The name of the command that actually runs, looking through `time`, `nohup` and the like, and whether a
+ * `NAME=value` assignment was stepped over on the way (`env FOO=1 cmd`).
+ */
+function commandName(command: string): { name: string; assignment: boolean } {
   const words = command.trim().split(/\s+/);
   let i = 0;
-  while (i < words.length - 1 && WRAPPER_COMMANDS.has(words[i].replace(/^.*\//, ''))) {
+  let assignment = false;
+  while (i < words.length - 1 && WRAPPER_COMMANDS.has(basename(words[i]))) {
     i++;
-    // Options and their numbers (`nice -n 5`, `env -i FOO=1`) are skipped up to the next plain word.
-    while (
-      i < words.length - 1 &&
-      (words[i].startsWith('-') || /^\d+$/.test(words[i]) || ENV_ASSIGNMENT_RE.test(words[i]))
-    ) {
-      i++;
+    // Options, their arguments and numbers (`nice -n 5`, `env -u FOO -i`) are skipped up to the next word.
+    while (i < words.length - 1) {
+      const word = words[i];
+      if (ENV_ASSIGNMENT_RE.test(word)) {
+        assignment = true;
+        i++;
+      } else if (OPTIONS_WITH_ARGUMENT.has(word)) {
+        i += 2;
+      } else if (word.startsWith('-') || /^\d+$/.test(word)) {
+        i++;
+      } else {
+        break;
+      }
     }
   }
-  return (words[i] ?? '').replace(/^.*\//, '');
+  return { name: basename(words[i] ?? ''), assignment };
 }
 
 export function outputIndicatesPermissionDenied(output: string): boolean {
@@ -115,8 +131,8 @@ export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | nu
   // zero-width characters that make the shown text differ from what runs) is never offered.
   if (UNSAFE_COMMAND_CHARS_RE.test(cmd)) return null;
   if (ENV_ASSIGNMENT_RE.test(cmd)) return null;
-  const name = commandName(cmd);
-  if (ENV_ASSIGNMENT_RE.test(name) || EXCLUDED_COMMANDS.has(name)) return null;
+  const { name, assignment } = commandName(cmd);
+  if (assignment || ENV_ASSIGNMENT_RE.test(name) || EXCLUDED_COMMANDS.has(name)) return null;
   if (isCompoundOrRedirected(cmd)) return null;
   if (!outputIndicatesPermissionDenied(output)) return null;
   return { sudoCommand: buildSudoCommand(cmd) };
@@ -125,4 +141,37 @@ export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | nu
 /** True when the prompt shows root: a trailing `#`, or `root@host`. */
 export function isRootPromptLine(line: string): boolean {
   return /#\s*$/.test(line.trimEnd()) || /(?:^|[\s[(])root@[\w.-]+/.test(line);
+}
+
+const squash = (text: string): string => text.replace(/\s+/g, '');
+
+/**
+ * Shells that break a long command line themselves instead of letting the terminal wrap it leave the
+ * next row unflagged, and a screen read can stop at the first row: the rest of the command is then taken
+ * for the first lines of the output. The text that was actually typed settles it: when it
+ * extends what was read from the screen, and what was read as output begins with exactly that remainder,
+ * the typed command is the command and the remainder is removed from the output. Anything else (history
+ * recall, completion, an edited line) leaves the screen reading as it is.
+ */
+export function reconcileWithTyped(
+  result: { command: string; output: string },
+  typed: string | null
+): { command: string; output: string } {
+  if (!typed) return result;
+  const read = squash(result.command);
+  const all = squash(typed);
+  if (all.length <= read.length || !all.startsWith(read)) return result;
+  const tail = all.slice(read.length);
+
+  const lines = result.output.split('\n');
+  let used = 0;
+  let taken = 0;
+  while (used < lines.length && taken < tail.length) {
+    taken += squash(lines[used]).length;
+    used++;
+  }
+  if (taken !== tail.length || squash(lines.slice(0, used).join('')) !== tail) return result;
+  const output = lines.slice(used).join('\n');
+  if (!output.trim()) return result;
+  return { command: typed.trim(), output };
 }

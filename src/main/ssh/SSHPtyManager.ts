@@ -261,7 +261,8 @@ export class InternalSSHPtySession implements SSHPtySession {
       if (!childrenStr) return false;
       for (const cPid of childrenStr.split(/\s+/).filter(Boolean)) {
         try {
-          if (fs.readFileSync(`/proc/${cPid}/comm`, 'utf8').trim().startsWith('ssh')) return true;
+          // The client only: `ssh-add`, `ssh-agent` and `sshfs` are not a login to another host.
+          if (fs.readFileSync(`/proc/${cPid}/comm`, 'utf8').trim() === 'ssh') return true;
         } catch {
           // Child process may have already exited
         }
