@@ -5,23 +5,53 @@ import type { Terminal } from 'xterm';
 import type { CommandOutputTracker } from '../../src/renderer/src/lib/terminalOutput';
 import { useSudoRetry } from '../../src/renderer/src/lib/useSudoRetry';
 
-function setup(opts: { enabled?: boolean; cursorLine?: string; command?: string; output?: string; exitCode?: number } = {}) {
-  const cursorLine = { text: opts.cursorLine ?? 'user@host:~$ ' };
+interface SetupOptions {
+  enabled?: boolean;
+  rootUser?: boolean;
+  cursorLine?: string;
+  command?: string;
+  output?: string;
+  exitCode?: number;
+  isCommandLine?: boolean;
+}
+
+function setup(opts: SetupOptions = {}) {
+  const state = {
+    cursorLine: opts.cursorLine ?? 'user@host:~$ ',
+    bufferType: 'normal' as 'normal' | 'alternate',
+    result: {
+      command: opts.command ?? 'cat /etc/shadow',
+      output: opts.output ?? 'cat: /etc/shadow: Permission denied',
+      exitCode: opts.exitCode,
+    },
+  };
   const term = {
     buffer: {
-      active: { type: 'normal', baseY: 0, cursorY: 0, getLine: () => ({ translateToString: () => cursorLine.text }) },
+      get active() {
+        return {
+          type: state.bufferType,
+          baseY: 0,
+          cursorY: 0,
+          getLine: () => ({ translateToString: () => state.cursorLine }),
+        };
+      },
     },
   } as unknown as Terminal;
   const tracker = {
-    lastCommand: () => opts.command ?? 'cat /etc/shadow',
-    lastOutput: () => opts.output ?? 'cat: /etc/shadow: Permission denied',
-    lastExitCode: () => opts.exitCode,
+    lastCommandResult: () => state.result,
+    cursorLineIsCommand: () => opts.isCommandLine ?? true,
   } as unknown as CommandOutputTracker;
   const run = vi.fn();
   const view = renderHook(() =>
-    useSudoRetry({ enabled: opts.enabled ?? true, termRef: { current: term }, trackerRef: { current: tracker }, run })
+    useSudoRetry({
+      enabled: opts.enabled ?? true,
+      rootUser: opts.rootUser,
+      termRef: { current: term },
+      trackerRef: { current: tracker },
+      run,
+    })
   );
-  return { ...view, run, cursorLine };
+  return { ...view, run, state };
 }
 
 const key = (k: string) => new KeyboardEvent('keydown', { key: k });
@@ -51,7 +81,7 @@ describe('useSudoRetry', () => {
     const r = setup({ cursorLine: 'Password: ' });
     fail(r);
     expect(r.result.current.suggestion).toBeNull();
-    r.cursorLine.text = 'user@host:~$ ';
+    r.state.cursorLine = 'user@host:~$ ';
     act(() => {
       r.result.current.notifyOutput();
       vi.advanceTimersByTime(300);
@@ -63,6 +93,8 @@ describe('useSudoRetry', () => {
     for (const r of [
       setup({ enabled: false }),
       setup({ cursorLine: '[root@host ~]# ' }),
+      setup({ rootUser: true }),
+      setup({ isCommandLine: false }),
       setup({ output: 'ls: cannot access x: No such file or directory' }),
     ]) {
       fail(r);
@@ -115,4 +147,44 @@ describe('useSudoRetry', () => {
     expect(r.result.current.handleKey(key('Enter'))).toBe(false);
     expect(r.result.current.handleKey(key('Escape'))).toBe(false);
   });
+
+  it('stops offering when a full-screen program takes over', () => {
+    const r = setup();
+    act(() => {
+      r.result.current.notifyEnter();
+      r.state.bufferType = 'alternate';
+      r.result.current.notifyOutput();
+      vi.advanceTimersByTime(300);
+    });
+    expect(r.result.current.suggestion).toBeNull();
+    r.state.bufferType = 'normal';
+    act(() => {
+      r.result.current.notifyOutput();
+      vi.advanceTimersByTime(300);
+    });
+    expect(r.result.current.suggestion).toBeNull();
+  });
+
+  it('drops the offer when later output changes what the screen shows', () => {
+    const r = setup();
+    fail(r);
+    expect(r.result.current.suggestion).not.toBeNull();
+    r.state.result = { command: 'ls', output: 'a.txt', exitCode: undefined };
+    act(() => {
+      r.result.current.notifyOutput();
+      vi.advanceTimersByTime(300);
+    });
+    expect(r.result.current.suggestion).toBeNull();
+  });
+
+  it('keeps the offer when output arrives that does not change the command or its result', () => {
+    const r = setup();
+    fail(r);
+    act(() => {
+      r.result.current.notifyOutput();
+      vi.advanceTimersByTime(300);
+    });
+    expect(r.result.current.suggestion).not.toBeNull();
+  });
 });
+

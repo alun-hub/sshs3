@@ -113,6 +113,13 @@ export interface CleanOutputInfo {
   charCount: number;
 }
 
+export interface LastCommandResult {
+  command: string;
+  output: string;
+  /** Only known when the shell sends OSC 133 `D`. */
+  exitCode?: number;
+}
+
 interface OscRegion {
   start: IMarker;
   end?: IMarker;
@@ -254,21 +261,64 @@ export class CommandOutputTracker {
 
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     for (let i = live.length - 1; i >= 0; i--) {
-      const line = buf.getLine(live[i].line);
-      if (line) {
-        const text = line.translateToString(true).trim();
-        if (text) return stripPrompt(text);
-      }
+      // The marker sits on the row where Enter was pressed, i.e. the last row of a wrapped command.
+      const text = this.readLogicalLine(live[i].line).trim();
+      if (text) return stripPrompt(text);
     }
     return null;
   }
 
-  /** Exit code of the newest closed OSC 133 command, or undefined when the shell does not report one. */
-  public lastExitCode(): number | undefined {
-    for (let i = this.regions.length - 1; i >= 0; i--) {
-      if (this.regions[i].end) return this.regions[i].exitCode;
+  /** The buffer rows of the logical line holding `row` (wrapped rows joined). */
+  private readLogicalLine(row: number): string {
+    const buf = this.term.buffer.active;
+    let start = row;
+    while (start > 0 && buf.getLine(start)?.isWrapped) start--;
+    return this.readLines(start, row + 1);
+  }
+
+  /**
+   * True when the line the cursor is on holds a prompt followed by a command. Enter pressed while a
+   * program is running (an answer to `[Y/n]`, a password) does not start a new command.
+   */
+  public cursorLineIsCommand(): boolean {
+    const buf = this.term.buffer.active;
+    if (buf.type !== 'normal') return false;
+    const text = this.readLogicalLine(buf.baseY + buf.cursorY).trim();
+    const command = stripPrompt(text);
+    return command !== '' && command !== text;
+  }
+
+  /**
+   * The newest command together with its own output (and exit code when the shell reports one).
+   * Null when that command printed nothing, so output of an older command is never attributed to it.
+   */
+  public lastCommandResult(): LastCommandResult | null {
+    const buf = this.term.buffer.active;
+    if (buf.type !== 'normal') return null;
+
+    if (this.regions.length > 0) {
+      for (let i = this.regions.length - 1; i >= 0; i--) {
+        const region = this.regions[i];
+        if (!region.end) continue;
+        const { start, end, commandMarker, partialLastLine } = region;
+        if (!commandMarker || commandMarker.isDisposed || commandMarker.line < 0) return null;
+        if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
+        const command = stripPrompt(this.readLines(commandMarker.line, start.line + 1).trim());
+        const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
+        const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
+        if (!command || !output.trim()) return null;
+        return { command, output, exitCode: region.exitCode };
+      }
+      return null;
     }
-    return undefined;
+
+    const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
+    const newest = live[live.length - 1];
+    if (!newest) return null;
+    const command = stripPrompt(this.readLogicalLine(newest.line).trim());
+    const output = stripTrailingPrompt(this.readLines(newest.line + 1, buf.baseY + buf.cursorY));
+    if (!command || !output.trim()) return null;
+    return { command, output };
   }
 
   /** Details of the most recent command output, or null when there is none. */

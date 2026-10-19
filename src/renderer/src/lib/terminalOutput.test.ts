@@ -103,15 +103,81 @@ describe('CommandOutputTracker', () => {
     expect(t.lastOutput()).toBe('up 14 days');
   });
 
-  it('exposes the exit code of the newest closed OSC 133 command', () => {
-    const f = fakeTerm([{ text: '$ false' }]);
-    const t = new CommandOutputTracker(f.term);
-    expect(t.lastExitCode()).toBeUndefined();
-    f.osc('B');
-    f.osc('C');
-    f.lines.push({ text: 'boom' }, { text: '' });
-    f.osc('D;2');
-    expect(t.lastExitCode()).toBe(2);
+  describe('lastCommandResult', () => {
+    it('pairs the newest command with its own output', () => {
+      const f = fakeTerm([{ text: '$ cat /etc/shadow' }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: 'cat: /etc/shadow: Permission denied' }, { text: '$ ' });
+      expect(t.lastCommandResult()).toEqual({ command: 'cat /etc/shadow', output: 'cat: /etc/shadow: Permission denied' });
+    });
+
+    it('returns null when the newest command printed nothing, instead of an older error', () => {
+      const f = fakeTerm([{ text: '$ cat /etc/shadow' }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: 'cat: /etc/shadow: Permission denied' }, { text: '$ cd /tmp' });
+      t.recordEnter();
+      f.lines.push({ text: '$ ' });
+      expect(t.lastCommandResult()).toBeNull();
+    });
+
+    it('joins a command that wraps over several rows', () => {
+      const f = fakeTerm([{ text: '$ rm /var/log/some/very/long' }, { text: '/path/to/file', wrapped: true }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: 'rm: cannot remove x: Permission denied' }, { text: '$ ' });
+      expect(t.lastCommandResult()?.command).toBe('rm /var/log/some/very/long/path/to/file');
+      expect(t.lastCommand()).toBe('rm /var/log/some/very/long/path/to/file');
+    });
+
+    it('uses OSC 133 regions and reports the exit code of that same command', () => {
+      const f = fakeTerm([{ text: 'user@box:~$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      f.osc('B');
+      f.lines[0].text = 'user@box:~$ cat /x';
+      f.osc('C');
+      f.lines.push({ text: 'cat: /x: Permission denied' }, { text: '' });
+      f.osc('D;1');
+      f.lines.pop();
+      f.lines.push({ text: 'user@box:~$ ' });
+      expect(t.lastCommandResult()).toEqual({
+        command: 'cat /x',
+        output: 'cat: /x: Permission denied',
+        exitCode: 1,
+      });
+    });
+
+    it('is null for a closed OSC command without output', () => {
+      const f = fakeTerm([{ text: 'user@box:~$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      f.osc('B');
+      f.lines[0].text = 'user@box:~$ false';
+      f.osc('C');
+      f.osc('D;1');
+      f.lines.push({ text: 'user@box:~$ ' });
+      expect(t.lastCommandResult()).toBeNull();
+    });
+
+    it('is null in the alternate screen', () => {
+      const f = fakeTerm([{ text: '$ vim x' }], { type: 'alternate' });
+      expect(new CommandOutputTracker(f.term).lastCommandResult()).toBeNull();
+    });
+  });
+
+  describe('cursorLineIsCommand', () => {
+    it('is true on a prompt followed by a command, also when it wraps', () => {
+      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ls -la' }]).term).cursorLineIsCommand()).toBe(true);
+      const wrapped = fakeTerm([{ text: '$ rm /a/very/long' }, { text: '/path', wrapped: true }]);
+      expect(new CommandOutputTracker(wrapped.term).cursorLineIsCommand()).toBe(true);
+    });
+
+    it('is false for an empty prompt, an answer typed into a program, or the alternate screen', () => {
+      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ' }]).term).cursorLineIsCommand()).toBe(false);
+      expect(new CommandOutputTracker(fakeTerm([{ text: 'y' }]).term).cursorLineIsCommand()).toBe(false);
+      expect(new CommandOutputTracker(fakeTerm([{ text: 'Continue? [Y/n] y' }]).term).cursorLineIsCommand()).toBe(false);
+      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ls' }], { type: 'alternate' }).term).cursorLineIsCommand()).toBe(false);
+    });
   });
 
   it('strips diverse prompt prefixes correctly without mutilating commands', () => {

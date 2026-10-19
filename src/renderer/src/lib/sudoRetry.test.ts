@@ -13,7 +13,6 @@ describe('detectSudoRetry', () => {
   it.each([
     'mkdir: cannot create directory ‘/opt/x’: Permission denied',
     'rm: cannot remove ‘/x’: Operation not permitted',
-    'Error: EACCES: permission denied, open /x',
     'E: Could not open lock file /var/lib/dpkg/lock-frontend - open (13: Permission denied)',
     'Are you root?',
     'This command must be run as root',
@@ -45,8 +44,51 @@ describe('detectSudoRetry', () => {
     expect(detectSudoRetry({ ...base, command, output: 'cat: /x: Permission denied' })).toBeNull();
   });
 
-  it('skips redirects because the shell opens the target', () => {
-    expect(detectSudoRetry({ ...base, command: 'echo x > /etc/foo', output: 'bash: /etc/foo: Permission denied' })).toBeNull();
+  it('skips redirects to and from files because the shell opens them before sudo runs', () => {
+    const output = 'bash: /etc/foo: Permission denied';
+    expect(detectSudoRetry({ ...base, command: 'echo x > /etc/foo', output })).toBeNull();
+    expect(detectSudoRetry({ ...base, command: 'sort < /etc/shadow', output })).toBeNull();
+    expect(detectSudoRetry({ ...base, command: 'cat /x 2>> /var/log/y', output })).toBeNull();
+  });
+
+  it('still offers sudo when the only redirects are stderr/null redirects', () => {
+    const output = 'find: /root: Permission denied';
+    expect(detectSudoRetry({ ...base, command: 'find /root -name x 2>/dev/null', output })?.sudoCommand).toBe(
+      'sudo find /root -name x 2>/dev/null'
+    );
+    expect(detectSudoRetry({ ...base, command: 'cat /x 2>&1 | less', output })).not.toBeNull();
+    expect(detectSudoRetry({ ...base, command: 'cat /x &>/dev/null', output })).not.toBeNull();
+  });
+
+  it.each(['cd /root', 'source ./env', 'export A=1', 'alias ll=ls', 'type foo', 'exec ls'])(
+    'skips the shell builtin %s',
+    (command) => {
+      expect(detectSudoRetry({ ...base, command, output: 'bash: /root: Permission denied' })).toBeNull();
+    }
+  );
+
+  it.each(['cat /x; cat /y', 'cd /x && ls', 'ls /x || true'])('skips the compound line %s', (command) => {
+    expect(detectSudoRetry({ ...base, command, output: 'cat: /x: Permission denied' })).toBeNull();
+  });
+
+  it.each(['npm install', 'pip install x', 'yarn add y', 'cargo build'])(
+    'skips the user-scoped package tool %s',
+    (command) => {
+      expect(detectSudoRetry({ ...base, command, output: 'npm: /x: Permission denied' })).toBeNull();
+    }
+  );
+
+  it('does not treat a firewall or sandbox "Operation not permitted" as a permission problem', () => {
+    expect(
+      detectSudoRetry({ ...base, command: 'ping 1.1.1.1', output: 'ping: sendto: Operation not permitted' })
+    ).toBeNull();
+    expect(outputIndicatesPermissionDenied('Error: EACCES: permission denied, open x')).toBe(false);
+  });
+
+  it('only counts an error near the end of the output', () => {
+    const early = ['a: Permission denied', 'line 2', 'line 3', 'line 4', 'done'].join('\n');
+    expect(outputIndicatesPermissionDenied(early)).toBe(false);
+    expect(outputIndicatesPermissionDenied(['ok', 'cat: /x: Permission denied'].join('\n'))).toBe(true);
   });
 
   it('skips when already root, or when the exit code is 0', () => {
@@ -78,5 +120,8 @@ describe('buildSudoCommand / isRootPromptLine', () => {
   it('detects a root prompt', () => {
     expect(isRootPromptLine('[root@host ~]# ')).toBe(true);
     expect(isRootPromptLine('user@host:~$ ')).toBe(false);
+    expect(isRootPromptLine('root@host:~$ ')).toBe(true);
+    expect(isRootPromptLine('root@host ~ % ')).toBe(true);
+    expect(isRootPromptLine('alun@fedora in ~')).toBe(false);
   });
 });

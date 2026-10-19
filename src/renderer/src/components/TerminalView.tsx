@@ -295,6 +295,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
   // `sudo` does not exist in PowerShell or cmd.
   const sudoRetry = useSudoRetry({
+    rootUser: config?.username === 'root',
     enabled: sudoRetryPrompt && !(local && (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))),
     termRef,
     trackerRef: outputTrackerRef,
@@ -303,10 +304,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const sid = sessionIdRef.current;
       if (!term || !sid) return;
       const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
-      term.paste(sudoCommand);
+      // Written straight to the PTY, like typing it: it must not go through onData, whose line buffer
+      // only tracks what the user typed. The command is a single plain line (see detectSudoRetry).
       outputTrackerRef.current?.recordEnter();
-      sudoRetryRef.current.notifyEnter();
-      write?.(sid, '\r');
+      write?.(sid, `${sudoCommand}\r`);
       term.focus();
     },
   });
