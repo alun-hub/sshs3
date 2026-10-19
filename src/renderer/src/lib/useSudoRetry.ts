@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Terminal } from 'xterm';
 import { isPromptLine, type CommandOutputTracker } from './terminalOutput';
-import { detectSudoRetry, isRootPromptLine, reconcileWithTyped, type SudoRetrySuggestion } from './sudoRetry';
+import { detectSudoRetry, isRootPromptLine, type SudoRetrySuggestion } from './sudoRetry';
 import { createRendererLogger } from './log';
 
 const log = createRendererLogger('sudo-retry');
@@ -17,8 +17,6 @@ export interface UseSudoRetryOptions {
   rootUser?: boolean;
   termRef: RefObject<Terminal | null>;
   trackerRef: RefObject<CommandOutputTracker | null>;
-  /** What the user typed for the last command, used to complete a command the screen read cut off. */
-  typedCommandRef?: RefObject<string | null>;
   /** Types the suggested command onto the prompt (without pressing Enter). */
   run: (sudoCommand: string) => void;
 }
@@ -29,7 +27,7 @@ export interface UseSudoRetryOptions {
  * command and its own output are inspected. Any other input, Esc, or the screen changing under the
  * offer dismisses it.
  */
-export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, typedCommandRef, run }: UseSudoRetryOptions) {
+export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, run }: UseSudoRetryOptions) {
   const [suggestion, setSuggestion] = useState<SudoRetrySuggestion | null>(null);
   const suggestionRef = useRef<SudoRetrySuggestion | null>(null);
   suggestionRef.current = suggestion;
@@ -66,10 +64,9 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, t
     armedRef.current = false;
     const result = tracker.lastCommandResult();
     if (!result) return;
-    const read = reconcileWithTyped(result, typedCommandRef?.current ?? null);
     const found = detectSudoRetry({
-      command: read.command,
-      output: read.output,
+      command: result.command,
+      output: result.output,
       exitCode: result.exitCode,
       atRootPrompt: rootUserRef.current || isRootPromptLine(cursorText),
     });
@@ -77,9 +74,6 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, t
     log.debug('considered', {
       offered: Boolean(found),
       commandLen: result.command.length,
-      readLen: read.command.length,
-      typedLen: typedCommandRef?.current?.length ?? null,
-      reconciled: read.command !== result.command,
       outputLines: result.output.split('\n').length,
       ...tracker.debugSnapshot(),
     });
@@ -88,7 +82,7 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, t
       shownSignatureRef.current = `${result.command}\n${result.output}`;
       setSuggestion(found);
     }
-  }, [termRef, trackerRef, typedCommandRef]);
+  }, [termRef, trackerRef]);
 
   /** Output arrived while an offer is showing: drop it when it no longer matches the screen. */
   const revalidate = useCallback(() => {

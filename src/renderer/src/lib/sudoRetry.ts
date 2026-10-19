@@ -142,36 +142,3 @@ export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | nu
 export function isRootPromptLine(line: string): boolean {
   return /#\s*$/.test(line.trimEnd()) || /(?:^|[\s[(])root@[\w.-]+/.test(line);
 }
-
-const squash = (text: string): string => text.replace(/\s+/g, '');
-
-/**
- * Shells that break a long command line themselves instead of letting the terminal wrap it leave the
- * next row unflagged, and a screen read can stop at the first row: the rest of the command is then taken
- * for the first lines of the output. The text that was actually typed settles it: when it
- * extends what was read from the screen, and what was read as output begins with exactly that remainder,
- * the typed command is the command and the remainder is removed from the output. Anything else (history
- * recall, completion, an edited line) leaves the screen reading as it is.
- */
-export function reconcileWithTyped(
-  result: { command: string; output: string },
-  typed: string | null
-): { command: string; output: string } {
-  if (!typed) return result;
-  const read = squash(result.command);
-  const all = squash(typed);
-  if (all.length <= read.length || !all.startsWith(read)) return result;
-  const tail = all.slice(read.length);
-
-  const lines = result.output.split('\n');
-  let used = 0;
-  let taken = 0;
-  while (used < lines.length && taken < tail.length) {
-    taken += squash(lines[used]).length;
-    used++;
-  }
-  if (taken !== tail.length || squash(lines.slice(0, used).join('')) !== tail) return result;
-  const output = lines.slice(used).join('\n');
-  if (!output.trim()) return result;
-  return { command: typed.trim(), output };
-}

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildSudoCommand,
-  detectSudoRetry,
-  isRootPromptLine,
-  outputIndicatesPermissionDenied,
-  reconcileWithTyped,
-} from './sudoRetry';
+import { buildSudoCommand, detectSudoRetry, isRootPromptLine, outputIndicatesPermissionDenied } from './sudoRetry';
 
 const base = { exitCode: undefined, atRootPrompt: false } as const;
 
@@ -167,42 +161,5 @@ describe('buildSudoCommand / isRootPromptLine', () => {
     expect(isRootPromptLine('root@host:~$ ')).toBe(true);
     expect(isRootPromptLine('root@host ~ % ')).toBe(true);
     expect(isRootPromptLine('alun@fedora in ~')).toBe(false);
-  });
-});
-
-describe('reconcileWithTyped', () => {
-  const screen = {
-    command: "sed -i 'x' `ls -ld *|grep root |awk '{print $9}'|grep",
-    output: "test`\nsed: can't read test.txt: Permission denied",
-  };
-  const typed = "sed -i 'x' `ls -ld *|grep root |awk '{print $9}'|grep test`";
-
-  it('takes the typed command and drops its tail from the output when the screen read cut it off', () => {
-    expect(reconcileWithTyped(screen, typed)).toEqual({
-      command: typed,
-      output: "sed: can't read test.txt: Permission denied",
-    });
-  });
-
-  it('copes with spaces eaten at the row break', () => {
-    expect(reconcileWithTyped({ command: 'cat /a/very/long/path', output: 'name.txt\ncat: x: Permission denied' }, 'cat /a/very/long/path name.txt')).toEqual({
-      command: 'cat /a/very/long/path name.txt',
-      output: 'cat: x: Permission denied',
-    });
-  });
-
-  it('leaves the screen reading alone when there is nothing to reconcile', () => {
-    expect(reconcileWithTyped(screen, null)).toBe(screen);
-    expect(reconcileWithTyped(screen, screen.command)).toBe(screen);
-    // Not what was typed (history recall, completion, an edited line):
-    expect(reconcileWithTyped(screen, 'something else entirely')).toBe(screen);
-    // The extra typed text is not what the screen shows as output:
-    const other = { ...screen, output: 'other\ncat: x: Permission denied' };
-    expect(reconcileWithTyped(other, typed)).toBe(other);
-  });
-
-  it('does not use the typed text when the output does not start with the remainder', () => {
-    const result = { command: 'cat /x', output: 'cat: /x: Permission denied' };
-    expect(reconcileWithTyped(result, 'cat /x --extra')).toBe(result);
   });
 });

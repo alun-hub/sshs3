@@ -298,15 +298,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const pathHoverRef = useRef(pathHover);
   pathHoverRef.current = pathHover;
 
-  /** What was typed for the last command (see reconcileWithTyped). */
-  const lastTypedCommandRef = useRef<string | null>(null);
   // `sudo` does not exist in PowerShell or cmd.
   const sudoRetry = useSudoRetry({
     rootUser: config?.username === 'root',
     enabled: sudoRetryPrompt && !(local && (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))),
     termRef,
     trackerRef: outputTrackerRef,
-    typedCommandRef: lastTypedCommandRef,
     run: (sudoCommand) => {
       const term = termRef.current;
       const sid = sessionIdRef.current;
@@ -829,7 +826,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               sudoRetryRef.current.notifyEnter();
               const parts = data.split(/[\r\n]+/);
               const cmd = (inputLineBuffer + (parts[0] || '')).trim();
-              lastTypedCommandRef.current = cmd || null;
               inputLineBuffer = parts.length > 1 ? parts[parts.length - 1] : '';
               const target = extractHostnameFromCommand(cmd);
               if (target) {
