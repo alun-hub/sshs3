@@ -277,18 +277,6 @@ export class CommandOutputTracker {
   }
 
   /**
-   * True when the line the cursor is on holds a prompt followed by a command. Enter pressed while a
-   * program is running (an answer to `[Y/n]`, a password) does not start a new command.
-   */
-  public cursorLineIsCommand(): boolean {
-    const buf = this.term.buffer.active;
-    if (buf.type !== 'normal') return false;
-    const text = this.readLogicalLine(buf.baseY + buf.cursorY).trim();
-    const command = stripPrompt(text);
-    return command !== '' && command !== text;
-  }
-
-  /**
    * The newest command together with its own output (and exit code when the shell reports one).
    * Null when that command printed nothing, so output of an older command is never attributed to it.
    */
@@ -297,27 +285,30 @@ export class CommandOutputTracker {
     if (buf.type !== 'normal') return null;
 
     if (this.regions.length > 0) {
-      for (let i = this.regions.length - 1; i >= 0; i--) {
-        const region = this.regions[i];
-        if (!region.end) continue;
-        const { start, end, commandMarker, partialLastLine } = region;
-        if (!commandMarker || commandMarker.isDisposed || commandMarker.line < 0) return null;
-        if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
-        const command = stripPrompt(this.readLines(commandMarker.line, start.line + 1).trim());
-        const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
-        const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
-        if (!command || !output.trim()) return null;
-        return { command, output, exitCode: region.exitCode };
-      }
-      return null;
+      // Only the newest region counts. While it is still open (a nested `ssh`, `docker exec`, a running
+      // program) there is no finished command, and an older one must not be offered in its place.
+      const region = this.regions[this.regions.length - 1];
+      if (!region.end) return null;
+      const { start, end, commandMarker, partialLastLine } = region;
+      if (!commandMarker || commandMarker.isDisposed || commandMarker.line < 0) return null;
+      if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
+      const command = stripPrompt(this.readLines(commandMarker.line, start.line + 1).trim());
+      const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
+      const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
+      if (!command || !output.trim()) return null;
+      return { command, output, exitCode: region.exitCode };
     }
 
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     const newest = live[live.length - 1];
     if (!newest) return null;
-    const command = stripPrompt(this.readLogicalLine(newest.line).trim());
+    const text = this.readLogicalLine(newest.line).trim();
+    const command = stripPrompt(text);
+    // The Enter must have been pressed on a prompt followed by a command; an answer typed into a
+    // running program (`[Y/n]`, a password) has no prompt in front of it.
+    if (!command || command === text) return null;
     const output = stripTrailingPrompt(this.readLines(newest.line + 1, buf.baseY + buf.cursorY));
-    if (!command || !output.trim()) return null;
+    if (!output.trim()) return null;
     return { command, output };
   }
 

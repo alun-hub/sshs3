@@ -596,7 +596,7 @@ describe('TerminalView Component', () => {
 
     afterEach(() => {
       registerSpy.mockRestore();
-      delete (window.multissh as any).storageExists;
+      delete (window.multissh as any).storageLookup;
     });
 
     const dwell = () =>
@@ -605,8 +605,8 @@ describe('TerminalView Component', () => {
       });
 
     it('does not open the card for a path that does not exist', async () => {
-      const storageExists = vi.fn().mockResolvedValue(false);
-      (window.multissh as any).storageExists = storageExists;
+      const storageLookup = vi.fn().mockResolvedValue(null);
+      (window.multissh as any).storageLookup = storageLookup;
       render(<TerminalView config={sampleConfig} />);
       await act(async () => {
         await Promise.resolve();
@@ -617,12 +617,12 @@ describe('TerminalView Component', () => {
       });
       await dwell();
 
-      expect(storageExists).toHaveBeenCalled();
+      expect(storageLookup).toHaveBeenCalled();
       expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
     });
 
     it('opens the card for a path that exists', async () => {
-      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
       render(<TerminalView config={sampleConfig} />);
       await act(async () => {
         await Promise.resolve();
@@ -636,9 +636,53 @@ describe('TerminalView Component', () => {
       expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
     });
 
+    it('still opens the card when the lookup fails for a reason other than a missing file', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockRejectedValue(new Error('Connection lost'));
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('does not open the card when the pointer leaves while the lookup is in flight', async () => {
+      let resolveLookup: (v: unknown) => void = () => {};
+      (window.multissh as any).storageLookup = vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveLookup = resolve;
+        })
+      );
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      });
+      act(() => {
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      await act(async () => {
+        resolveLookup({ name: 'syslog', isDirectory: false, size: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+    });
+
     it('in ctrl mode waits for Ctrl before checking and opening the card', async () => {
-      const storageExists = vi.fn().mockResolvedValue(true);
-      (window.multissh as any).storageExists = storageExists;
+      const storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
+      (window.multissh as any).storageLookup = storageLookup;
       render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
       await act(async () => {
         await Promise.resolve();
@@ -648,7 +692,7 @@ describe('TerminalView Component', () => {
         capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
       });
       await dwell();
-      expect(storageExists).not.toHaveBeenCalled();
+      expect(storageLookup).not.toHaveBeenCalled();
       expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
 
       act(() => {
@@ -659,7 +703,7 @@ describe('TerminalView Component', () => {
     });
 
     it('in ctrl mode opens the card at once when Ctrl is already held', async () => {
-      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
       render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
       await act(async () => {
         await Promise.resolve();
@@ -673,7 +717,7 @@ describe('TerminalView Component', () => {
     });
 
     it('forgets the waiting path when the pointer leaves it', async () => {
-      (window.multissh as any).storageExists = vi.fn().mockResolvedValue(true);
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
       render(<TerminalView config={sampleConfig} pathHoverMode="ctrl" />);
       await act(async () => {
         await Promise.resolve();

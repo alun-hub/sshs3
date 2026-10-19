@@ -78,6 +78,29 @@ describe('detectSudoRetry', () => {
     }
   );
 
+  it.each([
+    'NODE_ENV=production npm i -g x',
+    'PIP_INDEX=x pip install foo',
+    'GIT_SSH_COMMAND=ssh git push',
+    'FOO=1 cat /x',
+  ])('skips a command with a leading environment assignment: %s', (command) => {
+    expect(detectSudoRetry({ ...base, command, output: 'cat: /x: Permission denied' })).toBeNull();
+  });
+
+  it.each(['time npm install', 'nohup pip install x', 'env cargo build', 'nice -n 5 npm i', '/usr/bin/time ssh host'])(
+    'looks through a wrapper to find the real command: %s',
+    (command) => {
+      expect(detectSudoRetry({ ...base, command, output: 'x: Permission denied' })).toBeNull();
+    }
+  );
+
+  it('still offers sudo for a wrapped command that is fine to elevate', () => {
+    expect(
+      detectSudoRetry({ ...base, command: 'time cat /etc/shadow', output: 'cat: /etc/shadow: Permission denied' })
+        ?.sudoCommand
+    ).toBe('sudo time cat /etc/shadow');
+  });
+
   it('does not treat a firewall or sandbox "Operation not permitted" as a permission problem', () => {
     expect(
       detectSudoRetry({ ...base, command: 'ping 1.1.1.1', output: 'ping: sendto: Operation not permitted' })

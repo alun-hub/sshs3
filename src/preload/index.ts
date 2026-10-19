@@ -278,8 +278,8 @@ export const api: MultiSSHApi = {
   storageStat: (providerId: string, remotePath: string): Promise<FileEntry> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_STAT, providerId, remotePath),
 
-  storageExists: (providerId: string, remotePath: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_EXISTS, providerId, remotePath),
+  storageLookup: (providerId: string, remotePath: string): Promise<FileEntry | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_LOOKUP, providerId, remotePath),
 
   storageCreateFolder: (providerId: string, remotePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CREATE_FOLDER, providerId, remotePath),

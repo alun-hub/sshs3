@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   describeFido2StartupError,
+  isMissingPathError,
   paneTreeHasAuthType,
   resolveDirSyncTargetRoot,
 } from '../../src/main/ipc/ipcHelpers';
@@ -60,6 +61,32 @@ describe('ipcHelpers', () => {
     it('passes any other error message through', () => {
       expect(describeFido2StartupError(new Error('boom'))).toBe('boom');
       expect(describeFido2StartupError('plain')).toBe('plain');
+    });
+  });
+
+  describe('isMissingPathError', () => {
+    it.each([
+      ['a local ENOENT', Object.assign(new Error('x'), { code: 'ENOENT' })],
+      ['ENOTDIR', Object.assign(new Error('x'), { code: 'ENOTDIR' })],
+      ['an S3 NoSuchKey', Object.assign(new Error('x'), { code: 'NoSuchKey' })],
+      ['an S3 NotFound name', Object.assign(new Error('x'), { name: 'NotFound' })],
+      ['an SFTP no-such-file status', Object.assign(new Error('x'), { name: 'SftpError', statusCode: 2 })],
+      ['the S3 provider path message', new Error('Path not found: /a/b')],
+      ['the pod provider message', new Error('File or directory not found: /etc/x')],
+    ])('treats %s as a missing path', (_name, err) => {
+      expect(isMissingPathError(err)).toBe(true);
+    });
+
+    it.each([
+      ['a lost connection', new Error('Connection lost')],
+      ['an SFTP permission status', Object.assign(new Error('x'), { name: 'SftpError', statusCode: 3 })],
+      ['a timeout', Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })],
+      ['EACCES', Object.assign(new Error('x'), { code: 'EACCES' })],
+      ['a message that merely mentions it', new Error('bucket not found in region')],
+      ['a non-error', 'ENOENT'],
+      ['null', null],
+    ])('does not treat %s as a missing path', (_name, err) => {
+      expect(isMissingPathError(err)).toBe(false);
     });
   });
 });

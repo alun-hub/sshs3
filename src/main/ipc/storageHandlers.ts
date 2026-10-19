@@ -15,6 +15,7 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 import { resolveTerminalControlPath } from '../storage/terminalControlPath';
+import { isMissingPathError } from './ipcHelpers';
 
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
@@ -112,12 +113,13 @@ export function registerStorageHandlers(bridge: StorageHost): void {
     }
   );
 
-  // A lookup for something that may well not exist (a word in the terminal that looks like a path):
-  // a miss is the normal answer, so it resolves to false instead of rejecting, which Electron would
-  // print as an "Error occurred in handler" line for every hover.
+  // A lookup for something that may well not exist (a word in the terminal that looks like a path): a
+  // miss is the normal answer, so it resolves to null instead of rejecting, which Electron would print as
+  // an "Error occurred in handler" line for every hover. Any other failure (lost connection, timeout,
+  // permission) still rejects so the caller does not mistake it for a missing file.
   bridge.registerHandler(
-    IPC_CHANNELS.STORAGE_EXISTS,
-    async (_event, providerId: string, remotePath: string): Promise<boolean> => {
+    IPC_CHANNELS.STORAGE_LOOKUP,
+    async (_event, providerId: string, remotePath: string): Promise<FileEntry | null> => {
       if (typeof providerId !== 'string' || typeof remotePath !== 'string') {
         throw new Error('Invalid arguments');
       }
@@ -126,10 +128,10 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         throw new Error(`Storage provider not found: ${providerId}`);
       }
       try {
-        await provider.stat(remotePath);
-        return true;
-      } catch {
-        return false;
+        return await provider.stat(remotePath);
+      } catch (err) {
+        if (isMissingPathError(err)) return null;
+        throw err;
       }
     }
   );

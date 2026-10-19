@@ -3,7 +3,7 @@ import type { Terminal } from 'xterm';
 import type { FileEntry } from '@shared/types/storage';
 import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';
-import { statIfExists } from './storageLookup';
+import { lookupPath, statIfExists } from './storageLookup';
 import {
   allowPreview,
   hoverModifierSatisfied,
@@ -85,6 +85,8 @@ export function useTerminalPathHover({
   const hoverCardDataRef = useRef<HoverCardData | null>(null);
   hoverCardDataRef.current = hoverCardData;
   const hoverDwellTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Bumped whenever a pending card is cancelled, so a dwell callback already awaiting a lookup gives up. */
+  const hoverGenerationRef = useRef(0);
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isMouseOverCardRef = useRef(false);
 
@@ -244,6 +246,7 @@ export function useTerminalPathHover({
   );
 
   const clearHoverTimers = useCallback(() => {
+    hoverGenerationRef.current++;
     clearTimeout(hoverDwellTimerRef.current);
     clearTimeout(hoverLeaveTimerRef.current);
   }, []);
@@ -272,15 +275,16 @@ export function useTerminalPathHover({
   const checkExistence = useCallback(async (fullPath: string): Promise<ExistenceCheck> => {
     const id = terminalProviderId(targetRef.current);
     // Nothing to check against: behave as if the file exists.
-    if (!id || !window.multissh?.storageExists) return 'exists';
+    if (!id || !(window.multissh?.storageLookup || window.multissh?.storageStat)) return 'exists';
     const key = `${id}\0${fullPath}`;
     const cached = statCacheRef.current.get(key);
     if (cached && Date.now() - cached.at < STAT_CACHE_TTL_MS) return cached.exists ? 'exists' : 'missing';
     let exists: boolean;
     try {
-      exists = await window.multissh.storageExists(id, toStoragePathRef.current(fullPath));
+      exists = (await lookupPath(id, toStoragePathRef.current(fullPath))) !== null;
     } catch {
-      exists = false;
+      // A lost connection, a timeout or a permission error says nothing about the file.
+      return 'unknown';
     }
     // A miss caused by a failed connection says nothing about the file.
     if (!exists && connectFailureRef.current) return 'unknown';
@@ -301,10 +305,13 @@ export function useTerminalPathHover({
       if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
       if (hoverCardDataRef.current?.path === path) return;
       clearHoverTimers();
+      const generation = hoverGenerationRef.current;
+      const cancelled = () => generation !== hoverGenerationRef.current;
       const delay = hoverCardDataRef.current ? 500 : 150;
       hoverDwellTimerRef.current = setTimeout(async () => {
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         await prepareHover();
+        if (cancelled()) return;
         const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
         const hasSlash = path.includes('/') || path.includes('\\');
         // A bare word is only previewed when the file really exists; text that merely looks like a path
@@ -315,7 +322,8 @@ export function useTerminalPathHover({
           cwdKnown: cwdKnownRef.current,
         };
         const existence = needsExistenceCheck(gate) ? await checkExistence(details.fullPath) : 'unknown';
-        if (!allowPreview(gate, existence)) return;
+        // The pointer may have left (or moved to another path) while the lookup was in flight.
+        if (cancelled() || !allowPreview(gate, existence)) return;
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         setHoverCardData({ path, x: point.clientX, y: point.clientY });
       }, delay);
@@ -361,6 +369,7 @@ export function useTerminalPathHover({
       },
       leavePath: () => {
         pendingHoverRef.current = null;
+        hoverGenerationRef.current++;
         clearTimeout(hoverDwellTimerRef.current);
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
         hoverLeaveTimerRef.current = setTimeout(() => {

@@ -63,9 +63,26 @@ const EXCLUDED_COMMANDS = new Set([...SHELL_BUILTINS, ...PRIVILEGE_AND_REMOTE, .
 /** Redirects that do not open a file for writing or reading, so `sudo` is unaffected by them. */
 const HARMLESS_REDIRECTS_RE = /(?:\d*|&)>>?\s*\/dev\/(?:null|stderr|stdout)\b|\d*>&\d+|&>>?\s*\/dev\/null\b/g;
 
-function firstWord(command: string): string {
-  const word = command.trim().split(/\s+/)[0] ?? '';
-  return word.replace(/^.*\//, '');
+/** Commands that only run another command (`time npm i`), so the real command is the next word. */
+const WRAPPER_COMMANDS = new Set(['env', 'time', 'nohup', 'nice', 'ionice', 'stdbuf', 'command']);
+/** `NAME=value` in front of a command. `sudo` refuses most of these (env_reset), so no offer is made. */
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/** The name of the command that actually runs, looking through `time`, `nohup` and the like. */
+function commandName(command: string): string {
+  const words = command.trim().split(/\s+/);
+  let i = 0;
+  while (i < words.length - 1 && WRAPPER_COMMANDS.has(words[i].replace(/^.*\//, ''))) {
+    i++;
+    // Options and their numbers (`nice -n 5`, `env -i FOO=1`) are skipped up to the next plain word.
+    while (
+      i < words.length - 1 &&
+      (words[i].startsWith('-') || /^\d+$/.test(words[i]) || ENV_ASSIGNMENT_RE.test(words[i]))
+    ) {
+      i++;
+    }
+  }
+  return (words[i] ?? '').replace(/^.*\//, '');
 }
 
 export function outputIndicatesPermissionDenied(output: string): boolean {
@@ -97,7 +114,9 @@ export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | nu
   // a single line of plain printable text (newlines, control or escape characters, bidi overrides and
   // zero-width characters that make the shown text differ from what runs) is never offered.
   if (UNSAFE_COMMAND_CHARS_RE.test(cmd)) return null;
-  if (EXCLUDED_COMMANDS.has(firstWord(cmd))) return null;
+  if (ENV_ASSIGNMENT_RE.test(cmd)) return null;
+  const name = commandName(cmd);
+  if (ENV_ASSIGNMENT_RE.test(name) || EXCLUDED_COMMANDS.has(name)) return null;
   if (isCompoundOrRedirected(cmd)) return null;
   if (!outputIndicatesPermissionDenied(output)) return null;
   return { sudoCommand: buildSudoCommand(cmd) };

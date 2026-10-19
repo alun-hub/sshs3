@@ -57,3 +57,18 @@ export function resolveDirSyncTargetRoot(
   }
   return joinPaths(targetProviderType, targetParentPath, sourceBaseName);
 }
+
+/**
+ * True when a storage provider's error means "that path does not exist" (as opposed to a lost
+ * connection, a permission problem or a timeout). Codes and status fields only, plus the exact
+ * "not found" messages the S3 and pod providers throw, so a connection failure is never read as a miss.
+ */
+export function isMissingPathError(err: unknown): boolean {
+  const e = err as { code?: unknown; statusCode?: unknown; name?: unknown; message?: unknown } | null;
+  if (!e || typeof e !== 'object') return false;
+  if (e.code === 'ENOENT' || e.code === 'ENOTDIR' || e.code === 'NoSuchKey' || e.code === 'NotFound') return true;
+  if (e.name === 'NotFound' || e.name === 'NoSuchKey') return true;
+  // SFTP status 2 (SSH_FX_NO_SUCH_FILE).
+  if (e.name === 'SftpError' && e.statusCode === 2) return true;
+  return typeof e.message === 'string' && /^(?:Path|File or directory|Directory) not found\b/.test(e.message);
+}

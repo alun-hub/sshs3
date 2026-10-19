@@ -12,7 +12,6 @@ interface SetupOptions {
   command?: string;
   output?: string;
   exitCode?: number;
-  isCommandLine?: boolean;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -39,7 +38,6 @@ function setup(opts: SetupOptions = {}) {
   } as unknown as Terminal;
   const tracker = {
     lastCommandResult: () => state.result,
-    cursorLineIsCommand: () => opts.isCommandLine ?? true,
   } as unknown as CommandOutputTracker;
   const run = vi.fn();
   const view = renderHook(() =>
@@ -94,7 +92,6 @@ describe('useSudoRetry', () => {
       setup({ enabled: false }),
       setup({ cursorLine: '[root@host ~]# ' }),
       setup({ rootUser: true }),
-      setup({ isCommandLine: false }),
       setup({ output: 'ls: cannot access x: No such file or directory' }),
     ]) {
       fail(r);
@@ -157,6 +154,20 @@ describe('useSudoRetry', () => {
       vi.advanceTimersByTime(300);
     });
     expect(r.result.current.suggestion).toBeNull();
+    r.state.bufferType = 'normal';
+    act(() => {
+      r.result.current.notifyOutput();
+      vi.advanceTimersByTime(300);
+    });
+    expect(r.result.current.suggestion).toBeNull();
+  });
+
+  it('does not arm on Enter inside a full-screen program', () => {
+    const r = setup();
+    r.state.bufferType = 'alternate';
+    act(() => {
+      r.result.current.notifyEnter();
+    });
     r.state.bufferType = 'normal';
     act(() => {
       r.result.current.notifyOutput();

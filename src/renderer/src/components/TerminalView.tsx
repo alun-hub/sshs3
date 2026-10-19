@@ -308,10 +308,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const sid = sessionIdRef.current;
       if (!term || !sid) return;
       const write = k8sTarget ? window.multissh?.k8sTerminalWrite : window.multissh?.terminalWrite;
-      // Written straight to the PTY, like typing it: it must not go through onData, whose line buffer
-      // only tracks what the user typed. The command is a single plain line (see detectSudoRetry).
-      outputTrackerRef.current?.recordEnter();
-      write?.(sid, `${sudoCommand}\r`);
+      // Typed onto the prompt without Enter: the user sees the whole command on the real line, can edit
+      // it, and runs it with a second Enter. Written straight to the PTY, like typing it, so it does not
+      // go through onData, whose line buffer only tracks what the user typed. The command is a single
+      // plain line (see detectSudoRetry).
+      write?.(sid, sudoCommand);
       term.focus();
       // Typing scrolls xterm to the bottom, a direct PTY write does not. The bar also disappears now,
       // which resizes the terminal, so scroll again once that refit (next frame) has happened.

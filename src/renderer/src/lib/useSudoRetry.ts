@@ -14,7 +14,7 @@ export interface UseSudoRetryOptions {
   rootUser?: boolean;
   termRef: RefObject<Terminal | null>;
   trackerRef: RefObject<CommandOutputTracker | null>;
-  /** Types the suggested command into the session and presses Enter. */
+  /** Types the suggested command onto the prompt (without pressing Enter). */
   run: (sudoCommand: string) => void;
 }
 
@@ -84,10 +84,11 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
   /** The user pressed Enter in the terminal. */
   const notifyEnter = useCallback(() => {
     dismiss();
-    // Only a prompt followed by a command starts something we could re-run; an answer typed into a
-    // running program (`[Y/n]`, a password) or Enter inside a full-screen app does not.
-    armedRef.current = enabledRef.current && Boolean(trackerRef.current?.cursorLineIsCommand());
-  }, [dismiss, trackerRef]);
+    // Armed on every Enter in the normal screen. Whether it started a command is decided later from the
+    // finished screen (a prompt in front of the line, see lastCommandResult), because over a slow
+    // connection the echo of what was typed has not been drawn yet when Enter is pressed.
+    armedRef.current = enabledRef.current && termRef.current?.buffer.active.type === 'normal';
+  }, [dismiss, termRef]);
 
   /** Anything other than Enter was typed. */
   const notifyInput = useCallback(() => {

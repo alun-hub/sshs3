@@ -165,18 +165,38 @@ describe('CommandOutputTracker', () => {
     });
   });
 
-  describe('cursorLineIsCommand', () => {
-    it('is true on a prompt followed by a command, also when it wraps', () => {
-      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ls -la' }]).term).cursorLineIsCommand()).toBe(true);
-      const wrapped = fakeTerm([{ text: '$ rm /a/very/long' }, { text: '/path', wrapped: true }]);
-      expect(new CommandOutputTracker(wrapped.term).cursorLineIsCommand()).toBe(true);
+  describe('lastCommandResult edge cases', () => {
+    it('is null while the newest OSC command is still running, instead of an older result', () => {
+      const f = fakeTerm([{ text: 'user@box:~$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      f.osc('B');
+      f.lines[0].text = 'user@box:~$ cat /x';
+      f.osc('C');
+      f.lines.push({ text: 'cat: /x: Permission denied' }, { text: '' });
+      f.osc('D;1');
+      f.lines.pop();
+      f.lines.push({ text: 'user@box:~$ ssh other' });
+      f.osc('B');
+      f.osc('C');
+      f.lines.push({ text: 'me@other:~$ ' });
+      expect(t.lastCommandResult()).toBeNull();
     });
 
-    it('is false for an empty prompt, an answer typed into a program, or the alternate screen', () => {
-      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ' }]).term).cursorLineIsCommand()).toBe(false);
-      expect(new CommandOutputTracker(fakeTerm([{ text: 'y' }]).term).cursorLineIsCommand()).toBe(false);
-      expect(new CommandOutputTracker(fakeTerm([{ text: 'Continue? [Y/n] y' }]).term).cursorLineIsCommand()).toBe(false);
-      expect(new CommandOutputTracker(fakeTerm([{ text: '$ ls' }], { type: 'alternate' }).term).cursorLineIsCommand()).toBe(false);
+    it('is null when Enter was an answer typed into a program, not a command at a prompt', () => {
+      const f = fakeTerm([{ text: 'Continue? [Y/n] y' }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: 'E: Could not open lock file x: Permission denied' }, { text: '$ ' });
+      expect(t.lastCommandResult()).toBeNull();
+    });
+
+    it('still finds a wrapped command whose echo had not rendered when Enter was pressed', () => {
+      const f = fakeTerm([{ text: '$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter(); // the echo arrives after the keystroke
+      f.lines[0].text = '$ cat /etc/shadow';
+      f.lines.push({ text: 'cat: /etc/shadow: Permission denied' }, { text: '$ ' });
+      expect(t.lastCommandResult()?.command).toBe('cat /etc/shadow');
     });
   });
 
