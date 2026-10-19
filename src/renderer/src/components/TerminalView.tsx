@@ -309,6 +309,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       outputTrackerRef.current?.recordEnter();
       write?.(sid, `${sudoCommand}\r`);
       term.focus();
+      // Typing scrolls xterm to the bottom, a direct PTY write does not. The bar also disappears now,
+      // which resizes the terminal, so scroll again once that refit (next frame) has happened.
+      term.scrollToBottom();
+      requestAnimationFrame(() => requestAnimationFrame(() => termRef.current?.scrollToBottom()));
     },
   });
   const sudoRetryRef = useRef(sudoRetry);
