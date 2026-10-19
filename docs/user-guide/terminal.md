@@ -166,10 +166,10 @@ The terminal engine actively monitors output streams for web servers, dev tools,
 - **Custom Regex Support**: Under *Settings → Terminal*, operators can provide custom regular expressions to match proprietary server logs or unique port announcements. The feature can also be toggled completely off.
 
 ### 4.9 Re-run with sudo
-When a command fails with a permission error (for example `cat: /etc/shadow: Permission denied`, `Operation not permitted`, or `Are you root?`), a prompt appears at the bottom of the terminal showing the exact command that would run:
+When a command fails with a permission error (for example `cat: /etc/shadow: Permission denied`, `Operation not permitted`, or `Are you root?`), a prompt appears at the bottom of the terminal showing the whole command that would run (wrapped over several lines when it is long, never truncated):
 - <kbd>Enter</kbd> types `sudo <your command>` and runs it. `sudo` asks for the password in the shell as usual; sshs3 never sees it. Enter is ignored for a moment after the prompt appears, so a quick double press does not accept it.
 - <kbd>Esc</kbd>, or typing anything else, dismisses the prompt.
-- **Not offered** for `ssh`, `scp`, `sftp`, `rsync`, `git`, commands that already start with `sudo`/`su`/`doas`, commands with a `>` redirect (the shell opens the target before `sudo` runs), long output, or when the prompt is already root. Aliases are not expanded by `sudo`. In PowerShell and cmd the prompt is never shown.
+- **Not offered** for `ssh`, `scp`, `sftp`, `rsync`, `git`, commands that already start with `sudo`/`su`/`doas`, commands with a `>` redirect (the shell opens the target before `sudo` runs), long output, or when the prompt is already root. A command that contains a line break, control characters or invisible characters is never offered either, because the command is read back from the terminal screen, which a remote program can influence. Aliases are not expanded by `sudo`. In PowerShell and cmd the prompt is never shown.
 - It works in any shell, with or without OSC 133 prompt marks. The setting is under *Settings → Terminal* (**Offer to re-run failed commands with sudo**).
 
 ### 4.10 Terminal Settings Reference Table

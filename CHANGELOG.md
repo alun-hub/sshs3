@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.47] - 2026-10-19
+
+### Added
+- **Re-run with sudo.** When a command fails with a permission error (`Permission denied`, `Operation not permitted`, `Are you root?`, …), a bar below the terminal shows the exact `sudo <command>`: **Enter** runs it, **Esc** or any other input dismisses it. `sudo` asks for the password in the shell as usual. It works in any shell, with or without OSC 133 prompt marks, and follows the dark, light and breeze themes. It is not offered for `ssh`/`scp`/`sftp`/`rsync`/`git`, commands that already use `sudo`/`su`/`doas`, commands with a `>` redirect, long output, root prompts, PowerShell or cmd, and a command containing newlines, control or invisible characters is never offered. Toggle under **Settings → Terminal → Offer to re-run failed commands with sudo** (on by default).
+
 ## [0.96.46] - 2026-10-18
 
 ### Added
