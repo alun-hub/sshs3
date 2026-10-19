@@ -636,6 +636,80 @@ describe('TerminalView Component', () => {
       expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
     });
 
+    it('keeps an open card when a repaint makes xterm report leave and hover for the same path', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const hover = { clientX: 10, clientY: 10, ctrlKey: false, metaKey: false };
+
+      act(() => {
+        capturedHandlers.hoverPath(hover, '/var/log/syslog');
+      });
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+
+      // The pointer has not moved; the rows were repainted.
+      act(() => {
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+        capturedHandlers.hoverPath(hover, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+    });
+
+    it('still closes the card once the pointer really leaves', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+
+      act(() => {
+        capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+      expect(screen.queryByTestId('terminal-path-hover-card')).not.toBeInTheDocument();
+    });
+
+    it('does not restart the dwell when a repaint reports leave and hover while the card is opening', async () => {
+      const storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
+      (window.multissh as any).storageLookup = storageLookup;
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const hover = { clientX: 10, clientY: 10, ctrlKey: false, metaKey: false };
+
+      act(() => {
+        capturedHandlers.hoverPath(hover, '/var/log/syslog');
+      });
+      // Repaints every 100 ms, which is faster than the 150 ms dwell: it must still complete.
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+        act(() => {
+          capturedHandlers.leavePath({}, '/var/log/syslog');
+          capturedHandlers.hoverPath(hover, '/var/log/syslog');
+        });
+      }
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+      expect(storageLookup).toHaveBeenCalledTimes(1);
+    });
+
     it('still opens the card when the lookup fails for a reason other than a missing file', async () => {
       (window.multissh as any).storageLookup = vi.fn().mockRejectedValue(new Error('Connection lost'));
       render(<TerminalView config={sampleConfig} />);
@@ -671,6 +745,10 @@ describe('TerminalView Component', () => {
       });
       act(() => {
         capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      // A leave only counts once no hover of the same path follows within the repaint grace time.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
       });
       await act(async () => {
         resolveLookup({ name: 'syslog', isDirectory: false, size: 1 });
@@ -726,6 +804,9 @@ describe('TerminalView Component', () => {
       act(() => {
         capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
         capturedHandlers.leavePath({}, '/var/log/syslog');
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
       });
       act(() => {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control' }));
