@@ -11,6 +11,7 @@ import { formatDateTime } from './format';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
+import { statIfExists } from './storageLookup';
 
 export interface TabActionsContext {
   tabs: AppTab[];
@@ -365,16 +366,10 @@ export function useTabActions(ctx: TabActionsContext) {
     const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
     const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
     let isDir = absolute.endsWith('/');
-    if (!isDir && window.multissh?.storageStat) {
-      const providerId = `sftp-${config.id || config.host}`;
-      try {
-        const stat = await window.multissh.storageStat(providerId, absolute);
-        if (stat?.isDirectory) {
-          isDir = true;
-        }
-      } catch {
-        // Fall back to filename check
-      }
+    if (!isDir) {
+      // A miss falls back to the filename check below.
+      const stat = await statIfExists(`sftp-${config.id || config.host}`, absolute);
+      if (stat?.isDirectory) isDir = true;
     }
     const lastSlash = absolute.lastIndexOf('/');
     const folder = isDir ? absolute : lastSlash === -1 ? home : absolute.slice(0, lastSlash) || '/';
@@ -401,15 +396,9 @@ export function useTabActions(ctx: TabActionsContext) {
       }
     }
     let isDir = resolved.endsWith('/');
-    if (!isDir && window.multissh?.storageStat) {
-      try {
-        const stat = await window.multissh.storageStat('local', resolved);
-        if (stat?.isDirectory) {
-          isDir = true;
-        }
-      } catch {
-        // Fall back to filename check
-      }
+    if (!isDir) {
+      const stat = await statIfExists('local', resolved);
+      if (stat?.isDirectory) isDir = true;
     }
     const lastSlash = resolved.lastIndexOf('/');
     const folder = isDir ? resolved : lastSlash === -1 ? '/' : resolved.slice(0, lastSlash) || '/';

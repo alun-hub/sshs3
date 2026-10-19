@@ -3,6 +3,7 @@ import type { Terminal } from 'xterm';
 import type { FileEntry } from '@shared/types/storage';
 import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';
+import { statIfExists } from './storageLookup';
 import {
   allowPreview,
   hoverModifierSatisfied,
@@ -379,17 +380,12 @@ export function useTerminalPathHover({
         notifyRef.current(`Failed to open storage: ${err?.message || String(err)}`, 3000);
         return;
       }
-      if (window.multissh?.storageStat) {
-        try {
-          const stat = await window.multissh.storageStat(id, toStoragePathRef.current(p));
-          if (stat?.isDirectory) {
-            onOpenPathRef.current?.(toStoragePathRef.current(p));
-            dismissCard();
-            return;
-          }
-        } catch {
-          // Proceed if stat fails
-        }
+      // Proceeds to the editor when the stat finds nothing.
+      const stat = await statIfExists(id, toStoragePathRef.current(p));
+      if (stat?.isDirectory) {
+        onOpenPathRef.current?.(toStoragePathRef.current(p));
+        dismissCard();
+        return;
       }
       termRef.current?.blur();
       setEditingFile(p);
