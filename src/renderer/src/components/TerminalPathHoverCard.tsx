@@ -18,6 +18,7 @@ import {
 import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
 import { chooseHoverCardSide, placeHoverCard } from '../lib/hoverCardPlacement';
+import { createRendererLogger } from '../lib/log';
 
 export interface TerminalPathHoverCardProps {
   path: string;
@@ -117,6 +118,7 @@ const CATEGORY_STYLES: Record<
   },
 };
 
+const log = createRendererLogger('path-card');
 const identityPath = (p: string): string => p;
 /** The tallest the card gets: header, actions and an image or text preview. */
 const MAX_CARD_HEIGHT = 280;
@@ -179,12 +181,20 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       return undefined;
     }
 
+    const startedAt = performance.now();
     const timer = setTimeout(() => {
       const maxBytes = details.category === 'image' ? 5 * 1024 * 1024 : 2048;
       window.multissh
         ?.fileRead(providerId, toStoragePath(details.fullPath), maxBytes)
         .then((res) => {
           if (cancelled || !res) return;
+          log.debug('preview loaded', {
+            path: details.fullPath,
+            provider: providerId,
+            kind: res.isDirectory ? 'directory' : res.isBinary ? 'binary' : 'text',
+            truncated: Boolean(res.truncated),
+            ms: Math.round(performance.now() - startedAt),
+          });
           if (res.isDirectory) {
             setIsDirOverride(true);
             setSnippet(null);
@@ -206,7 +216,13 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
             });
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          log.debug('preview failed', {
+            path: details.fullPath,
+            provider: providerId,
+            error: String(err),
+            ms: Math.round(performance.now() - startedAt),
+          });
           if (!cancelled) setSnippet(null);
         });
     }, 40);
@@ -257,6 +273,9 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     side,
   });
 
+  // No invisible "bridge" towards the pointer: the card opens 12px right of and 16px below it, so a strip
+  // reaching back to the link would lie under the pointer, which then counts as being inside the card the
+  // moment it opens (and stops the terminal reporting the link). Crossing the gap is covered by the close delay.
   return (
     <div
       ref={cardRef}
@@ -264,7 +283,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{ left: `${left}px`, top: `${top}px` }}
-      className="fixed z-50 flex flex-col w-[380px] rounded-2xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto before:content-[''] before:absolute before:-top-4 before:-left-3 before:-right-3 before:h-5"
+      className="fixed z-50 flex flex-col w-[380px] rounded-2xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2.5 border-b border-divider pb-2.5">

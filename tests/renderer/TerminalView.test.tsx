@@ -754,6 +754,56 @@ describe('TerminalView Component', () => {
       expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
     });
 
+    it('keeps the open card while the pointer moves from one path to the next', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'f', isDirectory: false, size: 1 });
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const hover = { clientX: 10, clientY: 10, ctrlKey: false, metaKey: false };
+
+      act(() => {
+        capturedHandlers.hoverPath(hover, '/var/log/a.log');
+      });
+      await dwell();
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+
+      // Sweep across three paths within a few milliseconds each, like a pointer crossing an ls listing.
+      for (const p of ['/var/log/b.log', '/var/log/c.log', '/var/log/d.log']) {
+        act(() => {
+          capturedHandlers.leavePath({}, p);
+          capturedHandlers.hoverPath(hover, p);
+        });
+      }
+      // The old card must not be closed by timers left over from the earlier leaves (400 ms), and the
+      // card for the path the pointer ended on must open (500 ms dwell) and stay.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+      });
+      expect(screen.getByTestId('terminal-path-hover-card')).toBeInTheDocument();
+      expect(screen.getByTestId('terminal-path-hover-card').textContent).toContain('d.log');
+    });
+
+    it('places the card relative to where the pointer is when it opens, not where it entered the link', async () => {
+      (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'f', isDirectory: false, size: 1 });
+      render(<TerminalView config={sampleConfig} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        capturedHandlers.hoverPath({ clientX: 10, clientY: 10, ctrlKey: false, metaKey: false }, '/var/log/syslog');
+      });
+      // The pointer moves on while the card waits to open.
+      act(() => {
+        window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 120 }));
+      });
+      await dwell();
+
+      const card = screen.getByTestId('terminal-path-hover-card');
+      expect(card.style.left).toBe('312px');
+    });
+
     it('still closes the card once the pointer really leaves', async () => {
       (window.multissh as any).storageLookup = vi.fn().mockResolvedValue({ name: 'syslog', isDirectory: false, size: 1 });
       render(<TerminalView config={sampleConfig} />);

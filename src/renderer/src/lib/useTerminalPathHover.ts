@@ -102,6 +102,27 @@ export function useTerminalPathHover({
   const leaveGraceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The path the pointer is on, as last reported by xterm. */
   const hoveredPathRef = useRef<string | null>(null);
+  /**
+   * Where the pointer is now. A card opens after a dwell (up to half a second when another card is open),
+   * by which time the pointer has moved on from where it entered the link; placing the card relative to
+   * the entry point can put it under the pointer, which then enters and leaves it as it settles.
+   */
+  const lastPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      lastPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    };
+    window.addEventListener('mousemove', onMove, { capture: true, passive: true });
+    return () => window.removeEventListener('mousemove', onMove, { capture: true });
+  }, []);
+  /** Debug trace of what opens and closes the card; a line identical to the previous one is dropped. */
+  const lastTraceRef = useRef('');
+  const trace = useCallback((event: string, data?: Record<string, unknown>) => {
+    const line = `${event} ${JSON.stringify(data ?? {})}`;
+    if (line === lastTraceRef.current) return;
+    lastTraceRef.current = line;
+    log.debug(event, data);
+  }, []);
   const isMouseOverCardRef = useRef(false);
 
   const [userHomeDir, setUserHomeDir] = useState<string>(() => guessHome(config?.username) || '/home/user');
@@ -284,10 +305,11 @@ export function useTerminalPathHover({
   }, []);
 
   const dismissCard = useCallback(() => {
+    trace('card dismissed', { path: hoverCardDataRef.current?.path ?? null });
     clearHoverTimers();
     isMouseOverCardRef.current = false;
     setHoverCardData(null);
-  }, [clearHoverTimers]);
+  }, [clearHoverTimers, trace]);
 
   useEffect(() => {
     if (!pathHoverPreview) dismissCard();
@@ -396,11 +418,12 @@ export function useTerminalPathHover({
           return;
         }
         if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-        log.debug('card shown', { path, existence, checked, ...gate });
-        setHoverCardData({ path, x: point.clientX, y: point.clientY });
+        trace('card shown', { path, replaced: hoverCardDataRef.current?.path ?? null, existence, checked, ...gate });
+        const at = lastPointerRef.current ?? point;
+        setHoverCardData({ path, x: at.clientX, y: at.clientY });
       }, delay);
     },
-    [clearHoverTimers, prepareHover, checkExistence, localShellRunsSsh]
+    [clearHoverTimers, prepareHover, checkExistence, localShellRunsSsh, trace]
   );
 
   // In `ctrl` mode a path under the pointer opens its card as soon as Ctrl/Cmd is pressed.
@@ -420,20 +443,44 @@ export function useTerminalPathHover({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [pathHoverMode, startHover]);
 
+  /**
+   * Closes the open card after `ms`, unless the pointer is over it by then. Replaces any close already
+   * scheduled, and only ever closes the card that was open when it was scheduled: a timer that outlives
+   * its purpose must not close a card shown later.
+   */
+  const scheduleClose = useCallback(
+    (ms: number, reason: string) => {
+      clearTimeout(hoverLeaveTimerRef.current);
+      const closing = hoverCardDataRef.current?.path;
+      if (closing === undefined) return;
+      hoverLeaveTimerRef.current = setTimeout(() => {
+        if (isMouseOverCardRef.current || hoverCardDataRef.current?.path !== closing) return;
+        trace(`card closed: ${reason}`, { path: closing });
+        setHoverCardData(null);
+      }, ms);
+    },
+    [trace]
+  );
+
   /** The pointer really left the path (no hover of the same path followed): cancel and schedule the close. */
   const finishLeave = useCallback(() => {
     if (!leaveGraceTimerRef.current) return;
     clearTimeout(leaveGraceTimerRef.current);
     leaveGraceTimerRef.current = undefined;
+    if (hoverCardDataRef.current) {
+      trace('leave confirmed', {
+        path: hoveredPathRef.current,
+        open: hoverCardDataRef.current.path,
+        overCard: isMouseOverCardRef.current,
+      });
+    }
     hoveredPathRef.current = null;
     pendingHoverRef.current = null;
     hoverGenerationRef.current++;
     clearTimeout(hoverDwellTimerRef.current);
     if (!pathHoverPreviewRef.current || isMouseOverCardRef.current) return;
-    hoverLeaveTimerRef.current = setTimeout(() => {
-      if (!isMouseOverCardRef.current) setHoverCardData(null);
-    }, 400);
-  }, []);
+    scheduleClose(400, 'the pointer left the link');
+  }, [trace, scheduleClose]);
 
   const createLinkHandlers = useCallback((): Pick<TerminalLinkHandlers, 'openPath' | 'hoverPath' | 'leavePath'> => {
     return {
@@ -446,11 +493,20 @@ export function useTerminalPathHover({
           }
         : undefined,
       hoverPath: (e, path) => {
+        if (hoverCardDataRef.current) {
+          trace('hover', {
+            path,
+            open: hoverCardDataRef.current.path,
+            overCard: isMouseOverCardRef.current,
+            repaint: Boolean(leaveGraceTimerRef.current && hoveredPathRef.current === path),
+          });
+        }
         if (leaveGraceTimerRef.current && hoveredPathRef.current === path) {
           // A repaint made xterm re-ask for the link under a pointer that did not move: keep the open
           // card, the pending dwell and the lookup in flight exactly as they are.
           clearTimeout(leaveGraceTimerRef.current);
           leaveGraceTimerRef.current = undefined;
+          clearTimeout(hoverLeaveTimerRef.current);
           return;
         }
         finishLeave();
@@ -464,11 +520,14 @@ export function useTerminalPathHover({
         startHover(e, path);
       },
       leavePath: () => {
+        if (hoverCardDataRef.current) {
+          trace('leave', { path: hoveredPathRef.current, open: hoverCardDataRef.current.path });
+        }
         clearTimeout(leaveGraceTimerRef.current);
         leaveGraceTimerRef.current = setTimeout(finishLeave, LEAVE_GRACE_MS);
       },
     };
-  }, [dismissCard, prepareHover, startHover, finishLeave]);
+  }, [dismissCard, prepareHover, startHover, finishLeave, trace]);
 
   const openInEditor = useCallback(
     async (p: string) => {
@@ -521,14 +580,14 @@ export function useTerminalPathHover({
 
   const cardProps = {
     onMouseEnter: () => {
+      trace('pointer entered the card', { path: hoverCardDataRef.current?.path ?? null });
       isMouseOverCardRef.current = true;
       clearHoverTimers();
     },
     onMouseLeave: () => {
+      trace('pointer left the card', { path: hoverCardDataRef.current?.path ?? null });
       isMouseOverCardRef.current = false;
-      hoverLeaveTimerRef.current = setTimeout(() => {
-        if (!isMouseOverCardRef.current) setHoverCardData(null);
-      }, 300);
+      scheduleClose(300, 'the pointer left the card');
     },
     onClose: dismissCard,
     onCopyPath: (p: string) => {

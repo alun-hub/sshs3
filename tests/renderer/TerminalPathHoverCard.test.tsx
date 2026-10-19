@@ -21,6 +21,18 @@ describe('TerminalPathHoverCard', () => {
     expect(screen.getByText('Configuration')).toBeInTheDocument();
   });
 
+  it('does not extend its hit area back to the pointer', () => {
+    render(<TerminalPathHoverCard path="/var/log/app.log" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />);
+    const card = screen.getByTestId('terminal-path-hover-card');
+
+    // It opens 12px right of and 16px below the pointer. An invisible strip reaching back towards the
+    // pointer (a `before:` pseudo-element) would lie under it, so the pointer would be "inside" the card
+    // the moment it opens and the terminal would stop reporting the link.
+    expect(card.className).not.toMatch(/before:/);
+    expect(card.style.left).toBe('62px');
+    expect(card.style.top).toBe('66px');
+  });
+
   it('triggers onCopyPath when copy button is clicked', () => {
     const onCopyPath = vi.fn();
     render(
