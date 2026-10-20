@@ -11,7 +11,7 @@ Enterprise network architectures rely heavily on demilitarized zones (DMZs), fir
 In sshs3, you can choose between two complementary patterns to access protected servers behind firewalls:
 
 ### A. Integrated ProxyJump (Recommended)
-- **How It Works**: Configured directly in the SSH profile under the *Network & Bastion* tab. Select an existing SSH profile as your jump host ("Proxy Jump").
+- **How It Works**: Configured directly in the SSH profile with **Jump Host / ProxyJump (optional)**. Select an existing SSH profile as your jump host, or enter a `user@host[:port]` bastion manually.
 - **Security**: Traffic between your workstation and the destination server is end-to-end encrypted. The bastion acts strictly as a TCP stream forwarder and cannot inspect or intercept unencrypted traffic.
 - **Protocol**: Maps to OpenSSH `-J [user@]bastion[:port]`. Supports chained bastions (`bastion1,bastion2`).
 

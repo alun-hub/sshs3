@@ -113,7 +113,7 @@ Enable direct file transfers between disparate storage systems (e.g., from an SF
 
 #### 🛠️ How to Use
 - Open an SFTP server in the left pane and an S3 bucket in the right pane.
-- Select files and press <kbd>F5</kbd> (Copy) or drag and drop across panes.
+- Select files and copy them across panes with <kbd>Ctrl+C</kbd> / <kbd>Ctrl+V</kbd>, the context menu, or drag and drop (<kbd>F5</kbd> only refreshes the listing).
 - The transfer queue dock at the bottom displays progress, speed (MB/s), and estimated time to completion.
 - Transfers can be paused and resumed at any time.
 

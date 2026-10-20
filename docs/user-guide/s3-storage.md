@@ -35,14 +35,14 @@ For organizations managing AWS infrastructure through corporate Single Sign-On:
 2. Click **Sign in with AWS SSO**.
 3. sshs3 initiates the OIDC device authorization flow and launches your system browser displaying an 8-character verification code.
 4. Once authorized in the browser, sshs3 fetches temporary STS credentials and presents an interactive selector to choose your target AWS Account and IAM Role.
-5. Tokens refresh automatically in the background while the session remains active.
+5. The credentials are short-lived; when they expire, sign in again.
 
 ### C. Custom Endpoints & Path-Style Addressing
 When connecting to MinIO, Wasabi, Cloudflare R2, or internal Ceph clusters:
 - Specify your custom **Endpoint URL** (e.g., `https://s3.wasabisys.com` or `http://192.168.1.50:9000`).
 - **Path-Style Addressing**:
   > [!IMPORTANT]
-  > For MinIO, private IP addresses, and custom endpoints, **Path-Style Addressing is mandatory**. It forces API requests in the format `endpoint/bucket/object` rather than virtual-hosted requests (`bucket.endpoint/object`), preventing DNS resolution failures on non-routable domains.
+  > For MinIO, private IP addresses, and many custom endpoints, tick **Path-style addressing (commonly required for MinIO / NetApp)**; it is off by default. It forces API requests in the format `endpoint/bucket/object` rather than virtual-hosted requests (`bucket.endpoint/object`), preventing DNS resolution failures on non-routable domains.
 
 ### D. Connection Security & Encryption Options
 Also in the S3 profile form:
@@ -139,7 +139,7 @@ Dispatches typed AWS SDK commands (`GetBucketPolicyCommand`, `PutBucketPolicyCom
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
-| `ENOTFOUND <bucket>.192.168.1.50` | Virtual-hosted addressing used against an IP address | Enable the **Path-Style Addressing** checkbox in your S3 connection profile. |
+| `ENOTFOUND <bucket>.192.168.1.50` | Virtual-hosted addressing used against an IP address | Tick **Path-style addressing** in your S3 connection profile. |
 | `SignatureDoesNotMatch` | Invalid Secret Key or workstation clock drift | Check credentials. Ensure system time is synchronized via NTP (SigV4 tolerates max 15m skew). |
 | `AccessDenied (403 Forbidden)` | IAM policy lacks permissions on bucket | Ensure your IAM policy allows `s3:ListBucket`, `s3:GetObject`, and `s3:PutObject`. |
 | Presigned URL expires after 1 hour | Generated via temporary AWS SSO/STS credentials | For 7-day URLs, configure a profile using static IAM credentials with explicit S3 permissions. |

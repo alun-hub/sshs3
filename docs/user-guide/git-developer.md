@@ -20,7 +20,7 @@ Eliminate manual key hunting, copy-pasting, and navigation through provider acco
    - Active keys loaded in your running `ssh-agent`.
    - Unlocked FIDO2 tokens and smartcard authentication certificates.
 3. Click **Add to GitHub** or **Add to GitLab** next to any detected key.
-4. sshs3 copies the public key string to your clipboard and opens your default browser directly at the provider's key creation portal (`github.com/settings/ssh/new`) with the key title pre-filled!
+4. sshs3 copies the public key string to your clipboard and opens your default browser directly at the provider's key creation page (`github.com/settings/ssh/new` with the key title pre-filled, or `gitlab.com/-/user_settings/ssh_keys`).
 
 #### ⚠️ Limitations & Caveats
 - Requires an active login session in your default web browser for the target provider.
@@ -84,15 +84,15 @@ Populates `~/.ssh/allowed_signers` with your identity and public key and configu
 Inspect and verify public keys belonging to colleagues or open-source maintainers directly from GitHub or GitLab without exchanging keys over unencrypted chat channels.
 
 #### 🛠️ How to Use
-- In the *Lookup Remote Keys* field, type a username (e.g. `torvalds`) and select a provider (GitHub, GitLab.com, or your self-hosted GitLab instance).
-- sshs3 queries the provider API and displays all verified public keys and their SHA256 fingerprints.
-- Click any key to copy it or deploy it directly to a server via the `ssh-copy-id GUI`!
+- Under **Lookup Public Keys (username.keys)**, type a username (e.g. `torvalds`) and select a provider (GitHub, GitLab, or a custom Git host such as a self-hosted GitLab).
+- sshs3 fetches the provider's public `<username>.keys` list and displays the keys with their SHA256 fingerprints.
+- Click **Copy** next to a key to copy it, or use the signing action to configure Git to sign commits with it.
 
 #### ⚠️ Limitations & Caveats
 - Queries public profiles; private GitLab instances require reachable network access.
 
 #### ⚙️ Technical Internals & Architecture
-Performs HTTPS requests against `https://github.com/<username>.keys` or GitLab's API, parses OpenSSH public key strings, and computes SHA-256 fingerprints client-side.
+Performs HTTPS requests against `https://github.com/<username>.keys`, `https://gitlab.com/<username>.keys` or your custom host's equivalent, parses OpenSSH public key strings, and computes SHA-256 fingerprints client-side.
 
 ---
 

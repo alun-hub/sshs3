@@ -34,17 +34,14 @@ Provide sysadmins with immediate visual feedback regarding resource bottlenecks 
 
 #### ⚠️ Limitations & Caveats
 - SSH telemetry requires Linux servers with a mounted `/proc` virtual filesystem (standard across RHEL, Debian, Ubuntu, Rocky, Alpine, Arch, etc.).
-- On Windows workstations, the sampling interval is enforced to a minimum of 10 seconds to eliminate TCP socket overhead.
+- Windows OpenSSH has no `ControlMaster`, so each sample is a short-lived non-interactive connection and the interval is at least 10 seconds. It only works for sessions that need no interaction per login: not FIDO2, not a smartcard without a cached agent, and not an unsaved password.
 - Non-Linux platforms (FreeBSD, OpenBSD, AIX) are not supported by the `/proc` parser.
 
 #### ⚙️ Technical Internals & Architecture
 Sampling executes over the **already active OpenSSH ControlMaster socket** used by the terminal:
 - The argument `-o BatchMode=yes` is strictly enforced, guaranteeing that samples **never trigger password prompts, smartcard PIN dialogs, or YubiKey touch requests**.
-- Each sample runs an atomic, read-only POSIX inspection command:
-  ```bash
-  cat /proc/stat /proc/meminfo /proc/loadavg /proc/net/dev 2>/dev/null
-  ```
-- Raw metrics are parsed inside Node.js by `PerfMetricsService` (`src/main/services/PerfMetricsService.ts`) and pushed across IPC to React. Samples timeout after 3 seconds to avoid terminal stalls.
+- Each sample runs one fixed, read-only script (no user input is ever interpolated) that reads `/proc/stat`, `/proc/loadavg`, `/proc/meminfo`, `/proc/net/dev`, `/proc/uptime`, `/proc/diskstats` and runs `df -Pk`.
+- Raw metrics are parsed inside Node.js by `PerfMetricsService` (`src/main/services/PerfMetricsService.ts`) and pushed across IPC to React. Samples time out after 4 seconds (12 seconds on the Windows fallback) so a hung host cannot stall the terminal.
 
 ---
 
@@ -81,10 +78,10 @@ The resulting usage metrics are reconciled against the pod's PodSpec definition.
 | **Load (1m / 5m / 15m)** | `/proc/loadavg` | System run-queue saturation relative to total CPU core count. |
 | **I/O Wait (`iowait`)** | `/proc/stat` | CPU cycles blocked waiting on storage disk operations. |
 | **CPU Steal (`steal`)** | `/proc/stat` | CPU cycles taken by the hypervisor (detects noisy neighbors in VPS/cloud). |
-| **Disk Capacity** | `statvfs()` | Percentage utilization across `/` and all mounted filesystems. |
+| **Disk Capacity** | `df -Pk` | Percentage utilization across `/` and all mounted filesystems. |
 | **Network I/O (↓/↑)** | `/proc/net/dev` | Real-time network throughput in bytes/s across network interfaces. |
 | **Disk Throughput** | `/proc/diskstats` | Block device read/write throughput in MB/s. |
-| **Latency ("Ping")** | TCP RTT | Round-trip socket latency in milliseconds over the active SSH channel. |
+| **Latency ("Ping")** | Sample round trip | Time for the sampling command to complete over the open SSH connection (a TCP connect time on the Windows fallback). |
 
 ---
 
@@ -94,5 +91,5 @@ The resulting usage metrics are reconciled against the pod's PodSpec definition.
 | :--- | :--- | :--- |
 | No metrics bar appears above terminal | Feature disabled in settings | Open *Settings → Performance* and tick **Show performance bar above terminals**. |
 | `metrics-server not available` | Kubernetes cluster lacks `metrics-server` | Deploy metrics-server to your cluster (`kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/...`). |
-| Ping metric displays `N/A` | ControlMaster connection multiplexing disabled | Socket RTT requires connection multiplexing. Ensure `ControlMaster` is supported by your server. |
-| Metric updates stall | Server under extreme load or network dropped | Sampler enforces a 3-second timeout. Updates resume automatically once the host responds. |
+| Ping metric displays `N/A` | The latency could not be measured | Check that the host is reachable; the metric is measured with each sample. |
+| Metric updates stall | Server under extreme load or network dropped | Sampler enforces a 4-second timeout. Updates resume automatically once the host responds. |

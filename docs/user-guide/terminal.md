@@ -53,7 +53,7 @@ Allow operators to split workspace real estate horizontally and vertically witho
 - Each pane runs an independent SSH or shell process with its own memory allocation.
 
 #### ⚙️ Technical Internals & Architecture
-Splitting a pane does not recreate or restart the underlying PTY session. The active DOM node is reparented into a new split container within React's layout tree (`SplitTree.tsx`), leaving the underlying Node.js PTY process completely uninterrupted.
+Splitting a pane does not recreate or restart the underlying PTY session. The active DOM node is reparented into a new split container within React's layout tree (`PaneTree.tsx`), leaving the underlying Node.js PTY process completely uninterrupted.
 
 ---
 
@@ -72,22 +72,13 @@ Configure the **Local Terminal SSH Agent** behavior under *Settings → Terminal
 - **System Only**: Strictly inherits your existing desktop `$SSH_AUTH_SOCK` (e.g. gpg-agent or systemd-user ssh-agent) and never starts an app agent.
 - **Disabled**: Wipes `SSH_AUTH_SOCK` and `SSH_AGENT_PID` completely from the spawned shell environment.
 
-#### ⚙️ Technical Internals & Architecture
-`AgentLifecycleManager` probes for a running agent (or Windows OpenSSH Agent service). In `auto` mode under Global PIN caching, the app-wide agent (`AppAgent`) always takes precedence on a stable socket (`$XDG_RUNTIME_DIR/sshs3/agent.sock` or `/tmp/sshs3-agent-<uid>/agent.sock`). Because the socket path is stable, local terminal tabs opened *before* unlocking a smartcard can immediately use the card once unlocked without reopening the tab!
-
-#### 🛠️ How to Use
-- Click the "+" icon in the tab bar and select **Local Shell**.
-- Under *Settings → Local Terminal SSH Agent*, configure socket injection behavior:
-  - **Auto (Default)**: Priority resolution order: (1) App-wide smartcard agent (`AppAgent`) under Global PIN caching, (2) App's managed agent process, (3) System inherited agent (`$SSH_AUTH_SOCK`), (4) Newly spawned managed agent.
-  - **System Only**: Strictly uses the inherited environment socket; never spawns or overrides with app agents.
-  - **Disabled**: Injects no `SSH_AUTH_SOCK` variable.
+Open a local shell with **New Terminal** (<kbd>Ctrl+Shift+T</kbd>) and the local option, or **Open Local Terminal** in an empty pane. The setting is **Local Terminal SSH Agent** under *Settings → Terminal*.
 
 #### ⚠️ Limitations & Caveats
-- `SSH_AUTH_SOCK` is resolved and injected at the moment the local process is spawned. A shell tab opened *before* a smartcard is unlocked will not inherit the card unless Global PIN caching was already active.
+- `SSH_AUTH_SOCK` is resolved and injected at the moment the local process is spawned. Under Global PIN caching the app-wide agent socket is stable, so a shell opened before a card is unlocked picks the card up once it is unlocked; with any other agent mode, a tab opened before unlocking does not.
 
 #### ⚙️ Technical Internals & Architecture
-Managed by `AgentLifecycleManager` (`src/main/ssh/AgentLifecycleManager.ts`). Under Global PIN caching mode, the socket points to `AppAgent`, a dedicated local socket proxy that multiplexes SSH signing requests directly through unlocked hardware cards.
-
+`AgentLifecycleManager` (`src/main/ssh/AgentLifecycleManager.ts`) probes for a running agent (or the Windows OpenSSH Authentication Agent service) and spawns one only if none exists. In `auto` mode the resolution order is: (1) under Global PIN caching, the app-wide `AppAgent` (a real `ssh-agent` on a stable, permission-checked socket, `$XDG_RUNTIME_DIR/sshs3/agent.sock`, or `<tmpdir>/sshs3-<uid>/agent.sock` without `XDG_RUNTIME_DIR`), even while it is still empty; (2) the app's own running agent; (3) the inherited system or login-shell agent; (4) a newly spawned managed agent.
 ---
 
 ## 4. Terminal Productivity & Ergonomics

@@ -109,16 +109,15 @@ Replace error-prone manual `ssh-copy-id` terminal commands with an intuitive gra
 #### 🛠️ How to Use
 1. Right-click any SSH profile and select **Install public key** (or click the key icon in the profile editor).
 2. Check the public keys you want to authorize (e.g., workstation key, YubiKey public key, and smartcard public certificate).
-3. Select an installation strategy:
-   - **Direct Deploy**: Authenticates temporarily via password or existing key to append the keys automatically.
-   - **Copy command (Bash)**: Generates a safe, idempotent POSIX shell one-liner ready to paste into web consoles or out-of-band management terminals (iLO, iDRAC):
+3. Choose how sshs3 logs in with **Log in with** (**Automatic (recommended)**, **Password**, **This profile's key**, another smartcard, or the SSH agent), then click **Install** to append the keys automatically. You can also **Paste a public key** into the list. **Automatic** tries the available methods in order and shows that order below the selector.
+   - **Copy command (Bash)** / **Copy PowerShell**: Generates a safe, idempotent one-liner ready to paste into web consoles or out-of-band management terminals (iLO, iDRAC) when the host cannot be reached from here:
 
 ```bash
 mkdir -p -m 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG...' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 ```
 
 #### ⚠️ Limitations & Caveats
-- Direct Deploy requires temporary administrative or password access to the server.
+- Installing directly needs a way to log in once (a password or an already authorized key); otherwise copy the command and run it on the host.
 - Fails if the remote file system is mounted read-only or if SELinux context policies reject file writes under `~/.ssh/`.
 
 #### ⚙️ Technical Internals & Architecture
@@ -176,7 +175,7 @@ Leverages OpenSSH's native verification engine. When OpenSSH prompts *"Are you s
 Fine-tune low-level OpenSSH protocol flags for complex enterprise environments, bastions, and high-latency connections.
 
 #### 🛠️ How to Use
-In any SSH profile, click **Advanced...**:
+In any SSH profile, expand **Advanced SSH Options**:
 
 | Parameter | Flag | Purpose & Description | Caveat / Limitation |
 | :--- | :--- | :--- | :--- |
@@ -185,7 +184,7 @@ In any SSH profile, click **Advanced...**:
 | **Compression** | `-C` | Enables Gzip compression of network traffic across the SSH stream. | Recommended on high-latency/slow links; increases CPU overhead. |
 | **ServerAliveInterval** | `0` | Sends periodic null keep-alive packets (in seconds) through the tunnel. | Set to `30` or `60` to prevent firewall NAT timeouts on idle sessions. |
 | **X11 Display Location** | `127.0.0.1:0.0` | Target X-server socket where forwarded X11 windows are drawn. | Leave default unless running a custom external display server. |
-| **Custom Ciphers / KEX / MACs** | *OpenSSH defaults* | Comma-separated algorithm lists passed to OpenSSH (e.g. `chacha20-poly1305@openssh.com,aes128-gcm@openssh.com`). | Remote server must support at least one specified algorithm. |
+| **Custom Ciphers / KEX Algorithms / MACs** | *OpenSSH defaults* | Comma-separated algorithm lists passed to OpenSSH (e.g. `chacha20-poly1305@openssh.com,aes128-gcm@openssh.com`). | Remote server must support at least one specified algorithm. |
 
 ---
 
@@ -201,7 +200,7 @@ Eliminate vendor lock-in by importing existing OpenSSH configuration files and e
 - **JSON backup**: **Export JSON Backup** saves your folders and profiles to a JSON file you choose in the save dialog, and **Import JSON Backup** loads one again. The file is **not encrypted** and does **not contain secrets**: saved passwords, key passphrases, proxy passwords and S3 secret keys / session tokens are left out, so they must be entered again after an import. Keep the file safe anyway; it lists your hosts and usernames.
 
 #### ⚠️ Limitations & Caveats
-- Executable directives such as `LocalCommand` and `ProxyCommand` with arbitrary shell scripts are flagged with security warnings.
+- Only `Host`, `HostName`, `User`, `Port`, `IdentityFile`, `ProxyJump` and `LocalForward` / `RemoteForward` / `DynamicForward` are imported; every other directive, including executable ones such as `ProxyCommand` and `LocalCommand`, is ignored. Wildcard `Host` patterns (`*`, `?`) are skipped.
 
 #### ⚙️ Technical Internals & Architecture
 The export is plain JSON written to a path chosen through the save dialog (never a path supplied by the renderer). Secret fields are stripped in the main process before writing. Saved credentials at rest in the app itself are protected separately by the OS keyring (see the security chapter).

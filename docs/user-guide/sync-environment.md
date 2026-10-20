@@ -52,7 +52,7 @@ sequenceDiagram
     Note over App: Profile Modified Locally
     App->>Keyring: Derive AES-256-GCM Key (scrypt / PKCS#11 Challenge)
     App->>App: Encrypt Data in Memory (Zero-Knowledge)
-    App->>Remote: Upload Encrypted Blob (vault.enc)
+    App->>Remote: Upload Encrypted Files (topology.enc, credentials.enc, ...)
     Note over Remote: Remote host sees only opaque ciphertext
 ```
 
@@ -102,14 +102,14 @@ Ensure all SSH profiles saved in sshs3 are instantly accessible when running pla
 - Whenever a profile is added or edited, sshs3 updates a managed block in your local `~/.ssh/config`:
 
 ```ssh-config
-# BEGIN sshs3 managed block (do not edit manually)
+# BEGIN sshs3-managed (do not edit by hand -- managed by sshs3 Remote Profile Sync)
 Host prod-db
   HostName 10.0.4.12
   User dbadmin
   Port 22
   IdentityFile ~/.ssh/id_ed25519
   ProxyJump bastion.example.com
-# END sshs3 managed block
+# END sshs3-managed
 ```
 
 #### ⚠️ Limitations & Caveats
@@ -118,7 +118,7 @@ Host prod-db
 - A profile's free-form extra SSH options follow the same allowlist, both in this block and on the `ssh` command line sshs3 starts; other options are ignored. Use the profile's own fields for identity files, jump hosts, agent forwarding and X11.
 
 #### ⚙️ Technical Internals & Architecture
-`SshNativeFileMerger` writes atomically using a temporary file (`~/.ssh/config.tmp.PID`) followed by an atomic rename, eliminating file corruption if the process terminates mid-write.
+`SshNativeFileMerger` builds the new file content and `ProfileSyncService` writes it, serializing every read-modify-write cycle on `~/.ssh/config` through a queue so concurrent triggers (startup, profile save, sync) cannot overwrite each other. Only the content between the markers is replaced.
 
 ---
 
@@ -126,7 +126,7 @@ Host prod-db
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
-| `Wrong master password / MAC mismatch` | Incorrect master password entered during unlock | Re-enter password carefully. Three failures trigger a 5-minute security throttle. |
+| `Wrong master password / MAC mismatch` | Incorrect master password entered during unlock | Re-enter the password carefully. With "Use separate passwords" enabled, the topology and credentials passwords are different. |
 | `ECDSA key not supported for key derivation` | Linked smartcard uses an ECDSA algorithm | Unlock with your master password and use the card for session caching instead. |
 | `Sync conflict detected` | Same profile modified concurrently on two devices | Review the conflict resolution dialog to select which version should take precedence. |
-| Remote vault corrupted | Incomplete write or network failure during upload | Use "Restore from local backup" in Settings to overwrite the remote vault with your local state. |
+| Remote files corrupted | Incomplete write or network failure during upload | Uploads go to a temporary name and are renamed, so this is rare. Fix the connection and **Push** again to overwrite the remote files with your local state. |
