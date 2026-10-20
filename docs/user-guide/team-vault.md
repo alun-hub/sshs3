@@ -30,7 +30,7 @@ flowchart LR
 
 #### ✅ Requirements
 - **YubiKey with PIV support** for every member (YubiKey 4 or 5 series). Other smartcards (Gemalto, Thales, SafeNet, SITHS, etc.) **cannot** be used: Team Vault relies on `age-plugin-yubikey`, which communicates directly with the YubiKey's hardware management protocol rather than a generic PKCS#11/PIV middleware.
-- **Linux or Windows.** macOS is not yet supported. On Windows, YubiKey 5-series keys are verified working end-to-end; YubiKey 4-series keys do not currently work on Windows (the cause is still under investigation — they work fine on Linux).
+- **Linux or Windows.** macOS is not yet supported. YubiKey 4 and 5 series keys both work on Linux and Windows.
 - On Linux, `pcscd` installed and running on the host (the standard smartcard daemon already used for smartcard SSH authentication). Windows uses its built-in smartcard service instead — no extra install needed there.
 - **An S3-compatible bucket** accessible by all team members (AWS S3, MinIO, Ceph, Wasabi, etc.). SFTP is not supported as a Team Vault storage target.
 
@@ -127,19 +127,21 @@ Team Vault enforces strict role separation directly within the main process:
 | Capability | Admin | Member |
 |---|:---:|:---:|
 | Connect to shared SSH and S3 targets | ✅ | ✅ |
-| Add, edit, and organize shared profiles & folders | ✅ | ✅ |
+| Add, edit, and organize shared profiles & folders | ✅ | ✅ (but not where a profile with a stored secret connects, see below) |
 | **View plaintext passwords, passphrases & secret keys** | ✅ | ❌ *(redacted)* |
 | **Modify or overwrite stored credentials** | ✅ | ❌ *(preserved)* |
 | Copy member invites (`team-vault:build-invite`) | ✅ | ❌ |
 | Add / remove members, promote / demote roles | ✅ | ❌ |
 | Rename vault & edit team description | ✅ | ❌ |
-| Delete or remove vault from this device | ✅ | ❌ |
+| Remove vault from this machine (**Danger zone** in the team's detail panel) | ✅ | ❌ |
+| Remove a *locked* team from this device (**Remove team from this device** in the team list) | ✅ | ✅ |
 
 ### How Credential Protection Works for Members
 Non-admin members can connect to shared servers and S3 endpoints transparently, but they cannot read or exfiltrate passwords or secret access keys:
 - When a non-admin reads the vault payload (`getPayloadForRenderer`), the main process strips all plaintext secrets (`password`, `passphrase`, `proxy.password`, `secretAccessKey`, `sessionToken`) and replaces them with boolean flags (`hasPassword: true`, `hasSecretAccessKey: true`).
 - When a non-admin initiates an SSH or SFTP connection, the main process looks up the full profile internally in memory (`resolveProfileForConnect`), authenticating the connection without exposing the raw secret to the renderer process.
-- If a non-admin saves changes to a shared profile, any existing secrets are preserved intact; members cannot overwrite secrets with blank values or new values.
+- If a non-admin saves changes to a shared profile, any existing secrets are preserved intact. An attempt to set or change a password, passphrase, proxy password or S3 secret key is rejected ("Only a Team Vault admin can …").
+- On a profile that has a stored secret, a non-admin also cannot change where it connects (host, port, username, auth type, jump host or proxy), because that would let them redirect the admin-set secret to a server of their choosing. On profiles without a stored secret, members can edit those fields freely.
 
 ### Offboarding a Member
 When an Admin removes a member (**Remove member**):
@@ -197,9 +199,9 @@ Typing into the search bar instantly searches across **all** profiles in the act
 
 #### 🔄 Automatic Synchronization & Conflict Handling
 - **Local Changes:** Edits to profiles, folders, or team metadata are automatically pushed to S3 approximately two seconds after saving.
-- **Background Polling:** While unlocked, sshs3 checks S3 every 3 minutes for remote revisions. New changes are pulled automatically, updating the interface with *"Updated from another member"*.
+- **Background Polling:** While unlocked, sshs3 checks S3 every 3 minutes for remote revisions. New changes are pulled automatically, marking the team with an **Updated** badge.
 - **Sync Status Preview:** In Settings, the **Push** and **Pull** buttons display a live status preview (indicating whether there are unpushed local changes or remote updates waiting to be pulled) before initiating a sync.
-- **Conflict Resolution:** If remote changes occur while you have unpushed local modifications, sshs3 halts automatic overwrites and displays a **"Get latest"** conflict action. You can inspect the divergence and choose whether to push your version or discard local changes to pull the remote state.
+- **Conflict Resolution:** If remote changes occur while you have unpushed local modifications, sshs3 refuses to push over the newer remote revision (there is no merge and no force-push) and shows "A newer version is available — your unsynced changes here will be lost." with a **Get latest** button. **Get latest** discards your unsynced local changes and pulls the remote state; copy anything you want to keep first.
 
 ---
 
@@ -237,7 +239,6 @@ sshs3 never stores the recovery key on disk; the pasted text is piped to `age` o
 ### ⚠️ Known Limitations
 - **YubiKey Only:** Only YubiKey 4 and 5 series hardware keys are supported. Generic smartcards (PKCS#11/PIV) do not implement the necessary management protocols required by `age-plugin-yubikey`.
 - **macOS Not Yet Supported:** Team Vault currently runs on Linux and Windows only.
-- **YubiKey 4 on Windows:** Does not currently work on Windows (works fine on Linux); the cause hasn't been root-caused yet.
 - **S3 Storage Only:** Only S3-compatible object storage is supported. SFTP and Git are not supported storage backends for Team Vault.
 - **Offline Removal Threshold:** A workstation that misses more than one consecutive member removal / key rotation cycle while offline cannot verify intermediate rotation proofs. In that event, pull is halted, and the member should forget the local vault and re-pull fresh after verifying the member list with an admin.
 - **No Per-Folder Access Control:** All members of a given Team Vault can access all connection profiles within that vault. For segregated permissions (e.g. Production vs. Staging), create separate Team Vaults.

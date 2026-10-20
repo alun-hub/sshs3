@@ -9,18 +9,18 @@ The Connection Manager in **sshs3** (accessible via <kbd>Ctrl+Shift+O</kbd> or t
 
 ---
 
-## 1. SSH Profiles, Folders & Tagging
+## 1. SSH Profiles & Folders
 
 ### Feature: Hierarchical Folder Hierarchy & Instant Search
 
 #### 🎯 Purpose
-Allow system administrators managing fleets of hundreds or thousands of servers to organize hosts into logical folders (e.g., `Prod/Database/Stockholm`, `Staging/Web`), tag environments, and filter targets instantly in under two seconds.
+Allow system administrators managing fleets of hundreds or thousands of servers to organize hosts into logical folders (e.g., `Prod/Database/Stockholm`, `Staging/Web`) and filter targets instantly in under two seconds.
 
 #### 🛠️ How to Use
 1. Click **New Connection** → **SSH**.
 2. Specify **Profile Name**, **Host**, and **Port** (default `22`).
 3. In the **Folder** field, choose or type a folder hierarchy using forward slashes (e.g., `Clients/EnterpriseA/Prod`).
-4. Type in the filter bar at the top of the manager to search immediately across profile names, hostnames, IPs, tags, or usernames.
+4. Type in the filter bar at the top of the manager to search immediately across profile names, hostnames, usernames, or folder names.
 
 ### Cross-Source Search & Origin Badges
 Searching in the Connection Manager finds matching profiles across **all** your profile sources simultaneously:
