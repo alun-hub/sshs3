@@ -11,7 +11,7 @@ import { registerTerminalLinks } from '../lib/terminalLinks';
 import { useTerminalPathHover } from '../lib/useTerminalPathHover';
 import { CommandOutputTracker } from '../lib/terminalOutput';
 import { useSudoRetry } from '../lib/useSudoRetry';
-import { printableInput } from '../lib/terminalInput';
+import { isTerminalReply, printableInput } from '../lib/terminalInput';
 import { IS_WINDOWS } from '../lib/platform';
 import { SudoRetryPrompt } from './SudoRetryPrompt';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
@@ -821,7 +821,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             if (sessionIdRef.current && write) {
               write(sessionIdRef.current, data);
             }
-            if (data.includes('\r') || data.includes('\n')) {
+            if (isTerminalReply(data)) {
+              // The terminal answering a query from the program (fish asks before every prompt), not typing.
+            } else if (data.includes('\r') || data.includes('\n')) {
               outputTracker.recordEnter();
               sudoRetryRef.current.notifyEnter();
               const parts = data.split(/[\r\n]+/);

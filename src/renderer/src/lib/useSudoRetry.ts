@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Terminal } from 'xterm';
-import { isPromptLine, type CommandOutputTracker } from './terminalOutput';
+import { endsAtPrompt, isPromptLine, type CommandOutputTracker } from './terminalOutput';
 import { detectSudoRetry, isRootPromptLine, type SudoRetrySuggestion } from './sudoRetry';
 import { createRendererLogger } from './log';
 
@@ -58,12 +58,28 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
       armedRef.current = false;
       return;
     }
-    const cursorText = buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) ?? '';
+    const cursorLine = buf.getLine(buf.baseY + buf.cursorY);
+    const cursorText = cursorLine?.translateToString(true) ?? '';
+    if (!cursorText.trim()) return;
+    // Back at a prompt: one the patterns know, or any line where the cursor stands after a terminator
+    // and a space (`bash-5.3$ `, zsh's `user@host ~ % `, fish's `user@host ~> `).
+    const cursorX = buf.cursorX ?? cursorText.length;
+    const atPrompt =
+      isPromptLine(cursorText) ||
+      endsAtPrompt(
+        cursorLine?.translateToString(false, 0, cursorX) ?? '',
+        cursorLine?.translateToString(true, cursorX) ?? ''
+      );
     // Still running (or waiting for input): stay armed and look again on the next output.
-    if (!cursorText.trim() || !isPromptLine(cursorText)) return;
+    if (!atPrompt) return;
     armedRef.current = false;
     const result = tracker.lastCommandResult();
-    if (!result) return;
+    if (!result) {
+      // Only for shells that send OSC 133 marks, where a missing result points at the marks.
+      const snapshot = tracker.debugSnapshot();
+      if (snapshot.mode === 'osc') log.debug('no result', snapshot);
+      return;
+    }
     const found = detectSudoRetry({
       command: result.command,
       output: result.output,

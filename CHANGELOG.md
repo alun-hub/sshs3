@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.48] - 2026-10-20
+
+### Fixed
+- **Re-run with sudo did nothing in shells that send OSC 133 marks.** Bash with the VTE script (`/etc/profile.d/vte.sh`, active when sshs3 is started from a VTE terminal such as GNOME Terminal, which sets `VTE_VERSION`) and fish put the "output starts here" mark on the row after the command. The command was read up to and including that row, so the first output line became part of the command, a line break the safety check rejects, and no suggestion appeared. The command now ends before that row, and a shell that sends no "end of prompt" mark falls back to the row where Enter was pressed.
+- **Re-run with sudo did nothing with prompts it did not recognise.** Raw bash (`bash-5.3$`, no rc files), zsh's default (`user@host ~ %`), fish's default (`user@host ~>`) and `(venv) bash-5.3$` were not taken for prompts, so the app never decided that the command had finished and could not find the command on the row. A line now counts as a prompt when the cursor stands after a terminator (`$ # % > ❯ ➜`) and a space with nothing after it, and the command is whatever follows the first terminator on the row where Enter was pressed.
+- **The "Re-run with sudo?" bar could be dismissed by the terminal's own replies.** fish asks the terminal for its background colour, the cursor position and the device attributes before every prompt, and xterm.js answers through the same channel as keystrokes, so the answer counted as typing and cleared the bar (and was appended to the line kept for window titles). Replies to such queries (device attributes, cursor position, colour and version replies, focus reports) are no longer taken for input.
+- **Re-run with sudo stopped working in a terminal after a shell that sends OSC 133 marks had been used in it.** Once a terminal had seen such marks (fish, or bash with the VTE script), it kept reading every later command from the newest mark, even after you went back to a shell that sends none (`bash` inside fish, `exit` to bash, an ssh session), so it kept returning the old command. A mark is now only used while it belongs to the newest Enter; otherwise the command is read from the row where Enter was pressed.
+
 ## [0.96.47] - 2026-10-19
 
 ### Added

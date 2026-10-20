@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Terminal } from 'xterm';
-import { CommandOutputTracker, stripPrompt } from './terminalOutput';
+import { CommandOutputTracker, endsAtPrompt, stripPrompt, stripPromptLoose } from './terminalOutput';
 
 interface FakeLine {
   text: string;
@@ -245,6 +245,160 @@ describe('CommandOutputTracker', () => {
       f.markAt(undefined);
       f.lines.push({ text: 'hi' }, { text: '$ ' });
       expect(t.lastCommand()).toBe('echo hi');
+    });
+  });
+
+  describe('OSC 133 as bash with the VTE script sends it (C on the row after the command)', () => {
+    /** Prompt row, command typed, newline, `C` on the first output row, output, `D` on the next prompt row. */
+    function run(opts: { command: string; output: string[]; sendB?: boolean; cols?: number }) {
+      const f = fakeTerm([{ text: '$ ' }], { cols: opts.cols });
+      const t = new CommandOutputTracker(f.term);
+      f.osc('A');
+      if (opts.sendB !== false) f.osc('B');
+      f.lines[0].text = `$ ${opts.command}`;
+      t.recordEnter();
+      f.lines.push({ text: '' });
+      f.osc('C');
+      f.lines[f.lines.length - 1].text = opts.output[0];
+      for (const line of opts.output.slice(1)) f.lines.push({ text: line });
+      f.lines.push({ text: '' });
+      f.osc('D;1');
+      f.lines[f.lines.length - 1].text = '$ ';
+      return { t, f };
+    }
+
+    it('reads the command without the first output row, and the exit code', () => {
+      const { t } = run({ command: 'cat /x', output: ['cat: /x: Permission denied'] });
+      expect(t.lastCommandResult()).toEqual({
+        command: 'cat /x',
+        output: 'cat: /x: Permission denied',
+        exitCode: 1,
+      });
+      expect(t.lastCommand()).toBe('cat /x');
+    });
+
+    it('keeps several output rows out of the command', () => {
+      const { t } = run({ command: 'ls /root', output: ['ls: cannot open directory: Permission denied', 'second'] });
+      expect(t.lastCommandResult()?.command).toBe('ls /root');
+      expect(t.lastCommandResult()?.output).toBe('ls: cannot open directory: Permission denied\nsecond');
+    });
+
+    it('still reads the command from a shell that marks C on the command row itself', () => {
+      const f = fakeTerm([{ text: '$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      f.osc('B');
+      f.lines[0].text = '$ cat /x';
+      f.osc('C');
+      f.lines.push({ text: 'cat: /x: Permission denied' }, { text: '' });
+      f.osc('D;1');
+      f.lines[f.lines.length - 1].text = '$ ';
+      expect(t.lastCommandResult()?.command).toBe('cat /x');
+    });
+
+    it('falls back to the row where Enter was pressed when the shell sends no B mark', () => {
+      const { t } = run({ command: 'cat /x', output: ['cat: /x: Permission denied'], sendB: false });
+      expect(t.lastCommandResult()).toEqual({ command: 'cat /x', output: 'cat: /x: Permission denied' });
+    });
+  });
+
+  describe('prompts the patterns do not know', () => {
+    it.each([
+      ['bash-5.3$ ', 'raw bash'],
+      ['alun@fedora ~ % ', 'zsh default'],
+      ['alun@fedora ~> ', 'fish default'],
+      ['(venv) bash-5.3$ ', 'bash with a virtualenv'],
+    ])('reads the command after %j (%s)', (prompt) => {
+      const f = fakeTerm([{ text: `${prompt}cat /x` }]);
+      const t = new CommandOutputTracker(f.term);
+      t.recordEnter();
+      f.lines.push({ text: 'cat: /x: Permission denied' }, { text: prompt });
+      expect(t.lastCommandResult()).toEqual({ command: 'cat /x', output: 'cat: /x: Permission denied' });
+    });
+
+    it('does not take a full-width row of output above an unknown prompt for part of the command', () => {
+      const f = fakeTerm([{ text: 'x'.repeat(20) }, { text: 'bash-5.3$ ls /root' }], { cols: 20 });
+      const t = new CommandOutputTracker(f.term);
+      f.markAt(1);
+      t.recordEnter();
+      f.markAt(undefined);
+      f.lines.push({ text: 'ls: cannot open directory: Permission denied' }, { text: 'bash-5.3$ ' });
+      expect(t.lastCommandResult()?.command).toBe('ls /root');
+    });
+
+    it('stripPromptLoose leaves a line without a prompt alone, and stripPrompt stays strict', () => {
+      expect(stripPromptLoose('Password: secret')).toBe('Password: secret');
+      expect(stripPromptLoose('bash-5.3$ ls -la')).toBe('ls -la');
+      expect(stripPromptLoose('$ ls')).toBe('ls');
+      expect(stripPrompt('bash-5.3$ ls')).toBe('bash-5.3$ ls');
+    });
+
+    it('endsAtPrompt needs a terminator and a space right before the cursor and nothing after it', () => {
+      expect(endsAtPrompt('bash-5.3$ ', '')).toBe(true);
+      expect(endsAtPrompt('alun@fedora ~ % ', '   ')).toBe(true);
+      expect(endsAtPrompt('Enter value: ', '')).toBe(false);
+      expect(endsAtPrompt('bash-5.3$ ls', '')).toBe(false);
+      expect(endsAtPrompt('bash-5.3$ ', 'ls')).toBe(false);
+      // A right-hand prompt after a gap is part of the prompt, text right after the cursor is not.
+      expect(endsAtPrompt('alun@fedora ~> ', '        21:04:07')).toBe(true);
+      expect(endsAtPrompt('alun@fedora ~> ', ' 21:04')).toBe(false);
+    });
+  });
+
+  describe('a shell that sends OSC 133 marks replaced by one that does not', () => {
+    /** One command marked the way bash with the VTE script or fish marks it, then the shell without marks. */
+    function setup() {
+      const f = fakeTerm([{ text: '$ ' }]);
+      const t = new CommandOutputTracker(f.term);
+      f.osc('A');
+      f.osc('B');
+      f.lines[0].text = '$ ls /etc';
+      t.recordEnter();
+      f.lines.push({ text: '' });
+      f.osc('C');
+      f.lines[f.lines.length - 1].text = 'old output from the marked shell';
+      f.lines.push({ text: '' });
+      f.osc('D;0');
+      f.lines[f.lines.length - 1].text = '$ ';
+      return { f, t };
+    }
+
+    it('reads the command typed after the switch, not the old marked one', () => {
+      const { f, t } = setup();
+      f.lines[f.lines.length - 1].text = '$ cat /x';
+      t.recordEnter();
+      f.lines.push({ text: 'cat: /x: Permission denied' }, { text: '$ ' });
+
+      expect(t.lastCommandResult()).toEqual({ command: 'cat /x', output: 'cat: /x: Permission denied' });
+      expect(t.lastCommand()).toBe('cat /x');
+      expect(t.lastOutput()).toBe('cat: /x: Permission denied');
+      expect(t.debugSnapshot().mode).toBe('enter-marker');
+    });
+
+    it('still uses the marks for a command the marked shell ran after the Enter', () => {
+      const { f, t } = setup();
+      f.osc('B');
+      f.lines[f.lines.length - 1].text = '$ cat /x';
+      t.recordEnter();
+      f.lines.push({ text: '' });
+      f.osc('C');
+      f.lines[f.lines.length - 1].text = 'cat: /x: Permission denied';
+      f.lines.push({ text: '' });
+      f.osc('D;1');
+      f.lines[f.lines.length - 1].text = '$ ';
+
+      expect(t.lastCommandResult()).toEqual({
+        command: 'cat /x',
+        output: 'cat: /x: Permission denied',
+        exitCode: 1,
+      });
+      expect(t.debugSnapshot().mode).toBe('osc');
+    });
+
+    it('gives nothing for an Enter on an empty prompt, instead of the old command', () => {
+      const { f, t } = setup();
+      t.recordEnter();
+      f.lines.push({ text: '$ ' });
+      expect(t.lastCommandResult()).toBeNull();
     });
   });
 

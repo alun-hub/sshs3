@@ -31,7 +31,13 @@ function setup(opts: SetupOptions = {}) {
           type: state.bufferType,
           baseY: 0,
           cursorY: 0,
-          getLine: () => ({ translateToString: () => state.cursorLine }),
+          cursorX: state.cursorLine.length,
+          getLine: () => ({
+            translateToString: (trim?: boolean, start = 0, end?: number) => {
+              const text = state.cursorLine.slice(start, end);
+              return trim ? text.trimEnd() : text;
+            },
+          }),
         };
       },
     },
@@ -74,6 +80,21 @@ describe('useSudoRetry', () => {
     const r = setup();
     fail(r);
     expect(r.result.current.suggestion).toEqual({ sudoCommand: 'sudo cat /etc/shadow' });
+  });
+
+  it.each(['bash-5.3$ ', 'alun@fedora ~ % ', 'alun@fedora ~> ', '(venv) bash-5.3$ '])(
+    'recognises the prompt %j of a shell whose prompt the patterns do not know',
+    (cursorLine) => {
+      const r = setup({ cursorLine });
+      fail(r);
+      expect(r.result.current.suggestion).toEqual({ sudoCommand: 'sudo cat /etc/shadow' });
+    }
+  );
+
+  it('does not take a line that merely ends in text for a prompt', () => {
+    const r = setup({ cursorLine: 'Enter value: ' });
+    fail(r);
+    expect(r.result.current.suggestion).toBeNull();
   });
 
   it('stays quiet when the command is not at a prompt yet, and shows once it is', () => {

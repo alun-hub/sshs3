@@ -19,6 +19,32 @@ export function stripPrompt(line: string): string {
   return line.replace(PROMPT_PREFIX_RE, '').trim();
 }
 
+// Last resort for prompts the patterns above do not know (`bash-5.3$`, zsh's `user@host ~ %`, fish's
+// `user@host ~>`, `(venv) bash-5.3$`): up to 80 characters, then the first prompt terminator and a space.
+const LOOSE_PROMPT_PREFIX_RE = /^.{1,80}?[$#%>❯➜]\s+/;
+
+/**
+ * Like `stripPrompt`, but also recognises a prompt the patterns do not know, by its terminator. Only for
+ * the row where Enter was pressed: a continuation row of a long command can contain `> ` or `$ ` without
+ * starting with a prompt, so it must not be run through this.
+ */
+export function stripPromptLoose(line: string): string {
+  const text = line.trim();
+  const strict = stripPrompt(text);
+  if (strict !== text) return strict;
+  return text.replace(LOOSE_PROMPT_PREFIX_RE, '').trim();
+}
+
+/**
+ * True when the cursor stands right after a prompt terminator and a space, with nothing after it or only
+ * a right-hand prompt (fish's `fish_right_prompt`, zsh's `RPROMPT`, starship's `right_format`) separated
+ * from it by a gap: the shell is waiting for a command, whatever its prompt looks like.
+ */
+export function endsAtPrompt(textBeforeCursor: string, textAfterCursor: string): boolean {
+  if (!/[$#%>❯➜]\s+$/.test(textBeforeCursor)) return false;
+  return textAfterCursor.trim() === '' || /^\s{2,}\S/.test(textAfterCursor);
+}
+
 /**
  * Checks whether a given line consists solely of a shell prompt.
  */
@@ -196,7 +222,7 @@ export class CommandOutputTracker {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
     const cursorLine = buf.baseY + buf.cursorY;
-    if (this.regions.length > 0) {
+    if (this.currentRegion()) {
       const osc = this.lastOscOutput();
       return osc ? stripTrailingPrompt(osc) : null;
     }
@@ -207,6 +233,23 @@ export class CommandOutputTracker {
       if (text.trim()) return stripTrailingPrompt(text);
     }
     return null;
+  }
+
+  /**
+   * The newest OSC 133 region, but only while it belongs to the newest Enter. A shell that sent marks earlier
+   * in this terminal (fish, bash with the VTE script) and was then replaced by one that does not (`bash`
+   * typed inside fish, `exit` back to bash, an ssh session) leaves a region behind; reading it would
+   * return that old command for every later one. A region started before the last Enter is not the one
+   * for this command, so the Enter-marker reading is used.
+   */
+  private currentRegion(): OscRegion | null {
+    const region = this.regions[this.regions.length - 1];
+    if (!region) return null;
+    const newestEnter = this.markers.filter((m) => !m.isDisposed && m.line >= 0).pop();
+    if (newestEnter && !region.start.isDisposed && region.start.line >= 0 && region.start.line < newestEnter.line) {
+      return null;
+    }
+    return region;
   }
 
   private lastOscOutput(): string | null {
@@ -245,16 +288,16 @@ export class CommandOutputTracker {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
 
-    if (this.regions.length > 0) {
+    if (this.currentRegion()) {
       for (let i = this.regions.length - 1; i >= 0; i--) {
         const { commandMarker, start } = this.regions[i];
         if (commandMarker && !commandMarker.isDisposed && commandMarker.line >= 0) {
           const toLine =
             start && !start.isDisposed && start.line >= commandMarker.line
-              ? start.line + 1
+              ? this.commandRowsEnd(commandMarker.line, start.line)
               : commandMarker.line + 1;
-          const text = this.readLines(commandMarker.line, toLine).trim();
-          if (text) return stripPrompt(text);
+          const text = this.readCommandRows(commandMarker.line, toLine).trim();
+          if (text) return stripPromptLoose(text);
         }
       }
     }
@@ -263,7 +306,7 @@ export class CommandOutputTracker {
     for (let i = live.length - 1; i >= 0; i--) {
       // The marker sits on the row where Enter was pressed, i.e. the last row of a wrapped command.
       const text = this.readLogicalLine(live[i].line).trim();
-      if (text) return stripPrompt(text);
+      if (text) return stripPromptLoose(text);
     }
     return null;
   }
@@ -299,8 +342,17 @@ export class CommandOutputTracker {
     if (line.isWrapped) return true;
     if (row === 0 || !this.rowIsFull(row - 1)) return false;
     const text = line.translateToString(true).trim();
-    const withoutPrompt = stripPrompt(text);
+    const withoutPrompt = stripPromptLoose(text);
     return !(withoutPrompt !== text && withoutPrompt !== '');
+  }
+
+  /**
+   * Row after the last row of the command, given where the prompt ended (OSC 133 `B`) and where the output
+   * began (`C`). Bash and the VTE script put `C` on the row after the command, which is already output; a
+   * shell that marks it before the line break leaves it on the command's own row.
+   */
+  private commandRowsEnd(commandRow: number, outputRow: number): number {
+    return outputRow === commandRow ? outputRow + 1 : Math.max(outputRow, commandRow + 1);
   }
 
   /** Like `readLines`, but joins the rows of a command line the way `logicalLineBounds` sees them. */
@@ -332,26 +384,31 @@ export class CommandOutputTracker {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
 
-    if (this.regions.length > 0) {
+    if (this.currentRegion()) {
       // Only the newest region counts. While it is still open (a nested `ssh`, `docker exec`, a running
       // program) there is no finished command, and an older one must not be offered in its place.
       const region = this.regions[this.regions.length - 1];
       if (!region.end) return null;
       const { start, end, commandMarker, partialLastLine } = region;
-      if (!commandMarker || commandMarker.isDisposed || commandMarker.line < 0) return null;
       if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
-      const command = stripPrompt(this.readCommandRows(commandMarker.line, start.line + 1).trim());
-      const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
-      const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
-      if (!command || !output.trim()) return null;
-      return { command, output, exitCode: region.exitCode };
+      // A shell that sends `A`, `C` and `D` but no `B` (end of prompt) does not tell where the command
+      // starts: fall through to reading it from the row where Enter was pressed.
+      if (commandMarker && !commandMarker.isDisposed && commandMarker.line >= 0) {
+        const command = stripPromptLoose(
+          this.readCommandRows(commandMarker.line, this.commandRowsEnd(commandMarker.line, start.line)).trim()
+        );
+        const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
+        const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
+        if (!command || !output.trim()) return null;
+        return { command, output, exitCode: region.exitCode };
+      }
     }
 
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     const newest = live[live.length - 1];
     if (!newest) return null;
     const text = this.readLogicalLine(newest.line).trim();
-    const command = stripPrompt(text);
+    const command = stripPromptLoose(text);
     // The Enter must have been pressed on a prompt followed by a command; an answer typed into a
     // running program (`[Y/n]`, a password) has no prompt in front of it.
     if (!command || command === text) return null;
@@ -384,7 +441,7 @@ export class CommandOutputTracker {
       return rows;
     };
     const cols = this.term.cols ?? 0;
-    if (this.regions.length > 0) {
+    if (this.currentRegion()) {
       const region = this.regions[this.regions.length - 1];
       const at = region.commandMarker?.line ?? region.start.line;
       return { mode: 'osc', cols, markerRow: at, bounds: null, rows: describe(at - 1, at + 3) };
