@@ -28,7 +28,7 @@
 
 ## Overview
 
-**sshs3** is an Electron desktop app for sysadmins, DevOps and developers who work across many servers and clusters. Your system's own `ssh` binary drives the terminal and carries SFTP (so `~/.ssh/config`, agents, aliases and jump hosts just work), the AWS SDK talks to any S3-compatible endpoint, and a built-in Kubernetes client handles clusters. See the [Product Comparison Guide](docs/COMPARISON.md) for how it compares with PuTTY, MobaXterm, WinSCP and S3 Browser.
+**sshs3** is an Electron desktop app for sysadmins, DevOps and developers who work across many servers and clusters. Your system's own `ssh` binary drives the terminal and carries SFTP (so `~/.ssh/config`, agents, aliases and jump hosts just work), the AWS SDK talks to any S3-compatible endpoint, and a built-in Kubernetes client handles clusters. See the [Product Comparison Guide](docs/COMPARISON.md) for how it compares with PuTTY, MobaXterm, WinSCP, S3 Browser, Termius and other modern SSH clients (sshpilot, SSH-Studio, RustConn).
 
 ## Download
 
