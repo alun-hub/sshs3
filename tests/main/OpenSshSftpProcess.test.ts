@@ -239,4 +239,16 @@ describe('OpenSshSftpProcess', () => {
     expect(info.keyType).toBe('ED25519');
     expect(info.fingerprint).toBe('SHA256:WwJD+x5/zn0');
   });
+
+  it('names the host ssh asks about when it is a jump host, not the target', () => {
+    const cfg = { host: 'target', port: 22, username: 'u', authType: 'password' } as const;
+    const bastion = parseHostKeyPrompt(
+      "The authenticity of host 'bastion (10.0.0.1)' can't be established.\nED25519 key fingerprint is: SHA256:b.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ",
+      cfg
+    );
+    expect(bastion.host).toBe('bastion');
+    expect(bastion.port).toBe(22);
+    const bracketed = parseHostKeyPrompt("The authenticity of host '[bastion]:2222 ([10.0.0.1]:2222)' can't be established.", cfg);
+    expect(bracketed).toMatchObject({ host: 'bastion', port: 2222 });
+  });
 });

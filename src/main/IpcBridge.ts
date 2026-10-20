@@ -1519,10 +1519,10 @@ export class IpcBridge {
     });
 
     this.sshPtyManager.on('hostkey-changed', ({ sessionId, ...target }) => {
-      void handleHostKeyChanged(target, {
+      handleHostKeyChanged(target, {
         promptHostKeyTrust: (info) => this.promptHostKeyTrust(info),
         notify: (data) => this.onPtyData?.({ sessionId, data }),
-      });
+      }).catch((err) => ipcLog.warn('Changed host key handling failed:', err));
     });
 
     this.onTransferProgress = (progress) => {

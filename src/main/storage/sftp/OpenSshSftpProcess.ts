@@ -40,9 +40,13 @@ const HOST_KEY_CONFIRM_RE = /are you sure you want to continue connecting/i;
 
 export function parseHostKeyPrompt(prompt: string, config: SFTPConfig): HostKeyPromptInfo {
   const m = /(\S+) key fingerprint is:? (\S+?)\.?(?:\s|$)/i.exec(prompt);
+  // The question can be about a jump host rather than the target: name the host ssh actually asks about.
+  const asked = /authenticity of host '(?:\[([^\]']+)\]:(\d+)|([^\s']+))/i.exec(prompt);
+  const askedHost = asked?.[1] ?? asked?.[3];
+  const sameHost = !askedHost || askedHost === config.host;
   return {
-    host: config.host,
-    port: config.port ?? 22,
+    host: sameHost ? config.host : askedHost,
+    port: sameHost ? (config.port ?? 22) : asked?.[2] ? Number(asked[2]) : 22,
     keyType: m?.[1] ?? 'unknown',
     fingerprint: m?.[2] ?? 'unknown',
     status: 'unknown',

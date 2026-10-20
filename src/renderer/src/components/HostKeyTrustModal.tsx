@@ -84,7 +84,7 @@ export const HostKeyTrustModal: React.FC = () => {
             <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-red-300 leading-relaxed">
               WARNING: The host key for this server differs from the key stored previously. This could mean
               the server was reinstalled or reconfigured, but could also indicate a man-in-the-middle attack.
-              Replacing the key removes the old entry from known_hosts; you will be asked to verify the new
+              Replacing the key removes all stored keys for this host from known_hosts; you will be asked to verify the new
               key when you reconnect. Only replace it if you are confident this change is legitimate.
             </p>
           ) : (
