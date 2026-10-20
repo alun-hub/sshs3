@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { classifyAskpassPrompt, describeAskpassPrompt, isPasswordPrompt } from '../../src/main/ssh/askpassPrompt';
+import {
+  classifyAskpassPrompt,
+  describeAskpassPrompt,
+  isHostKeyConfirmPrompt,
+  isPasswordPrompt,
+} from '../../src/main/ssh/askpassPrompt';
 
 describe('askpassPrompt', () => {
   it('recognises account password prompts but not PIN or passphrase prompts mentioning "password"', () => {
@@ -39,5 +44,11 @@ describe('askpassPrompt', () => {
     const d = describeAskpassPrompt('Enter passphrase for key:', { host: 'h' });
     expect(d.kind).toBeUndefined();
     expect(d.prompt).toBe('Enter your smartcard PIN to connect via SSH to h:');
+  });
+
+  it('recognises the host key confirmation question and its retry, but not PIN prompts', () => {
+    expect(isHostKeyConfirmPrompt("The authenticity of host 'h' can't be established.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ")).toBe(true);
+    expect(isHostKeyConfirmPrompt("Please type 'yes', 'no' or the fingerprint: ")).toBe(true);
+    expect(isHostKeyConfirmPrompt('Enter PIN for PKCS#11 token:')).toBe(false);
   });
 });

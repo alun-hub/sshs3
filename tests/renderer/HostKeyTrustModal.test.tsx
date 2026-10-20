@@ -69,7 +69,7 @@ describe('HostKeyTrustModal Component', () => {
     });
 
     expect(screen.getByText('Host Key Changed!')).toBeInTheDocument();
-    expect(screen.getByTestId('hostkey-trust-accept')).toHaveTextContent('Trust Anyway');
+    expect(screen.getByTestId('hostkey-trust-accept')).toHaveTextContent('Replace Key');
   });
 
   it('accepting calls respondHostKeyPrompt with trust=true and closes the modal', async () => {

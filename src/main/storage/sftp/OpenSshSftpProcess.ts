@@ -39,7 +39,7 @@ function toSshConfig(config: SFTPConfig): SSHConnectionConfig {
 const HOST_KEY_CONFIRM_RE = /are you sure you want to continue connecting/i;
 
 export function parseHostKeyPrompt(prompt: string, config: SFTPConfig): HostKeyPromptInfo {
-  const m = /(\S+) key fingerprint is (\S+?)\.?(?:\s|$)/i.exec(prompt);
+  const m = /(\S+) key fingerprint is:? (\S+?)\.?(?:\s|$)/i.exec(prompt);
   return {
     host: config.host,
     port: config.port ?? 22,

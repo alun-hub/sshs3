@@ -158,7 +158,7 @@ Protect sysadmins and infrastructure against Man-In-The-Middle (MITM) attacks an
 
 #### ⚠️ Limitations & Caveats
 - If a server is reinstalled and generates a new host key, OpenSSH detects a mismatch and rejects connection (`HOST KEY VERIFICATION FAILED`).
-- A changed key shows the red **Host Key Changed!** dialog with a man-in-the-middle warning; only click **Trust Anyway** if you are sure the change is legitimate. In terminal sessions OpenSSH itself refuses the connection until the old entry is removed with `ssh-keygen -R <host>`.
+- A changed key shows the red **Host Key Changed!** dialog with a man-in-the-middle warning; in terminal sessions OpenSSH refuses the connection and sshs3 asks whether to replace the stored key. Click **Replace Key** only if you are sure the change is legitimate: it removes the old entry from `known_hosts` (like `ssh-keygen -R <host>`), and when you reconnect you verify and trust the new key as for any unknown host.
 
 #### ⚙️ Technical Internals & Architecture
 Leverages OpenSSH's native verification engine. When OpenSSH prompts *"Are you sure you want to continue connecting?"*, the prompt is captured by `AskpassServer` (`IPC_CHANNELS.HOSTKEY_PROMPT`). If the user does not respond within 60 seconds or closes the window, the request is answered `no` (fail-closed security).

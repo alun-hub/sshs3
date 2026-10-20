@@ -55,7 +55,11 @@ function getSpawn(): typeof nodePty.spawn {
 }
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
-import { describeAskpassPrompt } from './askpassPrompt';
+import { describeAskpassPrompt, isHostKeyConfirmPrompt } from './askpassPrompt';
+import { parseHostKeyChanged } from './hostKeyChanged';
+import { parseHostKeyPrompt } from '../storage/sftp/OpenSshSftpProcess';
+import type { HostKeyPromptInfo } from './HostKeyVerifier';
+import type { SFTPConfig } from '../../shared/types/storage';
 import { listAgentPublicKeys } from './PublicKeyDiscovery';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { createLogger } from '../log';
@@ -65,6 +69,13 @@ export interface SSHPtyManagerEvents {
   exit: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
   reconnecting: (event: { sessionId: string; attempt: number; maxAttempts: number }) => void;
   reconnected: (event: { sessionId: string }) => void;
+  'hostkey-changed': (event: {
+    sessionId: string;
+    host: string;
+    port: number;
+    keyType: string;
+    fingerprint: string;
+  }) => void;
   presence: (event: { sessionId: string; prompt: string }) => void;
   askpass: (event: {
     sessionId: string;
@@ -101,6 +112,9 @@ export class InternalSSHPtySession implements SSHPtySession {
 
   private scrollbackChunks: string[] = [];
   private scrollbackLength: number = 0;
+  /** Output of the current ssh process only (unlike the scrollback, which spans reconnects). */
+  private recentOutput: string = '';
+  private static readonly RECENT_OUTPUT_CHARS = 8192;
   private static readonly MAX_SCROLLBACK_BYTES = 128 * 1024; // 128 KB
 
   constructor(params: {
@@ -148,8 +162,10 @@ export class InternalSSHPtySession implements SSHPtySession {
   public bindPty(newPty: IPty): void {
     this.pty = newPty;
     this.pid = newPty.pid;
+    this.recentOutput = '';
 
     newPty.onData((data: string) => {
+      this.recentOutput = (this.recentOutput + data).slice(-InternalSSHPtySession.RECENT_OUTPUT_CHARS);
       this.appendScrollback(data);
       for (const listener of this.dataListeners) {
         listener(data);
@@ -168,8 +184,25 @@ export class InternalSSHPtySession implements SSHPtySession {
       clearTimeout(this.reconnectStableTimer);
       this.reconnectStableTimer = undefined;
     }
+    // A changed host key never fixes itself, so retrying would only repeat the warning.
+    const changedKey = !this.disposed && event.exitCode !== 0 ? parseHostKeyChanged(this.recentOutput) : null;
+    if (changedKey) {
+      const msg =
+        `\r\n\x1b[31m[sshs3: the host key for ${this.config.host} has changed. ` +
+        `The server may have been reinstalled, or the connection is being intercepted.]\x1b[0m\r\n`;
+      this.appendScrollback(msg);
+      for (const listener of this.dataListeners) listener(msg);
+      this.manager.emit('data', { sessionId: this.sessionId, data: msg });
+      this.manager.emit('hostkey-changed', {
+        sessionId: this.sessionId,
+        host: this.config.host,
+        port: this.config.port ?? 22,
+        ...changedKey,
+      });
+    }
     const shouldReconnect =
       !this.disposed &&
+      !changedKey &&
       Boolean(this.config.autoReconnect) &&
       (event.exitCode !== 0 || event.signal !== undefined) &&
       this.reconnectAttempts < (this.config.maxReconnectAttempts ?? 3);
@@ -432,12 +465,15 @@ export interface SSHPtyManagerOptions {
    * nothing left for this to disambiguate. Kept for now so existing callers don't need to change.
    */
   isTunnelActive?: (connectionId: string, tunnelId: string) => boolean;
+  /** Answers OpenSSH's unknown-host-key question; absent means "no" (fail closed). */
+  hostKeyPromptHandler?: (info: HostKeyPromptInfo) => Promise<boolean>;
 }
 
 export class SSHPtyManager extends EventEmitter {
   private sessions: Map<string, SSHPtySession> = new Map();
   private sessionOptions: Map<string, PtyOptions | undefined> = new Map();
   private settingsStore?: SettingsStore;
+  private hostKeyPromptHandler?: (info: HostKeyPromptInfo) => Promise<boolean>;
   /**
    * Local ports our own already-open sessions have bound a tunnel for, keyed by the owning
    * session id. Terminal sessions no longer auto-embed saved tunnels (only the Tunnels panel
@@ -449,6 +485,7 @@ export class SSHPtyManager extends EventEmitter {
   constructor(options?: SSHPtyManagerOptions) {
     super();
     this.settingsStore = options?.settingsStore;
+    this.hostKeyPromptHandler = options?.hostKeyPromptHandler;
   }
 
   /**
@@ -591,6 +628,12 @@ export class SSHPtyManager extends EventEmitter {
           this.emit('presence', { sessionId, prompt });
         },
         promptHandler: async (rawPrompt: string, retry?: AskpassPromptRetryContext) => {
+          // ssh asks "continue connecting?" through askpass too; it must never reach the PIN modal.
+          if (isHostKeyConfirmPrompt(rawPrompt)) {
+            if (!this.hostKeyPromptHandler) return 'no';
+            const info = parseHostKeyPrompt(rawPrompt, { host: config.host, port: config.port ?? 22 } as SFTPConfig);
+            return (await this.hostKeyPromptHandler(info)) ? 'yes' : 'no';
+          }
           // Kind only, never the answer. A 'password' prompt on a key-based profile means ssh could not
           // authenticate with the agent and fell back to asking for the account password.
           const promptKind = describeAskpassPrompt(rawPrompt, config).kind ?? 'passphrase';

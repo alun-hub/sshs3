@@ -230,4 +230,13 @@ describe('OpenSshSftpProcess', () => {
       status: 'unknown',
     });
   });
+
+  it('parses the fingerprint when OpenSSH writes "fingerprint is:" and askpass joins lines with a marker', () => {
+    const info = parseHostKeyPrompt(
+      "The authenticity of host 'h (1.2.3.4)' can't be established. ⏎ ED25519 key fingerprint is: SHA256:WwJD+x5/zn0 ⏎ This key is not known by any other names. ⏎ Are you sure you want to continue connecting (yes/no/[fingerprint])? ",
+      { host: 'h', port: 22, username: 'u', authType: 'password' }
+    );
+    expect(info.keyType).toBe('ED25519');
+    expect(info.fingerprint).toBe('SHA256:WwJD+x5/zn0');
+  });
 });

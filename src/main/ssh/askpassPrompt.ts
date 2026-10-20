@@ -5,6 +5,11 @@ export function isPasswordPrompt(rawPrompt: string): boolean {
   return /password/i.test(rawPrompt) && !/pin|passphrase/i.test(rawPrompt);
 }
 
+/** OpenSSH's "continue connecting (yes/no)?" host key question, which it also routes through askpass. */
+export function isHostKeyConfirmPrompt(rawPrompt: string): boolean {
+  return /are you sure you want to continue connecting|please type 'yes', 'no'/i.test(rawPrompt);
+}
+
 /**
  * Which kind of secret an OpenSSH askpass prompt wants. `undefined` is a key passphrase;
  * anything unrecognised is treated as a smartcard PIN.

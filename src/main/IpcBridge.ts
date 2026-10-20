@@ -72,6 +72,7 @@ import { registerK8sHandlers } from './ipc/k8sHandlers';
 import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
 import { registerSyncHandlers } from './ipc/syncHandlers';
 import { registerTeamVaultHandlers } from './ipc/teamVaultHandlers';
+import { handleHostKeyChanged } from './ssh/hostKeyChanged';
 import { createLogger } from './log';
 const ipcLog = createLogger('ipc');
 const sshLog = createLogger('ssh');
@@ -261,6 +262,7 @@ export class IpcBridge {
           this.sshTunnelManager
             .listActive()
             .some((t) => t.connectionId === connectionId && t.tunnel.id === tunnelId),
+        hostKeyPromptHandler: (info) => this.promptHostKeyTrust(info),
       });
     this.storageRegistry =
       options.storageRegistry ??
@@ -1514,6 +1516,13 @@ export class IpcBridge {
       if (webContents && !webContents.isDestroyed?.()) {
         webContents.send(IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
       }
+    });
+
+    this.sshPtyManager.on('hostkey-changed', ({ sessionId, ...target }) => {
+      void handleHostKeyChanged(target, {
+        promptHostKeyTrust: (info) => this.promptHostKeyTrust(info),
+        notify: (data) => this.onPtyData?.({ sessionId, data }),
+      });
     });
 
     this.onTransferProgress = (progress) => {
