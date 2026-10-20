@@ -155,15 +155,15 @@ prune_releases() {
 
   local listing
   if ! listing="$(gh api --paginate 'repos/{owner}/{repo}/releases?per_page=100' \
-      --jq '.[] | [.id, .tag_name, (.draft | tostring)] | @tsv' 2>/dev/null)"; then
+      --jq '.[] | [.id, .tag_name, (.draft | tostring), ([.assets[].download_count] | add // 0)] | @tsv' 2>/dev/null)"; then
     PRUNE_RESULT="skipped (could not list releases)"
     echo -e "${YELLOW}Warning: could not list GitHub releases; skipping prune.${RESET}"
     return 0
   fi
 
   local drafts older
-  drafts="$(awk -F'\t' -v tag="$TAG" '$3 == "true" && $2 != tag { print $1 "\t" $2 }' <<<"$listing")"
-  older="$(awk -F'\t' -v tag="$TAG" '$3 == "false" && $2 != tag { print $1 "\t" $2 }' <<<"$listing" \
+  drafts="$(awk -F'\t' -v tag="$TAG" '$3 == "true" && $2 != tag { print $1 "\t" $2 "\t" $4 }' <<<"$listing")"
+  older="$(awk -F'\t' -v tag="$TAG" '$3 == "false" && $2 != tag { print $1 "\t" $2 "\t" $4 }' <<<"$listing" \
     | sort -t $'\t' -k2,2Vr | tail -n +"$KEEP_RELEASES")"
 
   local n_drafts=0 n_old=0
@@ -181,15 +181,27 @@ prune_releases() {
     return 0
   fi
 
-  local id deleted=0 failed=0
-  while IFS=$'\t' read -r id _; do
+  local id dl deleted=0 failed=0 pruned_downloads=0
+  while IFS=$'\t' read -r id _ dl; do
     [[ -z "$id" ]] && continue
     if gh api -X DELETE "repos/{owner}/{repo}/releases/${id}" >/dev/null 2>&1; then
       deleted=$((deleted + 1))
+      pruned_downloads=$((pruned_downloads + ${dl:-0}))
     else
       failed=$((failed + 1))
     fi
   done <<<"${drafts}"$'\n'"${older}"
+
+  # Bank the download counts of the deleted releases so the README badge (downloads-badge.yml)
+  # keeps counting them: DOWNLOADS_PRUNED_BASE + the live total of the remaining releases.
+  if (( pruned_downloads > 0 )); then
+    local base
+    base="$(gh variable get DOWNLOADS_PRUNED_BASE 2>/dev/null || echo 0)"
+    [[ "$base" =~ ^[0-9]+$ ]] || base=0
+    if ! gh variable set DOWNLOADS_PRUNED_BASE --body "$((base + pruned_downloads))" >/dev/null 2>&1; then
+      echo -e "${YELLOW}⚠ Could not bank ${pruned_downloads} pruned downloads: add them to the DOWNLOADS_PRUNED_BASE repo variable by hand.${RESET}"
+    fi
+  fi
 
   PRUNE_RESULT="deleted ${deleted} (${n_drafts} draft(s), ${n_old} older), ${failed} failed; newest ${KEEP_RELEASES} kept"
   if (( failed > 0 )); then

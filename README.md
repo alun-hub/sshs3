@@ -3,7 +3,7 @@
 [![CI](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml/badge.svg)](https://github.com/alun-hub/sshs3/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alun-hub/sshs3?style=flat&color=3388ff)](https://github.com/alun-hub/sshs3/releases/latest)
 ![Platform: Linux | Windows](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)
-[![Downloads](https://img.shields.io/github/downloads/alun-hub/sshs3/total?color=success)](https://github.com/alun-hub/sshs3/releases)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Falun-hub%2Fsshs3%2Fbadges%2Fdownloads.json)](https://github.com/alun-hub/sshs3/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **A modern, security-focused, cross-platform SSH, SFTP, S3, and Kubernetes client** for Linux and Windows, featuring hardware security key & smartcard support (FIDO2 / YubiKey / PKCS#11 / SITHS / Net iD), split terminal views, a dual-pane file manager with live Markdown preview, directory sync, and container exec & log tools.
