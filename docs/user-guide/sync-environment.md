@@ -74,6 +74,13 @@ Synchronize connection profiles, credentials, folders, and application settings 
   > Linking a card so it can *derive* the master encryption key directly requires an **RSA or Ed25519** key. These algorithms sign deterministically, producing the exact same wrapping key upon each unlock. **ECDSA cards** (common on PIV/CAC) sign with a random nonce each time and cannot reliably derive static keys; for ECDSA, unlock with master passwords once and use the card for session unlocking.
 - **Tombstones**: Deletions record cryptographic tombstones to prevent purged records from re-appearing after multi-device synchronization.
 
+#### 🗑️ Deleting your sync data
+In the **Synchronization** panel, the **Danger zone** has a **Delete sync data...** button. After an itemized confirmation it:
+- permanently deletes the encrypted sync files (topology, credentials, dotfile pools, settings, SSH config/known_hosts data) from the remote target;
+- removes the sync target, the master-password salts and any linked smartcard from this device, and locks sync here.
+
+It never touches your local SSH/S3 profiles, dotfile pools or settings, and other machines that are already synced are unaffected until they next push or pull.
+
 #### ⚠️ What is never synced
 - Machine-specific fields stay local and are ignored if they arrive from another device: the private key path, PKCS#11 library path, agent path and agent identity files of a profile, plus the settings **X server path**, **X server arguments** and the global smartcard library path. A smartcard PIN is never stored or synced.
 - After a wrong master password the keys are not kept in memory; unlock again with the right password before pushing.

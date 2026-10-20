@@ -44,6 +44,7 @@ Provide hassle-free deployment across standard enterprise server fleets and engi
 2. On Linux, a desktop shortcut (`/usr/share/applications/sshs3.desktop`), app icons, and a CLI symlink (`/usr/bin/sshs3`) are provisioned automatically.
 3. On Windows, the installer bundles a self-contained, portable build of VcXsrv, allowing immediate execution of remote Linux GUI applications over SSH (`ssh -Y`) without separate setup.
 4. **Portable Windows builds** (the portable `.exe` and the ZIP) keep all profiles and settings next to the executable instead of in `%APPDATA%\sshs3`: the portable `.exe` uses `<exe-dir>\data`, and the ZIP does too as soon as a `data` folder exists beside `sshs3.exe`. This keeps the data with the program (for example on a USB drive) and separate from any installed copy.
+5. sshs3 allows a single running instance: starting it again (installed or portable) brings the existing window to the front instead of opening a second one.
 
 #### ⚠️ Limitations & Caveats
 - **Ubuntu 24.04+ AppImage**: Ubuntu 24.04 and newer omit `libfuse2` by default. If running the AppImage fails, install the compatibility library: `sudo apt install libfuse2t64`.
@@ -121,7 +122,33 @@ During startup, `UpdateService` (`src/main/update/UpdateService.ts`) inspects `p
 
 ---
 
-## 4. Troubleshooting & Diagnostics Runbook
+## 4. System Requirements
+
+sshs3 bundles its runtime (Chromium, Node.js, the AWS SDK and a built-in SFTP v3 engine), but a few features use tools of your operating system.
+
+### Required
+- **OpenSSH client (`ssh`, `ssh-agent`, `ssh-add`)**: the terminal runs your system's `ssh`, and SFTP is carried over `ssh -s sftp`, so OpenSSH must be installed.
+  - Fedora / RHEL / Rocky: `sudo dnf install openssh-clients`
+  - Debian / Ubuntu / Mint: `sudo apt install openssh-client`
+  - Arch: `sudo pacman -S openssh`
+  - Windows: the built-in **OpenSSH Client** (*Settings → Apps → Optional features*).
+- **OS keyring** for saved passwords, passphrases and sync keys (Electron `safeStorage`): `libsecret` plus a keyring service such as GNOME Keyring or KWallet on Linux; built in on Windows (DPAPI).
+
+### Optional: security keys and smartcards
+- **FIDO2 keys (`ed25519-sk` / `ecdsa-sk`)**: OpenSSH 8.2 or newer with FIDO2 support. The `ykman` CLI (`yubikey-manager`) is optional and used to list resident credentials.
+- **Smartcards (PIV / CAC / SITHS / Net iD)**: the PC/SC daemon and a CCID reader driver, plus a PKCS#11 module.
+  - Fedora / RHEL: `sudo dnf install pcsc-lite pcsc-lite-ccid && sudo systemctl enable --now pcscd`
+  - Debian / Ubuntu: `sudo apt install pcscd pcsc-tools libccid && sudo systemctl enable --now pcscd`
+  - PKCS#11 modules detected on Linux: `p11-kit` (recommended, it proxies every registered module), Yubico `libykcs11`, Net iD (`libiidp11.so`) and OpenSC.
+  - On Windows the Smart Card service is on by default; detected modules are Net iD, OpenSC and `libykcs11`. See [Windows differences](/docs/windows/) for the ssh-agent service that PIN caching needs.
+
+### Nothing extra needed
+- **S3 and AWS SSO** run on the bundled AWS SDK; no AWS CLI or Python.
+- **TLS / CA certificates**: S3 connections trust your operating system's CA store (the Windows certificate store, or the distribution's CA bundle on Linux), so internally issued certificates work without configuration.
+
+---
+
+## 5. Troubleshooting & Diagnostics Runbook
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |

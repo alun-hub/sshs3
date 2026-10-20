@@ -220,7 +220,7 @@ Inspect Git repository status, pull updates, or clone repositories directly with
    - **Branch & Status Indicator**: Displays active branch, uncommitted/untracked changes, and commit delta ahead (↑) or behind (↓) `origin`.
    - **Git Pull**: Click the pull icon to synchronize the remote repository with upstream in a single click.
    - **Open in GitHub/GitLab**: Opens the repository homepage in your default browser when `remote.origin.url` is configured.
-   - **Clone Git repository here...**: Right-click any folder to clone a repository with optional shallow-clone depth (`--depth=1`).
+   - **Git Clone inside...** / **Git Clone to here...**: Right-click a folder (or the empty area of the current folder) to clone a repository there, with an optional shallow clone (`--depth 1`). Not available on S3 or Kubernetes panes.
 2. Git polling can be toggled on or off under *Settings → Git & GitHub* to eliminate background network checks on constrained servers.
 
 #### ⚠️ Limitations & Caveats
@@ -239,3 +239,4 @@ Driven by `GitStatusService` (`src/main/git/GitStatusService.ts`) and `RemoteGit
 | `SFTP subsystem not found` | Remote server's `sshd_config` lacks SFTP subsystem | Ensure `Subsystem sftp /usr/lib/openssh/sftp-server` is configured in `/etc/ssh/sshd_config`. |
 | External editor edits do not upload | Editor saves via atomic temporary files | Configure your editor to write in place (e.g. in Vim: `:set backupcopy=yes`). |
 | Transfer hangs at 99% | Remote partition exhausted available disk space | Run `df -h` on the remote server to ensure free space is available. |
+| "Forbidden" (no-drop) mouse cursor while dragging between panes (Linux) | Some desktop environments (notably GNOME/Wayland, or KDE Plasma with certain cursor themes such as Breeze) do not let Chromium update the cursor during internal drags | Cosmetic upstream quirk: the drop itself still works, so release the mouse button over the target folder as usual. |

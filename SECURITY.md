@@ -23,7 +23,7 @@ sshs3 is built on zero-knowledge and defense-in-depth principles:
 - **Operating System Keyring**: Any stored passwords or S3 secret keys in connection profiles are encrypted using the host OS keyring (`safeStorage`: libsecret on Linux, DPAPI on Windows, Keychain on macOS).
 - **Protected Local IPC**: The internal askpass mechanism uses a mode `0700` private Unix domain socket on Linux/macOS and a 128-bit cryptographically tokenized loopback interface on Windows.
 
-For full architectural details, see [Security & Privacy in README.md](README.md#security--privacy-private-keys-pins--credentials).
+For full architectural details, see [Security & smartcards in the user guide](https://docs.sshs3.com/docs/security-smartcards/).
 
 ---
 
