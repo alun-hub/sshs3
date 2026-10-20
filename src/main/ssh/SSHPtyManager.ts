@@ -56,7 +56,7 @@ function getSpawn(): typeof nodePty.spawn {
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
 import { describeAskpassPrompt, isHostKeyConfirmPrompt } from './askpassPrompt';
-import { parseHostKeyChanged } from './hostKeyChanged';
+import { isHostKeyChangedOutput } from './hostKeyChanged';
 import { parseHostKeyPrompt } from '../storage/sftp/OpenSshSftpProcess';
 import type { HostKeyPromptInfo } from './HostKeyVerifier';
 import type { SFTPConfig } from '../../shared/types/storage';
@@ -73,8 +73,6 @@ export interface SSHPtyManagerEvents {
     sessionId: string;
     host: string;
     port: number;
-    keyType: string;
-    fingerprint: string;
   }) => void;
   presence: (event: { sessionId: string; prompt: string }) => void;
   askpass: (event: {
@@ -185,11 +183,11 @@ export class InternalSSHPtySession implements SSHPtySession {
       this.reconnectStableTimer = undefined;
     }
     // A changed host key never fixes itself, so retrying would only repeat the warning.
-    const changedKey = !this.disposed && event.exitCode !== 0 ? parseHostKeyChanged(this.recentOutput) : null;
+    const changedKey = !this.disposed && event.exitCode !== 0 && isHostKeyChangedOutput(this.recentOutput);
     if (changedKey) {
       const msg =
-        `\r\n\x1b[31m[sshs3: the host key for ${this.config.host} has changed. ` +
-        `The server may have been reinstalled, or the connection is being intercepted.]\x1b[0m\r\n`;
+        `\r\n\x1b[31m[sshs3: ssh reported that the host key for ${this.config.host} has changed. ` +
+        `The server may have been reinstalled, or the connection is being intercepted. Checking...]\x1b[0m\r\n`;
       this.appendScrollback(msg);
       for (const listener of this.dataListeners) listener(msg);
       this.manager.emit('data', { sessionId: this.sessionId, data: msg });
@@ -197,7 +195,6 @@ export class InternalSSHPtySession implements SSHPtySession {
         sessionId: this.sessionId,
         host: this.config.host,
         port: this.config.port ?? 22,
-        ...changedKey,
       });
     }
     const shouldReconnect =
