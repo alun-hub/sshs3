@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.49] - 2026-10-20
+
+### Added
+- keep the README download counter when old releases are pruned
+
+### Fixed
+- attribute host key prompts to the asking host and harden changed-key handling
+- confirm a changed host key independently before offering to replace it
+- route host key prompts to the trust dialog and handle changed host keys
+
+### Changed
+- mention the modern SSH clients covered by the comparison guide
+- correct getting-started, Team Vault and connections pages
+- correct factual errors in the user guide
+- merge KUBERNETES.md into the Kubernetes user guide and correct it
+- slim README, add Windows page and system requirements to the user guide
+
 ## [0.96.48] - 2026-10-20
 
 ### Fixed
