@@ -90,11 +90,11 @@ Allow engineers to inspect generated application configs, crash dumps, or log fi
 3. Browse directory trees, download files to your workstation, upload files, modify permissions via `chmod`, or edit files directly using your local desktop IDE!
 
 #### ⚠️ Limitations & Caveats
-- Requires basic POSIX utilities (`tar`, `cat`, `ls`) inside the container.
+- Requires a POSIX `sh` and basic utilities (`stat`, `cat`, `dd`, `mkdir`, `rm`, `mv`, `chmod`) inside the container; distroless images have none of them (see [section 7](#7-pod-file-access-limits--rbac)).
 - File modifications inside the container are ephemeral unless writing to a mounted PersistentVolume.
 
 #### ⚙️ Technical Internals & Architecture
-`K8sPodStorageProvider` (`src/main/storage/K8sPodStorageProvider.ts`) implements `IStorageProvider`. It drives non-interactive `tar` and stream executions over the Kubernetes API, piping bytes directly into `TransferPipeline`.
+`K8sPodStorageProvider` (`src/main/storage/K8sPodStorageProvider.ts`) implements `IStorageProvider`. It runs short non-interactive `sh -c` scripts over the exec API and pipes bytes directly into `TransferPipeline`; no agent is installed in the container.
 
 ---
 
@@ -121,7 +121,7 @@ Debug production containers in real time by attaching a dedicated diagnostic con
 
 #### ⚠️ Limitations & Caveats
 - Requires Kubernetes 1.25+ (EphemeralContainers feature is GA).
-- Cluster RBAC policies must grant `create` / `patch` permissions on the `pods/ephemeralcontainers` subresource.
+- Cluster RBAC policies must grant `patch` on the `pods/ephemeralcontainers` subresource.
 - Once added, an ephemeral container cannot be removed individually; it terminates when the parent pod is evicted.
 
 #### ⚙️ Technical Internals & Architecture
@@ -154,11 +154,50 @@ Parses cluster URL and SHA256 tokens, verifies identity against OpenShift APIs, 
 
 ---
 
-## 7. Troubleshooting & Diagnostics Runbook
+## 7. Pod File Access Limits & RBAC
+
+### How pod file access works
+sshs3 installs no agent, sidecar or daemon in the container. Each operation is a short non-interactive script sent over the standard Kubernetes `exec` WebSocket:
+- **List / stat**: a shell loop that runs `stat` and prints name, type, size, mode and `mtime` as a tab-separated stream.
+- **Read**: `cat`, or `dd` for byte ranges.
+- **Write**: stdin piped into `cat > file`, then `chmod` if a mode is given.
+- **Delete / rename / chmod / create folder**: `rm`, `mv`, `chmod`, `mkdir -p`.
+
+### Limits
+- **Distroless and `scratch` images have no shell.** The file manager and Exec fail with `executable file not found in $PATH` (or exit code 126/127). Attach an ephemeral debug container instead (section 5).
+- **An ephemeral container has its own root filesystem.** Browsing it in the file manager shows the debug image's `/bin`, `/usr` and so on, not the application's files. With process namespace sharing (pod-level `shareProcessNamespace: true`, or a **Target Container** in the debug dialog), the target's filesystem is reachable through procfs from the debug terminal:
+  ```bash
+  ls -la /proc/1/root/app
+  cat /proc/1/root/etc/config.json
+  ```
+  Volumes mounted in both containers (`emptyDir`, PVCs, ConfigMaps, Secrets) are visible at their mount points.
+- **Ephemeral containers cannot be removed.** They stay in the pod spec until the pod is deleted.
+- **`readOnlyRootFilesystem: true`**: writes, uploads, renames and deletes outside writable volume mounts fail with `Read-only file system`.
+- **Container user**: operations run as the container's user. With `runAsUser` / `runAsNonRoot` (for example UID 10001) files owned by root cannot be changed and writes to system directories fail with `Permission denied`.
+- **Large transfers**: data streams through `kube-apiserver`, which suits configs, logs, scripts and bundles up to roughly 100 MB. For multi-gigabyte dumps use object storage or volume snapshots instead.
+- **Idle connections**: the API server, corporate firewalls and ingress controllers may close silent WebSockets for exec and logs.
+- **Several containers per pod**: check which container (`main`, `istio-proxy`, `debugger-*`) you selected before opening Exec or Files.
+
+### Required RBAC
+The cluster tree lists namespaces and pods only (not Deployments or Services), and port forwards target pods.
+
+| Feature | API group / resource | Verbs |
+| :--- | :--- | :--- |
+| Cluster tree, pod inspector, events | core: `namespaces`, `pods`, `events` | `get`, `list` |
+| Exec terminal and file explorer | core: `pods/exec` | `create` |
+| Log streaming | core: `pods/log` | `get` |
+| Port forwarding | core: `pods/portforward` | `create` |
+| Ephemeral debug container | core: `pods/ephemeralcontainers` | `patch` |
+| Restart Pod | core: `pods` | `delete` |
+| Metrics (performance bar; `kubectl top` equivalent) | `metrics.k8s.io`: `pods` | `get`, `list` |
+
+---
+
+## 8. Troubleshooting & Diagnostics Runbook
 
 | Symptom / Error Message | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
 | `executable file not found in $PATH` | Container is distroless and lacks `/bin/sh` | Use **Debug** (**Attach Debug Container**) to attach a Netshoot or BusyBox diagnostic container. |
-| `pods/ephemeralcontainers is forbidden` | RBAC role lacks permission for ephemeral containers | Contact your cluster administrator to obtain `create`/`patch` RBAC rights on `pods/ephemeralcontainers`. |
+| `pods/ephemeralcontainers is forbidden` | RBAC role lacks permission for ephemeral containers | Contact your cluster administrator to obtain `patch` RBAC rights on `pods/ephemeralcontainers`. |
 | Cluster missing from tree view | Context missing in `~/.kube/config` | Run `kubectl config get-contexts` or import the cluster via the OpenShift login modal. |
 | Port forward disconnects after 5 minutes | Cluster API server closed idle connection | Reconnect via the Port Forwarding manager; sshs3 features automatic reconnect logic. |

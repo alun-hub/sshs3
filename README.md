@@ -57,7 +57,7 @@ The app checks GitHub Releases for new versions (switch off under *Settings → 
 
 Full user documentation lives at **[docs.sshs3.com](https://docs.sshs3.com)** (source: [`docs/user-guide/`](docs/user-guide/)). Also in this repository:
 
-- [Kubernetes & OpenShift Guide](docs/KUBERNETES.md) · [Product Comparison](docs/COMPARISON.md)
+- [Product Comparison](docs/COMPARISON.md)
 - [Architecture notes](docs/user-guide/architecture-internals.md) · [Third-party software](THIRD_PARTY.md)
 - [Security Policy](SECURITY.md) — how to report vulnerabilities
 

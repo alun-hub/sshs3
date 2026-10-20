@@ -42,7 +42,6 @@ The application is built on Electron, Vite, and React with a strictly separated 
 ```
 ├── docs/                           # Architecture, comparison, and subsystem guides
 │   ├── COMPARISON.md               # Detailed comparison vs PuTTY, MobaXterm, WinSCP, S3 Browser
-│   ├── KUBERNETES.md               # Kubernetes architecture, file access & ephemeral container limits
 │   └── user-guide/                 # End-user docs, published at docs.sshs3.com
 ├── scripts/                        # Automated deploy and release scripts (deploy.sh)
 ├── src/
