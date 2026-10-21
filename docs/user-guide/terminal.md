@@ -46,7 +46,7 @@ Allow operators to split workspace real estate horizontally and vertically witho
    - **Sequential Cycling**: Use <kbd>Ctrl+Shift+N</kbd> (next pane in tree) and <kbd>Ctrl+Shift+P</kbd> (previous pane).
 4. **Close a Pane**: Press <kbd>Ctrl+Alt+Shift+W</kbd>, click the close button on its mini-toolbar, or type `exit`. The tree automatically collapses to fill the remaining area.
 5. **Zoom a Pane**: Press <kbd>Ctrl+Shift+Z</kbd> (or the zoom icon on the pane's mini-toolbar) to show only the focused pane full-size while the others keep running hidden; press it again to restore the layout. Splitting or closing the zoomed pane also restores it.
-6. **Unsplit (Maximize)**: Click the "Unsplit" icon on the active pane to keep the focused session and close all siblings.
+6. **Close Other Panes**: Click **Close others** in the *Split view* bar to keep only the focused pane. If the panes being closed hold sessions, sshs3 asks for confirmation first, because their sessions end. To just focus on one pane without closing anything, use **Zoom** (step 5). New splits are made with <kbd>Ctrl+Shift+D</kbd> / <kbd>Ctrl+Shift+E</kbd> or the split icons on each pane's mini-toolbar.
 7. **Resizable Splits**: Drag the divider line between any two split panes to resize them horizontally or vertically. Double-click the divider to reset to equal sizing.
 
 #### ⚠️ Limitations & Caveats

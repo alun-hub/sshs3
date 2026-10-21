@@ -24,6 +24,13 @@ export function findLeaf(node: PaneNode, id: string): PaneLeaf | null {
   return null;
 }
 
+/** Panes other than `exceptId` that hold a live or connectable session (not an empty placeholder). */
+export function countOtherSessionPanes(node: PaneNode, exceptId: string): number {
+  return collectLeaves(node).filter(
+    (leaf) => leaf.id !== exceptId && Boolean(leaf.config || leaf.local || leaf.k8sTarget || leaf.k8sLogTarget)
+  ).length;
+}
+
 export function getFirstLeafId(node: PaneNode): string {
   return node.type === 'leaf' ? node.id : getFirstLeafId(node.children[0]);
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Columns2, Rows2, Square, Terminal } from 'lucide-react';
+import { Terminal } from 'lucide-react';
+import { UnsplitButton } from './components/UnsplitButton';
 import { TabBar } from './components/TabBar';
 import { isEmptyUnconnectedTab, type AppTab } from './lib/tabs';
 import { useAppKeyboard } from './lib/useAppKeyboard';
@@ -461,31 +462,12 @@ export const App: React.FC = () => {
 
                       {totalPanes > 1 && (
                         <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            title="Split horizontally (add pane below)"
-                            onClick={() => handleSplitPane(tab.id, 'column', tab.activePaneId)}
-                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                          >
-                            <Rows2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            title="Split vertically (add pane to right)"
-                            onClick={() => handleSplitPane(tab.id, 'row', tab.activePaneId)}
-                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                          >
-                            <Columns2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            title="Unsplit: close every other pane, keep only the active one"
-                            data-testid={`unsplit-${tab.id}`}
-                            onClick={() => handleUnsplit(tab.id)}
-                            className="flex items-center gap-1 rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                          </button>
+                          <UnsplitButton
+                            tabId={tab.id}
+                            paneTree={tab.paneTree}
+                            activePaneId={tab.activePaneId}
+                            onUnsplit={handleUnsplit}
+                          />
                         </div>
                       )}
                     </div>

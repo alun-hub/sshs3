@@ -336,9 +336,16 @@ describe('App Component', () => {
     const unsplitBtn = screen.getByTestId(/^unsplit-/);
     fireEvent.click(unsplitBtn);
 
+    // The other pane has a live session, so closing it must be confirmed first; cancelling keeps it
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(2);
+    expect(window.multissh.terminalKill).not.toHaveBeenCalled();
+
+    fireEvent.click(unsplitBtn);
+    fireEvent.click(await screen.findByRole('button', { name: 'Close panes' }));
+
     // Only root pane remains
-    const remainingPanes = screen.getAllByTestId(/^terminal-pane-/);
-    expect(remainingPanes.length).toBe(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(1));
     expect(screen.getByTestId(`terminal-pane-${rootPaneId}`)).toBeInTheDocument();
     // Only other pane's session was killed
     expect(window.multissh.terminalKill).toHaveBeenCalledTimes(1);

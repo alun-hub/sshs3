@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createLeaf, updateSplitWeights } from '../../src/renderer/src/lib/paneTree';
+import { countOtherSessionPanes, createLeaf, updateSplitWeights } from '../../src/renderer/src/lib/paneTree';
 import type { PaneSplit } from '../../src/shared/types/session';
 
 describe('updateSplitWeights', () => {
@@ -37,5 +37,28 @@ describe('updateSplitWeights', () => {
   it('returns a leaf unchanged', () => {
     const leaf = createLeaf('leaf-1');
     expect(updateSplitWeights(leaf, 'leaf-1', [0.2, 0.8])).toBe(leaf);
+  });
+});
+
+describe('countOtherSessionPanes', () => {
+  const tree: PaneSplit = {
+    type: 'split',
+    id: 'split-1',
+    orientation: 'row',
+    children: [
+      createLeaf('keep', { local: true }),
+      createLeaf('empty'),
+      createLeaf('local', { local: true }),
+      createLeaf('k8s', { k8sTarget: { podName: 'p' } as never }),
+    ],
+  };
+
+  it('counts the other panes that hold a session and skips empty placeholders and the kept pane', () => {
+    expect(countOtherSessionPanes(tree, 'keep')).toBe(2);
+    expect(countOtherSessionPanes(tree, 'empty')).toBe(3);
+  });
+
+  it('is zero when no other pane has a session', () => {
+    expect(countOtherSessionPanes(createLeaf('only', { local: true }), 'only')).toBe(0);
   });
 });
