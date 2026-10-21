@@ -73,7 +73,7 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
     // Still running (or waiting for input): stay armed and look again on the next output.
     if (!atPrompt) return;
     armedRef.current = false;
-    const result = tracker.lastCommandResult();
+    const result = tracker.lastCommandResult({ atPrompt: true });
     if (!result) {
       // Only for shells that send OSC 133 marks, where a missing result points at the marks.
       const snapshot = tracker.debugSnapshot();
@@ -103,7 +103,7 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
   /** Output arrived while an offer is showing: drop it when it no longer matches the screen. */
   const revalidate = useCallback(() => {
     if (!suggestionRef.current) return;
-    const result = trackerRef.current?.lastCommandResult();
+    const result = trackerRef.current?.lastCommandResult({ atPrompt: true });
     if (!result || `${result.command}\n${result.output}` !== shownSignatureRef.current) dismiss();
   }, [trackerRef, dismiss]);
 

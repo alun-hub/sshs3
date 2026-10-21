@@ -540,3 +540,56 @@ describe('extractCwdFromPrompt on Windows shells', () => {
     expect(extractCwdFromPrompt('PS C:\\>')).toBe('C:\\');
   });
 });
+
+describe('OSC 133 from a shell that only sends C (bash with the VTE script via PS0)', () => {
+  /** `C` lands on the row after the command; the next prompt row holds the next command when Enter is pressed. */
+  function firstCommand() {
+    const f = fakeTerm([{ text: '$ cat /x' }]);
+    const t = new CommandOutputTracker(f.term);
+    t.recordEnter();
+    f.lines.push({ text: '' });
+    f.osc('C');
+    f.lines[1].text = 'cat: /x: Permission denied';
+    f.lines.push({ text: '$ ' });
+    return { f, t };
+  }
+
+  it('keeps the newest command unfinished until the caller says the shell is at a prompt', () => {
+    const { t } = firstCommand();
+    expect(t.lastCommandResult()).toBeNull();
+    expect(t.lastCommandResult({ atPrompt: true })).toEqual({
+      command: 'cat /x',
+      output: 'cat: /x: Permission denied',
+    });
+  });
+
+  it('reads each command and its own output once a second C has shown the shell only sends C', () => {
+    const { f, t } = firstCommand();
+    f.lines[2].text = '$ cat /y';
+    t.recordEnter();
+    f.lines.push({ text: '' });
+    f.osc('C');
+    f.lines[3].text = 'cat: /y: Permission denied';
+    f.lines.push({ text: '$ ' });
+    expect(t.lastCommandResult()).toEqual({ command: 'cat /y', output: 'cat: /y: Permission denied' });
+    expect(t.lastOutput()).toBe('cat: /y: Permission denied');
+  });
+
+  it('does not take the next command row as output of the previous one', () => {
+    const { f, t } = firstCommand();
+    f.lines[2].text = '$ ls';
+    t.recordEnter();
+    f.lines.push({ text: '' });
+    f.osc('C');
+    // Nothing was printed by `ls`; the previous command's output must not be attributed to it.
+    f.lines.push({ text: '$ ' });
+    expect(t.lastCommandResult()).toBeNull();
+  });
+
+  it('treats a repeated C on the same row as the same command', () => {
+    const { f, t } = firstCommand();
+    f.markAt(1); // the same row the first C was marked on
+    f.osc('C');
+    expect(t.lastCommandResult()).toBeNull();
+  });
+});

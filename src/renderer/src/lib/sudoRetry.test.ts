@@ -21,6 +21,21 @@ describe('detectSudoRetry', () => {
     expect(outputIndicatesPermissionDenied(output)).toBe(true);
   });
 
+  it('offers sudo for a Rust tool error that ends with the errno suffix', () => {
+    expect(
+      detectSudoRetry({
+        ...base,
+        command: 'cat /etc/shadow',
+        output: "[bat error]: '/etc/shadow': Permission denied (os error 13)",
+      })
+    ).toEqual({ sudoCommand: 'sudo cat /etc/shadow' });
+  });
+
+  it('still ignores an ssh authentication failure that lists methods', () => {
+    expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey,password).')).toBe(false);
+    expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey,gssapi-with-mic).')).toBe(false);
+  });
+
   it('ignores ssh authentication failures', () => {
     expect(
       detectSudoRetry({ ...base, command: 'ls', output: 'user@host: Permission denied (publickey,password).' })

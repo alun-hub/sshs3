@@ -25,8 +25,11 @@ const MAX_OUTPUT_LINES = 20;
 /** The error must be near the end of the output; a program that merely mentions it earlier is not failing. */
 const ERROR_TAIL_LINES = 3;
 
-/** `Permission denied (publickey,...)` is an SSH authentication failure, not a local permission problem. */
-const SSH_AUTH_DENIED_RE = /Permission denied \(/;
+/**
+ * `Permission denied (publickey,...)` is an SSH authentication failure, not a local permission problem. Only a
+ * list of authentication method names counts: Rust tools end with `Permission denied (os error 13)`, which is.
+ */
+const SSH_AUTH_DENIED_RE = /Permission denied \([a-z-]+(?:,[a-z-]+)*\)/i;
 
 // eslint-disable-next-line no-control-regex
 const UNSAFE_COMMAND_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
@@ -36,7 +39,7 @@ const UNSAFE_COMMAND_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\
  * does not help, so it only counts next to a path or a quoted name.
  */
 const DENIED_PATTERNS: RegExp[] = [
-  /: Permission denied\s*$/i,
+  /: Permission denied(?:\s*\(os error \d+\))?\s*$/i,
   /(?:\/|['‘’"][^'‘’"]+['‘’"]).*Operation not permitted/i,
   /\bAre you root\b/i,
   /\bmust be (?:run as )?root\b/i,

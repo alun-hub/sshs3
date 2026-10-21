@@ -153,6 +153,8 @@ interface OscRegion {
   exitCode?: number;
   /** The cursor was past column 0 when the output ended, i.e. the last output line has no newline yet. */
   partialLastLine?: boolean;
+  /** `end` is the Enter marker of the next command, so the output stops above that command's own row(s). */
+  endsAtCommandRow?: boolean;
 }
 
 /**
@@ -168,6 +170,11 @@ export class CommandOutputTracker {
   private markers: IMarker[] = [];
   private regions: OscRegion[] = [];
   private pendingCommandMarker?: IMarker;
+  /**
+   * The shell sends `C` marks but never `A`/`D` (bash with the VTE script, via PS0): a region is only closed
+   * by the next `C`, and the newest one stays open once its command has finished.
+   */
+  private cOnly = false;
   private readonly oscHandler: { dispose(): void };
 
   constructor(private readonly term: Terminal) {
@@ -178,7 +185,10 @@ export class CommandOutputTracker {
         if (marker) this.pendingCommandMarker = marker;
       } else if (kind === 'C') {
         const start = term.registerMarker(0);
-        if (start) {
+        if (start && this.isDuplicateStart(start)) {
+          start.dispose();
+        } else if (start) {
+          this.closeOpenRegionAtNewCommand();
           const region: OscRegion = { start };
           if (this.pendingCommandMarker) {
             region.commandMarker = this.pendingCommandMarker;
@@ -208,6 +218,42 @@ export class CommandOutputTracker {
     });
   }
 
+  /** A second `C` on the row of an open region (two sources of the same mark) is the same command. */
+  private isDuplicateStart(start: IMarker): boolean {
+    const open = this.regions[this.regions.length - 1];
+    return Boolean(open && !open.end && !open.start.isDisposed && open.start.line === start.line);
+  }
+
+  /**
+   * A `C` arrives while the previous region never got an `A`/`D`: that shell only sends `C`. The previous
+   * command's output ends where the new command's own row(s) begin, which the Enter marker tells.
+   */
+  private closeOpenRegionAtNewCommand(): void {
+    const open = this.regions[this.regions.length - 1];
+    if (!open || open.end || open.start.isDisposed) return;
+    this.cOnly = true;
+    const enter = this.markers.filter((m) => !m.isDisposed && m.line >= 0).pop();
+    if (enter && enter.line > open.start.line) {
+      open.end = enter;
+      open.endsAtCommandRow = true;
+    } else {
+      open.end = this.term.registerMarker(0);
+      open.partialLastLine = this.term.buffer.active.cursorX > 0;
+    }
+  }
+
+  /** First row after the region's output. */
+  private outputEndRow(region: OscRegion): number {
+    const end = region.end as IMarker;
+    return region.endsAtCommandRow ? this.logicalLineBounds(end.line).start : end.line + (region.partialLastLine ? 1 : 0);
+  }
+
+  /** The newest command has no end mark because its shell only sends `C`, so it is read like a markless shell. */
+  private newestRegionIsOpenCOnly(): boolean {
+    const region = this.regions[this.regions.length - 1];
+    return this.cOnly && Boolean(region) && !region.end;
+  }
+
   /** Call when the user presses Enter (the cursor is still on the command line). */
   public recordEnter(): void {
     if (this.term.buffer.active.type !== 'normal') return;
@@ -222,7 +268,7 @@ export class CommandOutputTracker {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
     const cursorLine = buf.baseY + buf.cursorY;
-    if (this.currentRegion()) {
+    if (this.currentRegion() && !this.newestRegionIsOpenCOnly()) {
       const osc = this.lastOscOutput();
       return osc ? stripTrailingPrompt(osc) : null;
     }
@@ -254,13 +300,14 @@ export class CommandOutputTracker {
 
   private lastOscOutput(): string | null {
     for (let i = this.regions.length - 1; i >= 0; i--) {
-      const { start, end, commandMarker, partialLastLine } = this.regions[i];
+      const region = this.regions[i];
+      const { start, end, commandMarker } = region;
       if (start.isDisposed || start.line < 0 || !end || end.isDisposed || end.line < 0) continue;
       const fromLine =
         commandMarker && !commandMarker.isDisposed && start.line === commandMarker.line
           ? start.line + 1
           : start.line;
-      const text = this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0));
+      const text = this.readLines(fromLine, this.outputEndRow(region));
       if (text.trim()) return text;
     }
     return null;
@@ -380,27 +427,31 @@ export class CommandOutputTracker {
    * The newest command together with its own output (and exit code when the shell reports one).
    * Null when that command printed nothing, so output of an older command is never attributed to it.
    */
-  public lastCommandResult(): LastCommandResult | null {
+  public lastCommandResult(options: { atPrompt?: boolean } = {}): LastCommandResult | null {
     const buf = this.term.buffer.active;
     if (buf.type !== 'normal') return null;
 
     if (this.currentRegion()) {
       // Only the newest region counts. While it is still open (a nested `ssh`, `docker exec`, a running
-      // program) there is no finished command, and an older one must not be offered in its place.
+      // program) there is no finished command, and an older one must not be offered in its place. The
+      // exception is a command whose shell never closes regions (`C` only), or a caller that knows the
+      // shell is back at a prompt: it is then read like a shell without marks, from the Enter marker.
       const region = this.regions[this.regions.length - 1];
-      if (!region.end) return null;
-      const { start, end, commandMarker, partialLastLine } = region;
-      if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
-      // A shell that sends `A`, `C` and `D` but no `B` (end of prompt) does not tell where the command
-      // starts: fall through to reading it from the row where Enter was pressed.
-      if (commandMarker && !commandMarker.isDisposed && commandMarker.line >= 0) {
-        const command = stripPromptLoose(
-          this.readCommandRows(commandMarker.line, this.commandRowsEnd(commandMarker.line, start.line)).trim()
-        );
-        const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
-        const output = stripTrailingPrompt(this.readLines(fromLine, end.line + (partialLastLine ? 1 : 0)));
-        if (!command || !output.trim()) return null;
-        return { command, output, exitCode: region.exitCode };
+      if (!region.end && !this.cOnly && !options.atPrompt) return null;
+      const { start, end, commandMarker } = region;
+      if (end) {
+        if (start.isDisposed || start.line < 0 || end.isDisposed || end.line < 0) return null;
+        // A shell that sends `A`, `C` and `D` but no `B` (end of prompt) does not tell where the command
+        // starts: fall through to reading it from the row where Enter was pressed.
+        if (commandMarker && !commandMarker.isDisposed && commandMarker.line >= 0) {
+          const command = stripPromptLoose(
+            this.readCommandRows(commandMarker.line, this.commandRowsEnd(commandMarker.line, start.line)).trim()
+          );
+          const fromLine = start.line === commandMarker.line ? start.line + 1 : start.line;
+          const output = stripTrailingPrompt(this.readLines(fromLine, this.outputEndRow(region)));
+          if (!command || !output.trim()) return null;
+          return { command, output, exitCode: region.exitCode };
+        }
       }
     }
 
