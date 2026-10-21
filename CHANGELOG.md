@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.52] - 2026-10-21
+
+### Added
+- **Go to tab.** `Ctrl+1`…`Ctrl+8` jump to that tab and `Ctrl+9` to the last one.
+- **Zoom a split pane** (`Ctrl+Shift+Z`, or the zoom icon in the pane header): shows only the focused pane full-size while the others keep running; press it again to restore the layout. Splitting or closing the zoomed pane also restores it.
+- **Close split pane** (`Ctrl+Alt+Shift+W`). Does nothing when only one pane is left.
+- **Keyboard shortcut overview** (`Ctrl+Shift+H`) opens *Settings → Keyboard Shortcuts*.
+
+### Changed
+- **Terminal shortcuts no longer take keys from the shell or a TUI.** Bare `Alt+<letter>` and `Ctrl+<letter>` reach readline, vim, nano, fzf and tmux as ESC prefixes and control characters, so these defaults moved:
+  - Copy Last Command Output: `Alt+C` → `Ctrl+Shift+Y`
+  - Re-run Last Command with sudo: `Alt+S` → `Ctrl+Shift+X`
+  - Close Tab: `Ctrl+W` → `Ctrl+Shift+W` (as in Gnome Terminal and Konsole)
+  - The hardcoded `Ctrl+K` Quick Connect is removed (`Ctrl+K` is kill-line in readline and cut in nano); `Ctrl+Shift+O` opens the same Connection Manager.
+  Saved bindings that still equal an old default are replaced by the new default; a binding you chose yourself is kept.
+- **Split view bar.** The duplicate split buttons are gone (each pane header has its own). The bare-square Unsplit button is now **Close others** and asks for confirmation when it would end sessions in the other panes.
+
+### Fixed
+- **New Remote File Manager shortcut.** Its default `Ctrl+Shift+Alt+F` listed the modifiers in an order that never matches a real keypress, so it did not work from the keyboard. It is now `Ctrl+Alt+Shift+F`, and a saved copy of the old value is migrated.
+- Review findings in prompt position tracking and the manual sudo re-run.
+
 ## [0.96.51] - 2026-10-21
 
 ### Added
