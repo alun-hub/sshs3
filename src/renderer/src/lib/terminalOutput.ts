@@ -1,4 +1,5 @@
 import type { IMarker, Terminal } from 'xterm';
+import { PromptAnchorTracker, prefixLooksLikePrompt, stripRightPrompt, type PromptAnchor } from './promptAnchor';
 
 const MAX_MARKERS = 50;
 
@@ -41,7 +42,7 @@ export function stripPromptLoose(line: string): string {
  * from it by a gap: the shell is waiting for a command, whatever its prompt looks like.
  */
 export function endsAtPrompt(textBeforeCursor: string, textAfterCursor: string): boolean {
-  if (!/[$#%>❯➜]\s+$/.test(textBeforeCursor)) return false;
+  if (!prefixLooksLikePrompt(textBeforeCursor)) return false;
   return textAfterCursor.trim() === '' || /^\s{2,}\S/.test(textAfterCursor);
 }
 
@@ -175,9 +176,13 @@ export class CommandOutputTracker {
    * by the next `C`, and the newest one stays open once its command has finished.
    */
   private cOnly = false;
+  private readonly promptAnchors: PromptAnchorTracker;
+  /** Where each Enter's command began on its row, when the cursor told (see `promptAnchor.ts`). */
+  private anchors = new Map<IMarker, PromptAnchor>();
   private readonly oscHandler: { dispose(): void };
 
   constructor(private readonly term: Terminal) {
+    this.promptAnchors = new PromptAnchorTracker(term);
     this.oscHandler = term.parser.registerOscHandler(133, (data) => {
       const kind = data.charAt(0);
       if (kind === 'B') {
@@ -260,7 +265,45 @@ export class CommandOutputTracker {
     const marker = this.term.registerMarker(0);
     if (!marker) return;
     this.markers.push(marker);
-    if (this.markers.length > MAX_MARKERS) this.markers.shift()?.dispose();
+    const anchor = this.promptAnchors.claim();
+    if (anchor) this.anchors.set(marker, anchor);
+    if (this.markers.length > MAX_MARKERS) this.dropMarker(this.markers.shift());
+  }
+
+  /** Output arrived from the session (call after writing it to the terminal). */
+  public noteOutput(): void {
+    this.promptAnchors.noteOutput();
+  }
+
+  /** The user typed something that is not a terminal reply. Call before `recordEnter` for the same keystroke. */
+  public noteInput(): void {
+    this.promptAnchors.noteInput();
+  }
+
+  private dropMarker(marker: IMarker | undefined): void {
+    if (!marker) return;
+    this.anchors.get(marker)?.marker.dispose();
+    this.anchors.delete(marker);
+    marker.dispose();
+  }
+
+  /**
+   * The command typed at an Enter marker, read from where the cursor stood after the prompt. Null when no
+   * position was learned or it no longer fits the screen, so the caller falls back to the prompt patterns;
+   * an empty string means Enter was pressed on an empty line.
+   */
+  private readAnchoredCommand(marker: IMarker): string | null {
+    const anchor = this.anchors.get(marker);
+    if (!anchor || anchor.marker.isDisposed || anchor.marker.line < 0 || marker.isDisposed || marker.line < 0) return null;
+    const { start, end } = this.logicalLineBounds(marker.line);
+    const row = anchor.marker.line;
+    if (row < start || row > end) return null;
+    const buf = this.term.buffer.active;
+    const first = buf.getLine(row)?.translateToString(true, anchor.col) ?? '';
+    // A command that wraps has pushed the right-hand prompt away; only a single row can still carry it.
+    let text = end === row ? stripRightPrompt(first, anchor.rightPrompt) : first;
+    for (let i = row + 1; i <= end; i++) text += buf.getLine(i)?.translateToString(true) ?? '';
+    return text.trim();
   }
 
   /** Text of the most recent command that produced output, or null when there is none. */
@@ -351,6 +394,9 @@ export class CommandOutputTracker {
 
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     for (let i = live.length - 1; i >= 0; i--) {
+      const anchored = this.readAnchoredCommand(live[i]);
+      if (anchored) return anchored;
+      if (anchored === '') continue;
       // The marker sits on the row where Enter was pressed, i.e. the last row of a wrapped command.
       const text = this.readLogicalLine(live[i].line).trim();
       if (text) return stripPromptLoose(text);
@@ -458,11 +504,13 @@ export class CommandOutputTracker {
     const live = this.markers.filter((m) => !m.isDisposed && m.line >= 0);
     const newest = live[live.length - 1];
     if (!newest) return null;
+    const anchored = this.readAnchoredCommand(newest);
     const text = this.readLogicalLine(newest.line).trim();
-    const command = stripPromptLoose(text);
+    const command = anchored ?? stripPromptLoose(text);
     // The Enter must have been pressed on a prompt followed by a command; an answer typed into a
-    // running program (`[Y/n]`, a password) has no prompt in front of it.
-    if (!command || command === text) return null;
+    // running program (`[Y/n]`, a password) has no prompt in front of it. A learned prompt position
+    // already says there was one.
+    if (!command || (anchored === null && command === text)) return null;
     // The output starts after the last row of the command line, not after the row the cursor was on.
     const outputFrom = this.logicalLineBounds(newest.line).end + 1;
     const output = stripTrailingPrompt(this.readLines(outputFrom, buf.baseY + buf.cursorY));
@@ -526,7 +574,8 @@ export class CommandOutputTracker {
     this.oscHandler.dispose();
     this.pendingCommandMarker?.dispose();
     this.pendingCommandMarker = undefined;
-    for (const m of this.markers) m.dispose();
+    this.promptAnchors.dispose();
+    for (const m of this.markers) this.dropMarker(m);
     for (const r of this.regions) {
       r.start.dispose();
       r.commandMarker?.dispose();

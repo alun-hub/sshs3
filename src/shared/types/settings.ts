@@ -39,6 +39,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'clipboardHistory', name: 'Clipboard History', defaultKeys: 'Ctrl+Shift+R', category: 'Terminal' },
   { id: 'terminalSearch', name: 'Search in Terminal', defaultKeys: 'Ctrl+Shift+S', category: 'Terminal' },
   { id: 'copyLastOutput', name: 'Copy Last Command Output', defaultKeys: 'Alt+C', category: 'Terminal' },
+  { id: 'rerunWithSudo', name: 'Re-run Last Command with sudo', defaultKeys: 'Alt+S', category: 'Terminal' },
   { id: 'snippets', name: 'Snippets', defaultKeys: 'Ctrl+Shift+L', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];

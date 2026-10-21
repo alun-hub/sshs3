@@ -299,9 +299,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   pathHoverRef.current = pathHover;
 
   // `sudo` does not exist in PowerShell or cmd.
+  const sudoAvailable = !(
+    local &&
+    (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))
+  );
+  const sudoAvailableRef = useRef(sudoAvailable);
+  sudoAvailableRef.current = sudoAvailable;
   const sudoRetry = useSudoRetry({
     rootUser: config?.username === 'root',
-    enabled: sudoRetryPrompt && !(local && (shellType === 'cmd' || shellType === 'powershell' || shellType === 'pwsh' || (IS_WINDOWS && (!shellType || shellType === 'default')))),
+    enabled: sudoRetryPrompt && sudoAvailable,
     termRef,
     trackerRef: outputTrackerRef,
     run: (sudoCommand) => {
@@ -647,7 +653,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         setSnippetsOpen(true);
       } else if (action === 'copyLastOutput') {
         copyLastCommandOutput();
+      } else if (action === 'rerunWithSudo') {
+        rerunLastWithSudo();
       }
+    };
+
+    const rerunLastWithSudo = (): void => {
+      if (!sudoAvailableRef.current) {
+        showNotice('sudo is not available in this shell');
+        return;
+      }
+      const kind = sudoRetryRef.current.rerunWithSudo(outputTracker.lastCommand());
+      if (kind === 'refused') showNotice('This command cannot be re-run with sudo');
+      else if (kind === 'history') showNotice("Typed 'sudo !!' (works in bash and zsh)");
     };
 
     const copyLastCommandOutput = (): void => {
@@ -821,6 +839,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             if (sessionIdRef.current && write) {
               write(sessionIdRef.current, data);
             }
+            if (!isTerminalReply(data)) outputTracker.noteInput();
             if (isTerminalReply(data)) {
               // The terminal answering a query from the program (fish asks before every prompt), not typing.
             } else if (data.includes('\r') || data.includes('\n')) {
@@ -856,6 +875,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             unsubData = onData((sessId, data) => {
               if (sessId === sessionIdRef.current) {
                 term.write(data);
+                outputTracker.noteOutput();
                 sudoRetryRef.current.notifyOutput();
                 sendInitialCwd();
                 pathHoverRef.current.detectCwdFromText(data);

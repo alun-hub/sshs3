@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildSudoCommand, detectSudoRetry, isRootPromptLine, outputIndicatesPermissionDenied } from './sudoRetry';
+import {
+  buildSudoCommand,
+  detectSudoRetry,
+  isRootPromptLine,
+  manualSudoInput,
+  outputIndicatesPermissionDenied,
+} from './sudoRetry';
 
 const base = { exitCode: undefined, atRootPrompt: false } as const;
 
@@ -29,6 +35,23 @@ describe('detectSudoRetry', () => {
         output: "[bat error]: '/etc/shadow': Permission denied (os error 13)",
       })
     ).toEqual({ sudoCommand: 'sudo cat /etc/shadow' });
+  });
+
+  it.each([
+    'cat: /etc/shadow: Åtkomst nekas',
+    'cat: /etc/shadow: Keine Berechtigung',
+    'cat: /etc/shadow: Permission non accordée',
+    'cat: /etc/shadow: Permiso denegado',
+  ])('recognises %s', (output) => {
+    expect(outputIndicatesPermissionDenied(output)).toBe(true);
+  });
+
+  it('trusts looser wording only together with a failing exit code', () => {
+    const line = 'tool: Permission denied while opening /x, giving up';
+    expect(outputIndicatesPermissionDenied(line)).toBe(false);
+    expect(outputIndicatesPermissionDenied(line, 1)).toBe(true);
+    expect(outputIndicatesPermissionDenied(line, 2)).toBe(false);
+    expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey).', 1)).toBe(false);
   });
 
   it('still ignores an ssh authentication failure that lists methods', () => {
@@ -176,5 +199,25 @@ describe('buildSudoCommand / isRootPromptLine', () => {
     expect(isRootPromptLine('root@host:~$ ')).toBe(true);
     expect(isRootPromptLine('root@host ~ % ')).toBe(true);
     expect(isRootPromptLine('alun@fedora in ~')).toBe(false);
+  });
+});
+
+describe('manualSudoInput', () => {
+  it('types the exact command when it is known and fine to elevate', () => {
+    expect(manualSudoInput('  cat /etc/shadow ')).toEqual({ kind: 'command', text: 'sudo cat /etc/shadow' });
+  });
+
+  it('falls back to the shell history when the command is unknown or not plain text', () => {
+    expect(manualSudoInput(null)).toEqual({ kind: 'history', text: 'sudo !!' });
+    expect(manualSudoInput('')).toEqual({ kind: 'history', text: 'sudo !!' });
+    expect(manualSudoInput('echo hi\u202e')).toEqual({ kind: 'history', text: 'sudo !!' });
+    expect(manualSudoInput('cat x\u001b[2J')).toEqual({ kind: 'history', text: 'sudo !!' });
+  });
+
+  it('refuses commands that sudo cannot elevate', () => {
+    expect(manualSudoInput('cd /root')).toEqual({ kind: 'refused' });
+    expect(manualSudoInput('ssh host')).toEqual({ kind: 'refused' });
+    expect(manualSudoInput('echo a > /etc/x')).toEqual({ kind: 'refused' });
+    expect(manualSudoInput('FOO=1 make install')).toEqual({ kind: 'refused' });
   });
 });

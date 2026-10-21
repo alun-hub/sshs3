@@ -46,7 +46,17 @@ const DENIED_PATTERNS: RegExp[] = [
   /\brequires? root\b/i,
   /Could not open lock file/i,
   /Interactive authentication required/i,
+  // The same message from libc in other locales (`cat: /x: Åtkomst nekas`).
+  /: (?:Åtkomst nekas|Behörighet saknas|Keine Berechtigung|Zugriff verweigert|Permission non accordée|Permiso denegado|Permesso negato|Permissão negada)\s*$/i,
 ];
+
+/**
+ * Wording that is a permission problem wherever it stands in the last lines. Only trusted when the shell
+ * reported a failing exit code, which a line that merely mentions the words does not come with.
+ */
+const DENIED_WITH_FAILURE_RE = /\b(?:permission denied|access (?:is )?denied)\b/i;
+/** Exit codes a permission problem ends in: general error, `EACCES` as a code, `EX_NOPERM`, not executable. */
+const PERMISSION_EXIT_CODES = new Set([1, 13, 77, 126]);
 
 /** `sudo` cannot run these: they are shell builtins, or they act on the shell's own state. */
 const SHELL_BUILTINS = new Set([
@@ -104,12 +114,18 @@ function commandName(command: string): { name: string; assignment: boolean } {
   return { name: basename(words[i] ?? ''), assignment };
 }
 
-export function outputIndicatesPermissionDenied(output: string): boolean {
+export function outputIndicatesPermissionDenied(output: string, exitCode?: number): boolean {
   const lines = output.split('\n').filter((l) => l.trim() !== '');
   if (lines.length === 0 || lines.length > MAX_OUTPUT_LINES) return false;
+  const failedWithPermissionCode = exitCode !== undefined && PERMISSION_EXIT_CODES.has(exitCode);
   return lines
     .slice(-ERROR_TAIL_LINES)
-    .some((line) => !SSH_AUTH_DENIED_RE.test(line) && DENIED_PATTERNS.some((re) => re.test(line)));
+    .some(
+      (line) =>
+        !SSH_AUTH_DENIED_RE.test(line) &&
+        (DENIED_PATTERNS.some((re) => re.test(line)) ||
+          (failedWithPermissionCode && DENIED_WITH_FAILURE_RE.test(line)))
+    );
 }
 
 /** True when `sudo <command>` would only elevate part of the line, or not the part that failed. */
@@ -123,22 +139,47 @@ export function buildSudoCommand(command: string): string {
   return `sudo ${command.trim()}`;
 }
 
+/** The command text is a single line of plain printable text. */
+function isPlainCommandText(cmd: string): boolean {
+  // The command is read back from the screen, which remote output can influence. Anything that is not
+  // a single line of plain printable text (newlines, control or escape characters, bidi overrides and
+  // zero-width characters that make the shown text differ from what runs) is never offered.
+  return !UNSAFE_COMMAND_CHARS_RE.test(cmd);
+}
+
+/** `sudo <cmd>` would run the whole command and elevate what failed (not a builtin, wrapper, redirect, ...). */
+function canElevate(cmd: string): boolean {
+  if (ENV_ASSIGNMENT_RE.test(cmd)) return false;
+  const { name, assignment } = commandName(cmd);
+  if (assignment || ENV_ASSIGNMENT_RE.test(name) || EXCLUDED_COMMANDS.has(name)) return false;
+  return !isCompoundOrRedirected(cmd);
+}
+
 export function detectSudoRetry(input: SudoRetryInput): SudoRetrySuggestion | null {
   const { command, output, exitCode, atRootPrompt } = input;
   if (atRootPrompt) return null;
   if (exitCode === 0) return null;
   const cmd = command?.trim();
   if (!cmd || !output) return null;
-  // The command is read back from the screen, which remote output can influence. Anything that is not
-  // a single line of plain printable text (newlines, control or escape characters, bidi overrides and
-  // zero-width characters that make the shown text differ from what runs) is never offered.
-  if (UNSAFE_COMMAND_CHARS_RE.test(cmd)) return null;
-  if (ENV_ASSIGNMENT_RE.test(cmd)) return null;
-  const { name, assignment } = commandName(cmd);
-  if (assignment || ENV_ASSIGNMENT_RE.test(name) || EXCLUDED_COMMANDS.has(name)) return null;
-  if (isCompoundOrRedirected(cmd)) return null;
-  if (!outputIndicatesPermissionDenied(output)) return null;
+  if (!isPlainCommandText(cmd) || !canElevate(cmd)) return null;
+  if (!outputIndicatesPermissionDenied(output, exitCode)) return null;
   return { sudoCommand: buildSudoCommand(cmd) };
+}
+
+/**
+ * What to type for the manual "re-run with sudo" action, which needs no error detection.
+ * - `command`: the last command is known and fine to elevate, so the exact `sudo <command>` is typed.
+ * - `history`: it is not known, or its text is not plain; `sudo !!` is typed instead, which bash and zsh
+ *   expand from their own history, so nothing read from the screen can change what runs.
+ * - `refused`: the last command cannot be run through sudo (`cd`, `ssh`, a redirect, ...).
+ */
+export function manualSudoInput(
+  command: string | null
+): { kind: 'command' | 'history'; text: string } | { kind: 'refused' } {
+  const cmd = command?.trim();
+  if (!cmd || !isPlainCommandText(cmd)) return { kind: 'history', text: 'sudo !!' };
+  if (!canElevate(cmd)) return { kind: 'refused' };
+  return { kind: 'command', text: buildSudoCommand(cmd) };
 }
 
 /** True when the prompt shows root: a trailing `#`, or `root@host`. */

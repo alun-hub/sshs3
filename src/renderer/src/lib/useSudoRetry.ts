@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Terminal } from 'xterm';
 import { endsAtPrompt, isPromptLine, type CommandOutputTracker } from './terminalOutput';
-import { detectSudoRetry, isRootPromptLine, type SudoRetrySuggestion } from './sudoRetry';
+import { detectSudoRetry, isRootPromptLine, manualSudoInput, type SudoRetrySuggestion } from './sudoRetry';
 import { createRendererLogger } from './log';
 
 const log = createRendererLogger('sudo-retry');
@@ -130,6 +130,20 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
     timerRef.current = setTimeout(armedRef.current ? evaluate : revalidate, QUIET_MS);
   }, [termRef, evaluate, revalidate]);
 
+  /**
+   * The manual action: types `sudo` in front of the last command whether or not an error was detected.
+   * Returns what was done so the caller can tell the user (see `manualSudoInput`).
+   */
+  const rerunWithSudo = useCallback(
+    (command: string | null) => {
+      dismiss();
+      const input = manualSudoInput(command);
+      if (input.kind !== 'refused') runRef.current(input.text);
+      return input.kind;
+    },
+    [dismiss]
+  );
+
   const accept = useCallback(() => {
     const current = suggestionRef.current;
     if (!current) return;
@@ -164,5 +178,5 @@ export function useSudoRetry({ enabled, rootUser = false, termRef, trackerRef, r
   }, [enabled, dismiss]);
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
-  return { suggestion, notifyEnter, notifyInput, notifyOutput, handleKey, dismiss };
+  return { suggestion, notifyEnter, notifyInput, notifyOutput, handleKey, dismiss, rerunWithSudo };
 }
