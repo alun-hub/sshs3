@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.51] - 2026-10-21
+
+### Added
+- learn the prompt position from the cursor, wider error detection, manual sudo re-run
+
 ## [0.96.50] - 2026-10-21
 
 ### Fixed
