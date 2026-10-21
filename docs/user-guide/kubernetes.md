@@ -145,9 +145,27 @@ Authenticate against OpenShift clusters via web console tokens without requiring
 4. sshs3 authenticates and adds the cluster context to `~/.kube/config`.
 5. In local shell tabs, commands like `oc whoami`, `oc project`, and `oc login` work immediately thanks to sshs3's built-in CLI shim!
 
+#### 🌐 Browser sign-in (no token to copy)
+When you enter the API server URL, sshs3 checks whether the cluster has OpenShift's built-in OAuth server. If it does, a **Sign in with browser** button appears at the top of the dialog (or press <kbd>Enter</kbd> in the server field while the token field is empty):
+
+1. sshs3 opens your default browser at the cluster's login page. Whatever identity provider the cluster uses (for example Keycloak) handles the sign-in, including single sign-on and MFA.
+2. After you log in, the browser returns to a temporary local address (`http://127.0.0.1:<port>/callback`) that only sshs3 listens on.
+3. sshs3 exchanges the result for a token, stores it in `~/.kube/config` exactly like the pasted-token flow, and adds the cluster to the tree.
+
+<kbd>Esc</kbd> or **Cancel** abandons a pending sign-in; it also times out after 5 minutes. If anything goes wrong, the paste fields stay available and work as before.
+
+**Supported:** OpenShift / OKD **4.13 or newer** with the built-in OAuth server (any identity provider behind it). This is the same flow as `oc login --web`.
+
+**Not offered (paste flow only):** OpenShift older than 4.13, clusters using direct external OIDC authentication (4.19+) instead of the built-in OAuth server, clusters where the `openshift-cli-client` OAuth client has been removed, and plain Kubernetes (which is unchanged).
+
+**Checking a new cluster (smoke test):** enter the server URL and confirm the button appears; sign in; confirm the cluster shows up in the tree and `oc whoami` in a local tab prints your user.
+
+> The flow follows the OpenShift source code (library-go / `oc`), but has not yet been tested against a live cluster. Please report the OpenShift version if it does not work for you.
+
 #### ⚠️ Limitations & Caveats
 - Opt-in feature enabled under settings.
-- Token lifetime is governed by the OpenShift OAuth server (typically 24 hours).
+- Token lifetime is governed by the OpenShift OAuth server (typically 24 hours). Browser sign-in does not renew it silently; sign in again when it expires.
+- Browser sign-in needs a browser on the same machine that can reach `http://127.0.0.1`; local firewall or proxy policies that block loopback traffic make it time out.
 
 #### ⚙️ Technical Internals & Architecture
 Parses cluster URL and SHA256 tokens, verifies identity against OpenShift APIs, and updates kubeconfig. An internal binary directory containing a lightweight Node.js CLI shim (`ocShimCli.cjs`) is prepended to `$PATH` for local shell processes.

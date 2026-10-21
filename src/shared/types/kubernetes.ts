@@ -210,3 +210,22 @@ export interface K8sLoginResult {
   namespace: string;
   projects: string[];
 }
+
+/** Whether a cluster offers the OpenShift browser sign-in (built-in OAuth server, OpenShift 4.13+). */
+export interface K8sOpenShiftProbeResult {
+  supported: boolean;
+  reason?: string;
+}
+
+export interface K8sWebLoginOptions {
+  server: string;
+  insecureSkipTlsVerify?: boolean;
+  namespace?: string;
+  /** Fixed loopback port for the sign-in callback; a random free port is used when omitted. */
+  callbackPort?: number;
+}
+
+export interface K8sWebLoginResult extends K8sLoginResult {
+  /** ISO timestamp of the token expiry, when the OAuth server reported it. */
+  expiresAt?: string;
+}

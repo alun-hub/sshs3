@@ -88,6 +88,9 @@ import type {
   K8sDebugTarget,
   K8sLoginOptions,
   K8sLoginResult,
+  K8sOpenShiftProbeResult,
+  K8sWebLoginOptions,
+  K8sWebLoginResult,
 } from './kubernetes';
 
 export const IPC_CHANNELS = {
@@ -364,6 +367,9 @@ export const IPC_CHANNELS = {
   K8S_LIST_PODS: 'k8s:list-pods',
   K8S_RELOAD: 'k8s:reload',
   K8S_LOGIN: 'k8s:login',
+  K8S_OPENSHIFT_PROBE: 'k8s:openshift-probe',
+  K8S_OPENSHIFT_WEB_LOGIN: 'k8s:openshift-web-login',
+  K8S_OPENSHIFT_WEB_LOGIN_CANCEL: 'k8s:openshift-web-login-cancel',
   K8S_CONFIG_CHANGED: 'k8s:config-changed',
 
   // Kubernetes / OpenShift interactive exec terminal
@@ -850,6 +856,9 @@ export interface MultiSSHApi {
   k8sListPods(contextName: string, namespace: string): Promise<K8sPodNode[]>;
   k8sReload(): Promise<void>;
   k8sLogin(options: K8sLoginOptions): Promise<K8sLoginResult>;
+  k8sOpenShiftProbe(server: string, insecureSkipTlsVerify?: boolean): Promise<K8sOpenShiftProbeResult>;
+  k8sOpenShiftWebLogin(options: K8sWebLoginOptions): Promise<K8sWebLoginResult>;
+  k8sOpenShiftWebLoginCancel(): Promise<void>;
   onK8sConfigChanged(callback: (execAuthWarning?: string | null) => void): () => void;
   k8sTerminalCreate(target: K8sTerminalTarget, options?: { cols?: number; rows?: number }): Promise<{ sessionId: string }>;
   k8sTerminalWrite(sessionId: string, data: string): Promise<void>;

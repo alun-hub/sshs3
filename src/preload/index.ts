@@ -32,6 +32,9 @@ import type {
   K8sDebugTarget,
   K8sLoginOptions,
   K8sLoginResult,
+  K8sOpenShiftProbeResult,
+  K8sWebLoginOptions,
+  K8sWebLoginResult,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
@@ -842,6 +845,14 @@ export const api: MultiSSHApi = {
 
   k8sLogin: (options: K8sLoginOptions): Promise<K8sLoginResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.K8S_LOGIN, options),
+
+  k8sOpenShiftProbe: (server: string, insecureSkipTlsVerify?: boolean): Promise<K8sOpenShiftProbeResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_OPENSHIFT_PROBE, server, insecureSkipTlsVerify),
+
+  k8sOpenShiftWebLogin: (options: K8sWebLoginOptions): Promise<K8sWebLoginResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN, options),
+
+  k8sOpenShiftWebLoginCancel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN_CANCEL),
 
   onK8sConfigChanged: (callback: (execAuthWarning?: string | null) => void): (() => void) => {
     const listener = (_event: unknown, execAuthWarning?: string | null) => callback(execAuthWarning);

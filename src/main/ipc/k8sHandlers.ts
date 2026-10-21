@@ -1,7 +1,10 @@
+import { shell as electronShell } from 'electron';
 import { isPasswordPrompt } from '../ssh/askpassPrompt';
 import { loginWithToken } from '../services/K8sAuthService';
+import { OpenShiftWebLoginService } from '../services/OpenShiftWebLoginService';
+import { parseK8sServerArg, parseWebLoginOptions } from './ipcHelpers';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult } from '../../shared/types/kubernetes';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult, K8sOpenShiftProbeResult, K8sWebLoginResult } from '../../shared/types/kubernetes';
 import type { SSHConnectionConfig, SSHTunnelConfig, SSHActiveTunnel } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
@@ -14,7 +17,38 @@ export type K8sHost = Pick<
   smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig'>;
 };
 
-export function registerK8sHandlers(bridge: K8sHost): void {
+export interface K8sHandlerDeps {
+  openShiftWebLogin?: OpenShiftWebLoginService;
+}
+
+/** Opens the OAuth authorization URL in the user's browser; only https URLs are ever launched. */
+function openAuthorizeUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Refusing to open an invalid sign-in URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Refusing to open a non-https sign-in URL');
+  }
+  void electronShell?.openExternal?.(url).catch(() => {});
+}
+
+export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}): void {
+  const openShiftWebLogin = deps.openShiftWebLogin ?? new OpenShiftWebLoginService();
+
+  /** Stores the token in the kubeconfig (shared by pasted and browser sign-in) and tells the UI to reload. */
+  const completeLogin = async (options: K8sLoginOptions): Promise<K8sLoginResult> => {
+    const result = await loginWithToken(options);
+    bridge.k8sDiscoveryService.reload();
+    const webContents = bridge.getWebContents();
+    if (webContents && !webContents.isDestroyed?.()) {
+      webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
+    }
+    return result;
+  };
+
   bridge.registerHandler(IPC_CHANNELS.K8S_LIST_CONTEXTS, async (): Promise<K8sClusterNode[]> => {
     return bridge.k8sDiscoveryService.listContexts();
   });
@@ -37,18 +71,35 @@ export function registerK8sHandlers(bridge: K8sHost): void {
     bridge.k8sDiscoveryService.reload();
   });
 
+  bridge.registerHandler(IPC_CHANNELS.K8S_LOGIN, async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
+    return completeLogin(options);
+  });
+
   bridge.registerHandler(
-    IPC_CHANNELS.K8S_LOGIN,
-    async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
-      const result = await loginWithToken(options);
-      bridge.k8sDiscoveryService.reload();
-      const webContents = bridge.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
-      }
-      return result;
+    IPC_CHANNELS.K8S_OPENSHIFT_PROBE,
+    async (_event, server: unknown, insecureSkipTlsVerify?: unknown): Promise<K8sOpenShiftProbeResult> => {
+      return openShiftWebLogin.probe(parseK8sServerArg(server), insecureSkipTlsVerify === true);
     }
   );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN,
+    async (_event, rawOptions: unknown): Promise<K8sWebLoginResult> => {
+      const options = parseWebLoginOptions(rawOptions);
+      const { token, expiresAt } = await openShiftWebLogin.login(options, { onAuthorizeUrl: openAuthorizeUrl });
+      const result = await completeLogin({
+        server: options.server,
+        token,
+        namespace: options.namespace,
+        insecureSkipTlsVerify: options.insecureSkipTlsVerify,
+      });
+      return { ...result, expiresAt };
+    }
+  );
+
+  bridge.registerHandler(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN_CANCEL, async (): Promise<void> => {
+    openShiftWebLogin.cancel();
+  });
 
   bridge.registerHandler(
     IPC_CHANNELS.K8S_TERMINAL_CREATE,

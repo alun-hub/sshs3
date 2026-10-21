@@ -1,5 +1,6 @@
 import { getBaseName, joinPaths } from '../transfer/TransferPipeline';
 import type { StorageType } from '../../shared/types/storage';
+import type { K8sWebLoginOptions } from '../../shared/types/kubernetes';
 
 /** True when any leaf pane of a saved session's pane tree uses the given auth type. */
 export function paneTreeHasAuthType(node: unknown, authType: string): boolean {
@@ -71,4 +72,60 @@ export function isMissingPathError(err: unknown): boolean {
   // SFTP status 2 (SSH_FX_NO_SUCH_FILE).
   if (e.name === 'SftpError' && e.statusCode === 2) return true;
   return typeof e.message === 'string' && /^(?:Path|File or directory|Directory) not found\b/.test(e.message);
+}
+
+const MAX_SERVER_URL_LENGTH = 2048;
+const MAX_NAMESPACE_LENGTH = 253;
+
+/** Validates the cluster API URL that the renderer sends for the OpenShift browser sign-in. */
+export function parseK8sServerArg(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('Server URL is required');
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_SERVER_URL_LENGTH) {
+    throw new Error('Server URL is too long');
+  }
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new Error('Invalid server URL');
+  }
+  if (!url.hostname) {
+    throw new Error('Invalid server URL');
+  }
+  return trimmed;
+}
+
+/** Validates untrusted IPC arguments for the OpenShift browser sign-in. */
+export function parseWebLoginOptions(raw: unknown): K8sWebLoginOptions {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid sign-in options');
+  }
+  const input = raw as Record<string, unknown>;
+  const options: K8sWebLoginOptions = { server: parseK8sServerArg(input.server) };
+
+  if (input.insecureSkipTlsVerify !== undefined) {
+    if (typeof input.insecureSkipTlsVerify !== 'boolean') {
+      throw new Error('Invalid TLS option');
+    }
+    options.insecureSkipTlsVerify = input.insecureSkipTlsVerify;
+  }
+  if (input.namespace !== undefined) {
+    if (typeof input.namespace !== 'string' || input.namespace.length > MAX_NAMESPACE_LENGTH) {
+      throw new Error('Invalid namespace');
+    }
+    const namespace = input.namespace.trim();
+    if (namespace) options.namespace = namespace;
+  }
+  if (input.callbackPort !== undefined) {
+    const port = input.callbackPort;
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1024 || port > 65535) {
+      throw new Error('Callback port must be an integer between 1024 and 65535');
+    }
+    options.callbackPort = port;
+  }
+  return options;
 }

@@ -14,6 +14,8 @@ import {
 import type { K8sLoginResult } from '@shared/types/kubernetes';
 import { parseOcLoginCommand } from '@shared/ocLogin';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useOpenShiftWebLogin } from '../../lib/useOpenShiftWebLogin';
+import { OpenShiftWebLoginSection } from './OpenShiftWebLoginSection';
 
 interface K8sLoginModalProps {
   open: boolean;
@@ -31,8 +33,21 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
-  useModalDismiss(onClose, open, !loading);
+  const webLogin = useOpenShiftWebLogin({
+    enabled: open,
+    server,
+    insecureSkipTlsVerify,
+    namespace,
+    onSuccess: (result) => {
+      onSuccess?.(result);
+      onClose();
+    },
+    onError: setError,
+  });
+
+  // Escape cancels a pending browser sign-in first, otherwise it closes; a stray backdrop click would
+  // discard typed input, so it is intentionally ignored.
+  useModalDismiss(webLogin.waiting ? webLogin.cancel : onClose, open, !loading);
   if (!open) return null;
 
   const handlePasteChange = (val: string) => {
@@ -106,6 +121,16 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <OpenShiftWebLoginSection
+            supported={webLogin.supported}
+            waiting={webLogin.waiting}
+            onStart={() => {
+              setError(null);
+              void webLogin.start();
+            }}
+            onCancel={webLogin.cancel}
+          />
+
           {/* Quick Paste Box */}
           <div className="rounded-xl border border-border-subtle bg-app-surface p-3.5 space-y-2">
             <div className="flex items-center justify-between text-xs font-medium text-txt-primary">
@@ -152,6 +177,14 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 required
                 value={server}
                 onChange={(e) => setServer(e.target.value)}
+                onKeyDown={(e) => {
+                  // With browser sign-in available and no token entered, Enter starts it instead of submitting.
+                  if (e.key === 'Enter' && webLogin.supported && !webLogin.waiting && !token.trim()) {
+                    e.preventDefault();
+                    setError(null);
+                    void webLogin.start();
+                  }
+                }}
                 placeholder="https://api.mycluster.example.com:6443"
                 className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs font-mono text-txt-primary focus:border-red-500/50 focus:outline-none transition-colors"
               />
@@ -160,7 +193,12 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-txt-secondary">
-                  API Token <span className="text-red-400">*</span>
+                  API Token{' '}
+                  {webLogin.supported ? (
+                    <span className="text-txt-muted font-normal">(not needed for browser sign-in)</span>
+                  ) : (
+                    <span className="text-red-400">*</span>
+                  )}
                 </label>
                 <button
                   type="button"
@@ -175,7 +213,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
                 <input
                   aria-label="Token"
                   type={showToken ? 'text' : 'password'}
-                  required
+                  required={!webLogin.supported}
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="sha256~..."
@@ -240,7 +278,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
             <button
               type="submit"
               form="k8s-login-form"
-              disabled={loading}
+              disabled={loading || webLogin.waiting}
               className="flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 text-xs font-medium shadow-sm transition-colors disabled:opacity-50"
             >
               {loading ? (
