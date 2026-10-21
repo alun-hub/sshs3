@@ -414,10 +414,15 @@ describe('App Component', () => {
     // 1 pane in the first (now hidden) tab + 2 panes in the newly-split active tab
     expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(3);
 
-    // Trigger Ctrl+W to close active tab
+    // Bare Ctrl+W belongs to the shell/TUI (readline, vim, nano) and must not close the tab
+    fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    expect(screen.getAllByRole('tab').length).toBe(2);
+
+    // Trigger Ctrl+Shift+W to close active tab
     fireEvent.keyDown(window, {
-      key: 'w',
+      key: 'W',
       ctrlKey: true,
+      shiftKey: true,
     });
 
     expect(screen.getAllByRole('tab').length).toBe(1);
@@ -507,13 +512,14 @@ describe('App Component', () => {
     expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('opens Quick Connect on Ctrl+K but not on Ctrl+Shift+K (reserved for Search in Files)', async () => {
+  it('opens the Connection Manager on Ctrl+Shift+O but leaves Ctrl+K (kill-line) and Ctrl+Shift+K alone', async () => {
     render(<App />);
 
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
     expect(screen.queryByText('Connection Manager')).not.toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'O', ctrlKey: true, shiftKey: true });
     expect(screen.getByText('Connection Manager')).toBeInTheDocument();
   });
 

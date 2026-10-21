@@ -30,10 +30,20 @@ describe('SettingsStore', () => {
   it('drops a saved copyLastOutput binding that is still the superseded default', async () => {
     await fs.writeFile(
       settingsFile,
-      JSON.stringify({ shortcuts: { closeTab: 'Ctrl+W', copyLastOutput: 'Ctrl+Shift+G', snippets: 'Ctrl+Alt+S' } })
+      JSON.stringify({ shortcuts: { newTerminal: 'Ctrl+Alt+T', copyLastOutput: 'Ctrl+Shift+G', snippets: 'Ctrl+Alt+S' } })
     );
     const { shortcuts } = await store.getSettings();
-    expect(shortcuts).toEqual({ closeTab: 'Ctrl+W', snippets: 'Ctrl+Alt+S' });
+    expect(shortcuts).toEqual({ newTerminal: 'Ctrl+Alt+T', snippets: 'Ctrl+Alt+S' });
+  });
+
+  it('drops saved bindings that are still a superseded default which collided with TUIs', async () => {
+    await fs.writeFile(
+      settingsFile,
+      JSON.stringify({
+        shortcuts: { closeTab: 'Ctrl+W', copyLastOutput: 'Alt+C', rerunWithSudo: 'Alt+S', snippets: 'Ctrl+Shift+L' },
+      })
+    );
+    expect((await store.getSettings()).shortcuts).toEqual({ snippets: 'Ctrl+Shift+L' });
   });
 
   it('keeps a copyLastOutput binding the user chose themselves', async () => {

@@ -558,7 +558,7 @@ export const App: React.FC = () => {
         onViewK8sLogs={handleViewK8sLogs}
       />
 
-      {/* Quick-link / Ctrl+K / Top Bar: manage or connect to saved SSH/S3 profiles */}
+      {/* Quick-link / Top Bar / Ctrl+Shift+O: manage or connect to saved SSH/S3 profiles */}
       <ConnectionManagerModal
         open={profilesModalOpen}
         initialTab={profilesModalTab}

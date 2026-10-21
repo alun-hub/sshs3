@@ -16,7 +16,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'newTerminal', name: 'New Terminal', defaultKeys: 'Ctrl+Shift+T', category: 'Tabs' },
   { id: 'newFileManager', name: 'New File Manager', defaultKeys: 'Ctrl+Shift+F', category: 'Tabs' },
   { id: 'newRemoteFileManager', name: 'New Remote File Manager', defaultKeys: 'Ctrl+Shift+Alt+F', category: 'Tabs' },
-  { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+W', category: 'Tabs' },
+  { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+Shift+W', category: 'Tabs' },
   { id: 'nextTab', name: 'Next Tab', defaultKeys: 'Ctrl+Tab', category: 'Tabs' },
   { id: 'prevTab', name: 'Previous Tab', defaultKeys: 'Ctrl+Shift+Tab', category: 'Tabs' },
   { id: 'openProfiles', name: 'Connection Manager', defaultKeys: 'Ctrl+Shift+O', category: 'General' },
@@ -27,6 +27,9 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'navigateDown', name: 'Navigate Down (Split / Into Tab)', defaultKeys: 'Ctrl+Shift+Down', category: 'General' },
   { id: 'splitVertical', name: 'Split Terminal Vertically', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
   { id: 'splitHorizontal', name: 'Split Terminal Horizontally', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
+  // Terminal-focused bindings avoid bare Ctrl+<letter> and Alt+<letter>: a TUI or shell receives
+  // those as control characters / ESC prefixes (readline, vim, nano, fzf, tmux, emacs), so the app
+  // must not swallow them. Ctrl+Shift+<letter> is the convention of Gnome Terminal and Konsole.
   // Letters, not punctuation: Shift+<punctuation key> produces a different character on
   // different keyboard layouts (e.g. Shift+, is '<' on a US layout, ';' on Swedish/Nordic
   // ISO layouts), and matching that reliably across every layout/browser combo isn't
@@ -38,8 +41,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'resetFontSize', name: 'Reset Font Size', defaultKeys: 'Ctrl+0', category: 'Terminal' },
   { id: 'clipboardHistory', name: 'Clipboard History', defaultKeys: 'Ctrl+Shift+R', category: 'Terminal' },
   { id: 'terminalSearch', name: 'Search in Terminal', defaultKeys: 'Ctrl+Shift+S', category: 'Terminal' },
-  { id: 'copyLastOutput', name: 'Copy Last Command Output', defaultKeys: 'Alt+C', category: 'Terminal' },
-  { id: 'rerunWithSudo', name: 'Re-run Last Command with sudo', defaultKeys: 'Alt+S', category: 'Terminal' },
+  { id: 'copyLastOutput', name: 'Copy Last Command Output', defaultKeys: 'Ctrl+Shift+Y', category: 'Terminal' },
+  { id: 'rerunWithSudo', name: 'Re-run Last Command with sudo', defaultKeys: 'Ctrl+Shift+X', category: 'Terminal' },
   { id: 'snippets', name: 'Snippets', defaultKeys: 'Ctrl+Shift+L', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
 ];

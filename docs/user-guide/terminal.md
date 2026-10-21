@@ -130,7 +130,7 @@ On Linux and macOS the hover card reads files through the terminal's own SSH con
 - Dynamic variables: `{{host}}`, `{{user}}`, and `{{date}}` (formatted as `yyyy-mm-dd HH:mm`).
 - *Security Note:* Snippets are saved unencrypted in `snippets.json`. Do not store passwords or API secrets in snippets!
 
-### 4.5 Clean Output Copy (<kbd>Alt+C</kbd>)
+### 4.5 Clean Output Copy (<kbd>Ctrl+Shift+Y</kbd>)
 - Copies the clean output of the immediately preceding command directly to the clipboard without manual mouse highlighting.
 - **Prompt Stripping**: Automatically strips shell prompt prefixes (e.g. `user@host:~$`, `[user@host /dir]#`, Starship / Powerlevel10k prompt headers/footers with `in <path>`, box-drawing lines like `╭─` and `╰─$`, and git branch decorators).
 - **ANSI & Trailing Prompts**: Strips ANSI escape color codes and trailing prompt lines, leaving only the pure command output.
@@ -159,7 +159,9 @@ The terminal engine actively monitors output streams for web servers, dev tools,
   - **Dismiss**: Silences the port for the active session.
 - **Custom Regex Support**: Under *Settings → Terminal*, operators can provide custom regular expressions to match proprietary server logs or unique port announcements. The feature can also be toggled completely off.
 
-### 4.9 Re-run with sudo
+### 4.9 Re-run with sudo (<kbd>Ctrl+Shift+X</kbd>)
+<kbd>Ctrl+Shift+X</kbd> offers the same re-run for the last command at any time, not only after a permission error. Terminal shortcuts use <kbd>Ctrl+Shift</kbd> rather than bare <kbd>Ctrl</kbd> or <kbd>Alt</kbd> so they never take keys from the shell or a full-screen program (readline, vim, nano, fzf, tmux).
+
 When a command fails with a permission error (for example `cat: /etc/shadow: Permission denied`, `Operation not permitted`, or `Are you root?`), a prompt appears at the bottom of the terminal showing the whole command that would run (wrapped over several lines when it is long, never truncated):
 - <kbd>Enter</kbd> types `sudo <your command>` onto the prompt but does not run it: you see the whole command on the real line, can edit it, and press <kbd>Enter</kbd> again to run it (or clear the line to cancel). `sudo` asks for the password in the shell as usual; sshs3 never sees it. The first Enter is ignored for a moment after the bar appears, so a quick double press does not accept it.
 - <kbd>Esc</kbd>, or typing anything else, dismisses the bar.

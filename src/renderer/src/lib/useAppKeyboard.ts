@@ -140,14 +140,6 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
         }
       }
 
-      // Quick Connect shortcut Ctrl+K (not Ctrl+Shift+K, which is a separate,
-      // user-rebindable shortcut — see 'searchInFiles' below).
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        openTopLevelModal(() => setProfilesModalOpen(true));
-        return;
-      }
-
       const rawCombo = comboFromKeyboardEvent(e);
       if (rawCombo === null) return;
       const combo = rawCombo.toLowerCase();
