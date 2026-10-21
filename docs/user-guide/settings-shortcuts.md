@@ -67,6 +67,7 @@ Deliver maximum keyboard efficiency by allowing operators to navigate across spl
   - Shift focus in the direction of the pressed arrow across split panes, tabs, dual file manager panes, menus, and dialogs.
   - Pressing <kbd>Ctrl+Shift+Up</kbd> from the top-most pane moves focus directly into the **Tab Bar** (where <kbd>Left</kbd>/<kbd>Right</kbd> switches active tabs, and <kbd>Down</kbd> or <kbd>Enter</kbd> returns focus back inside the active tab).
   - In dialogs and modals: <kbd>Ctrl+Shift+Arrow Keys</kbd> moves focus between fields, dropdowns, and action buttons **even when the cursor is typing inside a text input field**!
+- **Go to Tab (<kbd>Ctrl+1</kbd>…<kbd>Ctrl+8</kbd>, <kbd>Ctrl+9</kbd> for the last tab)** and **Shortcut Overview (<kbd>Ctrl+Shift+H</kbd>)**, which opens *Settings → Keyboard Shortcuts*.
 - **Action Activation (<kbd>Enter</kbd>)**:
   - Activates whatever element is currently focused: opens folders, launches connections, toggles checkboxes, and triggers focused action buttons.
 - **Dismiss & Return (<kbd>Escape</kbd>)**:

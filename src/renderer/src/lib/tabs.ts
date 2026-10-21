@@ -12,6 +12,8 @@ export interface AppTab extends TabItem {
   paneTree?: PaneNode;
   /** The pane the user last interacted with; keyboard shortcuts (split/close) target this pane. */
   activePaneId?: string;
+  /** When set, only this pane is shown (tmux-style zoom); the other panes keep running hidden. */
+  zoomedPaneId?: string;
   initialCwd?: string;
   /** Set when opening a filemanager tab focused on a K8s container. */
   initialK8sTarget?: K8sTerminalTarget;
@@ -47,14 +49,25 @@ export function normalizeTab(tab: AppTab): AppTab {
   return { ...tab, paneTree: createLeaf(`${tab.id}-root`) };
 }
 
+/**
+ * The tab a "go to tab N" shortcut selects: 1..8 is that tab, 9 is always the last one (browser
+ * convention). Null when there is no such tab.
+ */
+export function tabForNumber(tabs: AppTab[], n: number): AppTab | null {
+  if (n === 9) return tabs[tabs.length - 1] ?? null;
+  return n >= 1 ? (tabs[n - 1] ?? null) : null;
+}
+
 export function sanitizeTabForSession(tab: AppTab): AppTab {
   if (tab.type === 'editor') {
     const { editorInitialContent: _editorInitialContent, ...rest } = tab;
     return rest;
   }
   if (!tab.paneTree) return tab;
+  // The zoom is a transient view state; a restored session starts with every pane visible.
+  const { zoomedPaneId: _zoomedPaneId, ...rest } = tab;
   return {
-    ...tab,
+    ...rest,
     paneTree: sanitizePaneNode(tab.paneTree),
   };
 }

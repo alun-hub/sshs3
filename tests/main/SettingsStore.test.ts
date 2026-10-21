@@ -40,7 +40,7 @@ describe('SettingsStore', () => {
     await fs.writeFile(
       settingsFile,
       JSON.stringify({
-        shortcuts: { closeTab: 'Ctrl+W', copyLastOutput: 'Alt+C', rerunWithSudo: 'Alt+S', snippets: 'Ctrl+Shift+L' },
+        shortcuts: { closeTab: 'Ctrl+W', copyLastOutput: 'Alt+C', rerunWithSudo: 'Alt+S', newRemoteFileManager: 'Ctrl+Shift+Alt+F', snippets: 'Ctrl+Shift+L' },
       })
     );
     expect((await store.getSettings()).shortcuts).toEqual({ snippets: 'Ctrl+Shift+L' });

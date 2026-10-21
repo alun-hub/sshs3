@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { comboFromKeyboardEvent } from '../../src/renderer/src/lib/shortcuts';
+import { SHORTCUT_DEFINITIONS } from '../../src/shared/types/settings';
+
+describe('default shortcuts', () => {
+  it('never bind the same key combo to two actions', () => {
+    const seen = new Map<string, string>();
+    for (const def of SHORTCUT_DEFINITIONS) {
+      const key = def.defaultKeys.toLowerCase();
+      expect(seen.get(key), `${def.id} duplicates ${seen.get(key)} (${def.defaultKeys})`).toBeUndefined();
+      seen.set(key, def.id);
+    }
+  });
+
+  it('list modifiers in the order comboFromKeyboardEvent produces, or they could never match a keypress', () => {
+    for (const def of SHORTCUT_DEFINITIONS) {
+      const rest = def.defaultKeys.replace(/^(?:Ctrl\+)?(?:Cmd\+)?(?:Alt\+)?(?:Shift\+)?/, '');
+      expect(rest, def.id).not.toMatch(/^(?:Ctrl|Cmd|Alt|Shift)\+/);
+    }
+  });
+
+  it('leave bare Alt+<key> and Ctrl+<letter> to the shell, which reads them as ESC prefixes and control codes', () => {
+    const terminalFacing = SHORTCUT_DEFINITIONS.filter((d) => d.category === 'Terminal').map((d) => d.defaultKeys);
+    for (const keys of terminalFacing) {
+      expect(keys).not.toMatch(/^Alt\+/);
+      expect(keys).not.toMatch(/^Ctrl\+[A-Za-z]$/);
+    }
+  });
+});
 
 describe('comboFromKeyboardEvent', () => {
   it('builds a combo string from modifiers and an uppercased letter', () => {

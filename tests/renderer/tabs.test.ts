@@ -1,7 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { isEmptyUnconnectedTab, normalizeTab, sanitizeTabForSession, type AppTab } from '../../src/renderer/src/lib/tabs';
+import {
+  isEmptyUnconnectedTab,
+  normalizeTab,
+  sanitizeTabForSession,
+  tabForNumber,
+  type AppTab,
+} from '../../src/renderer/src/lib/tabs';
 
 describe('tabs helpers', () => {
+  it('maps tab numbers 1..8 to that tab and 9 to the last tab', () => {
+    const tabs = ['a', 'b', 'c'].map((id) => ({ id, type: 'terminal', title: id }) as AppTab);
+    expect(tabForNumber(tabs, 1)?.id).toBe('a');
+    expect(tabForNumber(tabs, 3)?.id).toBe('c');
+    expect(tabForNumber(tabs, 4)).toBeNull();
+    expect(tabForNumber(tabs, 9)?.id).toBe('c');
+    expect(tabForNumber([], 9)).toBeNull();
+    expect(tabForNumber(tabs, 0)).toBeNull();
+  });
+
+  it('does not persist the transient pane zoom in a saved session', () => {
+    const tab = {
+      id: 't1',
+      type: 'terminal',
+      title: 'T',
+      paneTree: { type: 'leaf', id: 'a' },
+      zoomedPaneId: 'a',
+    } as AppTab;
+    expect(sanitizeTabForSession(tab)).not.toHaveProperty('zoomedPaneId');
+  });
+
   it('gives a terminal tab without a pane tree a single root leaf', () => {
     const tab = normalizeTab({ id: 't1', type: 'terminal', title: 'Terminal 1' } as AppTab);
     expect(tab.paneTree).toMatchObject({ type: 'leaf', id: 't1-root' });

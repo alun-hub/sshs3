@@ -11,13 +11,15 @@ import { type SettingsCategory, normalizeAgentMode } from './settingsConstants';
 
 interface UseSettingsFormArgs {
   open: boolean;
+  /** Category shown when the dialog opens; defaults to General. */
+  initialCategory?: SettingsCategory;
   currentSettings: AppSettings;
   onSave: (settings: AppSettings) => void;
   onClose: () => void;
 }
 
 /** All editable settings as draft state, the data they load on open, and the handlers the panels share. */
-export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseSettingsFormArgs) {
+export function useSettingsForm({ open, initialCategory, currentSettings, onSave, onClose }: UseSettingsFormArgs) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('general');
   const [theme, setTheme] = useState<AppTheme>(currentSettings.theme);
   const [fontSize, setFontSize] = useState<number>(currentSettings.terminalFontSize);
@@ -152,7 +154,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
     const justOpened = open && !wasOpenRef.current;
     wasOpenRef.current = open;
     if (justOpened) {
-      setActiveCategory('general');
+      setActiveCategory(initialCategory ?? 'general');
       setTheme(currentSettings.theme);
       setFontSize(currentSettings.terminalFontSize);
       setFontFamily(currentSettings.terminalFontFamily);
@@ -231,7 +233,7 @@ export function useSettingsForm({ open, currentSettings, onSave, onClose }: UseS
           if (p) setPlatform(p);
         });
     }
-  }, [open, currentSettings]);
+  }, [open, initialCategory, currentSettings]);
 
   const refreshX11Status = async (customPath?: string) => {
     try {

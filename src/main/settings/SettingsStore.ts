@@ -13,6 +13,8 @@ import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types/settings'
 const SUPERSEDED_DEFAULT_SHORTCUTS: Record<string, string[]> = {
   closeTab: ['Ctrl+W'],
   copyLastOutput: ['Ctrl+Shift+G', 'Alt+C'],
+  // Non-canonical modifier order: this default could never match a real keypress.
+  newRemoteFileManager: ['Ctrl+Shift+Alt+F'],
   rerunWithSudo: ['Alt+S'],
 };
 

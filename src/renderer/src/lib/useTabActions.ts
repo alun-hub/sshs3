@@ -110,7 +110,21 @@ export function useTabActions(ctx: TabActionsContext) {
         if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
         const targetPaneId = paneId ?? t.activePaneId ?? getFirstLeafId(t.paneTree);
         const { tree, newPaneId } = splitPane(t.paneTree, targetPaneId, orientation, t.id);
-        return { ...t, paneTree: tree, activePaneId: newPaneId };
+        // Splitting un-zooms: the new pane would otherwise be created hidden.
+        return { ...t, paneTree: tree, activePaneId: newPaneId, zoomedPaneId: undefined };
+      })
+    );
+  }, [setTabs]);
+
+  /** Shows only `paneId` (default: the active pane) full-size, or restores the layout if already zoomed. */
+  const handleToggleZoom = useCallback((tabId: string, paneId?: string) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId || t.type !== 'terminal' || !t.paneTree) return t;
+        if (t.zoomedPaneId) return { ...t, zoomedPaneId: undefined };
+        const target = paneId ?? t.activePaneId ?? getFirstLeafId(t.paneTree);
+        if (t.paneTree.type === 'leaf' || !findLeaf(t.paneTree, target)) return t;
+        return { ...t, zoomedPaneId: target, activePaneId: target };
       })
     );
   }, [setTabs]);
@@ -136,6 +150,7 @@ export function useTabActions(ctx: TabActionsContext) {
           ...t,
           paneTree: nextTree,
           activePaneId: t.activePaneId === paneId ? getFirstLeafId(nextTree) : t.activePaneId,
+          zoomedPaneId: t.zoomedPaneId === paneId || nextTree.type === 'leaf' ? undefined : t.zoomedPaneId,
         };
       })
     );
@@ -149,7 +164,7 @@ export function useTabActions(ctx: TabActionsContext) {
         const keepId = t.activePaneId ?? getFirstLeafId(t.paneTree);
         const keptLeaf = findLeaf(t.paneTree, keepId);
         if (!keptLeaf) return t;
-        return { ...t, paneTree: keptLeaf, activePaneId: keptLeaf.id };
+        return { ...t, paneTree: keptLeaf, activePaneId: keptLeaf.id, zoomedPaneId: undefined };
       })
     );
   }, [setTabs]);
@@ -528,6 +543,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handleSplitPane,
     handleResizeSplit,
     handleClosePane,
+    handleToggleZoom,
     handleUnsplit,
     handleSelectPane,
     handleConnectTerminal,

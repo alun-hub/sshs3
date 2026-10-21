@@ -44,9 +44,10 @@ Allow operators to split workspace real estate horizontally and vertically witho
 3. **Keyboard Navigation Between Panes**:
    - **Directional Spatial Navigation (<kbd>Ctrl+Shift+Arrow Keys</kbd>)**: Shifts focus in the direction of the arrow. Pressing <kbd>Ctrl+Shift+Up</kbd> from the top row moves focus directly into the **Tab Bar** (where <kbd>Left</kbd>/<kbd>Right</kbd> switches active tabs, and <kbd>Down</kbd> or <kbd>Enter</kbd> returns focus into the active terminal pane).
    - **Sequential Cycling**: Use <kbd>Ctrl+Shift+N</kbd> (next pane in tree) and <kbd>Ctrl+Shift+P</kbd> (previous pane).
-4. **Close a Pane**: Click the close button on its mini-toolbar or type `exit`. The tree automatically collapses to fill the remaining area.
-5. **Unsplit (Maximize)**: Click the "Unsplit" icon on the active pane to keep the focused session and close all siblings.
-6. **Resizable Splits**: Drag the divider line between any two split panes to resize them horizontally or vertically. Double-click the divider to reset to equal sizing.
+4. **Close a Pane**: Press <kbd>Ctrl+Alt+Shift+W</kbd>, click the close button on its mini-toolbar, or type `exit`. The tree automatically collapses to fill the remaining area.
+5. **Zoom a Pane**: Press <kbd>Ctrl+Shift+Z</kbd> (or the zoom icon on the pane's mini-toolbar) to show only the focused pane full-size while the others keep running hidden; press it again to restore the layout. Splitting or closing the zoomed pane also restores it.
+6. **Unsplit (Maximize)**: Click the "Unsplit" icon on the active pane to keep the focused session and close all siblings.
+7. **Resizable Splits**: Drag the divider line between any two split panes to resize them horizontally or vertically. Double-click the divider to reset to equal sizing.
 
 #### ⚠️ Limitations & Caveats
 - Splitting a terminal too many times on smaller displays can reduce column width below 40 characters, causing line wrapping in wide tabular tools.

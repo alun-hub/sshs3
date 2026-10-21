@@ -12,13 +12,24 @@ export interface ShortcutDefinition {
   category: 'Tabs' | 'Terminal' | 'General';
 }
 
+// defaultKeys use the canonical modifier order Ctrl+Cmd+Alt+Shift (see comboFromKeyboardEvent): a
+// binding is matched as a plain string, so any other order would never match a real keypress.
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'newTerminal', name: 'New Terminal', defaultKeys: 'Ctrl+Shift+T', category: 'Tabs' },
   { id: 'newFileManager', name: 'New File Manager', defaultKeys: 'Ctrl+Shift+F', category: 'Tabs' },
-  { id: 'newRemoteFileManager', name: 'New Remote File Manager', defaultKeys: 'Ctrl+Shift+Alt+F', category: 'Tabs' },
+  { id: 'newRemoteFileManager', name: 'New Remote File Manager', defaultKeys: 'Ctrl+Alt+Shift+F', category: 'Tabs' },
   { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+Shift+W', category: 'Tabs' },
   { id: 'nextTab', name: 'Next Tab', defaultKeys: 'Ctrl+Tab', category: 'Tabs' },
   { id: 'prevTab', name: 'Previous Tab', defaultKeys: 'Ctrl+Shift+Tab', category: 'Tabs' },
+  // Ctrl+1..8 jump to that tab, Ctrl+9 to the last one (browser convention). Not Alt+<digit>: a
+  // shell or TUI receives that as ESC+digit (readline digit-argument, weechat/irssi buffer switch).
+  ...Array.from({ length: 9 }, (_, i): ShortcutDefinition => ({
+    id: `selectTab${i + 1}`,
+    name: i === 8 ? 'Go to Last Tab' : `Go to Tab ${i + 1}`,
+    defaultKeys: `Ctrl+${i + 1}`,
+    category: 'Tabs',
+  })),
+  { id: 'showShortcuts', name: 'Keyboard Shortcuts', defaultKeys: 'Ctrl+Shift+H', category: 'General' },
   { id: 'openProfiles', name: 'Connection Manager', defaultKeys: 'Ctrl+Shift+O', category: 'General' },
   { id: 'openSettings', name: 'Settings', defaultKeys: 'Ctrl+,', category: 'General' },
   { id: 'navigateLeft', name: 'Navigate Left (Split / Panel)', defaultKeys: 'Ctrl+Shift+Left', category: 'General' },
@@ -27,6 +38,8 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'navigateDown', name: 'Navigate Down (Split / Into Tab)', defaultKeys: 'Ctrl+Shift+Down', category: 'General' },
   { id: 'splitVertical', name: 'Split Terminal Vertically', defaultKeys: 'Ctrl+Shift+D', category: 'Terminal' },
   { id: 'splitHorizontal', name: 'Split Terminal Horizontally', defaultKeys: 'Ctrl+Shift+E', category: 'Terminal' },
+  { id: 'closePane', name: 'Close Split Pane', defaultKeys: 'Ctrl+Alt+Shift+W', category: 'Terminal' },
+  { id: 'zoomPane', name: 'Zoom Split Pane', defaultKeys: 'Ctrl+Shift+Z', category: 'Terminal' },
   // Terminal-focused bindings avoid bare Ctrl+<letter> and Alt+<letter>: a TUI or shell receives
   // those as control characters / ESC prefixes (readline, vim, nano, fzf, tmux, emacs), so the app
   // must not swallow them. Ctrl+Shift+<letter> is the convention of Gnome Terminal and Konsole.

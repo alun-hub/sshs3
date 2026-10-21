@@ -18,6 +18,7 @@ import { KubernetesSettingsSection } from './KubernetesSettingsSection';
 
 interface SettingsModalProps {
   open: boolean;
+  initialCategory?: SettingsCategory;
   currentSettings: AppSettings;
   onSave: (settings: AppSettings) => void;
   onClose: () => void;
@@ -25,11 +26,12 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   open,
+  initialCategory,
   currentSettings,
   onSave,
   onClose,
 }) => {
-  const form = useSettingsForm({ open, currentSettings, onSave, onClose });
+  const form = useSettingsForm({ open, initialCategory, currentSettings, onSave, onClose });
   const {
     activeCategory,
     setActiveCategory,

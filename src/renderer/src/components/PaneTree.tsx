@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Columns2, RefreshCw, Rows2, X } from 'lucide-react';
+import { Columns2, Maximize2, Minimize2, RefreshCw, Rows2, X } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { K8sLogView } from './K8sLogView';
-import { collectLeaves } from '../lib/paneTree';
+import { collectLeaves, findLeaf } from '../lib/paneTree';
+import { getShortcutKeys } from '../lib/shortcuts';
 import type { AppSettings } from '@shared/types/settings';
 import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import type { LocalShellType, SSHConnectionConfig } from '@shared/types/ssh';
@@ -23,6 +24,9 @@ export interface PaneTreeViewProps {
   /** Sets a 2-child split node's relative pane sizes (§23) — the divider drag handler. */
   onResizeSplit?: (splitId: string, weights: number[]) => void;
   onClosePane: (paneId: string) => void;
+  /** Pane shown alone, full-size (the other panes keep running hidden); undefined = normal layout. */
+  zoomedPaneId?: string;
+  onToggleZoom?: (paneId: string) => void;
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onCloseTab: () => void;
@@ -171,6 +175,17 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
           >
             <RefreshCw className="h-3 w-3" />
           </button>
+          {!isSole && props.onToggleZoom && (
+            <button
+              type="button"
+              title={`${props.zoomedPaneId === node.id ? 'Restore' : 'Zoom'} pane (${getShortcutKeys('zoomPane', props.settings.shortcuts)})`}
+              data-testid={`zoom-pane-${node.id}`}
+              onClick={() => props.onToggleZoom?.(node.id)}
+              className="rounded p-0.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            >
+              {props.zoomedPaneId === node.id ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+            </button>
+          )}
           <button
             type="button"
             title="Split right"
@@ -403,9 +418,13 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
     }
   }, [leaves]);
 
+  // A zoomed pane is laid out alone. The hidden panes keep their portal content (and sessions)
+  // mounted in detached containers and are re-attached by their PaneSlot when the zoom ends.
+  const zoomedLeaf = props.zoomedPaneId ? findLeaf(props.node, props.zoomedPaneId) : null;
+
   return (
     <>
-      <PaneTreeLayout {...props} getPaneContainer={getPaneContainer} />
+      <PaneTreeLayout {...props} node={zoomedLeaf ?? props.node} getPaneContainer={getPaneContainer} />
       {leaves.map((leaf) => {
         const container = getPaneContainer(leaf.id);
         return createPortal(

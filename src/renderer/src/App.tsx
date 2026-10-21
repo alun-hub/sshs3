@@ -15,6 +15,7 @@ import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSaved
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
 import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
+import type { SettingsCategory } from './components/SettingsModal/settingsConstants';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types/settings';
@@ -39,6 +40,8 @@ export const App: React.FC = () => {
   /** Opens the profile manager straight into the empty "new SSH profile" form (welcome screen shortcut). */
   const [profilesModalNew, setProfilesModalNew] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  /** Category the Settings dialog opens on (the shortcuts overview); General when unset. */
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory | undefined>();
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
   const [tunnelsModalOpen, setTunnelsModalOpen] = useState(false);
@@ -98,6 +101,15 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const openShortcutsHelp = useCallback(
+    () =>
+      openTopLevelModal(() => {
+        setSettingsCategory('shortcuts');
+        setSettingsModalOpen(true);
+      }),
+    [openTopLevelModal]
+  );
+
   // Apply theme to root
   const isLight =
     settings.theme === 'light' ||
@@ -120,6 +132,7 @@ export const App: React.FC = () => {
     handleSplitPane,
     handleResizeSplit,
     handleClosePane,
+    handleToggleZoom,
     handleUnsplit,
     handleSelectPane,
     handleConnectTerminal,
@@ -305,9 +318,17 @@ export const App: React.FC = () => {
     handleNewTab,
     handleCloseTab,
     handleSplitPane,
+    handleClosePane,
+    handleToggleZoom,
     handleSelectPane,
+    openShortcutsHelp,
     focusActiveTabContent,
   });
+
+  // Forget the requested category once Settings closes so the next plain open starts on General.
+  useEffect(() => {
+    if (!settingsModalOpen) setSettingsCategory(undefined);
+  }, [settingsModalOpen]);
 
   return (
     <ConfirmProvider>
@@ -483,6 +504,8 @@ export const App: React.FC = () => {
                         onSplitPane={(paneId, orientation) => handleSplitPane(tab.id, orientation, paneId)}
                         onResizeSplit={(splitId, weights) => handleResizeSplit(tab.id, splitId, weights)}
                         onClosePane={(paneId) => handleClosePane(tab.id, paneId)}
+                        zoomedPaneId={tab.zoomedPaneId}
+                        onToggleZoom={(paneId) => handleToggleZoom(tab.id, paneId)}
                         onChangeConnection={(paneId) => setConnectTarget({ tabId: tab.id, paneId })}
                         onOpenLocalTerminal={(paneId, shellType, wslDistro) =>
                           handleOpenLocalTerminal({ tabId: tab.id, paneId }, shellType, wslDistro)
@@ -613,6 +636,7 @@ export const App: React.FC = () => {
       {/* Settings Modal */}
       <SettingsModal
         open={settingsModalOpen}
+        initialCategory={settingsCategory}
         currentSettings={settings}
         onSave={handleSaveSettings}
         onClose={() => setSettingsModalOpen(false)}

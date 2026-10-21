@@ -512,6 +512,55 @@ describe('App Component', () => {
     expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('jumps to a tab with Ctrl+<digit> and to the last tab with Ctrl+9', async () => {
+    render(<App />);
+    await screen.findByTestId('tab-term-1');
+    fireEvent.keyDown(window, { key: 'T', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: 'T', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: '1', code: 'Digit1', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: '2', code: 'Digit2', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
+
+    // Ctrl+8 with only three tabs: no such tab, selection is unchanged
+    fireEvent.keyDown(window, { key: '8', code: 'Digit8', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.keyDown(window, { key: '9', code: 'Digit9', ctrlKey: true });
+    expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('zooms the active split pane with Ctrl+Shift+Z and restores it, and closes it with Ctrl+Alt+Shift+W', async () => {
+    render(<App />);
+    await screen.findByTestId('tab-term-1');
+    fireEvent.keyDown(window, { key: 'D', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(2);
+
+    fireEvent.keyDown(window, { key: 'Z', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(1);
+
+    fireEvent.keyDown(window, { key: 'Z', ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(2);
+
+    fireEvent.keyDown(window, { key: 'W', code: 'KeyW', ctrlKey: true, shiftKey: true, altKey: true });
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(1);
+
+    // A sole pane has nothing to close: the shortcut must not close the pane or the tab
+    fireEvent.keyDown(window, { key: 'W', code: 'KeyW', ctrlKey: true, shiftKey: true, altKey: true });
+    expect(screen.getAllByTestId(/^terminal-pane-/).length).toBe(1);
+    expect(screen.getAllByRole('tab').length).toBe(1);
+  });
+
+  it('opens Settings on the Keyboard Shortcuts overview with Ctrl+Shift+H', async () => {
+    render(<App />);
+    await screen.findByTestId('tab-term-1');
+    fireEvent.keyDown(window, { key: 'H', ctrlKey: true, shiftKey: true });
+    expect(await screen.findByText('Close Split Pane')).toBeInTheDocument();
+  });
+
   it('opens the Connection Manager on Ctrl+Shift+O but leaves Ctrl+K (kill-line) and Ctrl+Shift+K alone', async () => {
     render(<App />);
 

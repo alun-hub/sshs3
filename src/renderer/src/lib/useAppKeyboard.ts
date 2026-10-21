@@ -4,7 +4,7 @@ import type { TabType } from '../components/TabBar';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from '../components/FileManager/types';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { PaneOrientation } from '@shared/types/session';
-import type { AppTab } from './tabs';
+import { tabForNumber, type AppTab } from './tabs';
 import { collectLeafIds } from './paneTree';
 import { comboFromKeyboardEvent } from './shortcuts';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from './clipboardHistoryEvents';
@@ -32,7 +32,11 @@ export interface AppKeyboardContext {
   handleNewTab: (type?: TabType, options?: { remote?: boolean }) => void;
   handleCloseTab: (id: string) => void;
   handleSplitPane: (tabId: string, orientation: PaneOrientation, paneId?: string) => void;
+  handleClosePane: (tabId: string, paneId: string) => void;
+  handleToggleZoom: (tabId: string, paneId?: string) => void;
   handleSelectPane: (tabId: string, paneId: string) => void;
+  /** Opens Settings on the keyboard shortcuts overview. */
+  openShortcutsHelp: () => void;
   focusActiveTabContent: () => void;
 }
 
@@ -56,7 +60,10 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     handleNewTab,
     handleCloseTab,
     handleSplitPane,
+    handleClosePane,
+    handleToggleZoom,
     handleSelectPane,
+    openShortcutsHelp,
     focusActiveTabContent,
   } = ctx;
 
@@ -218,6 +225,18 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
             case 'splitHorizontal':
               if (activeTabId) handleSplitPane(activeTabId, 'column');
               break;
+            case 'closePane':
+            case 'zoomPane': {
+              const activeTab = tabs.find((t) => t.id === activeTabId);
+              if (!activeTab || activeTab.type !== 'terminal' || !activeTab.paneTree) break;
+              if (collectLeafIds(activeTab.paneTree).length < 2) break; // a sole pane has nothing to close or zoom
+              if (actionId === 'zoomPane') handleToggleZoom(activeTab.id, activeTab.activePaneId);
+              else if (activeTab.activePaneId) handleClosePane(activeTab.id, activeTab.activePaneId);
+              break;
+            }
+            case 'showShortcuts':
+              openShortcutsHelp();
+              break;
             case 'navigateLeft':
             case 'navigateRight':
             case 'navigateUp':
@@ -347,7 +366,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               const activeTab = tabs.find((t) => t.id === activeTabId);
               if (!activeTab || activeTab.type !== 'terminal' || !activeTab.paneTree) break;
               const leafIds = collectLeafIds(activeTab.paneTree);
-              if (leafIds.length < 2) break;
+              if (leafIds.length < 2 || activeTab.zoomedPaneId) break; // zoomed: the other panes are hidden
               const currentIdx = activeTab.activePaneId ? leafIds.indexOf(activeTab.activePaneId) : -1;
               const step = actionId === 'nextPane' ? 1 : -1;
               const nextIdx = currentIdx === -1 ? 0 : (currentIdx + step + leafIds.length) % leafIds.length;
@@ -401,6 +420,11 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               });
               break;
             }
+            default: {
+              const tabNumber = /^selectTab([1-9])$/.exec(actionId)?.[1];
+              const tab = tabNumber ? tabForNumber(tabs, Number(tabNumber)) : null;
+              if (tab) setActiveTabId(tab.id);
+            }
           }
           break;
         }
@@ -426,7 +450,10 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     handleNewTab,
     handleCloseTab,
     handleSplitPane,
+    handleClosePane,
+    handleToggleZoom,
     handleSelectPane,
+    openShortcutsHelp,
     focusActiveTabContent,
   ]);
 }
