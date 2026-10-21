@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.53] - 2026-10-21
+
+### Added
+- **OpenShift browser sign-in.** In the OpenShift / Kubernetes login dialog, a **Sign in with browser** button (or <kbd>Enter</kbd> in the server field) appears when the entered cluster has OpenShift's built-in OAuth server (OpenShift/OKD 4.13 or newer). It runs the same authorization code + PKCE flow as `oc login --web`: your browser opens the cluster's login page (single sign-on through whatever identity provider the cluster uses), and sshs3 stores the resulting token in `~/.kube/config` just like a pasted one. <kbd>Esc</kbd> or **Cancel** abandons a pending sign-in. Plain Kubernetes, older OpenShift and clusters with direct external OIDC keep the paste flow unchanged. Tested against a mock OAuth server built from the OpenShift source, not yet against a live cluster.
+
+### Changed
+- The API token field is no longer marked required when browser sign-in is available; pasting a token still works as before.
+
 ## [0.96.52] - 2026-10-21
 
 ### Added
