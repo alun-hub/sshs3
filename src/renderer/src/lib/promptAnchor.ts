@@ -14,8 +14,10 @@ import type { IMarker, Terminal } from 'xterm';
 export const IDLE_MS = 250;
 
 /** Characters a prompt ends with, followed by whitespace. */
-export const PROMPT_TERMINATORS = '$#%>❯➜»λ→›';
-const PROMPT_END_RE = new RegExp(`[${PROMPT_TERMINATORS.replace(/[\]\\^-]/g, '\\$&')}]\\s+$`);
+const PROMPT_TERMINATORS = '$#%>❯➜»λ→›';
+/** The terminators as the inside of a regular expression character class. */
+export const PROMPT_TERMINATOR_CLASS = PROMPT_TERMINATORS.replace(/[\]\\^-]/g, '\\$&');
+const PROMPT_END_RE = new RegExp(`[${PROMPT_TERMINATOR_CLASS}]\\s+$`);
 
 export interface PromptAnchor {
   /** The row holding the end of the prompt. */
@@ -78,6 +80,8 @@ export class PromptAnchorTracker {
   /** The position for the Enter being pressed now, or null when none was learned. It is used up. */
   public claim(): PromptAnchor | null {
     const anchor = this.valid ? this.anchor : null;
+    // A position that is no longer valid is not handed on, so its marker must not be left registered.
+    if (!anchor) this.anchor?.marker.dispose();
     this.valid = false;
     this.typedSinceIdle = false;
     this.anchor = null;
@@ -87,9 +91,24 @@ export class PromptAnchorTracker {
   public dispose(): void {
     clearTimeout(this.timer);
     this.resizeListener?.dispose();
+    this.discard();
+  }
+
+  private discard(): void {
     this.anchor?.marker.dispose();
     this.anchor = null;
     this.valid = false;
+  }
+
+  /** The cursor is on the anchor's row or on rows that wrap on from it: the user is editing that line. */
+  private cursorOnAnchorLine(cursorRow: number): boolean {
+    const marker = this.anchor?.marker;
+    if (!this.valid || !marker || marker.isDisposed || marker.line < 0 || cursorRow < marker.line) return false;
+    const buf = this.term.buffer.active;
+    for (let row = marker.line + 1; row <= cursorRow; row++) {
+      if (!buf.getLine(row)?.isWrapped) return false;
+    }
+    return true;
   }
 
   private invalidate(): void {
@@ -98,18 +117,20 @@ export class PromptAnchorTracker {
 
   private captureIdle(): void {
     const buf = this.term.buffer.active;
+    const cursorRow = buf.baseY + buf.cursorY;
     // The user is part-way through a line: the cursor is after what they typed, not after the prompt. Keep
-    // the position learned before they started.
-    if (this.typedSinceIdle) return;
-    this.valid = false;
+    // the position learned before they started. When the cursor has left that line (Ctrl+C, a cleared
+    // screen, a program that ran and quit) the typing is over and this is a new prompt.
+    if (this.typedSinceIdle && buf.type === 'normal' && this.cursorOnAnchorLine(cursorRow)) return;
+    this.typedSinceIdle = false;
+    this.discard();
     if (buf.type !== 'normal') return;
-    const line = buf.getLine(buf.baseY + buf.cursorY);
+    const line = buf.getLine(cursorRow);
     const col = buf.cursorX;
     if (!line || col <= 0) return;
     if (!prefixLooksLikePrompt(line.translateToString(false, 0, col))) return;
     const marker = this.term.registerMarker(0);
     if (!marker) return;
-    this.anchor?.marker.dispose();
     this.anchor = { marker, col, rightPrompt: line.translateToString(true, col).trim() };
     this.valid = true;
   }

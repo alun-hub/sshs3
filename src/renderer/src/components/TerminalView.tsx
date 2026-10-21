@@ -9,7 +9,7 @@ import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { registerTerminalLinks } from '../lib/terminalLinks';
 import { useTerminalPathHover } from '../lib/useTerminalPathHover';
-import { CommandOutputTracker } from '../lib/terminalOutput';
+import { CommandOutputTracker, isAtEmptyPrompt } from '../lib/terminalOutput';
 import { useSudoRetry } from '../lib/useSudoRetry';
 import { isTerminalReply, printableInput } from '../lib/terminalInput';
 import { IS_WINDOWS } from '../lib/platform';
@@ -319,6 +319,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       // it, and runs it with a second Enter. Written straight to the PTY, like typing it, so it does not
       // go through onData, whose line buffer only tracks what the user typed. The command is a single
       // plain line (see detectSudoRetry).
+      // The echo of this is the user's own line, not output that moves the prompt (see PromptAnchorTracker).
+      outputTrackerRef.current?.noteInput();
       write?.(sid, sudoCommand);
       term.focus();
       // Typing scrolls xterm to the bottom, a direct PTY write does not. The bar also disappears now,
@@ -661,6 +663,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     const rerunLastWithSudo = (): void => {
       if (!sudoAvailableRef.current) {
         showNotice('sudo is not available in this shell');
+        return;
+      }
+      // Only onto an empty prompt: a half-typed line, a running program or an unanswered question would
+      // receive the text as input instead.
+      if (!isAtEmptyPrompt(term)) {
+        showNotice('Wait for an empty prompt to re-run with sudo');
         return;
       }
       const kind = sudoRetryRef.current.rerunWithSudo(outputTracker.lastCommand());

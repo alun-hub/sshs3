@@ -1,5 +1,11 @@
 import type { IMarker, Terminal } from 'xterm';
-import { PromptAnchorTracker, prefixLooksLikePrompt, stripRightPrompt, type PromptAnchor } from './promptAnchor';
+import {
+  PROMPT_TERMINATOR_CLASS,
+  PromptAnchorTracker,
+  prefixLooksLikePrompt,
+  stripRightPrompt,
+  type PromptAnchor,
+} from './promptAnchor';
 
 const MAX_MARKERS = 50;
 
@@ -22,7 +28,7 @@ export function stripPrompt(line: string): string {
 
 // Last resort for prompts the patterns above do not know (`bash-5.3$`, zsh's `user@host ~ %`, fish's
 // `user@host ~>`, `(venv) bash-5.3$`): up to 80 characters, then the first prompt terminator and a space.
-const LOOSE_PROMPT_PREFIX_RE = /^.{1,80}?[$#%>❯➜]\s+/;
+const LOOSE_PROMPT_PREFIX_RE = new RegExp(`^.{1,80}?[${PROMPT_TERMINATOR_CLASS}]\\s+`);
 
 /**
  * Like `stripPrompt`, but also recognises a prompt the patterns do not know, by its terminator. Only for
@@ -44,6 +50,15 @@ export function stripPromptLoose(line: string): string {
 export function endsAtPrompt(textBeforeCursor: string, textAfterCursor: string): boolean {
   if (!prefixLooksLikePrompt(textBeforeCursor)) return false;
   return textAfterCursor.trim() === '' || /^\s{2,}\S/.test(textAfterCursor);
+}
+
+/** The cursor stands right after a prompt with nothing typed after it (the shell waits for a new command). */
+export function isAtEmptyPrompt(term: Terminal): boolean {
+  const buf = term.buffer.active;
+  if (buf.type !== 'normal') return false;
+  const line = buf.getLine(buf.baseY + buf.cursorY);
+  const x = buf.cursorX;
+  return endsAtPrompt(line?.translateToString(false, 0, x) ?? '', line?.translateToString(true, x) ?? '');
 }
 
 /**
@@ -261,11 +276,14 @@ export class CommandOutputTracker {
 
   /** Call when the user presses Enter (the cursor is still on the command line). */
   public recordEnter(): void {
-    if (this.term.buffer.active.type !== 'normal') return;
-    const marker = this.term.registerMarker(0);
-    if (!marker) return;
-    this.markers.push(marker);
+    // Claimed first: whatever happens below, this Enter uses up the position learned before it.
     const anchor = this.promptAnchors.claim();
+    const marker = this.term.buffer.active.type === 'normal' ? this.term.registerMarker(0) : undefined;
+    if (!marker) {
+      anchor?.marker.dispose();
+      return;
+    }
+    this.markers.push(marker);
     if (anchor) this.anchors.set(marker, anchor);
     if (this.markers.length > MAX_MARKERS) this.dropMarker(this.markers.shift());
   }

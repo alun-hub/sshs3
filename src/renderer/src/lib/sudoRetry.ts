@@ -54,7 +54,7 @@ const DENIED_PATTERNS: RegExp[] = [
  * Wording that is a permission problem wherever it stands in the last lines. Only trusted when the shell
  * reported a failing exit code, which a line that merely mentions the words does not come with.
  */
-const DENIED_WITH_FAILURE_RE = /\b(?:permission denied|access (?:is )?denied)\b/i;
+const DENIED_WITH_FAILURE_RE = /\bpermission denied\b/i;
 /** Exit codes a permission problem ends in: general error, `EACCES` as a code, `EX_NOPERM`, not executable. */
 const PERMISSION_EXIT_CODES = new Set([1, 13, 77, 126]);
 

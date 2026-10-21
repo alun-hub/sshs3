@@ -54,6 +54,10 @@ describe('detectSudoRetry', () => {
     expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey).', 1)).toBe(false);
   });
 
+  it('does not take an application-level "Access denied" for a permission problem', () => {
+    expect(outputIndicatesPermissionDenied("ERROR 1045 (28000): Access denied for user 'app'@'localhost'", 1)).toBe(false);
+  });
+
   it('still ignores an ssh authentication failure that lists methods', () => {
     expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey,password).')).toBe(false);
     expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey,gssapi-with-mic).')).toBe(false);

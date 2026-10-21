@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Terminal } from 'xterm';
 import { IDLE_MS, PromptAnchorTracker, prefixLooksLikePrompt, stripRightPrompt } from './promptAnchor';
-import { CommandOutputTracker } from './terminalOutput';
+import { CommandOutputTracker, isAtEmptyPrompt, stripPromptLoose } from './terminalOutput';
 
 describe('prefixLooksLikePrompt', () => {
   it.each(['$ ', 'user@host ~ % ', '~/dir > feature/x > $ ', 'λ ', '❯ ', 'root@h:/# '])('accepts %j', (p) => {
@@ -26,6 +26,7 @@ describe('stripRightPrompt', () => {
 function fakeScreen(rows: string[]) {
   const state = { rows, cursorX: 0, type: 'normal' as 'normal' | 'alternate' };
   let resize: (() => void) | undefined;
+  const markers: { line: number; isDisposed: boolean }[] = [];
   const cursorRow = () => state.rows.length - 1;
   const term = {
     cols: 200,
@@ -53,7 +54,17 @@ function fakeScreen(rows: string[]) {
               },
       },
     },
-    registerMarker: () => ({ line: cursorRow(), isDisposed: false, dispose() {} }),
+    registerMarker: () => {
+      const marker = {
+        line: cursorRow(),
+        isDisposed: false,
+        dispose() {
+          marker.isDisposed = true;
+        },
+      };
+      markers.push(marker);
+      return marker;
+    },
     onResize: (cb: () => void) => {
       resize = cb;
       return { dispose() {} };
@@ -63,6 +74,7 @@ function fakeScreen(rows: string[]) {
   return {
     term: term as unknown as Terminal,
     state,
+    markers,
     triggerResize: () => resize?.(),
     /** The shell drew `prompt` and went quiet with the cursor right after it. */
     showPrompt(prompt: string, right = '') {
@@ -125,6 +137,57 @@ describe('PromptAnchorTracker', () => {
   });
 });
 
+describe('PromptAnchorTracker after typing that never reached Enter', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('learns the new prompt when the cursor has left the line the user was typing on (Ctrl+C)', () => {
+    const f = fakeScreen([]);
+    const a = new PromptAnchorTracker(f.term);
+    f.showPrompt('$ ');
+    a.noteOutput();
+    vi.advanceTimersByTime(IDLE_MS + 1);
+    a.noteInput(); // typed, then Ctrl+C: the shell prints ^C and a fresh prompt on a new row
+    f.showPrompt('$ ');
+    a.noteOutput();
+    vi.advanceTimersByTime(IDLE_MS + 1);
+    expect(a.claim()?.marker.line).toBe(1);
+  });
+
+  it('does not leave the marker of a position that was never claimed registered', () => {
+    const f = fakeScreen([]);
+    const a = new PromptAnchorTracker(f.term);
+    f.showPrompt('$ ');
+    a.noteOutput();
+    vi.advanceTimersByTime(IDLE_MS + 1);
+    f.triggerResize();
+    expect(a.claim()).toBeNull();
+    expect(f.markers[0].isDisposed).toBe(true);
+  });
+});
+
+describe('isAtEmptyPrompt', () => {
+  it('is true only with the cursor right after a prompt and nothing typed', () => {
+    const f = fakeScreen([]);
+    f.showPrompt('$ ');
+    expect(isAtEmptyPrompt(f.term)).toBe(true);
+    f.state.rows[0] = '$ ls';
+    f.state.cursorX = 4;
+    expect(isAtEmptyPrompt(f.term)).toBe(false);
+    f.state.rows[0] = '$ ';
+    f.state.cursorX = 2;
+    f.state.type = 'alternate';
+    expect(isAtEmptyPrompt(f.term)).toBe(false);
+  });
+});
+
+describe('prompt terminators in the prompt-pattern fallback', () => {
+  it('strips a prompt ending in the same extra terminators the cursor path accepts', () => {
+    expect(stripPromptLoose('user λ cat /x')).toBe('cat /x');
+    expect(stripPromptLoose('~/dir » cat /x')).toBe('cat /x');
+  });
+});
+
 describe('CommandOutputTracker with a learned prompt position', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -159,6 +222,23 @@ describe('CommandOutputTracker with a learned prompt position', () => {
     f.state.rows.push('cat: /x: Permission denied');
     f.showPrompt('% ');
     expect(t.lastCommandResult()?.command).toBe('cat /x');
+  });
+
+  it('does not hand a position learned before an Enter in the alternate screen to the next Enter', () => {
+    const f = fakeScreen([]);
+    const t = new CommandOutputTracker(f.term);
+    f.showPrompt(PROMPT);
+    t.noteOutput();
+    vi.advanceTimersByTime(IDLE_MS + 1);
+    f.state.type = 'alternate';
+    t.recordEnter(); // uses up the position although it records nothing
+    f.state.type = 'normal';
+    f.state.rows[0] = `${PROMPT}cat /x`;
+    t.recordEnter();
+    f.state.rows.push('cat: /x: Permission denied');
+    f.showPrompt(PROMPT);
+    // No position left, so the prompt patterns read it (and cut the prompt at its first `>`).
+    expect(t.lastCommandResult()?.command).toBe('feature/x > $ cat /x');
   });
 
   it('does not take an answer typed into a running program for a command', () => {
