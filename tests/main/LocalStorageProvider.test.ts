@@ -86,6 +86,20 @@ describe('LocalStorageProvider', () => {
     });
   });
 
+  describe('writeFile', () => {
+    it('replaces existing content by default and refuses to when exclusive', async () => {
+      const file = path.join(testDir, 'w.txt');
+      await provider.writeFile(file, Buffer.from('one'));
+      await provider.writeFile(file, Buffer.from('two'));
+      expect(await fs.readFile(file, 'utf8')).toBe('two');
+
+      await expect(provider.writeFile(file, Buffer.from('three'), { exclusive: true })).rejects.toMatchObject({
+        code: 'EEXIST',
+      });
+      expect(await fs.readFile(file, 'utf8')).toBe('two');
+    });
+  });
+
   describe('createReadStream', () => {
     it('should read file content via stream', async () => {
       const filePath = path.join(testDir, 'sample.txt');

@@ -284,7 +284,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
     const fullPath = this.resolvePath(remotePath);
     const parentDir = path.dirname(fullPath);
     await fsp.mkdir(parentDir, { recursive: true });
-    await fsp.writeFile(fullPath, data, { mode: options?.mode });
+    await fsp.writeFile(fullPath, data, { mode: options?.mode, flag: options?.exclusive ? 'wx' : 'w' });
   }
 
   async readFile(remotePath: string): Promise<Buffer> {

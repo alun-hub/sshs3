@@ -171,7 +171,14 @@ export function registerStorageHandlers(bridge: StorageHost): void {
       if (existing) {
         throw new Error(`"${remotePath.slice(remotePath.lastIndexOf('/') + 1)}" already exists`);
       }
-      await provider.writeFile(remotePath, Buffer.alloc(0));
+      // On local disk the write itself refuses an existing path (O_EXCL), which also covers a dangling
+      // symlink that stat() reports as missing, and a file created since the check above.
+      await provider.writeFile(remotePath, Buffer.alloc(0), { exclusive: true }).catch((err: unknown) => {
+        if ((err as { code?: unknown } | null)?.code === 'EEXIST') {
+          throw new Error(`"${remotePath.slice(remotePath.lastIndexOf('/') + 1)}" already exists`, { cause: err });
+        }
+        throw err;
+      });
     }
   );
 

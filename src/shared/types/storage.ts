@@ -39,6 +39,8 @@ export interface TransferProgress {
 export interface WriteStreamOptions {
   size?: number;
   mode?: number;
+  /** Fail instead of replacing something already at the path (local disk only; other providers ignore it). */
+  exclusive?: boolean;
 }
 
 export interface ObjectMetadata {
