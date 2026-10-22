@@ -19,6 +19,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'newFileManager', name: 'New File Manager', defaultKeys: 'Ctrl+Shift+F', category: 'Tabs' },
   { id: 'newRemoteFileManager', name: 'New Remote File Manager', defaultKeys: 'Ctrl+Alt+Shift+F', category: 'Tabs' },
   { id: 'newWindow', name: 'New Window', defaultKeys: 'Ctrl+Alt+Shift+N', category: 'Tabs' },
+  { id: 'openTabMenu', name: 'Tab Actions (Move to Window)', defaultKeys: 'Ctrl+Alt+Shift+K', category: 'Tabs' },
   { id: 'moveTabToNewWindow', name: 'Move Tab to New Window', defaultKeys: 'Ctrl+Alt+Shift+M', category: 'Tabs' },
   { id: 'closeTab', name: 'Close Tab', defaultKeys: 'Ctrl+Shift+W', category: 'Tabs' },
   { id: 'nextTab', name: 'Next Tab', defaultKeys: 'Ctrl+Tab', category: 'Tabs' },

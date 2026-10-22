@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { TabBar, type TabItem } from '../../src/renderer/src/components/TabBar';
+import { openTabMenuFor } from '../../src/renderer/src/lib/tabMenuEvents';
 
 const tabs: TabItem[] = [
   { id: 't1', type: 'terminal', title: 'prod' },
@@ -68,5 +69,12 @@ describe('Tab context menu', () => {
     expect(item).toBeDisabled();
     fireEvent.click(item);
     expect(onMoveTab).not.toHaveBeenCalled();
+  });
+
+  it('opens the menu of the given tab from the Tab Actions shortcut event', async () => {
+    const { onMoveTab } = setup();
+    openTabMenuFor('t1');
+    fireEvent.click(await screen.findByTestId('tab-move-window-2'));
+    expect(onMoveTab).toHaveBeenCalledWith('t1', 2);
   });
 });

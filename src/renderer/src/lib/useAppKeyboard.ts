@@ -9,6 +9,7 @@ import { collectLeafIds } from './paneTree';
 import { comboFromKeyboardEvent } from './shortcuts';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from './clipboardHistoryEvents';
 import { dispatchTerminalAction } from './terminalActionEvents';
+import { openTabMenuFor } from './tabMenuEvents';
 import {
   findAdjacentPane,
   getTopmostOverlay,
@@ -237,6 +238,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               else if (activeTab.activePaneId) handleClosePane(activeTab.id, activeTab.activePaneId);
               break;
             }
+            case 'openTabMenu':
+              if (activeTabId) openTabMenuFor(activeTabId);
+              break;
             case 'moveTabToNewWindow':
               if (activeTabId) handleMoveTabToNewWindow(activeTabId);
               break;

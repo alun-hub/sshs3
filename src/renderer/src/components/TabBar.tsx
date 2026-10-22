@@ -25,6 +25,7 @@ import type { MoveTabTarget, WindowInfo } from '@shared/types/ipc';
 import { Shortcut } from './ui/Shortcut';
 import { TabContextMenu } from './TabContextMenu';
 import { watchDragReleasedOutsideWindow } from '../lib/dragLeaveWindow';
+import { OPEN_TAB_MENU_EVENT } from '../lib/tabMenuEvents';
 import { getShortcutKeys } from '../lib/shortcuts';
 
 export type TabType = 'terminal' | 'filemanager' | 'editor';
@@ -94,6 +95,20 @@ export const TabBar: React.FC<TabBarProps> = ({
       .catch(() => [] as WindowInfo[])
       .then((windows) => setTabMenu({ tabId, x, y, windows: windows.filter((w) => !w.current) }));
   };
+  // The "Tab Actions" shortcut opens the menu of the active tab, below its tab.
+  const openTabMenuRef = useRef(openTabMenu);
+  openTabMenuRef.current = openTabMenu;
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tabId = (e as CustomEvent<string>).detail;
+      const el = document.querySelector<HTMLElement>(`[data-testid="tab-${tabId}"]`);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      openTabMenuRef.current(tabId, rect.left, rect.bottom, el);
+    };
+    window.addEventListener(OPEN_TAB_MENU_EVENT, handler);
+    return () => window.removeEventListener(OPEN_TAB_MENU_EVENT, handler);
+  }, []);
   const closeTabMenu = () => {
     setTabMenu(null);
     tabMenuReturnFocus.current?.focus();
