@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.55] - 2026-10-22
+
+The 0.96.54 release build failed on Windows (a slow test, not a bug in the app) and was never published, so everything listed under 0.96.54 below ships with this version.
+
+### Fixed
+- A file listing test timed out on the Windows build runner; its fixtures are now written in parallel with a longer timeout.
+
 ## [0.96.54] - 2026-10-22
 
 ### Added
