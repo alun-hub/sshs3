@@ -531,6 +531,8 @@ export const App: React.FC = () => {
                       onOpenTerminal={handleOpenTerminalAt}
                       onOpenK8sTerminal={handleOpenK8sTerminalAt}
                       shortcuts={settings.shortcuts}
+                      tabId={tab.id}
+                      restoredPanes={tab.restoredPanes}
                       initialK8sTarget={tab.initialK8sTarget}
                       initialSSHConfig={tab.initialSSHConfig}
                       initialS3Config={tab.initialS3Config}

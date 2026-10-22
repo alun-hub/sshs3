@@ -6,6 +6,7 @@ import type { FileEntry, S3Config } from '@shared/types/storage';
 import type { SourceType } from '../components/FileManager/types';
 import { sanitizePaneNode } from '@shared/sessionSanitize';
 import { createLeaf } from './paneTree';
+import type { FileManagerSnapshot } from './fileManagerState';
 
 export interface AppTab extends TabItem {
   /** Terminal tabs always carry a pane tree, even when it's a single leaf. */
@@ -27,6 +28,8 @@ export interface AppTab extends TabItem {
   initialLocalPath?: string;
   /** Optional file or directory path to select and highlight once the directory contents load. */
   initialSelectedPath?: string;
+  /** Set on a file manager tab that moved here from another window: show these panes as they were. Never saved. */
+  restoredPanes?: FileManagerSnapshot;
   /** Set when opening an editor tab. */
   editorEntry?: FileEntry;
   editorProviderId?: string;
@@ -59,6 +62,11 @@ export function tabForNumber(tabs: AppTab[], n: number): AppTab | null {
 }
 
 export function sanitizeTabForSession(tab: AppTab): AppTab {
+  if (tab.restoredPanes) {
+    // Only meaningful while the providers it names are still connected, i.e. right after a move.
+    const { restoredPanes: _restoredPanes, ...withoutPanes } = tab;
+    return sanitizeTabForSession(withoutPanes);
+  }
   if (tab.type === 'editor') {
     const { editorInitialContent: _editorInitialContent, ...rest } = tab;
     return rest;

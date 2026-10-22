@@ -16,6 +16,7 @@ import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { createRendererLogger } from '../../lib/log';
+import { registerFileManager, type FileManagerSnapshot } from '../../lib/fileManagerState';
 const log = createRendererLogger('DualPaneExplorer');
 
 const DEFAULT_SOURCE: Record<PaneSide, PaneSource> = {
@@ -33,6 +34,10 @@ interface DualPaneExplorerProps {
   onOpenK8sTerminal?: (target: K8sTerminalTarget, path: string) => void;
   /** Current keyboard shortcut bindings, forwarded to each pane for Search in Files. */
   shortcuts?: Record<string, string>;
+  /** Id of the tab this explorer fills; lets the tab be moved to another window with its panes. */
+  tabId?: string;
+  /** Show these panes as they were (tab moved from another window); their providers are still connected. */
+  restoredPanes?: FileManagerSnapshot;
   /** Automatically connect one of the panes to this K8s container on mount. */
   initialK8sTarget?: K8sTerminalTarget;
   /** Automatically connect the right pane to this SSH/SFTP profile on mount. */
@@ -55,6 +60,8 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   onOpenTerminal,
   onOpenK8sTerminal,
   shortcuts,
+  tabId,
+  restoredPanes,
   initialK8sTarget,
   initialSSHConfig,
   initialS3Config,
@@ -85,6 +92,9 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [splitRatio, setSplitRatio] = useState(0.5);
+  const snapshotRef = useRef<FileManagerSnapshot | null>(null);
+  snapshotRef.current = { left: panes.left, right: panes.right, activeSide, splitRatio };
+  useEffect(() => (tabId ? registerFileManager(tabId, () => snapshotRef.current) : undefined), [tabId]);
   const autoConnectedK8sRef = useRef(false);
   const autoConnectedSSHRef = useRef(false);
   const autoConnectedS3Ref = useRef(false);
@@ -113,6 +123,19 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       .connectStorage({ id: 'local', name: 'Local Disk', type: 'local' })
       .then(async () => {
         if (!mounted) return;
+        if (restoredPanes) {
+          // Moved here from another window: the panes are still connected, just show them.
+          autoConnectedLocalRef.current = true;
+          autoConnectedSSHRef.current = true;
+          autoConnectedS3Ref.current = true;
+          autoConnectedK8sRef.current = true;
+          void window.multissh.getHomeDir?.().then((home) => mounted && home && setHomeDir(home)).catch(() => {});
+          setPanes({ left: restoredPanes.left, right: restoredPanes.right });
+          setActiveSide(restoredPanes.activeSide);
+          setSplitRatio(restoredPanes.splitRatio);
+          setReady(true);
+          return;
+        }
         const [session, profiles, userHome] = await Promise.all([
           window.multissh.sessionGet?.(),
           window.multissh.profilesGet?.(),

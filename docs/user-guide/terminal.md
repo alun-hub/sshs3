@@ -67,7 +67,7 @@ Splitting a pane does not recreate or restart the underlying PTY session. The ac
 
 #### ⚠️ Limitations & Caveats
 - A tab with unsaved changes (an editor tab) cannot be moved until it is saved.
-- File manager tabs reopen at their starting location in the new window, Kubernetes log views start following again, and editor tabs reload the file; only terminals carry their running session along.
+- File manager tabs keep both panes (host, folder, split) and their connections when they move. Kubernetes log views start following again and editor tabs reload the file; terminals carry their running session along.
 - A moved SSH tab does not carry credentials that were typed for an unsaved connection; reconnecting such a tab asks again.
 - On Wayland the window position cannot be read or set by applications, so windows open where the desktop places them.
 
