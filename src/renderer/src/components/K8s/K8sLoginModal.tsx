@@ -15,7 +15,7 @@ import {
 import type { K8sLoginResult, K8sProfile } from '@shared/types/kubernetes';
 import { parseOcLoginCommand } from '@shared/ocLogin';
 import { useModalDismiss } from '../../lib/useModalDismiss';
-import { defaultProfileName, newProfileId } from '../../lib/k8sProfiles';
+import { defaultProfileName, findMatchingProfile, newProfileId } from '../../lib/k8sProfiles';
 import { useOpenShiftWebLogin } from '../../lib/useOpenShiftWebLogin';
 import { OpenShiftWebLoginSection } from './OpenShiftWebLoginSection';
 
@@ -61,9 +61,19 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   const rememberProfile = async (result: K8sLoginResult) => {
     if (!saveProfile) return;
     try {
+      // Signing in again to a cluster that already has a profile (same server and project) updates it instead of
+      // adding a second profile for the same kubeconfig context.
+      const existing =
+        initialProfile ??
+        findMatchingProfile((await window.multissh.k8sProfilesList?.()) ?? [], {
+          id: '',
+          name: '',
+          server: result.server,
+          namespace: namespace.trim() || undefined,
+        });
       await window.multissh.k8sProfilesSave({
-        id: initialProfile?.id ?? newProfileId(),
-        name: profileName.trim() || defaultProfileName(result.server),
+        id: existing?.id ?? newProfileId(),
+        name: profileName.trim() || existing?.name || defaultProfileName(result.server),
         server: result.server,
         insecureSkipTlsVerify,
         namespace: namespace.trim() || undefined,

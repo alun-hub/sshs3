@@ -191,6 +191,38 @@ describe('K8sLoginModal browser sign-in', () => {
     );
   });
 
+  it('updates the saved profile of the same server and project instead of adding a second one', async () => {
+    probe.mockResolvedValue({ supported: true });
+    const existing = { id: 'p1', name: 'Prod', server: SERVER, namespace: 'team-a', contextName: 'team-a/api/alice' };
+    (window.multissh as unknown as { k8sProfilesList: unknown }).k8sProfilesList = vi.fn().mockResolvedValue([
+      { id: 'other', name: 'Other', server: 'https://other.example.com:6443' },
+      existing,
+    ]);
+    renderModal();
+    typeServer();
+    fireEvent.change(screen.getByLabelText('Default project / namespace'), { target: { value: 'team-a' } });
+    fireEvent.click(await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 }));
+
+    await waitFor(() => expect(profilesSave).toHaveBeenCalled());
+    // The name field was left blank, so the saved profile keeps its own name.
+    expect(profilesSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', name: 'Prod', namespace: 'team-a' }));
+  });
+
+  it('adds a new profile when the project differs from the saved one for that server', async () => {
+    probe.mockResolvedValue({ supported: true });
+    (window.multissh as unknown as { k8sProfilesList: unknown }).k8sProfilesList = vi
+      .fn()
+      .mockResolvedValue([{ id: 'p1', name: 'Prod', server: SERVER, namespace: 'team-a' }]);
+    renderModal();
+    typeServer();
+    fireEvent.change(screen.getByLabelText('Default project / namespace'), { target: { value: 'team-b' } });
+    fireEvent.click(await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 }));
+
+    await waitFor(() => expect(profilesSave).toHaveBeenCalled());
+    const saved = profilesSave.mock.calls[0][0] as { id: string };
+    expect(saved.id).not.toBe('p1');
+  });
+
   it('starts the browser sign-in with Enter in the server field', async () => {
     probe.mockResolvedValue({ supported: true });
     renderModal();
