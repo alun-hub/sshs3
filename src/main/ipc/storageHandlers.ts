@@ -28,6 +28,11 @@ export type StorageHost = Pick<
   >;
 };
 
+/** Last path segment, for messages; local Windows paths use backslashes, everything else uses '/'. */
+function baseName(p: string): string {
+  return p.slice(Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1);
+}
+
 export function registerStorageHandlers(bridge: StorageHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.STORAGE_CONNECT,
@@ -169,13 +174,13 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         }
       );
       if (existing) {
-        throw new Error(`"${remotePath.slice(remotePath.lastIndexOf('/') + 1)}" already exists`);
+        throw new Error(`"${baseName(remotePath)}" already exists`);
       }
       // On local disk the write itself refuses an existing path (O_EXCL), which also covers a dangling
       // symlink that stat() reports as missing, and a file created since the check above.
       await provider.writeFile(remotePath, Buffer.alloc(0), { exclusive: true }).catch((err: unknown) => {
         if ((err as { code?: unknown } | null)?.code === 'EEXIST') {
-          throw new Error(`"${remotePath.slice(remotePath.lastIndexOf('/') + 1)}" already exists`, { cause: err });
+          throw new Error(`"${baseName(remotePath)}" already exists`, { cause: err });
         }
         throw err;
       });

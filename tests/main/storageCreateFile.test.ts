@@ -43,11 +43,18 @@ describe('STORAGE_CREATE_FILE', () => {
     expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('keep me');
   });
 
-  it('refuses a dangling symlink instead of creating the file it points to', async () => {
+  // Windows needs a privilege to create symlinks and resolves a dangling one differently when creating a file.
+  it.skipIf(process.platform === 'win32')('refuses a dangling symlink instead of creating the file it points to', async () => {
     const target = path.join(dir, 'target.txt');
     fs.symlinkSync(target, path.join(dir, 'link.txt'));
     await expect(createFile({}, 'local', path.join(dir, 'link.txt'))).rejects.toThrow('"link.txt" already exists');
     expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('names the file, not the whole path, in the message for POSIX and Windows paths', async () => {
+    providers.set('fake', { stat: vi.fn().mockResolvedValue({}), writeFile: vi.fn() });
+    await expect(createFile({}, 'fake', '/home/me/notes.txt')).rejects.toThrow('"notes.txt" already exists');
+    await expect(createFile({}, 'fake', 'C:\\Users\\me\\notes.txt')).rejects.toThrow('"notes.txt" already exists');
   });
 
   it('rejects bad arguments and unknown or read-only providers', async () => {
