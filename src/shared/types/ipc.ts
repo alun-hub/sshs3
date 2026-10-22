@@ -137,6 +137,9 @@ export const IPC_CHANNELS = {
   STORAGE_STAT: 'storage:stat',
   STORAGE_LOOKUP: 'storage:lookup',
   STORAGE_CREATE_FOLDER: 'storage:create-folder',
+  STORAGE_CREATE_FILE: 'storage:create-file',
+  ARCHIVE_COMPRESS: 'archive:compress',
+  ARCHIVE_EXTRACT: 'archive:extract',
   STORAGE_DELETE: 'storage:delete',
   STORAGE_RENAME: 'storage:rename',
   STORAGE_CHMOD: 'storage:chmod',
@@ -632,6 +635,12 @@ export interface MultiSSHApi {
   /** Like `storageStat`, but a path that does not exist resolves to `null` instead of rejecting. */
   storageLookup(providerId: string, remotePath: string): Promise<FileEntry | null>;
   storageCreateFolder(providerId: string, remotePath: string): Promise<void>;
+  /** Creates an empty file; rejects when something already exists at `remotePath`. */
+  storageCreateFile(providerId: string, remotePath: string): Promise<void>;
+  /** Packs children of `parentDir` into a new archive beside them (local and SFTP only); resolves to the archive's file name. */
+  archiveCompress(providerId: string, parentDir: string, names: string[], format: 'tar.gz' | 'zip'): Promise<string>;
+  /** Unpacks an archive into a new folder named after it, beside it; resolves to the folder's name. */
+  archiveExtract(providerId: string, archivePath: string): Promise<string>;
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;
   storageChmod(providerId: string, remotePath: string, mode: number | string): Promise<void>;

@@ -293,6 +293,12 @@ export const api: MultiSSHApi = {
 
   storageCreateFolder: (providerId: string, remotePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CREATE_FOLDER, providerId, remotePath),
+  storageCreateFile: (providerId: string, remotePath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CREATE_FILE, providerId, remotePath),
+  archiveCompress: (providerId: string, parentDir: string, names: string[], format: 'tar.gz' | 'zip'): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_COMPRESS, providerId, parentDir, names, format),
+  archiveExtract: (providerId: string, archivePath: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_EXTRACT, providerId, archivePath),
 
   storageDelete: (providerId: string, remotePath: string, isDirectory: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_DELETE, providerId, remotePath, isDirectory),

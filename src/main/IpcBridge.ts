@@ -68,6 +68,7 @@ import { registerGitHandlers } from './ipc/gitHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerSmartcardHandlers } from './ipc/smartcardHandlers';
 import { registerStorageHandlers } from './ipc/storageHandlers';
+import { registerArchiveHandlers } from './ipc/archiveHandlers';
 import { registerTransferHandlers } from './ipc/transferHandlers';
 import { registerProfileHandlers } from './ipc/profileHandlers';
 import { registerDotfileHandlers } from './ipc/dotfileHandlers';
@@ -464,6 +465,7 @@ export class IpcBridge {
     registerTerminalHandlers(this);
     registerSmartcardHandlers(this);
     registerStorageHandlers(this);
+    registerArchiveHandlers(this);
     registerTransferHandlers(this);
     registerDragOutHandlers(this);
     registerProfileHandlers(this);

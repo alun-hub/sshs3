@@ -148,6 +148,34 @@ export function registerStorageHandlers(bridge: StorageHost): void {
   );
 
   bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_CREATE_FILE,
+    async (_event, providerId: string, remotePath: string): Promise<void> => {
+      if (typeof providerId !== 'string' || typeof remotePath !== 'string' || remotePath.includes('\0')) {
+        throw new Error('Invalid arguments');
+      }
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      if (!provider.writeFile) {
+        throw new Error('Creating files is not supported by this connection');
+      }
+      // writeFile replaces existing content, so refuse anything that is already there.
+      const existing = await provider.stat(remotePath).then(
+        () => true,
+        (err: unknown) => {
+          if (isMissingPathError(err)) return false;
+          throw err;
+        }
+      );
+      if (existing) {
+        throw new Error(`"${remotePath.slice(remotePath.lastIndexOf('/') + 1)}" already exists`);
+      }
+      await provider.writeFile(remotePath, Buffer.alloc(0));
+    }
+  );
+
+  bridge.registerHandler(
     IPC_CHANNELS.STORAGE_DELETE,
     async (_event, providerId: string, remotePath: string, isDirectory: boolean): Promise<void> => {
       const provider = bridge.storageRegistry.get(providerId);
