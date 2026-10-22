@@ -15,7 +15,7 @@ Replace vulnerable JavaScript SSH libraries with the operating system's native O
 
 #### 🛠️ How to Use
 1. Launch the file manager via <kbd>Ctrl+Shift+F</kbd> (both panes start on **Local Disk**), or open **New Remote File Manager…** from the **+** menu (<kbd>Ctrl+Alt+Shift+F</kbd>) to pick a connection for the right pane straight away. You can also double-click an SFTP profile. Each pane's header icons switch it between Local, SSH/SFTP, S3 and Kubernetes at any time.
-2. Navigate via keyboard (<kbd>Tab</kbd> switches active pane, <kbd>Enter</kbd> enters directories or opens files, <kbd>Backspace</kbd> ascends to parent folder).
+2. Navigate via keyboard (<kbd>Ctrl+Shift+Left</kbd>/<kbd>Right</kbd> switches active pane, <kbd>Enter</kbd> enters directories or opens files, <kbd>Backspace</kbd> or <kbd>Alt+Up</kbd> ascends to the parent folder, <kbd>Alt+Left</kbd>/<kbd>Right</kbd> steps back and forward through visited folders).
 3. Drag and drop files between panes or directly from your workstation's desktop. Files and folders on the **Local** pane can also be dragged out of sshs3 into other applications. On remote panes (SFTP, S3, Kubernetes) choose **Drag out of sshs3...** in the right-click menu, or simply drag the items out of the sshs3 window and release them. A dialog asks whether to copy the item to this computer; after you confirm it downloads a temporary copy and shows an item you drag into the other application. Nothing is downloaded until you confirm. Dragging the row itself still moves files between panes. Files over 500 MB are not supported, and copies are deleted when sshs3 quits.
 4. Manage permissions via right-click → **Change Permissions (chmod)...** with octal (e.g. `0755`, `0644`) and symbolic checkboxes. Tick **Apply recursively to underlying files and folders** to apply the mode to everything inside a selected folder.
 
@@ -70,6 +70,9 @@ The file manager is designed to be fully operable without a mouse:
 | <kbd>Ctrl+L</kbd> / <kbd>Alt+D</kbd> | Edit Path | Edits the current breadcrumb path directly as text. |
 | <kbd>Ctrl+C</kbd> / <kbd>Ctrl+X</kbd> / <kbd>Ctrl+V</kbd> | Copy / Cut / Paste | Clipboard operations across folders and protocols (cut items dim until pasted). |
 | <kbd>Ctrl+A</kbd> | Select All | Highlights all files and folders in the active pane. |
+| <kbd>Ctrl+Shift+A</kbd> | Invert Selection | Selects everything that is not selected, and deselects the rest. |
+| <kbd>Ctrl+S</kbd> | Select by Pattern | Selects (or deselects) all items matching a pattern such as `*.log`; without wildcards, names containing the text match. |
+| <kbd>Ctrl+H</kbd> | Show / Hide Hidden Files | Same as the eye button in the toolbar; changes the **Show hidden files** setting. |
 | <kbd>Escape</kbd> | Clear Selection | Clears current file selections without changing directory. |
 | <kbd>F2</kbd> | Rename | Renames the selected file or folder in place. |
 | <kbd>Delete</kbd> | Delete | Prompts for confirmation and deletes selected items. |
@@ -78,6 +81,10 @@ The file manager is designed to be fully operable without a mouse:
 | *Type letters* | Quick Jump | Typing characters immediately jumps focus to the matching file name. |
 | <kbd>Ctrl+F</kbd> | Filter List | Filters visible items with wildcard matching (e.g. `*.log`, `data-?-final.csv`). |
 | <kbd>Ctrl+Shift+K</kbd> | Search in Files | Recursive content search (with regex support) across local disk, SFTP, and S3. |
+
+- **Sort order**: Folders first, then dot-folders, then files, then dotfiles. The grouping stays the same when sorting descending; only the order within each group flips.
+- **New File**: The toolbar and the empty-area context menu create an empty file (not available at the S3 bucket list). An existing name is rejected rather than overwritten.
+- **Compress / Extract** (local disk and SFTP panes): Right-click a selection and choose **Compress to .tar.gz** or **Compress to .zip**. The archive is created next to the selection and never replaces an existing one (`archive (1).zip`). Right-click an archive (`.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz`) and choose **Extract to Folder** to unpack it into a new folder named after the archive. On SFTP the work runs on the server, so `tar` (and `zip`/`unzip` for zip files) must be installed there; on a local Linux machine zip files also need `zip`/`unzip`.
 
 #### ⚠️ Limitations & Caveats
 - SFTP v3 does not natively support advanced POSIX Access Control Lists (ACLs) within the protocol frame.

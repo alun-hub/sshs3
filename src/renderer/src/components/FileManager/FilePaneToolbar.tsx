@@ -1,11 +1,12 @@
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, Eye, EyeOff, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, Eye, EyeOff, FilePlus, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
 import { Breadcrumbs, type BreadcrumbsHandle } from './Breadcrumbs';
 import { DiskSpaceMenu } from './DiskSpaceMenu';
 import type { SourceType } from './types';
+import { canCreateFileIn } from './filePaneHelpers';
 
 interface FilePaneToolbarProps {
   sourceType: SourceType;
@@ -26,6 +27,7 @@ interface FilePaneToolbarProps {
   handleBreadcrumbDrop: (targetPath: string, e: React.DragEvent) => void;
   load: (force?: boolean) => Promise<void> | void;
   handleNewFolder: () => Promise<void> | void;
+  handleNewFile: () => Promise<void> | void;
   handleRenameStart: () => void;
   handleDelete: () => Promise<void> | void;
   setEditorEntry: (entry: FileEntry | null) => void;
@@ -61,6 +63,7 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   handleBreadcrumbDrop,
   load,
   handleNewFolder,
+  handleNewFile,
   handleRenameStart,
   handleDelete,
   setEditorEntry,
@@ -153,6 +156,17 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
         >
           <FolderPlus className="h-4 w-4" />
         </button>
+        {canCreateFileIn(sourceType, currentPath) && (
+          <button
+            type="button"
+            title="New File"
+            aria-label="New File"
+            onClick={() => void handleNewFile()}
+            className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            <FilePlus className="h-4 w-4" />
+          </button>
+        )}
         <button
           type="button"
           title="View / Edit File"

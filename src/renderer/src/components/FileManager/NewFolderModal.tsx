@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderPlus, X, Loader2 } from 'lucide-react';
+import { FilePlus, FolderPlus, X, Loader2 } from 'lucide-react';
 import type { SourceType } from './types';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
@@ -9,6 +9,8 @@ interface NewFolderModalProps {
   open: boolean;
   currentPath: string;
   sourceType: SourceType;
+  /** What gets created; defaults to a folder (or a bucket at the S3 root). */
+  kind?: 'folder' | 'file';
   onClose: () => void;
   onCreate: (name: string) => Promise<void>;
 }
@@ -17,6 +19,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   open,
   currentPath,
   sourceType,
+  kind = 'folder',
   onClose,
   onCreate,
 }) => {
@@ -26,10 +29,12 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const handleBackdropClick = useModalDismiss(onClose, open, !submitting);
 
-  const isS3Root = sourceType === 's3' && (currentPath === '/' || currentPath === '');
-  const title = isS3Root ? 'Create S3 Bucket' : 'Create New Folder';
-  const label = isS3Root ? 'Bucket Name' : 'Folder Name';
-  const placeholder = isS3Root ? 'my-new-bucket' : 'New folder name';
+  const isFile = kind === 'file';
+  const isS3Root = !isFile && sourceType === 's3' && (currentPath === '/' || currentPath === '');
+  const title = isFile ? 'Create New File' : isS3Root ? 'Create S3 Bucket' : 'Create New Folder';
+  const noun = isFile ? 'File' : isS3Root ? 'Bucket' : 'Folder';
+  const label = `${noun} Name`;
+  const placeholder = isFile ? 'New file name' : isS3Root ? 'my-new-bucket' : 'New folder name';
 
   useEffect(() => {
     if (open) {
@@ -46,7 +51,12 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
-      setError(isS3Root ? 'Bucket name cannot be empty' : 'Folder name cannot be empty');
+      setError(`${noun} name cannot be empty`);
+      return;
+    }
+
+    if (isFile && /[/\0]/.test(trimmed)) {
+      setError('File names cannot contain "/".');
       return;
     }
 
@@ -63,7 +73,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
       await onCreate(trimmed);
       onClose();
     } catch (err) {
-      setError(describeIpcError(err, 'Failed to create folder'));
+      setError(describeIpcError(err, `Failed to create ${noun.toLowerCase()}`));
     } finally {
       setSubmitting(false);
     }
@@ -81,7 +91,11 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold text-txt-primary">
-            <FolderPlus className="h-5 w-5 text-sky-400 shrink-0" />
+            {isFile ? (
+              <FilePlus className="h-5 w-5 text-sky-400 shrink-0" />
+            ) : (
+              <FolderPlus className="h-5 w-5 text-sky-400 shrink-0" />
+            )}
             <span>{title}</span>
           </div>
           <button aria-label="Close" title="Close"

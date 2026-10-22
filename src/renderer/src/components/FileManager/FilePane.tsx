@@ -9,6 +9,8 @@ import { joinPath, parentPath, describeIpcError, formatBytes } from '../../lib/f
 import { DragOutDialog } from './DragOutDialog';
 import { watchDragReleasedOutsideWindow } from '../../lib/dragLeaveWindow';
 import { makeNameMatcher } from '../../lib/nameFilter';
+import { invertSelection } from '../../lib/selectionOps';
+import { useArchiveActions } from './useArchiveActions';
 import { FileList } from './FileList';
 import { useDragDrop } from './DragDropContext';
 import { useConfirm } from '../ConfirmDialog';
@@ -127,6 +129,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [presignedOpen, setPresignedOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [patternOpen, setPatternOpen] = useState(false);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
@@ -397,6 +401,33 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [source.providerId, currentPath, load]
   );
 
+  const handleNewFile = useCallback(() => {
+    setNewFileOpen(true);
+  }, []);
+
+  const handleCreateFileCommit = useCallback(
+    async (name: string) => {
+      await window.multissh.storageCreateFile(source.providerId, joinPath(currentPath, name));
+      await load(true);
+    },
+    [source.providerId, currentPath, load]
+  );
+
+  const handlePatternApply = useCallback((paths: string[], mode: 'select' | 'deselect') => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      for (const p of paths) {
+        if (mode === 'select') next.add(p);
+        else next.delete(p);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleInvertSelection = useCallback(() => {
+    setSelectedPaths((prev) => invertSelection(displayedEntries, prev));
+  }, [displayedEntries]);
+
   const handleDelete = useCallback(async () => {
     if (selectedPaths.size === 0) return;
     const targets = activeEntries.filter((e) => selectedPaths.has(e.path));
@@ -606,6 +637,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const supportsChmod = source.sourceType !== 's3';
   const selectedEntries = activeEntries.filter((e) => selectedPaths.has(e.path));
 
+  const { handleCompress, handleExtract } = useArchiveActions({
+    providerId: source.providerId,
+    currentPath,
+    selectedEntries,
+    load,
+    setLoading,
+    setError,
+    setSelectedPaths,
+  });
+
   const isAtBucketRoot = source.sourceType === 's3' && (currentPath === '' || currentPath === '/');
   const isBucketEntry =
     isAtBucketRoot && selectedEntries.length === 1 && selectedEntries[0].isDirectory;
@@ -643,6 +684,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
     handleGitPull,
     handleDelete,
     handleNewFolder,
+    handleNewFile,
+    handleCompress,
+    handleExtract,
+    setPatternOpen,
+    handleInvertSelection,
     load,
     setSyncModalOpen,
     setEditorTailMode,
@@ -702,6 +748,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if ((e.key === 'l' && (e.ctrlKey || e.metaKey)) || (e.key === 'd' && e.altKey)) {
       e.preventDefault();
       breadcrumbsRef.current?.startEditing();
+      return;
+    }
+
+    if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      setPatternOpen(true);
+      return;
+    }
+
+    if (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      handleInvertSelection();
       return;
     }
 
@@ -835,6 +893,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         handleBreadcrumbDrop={handleBreadcrumbDrop}
         load={load}
         handleNewFolder={handleNewFolder}
+        handleNewFile={handleNewFile}
         handleRenameStart={handleRenameStart}
         handleDelete={handleDelete}
         setEditorEntry={setEditorEntry}
@@ -1013,6 +1072,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
         newFolderOpen={newFolderOpen}
         setNewFolderOpen={setNewFolderOpen}
         handleCreateFolderCommit={handleCreateFolderCommit}
+        newFileOpen={newFileOpen}
+        setNewFileOpen={setNewFileOpen}
+        handleCreateFileCommit={handleCreateFileCommit}
+        patternOpen={patternOpen}
+        setPatternOpen={setPatternOpen}
+        displayedEntries={displayedEntries}
+        handlePatternApply={handlePatternApply}
         addToDotfilesOpen={addToDotfilesOpen}
         setAddToDotfilesOpen={setAddToDotfilesOpen}
         setDotfilesFeedback={setDotfilesFeedback}
