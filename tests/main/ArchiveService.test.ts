@@ -51,8 +51,28 @@ describe.skipIf(!hasTools || process.platform === 'win32')('ArchiveService (loca
     expect(await extractArchive(provider, path.join(dir, archive))).toBe('b.txt (2)');
   });
 
+  it('removes the empty folder and the partial archive when a command fails', async () => {
+    fs.writeFileSync(path.join(dir, 'bad.tar.gz'), 'not an archive');
+    await expect(extractArchive(provider, path.join(dir, 'bad.tar.gz'))).rejects.toThrow();
+    expect(fs.existsSync(path.join(dir, 'bad'))).toBe(false);
+
+    const locked = path.join(dir, 'locked.txt');
+    fs.writeFileSync(locked, 'secret');
+    fs.chmodSync(locked, 0o000);
+    try {
+      // Running as root can read it anyway, in which case there is nothing to clean up.
+      await compressEntries(provider, dir, ['locked.txt'], 'tar.gz').then(
+        () => undefined,
+        () => expect(fs.existsSync(path.join(dir, 'locked.txt.tar.gz'))).toBe(false)
+      );
+    } finally {
+      fs.chmodSync(locked, 0o600);
+    }
+  });
+
   it('rejects names that escape the directory and files that are not archives', async () => {
     await expect(compressEntries(provider, dir, ['../x'], 'zip')).rejects.toThrow('Invalid file names');
+    await expect(compressEntries(provider, dir, ['a\\b'], 'zip')).rejects.toThrow('Invalid file names');
     await expect(extractArchive(provider, path.join(dir, 'b.txt'))).rejects.toThrow('Not a supported archive');
   });
 });

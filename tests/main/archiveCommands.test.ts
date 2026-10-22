@@ -4,6 +4,7 @@ import {
   buildExtractCommand,
   defaultArchiveBaseName,
   detectArchiveKind,
+  isAcceptedExit,
   isSafeSegment,
   pickFreeName,
   stripArchiveExtension,
@@ -73,7 +74,7 @@ describe('buildCompressCommand', () => {
   it('uses zip on Linux and tar -a on macOS/Windows', () => {
     expect(buildCompressCommand('zip', '/d', ['b'], '/d/a.zip', 'linux')).toEqual({
       file: 'zip',
-      args: ['-r', '-q', '/d/a.zip', '--', 'b'],
+      args: ['-r', '-y', '-q', '/d/a.zip', '--', 'b'],
       cwd: '/d',
     });
     expect(buildCompressCommand('zip', 'C:\\d', ['b'], 'C:\\d\\a.zip', 'win32').file).toBe('tar');
@@ -92,6 +93,7 @@ describe('buildExtractCommand', () => {
     expect(buildExtractCommand('zip', '/d/a.zip', '/d/a', 'linux')).toEqual({
       file: 'unzip',
       args: ['-q', '/d/a.zip', '-d', '/d/a'],
+      okExitCodes: [1],
     });
     expect(buildExtractCommand('zip', 'C:\\a.zip', 'C:\\a', 'win32').file).toBe('tar');
   });
@@ -115,5 +117,15 @@ describe('summarizeExecError', () => {
   });
   it('falls back when there is no detail', () => {
     expect(summarizeExecError(new Error('Command failed: ssh x'), 'Archive failed')).toBe('Archive failed');
+  });
+});
+
+describe('isAcceptedExit', () => {
+  const unzip = { file: 'unzip', args: [], okExitCodes: [1] };
+  it('accepts only the listed exit codes', () => {
+    expect(isAcceptedExit(Object.assign(new Error('x'), { code: 1 }), unzip)).toBe(true);
+    expect(isAcceptedExit(Object.assign(new Error('x'), { code: 2 }), unzip)).toBe(false);
+    expect(isAcceptedExit(Object.assign(new Error('x'), { code: 'ENOENT' }), unzip)).toBe(false);
+    expect(isAcceptedExit(new Error('x'), { file: 'tar', args: [] })).toBe(false);
   });
 });

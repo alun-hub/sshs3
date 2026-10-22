@@ -10,6 +10,7 @@ import {
   buildCompressCommand,
   buildExtractCommand,
   defaultArchiveBaseName,
+  isAcceptedExit,
   isSafeSegment,
   pickFreeName,
   summarizeExecError,
@@ -32,7 +33,7 @@ interface ArchiveTarget {
 function execLocal(command: ArchiveCommand): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(command.file, command.args, { cwd: command.cwd, maxBuffer: 1024 * 1024, windowsHide: true }, (err, _stdout, stderr) => {
-      if (!err) return resolve();
+      if (!err || isAcceptedExit(err, command)) return resolve();
       // stderr is what tar/zip/unzip complain about; ENOENT (tool missing) has none, so fall back to the error text.
       reject(new Error(stderr.trim() || summarizeExecError(err, `${command.file} failed`)));
     });
@@ -60,6 +61,7 @@ function targetFor(provider: IStorageProvider): ArchiveTarget {
         try {
           await provider.exec(toShellCommand(command));
         } catch (err) {
+          if (isAcceptedExit(err, command)) return;
           throw new Error(summarizeExecError(err, `${command.file} failed on the remote host`), { cause: err });
         }
       },
@@ -87,14 +89,20 @@ export async function compressEntries(
   names: string[],
   format: ArchiveFormat
 ): Promise<string> {
-  if (names.length === 0 || !names.every(isSafeSegment)) throw new Error('Invalid file names');
   const target = targetFor(provider);
+  if (names.length === 0 || !names.every((n) => isSafeSegment(n))) throw new Error('Invalid file names');
   const dir = await target.resolve(parentDir);
   const archiveName = await pickFreeName(defaultArchiveBaseName(names), archiveExtension(format), (candidate) =>
     pathExists(provider, target.join(dir, candidate))
   );
-  const command = buildCompressCommand(format, dir, names, target.join(dir, archiveName), target.platform);
-  await target.run(command);
+  const archivePath = target.join(dir, archiveName);
+  try {
+    await target.run(buildCompressCommand(format, dir, names, archivePath, target.platform));
+  } catch (err) {
+    // The name was free a moment ago, so whatever is there now is the unfinished archive.
+    await provider.delete(archivePath, false).catch(() => undefined);
+    throw err;
+  }
   return archiveName;
 }
 
@@ -111,6 +119,13 @@ export async function extractArchive(provider: IStorageProvider, archivePath: st
   );
   const destDir = target.join(parent, folderName);
   await provider.createFolder(destDir);
-  await target.run(buildExtractCommand(kind, absArchive, destDir, target.platform));
+  try {
+    await target.run(buildExtractCommand(kind, absArchive, destDir, target.platform));
+  } catch (err) {
+    // Only an empty folder is removed; anything already unpacked stays for the user to look at.
+    const leftovers = await provider.list(destDir).catch(() => undefined);
+    if (leftovers?.length === 0) await provider.delete(destDir, true).catch(() => undefined);
+    throw err;
+  }
   return folderName;
 }

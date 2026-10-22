@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { FileEntry } from '@shared/types/storage';
 import { describeIpcError, joinPath } from '../../lib/format';
@@ -29,14 +29,22 @@ export function useArchiveActions({
   setError,
   setSelectedPaths,
 }: UseArchiveActionsParams) {
+  // The operation can outlive the folder it started in; the latest path tells whether the pane is still there.
+  const latestPathRef = useRef(currentPath);
+  latestPathRef.current = currentPath;
+
   const run = useCallback(
     async (op: () => Promise<string>, failure: string) => {
+      const startPath = currentPath;
       setLoading(true);
       setError(null);
       try {
         const createdName = await op();
-        await load(true);
-        setSelectedPaths(new Set([joinPath(currentPath, createdName)]));
+        // Reloading or selecting after the user moved on would show the old folder's list in the new one.
+        if (latestPathRef.current === startPath) {
+          await load(true);
+          setSelectedPaths(new Set([joinPath(startPath, createdName)]));
+        }
       } catch (err) {
         setError(describeIpcError(err, failure));
       } finally {
@@ -51,9 +59,13 @@ export function useArchiveActions({
       // Entries are named relative to the pane's folder; recursive-filter hits (names with a path) are not direct children.
       const names = selectedEntries.map((e) => e.name);
       if (names.length === 0 || names.some((n) => n.includes('/'))) return Promise.resolve();
+      if (names.some((n) => n.includes('\\'))) {
+        setError('Names containing a backslash cannot be archived. Rename them first.');
+        return Promise.resolve();
+      }
       return run(() => window.multissh.archiveCompress(providerId, currentPath, names, format), 'Failed to create archive');
     },
-    [providerId, currentPath, selectedEntries, run]
+    [providerId, currentPath, selectedEntries, run, setError]
   );
 
   const handleExtract = useCallback(() => {

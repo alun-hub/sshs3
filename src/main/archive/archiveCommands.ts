@@ -11,6 +11,8 @@ export interface ArchiveCommand {
   args: string[];
   /** Working directory; `undefined` runs in the process' own. */
   cwd?: string;
+  /** Non-zero exit codes that still mean success (unzip exits 1 for warnings after extracting everything). */
+  okExitCodes?: number[];
 }
 
 export function archiveExtension(format: ArchiveFormat): string {
@@ -22,9 +24,19 @@ export function defaultArchiveBaseName(names: string[]): string {
   return names.length === 1 ? names[0] : 'archive';
 }
 
-/** A single path segment: not empty, not "." / "..", no separators or NUL. Used for every name that is joined onto a directory. */
+/**
+ * A single path segment: not empty, not "." / "..", no separators or NUL. A backslash is refused on every platform: it
+ * separates paths on Windows, and GNU tar reads it as an escape sequence in a name given on the command line (`a\\b`
+ * becomes `a<backspace>`), which no portable flag turns off. Used for every name that is joined onto a directory.
+ */
 export function isSafeSegment(name: unknown): name is string {
   return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !/[/\\\0]/.test(name);
+}
+
+/** True when `err` is a process exit whose code `command` lists as acceptable. */
+export function isAcceptedExit(err: unknown, command: ArchiveCommand): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'number' && (command.okExitCodes ?? []).includes(code);
 }
 
 /**
@@ -61,7 +73,7 @@ export function buildCompressCommand(
   if (platform === 'win32' || platform === 'darwin') {
     return { file: 'tar', args: ['-a', '-cf', archivePath, '-C', parentDir, '--', ...names] };
   }
-  return { file: 'zip', args: ['-r', '-q', archivePath, '--', ...names], cwd: parentDir };
+  return { file: 'zip', args: ['-r', '-y', '-q', archivePath, '--', ...names], cwd: parentDir };
 }
 
 /**
@@ -75,7 +87,7 @@ export function buildExtractCommand(
   platform: NodeJS.Platform
 ): ArchiveCommand {
   if (kind === 'zip' && platform !== 'win32' && platform !== 'darwin') {
-    return { file: 'unzip', args: ['-q', archivePath, '-d', destDir] };
+    return { file: 'unzip', args: ['-q', archivePath, '-d', destDir], okExitCodes: [1] };
   }
   return { file: 'tar', args: ['-xf', archivePath, '-C', destDir, '--no-same-owner'] };
 }
