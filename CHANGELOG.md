@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.56] - 2026-10-23
+
+### Fixed
+- **File manager.** After **Compress** or **Extract to Folder**, Enter and the arrow keys now act on the new archive or folder that is highlighted, instead of the row you had clicked before (Enter on a freshly extracted folder used to open the archive in the editor). **New File** now also refuses a name that is a dangling symlink on local disk, instead of creating the file the link points to.
+- **Kubernetes profiles.** Signing in again to a cluster and project that already has a saved profile updates that profile instead of adding a second one (existing duplicates are left alone). A project cleared on one machine is now cleared on your other machines at the next sync, and a second window that shows the Kubernetes tree reloads when the kubeconfig changes on disk.
+- **Windows.** Closing a window that a terminal was just moved into now asks for confirmation and ends that session, instead of leaving it running without a tab. A saved FIDO2 or smartcard tab in a secondary window now counts when sshs3 decides at startup whether to unlock your key.
+- Terminal scrollback (kept for moving a terminal to another window) no longer slows down with very many tiny output chunks.
+
+### Changed
+- Dependencies: Electron 44.9.0, `lucide-react` 1.59, `eslint` 10.13, `typescript-eslint` 8.71.2, `@tanstack/react-virtual` 3.14.21, `jsdom` 30.1.3, `ip-address` 10.7.4 and `actions/setup-node` 7 for the build.
+
 ## [0.96.55] - 2026-10-22
 
 The 0.96.54 release build failed on Windows (a slow test, not a bug in the app) and was never published, so everything listed under 0.96.54 below ships with this version.
