@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.57] - 2026-10-23
+
+The 0.96.56 release build failed on Windows (tests for the new file creation assumed POSIX paths) and was never published, so everything listed under 0.96.56 below ships with this version.
+
+### Fixed
+- **New File** names the file rather than the whole path in its "already exists" message on Windows.
+
 ## [0.96.56] - 2026-10-23
 
 ### Fixed
