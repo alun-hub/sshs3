@@ -33,6 +33,7 @@ import type {
   K8sLoginOptions,
   K8sLoginResult,
   K8sOpenShiftProbeResult,
+  K8sProfile,
   K8sWebLoginOptions,
   K8sWebLoginResult,
 } from '../shared/types/kubernetes';
@@ -558,6 +559,10 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, vaultId, profile),
   teamVaultDeleteSSHProfile: (vaultId: string, id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_SSH_PROFILE, vaultId, id),
+  teamVaultSaveK8sProfile: (vaultId: string, profile: K8sProfile): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, vaultId, profile),
+  teamVaultDeleteK8sProfile: (vaultId: string, id: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_DELETE_K8S_PROFILE, vaultId, id),
   teamVaultSaveS3Profile: (vaultId: string, profile: S3Config): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, vaultId, profile),
   teamVaultDeleteS3Profile: (vaultId: string, id: string): Promise<void> =>
@@ -853,6 +858,11 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN, options),
 
   k8sOpenShiftWebLoginCancel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN_CANCEL),
+
+  k8sProfilesList: (): Promise<K8sProfile[]> => ipcRenderer.invoke(IPC_CHANNELS.K8S_PROFILES_LIST),
+  k8sProfilesSave: (profile: K8sProfile): Promise<K8sProfile> =>
+    ipcRenderer.invoke(IPC_CHANNELS.K8S_PROFILES_SAVE, profile),
+  k8sProfilesDelete: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.K8S_PROFILES_DELETE, id),
 
   onK8sConfigChanged: (callback: (execAuthWarning?: string | null) => void): (() => void) => {
     const listener = (_event: unknown, execAuthWarning?: string | null) => callback(execAuthWarning);

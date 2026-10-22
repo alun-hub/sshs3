@@ -1,6 +1,6 @@
 import { getBaseName, joinPaths } from '../transfer/TransferPipeline';
 import type { StorageType } from '../../shared/types/storage';
-import type { K8sWebLoginOptions } from '../../shared/types/kubernetes';
+import type { K8sProfile, K8sWebLoginOptions } from '../../shared/types/kubernetes';
 
 /** True when any leaf pane of a saved session's pane tree uses the given auth type. */
 export function paneTreeHasAuthType(node: unknown, authType: string): boolean {
@@ -128,4 +128,56 @@ export function parseWebLoginOptions(raw: unknown): K8sWebLoginOptions {
     options.callbackPort = port;
   }
   return options;
+}
+
+const MAX_PROFILE_NAME_LENGTH = 200;
+const PROFILE_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+const PROFILE_NAMESPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function optionalProfileString(value: unknown, label: string, maxLength: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || value.length > maxLength) throw new Error(`Invalid ${label}`);
+  return value.trim() || undefined;
+}
+
+/** Validates an untrusted saved-cluster profile and drops every field it does not know. */
+export function parseK8sProfile(raw: unknown): K8sProfile {
+  if (!raw || typeof raw !== 'object') throw new Error('Invalid profile');
+  const input = raw as Record<string, unknown>;
+  if (typeof input.id !== 'string' || !PROFILE_ID_PATTERN.test(input.id)) throw new Error('Invalid profile id');
+  const server = parseK8sServerArg(input.server);
+  const name = optionalProfileString(input.name, 'profile name', MAX_PROFILE_NAME_LENGTH);
+  if (!name) throw new Error('Profile name is required');
+
+  const profile: K8sProfile = { id: input.id, name, server };
+  if (input.insecureSkipTlsVerify !== undefined) {
+    if (typeof input.insecureSkipTlsVerify !== 'boolean') throw new Error('Invalid TLS option');
+    profile.insecureSkipTlsVerify = input.insecureSkipTlsVerify;
+  }
+  const namespace = optionalProfileString(input.namespace, 'namespace', MAX_NAMESPACE_LENGTH);
+  if (namespace) {
+    if (!PROFILE_NAMESPACE_PATTERN.test(namespace)) throw new Error('Invalid namespace');
+    profile.namespace = namespace;
+  }
+  const contextName = optionalProfileString(input.contextName, 'context name', MAX_SERVER_URL_LENGTH);
+  if (contextName) profile.contextName = contextName;
+  const lastUsedAt = optionalProfileString(input.lastUsedAt, 'timestamp', 64);
+  if (lastUsedAt && !Number.isNaN(Date.parse(lastUsedAt))) profile.lastUsedAt = lastUsedAt;
+  return profile;
+}
+
+function isoTimestamp(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length <= 64 && !Number.isNaN(Date.parse(value)) ? value : undefined;
+}
+
+/**
+ * Like parseK8sProfile, but for records read from disk, a sync payload or a Team Vault: it also keeps
+ * the `updatedAt`/`deletedAt` stamps that merging and tombstones depend on.
+ */
+export function parseStoredK8sProfile(raw: unknown): K8sProfile {
+  const profile = parseK8sProfile(raw);
+  const input = raw as Record<string, unknown>;
+  const updatedAt = isoTimestamp(input.updatedAt);
+  const deletedAt = isoTimestamp(input.deletedAt);
+  return { ...profile, ...(updatedAt ? { updatedAt } : {}), ...(deletedAt ? { deletedAt } : {}) };
 }

@@ -12,6 +12,7 @@ import type { S3Config } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
 import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateReader';
 import { testS3ConnectionConfig } from './connectionTestHandlers';
+import { toTeamK8sProfile } from '../services/teamVaultK8s';
 import { createLogger } from '../log';
 
 const teamVaultLog = createLogger('team-vault');
@@ -498,6 +499,21 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
     const vid = requireVaultId(vaultId);
     requireRecipientId(id, 'Profile id');
     await bridge.teamVaultService.deleteSSHProfile(vid, id);
+    bridge.scheduleTeamVaultAutoPush(vid);
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, async (_event, vaultId: string, profile: unknown) => {
+    const vid = requireVaultId(vaultId);
+    requireProfile(profile, 'K8s profile');
+    // Only the template fields get through (no context name, tombstone or token); the service stamps updatedAt.
+    await bridge.teamVaultService.saveK8sProfile(vid, toTeamK8sProfile(profile));
+    bridge.scheduleTeamVaultAutoPush(vid);
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_DELETE_K8S_PROFILE, async (_event, vaultId: string, id: string) => {
+    const vid = requireVaultId(vaultId);
+    requireRecipientId(id, 'Profile id');
+    await bridge.teamVaultService.deleteK8sProfile(vid, id);
     bridge.scheduleTeamVaultAutoPush(vid);
   });
 

@@ -141,7 +141,7 @@ describe('K8sConnectionTree', () => {
       fireEvent.click(loginBtn);
     });
 
-    expect(screen.getByText('OpenShift / Kubernetes Token Login')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'OpenShift / Kubernetes login' })).toBeInTheDocument();
 
     // Paste an oc login command
     const pasteArea = screen.getByPlaceholderText(/oc login --token=/);
@@ -182,7 +182,7 @@ describe('K8sConnectionTree', () => {
       fireEvent.click(loginBtn);
     });
 
-    expect(screen.getByText('OpenShift / Kubernetes Token Login')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'OpenShift / Kubernetes login' })).toBeInTheDocument();
   });
 
   it('deletes pod when clicking delete button and confirming dialog', async () => {
@@ -215,5 +215,189 @@ describe('K8sConnectionTree', () => {
     });
 
     expect((window as any).multissh.k8sDeletePod).toHaveBeenCalledWith('minikube', 'default', 'nginx-pod');
+  });
+
+  describe('saved cluster profiles', () => {
+    const profile = {
+      id: 'p1',
+      name: 'Production',
+      server: 'https://192.168.49.2:8443',
+      namespace: 'team-a',
+      contextName: 'minikube',
+    };
+
+    it('shows only the profile project and never lists the whole cluster', async () => {
+      (window as any).multissh.k8sProfilesList = vi.fn().mockResolvedValue([profile]);
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+
+      const name = await screen.findByText('Production');
+      await act(async () => {
+        fireEvent.click(name);
+      });
+
+      expect(await screen.findByText('team-a', { selector: 'span.truncate' })).toBeInTheDocument();
+      expect(screen.queryByText('default')).not.toBeInTheDocument();
+      expect((window as any).multissh.k8sListNamespaces).not.toHaveBeenCalled();
+    });
+
+    it('lists the whole cluster when the profile has no project', async () => {
+      (window as any).multissh.k8sProfilesList = vi
+        .fn()
+        .mockResolvedValue([{ ...profile, namespace: undefined }]);
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+
+      const name = await screen.findByText('Production');
+      await act(async () => {
+        fireEvent.click(name);
+      });
+      expect(await screen.findByText('default')).toBeInTheDocument();
+      expect((window as any).multissh.k8sListNamespaces).toHaveBeenCalledWith('minikube');
+    });
+
+    it('lists a saved cluster that has no kubeconfig context and signs in to it', async () => {
+      (window as any).multissh.k8sProfilesList = vi
+        .fn()
+        .mockResolvedValue([{ id: 'p2', name: 'Staging', server: 'https://staging.example.com:6443' }]);
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+
+      expect(await screen.findByText('Staging')).toBeInTheDocument();
+      expect(screen.getByText('not signed in')).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+      });
+      expect(screen.getByLabelText('API server URL')).toHaveValue('https://staging.example.com:6443');
+      expect(screen.getByLabelText('Profile name')).toHaveValue('Staging');
+    });
+
+    it('removes a profile after confirming, keeping the kubeconfig untouched', async () => {
+      const list = vi.fn().mockResolvedValueOnce([profile]).mockResolvedValue([]);
+      (window as any).multissh.k8sProfilesList = list;
+      (window as any).multissh.k8sProfilesDelete = vi.fn().mockResolvedValue(undefined);
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+
+      await screen.findByText('Production');
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Remove profile Production' }));
+      });
+      const confirmButton = await screen.findByRole('button', { name: 'Remove' });
+      await act(async () => {
+        fireEvent.click(confirmButton);
+      });
+
+      expect((window as any).multissh.k8sProfilesDelete).toHaveBeenCalledWith('p1');
+      expect(await screen.findByText('minikube')).toBeInTheDocument();
+    });
+  });
+
+  describe('Team Vault cluster templates', () => {
+    const template = { id: 't1', name: 'Shared prod', server: 'https://shared.example.com:6443', namespace: 'team-a' };
+
+    function mockTeam(over: Record<string, unknown> = {}) {
+      Object.assign((window as any).multissh, {
+        teamVaultList: vi.fn().mockResolvedValue([
+          { exists: true, vaultId: 'v1', vaultName: 'Platform', unlocked: true, filePath: '' },
+          { exists: true, vaultId: 'v2', vaultName: 'Locked team', unlocked: false, filePath: '' },
+        ]),
+        teamVaultGetPayload: vi.fn().mockResolvedValue({ ssh: [], s3: [], k8s: [template] }),
+        settingsGet: vi.fn().mockResolvedValue({}),
+        teamVaultSaveK8sProfile: vi.fn().mockResolvedValue(undefined),
+        teamVaultDeleteK8sProfile: vi.fn().mockResolvedValue(undefined),
+        k8sProfilesList: vi.fn().mockResolvedValue([]),
+        ...over,
+      });
+    }
+
+    it('lists templates of unlocked vaults only and counts the locked ones', async () => {
+      mockTeam();
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+
+      expect(await screen.findByText('Shared prod')).toBeInTheDocument();
+      expect(screen.getByText('Platform')).toBeInTheDocument();
+      expect((window as any).multissh.teamVaultGetPayload).toHaveBeenCalledTimes(1);
+      expect((window as any).multissh.teamVaultGetPayload).toHaveBeenCalledWith('v1');
+      expect(screen.getByText(/1 locked team vault not shown/)).toBeInTheDocument();
+    });
+
+    it('shows nothing team-related when OpenShift support is off', async () => {
+      mockTeam();
+      renderTree(<K8sConnectionTree enableOpenShift={false} />);
+      expect(await screen.findByText('minikube')).toBeInTheDocument();
+      expect(screen.queryByTestId('k8s-team-vault-section')).not.toBeInTheDocument();
+    });
+
+    it('signing in to a template opens the dialog with a personal copy that has its own id', async () => {
+      mockTeam();
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+      await screen.findByText('Shared prod');
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+      });
+
+      expect(screen.getByLabelText('API server URL')).toHaveValue('https://shared.example.com:6443');
+      expect(screen.getByLabelText('Default project / namespace')).toHaveValue('team-a');
+      expect(screen.getByLabelText('Profile name')).toHaveValue('Shared prod');
+    });
+
+    it('reuses the personal profile that already covers the template instead of duplicating it', async () => {
+      const personal = { id: 'mine', name: 'My prod', server: 'https://SHARED.example.com:6443/', namespace: 'team-a' };
+      mockTeam({ k8sProfilesList: vi.fn().mockResolvedValue([personal]) });
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+      await screen.findByText('Shared prod');
+      const teamSection = screen.getByTestId('k8s-team-vault-section');
+      await act(async () => {
+        fireEvent.click(within(teamSection).getByRole('button', { name: /^sign in$/i }));
+      });
+      expect(screen.getByLabelText('Profile name')).toHaveValue('My prod');
+    });
+
+    it('shares a personal profile to the only unlocked vault without its kubeconfig context', async () => {
+      const personal = { id: 'p9', name: 'Mine', server: 'https://own.example.com:6443', namespace: 'dev', contextName: 'dev/own/alice', lastUsedAt: '2026-01-01T00:00:00.000Z' };
+      mockTeam({ k8sProfilesList: vi.fn().mockResolvedValue([personal]) });
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+      await screen.findByText('Shared prod');
+      await act(async () => {
+        fireEvent.click(await screen.findByRole('button', { name: 'Share profile Mine to a team' }));
+      });
+      expect((window as any).multissh.teamVaultSaveK8sProfile).toHaveBeenCalledWith('v1', {
+        id: 'p9',
+        name: 'Mine',
+        server: 'https://own.example.com:6443',
+        namespace: 'dev',
+        insecureSkipTlsVerify: undefined,
+      });
+    });
+
+    it('removes a template for the team after confirming', async () => {
+      mockTeam();
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+      await screen.findByText('Shared prod');
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Remove shared cluster Shared prod' }));
+      });
+      const confirmButton = await screen.findByRole('button', { name: 'Remove' });
+      await act(async () => {
+        fireEvent.click(confirmButton);
+      });
+      expect((window as any).multissh.teamVaultDeleteK8sProfile).toHaveBeenCalledWith('v1', 't1');
+    });
+
+    it('adds a template through the form, which has no token field', async () => {
+      mockTeam();
+      renderTree(<K8sConnectionTree enableOpenShift={true} />);
+      await screen.findByText('Shared prod');
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Add shared cluster to Platform' }));
+      });
+      expect(screen.queryByLabelText(/token/i)).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Staging' } });
+      fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://staging.example.com:6443' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      });
+      expect((window as any).multissh.teamVaultSaveK8sProfile).toHaveBeenCalledWith(
+        'v1',
+        expect.objectContaining({ name: 'Staging', server: 'https://staging.example.com:6443', id: expect.any(String) })
+      );
+    });
   });
 });

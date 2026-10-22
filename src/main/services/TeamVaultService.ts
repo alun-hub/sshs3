@@ -19,6 +19,8 @@ import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { joinPaths } from '../transfer/TransferPipeline';
 import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultCryptoService';
 import { createLogger } from '../log/Logger';
+import { normalizeK8sList, removeK8sProfile, toTeamK8sProfile, upsertK8sProfile } from './teamVaultK8s';
+import type { K8sProfile } from '../../shared/types/kubernetes';
 
 const teamVaultLog = createLogger('team-vault');
 
@@ -1128,6 +1130,28 @@ export class TeamVaultService {
     });
   }
 
+  /** Adds or edits a shared K8s cluster template. Any unlocked member may, same as other profile
+   * edits: it holds no secret (the token only ever lives in a member's own kubeconfig). */
+  async saveK8sProfile(vaultId: string, profile: K8sProfile): Promise<void> {
+    const clean = toTeamK8sProfile(profile);
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const payload = await this.decryptPayload(file, vaultKey);
+      const k8s = upsertK8sProfile(payload.k8s ?? [], clean, new Date().toISOString());
+      await this.persistPayload(vaultId, file, vaultKey, { ...payload, k8s });
+    });
+  }
+
+  async deleteK8sProfile(vaultId: string, id: string): Promise<void> {
+    return this.queueMutation(vaultId, async () => {
+      const file = await this.requireFile(vaultId);
+      const vaultKey = this.requireUnlocked(vaultId);
+      const payload = await this.decryptPayload(file, vaultKey);
+      await this.persistPayload(vaultId, file, vaultKey, { ...payload, k8s: removeK8sProfile(payload.k8s ?? [], id) });
+    });
+  }
+
   private decryptPayload(file: TeamVaultFile, vaultKey: Buffer): TeamVaultPayload {
     const plaintext = this.cryptoService.decryptPayload(vaultKey, file.vaultId, file.formatVersion, file.encryptedPayload);
     try {
@@ -1146,11 +1170,12 @@ export class TeamVaultService {
         s3,
         folders,
         folderIcons,
+        k8s: normalizeK8sList(parsed?.k8s),
       };
     } catch {
       // The original `createVault` payload is the literal string '{}' (pre-dating this feature),
       // not a parse error — either way, treat as empty rather than throwing.
-      return { ssh: [], s3: [], folders: [], folderIcons: {} };
+      return { ssh: [], s3: [], folders: [], folderIcons: {}, k8s: [] };
     }
   }
 
@@ -1207,6 +1232,7 @@ export class TeamVaultService {
       }
 
       await this.persistPayload(vaultId, file, vaultKey, {
+        ...payload,
         ssh,
         s3,
         folders: Array.from(new Set(folders)),
@@ -1237,7 +1263,7 @@ export class TeamVaultService {
         if (!isSelfOrDescendant(path, trimmed)) folderIcons[path] = icon;
       }
 
-      await this.persistPayload(vaultId, file, vaultKey, { ssh, s3, folders, folderIcons });
+      await this.persistPayload(vaultId, file, vaultKey, { ...payload, ssh, s3, folders, folderIcons });
     });
   }
 

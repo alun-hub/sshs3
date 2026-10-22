@@ -10,6 +10,7 @@ const CATEGORY_TO_GROUP: Record<SyncDataCategory, SyncKeyGroup> = {
   'dotfile-pools': 'credentials',
   'ssh-native': 'credentials',
   'dirsync-profiles': 'topology',
+  'k8s-profiles': 'topology',
 };
 
 const FORMAT_VERSION = 1;

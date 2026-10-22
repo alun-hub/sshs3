@@ -72,11 +72,12 @@ Synchronize connection profiles, credentials, folders, and application settings 
 - **RSA / Ed25519 vs. ECDSA for Key Derivation**:
   > [!IMPORTANT]
   > Linking a card so it can *derive* the master encryption key directly requires an **RSA or Ed25519** key. These algorithms sign deterministically, producing the exact same wrapping key upon each unlock. **ECDSA cards** (common on PIV/CAC) sign with a random nonce each time and cannot reliably derive static keys; for ECDSA, unlock with master passwords once and use the card for session unlocking.
+- **Saved Kubernetes / OpenShift clusters** sync too (name, server, project and TLS option, under the topology password). Tokens and the local kubeconfig are never synced, so a cluster restored on another device shows as *not signed in* until you sign in there.
 - **Tombstones**: Deletions record cryptographic tombstones to prevent purged records from re-appearing after multi-device synchronization.
 
 #### 🗑️ Deleting your sync data
 In the **Synchronization** panel, the **Danger zone** has a **Delete sync data...** button. After an itemized confirmation it:
-- permanently deletes the encrypted sync files (topology, credentials, dotfile pools, settings, SSH config/known_hosts data) from the remote target;
+- permanently deletes the encrypted sync files (topology, credentials, dotfile pools, settings, saved directory-sync and Kubernetes profiles, SSH config/known_hosts data) from the remote target;
 - removes the sync target, the master-password salts and any linked smartcard from this device, and locks sync here.
 
 It never touches your local SSH/S3 profiles, dotfile pools or settings, and other machines that are already synced are unaffected until they next push or pull.

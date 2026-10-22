@@ -89,6 +89,7 @@ import type {
   K8sLoginOptions,
   K8sLoginResult,
   K8sOpenShiftProbeResult,
+  K8sProfile,
   K8sWebLoginOptions,
   K8sWebLoginResult,
 } from './kubernetes';
@@ -244,6 +245,8 @@ export const IPC_CHANNELS = {
   TEAM_VAULT_GET_PAYLOAD: 'team-vault:get-payload',
   TEAM_VAULT_SAVE_SSH_PROFILE: 'team-vault:save-ssh-profile',
   TEAM_VAULT_DELETE_SSH_PROFILE: 'team-vault:delete-ssh-profile',
+  TEAM_VAULT_SAVE_K8S_PROFILE: 'team-vault:save-k8s-profile',
+  TEAM_VAULT_DELETE_K8S_PROFILE: 'team-vault:delete-k8s-profile',
   TEAM_VAULT_SAVE_S3_PROFILE: 'team-vault:save-s3-profile',
   TEAM_VAULT_DELETE_S3_PROFILE: 'team-vault:delete-s3-profile',
   TEAM_VAULT_SAVE_FOLDER: 'team-vault:save-folder',
@@ -371,6 +374,9 @@ export const IPC_CHANNELS = {
   K8S_OPENSHIFT_WEB_LOGIN: 'k8s:openshift-web-login',
   K8S_OPENSHIFT_WEB_LOGIN_CANCEL: 'k8s:openshift-web-login-cancel',
   K8S_CONFIG_CHANGED: 'k8s:config-changed',
+  K8S_PROFILES_LIST: 'k8s:profiles-list',
+  K8S_PROFILES_SAVE: 'k8s:profiles-save',
+  K8S_PROFILES_DELETE: 'k8s:profiles-delete',
 
   // Kubernetes / OpenShift interactive exec terminal
   K8S_TERMINAL_CREATE: 'k8s-terminal:create',
@@ -735,6 +741,8 @@ export interface MultiSSHApi {
   teamVaultGetPayload(vaultId: string): Promise<TeamVaultPayload | null>;
   teamVaultSaveSSHProfile(vaultId: string, profile: SSHConnectionConfig): Promise<void>;
   teamVaultDeleteSSHProfile(vaultId: string, id: string): Promise<void>;
+  teamVaultSaveK8sProfile(vaultId: string, profile: K8sProfile): Promise<void>;
+  teamVaultDeleteK8sProfile(vaultId: string, id: string): Promise<void>;
   teamVaultSaveS3Profile(vaultId: string, profile: S3Config): Promise<void>;
   teamVaultDeleteS3Profile(vaultId: string, id: string): Promise<void>;
   teamVaultSaveFolder(vaultId: string, folderPath: string): Promise<void>;
@@ -859,6 +867,9 @@ export interface MultiSSHApi {
   k8sOpenShiftProbe(server: string, insecureSkipTlsVerify?: boolean): Promise<K8sOpenShiftProbeResult>;
   k8sOpenShiftWebLogin(options: K8sWebLoginOptions): Promise<K8sWebLoginResult>;
   k8sOpenShiftWebLoginCancel(): Promise<void>;
+  k8sProfilesList(): Promise<K8sProfile[]>;
+  k8sProfilesSave(profile: K8sProfile): Promise<K8sProfile>;
+  k8sProfilesDelete(id: string): Promise<void>;
   onK8sConfigChanged(callback: (execAuthWarning?: string | null) => void): () => void;
   k8sTerminalCreate(target: K8sTerminalTarget, options?: { cols?: number; rows?: number }): Promise<{ sessionId: string }>;
   k8sTerminalWrite(sessionId: string, data: string): Promise<void>;

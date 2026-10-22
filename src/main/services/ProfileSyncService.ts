@@ -11,6 +11,9 @@ import { ProfileStore, type ProfilesData } from '../profile/ProfileStore';
 import { DotfilePoolStore } from '../dotfiles/DotfilePoolStore';
 import type { DirectorySyncProfileStore } from '../dirsync/DirectorySyncProfileStore';
 import type { DirectorySyncProfile } from '../../shared/types/dirsync';
+import type { K8sProfileStore } from '../profile/K8sProfileStore';
+import type { K8sProfile } from '../../shared/types/kubernetes';
+import { fromRemotePayload, toSyncPayload } from './k8sProfileSync';
 import { SettingsStore } from '../settings/SettingsStore';
 import { SyncCryptoService, SyncLockedError, type SyncDataCategory } from './SyncCryptoService';
 import { joinPaths } from '../transfer/TransferPipeline';
@@ -72,6 +75,7 @@ function buildRemoteFiles(remoteBasePath: string): Record<SyncDataCategory, stri
     settings: joinPaths('sftp', dir, 'settings.enc'),
     'ssh-native': joinPaths('sftp', dir, 'ssh-native.enc'),
     'dirsync-profiles': joinPaths('sftp', dir, 'dirsync-profiles.enc'),
+    'k8s-profiles': joinPaths('sftp', dir, 'k8s-profiles.enc'),
   };
 }
 
@@ -389,6 +393,8 @@ export type PullResult = ProfileSyncPullResult;
 export interface ProfileSyncServiceOptions {
   /** Saved directory-sync pairs to include in the sync; omitted = that category is skipped. */
   directorySyncProfileStore?: DirectorySyncProfileStore;
+  /** Saved Kubernetes/OpenShift clusters (no secrets) to include in the sync; omitted = that category is skipped. */
+  k8sProfileStore?: K8sProfileStore;
   sshConfigPath?: string;
   knownHostsPath?: string;
 }
@@ -615,6 +621,7 @@ export class ProfileSyncService {
   }
 
   private readonly dirSyncProfileStore?: DirectorySyncProfileStore;
+  private readonly k8sProfileStore?: K8sProfileStore;
 
   private sshConfigWriteQueue: Promise<unknown> = Promise.resolve();
   /** Called after every automatic sync of the managed ~/.ssh/config block (also after a remote pull). */
@@ -628,6 +635,7 @@ export class ProfileSyncService {
     options: ProfileSyncServiceOptions = {}
   ) {
     this.dirSyncProfileStore = options.directorySyncProfileStore;
+    this.k8sProfileStore = options.k8sProfileStore;
     this.sshConfigPath = options.sshConfigPath ?? path.join(os.homedir(), '.ssh', 'config');
     this.knownHostsPath = options.knownHostsPath ?? path.join(os.homedir(), '.ssh', 'known_hosts');
   }
@@ -704,12 +712,13 @@ export class ProfileSyncService {
       await provider.chmod(syncDir, 0o700).catch(() => {});
     }
 
-    const [profiles, pools, settings, sshNativePayload, dirSyncProfiles] = await Promise.all([
+    const [profiles, pools, settings, sshNativePayload, dirSyncProfiles, k8sProfiles] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
       this.settingsStore.getSettings(),
       this.buildLocalSshNativePayload(),
       this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve(null),
+      this.k8sProfileStore?.listIncludingTombstones() ?? Promise.resolve(null),
     ]);
 
     if (sshNativePayload.sshConfigBlock) {
@@ -763,6 +772,11 @@ export class ProfileSyncService {
       await this.encryptAndUpload(provider, 'dirsync-profiles', JSON.stringify(dirSyncPayload), remoteFiles);
     }
 
+    if (k8sProfiles) {
+      await this.checkNotChangedRemotely(provider, 'k8s-profiles', remoteFiles);
+      await this.encryptAndUpload(provider, 'k8s-profiles', JSON.stringify(toSyncPayload(k8sProfiles)), remoteFiles);
+    }
+
     // All 5 categories now reflect this push; only now is the remote back
     // to a consistent state, so the marker comes off. If any of the steps
     // above threw, this line is never reached and the marker is left in
@@ -780,6 +794,7 @@ export class ProfileSyncService {
         { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'dirsync-profiles', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'k8s-profiles', state: 'in_sync', ahead: 0, behind: 0 },
       ],
       checkedAt: formatTimestamp(),
     };
@@ -805,13 +820,14 @@ export class ProfileSyncService {
       throw new SyncInProgressError();
     }
 
-    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw] = await Promise.all([
+    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw, k8sRaw] = await Promise.all([
       this.downloadAndDecrypt(provider, 'topology', remoteFiles, passwords?.topology),
       this.downloadAndDecrypt(provider, 'credentials', remoteFiles, passwords?.credentials),
       this.downloadAndDecrypt(provider, 'dotfile-pools', remoteFiles, passwords?.credentials),
       this.downloadAndDecrypt(provider, 'settings', remoteFiles, passwords?.topology),
       this.downloadAndDecrypt(provider, 'ssh-native', remoteFiles, passwords?.credentials),
       this.downloadAndDecrypt(provider, 'dirsync-profiles', remoteFiles, passwords?.topology),
+      this.downloadAndDecrypt(provider, 'k8s-profiles', remoteFiles, passwords?.topology),
     ]);
 
     if (topologyRaw !== null || credentialsRaw !== null) {
@@ -873,6 +889,17 @@ export class ProfileSyncService {
       }
     }
 
+    // Same for k8s-profiles. Entries are validated and stripped of the machine-local context name.
+    if (k8sRaw !== null && this.k8sProfileStore) {
+      const remoteProfiles = fromRemotePayload(JSON.parse(k8sRaw));
+      const local = await this.k8sProfileStore.listIncludingTombstones();
+      const { merged, changed } = mergeRecords(local, remoteProfiles);
+      if (changed) {
+        await this.k8sProfileStore.replaceAll(merged);
+        changedCategories.push('k8s-profiles');
+      }
+    }
+
     let sshNativeConflicts: KnownHostsConflict[] = [];
     if (sshNativeRaw !== null) {
       const remotePayload: SshNativePayload = JSON.parse(sshNativeRaw);
@@ -894,6 +921,7 @@ export class ProfileSyncService {
         { category: 'settings', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'ssh-native', state: 'in_sync', ahead: 0, behind: 0 },
         { category: 'dirsync-profiles', state: 'in_sync', ahead: 0, behind: 0 },
+        { category: 'k8s-profiles', state: 'in_sync', ahead: 0, behind: 0 },
       ],
       checkedAt: formatTimestamp(),
     };
@@ -925,12 +953,13 @@ export class ProfileSyncService {
 
     const hasTopology = (await this.statOrNull(provider, remoteFiles.topology)) !== null;
 
-    const [localProfiles, localPools, localSettings, localSshNative, localDirSync] = await Promise.all([
+    const [localProfiles, localPools, localSettings, localSshNative, localDirSync, localK8s] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
       this.settingsStore.getSettings(),
       this.buildLocalSshNativePayload(),
       this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve([] as DirectorySyncProfile[]),
+      this.k8sProfileStore?.listIncludingTombstones() ?? Promise.resolve([] as K8sProfile[]),
     ]);
 
     if (!hasTopology) {
@@ -938,7 +967,8 @@ export class ProfileSyncService {
       const activeS3 = localProfiles.s3.filter((p) => !p.deletedAt).length;
       const activePools = localPools.filter((p) => !p.deletedAt).length;
       const activeDirSync = localDirSync.filter((p) => !p.deletedAt).length;
-      const totalAhead = activeSsh + activeS3 + activePools + activeDirSync + (localSettings ? 1 : 0);
+      const activeK8s = localK8s.filter((p) => !p.deletedAt).length;
+      const totalAhead = activeSsh + activeS3 + activePools + activeDirSync + activeK8s + (localSettings ? 1 : 0);
 
       const result: SyncComparisonResult = {
         state: 'not_initialized',
@@ -982,6 +1012,12 @@ export class ProfileSyncService {
             ahead: activeDirSync,
             behind: 0,
           },
+          {
+            category: 'k8s-profiles',
+            state: activeK8s > 0 ? 'ahead' : 'in_sync',
+            ahead: activeK8s,
+            behind: 0,
+          },
         ],
         checkedAt: formatTimestamp(),
       };
@@ -989,13 +1025,14 @@ export class ProfileSyncService {
       return result;
     }
 
-    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw] = await Promise.all([
+    const [topologyRaw, credentialsRaw, dotfilePoolsRaw, settingsRaw, sshNativeRaw, dirSyncRaw, k8sRaw] = await Promise.all([
       this.downloadAndDecrypt(provider, 'topology', remoteFiles),
       this.downloadAndDecrypt(provider, 'credentials', remoteFiles),
       this.downloadAndDecrypt(provider, 'dotfile-pools', remoteFiles),
       this.downloadAndDecrypt(provider, 'settings', remoteFiles),
       this.downloadAndDecrypt(provider, 'ssh-native', remoteFiles),
       this.downloadAndDecrypt(provider, 'dirsync-profiles', remoteFiles),
+      this.downloadAndDecrypt(provider, 'k8s-profiles', remoteFiles),
     ]);
 
     const categories: CategoryComparison[] = [];
@@ -1124,8 +1161,23 @@ export class ProfileSyncService {
       details: dirSyncComp.details,
     });
 
-    const totalAhead = profilesAhead + poolsComp.ahead + settingsAhead + sshNativeAhead + dirSyncComp.ahead;
-    const totalBehind = profilesBehind + poolsComp.behind + settingsBehind + sshNativeBehind + dirSyncComp.behind;
+    // 6. Saved Kubernetes/OpenShift clusters
+    const remoteK8s: K8sProfile[] = k8sRaw ? fromRemotePayload(JSON.parse(k8sRaw)) : [];
+    const k8sComp = this.k8sProfileStore
+      ? compareRecords(localK8s, remoteK8s, 'K8s profile')
+      : { ahead: 0, behind: 0, details: [] as string[] };
+    categories.push({
+      category: 'k8s-profiles',
+      state: getComparisonState(k8sComp.ahead, k8sComp.behind),
+      ahead: k8sComp.ahead,
+      behind: k8sComp.behind,
+      details: k8sComp.details,
+    });
+
+    const totalAhead =
+      profilesAhead + poolsComp.ahead + settingsAhead + sshNativeAhead + dirSyncComp.ahead + k8sComp.ahead;
+    const totalBehind =
+      profilesBehind + poolsComp.behind + settingsBehind + sshNativeBehind + dirSyncComp.behind + k8sComp.behind;
 
     const result: SyncComparisonResult = {
       state: getComparisonState(totalAhead, totalBehind),

@@ -176,6 +176,7 @@ When Team Vaults are configured, the **Connection Manager** (<kbd>Ctrl+Shift+O</
 - **Team Tabs & Visibility:** You can toggle whether each team appears as a tab in Connection Manager via the checkbox **Show this team as a tab in the Connection Manager** (Settings → Team Vault).
 - **Team Description:** Admins can provide a multiline description explaining what the team vault is for. Members can read the description directly on the team's tab, and admins can edit it inline with the pencil icon.
 - **Profile Operations:** Creating, editing, duplicating, and connecting to SSH and S3 profiles works identically to personal profiles.
+- **Kubernetes / OpenShift clusters:** Shared clusters (server, project and TLS option only, never a token) are listed in a team section of the **Kubernetes** tab while the team is unlocked, and any member can add or edit them. They are flat (no folders). Signing in to one saves it as your own profile. Members on an older sshs3 version may drop shared clusters the next time they change the vault, so update everyone first. See [Kubernetes & OpenShift](/docs/kubernetes/).
 - **PKCS#11 / Smartcard Profiles:** Leave the PKCS#11 library path blank on shared profiles. Each member's local default from **Settings → Security & Smartcard** is applied automatically, accommodating differing Linux distributions without per-profile configuration.
 - **Private Key Paths:** File paths to private keys are shared verbatim. If team members use SSH private keys, ensure the key files are stored at consistent filesystem paths across workstations.
 

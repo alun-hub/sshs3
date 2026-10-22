@@ -229,3 +229,21 @@ export interface K8sWebLoginResult extends K8sLoginResult {
   /** ISO timestamp of the token expiry, when the OAuth server reported it. */
   expiresAt?: string;
 }
+
+/**
+ * A saved cluster. Holds no secret: the token only ever lives in the kubeconfig.
+ * `namespace` is the project the user explicitly chose, and restricts the tree to it.
+ */
+export interface K8sProfile {
+  id: string;
+  name: string;
+  server: string;
+  insecureSkipTlsVerify?: boolean;
+  namespace?: string;
+  /** Kubeconfig context written by the latest sign-in with this profile. */
+  contextName?: string;
+  lastUsedAt?: string;
+  updatedAt?: string;
+  /** Set when the profile was deleted; kept so the deletion can sync to other devices. */
+  deletedAt?: string;
+}

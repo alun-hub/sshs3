@@ -1476,7 +1476,7 @@ describe('TeamVaultService', () => {
     it('getPayload returns an empty payload for a freshly created vault (still the original {})', async () => {
       const service = makeService();
       const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
-      await expect(service.getPayload(vaultId)).resolves.toEqual({ ssh: [], s3: [], folders: [], folderIcons: {} });
+      await expect(service.getPayload(vaultId)).resolves.toEqual({ ssh: [], s3: [], folders: [], folderIcons: {}, k8s: [] });
     });
 
     it('requires the vault unlocked', async () => {
@@ -1777,6 +1777,92 @@ describe('TeamVaultService', () => {
 
       const payload = await service.getPayload(vaultId);
       expect(payload.ssh[0]).not.toHaveProperty('pin');
+    });
+  });
+
+  describe('shared K8s cluster templates (saveK8sProfile / deleteK8sProfile)', () => {
+    const k8s = (id: string, name = 'Prod') => ({
+      id,
+      name,
+      server: 'https://api.example.com:6443',
+      namespace: 'team-a',
+    });
+
+    it('saves, upserts and deletes a template, stamping updatedAt', async () => {
+      const service = makeService();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+
+      await service.saveK8sProfile(vaultId, k8s('k1'));
+      await service.saveK8sProfile(vaultId, k8s('k2', 'Staging'));
+      await service.saveK8sProfile(vaultId, k8s('k1', 'Prod renamed'));
+
+      let payload = await service.getPayload(vaultId);
+      expect(payload.k8s?.map((p) => [p.id, p.name])).toEqual([
+        ['k1', 'Prod renamed'],
+        ['k2', 'Staging'],
+      ]);
+      expect(payload.k8s?.[0].updatedAt).toBeTruthy();
+
+      await service.deleteK8sProfile(vaultId, 'k1');
+      payload = await service.getPayload(vaultId);
+      expect(payload.k8s?.map((p) => p.id)).toEqual(['k2']);
+    });
+
+    it('never stores a kubeconfig context, a tombstone or unknown fields such as a token', async () => {
+      const service = makeService();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveK8sProfile(vaultId, {
+        ...k8s('k1'),
+        contextName: 'team-a/api/alice',
+        lastUsedAt: '2026-01-01T00:00:00.000Z',
+        deletedAt: '2026-01-01T00:00:00.000Z',
+        token: 'sha256~secret',
+      } as never);
+
+      const stored = (await service.getPayload(vaultId)).k8s?.[0];
+      expect(stored).toEqual({ ...k8s('k1'), updatedAt: expect.any(String) });
+    });
+
+    it('rejects an invalid template and requires the vault unlocked', async () => {
+      const first = makeService();
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await expect(first.saveK8sProfile(vaultId, { ...k8s('k1'), id: '../x' })).rejects.toThrow('profile id');
+      const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      await expect(second.saveK8sProfile(vaultId, k8s('k1'))).rejects.toThrow('Unlock the Team Vault');
+    });
+
+    it('is not touched by SSH/S3 saves, nor lost when a folder is renamed or deleted', async () => {
+      const service = makeService();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveK8sProfile(vaultId, k8s('k1'));
+      await service.saveTeamFolder(vaultId, 'Acme');
+      await service.saveSSHProfile(vaultId, {
+        id: 's1',
+        name: 'web',
+        host: 'example.com',
+        username: 'root',
+        authType: 'password',
+        group: 'Acme',
+      });
+
+      await service.renameTeamFolder(vaultId, 'Acme', 'Acme Co');
+      expect((await service.getPayload(vaultId)).k8s?.map((p) => p.id)).toEqual(['k1']);
+
+      await service.deleteTeamFolder(vaultId, 'Acme Co', true);
+      const payload = await service.getPayload(vaultId);
+      expect(payload.ssh).toEqual([]);
+      expect(payload.k8s?.map((p) => p.id)).toEqual(['k1']);
+
+      await service.setTeamFolderIcon(vaultId, 'Other', 'folder');
+      expect((await service.getPayload(vaultId)).k8s?.map((p) => p.id)).toEqual(['k1']);
+    });
+
+    it('still returns a plain member the templates (they hold no secret to redact)', async () => {
+      const service = makeService();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      await service.saveK8sProfile(vaultId, k8s('k1'));
+      const forRenderer = await service.getPayloadForRenderer(vaultId);
+      expect(forRenderer.k8s?.map((p) => p.id)).toEqual(['k1']);
     });
   });
 

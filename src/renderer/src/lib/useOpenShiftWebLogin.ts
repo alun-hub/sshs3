@@ -28,6 +28,7 @@ function cleanIpcError(err: unknown): string {
 export function useOpenShiftWebLogin(options: UseOpenShiftWebLoginOptions) {
   const { enabled, server, insecureSkipTlsVerify, namespace, onSuccess, onError } = options;
   const [supported, setSupported] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const probeSeq = useRef(0);
   const waitingRef = useRef(false);
@@ -39,15 +40,20 @@ export function useOpenShiftWebLogin(options: UseOpenShiftWebLoginOptions) {
     const trimmed = server.trim();
     if (!enabled || trimmed.length < MIN_SERVER_LENGTH) {
       setSupported(false);
+      setChecking(false);
       return;
     }
+    setChecking(true);
     const timer = setTimeout(() => {
       void (async () => {
         const result = await window.multissh
           .k8sOpenShiftProbe(trimmed, insecureSkipTlsVerify)
           .then((probe) => probe.supported)
           .catch(() => false);
-        if (seq === probeSeq.current) setSupported(result);
+        if (seq === probeSeq.current) {
+          setSupported(result);
+          setChecking(false);
+        }
       })();
     }, PROBE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -86,5 +92,5 @@ export function useOpenShiftWebLogin(options: UseOpenShiftWebLoginOptions) {
     []
   );
 
-  return { supported, waiting, start, cancel };
+  return { supported, checking, waiting, start, cancel };
 }

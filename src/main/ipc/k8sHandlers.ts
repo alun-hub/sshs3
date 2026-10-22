@@ -2,9 +2,10 @@ import { shell as electronShell } from 'electron';
 import { isPasswordPrompt } from '../ssh/askpassPrompt';
 import { loginWithToken } from '../services/K8sAuthService';
 import { OpenShiftWebLoginService } from '../services/OpenShiftWebLoginService';
-import { parseK8sServerArg, parseWebLoginOptions } from './ipcHelpers';
+import type { K8sProfileStore } from '../profile/K8sProfileStore';
+import { parseK8sProfile, parseK8sServerArg, parseWebLoginOptions } from './ipcHelpers';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
-import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult, K8sOpenShiftProbeResult, K8sWebLoginResult } from '../../shared/types/kubernetes';
+import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult, K8sOpenShiftProbeResult, K8sProfile, K8sWebLoginResult } from '../../shared/types/kubernetes';
 import type { SSHConnectionConfig, SSHTunnelConfig, SSHActiveTunnel } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
@@ -12,13 +13,14 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type K8sHost = Pick<
   IpcBridge,
-  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'sshTunnelManager'
+  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'scheduleAutoSync' | 'sshTunnelManager'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig'>;
 };
 
 export interface K8sHandlerDeps {
   openShiftWebLogin?: OpenShiftWebLoginService;
+  profileStore?: K8sProfileStore;
 }
 
 /** Opens the OAuth authorization URL in the user's browser; only https URLs are ever launched. */
@@ -37,6 +39,8 @@ function openAuthorizeUrl(url: string): void {
 
 export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}): void {
   const openShiftWebLogin = deps.openShiftWebLogin ?? new OpenShiftWebLoginService();
+  // The same instance profile sync uses, so both share one write queue.
+  const profileStore = deps.profileStore ?? bridge.k8sProfileStore;
 
   /** Stores the token in the kubeconfig (shared by pasted and browser sign-in) and tells the UI to reload. */
   const completeLogin = async (options: K8sLoginOptions): Promise<K8sLoginResult> => {
@@ -99,6 +103,24 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
 
   bridge.registerHandler(IPC_CHANNELS.K8S_OPENSHIFT_WEB_LOGIN_CANCEL, async (): Promise<void> => {
     openShiftWebLogin.cancel();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.K8S_PROFILES_LIST, async (): Promise<K8sProfile[]> => profileStore.list());
+
+  bridge.registerHandler(
+    IPC_CHANNELS.K8S_PROFILES_SAVE,
+    async (_event, raw: unknown): Promise<K8sProfile> => {
+      const saved = await profileStore.save(parseK8sProfile(raw));
+      bridge.scheduleAutoSync?.();
+      return saved;
+    }
+  );
+
+  // Removes only the saved profile; the kubeconfig entries (and their token) are left untouched.
+  bridge.registerHandler(IPC_CHANNELS.K8S_PROFILES_DELETE, async (_event, id: unknown): Promise<void> => {
+    if (typeof id !== 'string' || !id) throw new Error('Invalid profile id');
+    await profileStore.delete(id);
+    bridge.scheduleAutoSync?.();
   });
 
   bridge.registerHandler(

@@ -9,6 +9,7 @@ import { ProfileStore } from '../../src/main/profile/ProfileStore';
 import { DotfilePoolStore } from '../../src/main/dotfiles/DotfilePoolStore';
 import { SettingsStore } from '../../src/main/settings/SettingsStore';
 import { DirectorySyncProfileStore } from '../../src/main/dirsync/DirectorySyncProfileStore';
+import { K8sProfileStore } from '../../src/main/profile/K8sProfileStore';
 import { SyncCryptoService, generateSalt, type ScryptParams } from '../../src/main/services/SyncCryptoService';
 import {
   ProfileSyncService,
@@ -126,6 +127,7 @@ interface Harness {
   dotfilePoolStore: DotfilePoolStore;
   settingsStore: SettingsStore;
   dirSyncStore: DirectorySyncProfileStore;
+  k8sStore: K8sProfileStore;
   sync: ProfileSyncService;
   dir: string;
   sshConfigPath: string;
@@ -140,12 +142,14 @@ async function makeHarness(topologySalt: Buffer, credentialsSalt: Buffer): Promi
   const dotfilePoolStore = new DotfilePoolStore(path.join(dir, 'dotfile-pools.json'));
   const settingsStore = new SettingsStore(path.join(dir, 'settings.json'));
   const dirSyncStore = new DirectorySyncProfileStore(path.join(dir, 'directory-sync-profiles.json'));
+  const k8sStore = new K8sProfileStore(path.join(dir, 'k8s-profiles.json'));
   const sync = new ProfileSyncService(profileStore, dotfilePoolStore, settingsStore, makeCrypto(topologySalt, credentialsSalt), {
     sshConfigPath,
     knownHostsPath,
     directorySyncProfileStore: dirSyncStore,
+    k8sProfileStore: k8sStore,
   });
-  return { profileStore, dotfilePoolStore, settingsStore, dirSyncStore, sync, dir, sshConfigPath, knownHostsPath };
+  return { profileStore, dotfilePoolStore, settingsStore, dirSyncStore, k8sStore, sync, dir, sshConfigPath, knownHostsPath };
 }
 
 describe('ProfileSyncService', () => {
@@ -241,6 +245,89 @@ describe('ProfileSyncService', () => {
 
     expect(result.changedCategories).not.toContain('dirsync-profiles');
     expect(await machineB.dirSyncStore.list()).toHaveLength(1);
+  });
+
+  const k8sProfile = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    server: 'https://api.example.com:6443',
+    namespace: 'team-a',
+    ...over,
+  });
+
+  it('round-trips saved K8s profiles but never the machine-local kubeconfig context', async () => {
+    const machineA = await harness();
+    await machineA.k8sStore.save(k8sProfile('k-1', 'Prod', { contextName: 'team-a/api/alice', insecureSkipTlsVerify: true }));
+    await machineA.sync.pushToRemote(provider);
+    expect(provider.getRawBuffer('~/.sshs3/k8s-profiles.enc')).toBeDefined();
+
+    const machineB = await harness();
+    const result = await machineB.sync.pullFromRemote(provider);
+
+    expect(result.changedCategories).toContain('k8s-profiles');
+    const profiles = await machineB.k8sStore.list();
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({ id: 'k-1', name: 'Prod', namespace: 'team-a', insecureSkipTlsVerify: true });
+    expect(profiles[0].contextName).toBeUndefined();
+  });
+
+  it('keeps this machine\'s own context name when a newer remote copy wins', async () => {
+    const machineA = await harness();
+    await machineA.k8sStore.save(k8sProfile('k-1', 'Prod'));
+    await machineA.sync.pushToRemote(provider);
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    await machineB.k8sStore.save({ ...(await machineB.k8sStore.list())[0], contextName: 'local-context' });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await machineA.k8sStore.save(k8sProfile('k-1', 'Prod renamed'));
+    await machineA.sync.pushToRemote(provider);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await machineB.sync.pullFromRemote(provider);
+
+    expect((await machineB.k8sStore.list())[0]).toMatchObject({ name: 'Prod renamed', contextName: 'local-context' });
+  });
+
+  it('propagates the deletion of a K8s profile', async () => {
+    const machineA = await harness();
+    await machineA.k8sStore.save(k8sProfile('k-1', 'Prod'));
+    await machineA.sync.pushToRemote(provider);
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    expect(await machineB.k8sStore.list()).toHaveLength(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await machineA.k8sStore.delete('k-1');
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+
+    expect(await machineB.k8sStore.list()).toHaveLength(0);
+  });
+
+  it('reports K8s profile differences in compareWithRemote', async () => {
+    const machineA = await harness();
+    await machineA.sync.pushToRemote(provider);
+    await machineA.k8sStore.save(k8sProfile('k-1', 'Prod'));
+
+    const comparison = await machineA.sync.compareWithRemote(provider);
+    expect(comparison.categories.find((c) => c.category === 'k8s-profiles')).toMatchObject({
+      state: 'ahead',
+      ahead: 1,
+      behind: 0,
+    });
+  });
+
+  it('pulls fine from a remote pushed before K8s profiles were synced', async () => {
+    const machineA = await harness();
+    await machineA.sync.pushToRemote(provider);
+    await provider.delete('~/.sshs3/k8s-profiles.enc');
+
+    const machineB = await harness();
+    await machineB.k8sStore.save(k8sProfile('k-local', 'Local only'));
+    const result = await machineB.sync.pullFromRemote(provider);
+
+    expect(result.changedCategories).not.toContain('k8s-profiles');
+    expect(await machineB.k8sStore.list()).toHaveLength(1);
   });
 
   it('round-trips an SSH profile between two machines, splitting secrets into credentials.enc', async () => {
@@ -576,7 +663,7 @@ describe('ProfileSyncService', () => {
     const result = await machineA.sync.wipeRemote(provider);
 
     expect(result.errors).toEqual([]);
-    expect(result.deletedCount).toBe(6);
+    expect(result.deletedCount).toBe(7);
     for (const file of [
       'topology.enc',
       'credentials.enc',
@@ -584,6 +671,7 @@ describe('ProfileSyncService', () => {
       'settings.enc',
       'ssh-native.enc',
       'dirsync-profiles.enc',
+      'k8s-profiles.enc',
     ]) {
       expect(provider.hasFile(`~/.sshs3/${file}`)).toBe(false);
     }

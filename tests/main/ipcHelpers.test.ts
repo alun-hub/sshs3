@@ -3,6 +3,7 @@ import {
   describeFido2StartupError,
   isMissingPathError,
   paneTreeHasAuthType,
+  parseK8sProfile,
   resolveDirSyncTargetRoot,
 } from '../../src/main/ipc/ipcHelpers';
 
@@ -88,5 +89,31 @@ describe('ipcHelpers', () => {
     ])('does not treat %s as a missing path', (_name, err) => {
       expect(isMissingPathError(err)).toBe(false);
     });
+  });
+});
+
+describe('parseK8sProfile', () => {
+  const valid = { id: 'abc-123', name: ' Prod ', server: 'api.example.com:6443' };
+
+  it('trims, keeps known fields and drops the rest', () => {
+    expect(
+      parseK8sProfile({ ...valid, namespace: ' team-a ', insecureSkipTlsVerify: true, token: 'sha256~x' })
+    ).toEqual({
+      id: 'abc-123',
+      name: 'Prod',
+      server: 'api.example.com:6443',
+      namespace: 'team-a',
+      insecureSkipTlsVerify: true,
+    });
+  });
+
+  it('rejects malformed input', () => {
+    expect(() => parseK8sProfile(null)).toThrow(/Invalid profile/);
+    expect(() => parseK8sProfile({ ...valid, id: 'a/b' })).toThrow(/profile id/);
+    expect(() => parseK8sProfile({ ...valid, name: '' })).toThrow(/name is required/);
+    expect(() => parseK8sProfile({ ...valid, name: 'n'.repeat(300) })).toThrow(/profile name/);
+    expect(() => parseK8sProfile({ ...valid, server: '' })).toThrow(/Server URL/);
+    expect(() => parseK8sProfile({ ...valid, namespace: 'a b' })).toThrow(/namespace/);
+    expect(() => parseK8sProfile({ ...valid, insecureSkipTlsVerify: 'yes' })).toThrow(/TLS/);
   });
 });

@@ -22,6 +22,7 @@ describe('K8sLoginModal browser sign-in', () => {
   const webLogin = vi.fn();
   const webLoginCancel = vi.fn();
   const pasteLogin = vi.fn();
+  const profilesSave = vi.fn();
   const onClose = vi.fn();
   const onSuccess = vi.fn();
 
@@ -30,6 +31,7 @@ describe('K8sLoginModal browser sign-in', () => {
     webLogin.mockReset().mockResolvedValue(loginResult);
     webLoginCancel.mockReset().mockResolvedValue(undefined);
     pasteLogin.mockReset().mockResolvedValue(loginResult);
+    profilesSave.mockReset().mockImplementation(async (p) => p);
     onClose.mockReset();
     onSuccess.mockReset();
     window.multissh = {
@@ -38,6 +40,7 @@ describe('K8sLoginModal browser sign-in', () => {
       k8sOpenShiftWebLogin: webLogin,
       k8sOpenShiftWebLoginCancel: webLoginCancel,
       k8sLogin: pasteLogin,
+      k8sProfilesSave: profilesSave,
     } as never;
   });
 
@@ -45,6 +48,11 @@ describe('K8sLoginModal browser sign-in', () => {
 
   const renderModal = (open = true) => render(<K8sLoginModal open={open} onClose={onClose} onSuccess={onSuccess} />);
   const tokenLabel = () => screen.getByText(/API Token/, { selector: 'label' });
+  const waitForBrowserOption = async () => {
+    const option = await screen.findByRole('radio', { name: /sign in with browser/i });
+    await waitFor(() => expect(option).toBeEnabled(), { timeout: 3000 });
+    return option;
+  };
   const typeServer = (value = SERVER) =>
     fireEvent.change(screen.getByLabelText('API server URL'), { target: { value } });
 
@@ -56,33 +64,73 @@ describe('K8sLoginModal browser sign-in', () => {
     expect(screen.getByLabelText('Paste oc login command')).toBeInTheDocument();
   });
 
+  it('always shows the switch, with browser sign-in disabled until a server is entered', () => {
+    renderModal();
+    expect(screen.getByRole('radiogroup', { name: 'Sign-in method' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /sign in with browser/i })).toBeDisabled();
+    expect(screen.getByText(/Enter the server URL to check/)).toBeInTheDocument();
+  });
+
   it('marks the token as required for the paste flow when browser sign-in is not available', async () => {
     renderModal();
     typeServer();
     await waitFor(() => expect(probe).toHaveBeenCalled(), { timeout: 3000 });
     expect(screen.getByLabelText('Token')).toBeRequired();
-    expect(screen.queryByText('(not needed for browser sign-in)')).not.toBeInTheDocument();
     expect(within(tokenLabel()).getByText('*')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /sign in with browser/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /use a token/i })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/Browser sign-in is not available for this cluster/)).toBeInTheDocument();
   });
 
-  it('shows the token as not needed once browser sign-in is available', async () => {
+  it('offers a choice and defaults to browser sign-in, hiding the token form, once the cluster supports it', async () => {
     probe.mockResolvedValue({ supported: true });
     renderModal();
     typeServer();
-    expect(await screen.findByText('(not needed for browser sign-in)', {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.getByLabelText('Token')).not.toBeRequired();
-    expect(within(tokenLabel()).queryByText('*')).not.toBeInTheDocument();
+    const browserOption = await waitForBrowserOption();
+    expect(browserOption).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /use a token/i })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('openshift-web-login')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Token')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Paste oc login command')).not.toBeInTheDocument();
   });
 
-  it('still requires a token for the paste submit even when browser sign-in is available', async () => {
+  it('shows only the token form after choosing to use a token', async () => {
     probe.mockResolvedValue({ supported: true });
     renderModal();
     typeServer();
-    await screen.findByText('(not needed for browser sign-in)', {}, { timeout: 3000 });
+    await waitForBrowserOption();
 
-    fireEvent.click(screen.getByRole('button', { name: /log in & connect/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /use a token/i }));
+    expect(screen.getByLabelText('Token')).toBeRequired();
+    expect(screen.getByLabelText('Paste oc login command')).toBeInTheDocument();
+    expect(screen.queryByTestId('openshift-web-login')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /log in & connect/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^sign in with browser$/i })).not.toBeInTheDocument();
+  });
+
+  it('requires a token for the token submit even when browser sign-in is available', async () => {
+    probe.mockResolvedValue({ supported: true });
+    renderModal();
+    typeServer();
+    await waitForBrowserOption();
+    fireEvent.click(screen.getByRole('radio', { name: /use a token/i }));
+
+    fireEvent.submit(screen.getByLabelText('API server URL').closest('form')!);
     expect(await screen.findByText('Token is required')).toBeInTheDocument();
     expect(pasteLogin).not.toHaveBeenCalled();
+  });
+
+  it('switches to the token form when an oc login command is pasted', async () => {
+    probe.mockResolvedValue({ supported: true });
+    renderModal();
+    typeServer();
+    await waitForBrowserOption();
+    fireEvent.click(screen.getByRole('radio', { name: /use a token/i }));
+    fireEvent.change(screen.getByLabelText('Paste oc login command'), {
+      target: { value: `oc login --token=sha256~pasted --server=${SERVER}` },
+    });
+    expect(screen.getByRole('radio', { name: /use a token/i })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('Token')).toHaveValue('sha256~pasted');
   });
 
   it('does not probe while closed or before a server is entered', async () => {
@@ -91,28 +139,65 @@ describe('K8sLoginModal browser sign-in', () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
-  it('shows the browser button when the cluster supports it and signs in', async () => {
+  it('signs in with the browser, remembers the cluster as a profile and closes', async () => {
     probe.mockResolvedValue({ supported: true });
     renderModal();
     typeServer();
     fireEvent.change(screen.getByLabelText('Default project / namespace'), { target: { value: 'team-a' } });
 
-    const button = await screen.findByRole('button', { name: /sign in with browser/i }, { timeout: 3000 });
+    const button = await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 });
     fireEvent.click(button);
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(loginResult));
     expect(webLogin).toHaveBeenCalledWith({ server: SERVER, insecureSkipTlsVerify: false, namespace: 'team-a' });
+    expect(profilesSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'api.cluster.example.com',
+        server: SERVER,
+        namespace: 'team-a',
+        contextName: 'team-a/api/alice',
+      })
+    );
     expect(onClose).toHaveBeenCalled();
     expect(pasteLogin).not.toHaveBeenCalled();
   });
 
-  it('starts the browser sign-in with Enter in the server field when no token is entered', async () => {
+  it('does not save a profile when "Save as profile" is unchecked', async () => {
     probe.mockResolvedValue({ supported: true });
     renderModal();
     typeServer();
-    await screen.findByRole('button', { name: /sign in with browser/i }, { timeout: 3000 });
+    fireEvent.click(screen.getByLabelText('Save as profile'));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 }));
 
-    fireEvent.keyDown(screen.getByLabelText('API server URL'), { key: 'Enter' });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(profilesSave).not.toHaveBeenCalled();
+  });
+
+  it('prefills from a saved profile and updates that same profile on sign-in', async () => {
+    probe.mockResolvedValue({ supported: false });
+    const profile = { id: 'p1', name: 'Prod', server: SERVER, namespace: 'team-a', insecureSkipTlsVerify: true };
+    render(<K8sLoginModal open onClose={onClose} onSuccess={onSuccess} initialProfile={profile} />);
+
+    expect(screen.getByLabelText('API server URL')).toHaveValue(SERVER);
+    expect(screen.getByLabelText('Default project / namespace')).toHaveValue('team-a');
+    expect(screen.getByLabelText('Profile name')).toHaveValue('Prod');
+
+    fireEvent.change(screen.getByLabelText('Token'), { target: { value: 'sha256~new' } });
+    fireEvent.click(screen.getByRole('button', { name: /log in & connect/i }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(profilesSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'p1', name: 'Prod', namespace: 'team-a', insecureSkipTlsVerify: true })
+    );
+  });
+
+  it('starts the browser sign-in with Enter in the server field', async () => {
+    probe.mockResolvedValue({ supported: true });
+    renderModal();
+    typeServer();
+    await waitForBrowserOption();
+
+    fireEvent.submit(screen.getByLabelText('API server URL').closest('form')!);
     await waitFor(() => expect(webLogin).toHaveBeenCalledTimes(1));
     expect(pasteLogin).not.toHaveBeenCalled();
   });
@@ -122,13 +207,13 @@ describe('K8sLoginModal browser sign-in', () => {
     webLogin.mockRejectedValue(new Error("Error invoking remote method 'k8s:openshift-web-login': Error: Timed out waiting for the browser sign-in."));
     renderModal();
     typeServer();
-    fireEvent.click(await screen.findByRole('button', { name: /sign in with browser/i }, { timeout: 3000 }));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 }));
 
     expect(await screen.findByText('Timed out waiting for the browser sign-in.')).toBeInTheDocument();
     expect(onSuccess).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText('API server URL')).toHaveValue(SERVER);
-    expect(screen.getByLabelText('Paste oc login command')).toBeInTheDocument();
+    expect(profilesSave).not.toHaveBeenCalled();
   });
 
   it('cancels a pending sign-in with Escape instead of closing the dialog, silently', async () => {
@@ -137,7 +222,7 @@ describe('K8sLoginModal browser sign-in', () => {
     webLogin.mockReturnValue(new Promise((_resolve, rej) => (reject = rej)));
     renderModal();
     typeServer();
-    fireEvent.click(await screen.findByRole('button', { name: /sign in with browser/i }, { timeout: 3000 }));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign in with browser$/i }, { timeout: 3000 }));
     await screen.findByText(/Waiting for browser sign-in/);
 
     fireEvent.keyDown(window, { key: 'Escape' });

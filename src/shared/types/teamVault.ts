@@ -1,5 +1,6 @@
 import type { SSHConnectionConfig } from './ssh';
 import type { S3Config } from './storage';
+import type { K8sProfile } from './kubernetes';
 
 export type TeamVaultRole = 'admin' | 'member';
 
@@ -43,6 +44,11 @@ export interface TeamVaultPayload {
    * same self+descendant keys). Absent on a payload written before this field existed; treat as
    * `{}`. */
   folderIcons?: Record<string, string>;
+  /** Shared Kubernetes/OpenShift cluster templates (server, project, TLS option: no secret, no
+   * kubeconfig context, which is per member). Flat, no folders. Absent on a payload written
+   * before this field existed; treat as `[]`. An app version without this field drops it the next
+   * time it writes the payload, so members should update before K8s profiles are shared. */
+  k8s?: K8sProfile[];
 }
 
 /** The fixed set of icons a Team Vault folder can be given (`TeamVaultPayload.folderIcons`) —

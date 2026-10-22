@@ -50,6 +50,8 @@ describe('Team Vault IPC handlers', () => {
     deleteSSHProfile: vi.fn(),
     saveS3Profile: vi.fn(),
     deleteS3Profile: vi.fn(),
+    saveK8sProfile: vi.fn(),
+    deleteK8sProfile: vi.fn(),
     saveTeamFolder: vi.fn(),
     renameTeamFolder: vi.fn(),
     deleteTeamFolder: vi.fn(),
@@ -674,6 +676,36 @@ describe('Team Vault IPC handlers', () => {
     it('deletes an S3 profile by id and schedules an auto-push for that vaultId', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_DELETE_S3_PROFILE, VAULT_ID, 'p1');
       expect(teamVaultService.deleteS3Profile).toHaveBeenCalledWith(VAULT_ID, 'p1');
+      expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
+    });
+  });
+
+  describe('TEAM_VAULT_SAVE_K8S_PROFILE / TEAM_VAULT_DELETE_K8S_PROFILE', () => {
+    const template = { id: 'k1', name: 'Prod', server: 'https://api.example.com:6443', namespace: 'team-a' };
+
+    it('rejects a missing, malformed or oversized template before touching the vault', async () => {
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, VAULT_ID, { name: 'x' })).rejects.toThrow(
+        'K8s profile is required'
+      );
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, VAULT_ID, { ...template, server: '' })
+      ).rejects.toThrow(/Server URL/);
+      await expect(
+        call(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, VAULT_ID, { ...template, name: 'x'.repeat(300_000) })
+      ).rejects.toThrow('is too large');
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, 'bad id', template)).rejects.toThrow('valid vaultId');
+      expect(teamVaultService.saveK8sProfile).not.toHaveBeenCalled();
+    });
+
+    it('saves only the validated fields and schedules an auto-push for that vaultId', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_K8S_PROFILE, VAULT_ID, { ...template, token: 'sha256~x', contextName: 'c' });
+      expect(teamVaultService.saveK8sProfile).toHaveBeenCalledWith(VAULT_ID, template);
+      expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
+    });
+
+    it('deletes a template by id and schedules an auto-push', async () => {
+      await call(IPC_CHANNELS.TEAM_VAULT_DELETE_K8S_PROFILE, VAULT_ID, 'k1');
+      expect(teamVaultService.deleteK8sProfile).toHaveBeenCalledWith(VAULT_ID, 'k1');
       expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
     });
   });

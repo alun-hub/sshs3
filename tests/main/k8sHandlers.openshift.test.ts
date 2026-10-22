@@ -142,3 +142,49 @@ describe('sign-in argument validation', () => {
     expect(() => parseWebLoginOptions({ server: 'https://a.example.com', namespace: 'n'.repeat(300) })).toThrow(/namespace/);
   });
 });
+
+describe('saved cluster profile handlers', () => {
+  const profile = { id: 'p1', name: 'Prod', server: 'https://api.example.com:6443', namespace: 'team-a' };
+
+  function setupProfiles() {
+    const store = {
+      list: vi.fn(async () => [profile]),
+      save: vi.fn(async (p: unknown) => p),
+      delete: vi.fn(async () => {}),
+    };
+    const handlers = new Map<string, Handler>();
+    const bridge = {
+      registerHandler: (channel: string, handler: Handler) => handlers.set(channel, handler),
+      getWebContents: () => null,
+      k8sDiscoveryService: { reload: vi.fn() },
+    };
+    registerK8sHandlers(bridge as never, { openShiftWebLogin: {} as never, profileStore: store as never });
+    return { handlers, store };
+  }
+
+  it('lists profiles from the store', async () => {
+    const { handlers } = setupProfiles();
+    await expect(handlers.get(IPC_CHANNELS.K8S_PROFILES_LIST)!({})).resolves.toEqual([profile]);
+  });
+
+  it('validates a profile before saving and strips unknown fields', async () => {
+    const { handlers, store } = setupProfiles();
+    const save = handlers.get(IPC_CHANNELS.K8S_PROFILES_SAVE)!;
+
+    await expect(save({}, { ...profile, id: '../etc' })).rejects.toThrow(/profile id/);
+    await expect(save({}, 'nope')).rejects.toThrow(/Invalid profile/);
+    expect(store.save).not.toHaveBeenCalled();
+
+    await save({}, { ...profile, token: 'sha256~secret' });
+    expect(store.save).toHaveBeenCalledWith(profile);
+  });
+
+  it('deletes only by a non-empty string id', async () => {
+    const { handlers, store } = setupProfiles();
+    const del = handlers.get(IPC_CHANNELS.K8S_PROFILES_DELETE)!;
+    await expect(del({}, 42)).rejects.toThrow(/Invalid profile id/);
+    await expect(del({}, '')).rejects.toThrow(/Invalid profile id/);
+    await del({}, 'p1');
+    expect(store.delete).toHaveBeenCalledWith('p1');
+  });
+});

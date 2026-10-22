@@ -20,6 +20,7 @@ import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifie
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
 import { DotfileSyncService } from './dotfiles/DotfileSyncService';
 import { DirectorySyncProfileStore } from './dirsync/DirectorySyncProfileStore';
+import { K8sProfileStore } from './profile/K8sProfileStore';
 import { FileEditorService } from './editor/FileEditorService';
 import { FileTailService } from './editor/FileTailService';
 import { SearchOrchestrator } from './search/SearchOrchestrator';
@@ -118,6 +119,7 @@ export interface IpcBridgeOptions {
   dotfilePoolStore?: DotfilePoolStore;
   dotfileSyncService?: DotfileSyncService;
   directorySyncProfileStore?: DirectorySyncProfileStore;
+  k8sProfileStore?: K8sProfileStore;
   fileEditorService?: FileEditorService;
   fileTailService?: FileTailService;
   searchOrchestrator?: SearchOrchestrator;
@@ -152,6 +154,7 @@ export class IpcBridge {
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
   public readonly directorySyncProfileStore: DirectorySyncProfileStore;
+  public readonly k8sProfileStore: K8sProfileStore;
   public readonly fileEditorService: FileEditorService;
   public readonly fileTailService: FileTailService;
   public readonly searchOrchestrator: SearchOrchestrator;
@@ -293,6 +296,7 @@ export class IpcBridge {
     this.dotfilePoolStore = options.dotfilePoolStore ?? new DotfilePoolStore();
     this.dotfileSyncService = options.dotfileSyncService ?? new DotfileSyncService();
     this.directorySyncProfileStore = options.directorySyncProfileStore ?? new DirectorySyncProfileStore();
+    this.k8sProfileStore = options.k8sProfileStore ?? new K8sProfileStore();
     this.fileEditorService = options.fileEditorService ?? new FileEditorService();
     this.fileTailService = options.fileTailService ?? new FileTailService();
     this.searchOrchestrator = options.searchOrchestrator ?? new SearchOrchestrator();
@@ -333,6 +337,7 @@ export class IpcBridge {
       options.profileSyncService ??
       new ProfileSyncService(this.profileStore, this.dotfilePoolStore, this.settingsStore, this.syncCryptoService, {
         directorySyncProfileStore: this.directorySyncProfileStore,
+        k8sProfileStore: this.k8sProfileStore,
       });
     this.smartcard = new SmartcardCoordinator({
       settingsStore: this.settingsStore,
