@@ -1,6 +1,7 @@
 import { SNIPPET_MAX_NAME_CHARS } from '../../shared/types/snippets';
 import { resolveLogLevel, setLogLevel } from '../log/Logger';
-import { IPC_CHANNELS } from '../../shared/types/ipc';
+import { IPC_CHANNELS, type TabHandoff, type WindowInfo } from '../../shared/types/ipc';
+import { parseMoveTarget, parseTabHandoff } from './windowHelpers';
 import type { SessionData } from '../../shared/types/session';
 import type { AppSettings } from '../../shared/types/settings';
 import type { IpcBridge } from '../IpcBridge';
@@ -9,7 +10,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type AppDataHost = Pick<
   IpcBridge,
-  'clipboardHistoryStore' | 'openWindow' | 'profileSyncService' | 'windowKeyOf' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
+  'clipboardHistoryStore' | 'listWindows' | 'moveTab' | 'openWindow' | 'profileSyncService' | 'takeHandoff' | 'windowKeyOf' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'refreshAgentSshConfig'>;
 };
@@ -29,6 +30,18 @@ export function registerSessionHandlers(bridge: AppDataHost): void {
 
   bridge.registerHandler(IPC_CHANNELS.WINDOW_NEW, async (): Promise<void> => {
     bridge.openWindow();
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.WINDOW_MOVE_TAB, async (event, handoff: unknown, target: unknown): Promise<void> => {
+    bridge.moveTab(event?.sender, parseTabHandoff(handoff), parseMoveTarget(target));
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.WINDOW_TAKE_HANDOFF, async (event): Promise<TabHandoff | null> => {
+    return bridge.takeHandoff(event?.sender);
+  });
+
+  bridge.registerHandler(IPC_CHANNELS.WINDOW_LIST, async (event): Promise<WindowInfo[]> => {
+    return bridge.listWindows(event?.sender);
   });
 }
 

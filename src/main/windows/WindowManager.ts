@@ -1,3 +1,5 @@
+import type { TabHandoff, WindowInfo } from '../../shared/types/ipc';
+
 /** The slice of Electron's WebContents the manager needs (structural, so tests can fake it). */
 export interface ManagedWebContents {
   readonly id: number;
@@ -9,6 +11,17 @@ export interface ManagedWebContents {
 export interface ManagedWindow {
   readonly webContents: ManagedWebContents;
   isDestroyed(): boolean;
+}
+
+/** Window operations only the main process can do (creating windows, moving tabs between them). */
+export interface WindowActions {
+  /** Opens a new window, optionally for a tab that is moving there. */
+  open(handoff?: TabHandoff): void;
+  /** Hands a tab to an existing window; false when that window is gone or is the sender itself. */
+  adopt(targetWindowId: number, handoff: TabHandoff, fromWindowId: number): boolean;
+  /** The tab a freshly opened window was created for, once. */
+  takeHandoff(windowId: number): TabHandoff | null;
+  list(currentWindowId: number | undefined): WindowInfo[];
 }
 
 /** What IpcBridge needs from the window layer to route events (WindowManager implements it). */
@@ -30,6 +43,10 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
   private readonly windows = new Map<number, W>();
   private readonly sessionOwner = new Map<string, number>();
   private readonly windowKey = new Map<number, string>();
+  /** Tabs waiting for a freshly opened window to pick them up (see takeHandoff). */
+  private readonly handoffs = new Map<number, unknown>();
+  /** Sessions on their way to another window: sessionId -> target window. Cleared by assign(). */
+  private readonly reserved = new Map<string, number>();
   private focusedId: number | null = null;
 
   /** Adds a window; the first one (or the last focused) is what prompts fall back to. Returns its id. */
@@ -45,6 +62,7 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
   unregister(windowId: number): string[] {
     this.windows.delete(windowId);
     this.windowKey.delete(windowId);
+    this.handoffs.delete(windowId);
     if (this.focusedId === windowId) {
       const remaining = this.live();
       this.focusedId = remaining.length > 0 ? remaining[remaining.length - 1].webContents.id : null;
@@ -104,7 +122,9 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
   }
 
   assign(sessionId: string, windowId: number): void {
-    if (this.windows.has(windowId)) this.sessionOwner.set(sessionId, windowId);
+    if (!this.windows.has(windowId)) return;
+    this.sessionOwner.set(sessionId, windowId);
+    this.reserved.delete(sessionId);
   }
 
   release(sessionId: string): void {
@@ -115,12 +135,50 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
     return this.sessionOwner.get(sessionId);
   }
 
+  /** Sessions the window owns and is not about to hand to another window. */
   sessionsOf(windowId: number): string[] {
     const ids: string[] = [];
     for (const [sessionId, owner] of this.sessionOwner) {
-      if (owner === windowId) ids.push(sessionId);
+      if (owner === windowId && !this.isReservedForOther(sessionId, windowId)) ids.push(sessionId);
     }
     return ids;
+  }
+
+  /**
+   * Marks sessions as moving to `toWindowId`. Ownership only changes when that window claims them
+   * with assign() (so output keeps flowing to a single place until it does), but until then they are
+   * no longer counted as the old window's: closing it must not end a session that is being moved.
+   * The reservation lapses after `ttlMs` if the target never claims them.
+   */
+  reserve(sessionIds: string[], toWindowId: number, ttlMs = 30_000): void {
+    for (const sessionId of sessionIds) {
+      this.reserved.set(sessionId, toWindowId);
+      const timer = setTimeout(() => {
+        if (this.reserved.get(sessionId) === toWindowId) this.reserved.delete(sessionId);
+      }, ttlMs);
+      timer.unref?.();
+    }
+  }
+
+  /** Parks a payload (e.g. a moved tab) for the window that was just created to fetch once. */
+  setHandoff(windowId: number, payload: unknown): void {
+    this.handoffs.set(windowId, payload);
+  }
+
+  takeHandoff(windowId: number): unknown {
+    const payload = this.handoffs.get(windowId);
+    this.handoffs.delete(windowId);
+    return payload;
+  }
+
+  /** Live windows in creation order, for "Move to window" menus. */
+  describe(): Array<{ id: number; key: string | null }> {
+    return this.live().map((w) => ({ id: w.webContents.id, key: this.windowKey.get(w.webContents.id) ?? null }));
+  }
+
+  private isReservedForOther(sessionId: string, windowId: number): boolean {
+    const target = this.reserved.get(sessionId);
+    return target !== undefined && target !== windowId;
   }
 
   /** Hands every listed session to another window (tab moved between windows). */

@@ -21,7 +21,10 @@ import {
   FileText,
 } from 'lucide-react';
 import type { CachedSmartcardAgent, SSHActiveTunnel } from '@shared/types/ssh';
+import type { MoveTabTarget, WindowInfo } from '@shared/types/ipc';
 import { Shortcut } from './ui/Shortcut';
+import { TabContextMenu } from './TabContextMenu';
+import { watchDragReleasedOutsideWindow } from '../lib/dragLeaveWindow';
 import { getShortcutKeys } from '../lib/shortcuts';
 
 export type TabType = 'terminal' | 'filemanager' | 'editor';
@@ -39,6 +42,10 @@ export interface TabBarProps {
   tabBarFocused?: boolean;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  /** Moves a tab (with its running sessions) to a new or another window. Omit to hide the feature. */
+  onMoveTab?: (id: string, target: MoveTabTarget) => void;
+  /** The other open windows, for the tab menu. */
+  onListWindows?: () => Promise<WindowInfo[]>;
   onNewTab: (type: TabType, options?: { remote?: boolean }) => void;
   /** Opens the Connection Manager directly on the Kubernetes tab, for picking a pod/container to exec into or follow logs from. */
   onNewK8sSession?: () => void;
@@ -61,6 +68,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   tabBarFocused = false,
   onSelectTab,
   onCloseTab,
+  onMoveTab,
+  onListWindows,
   onNewTab,
   onNewK8sSession,
   onOpenProfiles,
@@ -74,6 +83,21 @@ export const TabBar: React.FC<TabBarProps> = ({
   shortcuts,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [tabMenu, setTabMenu] = useState<{ tabId: string; x: number; y: number; windows: WindowInfo[] } | null>(null);
+  const tabMenuReturnFocus = useRef<HTMLElement | null>(null);
+
+  /** Opens the tab's menu at a screen position; the list of other windows is fetched first so it opens complete. */
+  const openTabMenu = (tabId: string, x: number, y: number, opener: HTMLElement | null) => {
+    if (!onMoveTab) return;
+    tabMenuReturnFocus.current = opener;
+    void (onListWindows?.() ?? Promise.resolve([]))
+      .catch(() => [] as WindowInfo[])
+      .then((windows) => setTabMenu({ tabId, x, y, windows: windows.filter((w) => !w.current) }));
+  };
+  const closeTabMenu = () => {
+    setTabMenu(null);
+    tabMenuReturnFocus.current?.focus();
+  };
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [lockingSmartcard, setLockingSmartcard] = useState(false);
@@ -196,10 +220,26 @@ export const TabBar: React.FC<TabBarProps> = ({
               tabIndex={0}
               data-testid={`tab-${tab.id}`}
               onClick={() => onSelectTab(tab.id)}
+              onContextMenu={(e) => {
+                if (!onMoveTab) return;
+                e.preventDefault();
+                openTabMenu(tab.id, e.clientX, e.clientY, e.currentTarget);
+              }}
+              // Dragging a tab out of the window moves it to a new window.
+              draggable={!!onMoveTab && !tab.isDirty}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/x-sshs3-tab', tab.id);
+                e.dataTransfer.effectAllowed = 'copyMove';
+                watchDragReleasedOutsideWindow(() => onMoveTab?.(tab.id, 'new'));
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onSelectTab(tab.id);
+                } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  openTabMenu(tab.id, rect.left, rect.bottom, e.currentTarget);
                 }
               }}
               className={`group relative flex max-w-[220px] min-w-[120px] cursor-pointer items-center justify-between rounded-t-lg px-3 text-xs transition-colors ${
@@ -590,6 +630,22 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
       </div>
     </div>
+
+    {tabMenu && onMoveTab && (
+      <TabContextMenu
+        x={tabMenu.x}
+        y={tabMenu.y}
+        windows={tabMenu.windows}
+        canMove={!tabs.find((t) => t.id === tabMenu.tabId)?.isDirty}
+        shortcuts={shortcuts}
+        onMove={(target) => {
+          const id = tabMenu.tabId;
+          setTabMenu(null);
+          onMoveTab(id, target);
+        }}
+        onClose={closeTabMenu}
+      />
+    )}
 
     {lockFeedback && (
       <div

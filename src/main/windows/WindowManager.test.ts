@@ -114,4 +114,54 @@ describe('WindowManager', () => {
     expect(wm.windowIdOfSender({ id: 8 })).toBeUndefined();
     expect(wm.windowIdOfSender(null)).toBeUndefined();
   });
+
+  it('does not count sessions reserved for another window as the old window\'s, until claimed', () => {
+    const wm = new WindowManager();
+    wm.register(fakeWindow(1));
+    wm.register(fakeWindow(2));
+    wm.assign('s1', 1);
+    wm.assign('s2', 1);
+    wm.reserve(['s1'], 2);
+
+    expect(wm.sessionsOf(1)).toEqual(['s2']);
+    expect(wm.ownerOf('s1')).toBe(1);
+    wm.assign('s1', 2);
+    expect(wm.sessionsOf(2)).toEqual(['s1']);
+  });
+
+  it('lets a reservation lapse when the target never claims the session', () => {
+    vi.useFakeTimers();
+    try {
+      const wm = new WindowManager();
+      wm.register(fakeWindow(1));
+      wm.register(fakeWindow(2));
+      wm.assign('s1', 1);
+      wm.reserve(['s1'], 2, 1000);
+      vi.advanceTimersByTime(1001);
+      expect(wm.sessionsOf(1)).toEqual(['s1']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hands a parked payload to its window exactly once and forgets it with the window', () => {
+    const wm = new WindowManager();
+    wm.register(fakeWindow(1));
+    wm.setHandoff(1, { tab: 'x' });
+    expect(wm.takeHandoff(1)).toEqual({ tab: 'x' });
+    expect(wm.takeHandoff(1)).toBeUndefined();
+    wm.setHandoff(1, 'y');
+    wm.unregister(1);
+    expect(wm.takeHandoff(1)).toBeUndefined();
+  });
+
+  it('describes live windows in creation order with their keys', () => {
+    const wm = new WindowManager();
+    wm.register(fakeWindow(1));
+    wm.register(fakeWindow(2), 'w-x');
+    expect(wm.describe()).toEqual([
+      { id: 1, key: null },
+      { id: 2, key: 'w-x' },
+    ]);
+  });
 });

@@ -13,6 +13,9 @@ import {
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
   type QuitConfirmPromptEvent,
+  type TabHandoff,
+  type MoveTabTarget,
+  type WindowInfo,
   type SshAgentStatus,
   type FileReadResult,
   type ExternalFileStatusEvent,
@@ -440,6 +443,24 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_SAVE, data),
 
   windowNew: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_NEW),
+
+  windowMoveTab: (handoff: TabHandoff, target: MoveTabTarget): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MOVE_TAB, handoff, target),
+
+  windowTakeHandoff: (): Promise<TabHandoff | null> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_TAKE_HANDOFF),
+
+  windowList: (): Promise<WindowInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_LIST),
+
+  onWindowAdoptTab: (callback: (handoff: TabHandoff) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, handoff: TabHandoff) => callback(handoff);
+    ipcRenderer.on(IPC_CHANNELS.WINDOW_ADOPT_TAB, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.WINDOW_ADOPT_TAB, listener);
+    };
+  },
+
+  terminalAttach: (sessionId: string, kind: 'ssh' | 'k8s'): Promise<{ scrollback: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_ATTACH, sessionId, kind),
 
   // Clipboard history
   clipboardHistoryList: (hostKey?: string): Promise<ClipboardHistoryEntry[]> =>

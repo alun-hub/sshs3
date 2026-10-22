@@ -30,6 +30,13 @@ import { usePortDetection } from '../lib/usePortDetection';
 import { TerminalPortPill } from './TerminalPortPill';
 import { useTerminalDropUpload } from '../lib/useTerminalDropUpload';
 import { TerminalDropOverlay } from './TerminalDropOverlay';
+import {
+  consumeDetached,
+  killUnlessReclaimed,
+  registerLiveSession,
+  takeAttach,
+  unregisterLiveSession,
+} from '../lib/liveSessions';
 
 export interface TerminalViewProps {
   /** Omit together with `local` to spawn a local shell instead of an SSH session. */
@@ -42,6 +49,8 @@ export interface TerminalViewProps {
   wslDistro?: string;
   /** Set to run an interactive exec session inside a Kubernetes/OpenShift container instead of SSH or a local shell. */
   k8sTarget?: K8sTerminalTarget;
+  /** Id of the pane this terminal fills; lets a terminal moved from another window attach to its running session. */
+  paneId?: string;
   isActive?: boolean;
   onExit?: (event: SSHPtyExitEvent) => void;
   className?: string;
@@ -184,6 +193,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   shellType,
   wslDistro,
   k8sTarget,
+  paneId,
   isActive = true,
   onExit,
   className = '',
@@ -792,9 +802,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     // StrictMode's dev-mode double-invoke) collide on the same map entry in
     // SSHPtyManager, so killing one session tears down the other instead.
     const activeConfig = configRef.current;
+    // A tab moved here from another window brings its running session: attach to it (and redraw
+    // its output so far) instead of starting a new one.
+    const attachTo = paneId ? takeAttach(paneId) : undefined;
     if (local || activeConfig || k8sTarget) {
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
-      const createPromise = k8sTarget
+      const createPromise = attachTo
+        ? window.multissh?.terminalAttach?.(attachTo.sessionId, attachTo.kind).then(({ scrollback: output }) => {
+            if (output && !isDisposed) term.write(output);
+            return { sessionId: attachTo.sessionId };
+          })
+        : k8sTarget
         ? window.multissh?.k8sTerminalCreate?.(k8sTarget, { cols, rows })
         : window.multissh?.terminalCreate?.(
             local
@@ -805,10 +823,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         ?.then(({ sessionId }) => {
           if (isDisposed) {
             // Already unmounted while waiting for session creation
-            killSession?.(sessionId);
+            if (attachTo) killUnlessReclaimed(sessionId, (id) => killSession?.(id));
+            else killSession?.(sessionId);
             return;
           }
           sessionIdRef.current = sessionId;
+          if (paneId) registerLiveSession(paneId, { sessionId, kind: k8sTarget ? 'k8s' : 'ssh' });
           setPerfSessionId(sessionId);
           pathHoverRef.current.onSessionStarted(sessionId, () => isDisposed);
 
@@ -826,7 +846,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           // shell has had a moment to print its prompt. There's no "wait for
           // prompt" signal from the PTY, so we send it shortly after the
           // first data arrives from the remote side.
-          let cwdSent = false;
+          // An attached session is long past its first prompt: never `cd` again.
+          let cwdSent = !!attachTo;
           const sendInitialCwd = () => {
             if (cwdSent) return;
             cwdSent = true;
@@ -975,8 +996,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       clearTimeout(noticeTimer);
       const sid = sessionIdRef.current;
       const killSession = k8sTarget ? window.multissh?.k8sTerminalKill : window.multissh?.terminalKill;
+      if (sid && paneId) unregisterLiveSession(paneId, sid);
       if (sid && killSession) {
-        killSession(sid);
+        if (consumeDetached(sid)) {
+          // The tab moved to another window and takes the running session along: leave it alone.
+        } else if (attachTo) {
+          killUnlessReclaimed(sid, killSession);
+        } else {
+          killSession(sid);
+        }
       }
       term.dispose();
       if (container) {

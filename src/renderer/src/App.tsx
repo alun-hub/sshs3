@@ -6,6 +6,7 @@ import { isEmptyUnconnectedTab, type AppTab } from './lib/tabs';
 import { useAppKeyboard } from './lib/useAppKeyboard';
 import { useTabActions } from './lib/useTabActions';
 import { useSessionPersistence } from './lib/useSessionPersistence';
+import { useTabTransfer } from './lib/useTabTransfer';
 import { BrandLogo } from './components/BrandLogo';
 import { GlobalOverlays } from './components/GlobalOverlays';
 import { LandingView } from './components/LandingView';
@@ -94,6 +95,8 @@ export const App: React.FC = () => {
   }, []);
 
   const sessionLoaded = useSessionPersistence(tabs, activeTabId, setTabs, setActiveTabId);
+  const { moveTab } = useTabTransfer(tabs, activeTabId, sessionLoaded, setTabs, setActiveTabId);
+  const handleMoveTabToNewWindow = useCallback((id: string) => void moveTab(id, 'new'), [moveTab]);
 
   // Load saved settings on mount
   useEffect(() => {
@@ -318,6 +321,7 @@ export const App: React.FC = () => {
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,
+    handleMoveTabToNewWindow,
     handleSplitPane,
     handleClosePane,
     handleToggleZoom,
@@ -369,6 +373,8 @@ export const App: React.FC = () => {
             tabBarFocused={tabBarFocused}
             onSelectTab={handleSelectTab}
             onCloseTab={handleCloseTab}
+            onMoveTab={(id, target) => void moveTab(id, target)}
+            onListWindows={() => window.multissh?.windowList?.() ?? Promise.resolve([])}
             onNewTab={handleNewTab}
             onNewK8sSession={handleNewK8sSession}
             onOpenProfiles={handleOpenProfiles}

@@ -275,6 +275,7 @@ const PaneLeafContent: React.FC<{
   if (leaf.config) {
     content = (
       <TerminalView
+        paneId={leaf.id}
         config={leaf.config}
         perfMetrics={perfMetrics}
         isActive={isActive}
@@ -299,6 +300,7 @@ const PaneLeafContent: React.FC<{
   } else if (leaf.k8sTarget) {
     content = (
       <TerminalView
+        paneId={leaf.id}
         k8sTarget={leaf.k8sTarget}
         perfMetrics={perfMetrics}
         isActive={isActive}
@@ -330,6 +332,7 @@ const PaneLeafContent: React.FC<{
   } else if (leaf.local) {
     content = (
       <TerminalView
+        paneId={leaf.id}
         local
         perfMetrics={perfMetrics}
         shellType={leaf.shellType}

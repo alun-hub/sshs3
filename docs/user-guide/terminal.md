@@ -60,11 +60,16 @@ Splitting a pane does not recreate or restart the underlying PTY session. The ac
 
 #### 🛠️ How to Use
 - Press <kbd>Ctrl+Alt+Shift+N</kbd> (**New Window**) to open another sshs3 window. It opens on the monitor the mouse pointer is on, with its own set of tabs.
+- **Move a tab to another window:** drag the tab out of the window, right-click it (or press the <kbd>Menu</kbd> key / <kbd>Shift+F10</kbd> on a focused tab) and choose **Move to New Window** or **Move to Window N**, or press <kbd>Ctrl+Alt+Shift+M</kbd> to move the active tab to a new window.
+- A terminal keeps running while it moves: it is the same shell or SSH connection, and what it had printed is redrawn in the new window (the most recent ~1 MB of output).
 - Position and size of every window, and the tabs in each, are restored on the next start. A window whose monitor is no longer connected reopens on the primary monitor.
 - Closing a secondary window ends its sessions (you are asked first when it has open sessions). Closing the **main** window quits the app and closes all windows.
 
 #### ⚠️ Limitations & Caveats
-- Tabs cannot yet be moved between windows.
+- A tab with unsaved changes (an editor tab) cannot be moved until it is saved.
+- File manager tabs reopen at their starting location in the new window, Kubernetes log views start following again, and editor tabs reload the file; only terminals carry their running session along.
+- A moved SSH tab does not carry credentials that were typed for an unsaved connection; reconnecting such a tab asks again.
+- On Wayland the window position cannot be read or set by applications, so windows open where the desktop places them.
 
 ---
 

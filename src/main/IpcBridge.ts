@@ -15,7 +15,8 @@ import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
 import { SnippetStore } from './snippets/SnippetStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
-import type { WindowRouter } from './windows/WindowManager';
+import type { WindowActions, WindowRouter } from './windows/WindowManager';
+import { ScrollbackBuffer } from './terminal/ScrollbackBuffer';
 import { SmartcardCoordinator } from './smartcard/SmartcardCoordinator';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
@@ -46,7 +47,7 @@ import { ProfileSyncService } from './services/ProfileSyncService';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, deriveSecretFromSignature, getKeyAlgorithm, KEY_DERIVATION_MESSAGE } from './smartcard/SmartcardSyncService';
 import { decryptSecretValue } from './crypto/SecretFieldCrypto';
 import { XServerManager } from './x11/XServerManager';
-import { IPC_CHANNELS, type StorageConnectConfig, type HostKeyPromptEvent, type PresencePromptEvent, type PresenceClearEvent, type TransferConflictPromptEvent, type TransferConflictResolution, type QuitConfirmPromptEvent, type AskpassPromptKind } from '../shared/types/ipc';
+import { IPC_CHANNELS, type StorageConnectConfig, type HostKeyPromptEvent, type PresencePromptEvent, type PresenceClearEvent, type TransferConflictPromptEvent, type TransferConflictResolution, type QuitConfirmPromptEvent, type AskpassPromptKind, type TabHandoff, type MoveTabTarget, type WindowInfo } from '../shared/types/ipc';
 import type { K8sActivePortForward } from '../shared/types/kubernetes';
 import type { DotfilesSyncPromptEvent, DotfilesSyncResolution } from '../shared/types/dotfiles';
 import type { SSHConnectionConfig, SSHPtyExitEvent, SSHActiveTunnel } from '../shared/types/ssh';
@@ -111,8 +112,8 @@ export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   /** Multi-window: true for the top-level frame of any app window. Falls back to the focused window's main frame. */
   isTrustedFrame?: (frame: Electron.WebFrameMain | null) => boolean;
-  /** Opens a new, empty app window (the "New window" shortcut). */
-  openNewWindow?: () => void;
+  /** Creating windows and moving tabs between them (main process only). */
+  windowActions?: WindowActions;
   /** Multi-window event routing; without it every event goes to the focused window (getWebContents). */
   windows?: WindowRouter;
   sshPtyManager?: SSHPtyManager;
@@ -183,7 +184,9 @@ export class IpcBridge {
   public getWebContents: () => Electron.WebContents | null | undefined;
   private isTrustedFrame: ((frame: Electron.WebFrameMain | null) => boolean) | undefined;
   private windows: WindowRouter | undefined;
-  private openNewWindow: (() => void) | undefined;
+  private windowActions: WindowActions | undefined;
+  /** Recent output per terminal session, replayed when a terminal moves to another window. */
+  public readonly scrollback = new ScrollbackBuffer();
 
   // The members below are public only so the handler groups in src/main/ipc can reach them. Each group
   // declares the exact subset it uses as a Pick<IpcBridge, ...> (see ipc/*Handlers.ts), and
@@ -385,7 +388,7 @@ export class IpcBridge {
     this.confirmQuit = options.confirmQuit;
     this.isTrustedFrame = options.isTrustedFrame;
     this.windows = options.windows;
-    this.openNewWindow = options.openNewWindow;
+    this.windowActions = options.windowActions;
   }
 
   /** Prompts and other global dialogs: the window the user is looking at. */
@@ -424,7 +427,27 @@ export class IpcBridge {
 
   /** Opens another app window (set by the main process; absent in tests). */
   public openWindow(): void {
-    this.openNewWindow?.();
+    this.windowActions?.open();
+  }
+
+  /** Moves a tab to a new or another window. Throws when the request cannot be carried out. */
+  public moveTab(sender: Electron.WebContents | null | undefined, handoff: TabHandoff, target: MoveTabTarget): void {
+    const fromId = this.windows?.windowIdOfSender(sender);
+    if (fromId === undefined || !this.windowActions) throw new Error('Cannot move tabs from this window');
+    if (target === 'new') {
+      this.windowActions.open(handoff);
+    } else if (!this.windowActions.adopt(target, handoff, fromId)) {
+      throw new Error('That window is no longer available');
+    }
+  }
+
+  public takeHandoff(sender: Electron.WebContents | null | undefined): TabHandoff | null {
+    const id = this.windows?.windowIdOfSender(sender);
+    return id === undefined ? null : (this.windowActions?.takeHandoff(id) ?? null);
+  }
+
+  public listWindows(sender: Electron.WebContents | null | undefined): WindowInfo[] {
+    return this.windowActions?.list(this.windows?.windowIdOfSender(sender)) ?? [];
   }
 
   /** Records that the window behind this IPC call owns the session, so its output is routed there. */
@@ -1476,6 +1499,7 @@ export class IpcBridge {
         const event: PresenceClearEvent = { sessionId };
         this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_CLEAR, event);
       }
+      this.scrollback.append(sessionId, data);
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_DATA, sessionId, data);
     };
     this.sshPtyManager.on('data', this.onPtyData);
@@ -1502,6 +1526,7 @@ export class IpcBridge {
       // Tear down any private smartcard agent that was pre-loaded for this session.
       void this.smartcard.cleanupSmartcardSessionAgent(sessionId);
 
+      this.scrollback.delete(sessionId);
       const event: SSHPtyExitEvent = { exitCode, signal };
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_EXIT, sessionId, event);
     };
@@ -1555,11 +1580,13 @@ export class IpcBridge {
     this.transferQueue.on('progress', this.onTransferProgress);
 
     this.onK8sTerminalData = ({ sessionId, data }) => {
+      this.scrollback.append(sessionId, data);
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_DATA, sessionId, data);
     };
     this.k8sTerminalManager.on('data', this.onK8sTerminalData);
 
     this.onK8sTerminalExit = ({ sessionId, status }) => {
+      this.scrollback.delete(sessionId);
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_EXIT, sessionId, { status });
     };
     this.k8sTerminalManager.on('exit', this.onK8sTerminalExit);

@@ -8,6 +8,8 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 export type TerminalHost = Pick<
   IpcBridge,
   | 'assignSession'
+  | 'k8sTerminalManager'
+  | 'scrollback'
   | 'registerHandler'
   | 'resolveProxyJumpConfig'
   | 'restoreSavedSecrets'
@@ -100,6 +102,23 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
       }
 
       return { sessionId: session.sessionId };
+    }
+  );
+
+  // A terminal that moved to this window claims its running session. Ownership changes in the same
+  // step the output so far is read, so every later chunk reaches this window and none is lost or
+  // shown twice (the renderer queues what arrives while it waits for this reply).
+  bridge.registerHandler(
+    IPC_CHANNELS.TERMINAL_ATTACH,
+    async (event, sessionId: unknown, kind: unknown): Promise<{ scrollback: string }> => {
+      if (typeof sessionId !== 'string' || !sessionId || (kind !== 'ssh' && kind !== 'k8s')) {
+        throw new Error('Invalid terminal session');
+      }
+      const exists =
+        kind === 'ssh' ? !!bridge.sshPtyManager.getSession(sessionId) : !!bridge.k8sTerminalManager.getSession(sessionId);
+      if (!exists) throw new Error('The terminal session has ended');
+      bridge.assignSession(event?.sender, sessionId);
+      return { scrollback: bridge.scrollback.get(sessionId) };
     }
   );
 

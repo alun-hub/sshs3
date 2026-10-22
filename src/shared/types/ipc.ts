@@ -101,6 +101,7 @@ export const IPC_CHANNELS = {
   TERMINAL_RESIZE: 'terminal:resize',
   TERMINAL_KILL: 'terminal:kill',
   TERMINAL_RECONNECT: 'terminal:reconnect',
+  TERMINAL_ATTACH: 'terminal:attach',
   TERMINAL_DATA: 'terminal:data',
   TERMINAL_EXIT: 'terminal:exit',
   TERMINAL_RECONNECTING: 'terminal:reconnecting',
@@ -188,6 +189,10 @@ export const IPC_CHANNELS = {
   SESSION_GET: 'session:get',
   SESSION_SAVE: 'session:save',
   WINDOW_NEW: 'window:new',
+  WINDOW_MOVE_TAB: 'window:move-tab',
+  WINDOW_TAKE_HANDOFF: 'window:take-handoff',
+  WINDOW_LIST: 'window:list',
+  WINDOW_ADOPT_TAB: 'window:adopt-tab',
   CLIPBOARD_HISTORY_LIST: 'clipboardHistory:list',
   CLIPBOARD_HISTORY_ADD: 'clipboardHistory:add',
   CLIPBOARD_HISTORY_DELETE: 'clipboardHistory:delete',
@@ -496,6 +501,29 @@ export interface TransferConflictPromptEvent {
  * process now asks the renderer to show its own dialog and awaits the
  * result over this same request/response IPC pattern as transfer conflicts.
  */
+/** A live terminal session that moves along with a tab (keyed by the pane that shows it). */
+export interface TabHandoffSession {
+  paneId: string;
+  sessionId: string;
+  kind: 'ssh' | 'k8s';
+}
+
+/** A tab moving between windows. `tab` is the renderer's tab, already stripped of secrets. */
+export interface TabHandoff {
+  tab: Record<string, unknown>;
+  sessions: TabHandoffSession[];
+}
+
+/** Where a moved tab goes: a new window, or the window with this id. */
+export type MoveTabTarget = 'new' | number;
+
+export interface WindowInfo {
+  id: number;
+  label: string;
+  /** True for the window that asked. */
+  current: boolean;
+}
+
 export interface QuitConfirmPromptEvent {
   id: string;
   kind: 'active-transfers' | 'confirm-before-quit' | 'close-window';
@@ -661,6 +689,14 @@ export interface MultiSSHApi {
   sessionSave(data: SessionData): Promise<void>;
   /** Opens another app window (e.g. for a second monitor). */
   windowNew(): Promise<void>;
+  /** Hands a tab (and its live terminal sessions) to a new or another window. */
+  windowMoveTab(handoff: TabHandoff, target: MoveTabTarget): Promise<void>;
+  /** The tab this window was opened for, if any (fetched once at start-up). */
+  windowTakeHandoff(): Promise<TabHandoff | null>;
+  windowList(): Promise<WindowInfo[]>;
+  onWindowAdoptTab(callback: (handoff: TabHandoff) => void): () => void;
+  /** Claims a live terminal session for this window and returns the output it printed so far. */
+  terminalAttach(sessionId: string, kind: 'ssh' | 'k8s'): Promise<{ scrollback: string }>;
   clipboardHistoryList(hostKey?: string): Promise<ClipboardHistoryEntry[]>;
   clipboardHistoryAdd(text: string, hostKey: string, hostLabel: string): Promise<void>;
   clipboardHistoryDelete(id: string): Promise<void>;

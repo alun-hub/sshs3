@@ -15,7 +15,7 @@ vi.mock('electron', () => {
 });
 
 import { IpcBridge } from '../../src/main/IpcBridge';
-import { WindowManager, type ManagedWindow } from '../../src/main/windows/WindowManager';
+import { WindowManager, type ManagedWindow, type WindowActions } from '../../src/main/windows/WindowManager';
 
 function fakeWindow(id: number) {
   const send = vi.fn();
@@ -102,5 +102,46 @@ describe('IpcBridge multi-window routing', () => {
     bridge.broadcast('ch2');
     expect(send).toHaveBeenCalledWith('ch', 1);
     expect(send).toHaveBeenCalledWith('ch2');
+  });
+
+  describe('moving tabs', () => {
+    const handoff = { tab: { id: 't1', type: 'terminal' }, sessions: [] };
+
+    function bridgeWithActions() {
+      const { windows, a, b } = makeBridge();
+      const actions: WindowActions = {
+        open: vi.fn(),
+        adopt: vi.fn().mockReturnValue(true),
+        takeHandoff: vi.fn().mockReturnValue(handoff),
+        list: vi.fn().mockReturnValue([]),
+      };
+      const bridge = new IpcBridge({ windows, windowActions: actions });
+      return { bridge, actions, a, b };
+    }
+
+    it('opens a new window for the tab', () => {
+      const { bridge, actions, a } = bridgeWithActions();
+      bridge.moveTab(a.webContents as never, handoff, 'new');
+      expect(actions.open).toHaveBeenCalledWith(handoff);
+    });
+
+    it('hands the tab to another existing window', () => {
+      const { bridge, actions, a } = bridgeWithActions();
+      bridge.moveTab(a.webContents as never, handoff, 2);
+      expect(actions.adopt).toHaveBeenCalledWith(2, handoff, 1);
+    });
+
+    it('rejects a move from an unknown sender and to a window that is gone', () => {
+      const { bridge, actions, a } = bridgeWithActions();
+      expect(() => bridge.moveTab({ id: 99 } as never, handoff, 'new')).toThrow();
+      (actions.adopt as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(() => bridge.moveTab(a.webContents as never, handoff, 2)).toThrow(/no longer available/);
+    });
+
+    it('gives a window its handoff only when the sender is a known window', () => {
+      const { bridge, a } = bridgeWithActions();
+      expect(bridge.takeHandoff(a.webContents as never)).toEqual(handoff);
+      expect(bridge.takeHandoff({ id: 99 } as never)).toBeNull();
+    });
   });
 });

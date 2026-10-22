@@ -31,6 +31,8 @@ export interface AppKeyboardContext {
   openTopLevelModal: (open: () => void) => void;
   handleNewTab: (type?: TabType, options?: { remote?: boolean }) => void;
   handleCloseTab: (id: string) => void;
+  /** Moves a tab (and its running sessions) to a new window. */
+  handleMoveTabToNewWindow: (id: string) => void;
   handleSplitPane: (tabId: string, orientation: PaneOrientation, paneId?: string) => void;
   handleClosePane: (tabId: string, paneId: string) => void;
   handleToggleZoom: (tabId: string, paneId?: string) => void;
@@ -59,6 +61,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,
+    handleMoveTabToNewWindow,
     handleSplitPane,
     handleClosePane,
     handleToggleZoom,
@@ -234,6 +237,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               else if (activeTab.activePaneId) handleClosePane(activeTab.id, activeTab.activePaneId);
               break;
             }
+            case 'moveTabToNewWindow':
+              if (activeTabId) handleMoveTabToNewWindow(activeTabId);
+              break;
             case 'newWindow':
               void window.multissh.windowNew();
               break;
@@ -452,6 +458,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,
+    handleMoveTabToNewWindow,
     handleSplitPane,
     handleClosePane,
     handleToggleZoom,

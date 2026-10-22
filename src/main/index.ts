@@ -13,6 +13,8 @@ import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { WindowManager } from './windows/WindowManager';
 import { createAppWindow } from './windows/createAppWindow';
 import { placeNewWindow, resolveWindowBounds, type Rect } from './windows/windowBounds';
+import type { WindowActions } from './windows/WindowManager';
+import { IPC_CHANNELS, type TabHandoff } from '../shared/types/ipc';
 import { restorableWindows } from './session/windowSessions';
 import type { SessionData } from '../shared/types/session';
 import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
@@ -359,11 +361,36 @@ async function closeSecondaryWindow(win: BrowserWindow, key: string | null): Pro
   win.close();
 }
 
-/** Opens an empty window on the monitor the pointer is on. */
-function openNewWindow(): void {
+/** Opens a window on the monitor the pointer is on; with a handoff it opens for that moved tab. */
+function openNewWindow(handoff?: TabHandoff): void {
   const key = `w-${crypto.randomUUID().slice(0, 8)}`;
-  createWindow(key, { bounds: boundsForNewWindow() });
+  const win = createWindow(key, { bounds: boundsForNewWindow() });
+  if (handoff) {
+    const windowId = win.webContents.id;
+    windowManager.setHandoff(windowId, handoff);
+    windowManager.reserve(handoff.sessions.map((s) => s.sessionId), windowId);
+  }
 }
+
+const windowActions: WindowActions = {
+  open: openNewWindow,
+  adopt(targetWindowId, handoff, fromWindowId) {
+    const target = windowManager.get(targetWindowId);
+    if (!target || target.isDestroyed() || targetWindowId === fromWindowId) return false;
+    windowManager.reserve(handoff.sessions.map((s) => s.sessionId), targetWindowId);
+    target.webContents.send(IPC_CHANNELS.WINDOW_ADOPT_TAB, handoff);
+    if (target.isMinimized()) target.restore();
+    target.focus();
+    return true;
+  },
+  takeHandoff: (windowId) => (windowManager.takeHandoff(windowId) as TabHandoff | undefined) ?? null,
+  list: (currentWindowId) =>
+    windowManager.describe().map((w, index) => ({
+      id: w.id,
+      label: `Window ${index + 1}`,
+      current: w.id === currentWindowId,
+    })),
+};
 
 /** Reopens the windows of the last run: the main one first, then the saved secondary ones. */
 async function restoreWindows(): Promise<void> {
@@ -399,7 +426,7 @@ async function initializeApp(): Promise<void> {
     getWebContents: () => windowManager.focusedWebContents() as Electron.WebContents | undefined,
     isTrustedFrame: (frame) => windowManager.isTrustedFrame(frame),
     windows: windowManager,
-    openNewWindow,
+    windowActions,
     confirmQuit,
   });
   ipcBridge.register();
