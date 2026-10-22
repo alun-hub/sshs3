@@ -96,7 +96,23 @@ export function parseK8sServerArg(value: unknown): string {
   if (!url.hostname) {
     throw new Error('Invalid server URL');
   }
+  // A saved, synced or shared server must never carry a secret, and a token must not travel unencrypted.
+  if (url.username || url.password) {
+    throw new Error('Server URL must not contain a user name or password');
+  }
+  if (url.search || url.hash) {
+    throw new Error('Server URL must not contain a query or fragment');
+  }
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))) {
+    throw new Error('Server URL must use https (plain http is only allowed for localhost)');
+  }
   return trimmed;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '[::1]') return true;
+  const octets = hostname.split('.');
+  return octets.length === 4 && octets[0] === '127' && octets.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255);
 }
 
 /** Validates untrusted IPC arguments for the OpenShift browser sign-in. */

@@ -188,3 +188,13 @@ describe('saved cluster profile handlers', () => {
     expect(store.delete).toHaveBeenCalledWith('p1');
   });
 });
+
+describe('K8S_LOGIN server validation', () => {
+  it('refuses an unsafe server before any token is sent anywhere', async () => {
+    const { handlers } = setup({ probe: vi.fn() as never, login: vi.fn() as never, cancel: vi.fn() });
+    const login = handlers.get(IPC_CHANNELS.K8S_LOGIN)!;
+    await expect(login({}, { server: 'http://api.example.com:6443', token: 't' })).rejects.toThrow(/must use https/);
+    await expect(login({}, { server: 'https://u:p@api.example.com', token: 't' })).rejects.toThrow(/user name or password/);
+    await expect(login({}, undefined)).rejects.toThrow(/Server URL is required/);
+  });
+});

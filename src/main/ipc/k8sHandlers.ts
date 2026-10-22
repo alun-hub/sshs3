@@ -76,7 +76,9 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
   });
 
   bridge.registerHandler(IPC_CHANNELS.K8S_LOGIN, async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
-    return completeLogin(options);
+    // Same server rules as saved profiles and browser sign-in: https only (loopback excepted), no embedded credentials.
+    const server = parseK8sServerArg(options?.server);
+    return completeLogin({ ...options, server });
   });
 
   bridge.registerHandler(

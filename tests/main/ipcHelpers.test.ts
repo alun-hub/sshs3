@@ -117,3 +117,23 @@ describe('parseK8sProfile', () => {
     expect(() => parseK8sProfile({ ...valid, insecureSkipTlsVerify: 'yes' })).toThrow(/TLS/);
   });
 });
+
+describe('server URL rules (saved, synced and shared clusters)', () => {
+  const profile = (server: string) => ({ id: 'p1', name: 'Prod', server });
+
+  it('rejects embedded credentials, query strings and fragments', () => {
+    expect(() => parseK8sProfile(profile('https://user:secret@api.example.com:6443'))).toThrow(/user name or password/);
+    expect(() => parseK8sProfile(profile('https://token@api.example.com'))).toThrow(/user name or password/);
+    expect(() => parseK8sProfile(profile('https://api.example.com:6443/?token=abc'))).toThrow(/query or fragment/);
+    expect(() => parseK8sProfile(profile('https://api.example.com:6443/#frag'))).toThrow(/query or fragment/);
+  });
+
+  it('requires https, except plain http to a loopback address', () => {
+    expect(() => parseK8sProfile(profile('http://api.example.com:6443'))).toThrow(/must use https/);
+    expect(parseK8sProfile(profile('http://127.0.0.1:8001')).server).toBe('http://127.0.0.1:8001');
+    expect(parseK8sProfile(profile('http://localhost:8001')).server).toBe('http://localhost:8001');
+    expect(parseK8sProfile(profile('http://[::1]:8001')).server).toBe('http://[::1]:8001');
+    expect(() => parseK8sProfile(profile('http://127.0.0.1.example.com'))).toThrow(/must use https/);
+    expect(parseK8sProfile(profile('api.example.com:6443')).server).toBe('api.example.com:6443');
+  });
+});

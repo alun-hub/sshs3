@@ -167,6 +167,7 @@ When you enter the API server URL, sshs3 checks whether the cluster has OpenShif
 - A saved cluster shows its profile name in the tree. **Sign in** next to it reopens the dialog prefilled, which is also how you refresh an expired token or edit the profile. The trash button removes only the profile; the kubeconfig entry stays.
 - A profile whose kubeconfig entry has gone is listed as **not signed in** until you sign in again. You can keep several profiles, one per cluster.
 - If you fill in **Default Project / Namespace**, the tree for that cluster shows only that project instead of every project on the cluster. Leave it empty to list all projects you can access.
+- The server URL must use `https://` (plain `http://` is only accepted for localhost, e.g. `kubectl proxy`) and must not contain a user name, password, query or fragment, so a saved, synced or shared cluster can never carry a secret.
 - Profiles are stored locally in `k8s-profiles.json` and also take part in **encrypted profile sync** (they travel with the topology password; only the name, server, project and TLS option are synced, never a token or your kubeconfig context). After a pull on another device, the cluster shows as **not signed in** until you sign in there.
 
 #### 👥 Shared clusters in Team Vaults
