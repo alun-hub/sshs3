@@ -5,6 +5,7 @@ import {
   paneTreeHasAuthType,
   parseK8sProfile,
   resolveDirSyncTargetRoot,
+  sessionUsesAuthType,
 } from '../../src/main/ipc/ipcHelpers';
 
 describe('ipcHelpers', () => {
@@ -26,6 +27,23 @@ describe('ipcHelpers', () => {
       expect(paneTreeHasAuthType(tree, 'smartcard')).toBe(false);
       expect(paneTreeHasAuthType(undefined, 'fido2')).toBe(false);
       expect(paneTreeHasAuthType('x', 'fido2')).toBe(false);
+    });
+  });
+
+  describe('sessionUsesAuthType', () => {
+    const leaf = (authType: string) => ({ paneTree: { type: 'leaf', config: { authType } } });
+
+    it('looks at the main window and at every secondary window', () => {
+      const session = { tabs: [leaf('password')], windows: [{ tabs: [leaf('password')] }, { tabs: [leaf('fido2')] }] };
+      expect(sessionUsesAuthType(session, 'fido2')).toBe(true);
+      expect(sessionUsesAuthType(session, 'password')).toBe(true);
+      expect(sessionUsesAuthType(session, 'smartcard')).toBe(false);
+    });
+
+    it('copes with sessions that have no tabs or windows', () => {
+      expect(sessionUsesAuthType({}, 'fido2')).toBe(false);
+      expect(sessionUsesAuthType({ windows: [{}] }, 'fido2')).toBe(false);
+      expect(sessionUsesAuthType(null, 'fido2')).toBe(false);
     });
   });
 

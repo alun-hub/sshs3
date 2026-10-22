@@ -16,6 +16,18 @@ export function paneTreeHasAuthType(node: unknown, authType: string): boolean {
 }
 
 /**
+ * True when any saved tab of the session, in the main window or in a secondary one, has a pane using the given
+ * auth type. A secondary window's tabs are restored and connect at startup just like the main window's.
+ */
+export function sessionUsesAuthType(
+  session: { tabs?: Array<{ paneTree?: unknown }>; windows?: Array<{ tabs?: Array<{ paneTree?: unknown }> }> } | null | undefined,
+  authType: string
+): boolean {
+  const tabs = [...(session?.tabs ?? []), ...(session?.windows ?? []).flatMap((w) => w.tabs ?? [])];
+  return tabs.some((tab) => paneTreeHasAuthType(tab.paneTree, authType));
+}
+
+/**
  * `ssh-add -K` (load FIDO2 *resident/discoverable* credentials) reports "Provider \"internal\"
  * returned failure -1" / "Unable to load resident keys: invalid format" whenever the
  * authenticator's own CTAP2 stack returns FIDO_ERR_PIN_AUTH_BLOCKED — verified directly with

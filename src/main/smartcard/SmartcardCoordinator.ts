@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { describeFido2StartupError, paneTreeHasAuthType } from '../ipc/ipcHelpers';
+import { describeFido2StartupError, sessionUsesAuthType } from '../ipc/ipcHelpers';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
 import { AppAgent, fingerprintOfKeyBlob } from '../ssh/AppAgent';
 import { assignHostAliases, type AgentHostEntry } from '../services/SshNativeFileMerger';
@@ -876,12 +876,8 @@ export class SmartcardCoordinator {
 
     try {
       const session = await this.deps.sessionStore.getSession();
-      if (session?.tabs) {
-        for (const tab of session.tabs) {
-          if (paneTreeHasAuthType(tab.paneTree, 'fido2')) hasFido2 = true;
-          if (paneTreeHasAuthType(tab.paneTree, 'smartcard')) hasSmartcard = true;
-        }
-      }
+      if (sessionUsesAuthType(session, 'fido2')) hasFido2 = true;
+      if (sessionUsesAuthType(session, 'smartcard')) hasSmartcard = true;
     } catch {
       // Ignore session read errors on startup
     }
