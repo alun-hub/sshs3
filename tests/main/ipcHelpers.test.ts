@@ -122,8 +122,8 @@ describe('server URL rules (saved, synced and shared clusters)', () => {
   const profile = (server: string) => ({ id: 'p1', name: 'Prod', server });
 
   it('rejects embedded credentials, query strings and fragments', () => {
-    // Fake credentials: the test asserts they are rejected. pragma: allowlist secret
-    expect(() => parseK8sProfile(profile('https://user:secret@api.example.com:6443'))).toThrow(/user name or password/);
+    // Fake credentials: the test asserts they are rejected.
+    expect(() => parseK8sProfile(profile('https://user:secret@api.example.com:6443'))).toThrow(/user name or password/); // pragma: allowlist secret
     expect(() => parseK8sProfile(profile('https://token@api.example.com'))).toThrow(/user name or password/);
     expect(() => parseK8sProfile(profile('https://api.example.com:6443/?token=abc'))).toThrow(/query or fragment/);
     expect(() => parseK8sProfile(profile('https://api.example.com:6443/#frag'))).toThrow(/query or fragment/);

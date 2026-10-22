@@ -57,3 +57,25 @@ export function resolveWindowBounds(saved: Rect | undefined | null, workAreas: R
   });
   return visible ? candidate : centered(size, primary);
 }
+
+/**
+ * Where a new window goes: centered on the display the pointer is on, so it lands on the monitor the
+ * user is working at. When that is the same display as the focused window, cascade from it instead
+ * of stacking exactly on top.
+ */
+export function placeNewWindow(
+  cursorWorkArea: Rect,
+  focused?: { bounds: Rect; workArea: Rect } | null
+): Rect {
+  const sameDisplay =
+    !!focused &&
+    focused.workArea.x === cursorWorkArea.x &&
+    focused.workArea.y === cursorWorkArea.y &&
+    focused.workArea.width === cursorWorkArea.width &&
+    focused.workArea.height === cursorWorkArea.height;
+  if (sameDisplay && focused) {
+    const cascade = { ...focused.bounds, x: focused.bounds.x + 30, y: focused.bounds.y + 30 };
+    return resolveWindowBounds(cascade, [cursorWorkArea], cursorWorkArea);
+  }
+  return centered(DEFAULT_WINDOW_SIZE, cursorWorkArea);
+}

@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, nativeImage, safeStorage } from 'electron';
+import crypto from 'node:crypto';
+import { app, BrowserWindow, Menu, safeStorage, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,10 @@ import { applyLoginShellEnv } from './ssh/LoginShellEnv';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { WindowManager } from './windows/WindowManager';
+import { createAppWindow } from './windows/createAppWindow';
+import { placeNewWindow, resolveWindowBounds, type Rect } from './windows/windowBounds';
+import { restorableWindows } from './session/windowSessions';
+import type { SessionData } from '../shared/types/session';
 import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
 
 app.setName('sshs3');
@@ -60,11 +65,12 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
     app.quit();
   } else {
     app.on('second-instance', () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) {
-          mainWindow.restore();
+      const win = windowManager.focused();
+      if (win) {
+        if (win.isMinimized()) {
+          win.restore();
         }
-        mainWindow.focus();
+        win.focus();
       }
     });
   }
@@ -150,9 +156,10 @@ process.on('unhandledRejection', (reason) => {
   log.error('unhandled promise rejection in main process', reason);
 });
 
-let mainWindow: BrowserWindow | null = null;
 // Every renderer window; routes IPC events to the right one (see windows/WindowManager).
 const windowManager = new WindowManager<BrowserWindow>();
+// Secondary windows whose close was confirmed (or needs no confirmation) and may now go through.
+const closeConfirmed = new Set<number>();
 // Windows-only startup progress window (null elsewhere); see ./splash/SplashWindow.
 let splash: SplashController | null = null;
 let ipcBridge: IpcBridge | null = null;
@@ -208,122 +215,168 @@ async function confirmQuit(): Promise<boolean> {
   return true;
 }
 
-function createWindow(): BrowserWindow {
-  const iconPath = process.env.VITE_DEV_SERVER_URL
-    ? path.join(__dirname, '../../build/icon.png')
-    : path.join(__dirname, '../build/icon.png');
-  const appIcon = nativeImage.createFromPath(iconPath);
+/** Bounds changes are saved after the window has been still for this long. */
+const BOUNDS_SAVE_DEBOUNCE_MS = 500;
 
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    icon: appIcon,
+function currentWorkAreas(): { workAreas: Rect[]; primary: Rect } {
+  return {
+    workAreas: screen.getAllDisplays().map((d) => d.workArea),
+    primary: screen.getPrimaryDisplay().workArea,
+  };
+}
+
+/** Bounds for a new window: on the monitor the pointer is on, cascaded from the focused window. */
+function boundsForNewWindow(): Rect {
+  const cursorWorkArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const focused = windowManager.focused();
+  const focusedInfo =
+    focused && !focused.isDestroyed()
+      ? { bounds: focused.getNormalBounds(), workArea: screen.getDisplayMatching(focused.getBounds()).workArea }
+      : null;
+  return placeNewWindow(cursorWorkArea, focusedInfo);
+}
+
+/**
+ * Creates a window. `key` is its persistence key: null for the main window (whose tabs are the
+ * top-level session fields), a string for secondary windows. Saved bounds are checked against the
+ * monitors that are connected now, so a window saved on an unplugged monitor reopens on the primary.
+ */
+function createWindow(key: string | null = null, saved?: { bounds?: Rect; maximized?: boolean }): BrowserWindow {
+  const isMain = key === null;
+  const { workAreas, primary } = currentWorkAreas();
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || undefined;
+
+  const win = createAppWindow({
+    bounds: saved?.bounds ? resolveWindowBounds(saved.bounds, workAreas, primary) : undefined,
+    maximized: saved?.maximized,
     // On Windows the splash stays up until the renderer has loaded, so the main
     // window is created hidden instead of flashing an empty frame.
-    show: process.platform !== 'win32',
-    webPreferences: {
-      preload: path.join(__dirname, 'index.cjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      plugins: true,
-    },
+    show: !(isMain && process.platform === 'win32'),
+    preloadPath: path.join(__dirname, 'index.cjs'),
+    iconPath: devServerUrl ? path.join(__dirname, '../../build/icon.png') : path.join(__dirname, '../build/icon.png'),
+    devServerUrl,
+    htmlPath: path.join(__dirname, '../dist/index.html'),
   });
 
-  if (!appIcon.isEmpty()) {
-    mainWindow.setIcon(appIcon);
-  }
+  const windowId = win.webContents.id;
+  windowManager.register(win, key);
+  win.on('focus', () => windowManager.setFocused(windowId));
 
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Remember where the window is (debounced; the normal bounds, so un-maximizing restores them).
+  let boundsTimer: NodeJS.Timeout | undefined;
+  const saveBounds = (): void => {
+    if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+    void ipcBridge?.sessionStore.saveWindowBounds(key, win.getNormalBounds(), win.isMaximized()).catch(() => {});
+  };
+  const scheduleSaveBounds = (): void => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(saveBounds, BOUNDS_SAVE_DEBOUNCE_MS);
+  };
+  win.on('resize', scheduleSaveBounds);
+  win.on('move', scheduleSaveBounds);
+  win.once('ready-to-show', saveBounds);
 
-  // The application menu is removed (see initializeApp), which also removes its DevTools
-  // accelerators — give unpackaged builds F12 / Ctrl+Shift+I back so a renderer problem can be
-  // inspected. Packaged releases keep DevTools unreachable.
-  if (!app.isPackaged) {
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown') return;
-      const isToggle = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i');
-      if (isToggle) {
-        mainWindow?.webContents.toggleDevTools();
-        event.preventDefault();
-      }
-    });
-  }
-
-  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-    if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
-      return;
+  win.on('close', (event) => {
+    clearTimeout(boundsTimer);
+    saveBounds();
+    if (isQuitting || closeConfirmed.has(windowId)) return;
+    event.preventDefault();
+    if (isMain) {
+      // Always defer to app.quit() (handled by 'before-quit' below) instead of
+      // letting the window close on its own, so a plain window-close ("X" the
+      // window) goes through the same graceful shutdown — ipcBridge.dispose(),
+      // killing SSH tunnels/agents — as Cmd+Q or the app menu, rather than
+      // tearing everything down hard. Closing the main window therefore closes
+      // every other window too.
+      void (async () => {
+        if (!(await confirmQuit())) return;
+        app.quit();
+      })();
+    } else {
+      void closeSecondaryWindow(win, key);
     }
-    event.preventDefault();
   });
 
-  mainWindow.webContents.on('will-redirect', (event, navigationUrl) => {
-    // Same dev-server carve-out as will-navigate above (LOW finding, code
-    // review) — blocking every redirect unconditionally has no effect today
-    // (nothing in the app currently redirects), but would silently break a
-    // future redirect-based flow (e.g. an in-window OAuth callback) even in
-    // dev, where Vite's own HMR/dev-server traffic should be allowed through.
-    if (process.env.VITE_DEV_SERVER_URL && navigationUrl.startsWith(process.env.VITE_DEV_SERVER_URL)) {
-      return;
-    }
-    event.preventDefault();
+  win.on('closed', () => {
+    clearTimeout(boundsTimer);
+    closeConfirmed.delete(windowId);
+    // Whatever way the window went away, the sessions it owned have nobody left to show them.
+    endSessions(windowManager.unregister(windowId));
   });
 
-  mainWindow.on('close', (event) => {
-    if (isQuitting) return;
-    // Always defer to app.quit() (handled by 'before-quit' below) instead of
-    // letting the window close on its own, so a plain window-close ("X" the
-    // window) goes through the same graceful shutdown — ipcBridge.dispose(),
-    // killing SSH tunnels/agents — as Cmd+Q or the app menu, rather than
-    // tearing everything down hard.
-    event.preventDefault();
-    void (async () => {
-      if (!(await confirmQuit())) return;
-      app.quit();
-    })();
-  });
-
-  const windowId = mainWindow.webContents.id;
-  windowManager.register(mainWindow);
-  mainWindow.on('focus', () => windowManager.setFocused(windowId));
-
-  mainWindow.on('closed', () => {
-    windowManager.unregister(windowId);
-    mainWindow = null;
-  });
-
-  if (process.platform === 'win32') {
-    const window = mainWindow;
+  if (isMain && process.platform === 'win32') {
     let revealed = false;
     const reveal = (): void => {
       if (revealed) return;
       revealed = true;
       clearTimeout(fallback);
       splash?.setProgress(100, 'Ready');
-      if (!window.isDestroyed()) window.show();
+      if (!win.isDestroyed()) win.show();
       splash?.close();
       splash = null;
     };
     // Never leave the user stuck on the splash if the renderer fails to load.
     const fallback = setTimeout(reveal, 30_000);
-    window.webContents.on('did-start-loading', () => splash?.setProgress(70, 'Loading interface…'));
-    window.webContents.on('dom-ready', () => splash?.setProgress(85, 'Starting interface…'));
-    window.webContents.once('did-finish-load', reveal);
-    window.webContents.once('did-fail-load', reveal);
-    window.once('closed', () => {
+    win.webContents.on('did-start-loading', () => splash?.setProgress(70, 'Loading interface…'));
+    win.webContents.on('dom-ready', () => splash?.setProgress(85, 'Starting interface…'));
+    win.webContents.once('did-finish-load', reveal);
+    win.webContents.once('did-fail-load', reveal);
+    win.once('closed', () => {
       clearTimeout(fallback);
       splash?.close();
       splash = null;
     });
   }
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
+  return win;
+}
 
-  return mainWindow;
+/** Ends terminal/log sessions (each manager ignores ids that are not its own). */
+function endSessions(sessionIds: string[]): void {
+  for (const sessionId of sessionIds) {
+    ipcBridge?.sshPtyManager.kill(sessionId);
+    ipcBridge?.k8sTerminalManager.kill(sessionId);
+    ipcBridge?.k8sLogManager.stop(sessionId);
+  }
+}
+
+/**
+ * Closing a secondary window ends its sessions and removes it from the saved layout (the main
+ * window and the app keep running). Asks first when it still has live sessions.
+ */
+async function closeSecondaryWindow(win: BrowserWindow, key: string | null): Promise<void> {
+  const windowId = win.webContents.id;
+  const sessionIds = windowManager.sessionsOf(windowId);
+  if (sessionIds.length > 0 && ipcBridge) {
+    if (!win.isDestroyed()) win.focus();
+    const proceed = await ipcBridge.promptQuitConfirm({ kind: 'close-window', sessionCount: sessionIds.length });
+    if (!proceed) return;
+  }
+  if (win.isDestroyed()) return;
+  if (key !== null) void ipcBridge?.sessionStore.forgetWindow(key).catch(() => {});
+  endSessions(sessionIds);
+  closeConfirmed.add(windowId);
+  win.close();
+}
+
+/** Opens an empty window on the monitor the pointer is on. */
+function openNewWindow(): void {
+  const key = `w-${crypto.randomUUID().slice(0, 8)}`;
+  createWindow(key, { bounds: boundsForNewWindow() });
+}
+
+/** Reopens the windows of the last run: the main one first, then the saved secondary ones. */
+async function restoreWindows(): Promise<void> {
+  let session: SessionData | null = null;
+  try {
+    session = (await ipcBridge?.sessionStore.getSession()) ?? null;
+  } catch {
+    // Unreadable session: just open one default window.
+  }
+  createWindow(null, { bounds: session?.mainBounds, maximized: session?.mainMaximized });
+  for (const saved of restorableWindows(session)) {
+    createWindow(saved.key, { bounds: saved.bounds, maximized: saved.maximized });
+  }
 }
 
 // Initialize IPC bridge before or when app is ready
@@ -346,6 +399,7 @@ async function initializeApp(): Promise<void> {
     getWebContents: () => windowManager.focusedWebContents() as Electron.WebContents | undefined,
     isTrustedFrame: (frame) => windowManager.isTrustedFrame(frame),
     windows: windowManager,
+    openNewWindow,
     confirmQuit,
   });
   ipcBridge.register();
@@ -358,7 +412,7 @@ async function initializeApp(): Promise<void> {
   void ipcBridge.clearClipboardHistoryIfConfigured().catch(() => {});
 
   // Create the main window immediately so the UI starts loading without waiting for subshells
-  createWindow();
+  await restoreWindows();
   ipcBridge.startUpdateChecks();
 
   // Run background tasks (orphan cleanup, login shell environment, trust store, ~/.ssh/config sync)

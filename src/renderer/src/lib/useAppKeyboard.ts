@@ -234,6 +234,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               else if (activeTab.activePaneId) handleClosePane(activeTab.id, activeTab.activePaneId);
               break;
             }
+            case 'newWindow':
+              void window.multissh.windowNew();
+              break;
             case 'showShortcuts':
               openShortcutsHelp();
               break;

@@ -242,6 +242,8 @@ describe('IpcBridge', () => {
     mockSessionStore = {
       getSession: vi.fn().mockResolvedValue({ tabs: [], activeTabId: 't1' }),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      getSessionForWindow: vi.fn().mockResolvedValue({ tabs: [], activeTabId: 't1' }),
+      saveSessionForWindow: vi.fn().mockResolvedValue(undefined),
     };
 
     mockSettingsStore = {
@@ -2145,13 +2147,14 @@ describe('IpcBridge', () => {
     it('retrieves session data', async () => {
       const data = await mockIpc.invoke(IPC_CHANNELS.SESSION_GET);
       expect(data).toEqual({ tabs: [], activeTabId: 't1' });
-      expect(mockSessionStore.getSession).toHaveBeenCalled();
+      // No window router in this test: the sender counts as the main window (key null).
+      expect(mockSessionStore.getSessionForWindow).toHaveBeenCalledWith(null);
     });
 
     it('saves session data', async () => {
       const session = { tabs: [{ id: 'tab-1', title: 'SSH', type: 'terminal' }], activeTabId: 'tab-1' };
       await mockIpc.invoke(IPC_CHANNELS.SESSION_SAVE, session);
-      expect(mockSessionStore.saveSession).toHaveBeenCalledWith(session);
+      expect(mockSessionStore.saveSessionForWindow).toHaveBeenCalledWith(null, session);
     });
   });
 

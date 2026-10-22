@@ -56,6 +56,16 @@ Allow operators to split workspace real estate horizontally and vertically witho
 #### ⚙️ Technical Internals & Architecture
 Splitting a pane does not recreate or restart the underlying PTY session. The active DOM node is reparented into a new split container within React's layout tree (`PaneTree.tsx`), leaving the underlying Node.js PTY process completely uninterrupted.
 
+### Feature: Multiple Windows (for several monitors)
+
+#### 🛠️ How to Use
+- Press <kbd>Ctrl+Alt+Shift+N</kbd> (**New Window**) to open another sshs3 window. It opens on the monitor the mouse pointer is on, with its own set of tabs.
+- Position and size of every window, and the tabs in each, are restored on the next start. A window whose monitor is no longer connected reopens on the primary monitor.
+- Closing a secondary window ends its sessions (you are asked first when it has open sessions). Closing the **main** window quits the app and closes all windows.
+
+#### ⚠️ Limitations & Caveats
+- Tabs cannot yet be moved between windows.
+
 ---
 
 ## 3. Local Shells & Intelligent SSH Agent Management

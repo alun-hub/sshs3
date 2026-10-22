@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveWindowBounds } from './windowBounds';
+import { placeNewWindow, resolveWindowBounds } from './windowBounds';
 
 const primary = { x: 0, y: 0, width: 1920, height: 1080 };
 const second = { x: 1920, y: 0, width: 2560, height: 1440 };
@@ -37,5 +37,27 @@ describe('resolveWindowBounds', () => {
   it('treats a window that only barely touches a display as off-screen', () => {
     const saved = { x: 1900, y: 0, width: 1000, height: 700 };
     expect(resolveWindowBounds(saved, [primary], primary).x).toBe(460);
+  });
+});
+
+describe('placeNewWindow', () => {
+  const focusedBounds = { x: 100, y: 100, width: 1000, height: 700 };
+
+  it('centers on the display the pointer is on when it differs from the focused window', () => {
+    const r = placeNewWindow(second, { bounds: focusedBounds, workArea: primary });
+    expect(r).toEqual({ x: 1920 + 680, y: 320, width: 1200, height: 800 });
+  });
+
+  it('cascades from the focused window on the same display', () => {
+    expect(placeNewWindow(primary, { bounds: focusedBounds, workArea: primary })).toEqual({
+      x: 130,
+      y: 130,
+      width: 1000,
+      height: 700,
+    });
+  });
+
+  it('centers on the pointer display when there is no focused window', () => {
+    expect(placeNewWindow(primary, null)).toEqual({ x: 360, y: 140, width: 1200, height: 800 });
   });
 });

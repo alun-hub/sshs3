@@ -111,6 +111,8 @@ export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
   /** Multi-window: true for the top-level frame of any app window. Falls back to the focused window's main frame. */
   isTrustedFrame?: (frame: Electron.WebFrameMain | null) => boolean;
+  /** Opens a new, empty app window (the "New window" shortcut). */
+  openNewWindow?: () => void;
   /** Multi-window event routing; without it every event goes to the focused window (getWebContents). */
   windows?: WindowRouter;
   sshPtyManager?: SSHPtyManager;
@@ -181,6 +183,7 @@ export class IpcBridge {
   public getWebContents: () => Electron.WebContents | null | undefined;
   private isTrustedFrame: ((frame: Electron.WebFrameMain | null) => boolean) | undefined;
   private windows: WindowRouter | undefined;
+  private openNewWindow: (() => void) | undefined;
 
   // The members below are public only so the handler groups in src/main/ipc can reach them. Each group
   // declares the exact subset it uses as a Pick<IpcBridge, ...> (see ipc/*Handlers.ts), and
@@ -382,6 +385,7 @@ export class IpcBridge {
     this.confirmQuit = options.confirmQuit;
     this.isTrustedFrame = options.isTrustedFrame;
     this.windows = options.windows;
+    this.openNewWindow = options.openNewWindow;
   }
 
   /** Prompts and other global dialogs: the window the user is looking at. */
@@ -411,6 +415,16 @@ export class IpcBridge {
   public broadcast(channel: string, ...args: unknown[]): void {
     if (this.windows) this.windows.broadcast(channel, ...args);
     else this.sendToFocused(channel, ...args);
+  }
+
+  /** Persistence key of the window behind an IPC call: null for the main window. */
+  public windowKeyOf(sender: Electron.WebContents | null | undefined): string | null {
+    return this.windows?.keyOfSender(sender) ?? null;
+  }
+
+  /** Opens another app window (set by the main process; absent in tests). */
+  public openWindow(): void {
+    this.openNewWindow?.();
   }
 
   /** Records that the window behind this IPC call owns the session, so its output is routed there. */

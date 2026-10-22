@@ -9,22 +9,27 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type AppDataHost = Pick<
   IpcBridge,
-  'clipboardHistoryStore' | 'profileSyncService' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
+  'clipboardHistoryStore' | 'openWindow' | 'profileSyncService' | 'windowKeyOf' | 'registerHandler' | 'scheduleAutoSync' | 'sessionStore' | 'settingsStore' | 'snippetStore'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'refreshAgentSshConfig'>;
 };
 
 export function registerSessionHandlers(bridge: AppDataHost): void {
-  bridge.registerHandler(IPC_CHANNELS.SESSION_GET, async (): Promise<SessionData | null> => {
-    return await bridge.sessionStore.getSession();
+  // Each window reads and writes only its own tabs; the store merges them (see session/windowSessions.ts).
+  bridge.registerHandler(IPC_CHANNELS.SESSION_GET, async (event): Promise<SessionData | null> => {
+    return await bridge.sessionStore.getSessionForWindow(bridge.windowKeyOf(event?.sender));
   });
 
   bridge.registerHandler(
     IPC_CHANNELS.SESSION_SAVE,
-    async (_event, data: SessionData): Promise<void> => {
-      await bridge.sessionStore.saveSession(data);
+    async (event, data: SessionData): Promise<void> => {
+      await bridge.sessionStore.saveSessionForWindow(bridge.windowKeyOf(event?.sender), data);
     }
   );
+
+  bridge.registerHandler(IPC_CHANNELS.WINDOW_NEW, async (): Promise<void> => {
+    bridge.openWindow();
+  });
 }
 
 export function registerClipboardHistoryHandlers(bridge: AppDataHost): void {

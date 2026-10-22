@@ -17,6 +17,8 @@ export interface WindowRouter {
   broadcast(channel: string, ...args: unknown[]): void;
   assign(sessionId: string, windowId: number): void;
   windowIdOfSender(sender: { id: number } | null | undefined): number | undefined;
+  /** Persistence key of the sender's window: null for the main window, a string for the others. */
+  keyOfSender(sender: { id: number } | null | undefined): string | null;
 }
 
 /**
@@ -27,12 +29,14 @@ export interface WindowRouter {
 export class WindowManager<W extends ManagedWindow = ManagedWindow> implements WindowRouter {
   private readonly windows = new Map<number, W>();
   private readonly sessionOwner = new Map<string, number>();
+  private readonly windowKey = new Map<number, string>();
   private focusedId: number | null = null;
 
   /** Adds a window; the first one (or the last focused) is what prompts fall back to. Returns its id. */
-  register(win: W): number {
+  register(win: W, key: string | null = null): number {
     const id = win.webContents.id;
     this.windows.set(id, win);
+    if (key !== null) this.windowKey.set(id, key);
     this.focusedId = id;
     return id;
   }
@@ -40,6 +44,7 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
   /** Forgets a window and every session it owned (their renderer is gone). Returns the released session ids. */
   unregister(windowId: number): string[] {
     this.windows.delete(windowId);
+    this.windowKey.delete(windowId);
     if (this.focusedId === windowId) {
       const remaining = this.live();
       this.focusedId = remaining.length > 0 ? remaining[remaining.length - 1].webContents.id : null;
@@ -78,6 +83,15 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
   /** Window id for the sender of an IPC call, or undefined when it is not one of our windows. */
   windowIdOfSender(sender: { id: number } | null | undefined): number | undefined {
     return sender && this.windows.has(sender.id) ? sender.id : undefined;
+  }
+
+  keyOfSender(sender: { id: number } | null | undefined): string | null {
+    return (sender && this.windowKey.get(sender.id)) ?? null;
+  }
+
+  /** Persistence key of a window (null for the main window), or undefined when it is not registered. */
+  keyOf(windowId: number): string | null | undefined {
+    return this.windows.has(windowId) ? (this.windowKey.get(windowId) ?? null) : undefined;
   }
 
   /** True only for the top-level frame of a registered window; anything else is untrusted. */

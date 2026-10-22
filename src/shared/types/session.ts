@@ -69,9 +69,32 @@ export interface SavedPaneState {
   path: string;
 }
 
+/** Window position and size in screen coordinates (DIPs). */
+export interface SavedWindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A secondary window: the main window keeps using the top-level `tabs`/`activeTabId` of SessionData. */
+export interface SavedWindow {
+  /** Stable id of the window across restarts. */
+  key: string;
+  bounds?: SavedWindowBounds;
+  maximized?: boolean;
+  tabs: SavedTab[];
+  activeTabId: string;
+}
+
 export interface SessionData {
   tabs: SavedTab[];
   activeTabId: string;
+  /** Position of the main window (the one whose tabs are the top-level `tabs`). */
+  mainBounds?: SavedWindowBounds;
+  mainMaximized?: boolean;
+  /** Secondary windows, restored after the main one. */
+  windows?: SavedWindow[];
   lastPaths?: Record<string, string>;
   panes?: {
     left: SavedPaneState;

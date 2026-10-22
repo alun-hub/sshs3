@@ -439,6 +439,8 @@ export const api: MultiSSHApi = {
   sessionSave: (data: SessionData): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_SAVE, data),
 
+  windowNew: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_NEW),
+
   // Clipboard history
   clipboardHistoryList: (hostKey?: string): Promise<ClipboardHistoryEntry[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_HISTORY_LIST, hostKey),

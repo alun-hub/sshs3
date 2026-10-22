@@ -19,7 +19,15 @@ export const QuitConfirmBridge: React.FC = () => {
     const unsubscribe = window.multissh.onQuitConfirmPrompt((event: QuitConfirmPromptEvent) => {
       void (async () => {
         const proceed =
-          event.kind === 'active-transfers'
+          event.kind === 'close-window'
+            ? await confirm({
+                title: 'Close this window?',
+                message: `${event.sessionCount ?? 0} open session(s) in this window will be closed.`,
+                confirmLabel: 'Close Window',
+                cancelLabel: 'Cancel',
+                danger: true,
+              })
+            : event.kind === 'active-transfers'
             ? await confirm({
                 title: 'Transfers in progress',
                 message: `There ${event.activeTransferCount === 1 ? 'is' : 'are'} ${event.activeTransferCount ?? 0} file transfer(s) in progress. If you quit now, they'll be cancelled and files may be left incomplete.`,

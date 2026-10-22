@@ -187,6 +187,7 @@ export const IPC_CHANNELS = {
   // Session & Tabs
   SESSION_GET: 'session:get',
   SESSION_SAVE: 'session:save',
+  WINDOW_NEW: 'window:new',
   CLIPBOARD_HISTORY_LIST: 'clipboardHistory:list',
   CLIPBOARD_HISTORY_ADD: 'clipboardHistory:add',
   CLIPBOARD_HISTORY_DELETE: 'clipboardHistory:delete',
@@ -497,8 +498,10 @@ export interface TransferConflictPromptEvent {
  */
 export interface QuitConfirmPromptEvent {
   id: string;
-  kind: 'active-transfers' | 'confirm-before-quit';
+  kind: 'active-transfers' | 'confirm-before-quit' | 'close-window';
   activeTransferCount?: number;
+  /** For 'close-window': how many live sessions closing the window will end. */
+  sessionCount?: number;
 }
 
 export interface DirSyncComputeDiffOptions {
@@ -656,6 +659,8 @@ export interface MultiSSHApi {
   // Session
   sessionGet(): Promise<SessionData | null>;
   sessionSave(data: SessionData): Promise<void>;
+  /** Opens another app window (e.g. for a second monitor). */
+  windowNew(): Promise<void>;
   clipboardHistoryList(hostKey?: string): Promise<ClipboardHistoryEntry[]>;
   clipboardHistoryAdd(text: string, hostKey: string, hostLabel: string): Promise<void>;
   clipboardHistoryDelete(id: string): Promise<void>;
