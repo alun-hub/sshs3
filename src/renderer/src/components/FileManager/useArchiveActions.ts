@@ -17,6 +17,8 @@ interface UseArchiveActionsParams {
   setLoading: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setSelectedPaths: Dispatch<SetStateAction<Set<string>>>;
+  /** Moves the list's keyboard focus to the new item, so Enter acts on what is highlighted. */
+  requestFocus: (path: string) => void;
 }
 
 /** Compress / extract for the selection of a file pane; the new archive or folder is selected afterwards. */
@@ -28,6 +30,7 @@ export function useArchiveActions({
   setLoading,
   setError,
   setSelectedPaths,
+  requestFocus,
 }: UseArchiveActionsParams) {
   // The operation can outlive the folder it started in; the latest path tells whether the pane is still there.
   const latestPathRef = useRef(currentPath);
@@ -42,8 +45,12 @@ export function useArchiveActions({
         const createdName = await op();
         // Reloading or selecting after the user moved on would show the old folder's list in the new one.
         if (latestPathRef.current === startPath) {
+          // Focus first: the list re-focuses its active row whenever its entries change, so asking after the
+          // reload would let that pending re-focus put the keyboard focus back on the row that was clicked.
+          const createdPath = joinPath(startPath, createdName);
+          requestFocus(createdPath);
           await load(true);
-          setSelectedPaths(new Set([joinPath(startPath, createdName)]));
+          setSelectedPaths(new Set([createdPath]));
         }
       } catch (err) {
         setError(describeIpcError(err, failure));
@@ -51,7 +58,7 @@ export function useArchiveActions({
         setLoading(false);
       }
     },
-    [currentPath, load, setLoading, setError, setSelectedPaths]
+    [currentPath, load, setLoading, setError, setSelectedPaths, requestFocus]
   );
 
   const handleCompress = useCallback(

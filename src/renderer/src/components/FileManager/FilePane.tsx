@@ -131,6 +131,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [patternOpen, setPatternOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<{ path: string; id: number } | null>(null);
   const [addToDotfilesOpen, setAddToDotfilesOpen] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [editorEntry, setEditorEntry] = useState<FileEntry | null>(null);
@@ -637,6 +638,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const supportsChmod = source.sourceType !== 's3';
   const selectedEntries = activeEntries.filter((e) => selectedPaths.has(e.path));
 
+  const requestFocus = useCallback(
+    (path: string) => setFocusRequest((prev) => ({ path, id: (prev?.id ?? 0) + 1 })),
+    []
+  );
   const { handleCompress, handleExtract } = useArchiveActions({
     providerId: source.providerId,
     currentPath,
@@ -645,6 +650,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setLoading,
     setError,
     setSelectedPaths,
+    requestFocus,
   });
 
   const isAtBucketRoot = source.sourceType === 's3' && (currentPath === '' || currentPath === '/');
@@ -963,6 +969,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           loading={loading}
           selectedPaths={selectedPaths}
           onSelectionChange={setSelectedPaths}
+          focusRequest={focusRequest}
           onOpen={handleOpen}
           filterText={filterText}
           onDraggableStart={(entry, e) => {

@@ -12,6 +12,8 @@ interface FileListProps {
   loading: boolean;
   selectedPaths: Set<string>;
   onSelectionChange: (paths: Set<string>) => void;
+  /** Moves the keyboard focus (what Enter and the arrow keys act on) to `path`; a new `id` re-applies the same path. */
+  focusRequest?: { path: string; id: number } | null;
   onOpen: (entry: FileEntry) => void;
   /** Return true when the drag was handed to the OS (default prevented): the click that follows then must not change the selection. */
   onDraggableStart?: (entry: FileEntry, e: React.DragEvent) => boolean | void;
@@ -60,6 +62,7 @@ export const FileList: React.FC<FileListProps> = ({
   loading,
   selectedPaths,
   onSelectionChange,
+  focusRequest,
   onOpen,
   onDraggableStart,
   isDropTarget,
@@ -96,6 +99,10 @@ export const FileList: React.FC<FileListProps> = ({
   const typeaheadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const activePath = focusedPath ?? (selectedPaths.size === 1 ? Array.from(selectedPaths)[0] : null);
+
+  useEffect(() => {
+    if (focusRequest) setFocusedPath(focusRequest.path);
+  }, [focusRequest]);
 
   useEffect(() => {
     return () => {

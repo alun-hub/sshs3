@@ -175,6 +175,23 @@ describe('FileList Component', () => {
     expect(onPaneDrop).toHaveBeenCalled();
   });
 
+  it('moves keyboard focus to the requested path, so Enter opens the highlighted entry', () => {
+    const onOpen = vi.fn();
+    const props = { entries: mockEntries, loading: false, onSelectionChange: vi.fn(), onOpen };
+    const { container, rerender } = render(<FileList {...props} selectedPaths={new Set(['/config.json'])} />);
+    const listContainer = container.querySelector('[tabindex="0"]')!;
+
+    // The user clicked config.json last; a later action selects documents programmatically.
+    fireEvent.click(screen.getByText('config.json').closest('[role="row"]') as HTMLElement);
+    rerender(<FileList {...props} selectedPaths={new Set(['/documents'])} />);
+    fireEvent.keyDown(listContainer, { key: 'Enter' });
+    expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ path: '/config.json' }));
+
+    rerender(<FileList {...props} selectedPaths={new Set(['/documents'])} focusRequest={{ path: '/documents', id: 1 }} />);
+    fireEvent.keyDown(listContainer, { key: 'Enter' });
+    expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ path: '/documents' }));
+  });
+
   describe('Type-ahead search', () => {
     it('selects entry and displays badge when typing a single character', () => {
       const onSelectionChange = vi.fn();
