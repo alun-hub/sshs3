@@ -247,6 +247,10 @@ export const App: React.FC = () => {
     void window.multissh.settingsSave?.(newSettings);
   };
 
+  const handleToggleHiddenFiles = () => {
+    handleSaveSettings({ ...settings, showHiddenFiles: !(settings.showHiddenFiles ?? false) });
+  };
+
   const focusActiveTabContent = useCallback(() => {
     setTabBarFocused(false);
     const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -540,6 +544,7 @@ export const App: React.FC = () => {
                       initialLocalPath={tab.initialLocalPath}
                       initialSelectedPath={tab.initialSelectedPath}
                       showHiddenFiles={settings.showHiddenFiles ?? false}
+                      onToggleHiddenFiles={handleToggleHiddenFiles}
                       gitIntegrationEnabled={settings.fileManagerGitIntegration ?? true}
                     />
                   </div>

@@ -52,6 +52,7 @@ interface DualPaneExplorerProps {
   initialSelectedPath?: string;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default. */
   showHiddenFiles?: boolean;
+  onToggleHiddenFiles?: () => void;
   /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
   gitIntegrationEnabled?: boolean;
 }
@@ -69,6 +70,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   initialLocalPath,
   initialSelectedPath,
   showHiddenFiles = false,
+  onToggleHiddenFiles,
   gitIntegrationEnabled = true,
 }) => {
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
@@ -701,6 +703,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             otherPane={otherPaneForLeft}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
+            onToggleHiddenFiles={onToggleHiddenFiles}
             gitIntegrationEnabled={gitIntegrationEnabled}
           />
           </div>
@@ -727,6 +730,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
             otherPane={otherPaneForRight}
             shortcuts={shortcuts}
             showHiddenFiles={showHiddenFiles}
+            onToggleHiddenFiles={onToggleHiddenFiles}
             gitIntegrationEnabled={gitIntegrationEnabled}
           />
           </div>

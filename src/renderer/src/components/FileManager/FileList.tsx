@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { makeNameMatcher } from '../../lib/nameFilter';
+import { sortFileEntries, type FileSortDir as SortDir, type FileSortKey as SortKey } from '../../lib/fileSort';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { File, FileArchive, FileCode, FileImage, FileText, Folder, GitBranch, Loader2, Search } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { classNames, formatBytes } from '../../lib/format';
 
-type SortKey = 'name' | 'size' | 'mtime' | 'permissions';
-type SortDir = 'asc' | 'desc';
 
 interface FileListProps {
   entries: FileEntry[];
@@ -123,22 +122,7 @@ export const FileList: React.FC<FileListProps> = ({
     return entries.filter((e) => matches(e.name.slice(e.name.lastIndexOf('/') + 1)));
   }, [entries, filterText]);
 
-  const sorted = useMemo(() => {
-    const copy = [...filtered];
-    copy.sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-      const cmp =
-        sortKey === 'name'
-          ? a.name.localeCompare(b.name)
-          : sortKey === 'size'
-            ? a.size - b.size
-            : sortKey === 'permissions'
-              ? (a.permissions ?? '').localeCompare(b.permissions ?? '')
-              : (a.mtime ?? '').localeCompare(b.mtime ?? '');
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-    return copy;
-  }, [filtered, sortKey, sortDir]);
+  const sorted = useMemo(() => sortFileEntries(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
 
   const toggleSort = useCallback(
     (key: SortKey) => {

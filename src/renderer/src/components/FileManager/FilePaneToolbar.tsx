@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, Eye, EyeOff, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
 import { Breadcrumbs, type BreadcrumbsHandle } from './Breadcrumbs';
@@ -32,6 +32,9 @@ interface FilePaneToolbarProps {
   setChmodOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   onOpenTerminal?: (path: string) => void;
+  showHiddenFiles: boolean;
+  /** Flips the global "Show hidden files" setting; omitted when the host can't persist it. */
+  onToggleHiddenFiles?: () => void;
   /** The git status entry, rendered between the breadcrumbs and the action groups. */
   children?: React.ReactNode;
   /** Lets the pane's keydown handler trigger path-editing (Ctrl+L/Alt+D, §25). */
@@ -64,6 +67,8 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   setChmodOpen,
   setSearchOpen,
   onOpenTerminal,
+  showHiddenFiles,
+  onToggleHiddenFiles,
   children,
   breadcrumbsRef,
 }) => (
@@ -220,6 +225,23 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
         >
           <Search className="h-4 w-4" />
         </button>
+        {onToggleHiddenFiles && (
+          <button
+            type="button"
+            title={showHiddenFiles ? 'Hide hidden files (Ctrl+H)' : 'Show hidden files (Ctrl+H)'}
+            aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
+            aria-pressed={showHiddenFiles}
+            onClick={onToggleHiddenFiles}
+            className={
+              'rounded-lg p-1 transition-colors ' +
+              (showHiddenFiles
+                ? 'bg-sky-500/20 text-sky-400'
+                : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary')
+            }
+          >
+            {showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </button>
+        )}
         <button
           type="button"
           title={sourceType === 'k8s' ? 'Search in Files not supported on Kubernetes' : 'Search in Files...'}

@@ -46,6 +46,8 @@ interface FilePaneProps {
   shortcuts?: Record<string, string>;
   /** Settings > Files & Storage > "Show hidden files and dotfiles". Off by default — entries whose name starts with "." are filtered out of the list (but still counted/selectable if already selected). */
   showHiddenFiles?: boolean;
+  /** Toolbar toggle for the setting above. */
+  onToggleHiddenFiles?: () => void;
   /** Settings > Git & GitHub > "SFTP & File Manager Git Integration". On by default. */
   gitIntegrationEnabled?: boolean;
   /** Optional file or folder path to highlight upon loading. */
@@ -66,6 +68,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   otherPane,
   shortcuts,
   showHiddenFiles = false,
+  onToggleHiddenFiles,
   gitIntegrationEnabled = true,
   initialSelectedPath,
 }) => {
@@ -702,6 +705,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       return;
     }
 
+    if (e.key === 'h' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && onToggleHiddenFiles) {
+      e.preventDefault();
+      onToggleHiddenFiles();
+      return;
+    }
+
     if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleCopy();
@@ -832,6 +841,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         setChmodOpen={setChmodOpen}
         setSearchOpen={setSearchOpen}
         onOpenTerminal={onOpenTerminal}
+        showHiddenFiles={showHiddenFiles}
+        onToggleHiddenFiles={onToggleHiddenFiles}
       >
         <GitStatusMenu
           enabled={gitIntegrationEnabled}
