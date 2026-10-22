@@ -67,6 +67,11 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
         throw err;
       } finally {
         bridge.pendingAwsSsoLogins.delete(id);
+        // Closes the renderer's approval dialog; without it the dialog stays up after approval.
+        const webContents = bridge.getWebContents();
+        if (webContents && !webContents.isDestroyed?.()) {
+          webContents.send(IPC_CHANNELS.AWS_SSO_PROMPT_DONE, id);
+        }
       }
     }
   );

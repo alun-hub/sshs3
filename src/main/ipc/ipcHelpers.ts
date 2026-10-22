@@ -86,7 +86,15 @@ export function parseK8sServerArg(value: unknown): string {
   if (trimmed.length > MAX_SERVER_URL_LENGTH) {
     throw new Error('Server URL is too long');
   }
-  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  if (trimmed.includes('\\')) {
+    throw new Error('Invalid server URL');
+  }
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  // Any other "scheme:" prefix (e.g. "http:/host") would be parsed differently here than by a consumer; "host:port" is fine.
+  if (!hasScheme && /^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))/i.test(trimmed)) {
+    throw new Error('Invalid server URL');
+  }
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
   let url: URL;
   try {
     url = new URL(candidate);
@@ -106,7 +114,8 @@ export function parseK8sServerArg(value: unknown): string {
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))) {
     throw new Error('Server URL must use https (plain http is only allowed for localhost)');
   }
-  return trimmed;
+  // Return what was validated, so every consumer sees the same URL as this check did.
+  return hasScheme ? url.toString().replace(/\/+$/, '') : trimmed;
 }
 
 function isLoopbackHostname(hostname: string): boolean {

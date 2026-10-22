@@ -25,6 +25,13 @@ export const AwsSsoLoginModal: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!window.multissh?.onAwsSsoPromptDone) return;
+    return window.multissh.onAwsSsoPromptDone((id) => {
+      setPrompts((prev) => prev.filter((p) => p.id !== id));
+    });
+  }, []);
+
+  useEffect(() => {
     setCopied(null);
     setCancelling(false);
   }, [currentPrompt?.id]);

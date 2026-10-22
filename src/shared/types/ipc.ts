@@ -280,6 +280,7 @@ export const IPC_CHANNELS = {
   AWS_SSO_LOGIN: 'aws-sso:login',
   AWS_SSO_LOGIN_CANCEL: 'aws-sso:login-cancel',
   AWS_SSO_PROMPT: 'aws-sso:prompt',
+  AWS_SSO_PROMPT_DONE: 'aws-sso:prompt-done',
   AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
   AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
 
@@ -789,6 +790,8 @@ export interface MultiSSHApi {
   awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
+  /** Fires with the prompt id once a login attempt has ended (approved, failed, expired or cancelled). */
+  onAwsSsoPromptDone(callback: (id: string) => void): () => void;
   awsSsoListAccounts(
     accessToken: string,
     region: string,

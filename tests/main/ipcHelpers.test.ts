@@ -136,4 +136,11 @@ describe('server URL rules (saved, synced and shared clusters)', () => {
     expect(() => parseK8sProfile(profile('http://127.0.0.1.example.com'))).toThrow(/must use https/);
     expect(parseK8sProfile(profile('api.example.com:6443')).server).toBe('api.example.com:6443');
   });
+
+  it('rejects inputs that parse differently here than in a consumer', () => {
+    expect(() => parseK8sProfile(profile('http:/api.example.com'))).toThrow(/Invalid server URL/);
+    expect(() => parseK8sProfile(profile('ftp://api.example.com'))).toThrow(/Invalid server URL/);
+    expect(() => parseK8sProfile(profile('https:\\\\api.example.com'))).toThrow(/Invalid server URL/);
+    expect(parseK8sProfile(profile('HTTPS://api.example.com:6443/')).server).toBe('https://api.example.com:6443');
+  });
 });

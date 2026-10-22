@@ -641,6 +641,14 @@ export const api: MultiSSHApi = {
     };
   },
 
+  onAwsSsoPromptDone: (callback: (id: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, id: string) => callback(id);
+    ipcRenderer.on(IPC_CHANNELS.AWS_SSO_PROMPT_DONE, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.AWS_SSO_PROMPT_DONE, listener);
+    };
+  },
+
   awsSsoListAccounts: (
     accessToken: string,
     region: string,
