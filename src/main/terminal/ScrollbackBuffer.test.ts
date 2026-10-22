@@ -37,4 +37,28 @@ describe('ScrollbackBuffer', () => {
     b.delete('a');
     expect(b.get('a')).toBe('');
   });
+
+  it('keeps exactly the newest output across many tiny chunks, including after compaction', () => {
+    const b = new ScrollbackBuffer(1000);
+    const all: string[] = [];
+    for (let i = 0; i < 20_000; i++) {
+      const chunk = String(i % 10);
+      all.push(chunk);
+      b.append('a', chunk);
+    }
+    expect(b.get('a')).toBe(all.slice(-1000).join(''));
+    b.append('a', 'XYZ');
+    expect(b.get('a')).toBe(all.slice(-997).join('') + 'XYZ');
+  });
+
+  it('keeps a session usable after it was emptied by an oversized chunk', () => {
+    const b = new ScrollbackBuffer(5);
+    b.append('a', '0123456789');
+    expect(b.get('a')).toBe('56789');
+    // Whole old chunks go first, as before: the 5 kept characters make room for the new chunk.
+    b.append('a', 'ab');
+    expect(b.get('a')).toBe('ab');
+    b.append('a', 'cd');
+    expect(b.get('a')).toBe('abcd');
+  });
 });
