@@ -63,6 +63,22 @@ describe('IpcBridge multi-window routing', () => {
     expect(windows.ownerOf('sess-y')).toBeUndefined();
   });
 
+  it('tells every window that the kubeconfig changed, and gives the exec-auth warning to the focused one only', async () => {
+    const { bridge, a, b } = makeBridge();
+    bridge.register();
+    const k8s = bridge.k8sDiscoveryService as unknown as { pendingExecAuthWarning: string | null; changeListeners: Set<() => void> };
+    k8s.pendingExecAuthWarning = 'new exec-auth user';
+
+    for (const listener of [...k8s.changeListeners]) listener();
+
+    expect(a.send).toHaveBeenCalledTimes(1);
+    expect(a.send).toHaveBeenCalledWith('k8s:config-changed', 'new exec-auth user');
+    expect(b.send).toHaveBeenCalledTimes(1);
+    expect(b.send).toHaveBeenCalledWith('k8s:config-changed');
+    expect(k8s.pendingExecAuthWarning).toBeNull();
+    await bridge.dispose();
+  });
+
   it('sends prompts and ownerless events to the focused window', () => {
     const { bridge, a, b } = makeBridge();
     bridge.sendToFocused('prompt');

@@ -95,6 +95,26 @@ describe('WindowManager', () => {
     expect(b.send).not.toHaveBeenCalled();
   });
 
+  it('broadcasts to every live window except the one named', () => {
+    const wm = new WindowManager();
+    const a = fakeWindow(1);
+    const b = fakeWindow(2);
+    const c = fakeWindow(3);
+    wm.register(a);
+    wm.register(b);
+    wm.register(c);
+    c.destroyed = true;
+
+    wm.broadcastExcept(1, 'k8s:config-changed');
+    expect(a.send).not.toHaveBeenCalled();
+    expect(b.send).toHaveBeenCalledWith('k8s:config-changed');
+    expect(c.send).not.toHaveBeenCalled();
+
+    wm.broadcastExcept(undefined, 'all');
+    expect(a.send).toHaveBeenCalledWith('all');
+    expect(b.send).toHaveBeenCalledWith('all');
+  });
+
   it('only trusts the top-level frame of a registered, live window', () => {
     const wm = new WindowManager();
     const a = fakeWindow(1);

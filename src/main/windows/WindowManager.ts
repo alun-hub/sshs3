@@ -28,6 +28,8 @@ export interface WindowActions {
 export interface WindowRouter {
   sendToSession(sessionId: string, channel: string, ...args: unknown[]): boolean;
   broadcast(channel: string, ...args: unknown[]): void;
+  /** Like broadcast, but skips one window (undefined skips none). */
+  broadcastExcept(windowId: number | undefined, channel: string, ...args: unknown[]): void;
   assign(sessionId: string, windowId: number): void;
   windowIdOfSender(sender: { id: number } | null | undefined): number | undefined;
   /** Persistence key of the sender's window: null for the main window, a string for the others. */
@@ -201,6 +203,12 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
 
   broadcast(channel: string, ...args: unknown[]): void {
     for (const win of this.live()) win.webContents.send(channel, ...args);
+  }
+
+  broadcastExcept(windowId: number | undefined, channel: string, ...args: unknown[]): void {
+    for (const win of this.live()) {
+      if (win.webContents.id !== windowId) win.webContents.send(channel, ...args);
+    }
   }
 
   private releaseWindow(windowId: number): string[] {

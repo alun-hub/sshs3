@@ -1618,7 +1618,9 @@ export class IpcBridge {
       // reload just introduced a new exec-auth user — see
       // K8sDiscoveryService.checkExecAuthChange. The warning is consumed once, so it goes to the
       // focused window only; the others just reload.
-      this.sendToFocused(IPC_CHANNELS.K8S_CONFIG_CHANGED, this.k8sDiscoveryService.consumePendingExecAuthWarning());
+      const warning = this.k8sDiscoveryService.consumePendingExecAuthWarning();
+      this.windows?.broadcastExcept(this.getWebContents()?.id, IPC_CHANNELS.K8S_CONFIG_CHANGED);
+      this.sendToFocused(IPC_CHANNELS.K8S_CONFIG_CHANGED, warning);
     };
     this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);
   }
