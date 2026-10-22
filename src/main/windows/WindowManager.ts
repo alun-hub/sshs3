@@ -137,13 +137,20 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
     return this.sessionOwner.get(sessionId);
   }
 
-  /** Sessions the window owns and is not about to hand to another window. */
+  /**
+   * Sessions the window owns and is not about to hand to another window, plus the ones on their way
+   * to it: a session moved into a window that is closed before it attached would otherwise keep
+   * running with no tab and no owner that answers for it.
+   */
   sessionsOf(windowId: number): string[] {
-    const ids: string[] = [];
+    const ids = new Set<string>();
     for (const [sessionId, owner] of this.sessionOwner) {
-      if (owner === windowId && !this.isReservedForOther(sessionId, windowId)) ids.push(sessionId);
+      if (owner === windowId && !this.isReservedForOther(sessionId, windowId)) ids.add(sessionId);
     }
-    return ids;
+    for (const [sessionId, target] of this.reserved) {
+      if (target === windowId) ids.add(sessionId);
+    }
+    return [...ids];
   }
 
   /**
@@ -213,7 +220,10 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
 
   private releaseWindow(windowId: number): string[] {
     const released = this.sessionsOf(windowId);
-    for (const sessionId of released) this.sessionOwner.delete(sessionId);
+    for (const sessionId of released) {
+      this.sessionOwner.delete(sessionId);
+      this.reserved.delete(sessionId);
+    }
     return released;
   }
 

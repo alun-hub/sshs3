@@ -149,6 +149,32 @@ describe('WindowManager', () => {
     expect(wm.sessionsOf(2)).toEqual(['s1']);
   });
 
+  it('counts and releases sessions on their way to a window that closes before claiming them', () => {
+    const wm = new WindowManager();
+    wm.register(fakeWindow(1));
+    wm.register(fakeWindow(2));
+    wm.assign('s1', 1);
+    wm.assign('s2', 1);
+    wm.reserve(['s1'], 2);
+
+    expect(wm.sessionsOf(2)).toEqual(['s1']);
+    expect(wm.unregister(2)).toEqual(['s1']);
+    // The source keeps what it still owns, and the moved session no longer has an owner or a reservation.
+    expect(wm.sessionsOf(1)).toEqual(['s2']);
+    expect(wm.ownerOf('s1')).toBeUndefined();
+  });
+
+  it('counts a claimed session once even though it was reserved for the window', () => {
+    const wm = new WindowManager();
+    wm.register(fakeWindow(1));
+    wm.register(fakeWindow(2));
+    wm.assign('s1', 1);
+    wm.reserve(['s1'], 2);
+    expect(wm.sessionsOf(2)).toEqual(['s1']);
+    wm.assign('s1', 2);
+    expect(wm.sessionsOf(2)).toEqual(['s1']);
+  });
+
   it('lets a reservation lapse when the target never claims the session', () => {
     vi.useFakeTimers();
     try {
