@@ -20,7 +20,7 @@ function setup(webLogin: { probe: Handler; login: Handler; cancel: () => void })
   const reload = vi.fn();
   const bridge = {
     registerHandler: (channel: string, handler: Handler) => handlers.set(channel, handler),
-    getWebContents: () => ({ send, isDestroyed: () => false }),
+    broadcast: send,
     k8sDiscoveryService: { reload },
   };
   registerK8sHandlers(bridge as never, { openShiftWebLogin: webLogin as never });
@@ -155,7 +155,7 @@ describe('saved cluster profile handlers', () => {
     const handlers = new Map<string, Handler>();
     const bridge = {
       registerHandler: (channel: string, handler: Handler) => handlers.set(channel, handler),
-      getWebContents: () => null,
+      broadcast: vi.fn(),
       k8sDiscoveryService: { reload: vi.fn() },
     };
     registerK8sHandlers(bridge as never, { openShiftWebLogin: {} as never, profileStore: store as never });

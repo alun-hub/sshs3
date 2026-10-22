@@ -13,7 +13,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type K8sHost = Pick<
   IpcBridge,
-  'getWebContents' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'scheduleAutoSync' | 'sshTunnelManager'
+  'assignSession' | 'broadcast' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'scheduleAutoSync' | 'sshTunnelManager'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig'>;
 };
@@ -46,10 +46,7 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
   const completeLogin = async (options: K8sLoginOptions): Promise<K8sLoginResult> => {
     const result = await loginWithToken(options);
     bridge.k8sDiscoveryService.reload();
-    const webContents = bridge.getWebContents();
-    if (webContents && !webContents.isDestroyed?.()) {
-      webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED);
-    }
+    bridge.broadcast(IPC_CHANNELS.K8S_CONFIG_CHANGED);
     return result;
   };
 
@@ -128,11 +125,12 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
   bridge.registerHandler(
     IPC_CHANNELS.K8S_TERMINAL_CREATE,
     async (
-      _event,
+      event,
       target: K8sTerminalTarget,
       options?: { cols?: number; rows?: number }
     ): Promise<{ sessionId: string }> => {
       const sessionId = await bridge.k8sTerminalManager.createSession(target, options);
+      bridge.assignSession(event?.sender, sessionId);
       return { sessionId };
     }
   );
@@ -164,11 +162,12 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
   bridge.registerHandler(
     IPC_CHANNELS.K8S_LOG_START,
     async (
-      _event,
+      event,
       target: K8sTerminalTarget,
       options?: { tailLines?: number; timestamps?: boolean; previous?: boolean }
     ): Promise<{ sessionId: string }> => {
       const sessionId = await bridge.k8sLogManager.startFollow(target, options);
+      bridge.assignSession(event?.sender, sessionId);
       return { sessionId };
     }
   );

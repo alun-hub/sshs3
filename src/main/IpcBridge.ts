@@ -15,6 +15,7 @@ import { ClipboardHistoryStore } from './clipboard/ClipboardHistoryStore';
 import { SnippetStore } from './snippets/SnippetStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { UpdateService } from './update/UpdateService';
+import type { WindowRouter } from './windows/WindowManager';
 import { SmartcardCoordinator } from './smartcard/SmartcardCoordinator';
 import { createHostVerifier, type HostKeyPromptInfo } from './ssh/HostKeyVerifier';
 import { DotfilePoolStore } from './dotfiles/DotfilePoolStore';
@@ -108,6 +109,10 @@ interface PendingAwsSsoLogin {
 
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
+  /** Multi-window: true for the top-level frame of any app window. Falls back to the focused window's main frame. */
+  isTrustedFrame?: (frame: Electron.WebFrameMain | null) => boolean;
+  /** Multi-window event routing; without it every event goes to the focused window (getWebContents). */
+  windows?: WindowRouter;
   sshPtyManager?: SSHPtyManager;
   storageRegistry?: StorageRegistry;
   transferQueue?: TransferQueue;
@@ -174,6 +179,8 @@ export class IpcBridge {
   private updateService: UpdateService | null = null;
   private confirmQuit: (() => Promise<boolean>) | undefined;
   public getWebContents: () => Electron.WebContents | null | undefined;
+  private isTrustedFrame: ((frame: Electron.WebFrameMain | null) => boolean) | undefined;
+  private windows: WindowRouter | undefined;
 
   // The members below are public only so the handler groups in src/main/ipc can reach them. Each group
   // declares the exact subset it uses as a Pick<IpcBridge, ...> (see ipc/*Handlers.ts), and
@@ -373,6 +380,43 @@ export class IpcBridge {
     this.sshTunnelManager = options.sshTunnelManager ?? new SSHTunnelManager();
     this.getWebContents = options.getWebContents ?? (() => null);
     this.confirmQuit = options.confirmQuit;
+    this.isTrustedFrame = options.isTrustedFrame;
+    this.windows = options.windows;
+  }
+
+  /** Prompts and other global dialogs: the window the user is looking at. */
+  public sendToFocused(channel: string, ...args: unknown[]): boolean {
+    const webContents = this.getWebContents();
+    if (!webContents || webContents.isDestroyed?.()) return false;
+    webContents.send(channel, ...args);
+    return true;
+  }
+
+  /** Session-bound events go to the window that owns the session (focused window if it has none). */
+  public sendToSession(sessionId: string | undefined, channel: string, ...args: unknown[]): boolean {
+    if (sessionId && this.windows) return this.windows.sendToSession(sessionId, channel, ...args);
+    return this.sendToFocused(channel, ...args);
+  }
+
+  /** Replies to the window that issued an IPC request (search, dir-sync, AWS SSO ...). */
+  public sendToSender(sender: Electron.WebContents | null | undefined, channel: string, ...args: unknown[]): boolean {
+    if (sender && !sender.isDestroyed?.()) {
+      sender.send(channel, ...args);
+      return true;
+    }
+    return this.sendToFocused(channel, ...args);
+  }
+
+  /** App-wide state changes every window must see (settings, sync, transfers, tunnels, updates). */
+  public broadcast(channel: string, ...args: unknown[]): void {
+    if (this.windows) this.windows.broadcast(channel, ...args);
+    else this.sendToFocused(channel, ...args);
+  }
+
+  /** Records that the window behind this IPC call owns the session, so its output is routed there. */
+  public assignSession(sender: Electron.WebContents | null | undefined, sessionId: string): void {
+    const windowId = this.windows?.windowIdOfSender(sender);
+    if (windowId !== undefined) this.windows?.assign(sessionId, windowId);
   }
 
   public setWebContentsGetter(getter: () => Electron.WebContents | null | undefined): void {
@@ -443,6 +487,12 @@ export class IpcBridge {
    * failing every handler.
    */
   private assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
+    if (this.isTrustedFrame) {
+      if (!this.isTrustedFrame(event.senderFrame)) {
+        throw new Error('Rejected IPC call from an untrusted frame');
+      }
+      return;
+    }
     const webContents = this.getWebContents();
     if (!webContents || webContents.isDestroyed()) return;
     if (event.senderFrame !== webContents.mainFrame) {
@@ -521,11 +571,8 @@ export class IpcBridge {
   private clearPresence(sessionId: string): void {
     if (this.activePresenceSessions.has(sessionId)) {
       this.activePresenceSessions.delete(sessionId);
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        const event: PresenceClearEvent = { sessionId };
-        webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
-      }
+      const event: PresenceClearEvent = { sessionId };
+      this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_CLEAR, event);
     }
   }
 
@@ -546,19 +593,15 @@ export class IpcBridge {
         if (sessionId) {
           this.activePresenceSessions.add(sessionId);
         }
-        const webContents = this.getWebContents();
-        if (!webContents || webContents.isDestroyed?.()) return;
         const event: PresencePromptEvent = { id, sessionId, message };
-        webContents.send(IPC_CHANNELS.PRESENCE_PROMPT, event);
+        this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_PROMPT, event);
       },
       onPresenceCleared: () => {
         if (sessionId) {
           this.activePresenceSessions.delete(sessionId);
         }
-        const webContents = this.getWebContents();
-        if (!webContents || webContents.isDestroyed?.()) return;
         const event: PresenceClearEvent = { id, sessionId };
-        webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
+        this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_CLEAR, event);
       },
     };
   }
@@ -827,10 +870,7 @@ export class IpcBridge {
     updatedCount?: number;
     error?: string;
   }): void {
-    const webContents = this.getWebContents();
-    if (webContents && !webContents.isDestroyed?.()) {
-      webContents.send(IPC_CHANNELS.DOTFILES_SYNC_STATUS, event);
-    }
+    this.sendToSession(event.sessionId, IPC_CHANNELS.DOTFILES_SYNC_STATUS, event);
   }
 
 
@@ -948,11 +988,8 @@ export class IpcBridge {
   }
 
   private async pushSyncStatusToRenderer(): Promise<void> {
-    const webContents = this.getWebContents();
-    if (webContents && !webContents.isDestroyed?.()) {
-      const status = await this.buildSyncStatus();
-      webContents.send(IPC_CHANNELS.PROFILE_SYNC_STATUS, status);
-    }
+    if (!this.getWebContents()) return;
+    this.broadcast(IPC_CHANNELS.PROFILE_SYNC_STATUS, await this.buildSyncStatus());
   }
 
   /** Starts (or restarts) the Team Vault background poll — see
@@ -1004,11 +1041,8 @@ export class IpcBridge {
       const changed = await this.teamVaultService.hasRemoteChangedSinceLastSync(vaultId, provider, remoteBasePath);
       if (!changed) return;
 
-      const webContents = this.getWebContents();
       if (await this.teamVaultService.hasUnpushedLocalChanges(vaultId)) {
-        if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, { vaultId });
-        }
+        this.broadcast(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, { vaultId });
         return;
       }
 
@@ -1016,9 +1050,7 @@ export class IpcBridge {
       try {
         await this.teamVaultService.pullFromRemote(vaultId, provider, remoteBasePath);
         await this.teamVaultConfigStore.setLastSyncAt(vaultId, new Date().toISOString());
-        if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, { vaultId });
-        }
+        this.broadcast(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED, { vaultId });
       } finally {
         this.endTeamVaultSync(vaultId);
       }
@@ -1065,10 +1097,7 @@ export class IpcBridge {
    * called through `beginTeamVaultSync`/`endTeamVaultSync`, never directly, so the reference count
    * and the emitted event can't drift apart. */
   private sendTeamVaultSyncStatus(vaultId: string, syncing: boolean): void {
-    const webContents = this.getWebContents();
-    if (webContents && !webContents.isDestroyed?.()) {
-      webContents.send(IPC_CHANNELS.TEAM_VAULT_SYNC_STATUS, { vaultId, syncing });
-    }
+    this.broadcast(IPC_CHANNELS.TEAM_VAULT_SYNC_STATUS, { vaultId, syncing });
   }
 
   /**
@@ -1413,10 +1442,7 @@ export class IpcBridge {
         confirmQuit: this.confirmQuit,
         getAutoCheck: async () => (await this.settingsStore.getSettings()).autoCheckUpdates !== false,
         send: (state) => {
-          const webContents = this.getWebContents();
-          if (webContents && !webContents.isDestroyed?.()) {
-            webContents.send(IPC_CHANNELS.UPDATE_STATE, state);
-          }
+          this.broadcast(IPC_CHANNELS.UPDATE_STATE, state);
         },
       });
     }
@@ -1433,27 +1459,18 @@ export class IpcBridge {
     this.onPtyData = ({ sessionId, data }) => {
       if (sessionId && this.activePresenceSessions.has(sessionId)) {
         this.activePresenceSessions.delete(sessionId);
-        const webContents = this.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          const event: PresenceClearEvent = { sessionId };
-          webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
-        }
+        const event: PresenceClearEvent = { sessionId };
+        this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_CLEAR, event);
       }
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.TERMINAL_DATA, sessionId, data);
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_DATA, sessionId, data);
     };
     this.sshPtyManager.on('data', this.onPtyData);
 
     this.onPtyExit = ({ sessionId, exitCode, signal }) => {
       if (sessionId && this.activePresenceSessions.has(sessionId)) {
         this.activePresenceSessions.delete(sessionId);
-        const webContents = this.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          const event: PresenceClearEvent = { sessionId };
-          webContents.send(IPC_CHANNELS.PRESENCE_CLEAR, event);
-        }
+        const event: PresenceClearEvent = { sessionId };
+        this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_CLEAR, event);
       }
 
       // Reject and remove any pending askpass prompts matching that sessionId
@@ -1471,11 +1488,8 @@ export class IpcBridge {
       // Tear down any private smartcard agent that was pre-loaded for this session.
       void this.smartcard.cleanupSmartcardSessionAgent(sessionId);
 
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        const event: SSHPtyExitEvent = { exitCode, signal };
-        webContents.send(IPC_CHANNELS.TERMINAL_EXIT, sessionId, event);
-      }
+      const event: SSHPtyExitEvent = { exitCode, signal };
+      this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_EXIT, sessionId, event);
     };
     this.sshPtyManager.on('exit', this.onPtyExit);
 
@@ -1486,19 +1500,16 @@ export class IpcBridge {
         this.activePresenceSessions.add(sessionId);
       }
 
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
-          id,
-          prompt,
-          sessionId,
-          kind,
-          context,
-          error: retry?.error,
-          attempt: retry?.attempt,
-          maxAttempts: retry?.maxAttempts,
-        });
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.ASKPASS_PROMPT, {
+        id,
+        prompt,
+        sessionId,
+        kind,
+        context,
+        error: retry?.error,
+        attempt: retry?.attempt,
+        maxAttempts: retry?.maxAttempts,
+      });
     };
     this.sshPtyManager.on('askpass', this.onPtyAskpass);
 
@@ -1507,20 +1518,14 @@ export class IpcBridge {
       if (sessionId) {
         this.activePresenceSessions.add(sessionId);
       }
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        const message = /touch/i.test(prompt) ? prompt : 'Touch your security key to confirm';
-        const event: PresencePromptEvent = { id, sessionId, message };
-        webContents.send(IPC_CHANNELS.PRESENCE_PROMPT, event);
-      }
+      const message = /touch/i.test(prompt) ? prompt : 'Touch your security key to confirm';
+      const event: PresencePromptEvent = { id, sessionId, message };
+      this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_PROMPT, event);
     };
     this.sshPtyManager.on('presence', this.onPtyPresence);
 
     this.sshPtyManager.on('reconnecting', ({ sessionId, attempt, maxAttempts }) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
     });
 
     this.sshPtyManager.on('hostkey-changed', ({ sessionId, ...target }) => {
@@ -1531,69 +1536,46 @@ export class IpcBridge {
     });
 
     this.onTransferProgress = (progress) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.TRANSFER_PROGRESS, progress);
-      }
+      this.broadcast(IPC_CHANNELS.TRANSFER_PROGRESS, progress);
     };
     this.transferQueue.on('progress', this.onTransferProgress);
 
     this.onK8sTerminalData = ({ sessionId, data }) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_TERMINAL_DATA, sessionId, data);
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_DATA, sessionId, data);
     };
     this.k8sTerminalManager.on('data', this.onK8sTerminalData);
 
     this.onK8sTerminalExit = ({ sessionId, status }) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_TERMINAL_EXIT, sessionId, { status });
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_EXIT, sessionId, { status });
     };
     this.k8sTerminalManager.on('exit', this.onK8sTerminalExit);
 
     this.onK8sLogData = ({ sessionId, data }) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_LOG_DATA, sessionId, data);
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.K8S_LOG_DATA, sessionId, data);
     };
     this.k8sLogManager.on('data', this.onK8sLogData);
 
     this.onK8sLogEnd = ({ sessionId }) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_LOG_END, sessionId);
-      }
+      this.sendToSession(sessionId, IPC_CHANNELS.K8S_LOG_END, sessionId);
     };
     this.k8sLogManager.on('end', this.onK8sLogEnd);
 
     this.onK8sPortForwardChange = (activeForwards) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, activeForwards);
-      }
+      this.broadcast(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, activeForwards);
     };
     this.k8sPortForwardManager.on('change', this.onK8sPortForwardChange);
 
     this.onSshTunnelChange = (active) => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        webContents.send(IPC_CHANNELS.SSH_TUNNEL_EVENT, active);
-      }
+      this.broadcast(IPC_CHANNELS.SSH_TUNNEL_EVENT, active);
     };
     this.sshTunnelManager.on('change', this.onSshTunnelChange);
 
     this.onK8sConfigChanged = () => {
-      const webContents = this.getWebContents();
-      if (webContents && !webContents.isDestroyed?.()) {
-        // Carries an optional warning (H8 code-review finding) when this
-        // reload just introduced a new exec-auth user — see
-        // K8sDiscoveryService.checkExecAuthChange.
-        webContents.send(IPC_CHANNELS.K8S_CONFIG_CHANGED, this.k8sDiscoveryService.consumePendingExecAuthWarning());
-      }
+      // Carries an optional warning (H8 code-review finding) when this
+      // reload just introduced a new exec-auth user — see
+      // K8sDiscoveryService.checkExecAuthChange. The warning is consumed once, so it goes to the
+      // focused window only; the others just reload.
+      this.sendToFocused(IPC_CHANNELS.K8S_CONFIG_CHANGED, this.k8sDiscoveryService.consumePendingExecAuthWarning());
     };
     this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);
   }

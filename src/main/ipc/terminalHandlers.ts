@@ -7,6 +7,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type TerminalHost = Pick<
   IpcBridge,
+  | 'assignSession'
   | 'registerHandler'
   | 'resolveProxyJumpConfig'
   | 'restoreSavedSecrets'
@@ -25,7 +26,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.TERMINAL_CREATE,
     async (
-      _event,
+      event,
       options: { config?: SSHConnectionConfig; local?: boolean; ptyOptions?: PtyOptions }
     ) => {
       if (!options || (!options.config && !options.local)) {
@@ -84,6 +85,8 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
       const session = options.local
         ? await bridge.sshPtyManager.createShellSession(ptyOptions)
         : await bridge.sshPtyManager.createSession(config!, ptyOptions);
+
+      bridge.assignSession(event?.sender, session.sessionId);
 
       if (!options.local && config) {
         // Fire-and-forget: never let the dotfiles check delay or fail the

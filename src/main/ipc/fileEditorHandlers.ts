@@ -4,7 +4,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type FileEditorHost = Pick<
   IpcBridge,
-  'fileEditorService' | 'fileTailService' | 'getWebContents' | 'registerHandler' | 'storageRegistry'
+  'fileEditorService' | 'fileTailService' | 'registerHandler' | 'sendToSender' | 'storageRegistry'
 >;
 
 async function ensureLocalProvider(bridge: FileEditorHost, providerId: string): Promise<void> {
@@ -42,17 +42,15 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
 
   bridge.registerHandler(
     IPC_CHANNELS.FILE_OPEN_EXTERNAL,
-    async (_event, providerId: string, remotePath: string) => {
+    async (event, providerId: string, remotePath: string) => {
+      const sender = event?.sender;
       await ensureLocalProvider(bridge, providerId);
       return await bridge.fileEditorService.openInExternalEditor(
         bridge.storageRegistry,
         providerId,
         remotePath,
         (statusEvent) => {
-          const webContents = bridge.getWebContents();
-          if (webContents && !webContents.isDestroyed?.()) {
-            webContents.send(IPC_CHANNELS.FILE_EXTERNAL_STATUS, statusEvent);
-          }
+          bridge.sendToSender(sender, IPC_CHANNELS.FILE_EXTERNAL_STATUS, statusEvent);
         }
       );
     }
@@ -67,23 +65,18 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
 
   bridge.registerHandler(
     IPC_CHANNELS.FILE_TAIL_START,
-    async (_event, providerId: string, remotePath: string) => {
+    async (event, providerId: string, remotePath: string) => {
+      const sender = event?.sender;
       await ensureLocalProvider(bridge, providerId);
       return await bridge.fileTailService.startTail(
         bridge.storageRegistry,
         providerId,
         remotePath,
         (dataEvent) => {
-          const webContents = bridge.getWebContents();
-          if (webContents && !webContents.isDestroyed?.()) {
-            webContents.send(IPC_CHANNELS.FILE_TAIL_DATA, dataEvent);
-          }
+          bridge.sendToSender(sender, IPC_CHANNELS.FILE_TAIL_DATA, dataEvent);
         },
         (errorEvent) => {
-          const webContents = bridge.getWebContents();
-          if (webContents && !webContents.isDestroyed?.()) {
-            webContents.send(IPC_CHANNELS.FILE_TAIL_ERROR, errorEvent);
-          }
+          bridge.sendToSender(sender, IPC_CHANNELS.FILE_TAIL_ERROR, errorEvent);
         }
       );
     }

@@ -1,0 +1,59 @@
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export const DEFAULT_WINDOW_SIZE = { width: 1200, height: 800 };
+const MIN_WINDOW_SIZE = { width: 400, height: 300 };
+/** How much of a restored window must overlap a display for the title bar to stay reachable. */
+const MIN_VISIBLE = { width: 120, height: 60 };
+
+function overlap(a: Rect, b: Rect): { width: number; height: number } {
+  return {
+    width: Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x),
+    height: Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y),
+  };
+}
+
+function isFiniteRect(value: Rect | undefined | null): value is Rect {
+  return (
+    !!value &&
+    Number.isFinite(value.x) &&
+    Number.isFinite(value.y) &&
+    Number.isFinite(value.width) &&
+    Number.isFinite(value.height)
+  );
+}
+
+function centered(size: { width: number; height: number }, workArea: Rect): Rect {
+  const width = Math.min(size.width, workArea.width);
+  const height = Math.min(size.height, workArea.height);
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+/**
+ * Validates saved window bounds against the displays that are connected now. Bounds that still
+ * overlap a display are kept (clamped to at least a usable size); anything else (monitor unplugged,
+ * resolution changed, corrupt value) falls back to a centered window on the primary display.
+ */
+export function resolveWindowBounds(saved: Rect | undefined | null, workAreas: Rect[], primary: Rect): Rect {
+  if (!isFiniteRect(saved)) return centered(DEFAULT_WINDOW_SIZE, primary);
+
+  const size = {
+    width: Math.max(MIN_WINDOW_SIZE.width, Math.round(saved.width)),
+    height: Math.max(MIN_WINDOW_SIZE.height, Math.round(saved.height)),
+  };
+  const candidate: Rect = { x: Math.round(saved.x), y: Math.round(saved.y), ...size };
+  const visible = workAreas.some((area) => {
+    const o = overlap(candidate, area);
+    return o.width >= MIN_VISIBLE.width && o.height >= MIN_VISIBLE.height;
+  });
+  return visible ? candidate : centered(size, primary);
+}

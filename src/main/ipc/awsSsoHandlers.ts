@@ -13,7 +13,7 @@ import type { IpcBridge } from '../IpcBridge';
 /** The part of IpcBridge this handler group may use. */
 export type AwsSsoHost = Pick<
   IpcBridge,
-  'awsSsoAuthService' | 'getWebContents' | 'pendingAwsSsoLogins' | 'registerHandler'
+  'awsSsoAuthService' | 'pendingAwsSsoLogins' | 'registerHandler' | 'sendToSender'
 >;
 
 /**
@@ -27,7 +27,7 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LOGIN,
     async (
-      _event,
+      event,
       startUrl: string,
       region: string,
       network?: AwsSsoNetworkOptions
@@ -36,6 +36,7 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
         throw new Error('Start URL and region are required');
       }
 
+      const sender = event?.sender;
       const id = crypto.randomUUID();
       const controller = new AbortController();
       bridge.pendingAwsSsoLogins.set(id, { cancel: () => controller.abort() });
@@ -52,11 +53,8 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
             ) {
               void electronShell.openExternal(urlToOpen).catch(() => {});
             }
-            const webContents = bridge.getWebContents();
-            if (webContents && !webContents.isDestroyed?.()) {
-              const event: AwsSsoPromptEvent = { id, ...prompt };
-              webContents.send(IPC_CHANNELS.AWS_SSO_PROMPT, event);
-            }
+            const promptEvent: AwsSsoPromptEvent = { id, ...prompt };
+            bridge.sendToSender(sender, IPC_CHANNELS.AWS_SSO_PROMPT, promptEvent);
           },
           signal: controller.signal,
         });
@@ -68,10 +66,7 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
       } finally {
         bridge.pendingAwsSsoLogins.delete(id);
         // Closes the renderer's approval dialog; without it the dialog stays up after approval.
-        const webContents = bridge.getWebContents();
-        if (webContents && !webContents.isDestroyed?.()) {
-          webContents.send(IPC_CHANNELS.AWS_SSO_PROMPT_DONE, id);
-        }
+        bridge.sendToSender(sender, IPC_CHANNELS.AWS_SSO_PROMPT_DONE, id);
       }
     }
   );

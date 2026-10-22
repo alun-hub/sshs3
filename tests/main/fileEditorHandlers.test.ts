@@ -28,7 +28,7 @@ describe('FileEditor IPC handlers', () => {
     fileEditorService: fileEditorService as any,
     fileTailService: fileTailService as any,
     storageRegistry: storageRegistry as any,
-    getWebContents: () => null,
+    sendToSender: () => false,
     registerHandler: (channel: string, handler: Handler) => {
       handlers.set(channel, handler);
     },

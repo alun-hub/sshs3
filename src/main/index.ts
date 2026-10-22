@@ -9,6 +9,7 @@ import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { applyLoginShellEnv } from './ssh/LoginShellEnv';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
+import { WindowManager } from './windows/WindowManager';
 import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
 
 app.setName('sshs3');
@@ -150,6 +151,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
+// Every renderer window; routes IPC events to the right one (see windows/WindowManager).
+const windowManager = new WindowManager<BrowserWindow>();
 // Windows-only startup progress window (null elsewhere); see ./splash/SplashWindow.
 let splash: SplashController | null = null;
 let ipcBridge: IpcBridge | null = null;
@@ -280,7 +283,12 @@ function createWindow(): BrowserWindow {
     })();
   });
 
+  const windowId = mainWindow.webContents.id;
+  windowManager.register(mainWindow);
+  mainWindow.on('focus', () => windowManager.setFocused(windowId));
+
   mainWindow.on('closed', () => {
+    windowManager.unregister(windowId);
     mainWindow = null;
   });
 
@@ -335,7 +343,9 @@ async function initializeApp(): Promise<void> {
 
   // Initialize and register IPC bridge
   ipcBridge = new IpcBridge({
-    getWebContents: () => mainWindow?.webContents,
+    getWebContents: () => windowManager.focusedWebContents() as Electron.WebContents | undefined,
+    isTrustedFrame: (frame) => windowManager.isTrustedFrame(frame),
+    windows: windowManager,
     confirmQuit,
   });
   ipcBridge.register();
