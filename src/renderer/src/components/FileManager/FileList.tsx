@@ -363,6 +363,15 @@ export const FileList: React.FC<FileListProps> = ({
         return;
       }
 
+      // Up one level; checked before the empty-list return so an empty folder can still be left. While typeahead is
+      // active Backspace edits the search text instead (handled below).
+      if (e.key === 'Backspace' && !typeaheadBufferRef.current && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        onNavigateParent?.();
+        return;
+      }
+
       if (sorted.length === 0) return;
 
       const activeIndex = activePath ? sorted.findIndex((item) => item.path === activePath) : -1;
