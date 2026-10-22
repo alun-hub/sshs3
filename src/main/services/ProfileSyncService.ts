@@ -13,7 +13,7 @@ import type { DirectorySyncProfileStore } from '../dirsync/DirectorySyncProfileS
 import type { DirectorySyncProfile } from '../../shared/types/dirsync';
 import type { K8sProfileStore } from '../profile/K8sProfileStore';
 import type { K8sProfile } from '../../shared/types/kubernetes';
-import { fromRemotePayload, toSyncPayload } from './k8sProfileSync';
+import { fromRemotePayload, replaceKeepingContext, toSyncPayload } from './k8sProfileSync';
 import { SettingsStore } from '../settings/SettingsStore';
 import { SyncCryptoService, SyncLockedError, type SyncDataCategory } from './SyncCryptoService';
 import { joinPaths } from '../transfer/TransferPipeline';
@@ -123,8 +123,14 @@ interface Syncable {
  * wins. When the remote copy wins, it's applied on top of the existing local
  * record (not used to replace it outright) so that fields never included in
  * the synced payload — e.g. a local SSH private key path — survive the pull.
+ * `onRemoteWins` replaces that layering for record types where a field missing from the remote copy
+ * means "cleared there" (K8s profiles), and decides itself what to keep from the local record.
  */
-export function mergeRecords<T extends Syncable>(local: T[], remote: T[]): { merged: T[]; changed: boolean } {
+export function mergeRecords<T extends Syncable>(
+  local: T[],
+  remote: T[],
+  options: { onRemoteWins?: (localItem: T, remoteItem: T) => T } = {}
+): { merged: T[]; changed: boolean } {
   const byId = new Map<string, T>();
   for (const item of local) byId.set(item.id, item);
   let changed = false;
@@ -139,6 +145,11 @@ export function mergeRecords<T extends Syncable>(local: T[], remote: T[]): { mer
     const remoteTime = remoteItem.updatedAt ?? '';
     const localTime = localItem.updatedAt ?? '';
     if (remoteTime > localTime) {
+      if (options.onRemoteWins) {
+        byId.set(remoteItem.id, options.onRemoteWins(localItem, remoteItem));
+        changed = true;
+        continue;
+      }
       const mergedItem: any = { ...localItem, ...remoteItem };
       if (!remoteItem.deletedAt && (localItem as any).deletedAt) {
         delete mergedItem.deletedAt;
@@ -893,7 +904,7 @@ export class ProfileSyncService {
     if (k8sRaw !== null && this.k8sProfileStore) {
       const remoteProfiles = fromRemotePayload(JSON.parse(k8sRaw));
       const local = await this.k8sProfileStore.listIncludingTombstones();
-      const { merged, changed } = mergeRecords(local, remoteProfiles);
+      const { merged, changed } = mergeRecords(local, remoteProfiles, { onRemoteWins: replaceKeepingContext });
       if (changed) {
         await this.k8sProfileStore.replaceAll(merged);
         changedCategories.push('k8s-profiles');
