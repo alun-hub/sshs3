@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.54] - 2026-10-22
+
+### Added
+- **Multiple windows.** `Ctrl+Alt+Shift+N` opens a new window on the monitor the pointer is on. Each window keeps its own tabs and layout in the saved session, and window positions are restored (checked against the monitors that are connected). Closing a secondary window asks first when it has live sessions; closing the main window still quits.
+- **Move tabs between windows.** Right-click a tab (or use the Menu key, drag it out, or `Ctrl+Alt+Shift+M`) to move it to a new or another window. **Tab Actions** (`Ctrl+Alt+Shift+K`) opens the tab menu for the active tab. Running SSH, local and Kubernetes terminals keep running and show their recent output in the new window; file manager tabs keep both panes. Tabs with unsaved editor changes cannot be moved.
+- **Kubernetes sign-in and saved clusters.** The login dialog switches between **Sign in with browser** and **Use a token** and shows only that method's fields. Cluster name, server, TLS option and project are saved as profiles (never the token), can be signed in to again, edited and removed, and a profile limited to one project shows only that project. Profiles sync encrypted like other profiles, and Team Vault can share cluster templates without secrets.
+- **File manager: New File.** The toolbar and the empty-area menu create an empty file; an existing name is rejected rather than overwritten.
+- **File manager: select by pattern and invert selection.** `Ctrl+S` selects or deselects items matching a pattern such as `*.log`; `Ctrl+Shift+A` inverts the selection.
+- **File manager: compress and extract** on local disk and SFTP panes. **Compress to .tar.gz / .zip** creates the archive next to the selection without replacing anything, and **Extract to Folder** unpacks `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2` and `.tar.xz` into a new folder. On SFTP the work runs on the server, so `tar` (and `zip` / `unzip` for zip files) must be installed there.
+- **Show hidden files toggle** in the file manager toolbar (eye icon, `Ctrl+H`), so the setting no longer needs the settings dialog.
+
+### Changed
+- **File manager sort order** is now folders, dot-folders, files, dotfiles, and stays that way when sorting descending.
+- **Cluster server URLs must use https** (plain http only for localhost) and may not contain a user name, password, query or fragment, so a saved, synced or shared cluster can never carry a secret and a token is never sent unencrypted. Entries already stored with such a URL are skipped.
+
+### Fixed
+- **Backspace** goes up one folder in the file manager, as the user guide already said. It still edits the search text while a type-ahead search is active.
+- The AWS SSO approval dialog now closes when the login ends instead of waiting for Cancel.
+- The user guide no longer says that `Tab` switches file manager panes (`Ctrl+Shift+Left` / `Right` does).
+
 ## [0.96.53] - 2026-10-21
 
 ### Added
