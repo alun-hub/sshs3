@@ -1267,6 +1267,69 @@ describe('IpcBridge', () => {
       await expect(loginPromise).rejects.toThrow();
     });
 
+    const ssoS3Provider = (overrides: Record<string, unknown> = {}) => ({
+      id: 's3-sso',
+      type: 's3',
+      clearCache: vi.fn(),
+      list: vi.fn(),
+      config: {
+        authMode: 'sso',
+        region: 'eu-west-1',
+        sso: { startUrl: 'https://start.example.com', region: 'eu-north-1', accountId: '1', roleName: 'R' },
+        customCaPath: '/ca.pem',
+        proxy: { enabled: true, host: 'proxy', port: 3128 },
+        ...overrides,
+      },
+    });
+
+    it('AWS_SSO_RELOGIN_PROVIDER signs in with the provider profile and clears its listing cache', async () => {
+      const provider = ssoS3Provider();
+      mockStorageRegistry.providers.set('s3-sso', provider);
+      mockAwsSsoAuthService.login.mockResolvedValue({ accessToken: 't', expiresAt: '2099-01-01T00:00:00.000Z' });
+
+      await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, 's3-sso');
+
+      expect(mockAwsSsoAuthService.login).toHaveBeenCalledWith(
+        'https://start.example.com',
+        'eu-north-1',
+        expect.objectContaining({
+          network: { customCaPath: '/ca.pem', rejectUnauthorized: undefined, proxy: provider.config.proxy },
+        })
+      );
+      expect(provider.clearCache).toHaveBeenCalled();
+    });
+
+    it('AWS_SSO_RELOGIN_PROVIDER rejects unknown and non-SSO providers without signing in', async () => {
+      mockStorageRegistry.providers.set('s3-static', ssoS3Provider({ authMode: 'static' }));
+      mockStorageRegistry.providers.set('sftp-1', { id: 'sftp-1', type: 'sftp' });
+
+      for (const id of ['missing', 's3-static', 'sftp-1']) {
+        await expect(mockIpc.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, id)).rejects.toThrow(
+          'does not use AWS SSO'
+        );
+      }
+      expect(mockAwsSsoAuthService.login).not.toHaveBeenCalled();
+    });
+
+    it('STORAGE_LIST turns an expired SSO session on an S3 provider into the sign-in message', async () => {
+      const provider = ssoS3Provider();
+      const err = new Error('The SSO session associated with this profile has expired');
+      err.name = 'TokenProviderError';
+      provider.list.mockRejectedValue(err);
+      mockStorageRegistry.providers.set('s3-sso', provider);
+
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_LIST, 's3-sso', '/')).rejects.toThrow(
+        'AWS SSO session expired'
+      );
+    });
+
+    it('STORAGE_LIST leaves errors from non-S3 providers untouched', async () => {
+      const list = vi.fn().mockRejectedValue(new Error('boom'));
+      mockStorageRegistry.providers.set('sftp-1', { id: 'sftp-1', type: 'sftp', list });
+
+      await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_LIST, 'sftp-1', '/')).rejects.toThrow('boom');
+    });
+
     it('lists accounts and roles via the injected AwsSsoAuthService', async () => {
       const accounts = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, 'token', 'us-east-1');
       expect(accounts).toEqual([{ accountId: '123', accountName: 'Prod' }]);

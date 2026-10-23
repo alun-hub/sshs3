@@ -1,11 +1,5 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
-import https from 'node:https';
-import tls from 'node:tls';
 import { PassThrough } from 'node:stream';
-import { createProxySocket } from '../proxy/proxySocket';
-import { SystemTrustStore } from '../crypto/SystemTrustStore';
 import {
   S3Client,
   type S3ClientConfig,
@@ -44,7 +38,6 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { fromSSO } from '@aws-sdk/credential-provider-sso';
 import { buildAwsNodeHttpHandler } from '../aws/buildAwsNodeHttpHandler';
-import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
   BaseStorageProvider,
   formatDate,
@@ -102,6 +95,12 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     this.name = config.name;
     this.config = config;
 
+    const networkOptions = {
+      customCaPath: config.customCaPath,
+      rejectUnauthorized: config.rejectUnauthorized,
+      proxy: config.proxy,
+    };
+
     const s3ClientConfig: S3ClientConfig = {
       region: config.region || 'us-east-1',
       endpoint: config.endpoint,
@@ -115,11 +114,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
               ssoRoleName: config.sso.roleName,
               // Without this the role-credential call goes straight out, ignoring the profile's proxy/CA, and hangs.
               clientConfig: {
-                requestHandler: buildAwsNodeHttpHandler({
-                  customCaPath: config.customCaPath,
-                  rejectUnauthorized: config.rejectUnauthorized,
-                  proxy: config.proxy,
-                }),
+                requestHandler: buildAwsNodeHttpHandler(networkOptions),
               },
             })
           : {
@@ -129,69 +124,10 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
             },
     };
 
-    const systemCAs = SystemTrustStore.getCAs();
-    const effectiveCa = config.customCaPath
-      ? fs.readFileSync(config.customCaPath)
-      : systemCAs.length > 0
-      ? SystemTrustStore.getMergedRootCertificates()
-      : undefined;
-
-    const hasProxy = Boolean(config.proxy?.enabled && config.proxy.host);
-    const hasCustomTls = config.rejectUnauthorized !== undefined || effectiveCa !== undefined;
-
-    if (hasProxy || hasCustomTls) {
-      const httpsAgentOptions: https.AgentOptions = {};
-      if (config.rejectUnauthorized !== undefined) {
-        httpsAgentOptions.rejectUnauthorized = config.rejectUnauthorized;
-      }
-      if (effectiveCa !== undefined) {
-        httpsAgentOptions.ca = effectiveCa;
-      }
-
-      if (hasProxy && config.proxy) {
-        const proxyCfg = config.proxy;
-        const httpAgent = new http.Agent();
-        (httpAgent as any).createConnection = (opts: any, cb: any) => {
-          createProxySocket(proxyCfg, {
-            host: opts.host || opts.hostname,
-            port: Number(opts.port) || 80,
-          })
-            .then((socket) => cb(null, socket))
-            .catch((err) => cb(err));
-        };
-
-        const httpsAgent = new https.Agent(httpsAgentOptions);
-        (httpsAgent as any).createConnection = (opts: any, cb: any) => {
-          createProxySocket(proxyCfg, {
-            host: opts.host || opts.hostname,
-            port: Number(opts.port) || 443,
-          })
-            .then((socket) => {
-              const tlsSocket = tls.connect({
-                socket,
-                host: opts.host || opts.hostname,
-                servername: opts.servername || opts.host || opts.hostname,
-                rejectUnauthorized: config.rejectUnauthorized ?? true,
-                ca: effectiveCa,
-              });
-              tlsSocket.on('error', (err) => cb(err));
-              cb(null, tlsSocket);
-            })
-            .catch((err) => cb(err));
-        };
-
-        s3ClientConfig.requestHandler = new NodeHttpHandler({
-          httpAgent,
-          httpsAgent,
-          connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
-        });
-      } else {
-        s3ClientConfig.requestHandler = new NodeHttpHandler({
-          httpsAgent: new https.Agent(httpsAgentOptions),
-          connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
-        });
-      }
-    }
+    // Same proxy/CA handling as the SSO calls. No request timeout: transfers may run long.
+    s3ClientConfig.requestHandler = buildAwsNodeHttpHandler(networkOptions, {
+      connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
+    });
 
     this.client = new S3Client(s3ClientConfig);
   }

@@ -405,3 +405,65 @@ describe('FilePane Home Button', () => {
     });
   });
 });
+
+describe('FilePane AWS SSO sign-in', () => {
+  const expired = 'AWS SSO session expired: sign in again to continue.';
+  let api: Record<string, any>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = {
+      storageList: vi.fn().mockRejectedValue(new Error(expired)),
+      awsSsoReloginProvider: vi.fn().mockResolvedValue(undefined),
+      getHomeDir: vi.fn().mockResolvedValue('/home/localuser'),
+      onTransferProgress: vi.fn().mockReturnValue(() => {}),
+      onSearchResult: vi.fn().mockReturnValue(() => {}),
+      onSearchProgress: vi.fn().mockReturnValue(() => {}),
+      onSearchError: vi.fn().mockReturnValue(() => {}),
+      onSearchDone: vi.fn().mockReturnValue(() => {}),
+    };
+    (window as any).multissh = api;
+  });
+
+  const renderPane = (sourceType: 's3' | 'sftp' = 's3') =>
+    render(
+      <ConfirmProvider>
+        <DragDropProvider>
+          <FilePane
+            side="left"
+            source={{ providerId: 's3-1', sourceType, label: 'Bucket' }}
+            currentPath="/"
+            onPathChange={vi.fn()}
+            onSourceTypeRequest={vi.fn()}
+            onTransferRequested={vi.fn()}
+            refreshToken={0}
+          />
+        </DragDropProvider>
+      </ConfirmProvider>
+    );
+
+  it('offers Sign in again for an expired session and reloads the folder after signing in', async () => {
+    renderPane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in again' }));
+
+    await waitFor(() => expect(api.awsSsoReloginProvider).toHaveBeenCalledWith('s3-1'));
+    await waitFor(() => expect(api.storageList).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the button when the sign-in is cancelled, and shows why', async () => {
+    api.awsSsoReloginProvider.mockRejectedValue(new Error('Error: AWS SSO login was cancelled'));
+    renderPane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in again' }));
+
+    expect(await screen.findByText(/AWS SSO login was cancelled/)).toBeInTheDocument();
+    expect(screen.getByText(/AWS SSO login was cancelled/).textContent).not.toMatch(/Error:/);
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeEnabled();
+  });
+
+  it('does not offer Sign in again for other errors or other storage types', async () => {
+    api.storageList.mockRejectedValue(new Error('Access denied: nope'));
+    renderPane();
+    await screen.findByText(/Access denied/);
+    expect(screen.queryByRole('button', { name: 'Sign in again' })).toBeNull();
+  });
+});

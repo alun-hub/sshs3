@@ -1,10 +1,15 @@
 import { AWS_SSO_EXPIRED_PREFIX } from '../../shared/types/aws';
 
-const SSO_ERROR_NAMES = new Set(['TokenProviderError', 'CredentialsProviderError', 'UnauthorizedException']);
+// Unambiguous: the SSO token provider failing, the portal rejecting the token, or AWS saying it lapsed.
+const SSO_ERROR_NAMES = new Set(['TokenProviderError', 'UnauthorizedException', 'ExpiredToken', 'ExpiredTokenException']);
 const SSO_ERROR_PATTERN =
-  /sso session|sso login|sso token|token is expired|session token not found|refresh token|cached sso/i;
+  /sso session|sso login|sso token|token is expired|session token not found|refresh token|cached sso|token has expired/i;
 
-/** True when `err` means the SSO sign-in behind an S3 profile is missing, expired or rejected. */
+/**
+ * True when `err` means the SSO sign-in behind an S3 profile is missing, expired or rejected.
+ * `CredentialsProviderError` alone is not enough: it also covers a wrong account or role, which a
+ * new sign-in does not fix.
+ */
 export function isAwsSsoSessionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   if (SSO_ERROR_NAMES.has(err.name)) return true;

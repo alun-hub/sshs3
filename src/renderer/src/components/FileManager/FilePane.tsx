@@ -120,6 +120,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ssoSigningIn, setSsoSigningIn] = useState(false);
+  // Kept apart from `error` so a failed or cancelled sign-in leaves the expiry error, and its button, in place.
+  const [ssoLoginError, setSsoLoginError] = useState<string | null>(null);
+  const providerIdRef = useRef(source.providerId);
   /** Remote paths the user asked to drag out of sshs3 (shows DragOutDialog). */
   const [dragOutPaths, setDragOutPaths] = useState<string[] | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
@@ -302,15 +305,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [source.providerId, source.sourceType, currentPath, gitIntegrationEnabled]
   );
 
+  useEffect(() => {
+    providerIdRef.current = source.providerId;
+    setSsoSigningIn(false);
+    setSsoLoginError(null);
+  }, [source.providerId]);
+
   const handleSsoRelogin = useCallback(async () => {
+    const providerId = source.providerId;
     setSsoSigningIn(true);
+    setSsoLoginError(null);
     try {
-      await window.multissh.awsSsoReloginProvider(source.providerId);
-      await load(true);
+      await window.multissh.awsSsoReloginProvider(providerId);
+      // The pane may have moved to another connection while the browser sign-in was pending.
+      if (providerIdRef.current === providerId) await load(true);
     } catch (err) {
-      setError(describeIpcError(err, 'AWS SSO sign-in failed'));
+      if (providerIdRef.current === providerId) {
+        setSsoLoginError(describeIpcError(err, 'AWS SSO sign-in failed').replace(/^Error:\s*/, ''));
+      }
     } finally {
-      setSsoSigningIn(false);
+      if (providerIdRef.current === providerId) setSsoSigningIn(false);
     }
   }, [source.providerId, load]);
 
@@ -958,7 +972,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div className="flex items-center justify-between gap-1.5 border-b border-red-900/60 bg-red-950/40 px-2.5 py-1 text-xs text-red-300">
           <div className="flex min-w-0 items-center gap-1.5 truncate">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{error}</span>
+            <span className="truncate">{ssoLoginError ? `${error} ${ssoLoginError}` : error}</span>
           </div>
           {source.sourceType === 's3' && error.startsWith(AWS_SSO_EXPIRED_PREFIX) && (
             <button

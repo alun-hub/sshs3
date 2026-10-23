@@ -13,12 +13,24 @@ import type { AwsSsoNetworkOptions } from '../../shared/types/aws';
 const CONNECTION_TIMEOUT_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+export interface AwsHttpTimeouts {
+  /** Bounds connecting, including the proxy TLS handshake. */
+  connectionTimeout: number;
+  /** Bounds a whole request; leave unset for transfers that may legitimately run long. */
+  requestTimeout?: number;
+}
+
+const SSO_TIMEOUTS: AwsHttpTimeouts = { connectionTimeout: CONNECTION_TIMEOUT_MS, requestTimeout: REQUEST_TIMEOUT_MS };
+
 /**
  * Builds a NodeHttpHandler for the AWS SSO OIDC/SSO clients that trusts the
  * OS CA store (and any corporate root CA in it) the same way S3StorageProvider
  * does for the S3 client, with the same optional custom-CA/proxy override.
  */
-export function buildAwsNodeHttpHandler(options: AwsSsoNetworkOptions = {}): NodeHttpHandler {
+export function buildAwsNodeHttpHandler(
+  options: AwsSsoNetworkOptions = {},
+  timeouts: AwsHttpTimeouts = SSO_TIMEOUTS
+): NodeHttpHandler {
   const systemCAs = SystemTrustStore.getCAs();
   const effectiveCa = options.customCaPath
     ? fs.readFileSync(options.customCaPath)
@@ -57,6 +69,12 @@ export function buildAwsNodeHttpHandler(options: AwsSsoNetworkOptions = {}): Nod
             ca: effectiveCa,
           });
           tlsSocket.on('error', (err) => cb(err));
+          // A TLS-intercepting proxy can stall the handshake on an already-connected socket, which
+          // connectionTimeout does not cover.
+          tlsSocket.setTimeout(timeouts.connectionTimeout, () =>
+            tlsSocket.destroy(new Error('TLS handshake through the proxy timed out'))
+          );
+          tlsSocket.once('secureConnect', () => tlsSocket.setTimeout(0));
           cb(null, tlsSocket);
         })
         .catch((err) => cb(err));
@@ -65,14 +83,12 @@ export function buildAwsNodeHttpHandler(options: AwsSsoNetworkOptions = {}): Nod
     return new NodeHttpHandler({
       httpAgent,
       httpsAgent,
-      connectionTimeout: CONNECTION_TIMEOUT_MS,
-      requestTimeout: REQUEST_TIMEOUT_MS,
+      ...timeouts,
     });
   }
 
   return new NodeHttpHandler({
     httpsAgent: new https.Agent(httpsAgentOptions),
-    connectionTimeout: CONNECTION_TIMEOUT_MS,
-    requestTimeout: REQUEST_TIMEOUT_MS,
+    ...timeouts,
   });
 }

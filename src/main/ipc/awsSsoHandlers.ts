@@ -9,7 +9,7 @@ import type {
   AwsSsoNetworkOptions,
 } from '../../shared/types/aws';
 import type { IpcBridge } from '../IpcBridge';
-import { S3StorageProvider } from '../storage/S3StorageProvider';
+import type { S3StorageProvider } from '../storage/S3StorageProvider';
 
 /** The part of IpcBridge this handler group may use. */
 export type AwsSsoHost = Pick<
@@ -79,9 +79,10 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   // Re-authenticates a pane's existing provider from its own saved profile, so an expired session
   // never forces the user to recreate the profile.
   bridge.registerHandler(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, async (event, providerId: string): Promise<void> => {
-    const provider = typeof providerId === 'string' ? bridge.storageRegistry.get(providerId) : undefined;
-    const sso = provider instanceof S3StorageProvider ? provider.config.sso : undefined;
-    if (!(provider instanceof S3StorageProvider) || provider.config.authMode !== 'sso' || !sso) {
+    const found = typeof providerId === 'string' ? bridge.storageRegistry.get(providerId) : undefined;
+    const provider = found?.type === 's3' ? (found as S3StorageProvider) : undefined;
+    const sso = provider?.config.authMode === 'sso' ? provider.config.sso : undefined;
+    if (!provider || !sso) {
       throw new Error('This connection does not use AWS SSO');
     }
     const { config } = provider;
