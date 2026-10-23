@@ -313,11 +313,20 @@ export class AppAgent {
    * Evicts the agent keys with the given fingerprints (`ssh-add -d` with the key's public half), leaving
    * every other key loaded. Used to drop keys a card contributed that must not be offered (e.g. signing
    * certificates). Best-effort: returns how many were removed, and a failure for one key never stops the
-   * rest. Unix only — on Windows the agent is the shared system service and nothing is evicted here.
+   * rest. On Windows (the shared system service) only these exact keys are evicted, never anything else.
    */
   public async removeIdentities(fingerprints: Iterable<string>): Promise<number> {
     const unwanted = new Set(fingerprints);
-    if (!this.socketPath || process.platform === 'win32' || unwanted.size === 0) return 0;
+    if (!this.socketPath || unwanted.size === 0) return 0;
+
+    if (process.platform === 'win32') {
+      const socketPath = this.socketPath;
+      let removed = 0;
+      for (const [fp, blob] of await this.identityBlobs(socketPath)) {
+        if (unwanted.has(fp) && (await this.evictBlob(socketPath, blob))) removed++;
+      }
+      return removed;
+    }
 
     return (await this.runAdd(async ({ socketPath }) => {
       const dir = path.join(resolveAppAgentDir(), 'keys');
@@ -411,13 +420,17 @@ export class AppAgent {
 
   /** Windows: `ssh-add -d` each identity recorded in `loadedKeys`, leaving everything else in the shared agent. Best-effort. */
   private async evictLoadedKeys(socketPath: string): Promise<void> {
-    for (const blob of this.loadedKeys.values()) {
-      await this.evictBlob(socketPath, blob);
+    // Skip keys that are already gone (e.g. removed with their PKCS#11 library): `ssh-add -d` reports
+    // those as "agent refused operation".
+    const present = await this.identityBlobs(socketPath);
+    for (const [fp, blob] of this.loadedKeys) {
+      if (present.has(fp)) await this.evictBlob(socketPath, blob);
     }
     this.loadedKeys.clear();
   }
 
-  private async evictBlob(socketPath: string, blob: Buffer): Promise<void> {
+  /** Windows: `ssh-add -d` for one identity. Returns whether it was removed. */
+  private async evictBlob(socketPath: string, blob: Buffer): Promise<boolean> {
     const file = path.join(os.tmpdir(), `sshs3-evict-${crypto.randomUUID()}.pub`);
     try {
       await fs.promises.writeFile(file, `${getKeyAlgorithm(blob)} ${blob.toString('base64')}\n`);
@@ -426,8 +439,10 @@ export class AppAgent {
         env: { ...process.env, SSH_AUTH_SOCK: socketPath },
         timeout: EVICT_TIMEOUT_MS,
       });
+      return true;
     } catch (err) {
       appAgentLog.warn('could not evict an identity from the agent:', (err as Error).message);
+      return false;
     } finally {
       await fs.promises.rm(file, { force: true }).catch(() => {});
     }
