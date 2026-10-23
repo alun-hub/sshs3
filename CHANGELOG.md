@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.58] - 2026-10-23
+
+### Added
+- **Windows file manager.** Clicking the `C:` breadcrumb opens the drive list. **Change Attributes** replaces the chmod dialog on local Windows panes: read-only, hidden, system and archive, optionally for a whole folder tree. The result is checked after it is applied, so a change Windows silently refuses is reported. SFTP, Kubernetes, S3 and Linux keep chmod.
+- **Windows shells as administrator.** The cmd, PowerShell and pwsh buttons have a shield that opens that shell elevated in a separate window through the UAC prompt. Declining the prompt does nothing.
+- **S3.** When an AWS SSO session has lapsed the file pane offers **Sign in again**, and access-denied and expired-session errors get a clear message.
+
+### Fixed
+- **Windows.** **Reveal** and **Browse** in the terminal hover card resolve paths with backslashes, so the file manager opens on the file's folder with it selected.
+- **Windows smartcards and security keys.** Keys left in the shared OpenSSH agent by an earlier run no longer skip the PIN prompt, and **Lock** and quit evict the keys sshs3 unlocked. A card's non-authentication keys are removed from the agent instead of being offered first (`agent refused operation`). Loading two modules for the same card no longer evicts the keys the first just added.
+- **S3 behind a proxy.** SSO role credentials no longer hang behind a proxy: they use the profile's proxy and CA settings with timeouts. Only an unambiguous expiry counts as an expired session, so a wrong role no longer asks you to sign in.
+- **Re-run with sudo.** The bar now recognises dnf, zypper, yum, pacman, rpm, apt, useradd, systemctl, mount and docker messages, and no longer offers sudo for lines that tell you not to run as root, for lock contention (another apt process holds the lock) or for an application's own "Access denied".
+
 ## [0.96.57] - 2026-10-23
 
 The 0.96.56 release build failed on Windows (tests for the new file creation assumed POSIX paths) and was never published, so everything listed under 0.96.56 below ships with this version.
