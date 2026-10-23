@@ -516,7 +516,21 @@ export class SmartcardCoordinator {
       // libykcs11, OpenSC, …). If one of this module's keys is already in the agent, loading it again
       // would prompt for the PIN a second time and open a second PKCS#11 session against the same
       // token (which most readers reject), for keys the agent already holds.
-      const alreadyLoaded = Array.from(certs.keys()).filter((fingerprint) => before.has(fingerprint));
+      let alreadyLoaded = Array.from(certs.keys()).filter((fingerprint) => before.has(fingerprint));
+      if (process.platform === 'win32' && alreadyLoaded.length > 0) {
+        // The shared Windows ssh-agent service outlives this app, so a key still in it is left over
+        // from an earlier run (or a manual `ssh-add`), not one this process unlocked — reusing it
+        // would skip the PIN prompt and leave "lock" unable to evict it. Evict it and load afresh,
+        // unless another module of this run already owns it.
+        const owned = new Set<string>();
+        for (const card of this.globalCards.values()) card.fingerprints.forEach((f) => owned.add(f));
+        const stale = alreadyLoaded.filter((fingerprint) => !owned.has(fingerprint));
+        if (stale.length > 0) {
+          smartcardLog.info(`getOrLoadGlobalSmartcardAgent: evicting ${stale.length} stale key(s) left in the Windows ssh-agent to force a PIN prompt`);
+          await this.appAgent.evictIdentities(stale);
+          alreadyLoaded = alreadyLoaded.filter((fingerprint) => !stale.includes(fingerprint));
+        }
+      }
       const authFingerprints = await this.selectAuthFingerprints(certs);
       if (alreadyLoaded.length > 0) {
         smartcardLog.info(`getOrLoadGlobalSmartcardAgent: ${pkcs11LibPath} is the same card as one already loaded; not loading it again`
@@ -551,6 +565,8 @@ export class SmartcardCoordinator {
         if (fingerprints.size === 0) nonSecurityKeys.forEach((i) => fingerprints.add(i.fingerprint));
       }
       this.globalCards.set(pkcs11LibPath, { fingerprints });
+      // Windows: make lock/quit evict these by fingerprint (`ssh-add -e <lib>` is unreliable there).
+      await this.appAgent.adoptIdentities(fingerprints);
       this.refreshAgentSshConfig();
       return socketPath;
     })();

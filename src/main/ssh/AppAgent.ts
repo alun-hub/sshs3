@@ -386,24 +386,51 @@ export class AppAgent {
     return blobs;
   }
 
+  /**
+   * Windows only: records the shared agent's identities with these fingerprints as ours, so lock/quit
+   * evicts them. Needed for keys the app did not add itself this run (already in the service from an
+   * earlier run, or loaded by `ssh-add -s` whose `-e` counterpart does not reliably work there).
+   */
+  public async adoptIdentities(fingerprints: Iterable<string>): Promise<void> {
+    if (process.platform !== 'win32' || !this.socketPath) return;
+    const wanted = new Set(fingerprints);
+    for (const [fp, blob] of await this.identityBlobs(this.socketPath)) {
+      if (wanted.has(fp)) this.loadedKeys.set(fp, blob);
+    }
+  }
+
+  /** Windows only: evicts the identities with these fingerprints from the shared agent. Best-effort. */
+  public async evictIdentities(fingerprints: Iterable<string>): Promise<void> {
+    if (process.platform !== 'win32' || !this.socketPath) return;
+    const wanted = new Set(fingerprints);
+    for (const [fp, blob] of await this.identityBlobs(this.socketPath)) {
+      if (wanted.has(fp)) await this.evictBlob(this.socketPath, blob);
+      this.loadedKeys.delete(fp);
+    }
+  }
+
   /** Windows: `ssh-add -d` each identity recorded in `loadedKeys`, leaving everything else in the shared agent. Best-effort. */
   private async evictLoadedKeys(socketPath: string): Promise<void> {
     for (const blob of this.loadedKeys.values()) {
-      const file = path.join(os.tmpdir(), `sshs3-evict-${crypto.randomUUID()}.pub`);
-      try {
-        await fs.promises.writeFile(file, `${getKeyAlgorithm(blob)} ${blob.toString('base64')}\n`);
-        // Bounded: quit waits for this, and a stopped/hung agent service must not keep the app from exiting.
-        await execFileAsync('ssh-add.exe', ['-d', file], {
-          env: { ...process.env, SSH_AUTH_SOCK: socketPath },
-          timeout: EVICT_TIMEOUT_MS,
-        });
-      } catch (err) {
-        appAgentLog.warn('could not evict an identity from the agent:', (err as Error).message);
-      } finally {
-        await fs.promises.rm(file, { force: true }).catch(() => {});
-      }
+      await this.evictBlob(socketPath, blob);
     }
     this.loadedKeys.clear();
+  }
+
+  private async evictBlob(socketPath: string, blob: Buffer): Promise<void> {
+    const file = path.join(os.tmpdir(), `sshs3-evict-${crypto.randomUUID()}.pub`);
+    try {
+      await fs.promises.writeFile(file, `${getKeyAlgorithm(blob)} ${blob.toString('base64')}\n`);
+      // Bounded: quit waits for this, and a stopped/hung agent service must not keep the app from exiting.
+      await execFileAsync('ssh-add.exe', ['-d', file], {
+        env: { ...process.env, SSH_AUTH_SOCK: socketPath },
+        timeout: EVICT_TIMEOUT_MS,
+      });
+    } catch (err) {
+      appAgentLog.warn('could not evict an identity from the agent:', (err as Error).message);
+    } finally {
+      await fs.promises.rm(file, { force: true }).catch(() => {});
+    }
   }
 
   /** Stops the agent and its askpass server and removes the socket. Safe to call repeatedly. */
