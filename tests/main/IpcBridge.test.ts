@@ -141,6 +141,8 @@ function makeFakeAppAgent() {
     shutdown: vi.fn().mockResolvedValue(undefined),
     writePublicKeyFiles: vi.fn().mockResolvedValue([]),
     removeIdentities: vi.fn().mockResolvedValue(0),
+    adoptIdentities: vi.fn().mockResolvedValue(undefined),
+    evictIdentities: vi.fn().mockResolvedValue(undefined),
     noteLoadedLibrary: vi.fn(),
   };
   return fake;
