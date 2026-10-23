@@ -23,6 +23,28 @@ describe('detectSudoRetry', () => {
     'Are you root?',
     'This command must be run as root',
     'Failed to restart nginx.service: Interactive authentication required.',
+    'The requested operation requires superuser privileges. Please log in as a user with elevated rights, or use the "--assumeno" or "--downloadonly" options to run the command without modifying the system state.',
+    'Error: This command has to be run with superuser privileges (under the root user on most systems).',
+    'Root privileges are required for installing or uninstalling packages.',
+    'You need to be root to perform this command.',
+    'error: you cannot perform this operation unless you are root.',
+    "error: can't create transaction lock on /usr/lib/sysimage/rpm/.rpm.lock (Success)",
+    'error: cannot open Packages database in /var/lib/rpm',
+    // apt update as a normal user: the lock line is above the last three rows.
+    [
+      'E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)',
+      'E: Unable to lock directory /var/lib/apt/lists/',
+      'W: Problem unlinking the file /var/cache/apt/pkgcache.bin - RemoveCaches (13: Permission denied)',
+      'W: Problem unlinking the file /var/cache/apt/srcpkgcache.bin - RemoveCaches (13: Permission denied)',
+    ].join('\n'),
+    'E: Unable to lock the administration directory (/var/lib/dpkg/), are you root?',
+    'dpkg: error: requested operation requires superuser privilege',
+    'useradd: Permission denied.',
+    'useradd: cannot lock /etc/passwd; try again later.',
+    'error: access denied (try with sudo)',
+    'Failed to enable unit: Access denied',
+    'mount: /mnt: must be superuser to use mount.',
+    'docker: permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: dial unix /var/run/docker.sock: connect: permission denied.',
   ])('recognises %s', (output) => {
     expect(outputIndicatesPermissionDenied(output)).toBe(true);
   });

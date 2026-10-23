@@ -39,13 +39,29 @@ const UNSAFE_COMMAND_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\
  * does not help, so it only counts next to a path or a quoted name.
  */
 const DENIED_PATTERNS: RegExp[] = [
-  /: Permission denied(?:\s*\(os error \d+\))?\s*$/i,
+  /: Permission denied\.?(?:\s*\(os error \d+\))?\s*$/i,
+  // apt/dpkg print the errno inside parentheses: `... RemoveCaches (13: Permission denied)`.
+  /\(13: Permission denied\)\s*$/i,
+  /Unable to lock (?:the )?(?:administration )?directory/i,
+  /\bcannot lock \/\S+/i,
+  /\btry with sudo\b/i,
+  /: Access denied\.?\s*$/i,
+  /\bmust be (?:the )?super-?user\b/i,
   /(?:\/|['‘’"][^'‘’"]+['‘’"]).*Operation not permitted/i,
   /\bAre you root\b/i,
   /\bmust be (?:run as )?root\b/i,
   /\brequires? root\b/i,
   /Could not open lock file/i,
   /Interactive authentication required/i,
+  // Package managers that say so in words: dnf ("requires superuser privileges"), zypper ("Root privileges
+  // are required"), yum ("You need to be root"), pacman ("unless you are root").
+  /\b(?:super-?user|root|administrator|elevated)\s+(?:privileges?|rights|access|permissions?)\b/i,
+  /\bneed(?:s)? to be root\b/i,
+  /\bunless you are root\b/i,
+  // rpm run as a normal user: the lock error carries a bogus errno ("(Success)"), and a read-only database
+  // refuses to open.
+  /can'?t create transaction lock/i,
+  /cannot open Packages (?:database|index)/i,
   // The same message from libc in other locales (`cat: /x: Åtkomst nekas`).
   /: (?:Åtkomst nekas|Behörighet saknas|Keine Berechtigung|Zugriff verweigert|Permission non accordée|Permiso denegado|Permesso negato|Permissão negada)\s*$/i,
 ];
