@@ -12,6 +12,12 @@ When launching sshs3 without an open session, the start screen provides a **Quic
 ## 1. Package Installation & Platform Matrix
 
 <!-- tabs:start -->
+<!-- tab:Fedora (COPR) -->
+```bash
+sudo dnf copr enable alun-hub/sshs3
+sudo dnf install -y sshs3
+sshs3
+```
 <!-- tab:RHEL, Rocky & Fedora (.rpm) -->
 ```bash
 sudo dnf install -y https://github.com/alun-hub/sshs3/releases/download/v{{APP_VERSION}}/sshs3-{{APP_VERSION}}.x86_64.rpm
@@ -47,6 +53,7 @@ Provide hassle-free deployment across standard enterprise server fleets and engi
 5. sshs3 allows a single running instance: starting it again (installed or portable) brings the existing window to the front instead of opening a second one.
 
 #### ⚠️ Limitations & Caveats
+- **Fedora COPR**: The [COPR repository](https://copr.fedorainfracloud.org/coprs/alun-hub/sshs3/) currently provides Fedora 44 on x86_64 only. It repackages the release from GitHub, is signed by COPR and is updated with `dnf upgrade`; it can trail GitHub Releases by a version. If you install from COPR, let `dnf` handle updates and switch the in-app update check off (*Settings → App Behavior*, or `SSHS3_DISABLE_UPDATES=1`).
 - **Ubuntu 24.04+ AppImage**: Ubuntu 24.04 and newer omit `libfuse2` by default. If running the AppImage fails, install the compatibility library: `sudo apt install libfuse2t64`.
 - **Windows SmartScreen**: Because Windows builds are currently unsigned with an EV certificate, Microsoft Defender SmartScreen may display an unknown publisher prompt. Click "More info" and "Run anyway".
 - **Wayland vs. X11**: Electron picks the display backend automatically and runs as a native Wayland app in a Wayland session. To force XWayland, launch with `--ozone-platform=x11` (for example if window positioning or focus misbehaves on Wayland); to force Wayland, use `--ozone-platform=wayland`.
