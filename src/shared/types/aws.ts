@@ -1,5 +1,8 @@
 import type { ProxyConfig } from './storage';
 
+/** Prefix of the file-pane error for a lapsed SSO session; the pane keys on it to offer "Sign in again". */
+export const AWS_SSO_EXPIRED_PREFIX = 'AWS SSO session expired';
+
 /** Network settings so the SSO OIDC calls honor the same CA/proxy config as the S3 client. */
 export interface AwsSsoNetworkOptions {
   customCaPath?: string;

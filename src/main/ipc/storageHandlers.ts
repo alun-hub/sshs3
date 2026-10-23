@@ -14,7 +14,9 @@ import type {
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
+import type { S3StorageProvider } from '../storage/S3StorageProvider';
 import { resolveTerminalControlPath } from '../storage/terminalControlPath';
+import { describeS3Error } from '../aws/awsErrors';
 import { isMissingPathError } from './ipcHelpers';
 
 /** The part of IpcBridge this handler group may use. */
@@ -103,7 +105,14 @@ export function registerStorageHandlers(bridge: StorageHost): void {
       if (!provider) {
         throw new Error(`Storage provider not found: ${providerId}`);
       }
-      return await (provider as any).list(remotePath, { force });
+      try {
+        return await (provider as any).list(remotePath, { force });
+      } catch (err) {
+        if (provider.type !== 's3') throw err;
+        // Gives the pane a readable reason, and lets it offer a sign-in when the SSO session is gone.
+        const ssoProfile = (provider as S3StorageProvider).config.authMode === 'sso';
+        throw new Error(describeS3Error(err, ssoProfile), { cause: err });
+      }
     }
   );
 

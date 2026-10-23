@@ -292,6 +292,7 @@ export const IPC_CHANNELS = {
   AWS_SSO_PROMPT_DONE: 'aws-sso:prompt-done',
   AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
   AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
+  AWS_SSO_RELOGIN_PROVIDER: 'aws-sso:relogin-provider',
 
   // Git & Git Provider Integration
   GIT_FETCH_PUBLIC_KEYS: 'git:fetch-public-keys',
@@ -853,6 +854,8 @@ export interface MultiSSHApi {
     accountId: string,
     network?: AwsSsoNetworkOptions
   ): Promise<AwsSsoAccountRole[]>;
+  /** Signs an already-connected S3 provider in again with the SSO settings of its own profile. */
+  awsSsoReloginProvider(providerId: string): Promise<void>;
 
   // SSH Agent
   getSshAgentStatus(): Promise<SshAgentStatus>;

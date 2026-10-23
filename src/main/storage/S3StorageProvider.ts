@@ -43,6 +43,7 @@ import {
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { fromSSO } from '@aws-sdk/credential-provider-sso';
+import { buildAwsNodeHttpHandler } from '../aws/buildAwsNodeHttpHandler';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
   BaseStorageProvider,
@@ -85,6 +86,9 @@ export function parseS3Path(remotePath: string): { bucket: string; key: string }
   return { bucket, key };
 }
 
+/** A stalled proxy/TLS handshake should fail visibly instead of leaving the pane loading forever. */
+const S3_CONNECTION_TIMEOUT_MS = 15_000;
+
 export class S3StorageProvider extends BaseStorageProvider implements IStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -109,6 +113,14 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
               ssoRegion: config.sso.region,
               ssoAccountId: config.sso.accountId,
               ssoRoleName: config.sso.roleName,
+              // Without this the role-credential call goes straight out, ignoring the profile's proxy/CA, and hangs.
+              clientConfig: {
+                requestHandler: buildAwsNodeHttpHandler({
+                  customCaPath: config.customCaPath,
+                  rejectUnauthorized: config.rejectUnauthorized,
+                  proxy: config.proxy,
+                }),
+              },
             })
           : {
               accessKeyId: config.accessKeyId,
@@ -171,10 +183,12 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
         s3ClientConfig.requestHandler = new NodeHttpHandler({
           httpAgent,
           httpsAgent,
+          connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
         });
       } else {
         s3ClientConfig.requestHandler = new NodeHttpHandler({
           httpsAgent: new https.Agent(httpsAgentOptions),
+          connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
         });
       }
     }

@@ -289,11 +289,13 @@ describe('S3StorageProvider', () => {
         sso: { startUrl: 'https://example.awsapps.com/start', region: 'us-east-1', accountId: '111', roleName: 'Admin' },
       });
 
+      // The role-credential call must use the profile's proxy/CA-aware handler, not the SDK default.
       expect(fromSSOMock).toHaveBeenCalledWith({
         ssoStartUrl: 'https://example.awsapps.com/start',
         ssoRegion: 'us-east-1',
         ssoAccountId: '111',
         ssoRoleName: 'Admin',
+        clientConfig: { requestHandler: expect.any(NodeHttpHandler) },
       });
       expect(s3ClientConstructorMock).toHaveBeenCalledWith(
         expect.objectContaining({ credentials: fakeCredentialsProvider })

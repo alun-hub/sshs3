@@ -693,6 +693,9 @@ export const api: MultiSSHApi = {
   ): Promise<AwsSsoAccountRole[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
 
+  awsSsoReloginProvider: (providerId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, providerId),
+
   // SSH Agent
   getSshAgentStatus: (): Promise<SshAgentStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.SSH_AGENT_STATUS),

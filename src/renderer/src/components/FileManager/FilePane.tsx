@@ -26,6 +26,7 @@ import { useNavHistory } from '../../lib/useNavHistory';
 import { SOURCE_ICONS, isNoopOsDrop } from './filePaneHelpers';
 import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursiveFilter';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
+import { AWS_SSO_EXPIRED_PREFIX } from '@shared/types/aws';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { DEFAULT_SHORTCUTS } from '@shared/types/settings';
 import { createRendererLogger } from '../../lib/log';
@@ -118,6 +119,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [visibleEntries, filterText, recursiveActive]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ssoSigningIn, setSsoSigningIn] = useState(false);
   /** Remote paths the user asked to drag out of sshs3 (shows DragOutDialog). */
   const [dragOutPaths, setDragOutPaths] = useState<string[] | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
@@ -299,6 +301,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
     },
     [source.providerId, source.sourceType, currentPath, gitIntegrationEnabled]
   );
+
+  const handleSsoRelogin = useCallback(async () => {
+    setSsoSigningIn(true);
+    try {
+      await window.multissh.awsSsoReloginProvider(source.providerId);
+      await load(true);
+    } catch (err) {
+      setError(describeIpcError(err, 'AWS SSO sign-in failed'));
+    } finally {
+      setSsoSigningIn(false);
+    }
+  }, [source.providerId, load]);
 
   const handleGitPull = useCallback(async () => {
     setGitPulling(true);
@@ -946,6 +960,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{error}</span>
           </div>
+          {source.sourceType === 's3' && error.startsWith(AWS_SSO_EXPIRED_PREFIX) && (
+            <button
+              type="button"
+              disabled={ssoSigningIn}
+              onClick={() => void handleSsoRelogin()}
+              className="ml-2 shrink-0 rounded-md bg-sky-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+            >
+              {ssoSigningIn ? 'Waiting for browser…' : 'Sign in again'}
+            </button>
+          )}
           {source.sourceType !== 'local' && (
             <button
               type="button"
