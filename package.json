@@ -29,7 +29,8 @@
     "package:appimage": "npm run build && electron-builder --linux AppImage",
     "package:win": "npm run build && electron-builder --win",
     "docs:sync": "node scripts/sync-docs.mjs",
-    "deploy": "./scripts/deploy.sh"
+    "deploy": "./scripts/deploy.sh",
+    "copr": "./scripts/copr-build.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",

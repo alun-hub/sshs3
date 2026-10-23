@@ -4,7 +4,9 @@
 # here: %prep unpacks the released RPM and %install copies its payload into the buildroot.
 # COPR build chroots have no network access, which is why a from-source build is not an option.
 #
-# Bumping a release: change Version and source_sha256 (taken from the release's SHA256SUMS).
+# Releases are built with scripts/copr-build.sh (npm run copr), which renders a copy of this file with the
+# release's Version, Release, source_sha256 and a %changelog entry; the values below are only a valid
+# example and need no editing per release.
 
 %global source_sha256 0d4a18b976e5e02f7e70d0e2b93a39475aa305e6a58b72ab0e5ba501ee2262c1
 
@@ -96,9 +98,6 @@ if [ -x /opt/sshs3/sshs3 ] && [ ! -e /usr/bin/sshs3 ]; then
 fi
 
 %changelog
-* Fri Oct 23 2026 Andreas Lundqvist <info@sshs3.com> - 0.96.59-1
-- Update to 0.96.59
-
 * Fri Oct 23 2026 Andreas Lundqvist <info@sshs3.com> - 0.96.58-1
-- Initial COPR packaging of the prebuilt release
+- Initial COPR packaging of the prebuilt release; one entry per release is added on top by scripts/copr-build.sh
 - Require alsa-lib and hicolor-icon-theme; recreate /usr/bin/sshs3 after replacing the upstream RPM
