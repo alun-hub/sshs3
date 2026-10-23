@@ -6,6 +6,8 @@ interface BreadcrumbsProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   onDropToPath?: (targetPath: string, e: React.DragEvent) => void;
+  /** Clicking a Windows drive root ("C:") calls this (to show the drive list) instead of navigating to it. */
+  onDriveRootClick?: () => void;
 }
 
 export interface BreadcrumbsHandle {
@@ -15,7 +17,7 @@ export interface BreadcrumbsHandle {
 }
 
 export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(function Breadcrumbs(
-  { currentPath, onNavigate, onDropToPath },
+  { currentPath, onNavigate, onDropToPath, onDriveRootClick },
   ref
 ) {
   const [editing, setEditing] = useState(false);
@@ -114,7 +116,11 @@ export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(funct
             {idx > 0 && segments[idx - 1].label !== '/' && <span className="text-txt-muted">/</span>}
             <button
               type="button"
-              onClick={() => onNavigate(segment.path)}
+              onClick={() =>
+                idx === 0 && onDriveRootClick && /^[A-Za-z]:\\$/.test(segment.path)
+                  ? onDriveRootClick()
+                  : onNavigate(segment.path)
+              }
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();

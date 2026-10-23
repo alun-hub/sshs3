@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ArrowLeft, ArrowRight, ArrowUp, FileSearch, FileText, Eye, EyeOff, FilePlus, FolderPlus, Home, Pencil, RefreshCw, Search, Shield, Terminal, Trash2 } from 'lucide-react';
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
+import { IS_WINDOWS } from '../../lib/platform';
 import { Breadcrumbs, type BreadcrumbsHandle } from './Breadcrumbs';
 import { DiskSpaceMenu } from './DiskSpaceMenu';
 import type { SourceType } from './types';
@@ -74,7 +75,9 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   onToggleHiddenFiles,
   children,
   breadcrumbsRef,
-}) => (
+}) => {
+  const [driveMenuRequest, setDriveMenuRequest] = React.useState(0);
+  return (
   <div className="flex flex-col gap-0.5 border-b border-divider bg-app-surface-subtle px-2 py-0.5">
     <div className="flex items-center gap-1">
       {/* Navigation Group */}
@@ -131,6 +134,7 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
           canListVolumes={sourceType === 'local'}
           currentPath={currentPath}
           onNavigate={onPathChange}
+          openRequest={driveMenuRequest}
         />
       )}
 
@@ -205,8 +209,8 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
         </button>
         <button
           type="button"
-          title="Change Permissions (chmod)"
-          aria-label="Change Permissions (chmod)"
+          title={IS_WINDOWS && sourceType === 'local' ? 'Change Attributes' : 'Change Permissions (chmod)'}
+          aria-label={IS_WINDOWS && sourceType === 'local' ? 'Change Attributes' : 'Change Permissions (chmod)'}
           disabled={selectedCount === 0 || sourceType === 's3'}
           onClick={() => setChmodOpen(true)}
           className="rounded-lg p-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-30 transition-colors"
@@ -281,6 +285,13 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
     </div>
 
     {/* Breadcrumb bar gets its own row so the path is never squeezed out by the icon groups above. */}
-    <Breadcrumbs ref={breadcrumbsRef} currentPath={currentPath} onNavigate={onPathChange} onDropToPath={handleBreadcrumbDrop} />
+    <Breadcrumbs
+      ref={breadcrumbsRef}
+      currentPath={currentPath}
+      onNavigate={onPathChange}
+      onDropToPath={handleBreadcrumbDrop}
+      onDriveRootClick={sourceType === 'local' ? () => setDriveMenuRequest((n) => n + 1) : undefined}
+    />
   </div>
-);
+  );
+};

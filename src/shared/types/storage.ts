@@ -80,6 +80,10 @@ export interface IStorageProvider {
   writeFile?(remotePath: string, data: Buffer | Uint8Array, options?: WriteStreamOptions): Promise<void>;
   readFile?(remotePath: string): Promise<Buffer>;
   chmod?(remotePath: string, mode: number | string): Promise<void>;
+  /** Windows file attributes (local provider on Windows only). */
+  getWinAttributes?(remotePath: string): Promise<WinAttributes>;
+  /** Sets the given attributes (others untouched); `recursive` also covers a folder's contents. */
+  setWinAttributes?(remotePath: string, changes: Partial<WinAttributes>, recursive?: boolean): Promise<void>;
   setMetadata?(remotePath: string, metadata: ObjectMetadata): Promise<void>;
   /**
    * Sets a file's modification time (epoch ms) after it's written, so a copy
@@ -116,6 +120,14 @@ export interface IStorageProvider {
 export interface SpaceInfo {
   totalBytes: number;
   freeBytes: number;
+}
+
+/** The Windows file attributes the file manager can show and change (the `attrib` flags R, H, S, A). */
+export interface WinAttributes {
+  readOnly: boolean;
+  hidden: boolean;
+  system: boolean;
+  archive: boolean;
 }
 
 export interface VolumeInfo extends SpaceInfo {

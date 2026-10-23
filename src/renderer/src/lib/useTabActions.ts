@@ -410,13 +410,17 @@ export function useTabActions(ctx: TabActionsContext) {
         resolved = resolved === '~' ? home : `${home.replace(/\/+$/, '')}/${resolved.slice(2)}`;
       }
     }
-    let isDir = resolved.endsWith('/');
+    // A Windows path (drive letter or UNC) separates with backslashes; everything else is unchanged.
+    const isWindowsPath = /^[A-Za-z]:|^\\\\/.test(resolved);
+    let isDir = resolved.endsWith('/') || (isWindowsPath && resolved.endsWith('\\'));
     if (!isDir) {
       const stat = await statIfExists('local', resolved);
       if (stat?.isDirectory) isDir = true;
     }
-    const lastSlash = resolved.lastIndexOf('/');
-    const folder = isDir ? resolved : lastSlash === -1 ? '/' : resolved.slice(0, lastSlash) || '/';
+    const lastSlash = Math.max(resolved.lastIndexOf('/'), isWindowsPath ? resolved.lastIndexOf('\\') : -1);
+    let folder = isDir ? resolved : lastSlash === -1 ? '/' : resolved.slice(0, lastSlash) || '/';
+    // "C:" alone means the drive's current directory; the root needs its separator.
+    if (isWindowsPath && /^[A-Za-z]:$/.test(folder)) folder = `${folder}\\`;
     const selectPath = isDir ? undefined : resolved;
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {

@@ -2,7 +2,9 @@ import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { FileEntry } from '@shared/types/storage';
 import { parentPath } from '../../lib/format';
+import { IS_WINDOWS } from '../../lib/platform';
 import { ChmodModal } from './ChmodModal';
+import { WinAttributesModal } from './WinAttributesModal';
 import { PropertiesModal } from './PropertiesModal';
 import { TagsModal } from './TagsModal';
 import { BucketPolicyModal } from './BucketPolicyModal';
@@ -116,13 +118,23 @@ export const FilePaneModals: React.FC<FilePaneModalsProps> = ({
   onPathChange,
 }) => (
   <>
-    <ChmodModal
-      open={chmodOpen}
-      providerId={source.providerId}
-      entries={selectedEntries}
-      onClose={() => setChmodOpen(false)}
-      onSaved={() => void load()}
-    />
+    {IS_WINDOWS && source.sourceType === 'local' ? (
+      <WinAttributesModal
+        open={chmodOpen}
+        providerId={source.providerId}
+        entries={selectedEntries}
+        onClose={() => setChmodOpen(false)}
+        onSaved={() => void load()}
+      />
+    ) : (
+      <ChmodModal
+        open={chmodOpen}
+        providerId={source.providerId}
+        entries={selectedEntries}
+        onClose={() => setChmodOpen(false)}
+        onSaved={() => void load()}
+      />
+    )}
 
     <PropertiesModal
       open={propertiesOpen}

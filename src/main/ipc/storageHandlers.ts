@@ -10,6 +10,7 @@ import type {
   ObjectVersionEntry,
   SpaceInfo,
   VolumeInfo,
+  WinAttributes,
 } from '../../shared/types/storage';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
@@ -229,6 +230,44 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         throw new Error(`Storage provider "${providerId}" does not support chmod`);
       }
       await provider.chmod(remotePath, mode);
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_GET_WIN_ATTRIBUTES,
+    async (_event, providerId: string, remotePath: string): Promise<WinAttributes> => {
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      if (typeof provider.getWinAttributes !== 'function') {
+        throw new Error(`Storage provider "${providerId}" does not support Windows attributes`);
+      }
+      return provider.getWinAttributes(remotePath);
+    }
+  );
+
+  bridge.registerHandler(
+    IPC_CHANNELS.STORAGE_SET_WIN_ATTRIBUTES,
+    async (
+      _event,
+      providerId: string,
+      remotePath: string,
+      changes: Partial<WinAttributes>,
+      recursive?: boolean
+    ): Promise<void> => {
+      const provider = bridge.storageRegistry.get(providerId);
+      if (!provider) {
+        throw new Error(`Storage provider not found: ${providerId}`);
+      }
+      if (typeof provider.setWinAttributes !== 'function') {
+        throw new Error(`Storage provider "${providerId}" does not support Windows attributes`);
+      }
+      const clean: Partial<WinAttributes> = {};
+      for (const key of ['readOnly', 'hidden', 'system', 'archive'] as const) {
+        if (typeof changes?.[key] === 'boolean') clean[key] = changes[key];
+      }
+      await provider.setWinAttributes(remotePath, clean, recursive === true);
     }
   );
 

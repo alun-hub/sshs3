@@ -23,6 +23,7 @@ import type {
 import type {
   FileEntry,
   ObjectMetadata,
+  WinAttributes,
   TransferProgress,
   SFTPConfig,
   S3Config,
@@ -143,6 +144,8 @@ export const IPC_CHANNELS = {
   STORAGE_DELETE: 'storage:delete',
   STORAGE_RENAME: 'storage:rename',
   STORAGE_CHMOD: 'storage:chmod',
+  STORAGE_GET_WIN_ATTRIBUTES: 'storage:get-win-attributes',
+  STORAGE_SET_WIN_ATTRIBUTES: 'storage:set-win-attributes',
   STORAGE_SET_METADATA: 'storage:set-metadata',
   STORAGE_GET_TAGS: 'storage:get-tags',
   STORAGE_SET_TAGS: 'storage:set-tags',
@@ -358,6 +361,7 @@ export const IPC_CHANNELS = {
   APP_GET_HOSTNAME: 'app:get-hostname',
   APP_GET_SECURITY_STATUS: 'app:get-security-status',
   APP_DETECT_LOCAL_SHELLS: 'app:detect-local-shells',
+  APP_OPEN_ELEVATED_SHELL: 'app:open-elevated-shell',
   APP_CHECK_X11_SERVER: 'app:check-x11-server',
   X11_GET_STATUS: 'x11:get-status',
   X11_START_SERVER: 'x11:start-server',
@@ -645,6 +649,8 @@ export interface MultiSSHApi {
   storageDelete(providerId: string, remotePath: string, isDirectory: boolean): Promise<void>;
   storageRename(providerId: string, oldPath: string, newPath: string): Promise<void>;
   storageChmod(providerId: string, remotePath: string, mode: number | string): Promise<void>;
+  storageGetWinAttributes(providerId: string, remotePath: string): Promise<WinAttributes>;
+  storageSetWinAttributes(providerId: string, remotePath: string, changes: Partial<WinAttributes>, recursive?: boolean): Promise<void>;
   storageSetMetadata(providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void>;
   storageGetTags(providerId: string, remotePath: string): Promise<S3Tag[]>;
   storageSetTags(providerId: string, remotePath: string, tags: S3Tag[]): Promise<void>;
@@ -989,6 +995,8 @@ export interface MultiSSHApi {
   getSecurityStatus(): Promise<{ credentialEncryptionAvailable: boolean }>;
   /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
   detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
+  /** Windows only: opens cmd / PowerShell / pwsh in a separate elevated window via UAC. `started` is false if UAC was declined. */
+  openElevatedShell(shellType: 'cmd' | 'powershell' | 'pwsh'): Promise<{ started: boolean }>;
   /** Windows/Linux: check whether an X11 server is actively listening on the target display. */
   checkX11Server(display?: string): Promise<{ running: boolean; display: string; platform?: string }>;
   /** Windows: Get current status of managed/detected X server. */

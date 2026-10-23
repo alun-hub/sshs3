@@ -85,6 +85,7 @@ import type {
 import type {
   FileEntry,
   ObjectMetadata,
+  WinAttributes,
   TransferProgress,
   S3Config,
   S3Tag,
@@ -308,6 +309,12 @@ export const api: MultiSSHApi = {
 
   storageChmod: (providerId: string, remotePath: string, mode: number | string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_CHMOD, providerId, remotePath, mode),
+
+  storageGetWinAttributes: (providerId: string, remotePath: string): Promise<WinAttributes> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_GET_WIN_ATTRIBUTES, providerId, remotePath),
+
+  storageSetWinAttributes: (providerId: string, remotePath: string, changes: Partial<WinAttributes>, recursive?: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_WIN_ATTRIBUTES, providerId, remotePath, changes, recursive === true),
 
   storageSetMetadata: (providerId: string, remotePath: string, metadata: ObjectMetadata): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.STORAGE_SET_METADATA, providerId, remotePath, metadata),
@@ -1088,6 +1095,9 @@ export const api: MultiSSHApi = {
 
   detectLocalShells: (): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS),
+
+  openElevatedShell: (shellType: 'cmd' | 'powershell' | 'pwsh'): Promise<{ started: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_ELEVATED_SHELL, shellType),
 
   checkX11Server: (display?: string): Promise<{ running: boolean; display: string; platform?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, display),

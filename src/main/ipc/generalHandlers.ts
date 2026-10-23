@@ -13,6 +13,13 @@ export type GeneralHost = Pick<IpcBridge, 'getUpdateService' | 'registerHandler'
 
 const execFileAsync = promisify(execFile);
 
+/** Shells that may be started elevated (WSL is left out: Windows admin does not mean root in a distro). */
+const ELEVATED_SHELLS: Record<string, string> = {
+  cmd: 'cmd.exe',
+  powershell: 'powershell.exe',
+  pwsh: 'pwsh.exe',
+};
+
 export function registerGeneralHandlers(bridge: GeneralHost): void {
   bridge.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
     try {
@@ -81,6 +88,41 @@ export function registerGeneralHandlers(bridge: GeneralHost): void {
     }
     return { pwsh, wsl, wslDistros };
   });
+
+  // Windows: opens cmd / PowerShell in its own elevated window through the normal UAC prompt. An
+  // elevated process cannot be hosted in this (non-elevated) app's terminal, so it is a separate window.
+  bridge.registerHandler(
+    IPC_CHANNELS.APP_OPEN_ELEVATED_SHELL,
+    async (_event, shellType: string): Promise<{ started: boolean }> => {
+      if (process.platform !== 'win32') {
+        throw new Error('Running a shell as administrator is only available on Windows');
+      }
+      const exe = ELEVATED_SHELLS[shellType];
+      if (!exe) {
+        throw new Error(`Unsupported shell for elevation: ${String(shellType)}`);
+      }
+      try {
+        // Fixed program and arguments only: the renderer chooses from a whitelist, never a command line.
+        await execFileAsync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `Start-Process -FilePath '${exe}' -WorkingDirectory $env:USERPROFILE -Verb RunAs`,
+          ],
+          { windowsHide: true }
+        );
+        return { started: true };
+      } catch (err) {
+        // Declining the UAC prompt makes Start-Process fail with "canceled by the user": not an error.
+        if (/cancel/i.test(String((err as { stderr?: string }).stderr ?? err))) {
+          return { started: false };
+        }
+        throw err;
+      }
+    }
+  );
 
   bridge.registerHandler(
     IPC_CHANNELS.APP_CHECK_X11_SERVER,

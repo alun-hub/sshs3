@@ -10,6 +10,8 @@ interface DiskSpaceMenuProps {
   canListVolumes: boolean;
   currentPath: string;
   onNavigate: (path: string) => void;
+  /** Bumped by the parent (e.g. a click on the "C:" breadcrumb) to open the drive list. */
+  openRequest?: number;
 }
 
 function usedPct(space: SpaceInfo): number {
@@ -26,7 +28,7 @@ const FillBar: React.FC<{ pct: number }> = ({ pct }) => (
 );
 
 /** Free-space indicator for the current path; for local panes also a drive/volume picker with fill levels. */
-export const DiskSpaceMenu: React.FC<DiskSpaceMenuProps> = ({ providerId, canListVolumes, currentPath, onNavigate }) => {
+export const DiskSpaceMenu: React.FC<DiskSpaceMenuProps> = ({ providerId, canListVolumes, currentPath, onNavigate, openRequest }) => {
   const [space, setSpace] = useState<SpaceInfo | undefined>();
   const [open, setOpen] = useState(false);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
@@ -48,6 +50,10 @@ export const DiskSpaceMenu: React.FC<DiskSpaceMenuProps> = ({ providerId, canLis
       cancelled = true;
     };
   }, [providerId, currentPath]);
+
+  useEffect(() => {
+    if (openRequest && canListVolumes) setOpen(true);
+  }, [openRequest, canListVolumes]);
 
   const close = useCallback(() => {
     setOpen(false);

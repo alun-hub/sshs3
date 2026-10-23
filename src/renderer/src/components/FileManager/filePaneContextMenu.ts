@@ -30,6 +30,7 @@ import {
 import type { FileEntry } from '@shared/types/storage';
 import type { GitRepoStatus } from '@shared/types/git';
 import { parentPath } from '../../lib/format';
+import { IS_WINDOWS } from '../../lib/platform';
 import type { ContextMenuItem } from './ContextMenu';
 import type { SourceType } from './types';
 import { canCreateFileIn } from './filePaneHelpers';
@@ -217,7 +218,7 @@ export function buildContextMenuItems(input: FilePaneContextMenuInput): ContextM
             : []),
           {
             key: 'chmod',
-            label: 'Change Permissions (chmod)...',
+            label: IS_WINDOWS && sourceType === 'local' ? 'Change Attributes...' : 'Change Permissions (chmod)...',
             icon: Shield,
             disabled: !supportsChmod,
             onSelect: () => setChmodOpen(true),
