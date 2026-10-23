@@ -7,7 +7,9 @@ import {
   rpmChangelogDate,
 } from '../../scripts/copr-spec.mjs';
 
-const SPEC = readFileSync(new URL('../../packaging/copr/sshs3.spec', import.meta.url), 'utf8');
+// The Windows CI checkout has CRLF endings; the tests edit the spec with LF regexes, so work on an LF copy.
+// CRLF input itself is covered by its own test below.
+const SPEC = readFileSync(new URL('../../packaging/copr/sshs3.spec', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const SHA = 'a'.repeat(64);
 const PACKAGER = 'Jane Doe <jane@example.com>';
 const base = { version: '1.2.3', sha256: SHA, release: 1, date: new Date(Date.UTC(2026, 9, 23)), packager: PACKAGER };
