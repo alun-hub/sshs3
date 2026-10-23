@@ -55,6 +55,13 @@
       }
     ]
   },
+  "rpm": {
+    "afterRemove": "build/linux/rpm-after-remove.sh",
+    "fpm": [
+      "--rpm-posttrans",
+      "build/linux/rpm-posttrans.sh"
+    ]
+  },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,

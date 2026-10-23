@@ -41,7 +41,7 @@ Provide hassle-free deployment across standard enterprise server fleets and engi
 
 #### 🛠️ How to Use
 1. Download and install using your system's package manager.
-2. On Linux, the DEB and RPM packages install the app under `/opt/sshs3` (start it from your application menu, or run `/opt/sshs3/sshs3`; there is no `sshs3` command on your `PATH`) and register a desktop entry and app icons; the AppImage runs in place without installing anything.
+2. On Linux, the DEB and RPM packages install the app under `/opt/sshs3` (start it from your application menu, or run `sshs3` / `/opt/sshs3/sshs3`) and register a desktop entry and app icons; the AppImage runs in place without installing anything.
 3. On Windows, the installer bundles a self-contained, portable build of VcXsrv, allowing immediate execution of remote Linux GUI applications over SSH (`ssh -Y`) without separate setup.
 4. **Portable Windows builds** (the portable `.exe` and the ZIP) keep all profiles and settings next to the executable instead of in `%APPDATA%\sshs3`: the portable `.exe` uses `<exe-dir>\data`, and the ZIP does too as soon as a `data` folder exists beside `sshs3.exe`. This keeps the data with the program (for example on a USB drive) and separate from any installed copy.
 5. sshs3 allows a single running instance: starting it again (installed or portable) brings the existing window to the front instead of opening a second one.
