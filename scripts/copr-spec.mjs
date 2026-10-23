@@ -27,9 +27,13 @@ export function rpmChangelogDate(date) {
   return `${DAYS[date.getUTCDay()]} ${MONTHS[date.getUTCMonth()]} ${day} ${date.getUTCFullYear()}`;
 }
 
+// A checkout with autocrlf (the Windows CI runner) gives the spec CRLF line endings; rpmbuild runs on Linux
+// and wants LF, so both entry points normalise first.
+const toLf = (text) => text.replace(/\r\n/g, '\n');
+
 /** "Name <email>" from the newest %changelog entry, or null when there is none. */
 export function latestChangelogPackager(specText) {
-  const m = /^\* \w{3} \w{3} \d{2} \d{4} (.+? <[^<>\r\n]+>) - \S+$/m.exec(specText);
+  const m = /^\* \w{3} \w{3} \d{2} \d{4} (.+? <[^<>\r\n]+>) - \S+$/m.exec(toLf(specText));
   return m ? m[1] : null;
 }
 
@@ -52,7 +56,7 @@ export function renderSpec(specText, { version, sha256, release, date, packager 
   if (!Number.isInteger(release) || release < 1) throw new Error(`invalid release: ${release}`);
   if (!PACKAGER_RE.test(packager)) throw new Error(`invalid packager: ${packager}`);
 
-  let out = replaceExactlyOne(specText, /^Version:.*$/m, `Version:        ${version}`, 'Version:');
+  let out = replaceExactlyOne(toLf(specText), /^Version:.*$/m, `Version:        ${version}`, 'Version:');
   out = replaceExactlyOne(out, /^Release:.*$/m, `Release:        ${release}%{?dist}`, 'Release:');
   out = replaceExactlyOne(out, /^%global source_sha256 .*$/m, `%global source_sha256 ${sha256}`, '%global source_sha256');
 

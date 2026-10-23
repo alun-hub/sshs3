@@ -75,6 +75,14 @@ describe('renderSpec', () => {
     expect(() => renderSpec(SPEC.replace('%changelog\n', ''), base)).toThrow(/%changelog/);
   });
 
+  it('handles a spec checked out with CRLF line endings and returns LF', () => {
+    const crlf = SPEC.replace(/\r?\n/g, '\r\n');
+    expect(latestChangelogPackager(crlf)).toBe(latestChangelogPackager(SPEC));
+    const out = renderSpec(crlf, base);
+    expect(out).not.toContain('\r');
+    expect(out).toBe(renderSpec(SPEC, base));
+  });
+
   it('does not interpret $ sequences in the packager', () => {
     const out = renderSpec(SPEC, { ...base, packager: 'A $& B <a@b.c>' });
     expect(out).toContain('* Fri Oct 23 2026 A $& B <a@b.c> - 1.2.3-1');
