@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Shield, Terminal } from 'lucide-react';
 import type { LocalShellType } from '@shared/types/ssh';
+import { describeIpcError } from '../lib/format';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
 
 const SHELL_BUTTON_CLASS =
@@ -18,7 +19,7 @@ const WindowsShellButton: React.FC<{
     setError(null);
     void window.multissh
       ?.openElevatedShell?.(shell)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err: unknown) => setError(describeIpcError(err, 'Could not start the elevated shell')));
   };
   return (
     <span className="inline-flex flex-col items-center">

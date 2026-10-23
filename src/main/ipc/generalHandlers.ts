@@ -7,18 +7,12 @@ import { isEncryptionAvailable } from '../crypto/SecretFieldCrypto';
 import { XServerManager } from '../x11/XServerManager';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
+import { elevatedShellExecutable, elevatedStartCommand, isUacDeclined } from './elevatedShell';
 
 /** The part of IpcBridge this handler group may use. */
 export type GeneralHost = Pick<IpcBridge, 'getUpdateService' | 'registerHandler'>;
 
 const execFileAsync = promisify(execFile);
-
-/** Shells that may be started elevated (WSL is left out: Windows admin does not mean root in a distro). */
-const ELEVATED_SHELLS: Record<string, string> = {
-  cmd: 'cmd.exe',
-  powershell: 'powershell.exe',
-  pwsh: 'pwsh.exe',
-};
 
 export function registerGeneralHandlers(bridge: GeneralHost): void {
   bridge.registerHandler(IPC_CHANNELS.APP_GET_VERSION, async () => {
@@ -93,11 +87,11 @@ export function registerGeneralHandlers(bridge: GeneralHost): void {
   // elevated process cannot be hosted in this (non-elevated) app's terminal, so it is a separate window.
   bridge.registerHandler(
     IPC_CHANNELS.APP_OPEN_ELEVATED_SHELL,
-    async (_event, shellType: string): Promise<{ started: boolean }> => {
+    async (_event, shellType: unknown): Promise<{ started: boolean }> => {
       if (process.platform !== 'win32') {
         throw new Error('Running a shell as administrator is only available on Windows');
       }
-      const exe = ELEVATED_SHELLS[shellType];
+      const exe = elevatedShellExecutable(shellType);
       if (!exe) {
         throw new Error(`Unsupported shell for elevation: ${String(shellType)}`);
       }
@@ -109,16 +103,14 @@ export function registerGeneralHandlers(bridge: GeneralHost): void {
             '-NoProfile',
             '-NonInteractive',
             '-Command',
-            `Start-Process -FilePath '${exe}' -WorkingDirectory $env:USERPROFILE -Verb RunAs`,
+            elevatedStartCommand(exe),
           ],
           { windowsHide: true }
         );
         return { started: true };
       } catch (err) {
-        // Declining the UAC prompt makes Start-Process fail with "canceled by the user": not an error.
-        if (/cancel/i.test(String((err as { stderr?: string }).stderr ?? err))) {
-          return { started: false };
-        }
+        // Declining the UAC prompt is not an error.
+        if (isUacDeclined(err)) return { started: false };
         throw err;
       }
     }

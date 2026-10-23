@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Shield, X, Loader2 } from 'lucide-react';
 import type { FileEntry, WinAttributes } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
@@ -38,13 +38,20 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
 
   const hasDirectory = useMemo(() => entries.some((e) => e.isDirectory), [entries]);
 
+  // FilePane rebuilds `entries` on every render; keying on the paths keeps a re-render from reloading the
+  // attributes and discarding what the user has ticked.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const entryPaths = entries.map((e) => e.path).join('\n');
+
   useEffect(() => {
-    if (!open || entries.length === 0) return;
+    const targets = entriesRef.current;
+    if (!open || targets.length === 0) return;
     let cancelled = false;
     setRecursive(false);
     setError(null);
     setLoading(true);
-    void Promise.all(entries.map((e) => window.multissh.storageGetWinAttributes(providerId, e.path)))
+    void Promise.all(targets.map((e) => window.multissh.storageGetWinAttributes(providerId, e.path)))
       .then((all) => {
         if (cancelled) return;
         const merged = { ...EMPTY } as AttrState;
@@ -64,7 +71,7 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
     return () => {
       cancelled = true;
     };
-  }, [open, entries, providerId]);
+  }, [open, entryPaths, providerId]);
 
   const handleBackdropClick = useModalDismiss(onClose, open, !saving);
 
@@ -84,11 +91,12 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
       for (const entry of entries) {
         await window.multissh.storageSetWinAttributes(providerId, entry.path, changes, recursive && entry.isDirectory);
       }
-      onSaved();
       onClose();
     } catch (err) {
       setError(describeIpcError(err, 'Failed to change attributes'));
     } finally {
+      // Also after a partial failure: the items before the failing one have changed on disk.
+      onSaved();
       setSaving(false);
     }
   };

@@ -218,3 +218,10 @@ export function parseStoredK8sProfile(raw: unknown): K8sProfile {
   const deletedAt = isoTimestamp(input.deletedAt);
   return { ...profile, ...(updatedAt ? { updatedAt } : {}), ...(deletedAt ? { deletedAt } : {}) };
 }
+
+/** Throws unless every named IPC argument is a non-empty string (the renderer is not trusted to send the right types). */
+export function assertStrings(args: Record<string, unknown>): void {
+  for (const [name, value] of Object.entries(args)) {
+    if (typeof value !== 'string' || value === '') throw new Error(`Invalid argument: ${name}`);
+  }
+}

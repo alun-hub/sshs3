@@ -506,7 +506,7 @@ describe('AppAgent', () => {
       it('evicts only the identities the FIDO2 load added, leaving the others in the agent', async () => {
         const agent = new AppAgent();
         await agent.ensure();
-        vi.mocked(getAgentIdentities).mockResolvedValueOnce([identity(1)] as any).mockResolvedValueOnce([identity(1), identity(2)] as any);
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([identity(1)] as any).mockResolvedValueOnce([identity(1), identity(2)] as any).mockResolvedValue([identity(1), identity(2)] as any);
         vi.mocked(addFido2ResidentKeysToAgent).mockResolvedValue(undefined as any);
 
         await agent.addFido2Resident(vi.fn());
@@ -521,7 +521,7 @@ describe('AppAgent', () => {
       it('still records keys added before a failed load, so they are evicted on lock', async () => {
         const agent = new AppAgent();
         await agent.ensure();
-        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(3)] as any);
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(3)] as any).mockResolvedValue([identity(3)] as any);
         vi.mocked(addFido2ResidentKeysToAgent).mockRejectedValue(new Error('touch timed out'));
 
         await expect(agent.addFido2Resident(vi.fn())).rejects.toThrow('touch timed out');
@@ -530,10 +530,69 @@ describe('AppAgent', () => {
         expect(sshAddDeletes()).toHaveLength(1);
       });
 
+      it('adoptIdentities records only the wanted identities, which lock then evicts', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValue([identity(8), identity(9)] as any);
+
+        await agent.adoptIdentities([fingerprintOfKeyBlob(keyBlob(8))]);
+        await agent.lockAll();
+
+        const deletes = sshAddDeletes();
+        expect(deletes).toHaveLength(1);
+        expect(deletes[0][1]).not.toEqual([]);
+      });
+
+      it('adoptIdentities does nothing off Windows or before the agent runs', async () => {
+        const agent = new AppAgent();
+        await agent.adoptIdentities(['SHA256:x']);
+        expect(getAgentIdentities).not.toHaveBeenCalled();
+        await agent.ensure();
+        setPlatform('linux');
+        await agent.adoptIdentities(['SHA256:x']);
+        expect(getAgentIdentities).not.toHaveBeenCalled();
+      });
+
+      it('removeIdentities evicts exactly the named keys from the shared agent and counts them', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValue([identity(10), identity(11), identity(12)] as any);
+
+        const removed = await agent.removeIdentities([fingerprintOfKeyBlob(keyBlob(10)), fingerprintOfKeyBlob(keyBlob(12))]);
+
+        expect(removed).toBe(2);
+        expect(sshAddDeletes()).toHaveLength(2);
+      });
+
+      it('removeIdentities does not count a key whose eviction failed', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValue([identity(13)] as any);
+        vi.mocked(mockedExecFile).mockImplementationOnce(((...args: any[]) => {
+          args[args.length - 1](new Error('agent refused operation'));
+        }) as any);
+
+        await expect(agent.removeIdentities([fingerprintOfKeyBlob(keyBlob(13))])).resolves.toBe(0);
+      });
+
+      it('evictIdentities drops only the evicted keys from the record, so lock still evicts the others', async () => {
+        const agent = new AppAgent();
+        await agent.ensure();
+        vi.mocked(getAgentIdentities).mockResolvedValue([identity(6), identity(7)] as any);
+        const fp = (n: number) => fingerprintOfKeyBlob(keyBlob(n));
+        await agent.adoptIdentities([fp(6), fp(7)]);
+
+        await agent.evictIdentities([fp(7)]);
+        expect(sshAddDeletes()).toHaveLength(1);
+
+        await agent.lockAll();
+        expect(sshAddDeletes()).toHaveLength(2);
+      });
+
       it('keeps going when one eviction fails and does not evict twice', async () => {
         const agent = new AppAgent();
         await agent.ensure();
-        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(4), identity(5)] as any);
+        vi.mocked(getAgentIdentities).mockResolvedValueOnce([] as any).mockResolvedValueOnce([identity(4), identity(5)] as any).mockResolvedValue([identity(4), identity(5)] as any);
         vi.mocked(addFido2ResidentKeysToAgent).mockResolvedValue(undefined as any);
         await agent.addFido2Resident(vi.fn());
 

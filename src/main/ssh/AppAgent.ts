@@ -413,7 +413,8 @@ export class AppAgent {
     if (process.platform !== 'win32' || !this.socketPath) return;
     const wanted = new Set(fingerprints);
     for (const [fp, blob] of await this.identityBlobs(this.socketPath)) {
-      if (wanted.has(fp)) await this.evictBlob(this.socketPath, blob);
+      if (!wanted.has(fp)) continue;
+      await this.evictBlob(this.socketPath, blob);
       this.loadedKeys.delete(fp);
     }
   }

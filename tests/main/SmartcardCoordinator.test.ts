@@ -6,6 +6,7 @@ vi.mock('electron', () => {
 });
 
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
+import type { SmartcardCertificateDetails } from '../../src/main/smartcard/CertificateParser';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { AppAgent } from '../../src/main/ssh/AppAgent';
 import { SmartcardCoordinator, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
@@ -37,6 +38,8 @@ function makeFakeAgent(calls: string[] = []) {
     addPkcs11: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     removeIdentities: vi.fn().mockResolvedValue(0),
+    adoptIdentities: vi.fn().mockResolvedValue(undefined),
+    evictIdentities: vi.fn().mockResolvedValue(undefined),
     shutdown: vi.fn(async () => void calls.push('appAgent.shutdown')),
   };
 }
@@ -82,6 +85,81 @@ describe('SmartcardCoordinator', () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual(['/run/sshs3/agent.sock', '/run/sshs3/agent.sock']);
     expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+  });
+
+  describe('Windows shared agent', () => {
+    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const LIB2 = 'C:/OpenSC/opensc-pkcs11.dll';
+    const card = (fingerprint: string) =>
+      new Map([[fingerprint, { authCapable: true } as unknown as SmartcardCertificateDetails]]);
+    const identity = (fingerprint: string) => ({ fingerprint, keyType: 'ecdsa-sha2-nistp256' }) as any;
+
+    beforeEach(() => Object.defineProperty(process, 'platform', { value: 'win32' }));
+    afterEach(() => Object.defineProperty(process, 'platform', origPlatform));
+
+    it('evicts a key left in the service by an earlier run and loads the card afresh', async () => {
+      const { coordinator, agent } = build();
+      vi.mocked(SmartcardCertificateReader.readSmartcardCertificates).mockResolvedValue(card('SHA256:old'));
+      agent.list.mockResolvedValue([identity('SHA256:old')]);
+
+      await coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => 'pin');
+
+      expect(agent.evictIdentities).toHaveBeenCalledWith(['SHA256:old']);
+      expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+      expect(agent.adoptIdentities).toHaveBeenCalledWith(new Set(['SHA256:old']));
+    });
+
+    it('lets a second module for the same card wait instead of evicting the keys the first just added', async () => {
+      const { coordinator, agent } = build();
+      vi.mocked(SmartcardCertificateReader.readSmartcardCertificates).mockResolvedValue(card('SHA256:card'));
+      // Empty for the first load's "before" snapshot; the card's key is in the agent from then on.
+      agent.list.mockResolvedValueOnce([]).mockResolvedValue([identity('SHA256:card')]);
+      let release!: () => void;
+      agent.addPkcs11.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+
+      const first = coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => 'pin');
+      await vi.waitFor(() => expect(agent.addPkcs11).toHaveBeenCalledTimes(1));
+      const second = coordinator.getOrLoadGlobalSmartcardAgent(LIB2, async () => 'pin');
+      // The second load has not looked at the agent while the first is still adding its key.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(agent.list).toHaveBeenCalledTimes(1);
+
+      release();
+      await Promise.all([first, second]);
+
+      expect(agent.evictIdentities).not.toHaveBeenCalled();
+      expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait for earlier loads on other platforms', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      const { coordinator, agent } = build();
+      let release!: () => void;
+      agent.addPkcs11.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+
+      const first = coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => 'pin');
+      await vi.waitFor(() => expect(agent.addPkcs11).toHaveBeenCalledTimes(1));
+      const second = coordinator.getOrLoadGlobalSmartcardAgent(LIB2, async () => 'pin');
+      await vi.waitFor(() => expect(agent.addPkcs11).toHaveBeenCalledTimes(2));
+
+      release();
+      await Promise.all([first, second]);
+    });
+
+    it('a failed earlier load does not stop the next one', async () => {
+      const { coordinator, agent } = build();
+      let fail!: (err: Error) => void;
+      agent.addPkcs11.mockImplementationOnce(() => new Promise<void>((_, reject) => (fail = reject)));
+
+      const first = coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => 'pin');
+      const firstResult = first.catch((err: Error) => err.message);
+      await vi.waitFor(() => expect(agent.addPkcs11).toHaveBeenCalledTimes(1));
+      const second = coordinator.getOrLoadGlobalSmartcardAgent(LIB2, async () => 'pin');
+
+      fail(new Error('wrong PIN'));
+      await expect(firstResult).resolves.toBe('wrong PIN');
+      await expect(second).resolves.toBe('/run/sshs3/agent.sock');
+    });
   });
 
   it('cools down for 30 s after a failed load instead of prompting for the PIN again', async () => {

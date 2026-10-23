@@ -10,6 +10,7 @@ import {
   formatDate,
   getMimeType,
 } from './StorageProvider';
+import { buildAttribFlags, parseAttribOutput, unappliedAttributes } from './winAttributes';
 import type {
   FileEntry,
   SpaceInfo,
@@ -309,36 +310,24 @@ export class LocalStorageProvider extends BaseStorageProvider {
   /** Windows only: reads the R/H/S/A attributes of a file or folder with `attrib`. */
   async getWinAttributes(remotePath: string): Promise<WinAttributes> {
     if (process.platform !== 'win32') throw new Error('Windows attributes are only available on Windows');
-    const fullPath = this.resolvePath(remotePath);
-    const { stdout } = await execFileAsync('attrib', [fullPath], { windowsHide: true });
-    // "A  SH        C:\dir\file": the flags are the columns before the path.
-    const line = stdout.split(/\r?\n/).find((l) => l.toLowerCase().includes(fullPath.toLowerCase())) ?? '';
-    const flags = line.slice(0, line.toLowerCase().indexOf(fullPath.toLowerCase()));
-    return {
-      readOnly: /R/.test(flags),
-      hidden: /H/.test(flags),
-      system: /S/.test(flags),
-      archive: /A/.test(flags),
-    };
+    const { stdout } = await execFileAsync('attrib', [this.resolvePath(remotePath)], { windowsHide: true });
+    return parseAttribOutput(stdout);
   }
 
   /** Windows only: applies the given attribute changes with `attrib`, optionally to a folder's whole tree. */
   async setWinAttributes(remotePath: string, changes: Partial<WinAttributes>, recursive = false): Promise<void> {
     if (process.platform !== 'win32') throw new Error('Windows attributes are only available on Windows');
     const fullPath = this.resolvePath(remotePath);
-    const flag = (on: boolean | undefined, letter: string): string[] =>
-      on === undefined ? [] : [`${on ? '+' : '-'}${letter}`];
-    const flags = [
-      ...flag(changes.readOnly, 'R'),
-      ...flag(changes.hidden, 'H'),
-      ...flag(changes.system, 'S'),
-      ...flag(changes.archive, 'A'),
-    ];
+    const flags = buildAttribFlags(changes, await this.getWinAttributes(remotePath));
     if (flags.length === 0) return;
     // No shell is involved, so the path cannot be interpreted as anything but an argument.
     await execFileAsync('attrib', [...flags, fullPath], { windowsHide: true });
+    // `attrib` can exit 0 without changing anything (hidden/system files), so the result is read back.
+    const unapplied = unappliedAttributes(changes, await this.getWinAttributes(remotePath));
+    if (unapplied.length > 0) throw new Error(`Windows did not apply: ${unapplied.join(', ')}`);
     if (recursive && (await fsp.stat(fullPath)).isDirectory()) {
-      await execFileAsync('attrib', [...flags, path.join(fullPath, '*'), '/S', '/D'], { windowsHide: true });
+      // Only what was asked for: items inside keep their own H/S, so `attrib` skips hidden/system ones.
+      await execFileAsync('attrib', [...buildAttribFlags(changes), path.join(fullPath, '*'), '/S', '/D'], { windowsHide: true });
     }
   }
 

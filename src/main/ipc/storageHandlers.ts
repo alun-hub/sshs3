@@ -18,7 +18,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 import type { S3StorageProvider } from '../storage/S3StorageProvider';
 import { resolveTerminalControlPath } from '../storage/terminalControlPath';
 import { describeS3Error } from '../aws/awsErrors';
-import { isMissingPathError } from './ipcHelpers';
+import { assertStrings, isMissingPathError } from './ipcHelpers';
 
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
@@ -236,6 +236,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.STORAGE_GET_WIN_ATTRIBUTES,
     async (_event, providerId: string, remotePath: string): Promise<WinAttributes> => {
+      assertStrings({ providerId, remotePath });
       const provider = bridge.storageRegistry.get(providerId);
       if (!provider) {
         throw new Error(`Storage provider not found: ${providerId}`);
@@ -256,6 +257,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
       changes: Partial<WinAttributes>,
       recursive?: boolean
     ): Promise<void> => {
+      assertStrings({ providerId, remotePath });
       const provider = bridge.storageRegistry.get(providerId);
       if (!provider) {
         throw new Error(`Storage provider not found: ${providerId}`);

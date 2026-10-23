@@ -490,7 +490,12 @@ export class SmartcardCoordinator {
               retry
             );
 
+    // Windows: loads of different modules must not overlap, or one sees the other's freshly added keys
+    // as stale (globalCards is only filled at the end of a load) and evicts them. Captured before this
+    // load registers itself, so it only waits for loads that started earlier.
+    const earlierLoads = process.platform === 'win32' ? [...this.globalSmartcardAgentLoads.values()] : [];
     const loadPromise = (async () => {
+      await Promise.allSettled(earlierLoads);
       // Read the certificate details *before* handing the module to `ssh-add -s` below (see
       // the doc comment on `globalSmartcardCerts` for why we want them at all). This must run
       // strictly before, not concurrently with or fire-and-forget after: once `ssh-add -s`

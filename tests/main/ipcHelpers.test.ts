@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  assertStrings,
   describeFido2StartupError,
   isMissingPathError,
   paneTreeHasAuthType,
@@ -161,5 +162,17 @@ describe('server URL rules (saved, synced and shared clusters)', () => {
     expect(() => parseK8sProfile(profile('ftp://api.example.com'))).toThrow(/Invalid server URL/);
     expect(() => parseK8sProfile(profile('https:\\\\api.example.com'))).toThrow(/Invalid server URL/);
     expect(parseK8sProfile(profile('HTTPS://api.example.com:6443/')).server).toBe('https://api.example.com:6443');
+  });
+});
+
+describe('assertStrings', () => {
+  it('accepts non-empty strings', () => {
+    expect(() => assertStrings({ providerId: 'local', remotePath: 'C:\\x' })).not.toThrow();
+  });
+
+  it('names the first argument that is not a non-empty string', () => {
+    expect(() => assertStrings({ providerId: 'local', remotePath: 5 })).toThrow('Invalid argument: remotePath');
+    expect(() => assertStrings({ providerId: '' })).toThrow('Invalid argument: providerId');
+    expect(() => assertStrings({ providerId: undefined })).toThrow('Invalid argument: providerId');
   });
 });

@@ -182,6 +182,8 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
     shutdown: vi.fn().mockResolvedValue(undefined),
     writePublicKeyFiles: vi.fn().mockResolvedValue([]),
     noteLoadedLibrary: vi.fn(),
+    adoptIdentities: vi.fn().mockResolvedValue(undefined),
+    evictIdentities: vi.fn().mockResolvedValue(undefined),
   };
   (bridge as any).smartcard.appAgent = appAgent;
   bridge.register();
