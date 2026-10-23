@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.59] - 2026-10-23
+
+### Fixed
+- address review findings for RPM scripts and COPR spec
+- keep /usr/bin/sshs3 on RPM upgrade
+
+### Changed
+- add COPR spec that repackages the released RPM
+
 ## [0.96.58] - 2026-10-23
 
 ### Added
