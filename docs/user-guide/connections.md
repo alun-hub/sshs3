@@ -88,6 +88,8 @@ Eliminate password compromises and enforce Zero Trust security using hardware-ba
 
 #### ⚠️ Limitations & Caveats
 - FIDO2 requires OpenSSH 8.2+ on both client and target server.
+- **U2F-only keys (YubiKey 4, YubiKey NEO, older Security Keys) are not FIDO2 keys.** They cannot create `ed25519-sk` keys, resident credentials, or keys with a PIN (`verify-required`), so generation fails with `PIN incorrect` / `Too many incorrect PINs` or Windows' *"This security key can't be used"*. Check with `ykman info`: `FIDO2  Not available` means U2F only. On such a key choose **ECDSA-SK**, untick *Require PIN + touch* and *Resident*, and use a new output file name; the key then needs only a touch. A PIN-protected key needs a FIDO2 key such as a YubiKey 5 or a Security Key. The PIV application on the same YubiKey 4 works normally as a smartcard.
+- Give each security key its own key file name (for example `id_ed25519_sk_work`), and do not overwrite a key file that another key still logs in with.
 - If password authentication is chosen, sshs3 automatically passes `-o PubkeyAuthentication=no` so an inserted touch-protected hardware token cannot interrupt the login with an unexpected touch prompt.
 
 #### ⚙️ Technical Internals & Architecture
