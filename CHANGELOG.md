@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.60] - 2026-10-23
+
+### Added
+- build each release in COPR from deploy.sh
+
+### Changed
+- bump zod to 4.6.7
+- document the Fedora COPR repository
+- bump COPR spec to 0.96.59
+
 ## [0.96.59] - 2026-10-23
 
 ### Fixed
