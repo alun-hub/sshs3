@@ -31,9 +31,12 @@ ExclusiveArch:  x86_64
 BuildRequires:  rpm
 BuildRequires:  cpio
 
-# Same runtime dependencies as the upstream RPM.
+# The upstream RPM's runtime dependencies, plus alsa-lib (the app links libasound.so.2) and
+# hicolor-icon-theme (owner of the icon directories below). Auto-generated requires are off.
+Requires:       alsa-lib
 Requires:       at-spi2-core
 Requires:       gtk3
+Requires:       hicolor-icon-theme
 Requires:       libXScrnSaver
 Requires:       libXtst
 Requires:       libnotify
@@ -84,6 +87,15 @@ if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
     chmod 4755 /opt/sshs3/chrome-sandbox || true
 fi
 
+%posttrans
+# When this package replaces the upstream RPM from GitHub Releases, that package's %postun runs
+# after this one is installed and its update-alternatives --remove can delete /usr/bin/sshs3.
+# %posttrans runs after every %postun, so put the link back if it is gone.
+if [ -x /opt/sshs3/sshs3 ] && [ ! -e /usr/bin/sshs3 ]; then
+    ln -s /opt/sshs3/sshs3 /usr/bin/sshs3
+fi
+
 %changelog
 * Fri Oct 23 2026 Andreas Lundqvist <info@sshs3.com> - 0.96.58-1
 - Initial COPR packaging of the prebuilt release
+- Require alsa-lib and hicolor-icon-theme; recreate /usr/bin/sshs3 after replacing the upstream RPM

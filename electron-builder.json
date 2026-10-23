@@ -56,6 +56,17 @@
     ]
   },
   "rpm": {
+    "depends": [
+      "gtk3",
+      "libnotify",
+      "nss",
+      "libXScrnSaver",
+      "(libXtst or libXtst6)",
+      "xdg-utils",
+      "at-spi2-core",
+      "(libuuid or libuuid1)",
+      "(alsa-lib or libasound2)"
+    ],
     "afterRemove": "build/linux/rpm-after-remove.sh",
     "fpm": [
       "--rpm-posttrans",
