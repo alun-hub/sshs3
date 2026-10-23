@@ -35,42 +35,52 @@ const SSH_AUTH_DENIED_RE = /Permission denied \([a-z-]+(?:,[a-z-]+)*\)/i;
 const UNSAFE_COMMAND_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
 
 /**
- * `Operation not permitted` also comes from firewalls and sandboxes (`ping: sendto: ...`), where sudo
- * does not help, so it only counts next to a path or a quoted name.
+ * Specific enough to trust without an exit code. `Operation not permitted` also comes from firewalls and
+ * sandboxes (`ping: sendto: ...`), where sudo does not help, so it only counts next to a path or a quoted name.
  */
 const DENIED_PATTERNS: RegExp[] = [
   /: Permission denied\.?(?:\s*\(os error \d+\))?\s*$/i,
   // apt/dpkg print the errno inside parentheses: `... RemoveCaches (13: Permission denied)`.
   /\(13: Permission denied\)\s*$/i,
   /Unable to lock (?:the )?(?:administration )?directory/i,
-  /\bcannot lock \/\S+/i,
+  // useradd and friends: `cannot lock /etc/passwd; try again later.` (a bare `cannot lock /x` is contention).
+  /\bcannot lock \/etc\/\S+; try again later/i,
   /\btry with sudo\b/i,
-  /: Access denied\.?\s*$/i,
-  /\bmust be (?:the )?super-?user\b/i,
+  // systemctl: `Failed to enable unit: Access denied`. Other tools' `Access denied` is theirs, not the OS's.
+  /\bFailed to .*: Access denied\.?\s*$/i,
   /(?:\/|['‘’"][^'‘’"]+['‘’"]).*Operation not permitted/i,
   /\bAre you root\b/i,
-  /\bmust be (?:run as )?root\b/i,
-  /\brequires? root\b/i,
   /Could not open lock file/i,
   /Interactive authentication required/i,
-  // Package managers that say so in words: dnf ("requires superuser privileges"), zypper ("Root privileges
-  // are required"), yum ("You need to be root"), pacman ("unless you are root").
-  /\b(?:super-?user|root|administrator|elevated)\s+(?:privileges?|rights|access|permissions?)\b/i,
-  /\bneed(?:s)? to be root\b/i,
-  /\bunless you are root\b/i,
-  // rpm run as a normal user: the lock error carries a bogus errno ("(Success)"), and a read-only database
-  // refuses to open.
   /can'?t create transaction lock/i,
-  /cannot open Packages (?:database|index)/i,
   // The same message from libc in other locales (`cat: /x: Åtkomst nekas`).
   /: (?:Åtkomst nekas|Behörighet saknas|Keine Berechtigung|Zugriff verweigert|Permission non accordée|Permiso denegado|Permesso negato|Permissão negada)\s*$/i,
 ];
 
 /**
- * Wording that is a permission problem wherever it stands in the last lines. Only trusted when the shell
- * reported a failing exit code, which a line that merely mentions the words does not come with.
+ * Package managers that say so in words: dnf ("requires superuser privileges"), zypper ("Root privileges are
+ * required"), yum ("You need to be root"), pacman ("unless you are root"). A line that forbids or waves away
+ * root (`do not run as root`, `no need to be root`) says the opposite and is skipped.
  */
-const DENIED_WITH_FAILURE_RE = /\bpermission denied\b/i;
+const DENIED_WORDING_PATTERNS: RegExp[] = [
+  /\b(?:super-?user|root|administrator|elevated)\s+(?:privileges?|rights|access|permissions?)\b/i,
+  /\b(?:must|needs?\s+to) be (?:run as )?(?:the )?(?:root|super-?user)\b/i,
+  /\brequires? root\b/i,
+  /\bunless you are root\b/i,
+];
+const NEGATED_WORDING_RE =
+  /\b(?:do not|don'?t|never|should not|shouldn'?t|not recommended|no need|not need|not required)\b/i;
+
+/**
+ * Looser wording that is a permission problem wherever it stands in the last lines. Only trusted when the
+ * shell reported a failing exit code, which a line that merely mentions the words does not come with.
+ * A read-only or corrupt rpm database prints the same `cannot open Packages` as a missing permission.
+ */
+const DENIED_WITH_FAILURE_PATTERNS: RegExp[] = [/\bpermission denied\b/i, /cannot open Packages (?:database|index)/i];
+
+/** Another process holds the lock (apt: `Could not get lock ... It is held by process N`): not a permission problem. */
+const LOCK_CONTENTION_RE = /\bheld by process\b|Could not get lock|Resource temporarily unavailable/i;
+
 /** Exit codes a permission problem ends in: general error, `EACCES` as a code, `EX_NOPERM`, not executable. */
 const PERMISSION_EXIT_CODES = new Set([1, 13, 77, 126]);
 
@@ -133,6 +143,7 @@ function commandName(command: string): { name: string; assignment: boolean } {
 export function outputIndicatesPermissionDenied(output: string, exitCode?: number): boolean {
   const lines = output.split('\n').filter((l) => l.trim() !== '');
   if (lines.length === 0 || lines.length > MAX_OUTPUT_LINES) return false;
+  if (lines.some((line) => LOCK_CONTENTION_RE.test(line))) return false;
   const failedWithPermissionCode = exitCode !== undefined && PERMISSION_EXIT_CODES.has(exitCode);
   return lines
     .slice(-ERROR_TAIL_LINES)
@@ -140,7 +151,8 @@ export function outputIndicatesPermissionDenied(output: string, exitCode?: numbe
       (line) =>
         !SSH_AUTH_DENIED_RE.test(line) &&
         (DENIED_PATTERNS.some((re) => re.test(line)) ||
-          (failedWithPermissionCode && DENIED_WITH_FAILURE_RE.test(line)))
+          (!NEGATED_WORDING_RE.test(line) && DENIED_WORDING_PATTERNS.some((re) => re.test(line))) ||
+          (failedWithPermissionCode && DENIED_WITH_FAILURE_PATTERNS.some((re) => re.test(line))))
     );
 }
 

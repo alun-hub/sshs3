@@ -29,7 +29,6 @@ describe('detectSudoRetry', () => {
     'You need to be root to perform this command.',
     'error: you cannot perform this operation unless you are root.',
     "error: can't create transaction lock on /usr/lib/sysimage/rpm/.rpm.lock (Success)",
-    'error: cannot open Packages database in /var/lib/rpm',
     // apt update as a normal user: the lock line is above the last three rows.
     [
       'E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)',
@@ -74,6 +73,22 @@ describe('detectSudoRetry', () => {
     expect(outputIndicatesPermissionDenied(line, 1)).toBe(true);
     expect(outputIndicatesPermissionDenied(line, 2)).toBe(false);
     expect(outputIndicatesPermissionDenied('user@host: Permission denied (publickey).', 1)).toBe(false);
+  });
+
+  it('does not offer sudo for wording that forbids root, lock contention or a read-only rpm database', () => {
+    for (const output of [
+      'Do not run this with root privileges',
+      'Running with root privileges is not recommended',
+      'You do not need to be root to run this.',
+      'ftp: 550 /dir: Access denied.',
+      'ERROR: Access denied',
+      'flock: cannot lock /var/lock/job.lock',
+      ['E: Could not get lock /var/lib/apt/lists/lock. It is held by process 123 (apt)', 'E: Unable to lock directory /var/lib/apt/lists/'].join('\n'),
+      'error: cannot open Packages database in /var/lib/rpm',
+    ]) {
+      expect(outputIndicatesPermissionDenied(output)).toBe(false);
+    }
+    expect(outputIndicatesPermissionDenied('error: cannot open Packages database in /var/lib/rpm', 1)).toBe(true);
   });
 
   it('does not take an application-level "Access denied" for a permission problem', () => {
