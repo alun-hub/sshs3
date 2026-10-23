@@ -6,7 +6,7 @@
 #
 # Bumping a release: change Version and source_sha256 (taken from the release's SHA256SUMS).
 
-%global source_sha256 8130be50689ac86ee12c14fd961fcdced432b7ea57658247565bebfa24c2efbf
+%global source_sha256 0d4a18b976e5e02f7e70d0e2b93a39475aa305e6a58b72ab0e5ba501ee2262c1
 
 # Prebuilt Electron payload: no debuginfo, no stripping/brp rewriting, no auto-generated
 # requires/provides for the bundled libraries (the real Requires are listed below).
@@ -16,7 +16,7 @@
 AutoReqProv: no
 
 Name:           sshs3
-Version:        0.96.58
+Version:        0.96.59
 Release:        1%{?dist}
 Summary:        Modern SSH, SFTP, and S3 client with smartcard and drag-and-drop support
 
@@ -96,6 +96,9 @@ if [ -x /opt/sshs3/sshs3 ] && [ ! -e /usr/bin/sshs3 ]; then
 fi
 
 %changelog
+* Fri Oct 23 2026 Andreas Lundqvist <info@sshs3.com> - 0.96.59-1
+- Update to 0.96.59
+
 * Fri Oct 23 2026 Andreas Lundqvist <info@sshs3.com> - 0.96.58-1
 - Initial COPR packaging of the prebuilt release
 - Require alsa-lib and hicolor-icon-theme; recreate /usr/bin/sshs3 after replacing the upstream RPM
