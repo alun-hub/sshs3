@@ -8,16 +8,19 @@ const trapStack: symbol[] = [];
  * The element focused just before the current one. A dialog that takes focus while it mounts (a React
  * `autoFocus`) has already moved focus by the time the hook's effect runs, so the opener can only be
  * recovered from this history.
+ *
+ * Weak references on purpose: a removed element (a PIN or password input whose dialog closed) must not be
+ * kept alive, with whatever value it holds, just because it was the last thing focused.
  */
-let currentFocus: HTMLElement | null = null;
-let previousFocus: HTMLElement | null = null;
+let currentFocus: WeakRef<HTMLElement> | null = null;
+let previousFocus: WeakRef<HTMLElement> | null = null;
 if (typeof document !== 'undefined') {
   document.addEventListener(
     'focusin',
     (e) => {
-      if (e.target instanceof HTMLElement && e.target !== currentFocus) {
+      if (e.target instanceof HTMLElement && e.target !== currentFocus?.deref()) {
         previousFocus = currentFocus;
-        currentFocus = e.target;
+        currentFocus = new WeakRef(e.target);
       }
     },
     true
@@ -26,7 +29,7 @@ if (typeof document !== 'undefined') {
 
 function findOpener(container: HTMLElement): HTMLElement | null {
   const active = document.activeElement;
-  const candidate = active && container.contains(active) ? previousFocus : active;
+  const candidate = active && container.contains(active) ? (previousFocus?.deref() ?? null) : active;
   return candidate instanceof HTMLElement && candidate !== document.body && !container.contains(candidate)
     ? candidate
     : null;

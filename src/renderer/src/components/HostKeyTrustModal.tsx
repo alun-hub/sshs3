@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ShieldAlert, ShieldQuestion } from 'lucide-react';
 import type { HostKeyPromptEvent } from '@shared/types/ipc';
 import { useEscapeToClose } from '../lib/useModalDismiss';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { createRendererLogger } from '../lib/log';
 const log = createRendererLogger('HostKeyTrustModal');
 
@@ -43,6 +44,9 @@ export const HostKeyTrustModal: React.FC = () => {
   // FileEditorModal/SearchModal/DirectorySyncModal already use) catches
   // Escape regardless of where focus currently is.
   useEscapeToClose(() => void respond(false), !!currentPrompt);
+  // Cancel keeps its autoFocus: useDialogFocus leaves focus alone when it is already inside the dialog.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, !!currentPrompt);
 
   if (!currentPrompt) {
     return null;
@@ -52,6 +56,7 @@ export const HostKeyTrustModal: React.FC = () => {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="hostkey-modal-title"
