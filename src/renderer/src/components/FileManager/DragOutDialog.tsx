@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GripVertical, Loader2, X, Download } from 'lucide-react';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { describeIpcError } from '../../lib/format';
 import { isSensitiveFilePath } from '../../lib/terminalPathPreview';
 
@@ -27,6 +28,8 @@ export const DragOutDialog: React.FC<DragOutDialogProps> = ({ providerId, paths,
   const closedRef = useRef(false);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const handleBackdropClick = useModalDismiss(onClose, true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
 
   useEffect(() => {
     closedRef.current = false;
@@ -58,6 +61,7 @@ export const DragOutDialog: React.FC<DragOutDialogProps> = ({ providerId, paths,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4" onClick={handleBackdropClick}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Drag out of sshs3"

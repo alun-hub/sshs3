@@ -16,6 +16,7 @@ import { classNames, describeIpcError } from '../../lib/format';
 import { SearchResultsList } from './SearchResultsList';
 import { SearchPreviewPane } from './SearchPreviewPane';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface SearchWarning {
   path?: string;
@@ -219,6 +220,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   }, [isDragging]);
 
   useEscapeToClose(handleClose, open);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   if (!open) return null;
 
@@ -230,6 +233,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       )}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Search in Files"
@@ -276,6 +280,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               <input
                 aria-label="Search query"
                 ref={queryInputRef}
+                data-autofocus
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

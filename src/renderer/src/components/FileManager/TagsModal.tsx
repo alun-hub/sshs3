@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Tag as TagIcon, X, Loader2, Plus, Trash2 } from 'lucide-react';
 import type { S3Tag } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
 
@@ -39,6 +40,8 @@ export const TagsModal: React.FC<TagsModalProps> = ({
   }, [open, providerId, targetPath]);
 
   const handleBackdropClick = useModalDismiss(onClose, open, !saving);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   if (!open) return null;
 
@@ -69,7 +72,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 animate-in fade-in duration-150 p-4"
       onClick={handleBackdropClick}
     >
-      <div role="dialog" aria-modal="true" aria-label="Tags" className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Tags" className="w-full max-w-lg rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <TagIcon className="h-4 w-4 text-sky-400" />

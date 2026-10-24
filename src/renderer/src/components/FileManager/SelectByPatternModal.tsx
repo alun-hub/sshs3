@@ -4,6 +4,7 @@ import type { FileEntry } from '@shared/types/storage';
 import { entriesMatchingPattern } from '../../lib/selectionOps';
 import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface SelectByPatternModalProps {
   open: boolean;
@@ -18,6 +19,8 @@ export const SelectByPatternModal: React.FC<SelectByPatternModalProps> = ({ open
   const [pattern, setPattern] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const handleBackdropClick = useModalDismiss(onClose, open, true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
   const matches = useMemo(() => entriesMatchingPattern(entries, pattern), [entries, pattern]);
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export const SelectByPatternModal: React.FC<SelectByPatternModalProps> = ({ open
     >
       <div
         className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-card p-5 shadow-2xl space-y-4"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
       >

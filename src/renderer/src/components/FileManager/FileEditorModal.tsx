@@ -28,6 +28,7 @@ import type { ExternalFileStatusEvent, FileReadResult } from '@shared/types/ipc'
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { openEditorTab } from '../../lib/editorTabEvents';
 import { CodeEditor, type CodeEditorHandle } from '../Editor/CodeEditor';
 import {
@@ -444,6 +445,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       handleRequestClose();
     }
   }, open && !embedded);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open && !embedded && !!entry);
 
   // Format JSON helper
   const handleFormatJson = useCallback(() => {
@@ -1149,6 +1152,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Editing ${entry.name}`}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Shield, X, Loader2 } from 'lucide-react';
 import type { FileEntry, WinAttributes } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
 
@@ -74,6 +75,8 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
   }, [open, entryPaths, providerId]);
 
   const handleBackdropClick = useModalDismiss(onClose, open, !saving);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   if (!open) return null;
 
@@ -106,7 +109,7 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div role="dialog" aria-modal="true" aria-label="Change attributes" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Change attributes" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-sky-400" />

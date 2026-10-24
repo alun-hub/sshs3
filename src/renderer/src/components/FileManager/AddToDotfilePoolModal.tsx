@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { AlertTriangle, Check, FileCode, Loader2, Plus, X } from 'lucide-react';
 import type { DotfilePool } from '@shared/types/dotfiles';
 import type { FileEntry } from '@shared/types/storage';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { describeIpcError } from '../../lib/format';
 import { defaultDotfileRemotePath } from '@shared/dotfilePath';
 import { looksLikeCredentialFile } from '../../lib/dotfileCredentials';
@@ -61,6 +62,8 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
   }, [open, entry]);
 
   const handleBackdropClick = useModalDismiss(onClose, open && !!entry, !saving);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open && !!entry);
 
   if (!open || !entry) return null;
 
@@ -112,7 +115,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
       onClick={handleBackdropClick}
     >
-      <div role="dialog" aria-modal="true" aria-label="Add to Dotfiles Pool" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Add to Dotfiles Pool" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">

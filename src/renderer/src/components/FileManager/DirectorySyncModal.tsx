@@ -36,6 +36,7 @@ import { DirSyncSavedProfilesModal } from './DirSyncSavedProfilesModal';
 import { classNames, formatBytes, formatDateTime, describeIpcError } from '../../lib/format';
 import type { SourceType } from './types';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 /** Last path segment, used to preview the nested sync root under the chosen target parent. */
 function baseName(path: string): string {
@@ -252,6 +253,8 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
   }, [diff, included, deleteExtraneous]);
 
   useEscapeToClose(onClose, open);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   // Reset + prefill only on the rising edge of `open` (closed -> open), not
   // on every re-render while already open — otherwise an unrelated prop
@@ -517,6 +520,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Sync Directory"
