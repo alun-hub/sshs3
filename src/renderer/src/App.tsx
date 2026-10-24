@@ -11,7 +11,7 @@ import { BrandLogo } from './components/BrandLogo';
 import { GlobalOverlays } from './components/GlobalOverlays';
 import { LandingView } from './components/LandingView';
 import { PaneTreeView } from './components/PaneTree';
-import { ConfirmProvider } from './components/ConfirmDialog';
+import { ConfirmProvider, useConfirm } from './components/ConfirmDialog';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSavedProfilesModal';
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
@@ -29,7 +29,8 @@ import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
 import { FileEditorModal } from './components/FileManager/FileEditorModal';
 import { OPEN_EDITOR_TAB_EVENT, type OpenEditorTabDetail } from './lib/editorTabEvents';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const confirm = useConfirm();
   // Starts empty rather than seeded with a default terminal tab so that a
   // genuinely fresh install (no saved session) falls straight into the same
   // "all tabs closed" hero view as an existing user who closes their last
@@ -164,6 +165,7 @@ export const App: React.FC = () => {
     setTabBarFocused,
     setConnectTarget,
     setProfilesModalOpen,
+    confirm,
   });
 
   const handleUpdateTabDirty = useCallback((tabId: string, isDirty: boolean) => {
@@ -340,7 +342,6 @@ export const App: React.FC = () => {
   }, [settingsModalOpen]);
 
   return (
-    <ConfirmProvider>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-app text-txt-primary">
       {/* Top Bar with Brand, TabBar, and Quick Connect. select-none here only
           (not on the whole app, see UX review #5) so tab titles, toolbar
@@ -664,8 +665,14 @@ export const App: React.FC = () => {
         runProfile={dirSyncRunProfile}
       />
     </div>
-    </ConfirmProvider>
   );
 };
+
+/** The provider sits outside AppContent so the hooks in AppContent can ask for confirmations too. */
+export const App: React.FC = () => (
+  <ConfirmProvider>
+    <AppContent />
+  </ConfirmProvider>
+);
 
 export default App;

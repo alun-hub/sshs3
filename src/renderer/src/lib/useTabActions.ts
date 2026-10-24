@@ -12,6 +12,7 @@ import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
 import { statIfExists } from './storageLookup';
+import type { ConfirmOptions } from '../components/ConfirmDialog';
 
 export interface TabActionsContext {
   tabs: AppTab[];
@@ -23,11 +24,13 @@ export interface TabActionsContext {
   setTabBarFocused: Dispatch<SetStateAction<boolean>>;
   setConnectTarget: Dispatch<SetStateAction<{ tabId: string; paneId?: string } | null>>;
   setProfilesModalOpen: Dispatch<SetStateAction<boolean>>;
+  /** The app's confirmation dialog (ConfirmDialog's useConfirm), used before discarding unsaved changes. */
+  confirm: (options: ConfirmOptions) => Promise<boolean>;
 }
 
 /** Everything that creates, closes, splits or connects tabs and panes. */
 export function useTabActions(ctx: TabActionsContext) {
-  const { tabs, activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen } = ctx;
+  const { tabs, activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen, confirm } = ctx;
 
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
@@ -37,10 +40,17 @@ export function useTabActions(ctx: TabActionsContext) {
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
-  const handleCloseTab = useCallback((id: string) => {
+  const handleCloseTab = useCallback(async (id: string) => {
     // Confirm outside the state updater: updaters must stay pure (StrictMode runs them twice).
-    if (tabsRef.current.find((t) => t.id === id)?.isDirty && !window.confirm('You have unsaved changes. Discard them?')) {
-      return;
+    const closing = tabsRef.current.find((t) => t.id === id);
+    if (closing?.isDirty) {
+      const discard = await confirm({
+        title: 'Discard unsaved changes',
+        message: `Discard your unsaved changes to ${closing.title}?`,
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+      });
+      if (!discard) return;
     }
     setTabs((prev) => {
       const index = prev.findIndex((t) => t.id === id);
@@ -53,7 +63,7 @@ export function useTabActions(ctx: TabActionsContext) {
 
       return remaining;
     });
-  }, [activeTabId, setActiveTabId, setTabs]);
+  }, [activeTabId, setActiveTabId, setTabs, confirm]);
 
   const handleNewTab = useCallback((type?: TabType, options?: { remote?: boolean }) => {
     const tabType = type || settings.defaultNewTabType || 'terminal';
