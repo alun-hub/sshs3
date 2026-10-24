@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { QuitConfirmPromptEvent } from '@shared/types/ipc';
 import { useConfirm } from './ConfirmDialog';
+import { plural } from '../lib/plural';
 
 /**
  * UX audit finding #2: quitting used to pop a native `dialog.showMessageBoxSync`
@@ -22,7 +23,7 @@ export const QuitConfirmBridge: React.FC = () => {
           event.kind === 'close-window'
             ? await confirm({
                 title: 'Close this window?',
-                message: `${event.sessionCount ?? 0} open session(s) in this window will be closed.`,
+                message: `${plural(event.sessionCount ?? 0, 'open session')} in this window will be closed.`,
                 confirmLabel: 'Close Window',
                 cancelLabel: 'Cancel',
                 danger: true,
@@ -30,7 +31,7 @@ export const QuitConfirmBridge: React.FC = () => {
             : event.kind === 'active-transfers'
             ? await confirm({
                 title: 'Transfers in progress',
-                message: `There ${event.activeTransferCount === 1 ? 'is' : 'are'} ${event.activeTransferCount ?? 0} file transfer(s) in progress. If you quit now, they'll be cancelled and files may be left incomplete.`,
+                message: `${plural(event.activeTransferCount ?? 0, 'file transfer')} in progress. If you quit now, they will be cancelled and files may be left incomplete.`,
                 confirmLabel: 'Quit Anyway',
                 cancelLabel: 'Cancel',
                 danger: true,

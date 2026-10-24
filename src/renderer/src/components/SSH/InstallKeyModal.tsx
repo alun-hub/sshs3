@@ -421,7 +421,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
                       {copiedKeyId === k.id ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-400" />
-                          <span>Copied!</span>
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>

@@ -59,9 +59,9 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
           </button>
         )}
         {onConnectSFTP && <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />}
-        <button aria-label="Edit Profile"
+        <button aria-label="Edit profile"
           type="button"
-          title="Edit Profile"
+          title="Edit profile"
           onClick={() => setEditing({ type: 'ssh', config: profile })}
           className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
         >
@@ -129,9 +129,9 @@ export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
           Connect
         </button>
       )}
-      <button aria-label="Edit Profile"
+      <button aria-label="Edit profile"
         type="button"
-        title="Edit Profile"
+        title="Edit profile"
         onClick={() => setEditing({ type: 's3', config: profile })}
         className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
       >

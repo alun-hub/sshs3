@@ -131,13 +131,13 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
     const lPort = localPort ? parseInt(localPort, 10) : 0;
 
     if (!contextName || !namespace || !podName || Number.isNaN(cPort) || cPort <= 0) {
-      setError('Please provide valid pod, namespace, and container port.');
+      setError('Enter a container port between 1 and 65535. The pod and namespace must be set.');
       return;
     }
 
     if (lPort > 0 && lPort < 1024) {
       setError(
-        `Local port ${lPort} is privileged (< 1024) and requires root/administrator privileges. Please choose a port >= 1024 (e.g. ${suggestLocalPort(lPort)}) or 0 for auto-assign.`
+        `Local port ${lPort} needs administrator rights (ports below 1024). Use 1024 or higher, for example ${suggestLocalPort(lPort)}, or 0 to pick one automatically.`
       );
       return;
     }

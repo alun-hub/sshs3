@@ -428,7 +428,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // Personal-profile only — shared (Team Vault) profile delete/clone/save-via-drag-and-drop are
   // handled directly inside `TeamProfileTreeList`, which owns that per-vault state itself.
   const handleDeleteSSH = async (id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete connection', message: `Delete the SSH connection "${name}"?` }))) return;
+    if (!(await confirm({ title: 'Delete profile', message: `Delete the SSH profile "${name}"?` }))) return;
     try {
       await window.multissh.profilesDeleteSSH(id);
       await load();
@@ -438,7 +438,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleDeleteS3 = async (id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete connection', message: `Delete the S3 connection "${name}"?` }))) return;
+    if (!(await confirm({ title: 'Delete profile', message: `Delete the S3 profile "${name}"?` }))) return;
     try {
       await window.multissh.profilesDeleteS3(id);
       await load();

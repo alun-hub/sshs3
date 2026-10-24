@@ -394,7 +394,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       {copiedKeyId === k.id && copiedAction === 'copy' ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-400" />
-                          <span>Copied!</span>
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>
@@ -440,7 +440,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       {copiedKeyId === k.id && copiedAction === 'github' ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-400" />
-                          <span>Copied!</span>
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>
@@ -465,7 +465,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
                       {copiedKeyId === k.id && copiedAction === 'gitlab' ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-400" />
-                          <span>Copied!</span>
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>

@@ -254,7 +254,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
       title: 'Delete Pod',
       message: (
         <span>
-          Are you sure you want to delete pod <strong className="text-txt-primary">{podName}</strong>?
+          Delete pod <strong className="text-txt-primary">{podName}</strong>?
           If managed by a controller, a replacement will start automatically.
         </span>
       ),

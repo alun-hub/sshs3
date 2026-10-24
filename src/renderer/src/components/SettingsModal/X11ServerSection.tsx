@@ -355,7 +355,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
             )}
             {!x11Status?.running && !x11Status?.available && !x11ServerPath && (
               <span className="text-xs text-amber-400">
-                VcXsrv not detected. Please install VcXsrv or specify path above.
+                VcXsrv not detected. Install VcXsrv or enter its path above.
               </span>
             )}
           </div>

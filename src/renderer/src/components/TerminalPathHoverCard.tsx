@@ -452,7 +452,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-              <span className="text-emerald-400 font-semibold">Copied!</span>
+              <span className="text-emerald-400 font-semibold">Copied</span>
             </>
           ) : (
             <>

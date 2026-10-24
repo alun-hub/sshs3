@@ -247,7 +247,7 @@ export const SyncSettingsPanel: React.FC = () => {
         libPath = detected?.[0]?.path;
       }
       if (!libPath) {
-        throw new Error('No smartcard PKCS#11 library found. Please ensure your card/reader is connected.');
+        throw new Error('No smartcard PKCS#11 library found. Make sure your card or reader is connected.');
       }
       const s = await window.multissh?.profileSyncLinkSmartcard?.({
         pkcs11LibPath: libPath,

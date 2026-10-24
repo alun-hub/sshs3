@@ -78,7 +78,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
       title: 'Delete Pod',
       message: (
         <span>
-          Are you sure you want to delete pod <strong className="text-txt-primary">{podName}</strong>?
+          Delete pod <strong className="text-txt-primary">{podName}</strong>?
           If managed by a Deployment, StatefulSet, or DaemonSet, a new pod will be started in its place.
         </span>
       ),

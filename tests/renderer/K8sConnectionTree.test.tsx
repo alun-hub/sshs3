@@ -207,7 +207,7 @@ describe('K8sConnectionTree', () => {
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByText(/Are you sure you want to delete pod/i)).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/Delete pod \S+\?/);
 
     const confirmBtn = within(dialog).getByRole('button', { name: 'Delete' });
     await act(async () => {

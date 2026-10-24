@@ -824,7 +824,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
-                        {copiedInviteFor === m.recipientId ? 'Copied!' : 'Copy invite'}
+                        {copiedInviteFor === m.recipientId ? 'Copied' : 'Copy invite'}
                       </button>
                     )}
                     <button

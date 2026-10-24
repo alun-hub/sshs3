@@ -260,7 +260,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
   };
 
   const handleDeleteSSH = async (vaultId: string, id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete connection', message: `Delete the shared SSH connection "${name}"?` }))) return;
+    if (!(await confirm({ title: 'Delete profile', message: `Delete the shared SSH profile "${name}"?` }))) return;
     try {
       await window.multissh.teamVaultDeleteSSHProfile(vaultId, id);
       await loadPayload(vaultId);
@@ -270,7 +270,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
   };
 
   const handleDeleteS3 = async (vaultId: string, id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete connection', message: `Delete the shared S3 connection "${name}"?` }))) return;
+    if (!(await confirm({ title: 'Delete profile', message: `Delete the shared S3 profile "${name}"?` }))) return;
     try {
       await window.multissh.teamVaultDeleteS3Profile(vaultId, id);
       await loadPayload(vaultId);

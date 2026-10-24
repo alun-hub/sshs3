@@ -71,9 +71,9 @@ export const S3RecentRow: React.FC<S3ProfileRowProps> = ({
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      <button aria-label="Edit Profile"
+      <button aria-label="Edit profile"
         type="button"
-        title="Edit Profile"
+        title="Edit profile"
         onClick={(e) => {
           e.stopPropagation();
           setEditing({ type: 's3', config: profile });
@@ -82,9 +82,9 @@ export const S3RecentRow: React.FC<S3ProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button aria-label="Delete Profile"
+      <button aria-label="Delete profile"
         type="button"
-        title="Delete Profile"
+        title="Delete profile"
         onClick={(e) => {
           e.stopPropagation();
           void handleDeleteS3(profile.id, profile.name);
@@ -147,9 +147,9 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      <button aria-label="Edit Profile"
+      <button aria-label="Edit profile"
         type="button"
-        title="Edit Profile"
+        title="Edit profile"
         onClick={(e) => {
           e.stopPropagation();
           setEditing({ type: 's3', config: profile });
@@ -158,9 +158,9 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button aria-label="Delete Profile"
+      <button aria-label="Delete profile"
         type="button"
-        title="Delete Profile"
+        title="Delete profile"
         onClick={(e) => {
           e.stopPropagation();
           void handleDeleteS3(profile.id, profile.name);

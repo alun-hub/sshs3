@@ -575,7 +575,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             </div>
           ) : (
             <span className="text-xs text-txt-muted">
-              No PKCS#11 libraries automatically detected. Please enter path or browse manually.
+              No PKCS#11 libraries were detected automatically. Enter the path or browse for it.
             </span>
           )}
 
