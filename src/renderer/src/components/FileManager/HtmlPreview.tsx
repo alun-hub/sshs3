@@ -53,7 +53,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
             aria-label="Responsive viewport mode"
             className="flex items-center rounded-lg border border-border-subtle bg-app-input p-0.5"
           >
-            <button
+            <button aria-label="Desktop View (100%)"
               type="button"
               title="Desktop View (100%)"
               onClick={() => setViewport('desktop')}
@@ -66,7 +66,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
             >
               <Monitor className="h-3.5 w-3.5" />
             </button>
-            <button
+            <button aria-label="Tablet View (768px)"
               type="button"
               title="Tablet View (768px)"
               onClick={() => setViewport('tablet')}
@@ -79,7 +79,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
             >
               <Tablet className="h-3.5 w-3.5" />
             </button>
-            <button
+            <button aria-label="Mobile View (375px)"
               type="button"
               title="Mobile View (375px)"
               onClick={() => setViewport('mobile')}
@@ -95,7 +95,7 @@ export const HtmlPreview: React.FC<HtmlPreviewProps> = ({
           </div>
 
           {/* Refresh iframe */}
-          <button
+          <button aria-label="Reload Preview"
             type="button"
             title="Reload Preview"
             onClick={() => setRefreshKey((k) => k + 1)}

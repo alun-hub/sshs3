@@ -276,7 +276,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                             {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Start'}
                           </button>
                         )}
-                        <button
+                        <button aria-label="Edit tunnel"
                           type="button"
                           title="Edit tunnel"
                           onClick={() => setWizardTarget(tunnel.id)}
@@ -284,7 +284,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button
+                        <button aria-label="Delete saved tunnel"
                           type="button"
                           title="Delete saved tunnel"
                           onClick={() => void handleDelete(tunnel)}

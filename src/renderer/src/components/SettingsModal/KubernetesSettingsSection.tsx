@@ -206,6 +206,7 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
                 setK8sDebugImages((prev) => prev.filter((item) => item.id !== img.id));
               }}
               disabled={k8sDebugImages.length <= 1}
+              aria-label={`Delete debug image ${img.name}`}
               title={k8sDebugImages.length <= 1 ? 'At least one debug image is required' : 'Delete debug image'}
               className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-red-400 transition-colors disabled:opacity-30 disabled:hover:text-txt-muted"
             >

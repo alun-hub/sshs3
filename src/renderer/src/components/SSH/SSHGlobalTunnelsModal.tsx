@@ -262,7 +262,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <button
+                              <button aria-label="Edit tunnel"
                                 type="button"
                                 title="Edit tunnel"
                                 onClick={() => setWizardTarget({ connectionId: profile.id, tunnelId: tunnel.id })}

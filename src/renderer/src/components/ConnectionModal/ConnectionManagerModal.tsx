@@ -864,7 +864,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         <Check className="h-3.5 w-3.5" />
                       )}
                     </button>
-                    <button
+                    <button aria-label="Cancel"
                       type="button"
                       onClick={() => setEditingTabDescription(null)}
                       disabled={savingTabDescription}
@@ -881,7 +881,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         {activeTeamVaultTab.vaultDescription || 'No description yet.'}
                       </p>
                       {activeTeamVaultTab.selfRole === 'admin' && (
-                        <button
+                        <button aria-label="Edit description"
                           type="button"
                           onClick={() => {
                             setTabDescriptionDraft(activeTeamVaultTab.vaultDescription ?? '');

@@ -487,7 +487,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
             className="w-full rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1 pl-8 pr-7 text-xs text-txt-primary placeholder:text-txt-muted focus:border-sky-500/50 focus:outline-none transition-colors"
           />
           {filter && (
-            <button
+            <button aria-label="Clear filter"
               type="button"
               onClick={() => setFilter('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-txt-muted hover:text-txt-primary p-0.5 rounded transition-colors"

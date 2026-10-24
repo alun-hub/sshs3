@@ -437,7 +437,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
                 className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                 placeholder="Path to CA certificate (.pem)"
               />
-              <button
+              <button aria-label="Browse"
                 type="button"
                 onClick={() => void browseForCa()}
                 className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

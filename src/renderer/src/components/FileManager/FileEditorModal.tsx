@@ -617,7 +617,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
             {/* Search Toggle */}
             {!isDirectPreview && !(hasDualMode && viewMode === 'preview' && !isMarkdown) && (
-              <button
+              <button aria-label="Search (Ctrl+F)"
                 type="button"
                 title="Search (Ctrl+F)"
                 onClick={() => {
@@ -643,6 +643,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <button
                 type="button"
                 title={wordWrap ? 'Disable Word Wrap' : 'Enable Word Wrap'}
+                aria-label={wordWrap ? 'Disable Word Wrap' : 'Enable Word Wrap'}
                 onClick={() => setWordWrap((w) => !w)}
                 className={classNames(
                   'rounded-lg p-1.5 transition-colors',
@@ -682,7 +683,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             )}
 
             {/* Reload from server */}
-            <button
+            <button aria-label="Reload from storage"
               type="button"
               title="Reload from storage"
               disabled={loading || saving}

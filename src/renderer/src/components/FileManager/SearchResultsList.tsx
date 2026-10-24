@@ -108,7 +108,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
                   ({row.count} match{row.count === 1 ? '' : 'es'})
                 </span>
                 {onJumpToFile && (
-                  <button
+                  <button aria-label="Jump to file in pane"
                     type="button"
                     title="Jump to file in pane"
                     onClick={(e) => {

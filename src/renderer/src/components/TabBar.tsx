@@ -306,7 +306,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                   e.stopPropagation();
                   onCloseTab(tab.id);
                 }}
-                className="ml-2 rounded p-0.5 text-txt-muted opacity-60 hover:bg-app-surface-hover hover:text-txt-primary hover:opacity-100 transition-opacity"
+                className="ml-2 rounded p-1.5 text-txt-muted opacity-60 hover:bg-app-surface-hover hover:text-txt-primary hover:opacity-100 focus-visible:opacity-100 transition-opacity"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

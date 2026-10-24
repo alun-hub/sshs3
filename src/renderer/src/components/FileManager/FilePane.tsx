@@ -881,9 +881,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={type}
                   type="button"
                   title={titleMap[type]}
+                  aria-label={titleMap[type]}
                   onClick={() => onSourceTypeRequest(type)}
                   className={
-                    'rounded-md p-1 transition-colors ' +
+                    'rounded-md p-[5px] transition-colors ' +
                     (source.sourceType === type
                       ? 'bg-sky-600 text-white font-medium shadow-sm'
                       : 'text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary')

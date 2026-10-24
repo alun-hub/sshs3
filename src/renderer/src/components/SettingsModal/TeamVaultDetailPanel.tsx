@@ -513,7 +513,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   >
                     {savingVaultName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </button>
-                  <button
+                  <button aria-label="Cancel"
                     type="button"
                     onClick={() => setEditingVaultName(false)}
                     disabled={savingVaultName}
@@ -527,7 +527,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                 <div className="flex items-center gap-1.5">
                   <span className="text-txt-secondary">{status.vaultName || status.vaultId}</span>
                   {status.unlocked && isAdmin && (
-                    <button
+                    <button aria-label="Rename vault"
                       type="button"
                       onClick={() => {
                         setVaultNameEdit(status.vaultName ?? '');
@@ -598,7 +598,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   >
                     {savingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </button>
-                  <button
+                  <button aria-label="Cancel"
                     type="button"
                     onClick={() => setEditingDescription(false)}
                     disabled={savingDescription}
@@ -614,7 +614,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     {status.vaultDescription || '—'}
                   </span>
                   {status.unlocked && isAdmin && (
-                    <button
+                    <button aria-label="Edit description"
                       type="button"
                       onClick={() => {
                         setDescriptionEdit(status.vaultDescription ?? '');
@@ -850,6 +850,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                       type="button"
                       onClick={() => void handleRemoveMember(m.recipientId)}
                       disabled={!status.unlocked || busyRecipientId === m.recipientId}
+                      aria-label={`Remove member ${m.recipientId}`}
                       title={status.unlocked ? 'Remove member' : 'Unlock the vault first'}
                       className="rounded-lg border border-red-900/60 p-1.5 text-red-300 hover:bg-red-950/40 disabled:opacity-50"
                     >

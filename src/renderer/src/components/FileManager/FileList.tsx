@@ -615,7 +615,7 @@ export const FileList: React.FC<FileListProps> = ({
       title={title}
       aria-label={title}
       className={classNames(
-        'flex items-center gap-1 text-left text-2xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
+        'flex min-h-6 items-center gap-1 text-left text-2xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
         className
       )}
     >
@@ -626,7 +626,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-app-card">
-      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider bg-app-surface py-1 pl-3 pr-[18px]">
+      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider bg-app-surface py-0 pl-3 pr-[18px]">
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (

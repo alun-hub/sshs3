@@ -587,7 +587,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                       placeholder="~/.ssh/id_ed25519"
                       className={`${inputClass} font-mono`}
                     />
-                    <button
+                    <button aria-label="Browse"
                       type="button"
                       disabled={disabled}
                       onClick={() => void browseFor('privateKeyPath')}
@@ -628,7 +628,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                     placeholder="/tmp/ssh-agent.sock"
                     className={`${inputClass} font-mono`}
                   />
-                  <button
+                  <button aria-label="Browse"
                     type="button"
                     disabled={disabled}
                     onClick={() => void browseFor('agentPath')}
@@ -656,7 +656,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
                       placeholder={pkcs11PlaceholderPath()}
                       className={`${inputClass} font-mono`}
                     />
-                    <button
+                    <button aria-label="Browse"
                       type="button"
                       disabled={disabled}
                       onClick={() => void browseFor('pkcs11LibPath')}

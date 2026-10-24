@@ -60,7 +60,7 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
     <button
       type="button"
       onClick={() => onToggle()}
-      className="flex flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
+      className="flex min-h-6 flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
     >
       {isCollapsed ? (
         <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
@@ -99,22 +99,22 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
 
     {groupName !== 'Ungrouped' && (
       <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
-        <button
+        <button aria-label="Rename folder"
           type="button"
           title="Rename folder"
           onClick={() => {
             setRenamingFolder(groupName);
             setRenameFolderValue(groupName);
           }}
-          className="rounded p-1 text-txt-muted hover:text-txt-primary transition-colors"
+          className="rounded p-1.5 text-txt-muted hover:text-txt-primary transition-colors"
         >
           <Pencil className="h-3 w-3" />
         </button>
-        <button
+        <button aria-label="Delete folder (ungroup profiles)"
           type="button"
           title="Delete folder (ungroup profiles)"
           onClick={() => void onDeleteFolder(groupName)}
-          className="rounded p-1 text-txt-muted hover:text-red-400 transition-colors"
+          className="rounded p-1.5 text-txt-muted hover:text-red-400 transition-colors"
         >
           <Trash2 className="h-3 w-3" />
         </button>

@@ -60,7 +60,7 @@ export const S3RecentRow: React.FC<S3ProfileRowProps> = ({
       )}
       {/* UX audit finding #11: match the action set this profile gets
           further down in its folder listing. */}
-      <button
+      <button aria-label="Duplicate / Clone Profile"
         type="button"
         title="Duplicate / Clone Profile"
         onClick={(e) => {
@@ -71,7 +71,7 @@ export const S3RecentRow: React.FC<S3ProfileRowProps> = ({
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      <button
+      <button aria-label="Edit Profile"
         type="button"
         title="Edit Profile"
         onClick={(e) => {
@@ -82,7 +82,7 @@ export const S3RecentRow: React.FC<S3ProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button
+      <button aria-label="Delete Profile"
         type="button"
         title="Delete Profile"
         onClick={(e) => {
@@ -136,7 +136,7 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
           Connect
         </button>
       )}
-      <button
+      <button aria-label="Duplicate / Clone Profile"
         type="button"
         title="Duplicate / Clone Profile"
         onClick={(e) => {
@@ -147,7 +147,7 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
       >
         <Copy className="h-3.5 w-3.5" />
       </button>
-      <button
+      <button aria-label="Edit Profile"
         type="button"
         title="Edit Profile"
         onClick={(e) => {
@@ -158,7 +158,7 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button
+      <button aria-label="Delete Profile"
         type="button"
         title="Delete Profile"
         onClick={(e) => {

@@ -63,7 +63,7 @@ export const PerfBar: React.FC<PerfBarProps> = ({ kind, state, layout, items, ti
   const recent = state.history.slice(-PERF_SPARK_POINTS);
   // Theme tokens (not fixed slate shades) so the bar matches the pane header in dark, light and breeze alike.
   const base =
-    'flex items-center gap-2.5 px-2.5 h-5 shrink-0 overflow-hidden whitespace-nowrap text-2xs font-mono tabular-nums border-b w-full text-left bg-app-surface-subtle text-txt-secondary border-border-subtle';
+    'flex items-center gap-2.5 px-2.5 h-6 shrink-0 overflow-hidden whitespace-nowrap text-2xs font-mono tabular-nums border-b w-full text-left bg-app-surface-subtle text-txt-secondary border-border-subtle';
 
   if (!latest) {
     return (

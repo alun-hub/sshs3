@@ -166,12 +166,12 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
           </span>
         </div>
         <div className="flex items-center gap-0.5">
-          <button
+          <button aria-label="Change connection"
             type="button"
             title="Change connection"
             data-testid={`change-pane-${node.id}`}
             onClick={() => props.onChangeConnection(node.id)}
-            className="rounded p-0.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            className="rounded p-1.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <RefreshCw className="h-3 w-3" />
           </button>
@@ -181,36 +181,36 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
               title={`${props.zoomedPaneId === node.id ? 'Restore' : 'Zoom'} pane (${getShortcutKeys('zoomPane', props.settings.shortcuts)})`}
               data-testid={`zoom-pane-${node.id}`}
               onClick={() => props.onToggleZoom?.(node.id)}
-              className="rounded p-0.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              className="rounded p-1.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
             >
               {props.zoomedPaneId === node.id ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
             </button>
           )}
-          <button
+          <button aria-label="Split right"
             type="button"
             title="Split right"
             data-testid={`split-row-${node.id}`}
             onClick={() => props.onSplitPane(node.id, 'row')}
-            className="rounded p-0.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            className="rounded p-1.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <Columns2 className="h-3 w-3" />
           </button>
-          <button
+          <button aria-label="Split down"
             type="button"
             title="Split down"
             data-testid={`split-column-${node.id}`}
             onClick={() => props.onSplitPane(node.id, 'column')}
-            className="rounded p-0.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+            className="rounded p-1.5 hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <Rows2 className="h-3 w-3" />
           </button>
           {!isSole && (
-            <button
+            <button aria-label="Close this pane"
               type="button"
               title="Close this pane"
               data-testid={`close-pane-${node.id}`}
               onClick={() => props.onClosePane(node.id)}
-              className="rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+              className="rounded p-1.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
             >
               <X className="h-3 w-3" />
             </button>

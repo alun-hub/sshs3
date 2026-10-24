@@ -263,7 +263,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             >
               {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
-            <button
+            <button aria-label="Close (Esc)"
               type="button"
               onClick={handleClose}
               title="Close (Esc)"
@@ -294,7 +294,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 className="w-full rounded-lg border border-border-subtle bg-app-input pl-3 pr-8 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
               />
               {query.length > 0 && (
-                <button
+                <button aria-label="Clear search query"
                   type="button"
                   onClick={() => {
                     setQuery('');
@@ -449,7 +449,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       )}
                       <span>{copiedWarnings ? 'Copied' : 'Copy'}</span>
                     </button>
-                    <button
+                    <button aria-label="Dismiss warning bar"
                       type="button"
                       onClick={() => setWarningsDismissed(true)}
                       title="Dismiss warning bar"

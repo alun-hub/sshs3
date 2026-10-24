@@ -155,7 +155,7 @@ export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(funct
                 onDropToPath?.(segment.path, e);
               }}
               className={classNames(
-                'shrink-0 rounded px-1.5 py-0.5 transition-colors font-medium',
+                'min-w-6 shrink-0 rounded px-1.5 py-1 text-center transition-colors font-medium',
                 isHovered
                   ? 'bg-sky-500/25 text-sky-400 ring-1 ring-inset ring-sky-400 font-semibold'
                   : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -167,14 +167,14 @@ export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(funct
         );
       })}
       </div>
-      <button
+      <button aria-label="Edit path manually"
         type="button"
         title="Edit path manually"
         onClick={(e) => {
           e.stopPropagation();
           setEditing(true);
         }}
-        className="opacity-0 group-hover/bc:opacity-100 shrink-0 rounded p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover transition-opacity"
+        className="opacity-0 group-hover/bc:opacity-100 focus-visible:opacity-100 shrink-0 rounded p-1.5 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover transition-opacity"
       >
         <Pencil className="h-3 w-3" />
       </button>

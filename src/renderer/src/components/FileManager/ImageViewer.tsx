@@ -76,7 +76,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     >
       {/* Floating Toolbar */}
       <div className="absolute top-3 right-4 z-20 flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface/90 backdrop-blur-md px-2 py-1 shadow-md text-xs text-txt-secondary">
-        <button
+        <button aria-label="Zoom In (+)"
           type="button"
           title="Zoom In (+)"
           onClick={handleZoomIn}
@@ -84,7 +84,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         >
           <ZoomIn className="h-4 w-4" />
         </button>
-        <button
+        <button aria-label="Zoom Out (-)"
           type="button"
           title="Zoom Out (-)"
           onClick={handleZoomOut}
@@ -92,7 +92,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         >
           <ZoomOut className="h-4 w-4" />
         </button>
-        <button
+        <button aria-label="Fit to Screen"
           type="button"
           title="Fit to Screen"
           onClick={handleFit}
@@ -105,7 +105,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         >
           <Maximize className="h-4 w-4" />
         </button>
-        <button
+        <button aria-label="Actual Size (100%)"
           type="button"
           title="Actual Size (100%)"
           onClick={handleActualSize}
@@ -118,7 +118,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         >
           1:1
         </button>
-        <button
+        <button aria-label="Reset View"
           type="button"
           title="Reset View"
           onClick={handleFit}

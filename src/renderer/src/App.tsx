@@ -355,7 +355,7 @@ export const App: React.FC = () => {
           type="button"
           title="Home"
           onClick={() => setActiveTabId('')}
-          className="flex items-center gap-2.5 border-r border-divider px-3.5 font-semibold text-sm hover:bg-app-surface-hover transition-colors"
+          className="flex items-center gap-2.5 self-stretch border-r border-divider px-3.5 font-semibold text-sm hover:bg-app-surface-hover transition-colors"
         >
           <BrandLogo className="h-5 w-auto" />
           <span className="font-bold tracking-wide">

@@ -239,7 +239,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
                         <Play className="h-3.5 w-3.5 fill-white" />
                         Run Sync
                       </button>
-                      <button
+                      <button aria-label="Delete profile"
                         type="button"
                         onClick={() => void handleDelete(profile.id, profile.name)}
                         title="Delete profile"
