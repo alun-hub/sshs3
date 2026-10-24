@@ -86,7 +86,7 @@ describe('ProfileStore encryption', () => {
         id: 's3-1',
         name: 'MinIO',
         accessKeyId: 'AKIA',
-        secretAccessKey: 'minio-secret',
+        secretAccessKey: 'fixture-key-value', // pragma: allowlist secret
         endpoint: 'https://minio.example.com',
         region: 'us-east-1',
       } as S3Config);

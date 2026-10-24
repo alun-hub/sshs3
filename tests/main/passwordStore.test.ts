@@ -8,15 +8,15 @@ describe('resolvePasswordStore', () => {
   });
 
   it('lets an unpackaged test or dev run opt out of the OS keyring', () => {
-    expect(resolvePasswordStore({ SSHS3_PASSWORD_STORE: 'basic' }, false)).toBe('basic');
+    expect(resolvePasswordStore({ SSHS3_KEYRING_BACKEND: 'basic' }, false)).toBe('basic');
   });
 
   it('never honors the override in a packaged build', () => {
-    expect(resolvePasswordStore({ SSHS3_PASSWORD_STORE: 'basic' }, true)).toBe('gnome-libsecret');
+    expect(resolvePasswordStore({ SSHS3_KEYRING_BACKEND: 'basic' }, true)).toBe('gnome-libsecret');
   });
 
   it('ignores any other value', () => {
-    expect(resolvePasswordStore({ SSHS3_PASSWORD_STORE: 'kwallet6' }, false)).toBe('gnome-libsecret');
-    expect(resolvePasswordStore({ SSHS3_PASSWORD_STORE: '' }, false)).toBe('gnome-libsecret');
+    expect(resolvePasswordStore({ SSHS3_KEYRING_BACKEND: 'kwallet6' }, false)).toBe('gnome-libsecret');
+    expect(resolvePasswordStore({ SSHS3_KEYRING_BACKEND: '' }, false)).toBe('gnome-libsecret');
   });
 });
