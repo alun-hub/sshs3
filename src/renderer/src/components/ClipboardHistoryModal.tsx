@@ -127,6 +127,9 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
           <input
             ref={searchRef}
             type="text"
+            aria-label="Search clipboard history"
+            aria-controls="clipboard-history-list"
+            aria-activedescendant={visible.length > 0 ? `clipboard-history-item-${activeIndex}` : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -146,7 +149,10 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
           </button>
         </div>
 
-        <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div role="status" aria-live="polite" className="sr-only">
+          {visible.length === 0 ? 'No entries' : `${visible.length} ${visible.length === 1 ? 'entry' : 'entries'}`}
+        </div>
+        <ul id="clipboard-history-list" ref={listRef} aria-label="Clipboard history" className="min-h-0 flex-1 overflow-y-auto p-2">
           {visible.length === 0 && (
             <li className="px-3 py-6 text-center text-xs text-txt-muted">
               {entries.length === 0 ? 'Nothing copied yet.' : 'No matches.'}
@@ -155,6 +161,8 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
           {visible.map((entry, index) => (
             <li
               key={entry.id}
+              id={`clipboard-history-item-${index}`}
+              aria-current={index === activeIndex ? 'true' : undefined}
               data-active={index === activeIndex}
               onMouseMove={() => index !== activeIndex && setSelected(index)}
               className={`group flex items-start gap-2 rounded-lg ${

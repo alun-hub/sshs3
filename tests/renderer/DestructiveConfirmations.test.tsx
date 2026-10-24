@@ -108,4 +108,30 @@ describe('destructive actions ask for confirmation', () => {
     await answer('Clear history');
     expect(clipboardHistoryClear).toHaveBeenCalledTimes(1);
   });
+
+  it('Clipboard history exposes the active entry and the result count to assistive technology', async () => {
+    window.multissh = {
+      clipboardHistoryList: vi.fn().mockResolvedValue([
+        { id: 'a', text: 'ls -la', copiedAt: '2026-10-01T10:00:00Z', hostKey: 'h', hostLabel: 'host' },
+        { id: 'b', text: 'pwd', copiedAt: '2026-10-01T10:01:00Z', hostKey: 'h', hostLabel: 'host' },
+      ]),
+    } as unknown as typeof window.multissh;
+    render(
+      <ConfirmProvider>
+        <ClipboardHistoryModal onPaste={vi.fn()} onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+    await waitFor(() => expect(screen.getByText('ls -la')).toBeInTheDocument());
+
+    const search = screen.getByRole('textbox', { name: 'Search clipboard history' });
+    expect(search).toHaveAttribute('aria-controls', 'clipboard-history-list');
+    expect(search).toHaveAttribute('aria-activedescendant', 'clipboard-history-item-0');
+    expect(screen.getByRole('status')).toHaveTextContent('2 entries');
+
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(search).toHaveAttribute('aria-activedescendant', 'clipboard-history-item-1');
+    expect(document.getElementById('clipboard-history-item-1')).toHaveAttribute('aria-current', 'true');
+    expect(document.getElementById('clipboard-history-item-0')).not.toHaveAttribute('aria-current');
+  });
 });
+

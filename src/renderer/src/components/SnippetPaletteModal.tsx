@@ -236,6 +236,8 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
                 ref={searchRef}
                 type="text"
                 aria-label="Search snippets"
+                aria-controls="snippet-list"
+                aria-activedescendant={visible.length > 0 ? `snippet-item-${activeIndex}` : undefined}
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
@@ -255,7 +257,10 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
               </button>
             </div>
 
-            <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div role="status" aria-live="polite" className="sr-only">
+              {visible.length === 0 ? 'No snippets' : `${visible.length} ${visible.length === 1 ? 'snippet' : 'snippets'}`}
+            </div>
+            <ul id="snippet-list" ref={listRef} aria-label="Snippets" className="min-h-0 flex-1 overflow-y-auto p-2">
               {visible.length === 0 && (
                 <li className="px-3 py-6 text-center text-xs text-txt-muted">
                   {snippets.length === 0 ? 'No snippets yet. Click New to add one.' : 'No matches.'}
@@ -264,6 +269,8 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
               {visible.map((snippet, index) => (
                 <li
                   key={snippet.id}
+                  id={`snippet-item-${index}`}
+                  aria-current={index === activeIndex ? 'true' : undefined}
                   data-active={index === activeIndex}
                   onMouseMove={() => index !== activeIndex && setSelected(index)}
                   className={`group flex items-start gap-1 rounded-lg ${
