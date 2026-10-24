@@ -313,7 +313,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                     data-testid={`tab-icon-${tab.id}`}
                   />
                 )}
-                <span className="truncate">{tab.title}</span>
+                <span className="truncate" title={tab.title}>{tab.title}</span>
                 {tab.isDirty && <span className="sr-only"> (unsaved changes)</span>}
                 {tab.isDirty && (
                   <span

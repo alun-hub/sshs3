@@ -348,7 +348,7 @@ export const SmartcardPinModal: React.FC = () => {
                   <span className="text-txt-muted text-2xs uppercase tracking-wider block font-semibold leading-tight">
                     Target / Purpose
                   </span>
-                  <span className="font-mono text-xs text-txt-primary font-medium truncate block">
+                  <span className="font-mono text-xs text-txt-primary font-medium break-all block">
                     {contextInfo.label}
                   </span>
                 </div>

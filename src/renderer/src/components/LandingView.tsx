@@ -195,8 +195,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   className="recent-card flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-strong transition-colors"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-medium text-txt-primary">{profile.name}</div>
-                    <div className="truncate text-xs text-txt-muted">
+                    <div className="truncate text-xs font-medium text-txt-primary" title={profile.name}>{profile.name}</div>
+                    <div className="truncate text-xs text-txt-muted" title={`${profile.username}@${profile.host}:${profile.port ?? 22}`}>
                       {profile.username}@{profile.host}:{profile.port ?? 22}
                     </div>
                   </div>

@@ -73,7 +73,7 @@ export const DotfilesSyncBanner: React.FC = () => {
               </p>
               <ul className="mt-1.5 space-y-0.5 font-mono text-2xs text-txt-muted">
                 {(currentPrompt.entries ?? []).slice(0, 4).map((entry) => (
-                  <li key={entry.fileId} className="truncate">
+                  <li key={entry.fileId} className="truncate" title={entry.remotePath}>
                     {entry.remotePath} {entry.reason === 'missing' ? '(missing)' : '(changed)'}
                   </li>
                 ))}
