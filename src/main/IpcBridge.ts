@@ -193,6 +193,8 @@ export class IpcBridge {
   // declares the exact subset it uses as a Pick<IpcBridge, ...> (see ipc/*Handlers.ts), and
   // tests/main/ipcHostAccess.test.ts pins which groups may touch the prompt maps and agent state.
   public pendingAskpass = new Map<string, PendingAskpassPrompt>();
+  /** id -> ends the wait of an "insert your token" prompt (see waitForTokenDirect). */
+  public pendingInsertTokens = new Map<string, () => void>();
   public pendingHostKeyPrompts = new Map<string, PendingHostKeyPrompt>();
   public pendingTransferConflicts = new Map<string, PendingTransferConflictPrompt>();
   public pendingQuitConfirms = new Map<string, PendingQuitConfirmPrompt>();
@@ -325,6 +327,7 @@ export class IpcBridge {
         pinPrompter: {
           promptForPinDirect: (prompt, kind, context, retry) => this.promptForPinDirect(prompt, kind, context, retry),
           makePresenceNotifier: (sessionId, message) => this.makePresenceNotifier(sessionId, message),
+          ensurePivPresent: (context) => this.smartcard.ensureDefaultPivPresent(context),
         },
         // Lazily bound, same reasoning as `pinPrompter` above: `teamVaultConfigStore` is
         // constructed a few lines below this one, so this arrow only needs it to exist by the
@@ -361,6 +364,7 @@ export class IpcBridge {
       sshPtyManager: this.sshPtyManager,
       getWebContents: () => this.getWebContents(),
       promptForPin: (prompt, kind, context, retry) => this.promptForPinDirect(prompt, kind, context, retry),
+      waitForToken: (kind, context, isPresent) => this.waitForTokenDirect(kind, context, isPresent),
       makePresenceNotifier: (sessionId, message) => this.makePresenceNotifier(sessionId, message),
       clearPresence: (sessionId) => this.clearPresence(sessionId),
       syncAgentBlock: (entries) => this.profileSyncService.syncAgentBlockToLocalSshConfig(entries),
@@ -603,6 +607,52 @@ export class IpcBridge {
         attempt: retry?.attempt,
         maxAttempts: retry?.maxAttempts,
       });
+    });
+  }
+
+  /**
+   * Shows an "insert your smartcard / security key" prompt and polls `isPresent` until the token is
+   * plugged in (resolves true: the prompt is dismissed so the PIN prompt can take over) or the user
+   * cancels (resolves false). Resolves true at once when nothing is listening, so a headless caller
+   * keeps its old behavior.
+   */
+  public waitForTokenDirect(
+    kind: 'smartcard' | 'fido2',
+    context: string | undefined,
+    isPresent: () => Promise<boolean | undefined>,
+    pollMs = 1500
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const webContents = this.getWebContents();
+      if (!webContents || webContents.isDestroyed?.()) {
+        resolve(true);
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let finished = false;
+      const finish = (inserted: boolean) => {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        this.pendingInsertTokens.delete(id);
+        if (!webContents.isDestroyed?.()) webContents.send(IPC_CHANNELS.INSERT_TOKEN_DISMISS, { id });
+        resolve(inserted);
+      };
+      const poll = async () => {
+        if (finished) return;
+        // Unknown (undefined) counts as present: never trap the user behind a prompt we cannot clear.
+        if ((await isPresent()) !== false) {
+          finish(true);
+          return;
+        }
+        if (!finished) timer = setTimeout(() => void poll(), pollMs);
+      };
+
+      this.pendingInsertTokens.set(id, () => finish(false));
+      webContents.send(IPC_CHANNELS.INSERT_TOKEN_PROMPT, { id, kind, context });
+      timer = setTimeout(() => void poll(), pollMs);
     });
   }
 
@@ -1332,9 +1382,9 @@ export class IpcBridge {
     } else if (sameCardSocket) {
       socketPath = sameCardSocket;
     } else if (mode === 'agent-global') {
-      socketPath = await this.smartcard.getOrLoadGlobalSmartcardAgent(libPath, pinHandler);
+      socketPath = await this.smartcard.getOrLoadGlobalSmartcardAgent(libPath, pinHandler, 'Remote Profile Sync');
     } else {
-      const agent = await this.smartcard.loadSmartcardIntoPrivateAgentWithPresence(libPath, pinHandler);
+      const agent = await this.smartcard.loadSmartcardIntoPrivateAgentWithPresence(libPath, pinHandler, undefined, 'Remote Profile Sync');
       socketPath = agent.socketPath;
       privateAgentPid = agent.pid;
     }
@@ -1725,6 +1775,8 @@ export class IpcBridge {
       }
     }
     this.pendingAskpass.clear();
+
+    for (const cancel of [...this.pendingInsertTokens.values()]) cancel();
 
     for (const prompt of this.pendingHostKeyPrompts.values()) {
       try {

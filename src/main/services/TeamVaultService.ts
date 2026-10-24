@@ -462,6 +462,11 @@ export interface TeamVaultPinPrompter {
     sessionId: string | undefined,
     message: string
   ): { onPresenceRequested: () => void; onPresenceCleared: () => void };
+  /**
+   * Waits (with an "insert your token" prompt) until the PIV card is plugged in; throws if the user
+   * dismisses it. Called before any age-plugin-yubikey run, never from inside one.
+   */
+  ensurePivPresent?(context: string): Promise<void>;
 }
 
 /** The narrow slice of `TeamVaultConfigStore` this service needs — originally just for
@@ -731,6 +736,7 @@ export class TeamVaultService {
    * boundary (the identity file's own content is what matters). */
   async enrollOwnPivRecipient(vaultId?: string): Promise<{ recipient: string; identityFilePath: string }> {
     const contextLabel = vaultId ? `Team Vault: ${vaultId}` : 'Team Vault: new identity';
+    await this.pinPrompter?.ensurePivPresent?.(contextLabel);
     return this.cryptoService.enrollOwnPivRecipient(this.identityDirFor(vaultId), this.buildPtyCallbacks(undefined, contextLabel));
   }
 
@@ -1372,6 +1378,7 @@ export class TeamVaultService {
     if (!source) {
       throw new Error(`"${recipientId}" is not a recipient of this vault`);
     }
+    await this.pinPrompter?.ensurePivPresent?.(`Team Vault: ${file.vaultName || vaultId}`);
     const vaultKey = await this.cryptoService.unwrapVaultKey(
       source.wrappedVaultKey,
       identityFilePath,
@@ -1468,6 +1475,7 @@ export class TeamVaultService {
   ): Promise<{ vaultId: string; target: StorageConnectConfig; remoteBasePath?: string }> {
     const armored = extractInviteCiphertext(inviteText);
     let decrypted: string;
+    await this.pinPrompter?.ensurePivPresent?.('Team Vault: reading invite');
     try {
       decrypted = await this.cryptoService.decryptWithIdentity(
         armored,

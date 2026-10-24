@@ -9,6 +9,7 @@ import {
   type PresencePromptEvent,
   type PresenceClearEvent,
   type AskpassPromptEvent,
+  type InsertTokenPromptEvent,
   type SmartcardStartupUnlockStatusEvent,
   type TransferConflictPromptEvent,
   type TransferConflictResolution,
@@ -215,6 +216,24 @@ export const api: MultiSSHApi = {
 
   submitAskpassPin: (id: string, pin: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.ASKPASS_SUBMIT_PIN, id, pin),
+
+  onInsertTokenPrompt: (callback: (event: InsertTokenPromptEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: InsertTokenPromptEvent) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.INSERT_TOKEN_PROMPT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.INSERT_TOKEN_PROMPT, listener);
+    };
+  },
+
+  onInsertTokenDismiss: (callback: (event: { id: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: { id: string }) => callback(event);
+    ipcRenderer.on(IPC_CHANNELS.INSERT_TOKEN_DISMISS, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.INSERT_TOKEN_DISMISS, listener);
+    };
+  },
+
+  cancelInsertToken: (id: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.INSERT_TOKEN_CANCEL, id),
 
   onPresencePrompt: (callback: (event: PresencePromptEvent) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: PresencePromptEvent) => callback(event);

@@ -121,6 +121,9 @@ export const IPC_CHANNELS = {
   SMARTCARD_STARTUP_UNLOCK_STATUS: 'smartcard:startup-unlock-status',
   ASKPASS_PROMPT: 'askpass:prompt',
   ASKPASS_SUBMIT_PIN: 'askpass:submit-pin',
+  INSERT_TOKEN_PROMPT: 'insert-token:prompt',
+  INSERT_TOKEN_DISMISS: 'insert-token:dismiss',
+  INSERT_TOKEN_CANCEL: 'insert-token:cancel',
   PRESENCE_PROMPT: 'presence:prompt',
   PRESENCE_CLEAR: 'presence:clear',
   FIDO2_GENERATE_KEY: 'fido2:generate-key',
@@ -471,6 +474,13 @@ export interface AskpassPromptEvent {
   maxAttempts?: number;
 }
 
+/** Asks the user to plug in the smartcard / security key an operation needs; dismissed once it is detected. */
+export interface InsertTokenPromptEvent {
+  id: string;
+  kind: 'smartcard' | 'fido2';
+  context?: string;
+}
+
 export interface SmartcardStartupUnlockStatusEvent {
   kind: 'smartcard' | 'fido2';
   status: 'unlocked' | 'error';
@@ -609,6 +619,11 @@ export interface MultiSSHApi {
   onSmartcardStartupUnlockStatus(callback: (event: SmartcardStartupUnlockStatusEvent) => void): () => void;
   onAskpassPrompt(callback: (event: AskpassPromptEvent) => void): () => void;
   submitAskpassPin(id: string, pin: string): Promise<void>;
+  /** Fired when an operation needs a smartcard / security key that is not plugged in. */
+  onInsertTokenPrompt(callback: (event: InsertTokenPromptEvent) => void): () => void;
+  /** Fired when the token has been detected (the operation continues with its PIN prompt) or the wait ended. */
+  onInsertTokenDismiss(callback: (event: { id: string }) => void): () => void;
+  cancelInsertToken(id: string): Promise<void>;
   /** Fired when a smartcard/FIDO2 operation is blocked waiting for a physical touch. Informational only. */
   onPresencePrompt(callback: (event: PresencePromptEvent) => void): () => void;
   /** Fired once the operation that triggered a matching `onPresencePrompt` id has finished. */

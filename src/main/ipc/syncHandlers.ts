@@ -169,9 +169,14 @@ export function registerSyncHandlers(bridge: SyncHost): void {
       if (unlockedSocket) {
         socketPath = unlockedSocket;
       } else if (mode === 'agent-global') {
-        socketPath = await bridge.smartcard.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler);
+        socketPath = await bridge.smartcard.getOrLoadGlobalSmartcardAgent(options.pkcs11LibPath, pinHandler, 'Remote Profile Sync');
       } else {
-        const agent = await bridge.smartcard.loadSmartcardIntoPrivateAgentWithPresence(options.pkcs11LibPath, pinHandler);
+        const agent = await bridge.smartcard.loadSmartcardIntoPrivateAgentWithPresence(
+          options.pkcs11LibPath,
+          pinHandler,
+          undefined,
+          'Remote Profile Sync'
+        );
         socketPath = agent.socketPath;
         privateAgentPid = agent.pid;
       }

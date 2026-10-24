@@ -5,11 +5,12 @@ vi.mock('electron', () => {
   return { ...mockObj, default: mockObj };
 });
 
+import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from '../../src/main/smartcard/CertificateParser';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { AppAgent } from '../../src/main/ssh/AppAgent';
-import { SmartcardCoordinator, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import { SmartcardCoordinator, TokenNotInsertedError, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
 
 const LIB = '/usr/lib/opensc-pkcs11.so';
 
@@ -22,6 +23,7 @@ function makeDeps(calls: string[] = []): SmartcardDeps {
     sshPtyManager: {} as any,
     getWebContents: () => null,
     promptForPin: vi.fn().mockResolvedValue('123456'),
+    waitForToken: vi.fn().mockResolvedValue(true),
     makePresenceNotifier: vi.fn().mockReturnValue({ onPresenceRequested: vi.fn(), onPresenceCleared: vi.fn() }),
     clearPresence: vi.fn((id: string) => void calls.push(`clearPresence:${id}`)),
     syncAgentBlock: vi.fn(async (entries: unknown) => void calls.push(`syncAgentBlock:${entries === null ? 'null' : 'entries'}`)),
@@ -85,6 +87,67 @@ describe('SmartcardCoordinator', () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual(['/run/sshs3/agent.sock', '/run/sshs3/agent.sock']);
     expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+  });
+
+  describe('card not plugged in', () => {
+    it('waits for the card, then loads it', async () => {
+      const { coordinator, deps, agent } = build();
+      vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(false);
+
+      await coordinator.getOrLoadGlobalSmartcardAgent(LIB, 'session-1', 'connect to host');
+
+      expect(deps.waitForToken).toHaveBeenCalledWith('smartcard', 'connect to host', expect.any(Function));
+      expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask when the card is there or presence is unknown', async () => {
+      for (const present of [true, undefined]) {
+        const { coordinator, deps } = build();
+        vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(present);
+        await coordinator.getOrLoadGlobalSmartcardAgent(LIB, 'session-1', 'connect');
+        expect(deps.waitForToken).not.toHaveBeenCalled();
+      }
+    });
+
+    it('also waits before a private-agent load that names its purpose (e.g. profile sync)', async () => {
+      const { coordinator, deps } = build();
+      vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(false);
+      vi.mocked(deps.waitForToken).mockResolvedValue(false);
+
+      await expect(
+        coordinator.loadSmartcardIntoPrivateAgentWithPresence(LIB, async () => 'pin', undefined, 'Remote Profile Sync')
+      ).rejects.toBeInstanceOf(TokenNotInsertedError);
+      expect(deps.waitForToken).toHaveBeenCalledWith('smartcard', 'Remote Profile Sync', expect.any(Function));
+    });
+
+    it('checks the default PIV module for flows without a library of their own (Team Vault)', async () => {
+      const { coordinator, deps } = build();
+      vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+        { name: 'p11-kit', path: '/usr/lib/p11-kit-proxy.so', platform: 'linux', exists: true },
+        { name: 'OpenSC', path: LIB, platform: 'linux', exists: true },
+      ]);
+      const present = vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(false);
+
+      await coordinator.ensureDefaultPivPresent('Team Vault: Acme');
+
+      expect(present).toHaveBeenCalledWith('/usr/lib/p11-kit-proxy.so');
+      expect(deps.waitForToken).toHaveBeenCalledWith('smartcard', 'Team Vault: Acme', expect.any(Function));
+    });
+
+    it('stops without a PIN prompt or a cooldown when the user dismisses the prompt', async () => {
+      const { coordinator, deps, agent } = build();
+      vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(false);
+      vi.mocked(deps.waitForToken).mockResolvedValue(false);
+
+      await expect(coordinator.getOrLoadGlobalSmartcardAgent(LIB, 'session-1', 'connect')).rejects.toBeInstanceOf(
+        TokenNotInsertedError
+      );
+      await expect(coordinator.getOrLoadGlobalSmartcardAgent(LIB, 'session-1', 'connect')).rejects.toBeInstanceOf(
+        TokenNotInsertedError
+      );
+      expect(deps.waitForToken).toHaveBeenCalledTimes(2);
+      expect(agent.addPkcs11).not.toHaveBeenCalled();
+    });
   });
 
   describe('Windows shared agent', () => {

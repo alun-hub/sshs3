@@ -70,6 +70,7 @@ import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardAgentLoader from '../../src/main/smartcard/SmartcardAgentLoader';
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
+import * as Fido2DeviceDetector from '../../src/main/smartcard/Fido2DeviceDetector';
 import { fingerprintOfKeyBlob } from '../../src/main/ssh/AppAgent';
 import type { IStorageProvider, FileEntry } from '../../src/shared/types/storage';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
@@ -168,6 +169,9 @@ describe('IpcBridge', () => {
   beforeEach(() => {
     mockIpc = new MockIpcMain();
     mockWebContents = new MockWebContents();
+    // Card / key presence checks would read sysfs or spawn a PKCS#11 worker: tests run with the token plugged in.
+    vi.spyOn(Fido2DeviceDetector, 'isFido2DeviceConnected').mockResolvedValue(true);
+    vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(true);
     mockIpc.defaultSenderFrame = mockWebContents.mainFrame;
 
     const ptyEmitter = new EventEmitter();
@@ -284,6 +288,7 @@ describe('IpcBridge', () => {
 
   afterEach(async () => {
     await bridge.dispose();
+    vi.mocked(Fido2DeviceDetector.isFido2DeviceConnected).mockRestore?.();
   });
 
   // Regression test for the H3 finding (code review): registerHandler now
@@ -609,10 +614,85 @@ describe('IpcBridge', () => {
     });
 
     describe('smartcardUnlockAtStartup', () => {
+      let tokenPresentSpy: ReturnType<typeof vi.spyOn>;
+      beforeEach(() => {
+        // The card/key presence checks spawn a real worker / read sysfs: pin them to "present".
+        tokenPresentSpy = vi.spyOn(SmartcardCertificateReader, 'isSmartcardTokenPresent').mockResolvedValue(true);
+      });
+      afterEach(() => tokenPresentSpy.mockRestore());
+
       it('does nothing when the setting is off', async () => {
         mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: false, smartcardAuthMode: 'agent-global' });
         const res = await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP);
         expect(res).toEqual({ started: false });
+      });
+
+      describe('waitForTokenDirect', () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        it('prompts, polls, and dismisses the prompt once the token shows up', async () => {
+          const isPresent = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+
+          const waiting = bridge.waitForTokenDirect('fido2', 'SSH: host', isPresent, 100);
+          const prompt = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.INSERT_TOKEN_PROMPT);
+          expect(prompt?.args[0]).toMatchObject({ kind: 'fido2', context: 'SSH: host' });
+
+          await vi.advanceTimersByTimeAsync(100);
+          expect(isPresent).toHaveBeenCalledTimes(1);
+          await vi.advanceTimersByTimeAsync(100);
+
+          await expect(waiting).resolves.toBe(true);
+          expect(mockWebContents.events).toContainEqual({
+            channel: IPC_CHANNELS.INSERT_TOKEN_DISMISS,
+            args: [{ id: prompt!.args[0].id }],
+          });
+          expect(bridge.pendingInsertTokens.size).toBe(0);
+        });
+
+        it('resolves false when the user cancels, and stops polling', async () => {
+          const isPresent = vi.fn().mockResolvedValue(false);
+
+          const waiting = bridge.waitForTokenDirect('smartcard', undefined, isPresent, 100);
+          const id = mockWebContents.events.find((e) => e.channel === IPC_CHANNELS.INSERT_TOKEN_PROMPT)!.args[0].id;
+          await mockIpc.invoke(IPC_CHANNELS.INSERT_TOKEN_CANCEL, id);
+
+          await expect(waiting).resolves.toBe(false);
+          await vi.advanceTimersByTimeAsync(500);
+          expect(isPresent).not.toHaveBeenCalled();
+        });
+      });
+
+      it('does not prompt for a PIN when the module reports no card in the reader', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([
+          { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+        ]);
+        tokenPresentSpy.mockResolvedValue(false);
+        fakeAppAgent.addPkcs11.mockClear();
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP)).toEqual({ started: true });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(fakeAppAgent.addPkcs11).not.toHaveBeenCalled();
+
+        detectSpy.mockRestore();
+      });
+
+      it('does not load FIDO2 keys (or prompt for a PIN) when no security key is connected', async () => {
+        mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
+        const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([]);
+        const fidoSpy = vi.spyOn(Fido2DeviceDetector, 'isFido2DeviceConnected').mockResolvedValue(false);
+        mockProfileStore.getProfiles.mockResolvedValue({
+          ssh: [{ id: 'p', name: 'fido host', host: 'h', username: 'u', authType: 'fido2', fido2Resident: true }],
+        });
+        fakeAppAgent.addFido2Resident.mockClear();
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.SMARTCARD_UNLOCK_AT_STARTUP)).toEqual({ started: true });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(fakeAppAgent.addFido2Resident).not.toHaveBeenCalled();
+
+        detectSpy.mockRestore();
+        fidoSpy.mockRestore();
       });
 
       it('the on-demand Unlock runs even when the "unlock at startup" setting is off', async () => {

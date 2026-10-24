@@ -602,6 +602,26 @@ describe('TeamVaultService', () => {
       expect(second.isUnlocked(vaultId)).toBe(true);
     });
 
+    it('unlock() waits for the card before touching the crypto layer, and stops if that is dismissed', async () => {
+      const first = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir });
+      const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+
+      const unwrap = vi.fn();
+      const prompter = {
+        ...fakePinPrompter(),
+        ensurePivPresent: vi.fn().mockRejectedValue(new Error('No smartcard inserted')),
+      };
+      const second = new TeamVaultService({
+        cryptoService: { ...fakeCrypto(), unwrapVaultKey: unwrap } as unknown as TeamVaultCryptoService,
+        baseDir: tempDir,
+        pinPrompter: prompter,
+      });
+
+      await expect(second.unlock(vaultId, 'alice@piv:abc', '/tmp/id.txt')).rejects.toThrow('No smartcard inserted');
+      expect(prompter.ensurePivPresent).toHaveBeenCalledWith(`Team Vault: ${vaultId}`);
+      expect(unwrap).not.toHaveBeenCalled();
+    });
+
     it('enrollOwnPivRecipient() routes PIN requests through pinPrompter too', async () => {
       const prompter = fakePinPrompter();
       const service = new TeamVaultService({
