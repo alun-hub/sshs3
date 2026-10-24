@@ -95,6 +95,7 @@ Deliver seamless Single Sign-On across complex server topologies without ever wr
 Select your preferred policy under *Settings → Security & Smartcard*. Enter your PIN in the secure dialog when prompted.
 
 #### ⚠️ Limitations & Caveats
+- **Card or key not plugged in**: sshs3 checks that the smartcard or security key is present before it asks for a PIN. Unlock at startup stays silent when nothing is plugged in. When a terminal, an SFTP connection, Remote Profile Sync or a Team Vault needs the token, an **Insert your smartcard / security key** dialog waits for it and gives way to the PIN dialog as soon as it is detected. **Cancel** (or `Esc`) stops the operation without asking for a PIN. Detecting a FIDO2 key works on Linux only; on macOS the PIN dialog appears as before, and a key connected over NFC or Bluetooth is not detected.
 - If the application crashes unexpectedly, stale sockets are cleaned up automatically on the next launch.
 - PIN caching is strictly memory-only and is wiped upon reboot or application exit.
 

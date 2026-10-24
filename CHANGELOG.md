@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.65] - 2026-10-24
+
+### Changed
+- Unlock at startup no longer asks for a smartcard or FIDO2 PIN when the card or key is not plugged in.
+- When a terminal, SFTP connection, Remote Profile Sync or Team Vault needs a smartcard or security key that is not plugged in, an "Insert your smartcard / security key" dialog waits for it and gives way to the PIN dialog once it is detected. Cancelling stops the operation instead of falling back to a PIN prompt. (Detecting a FIDO2 key works on Linux only.)
+
 ## [0.96.64] - 2026-10-24
 
 ### Accessibility and keyboard
