@@ -609,24 +609,44 @@ export const FileList: React.FC<FileListProps> = ({
     className,
     title,
   }) => (
-    <button
-      type="button"
-      onClick={() => toggleSort(sortKeyName)}
-      title={title}
-      aria-label={title}
-      className={classNames(
-        'flex min-h-6 items-center gap-1 text-left text-2xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
-        className
-      )}
+    <div
+      role="columnheader"
+      aria-sort={sortKey === sortKeyName ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="min-w-0"
     >
-      <span className="truncate">{label}</span>
-      {sortKey === sortKeyName && <span className="text-sky-400 font-bold shrink-0">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-    </button>
+      <button
+        type="button"
+        onClick={() => toggleSort(sortKeyName)}
+        title={title}
+        aria-label={title ? `${label} (${title.toLowerCase()})` : undefined}
+        className={classNames(
+          'flex min-h-6 w-full items-center gap-1 text-left text-2xs font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-primary transition-colors min-w-0',
+          className
+        )}
+      >
+        <span className="truncate">{label}</span>
+        {sortKey === sortKeyName && (
+          <span aria-hidden="true" className="text-sky-400 font-bold shrink-0">
+            {sortDir === 'asc' ? '▲' : '▼'}
+          </span>
+        )}
+      </button>
+    </div>
   );
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-app-card">
-      <div className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider bg-app-surface py-0 pl-3 pr-[18px]">
+    <div
+      role="grid"
+      aria-label="Files"
+      aria-multiselectable="true"
+      aria-rowcount={sorted.length + 1}
+      className="relative flex h-full flex-col overflow-hidden bg-app-card"
+    >
+      <div
+        role="row"
+        aria-rowindex={1}
+        className="grid grid-cols-[minmax(120px,1fr)_72px_52px_128px] items-center gap-2 border-b border-divider bg-app-surface py-0 pl-3 pr-[18px]"
+      >
         <div className="flex items-center gap-2 min-w-0">
           <SortHeader label="Name" sortKeyName="name" />
           {filterText?.trim() && (
@@ -642,6 +662,7 @@ export const FileList: React.FC<FileListProps> = ({
       <div
         ref={containerRef}
         tabIndex={0}
+        role="rowgroup"
         data-file-list="true"
         onFocusCapture={handleFocusCapture}
         onBlurCapture={handleBlurCapture}
@@ -716,6 +737,7 @@ export const FileList: React.FC<FileListProps> = ({
                 <div
                   key={entry.path}
                   role="row"
+                  aria-rowindex={index + 2}
                   tabIndex={-1}
                   data-entry-path={entry.path}
                   aria-selected={selected}
@@ -810,7 +832,7 @@ export const FileList: React.FC<FileListProps> = ({
                     cutPaths?.has(entry.path) && 'opacity-40'
                   )}
                 >
-                  <div className="pointer-events-none flex min-w-0 items-center gap-2">
+                  <div role="gridcell" className="pointer-events-none flex min-w-0 items-center gap-2">
                     <Icon
                       className={classNames(
                         'h-4 w-4 shrink-0',
@@ -833,9 +855,9 @@ export const FileList: React.FC<FileListProps> = ({
                       <span className="truncate">{entry.name}</span>
                     )}
                   </div>
-                  <span className="pointer-events-none truncate text-right text-xs tabular-nums text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
-                  <span className="pointer-events-none truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
-                  <span className="pointer-events-none truncate text-xs tabular-nums text-txt-muted">{entry.mtime ?? ''}</span>
+                  <span role="gridcell" className="pointer-events-none truncate text-right text-xs tabular-nums text-txt-muted">{entry.isDirectory ? '' : formatBytes(entry.size)}</span>
+                  <span role="gridcell" className="pointer-events-none truncate font-mono text-xs text-txt-muted">{entry.permissions ?? '-'}</span>
+                  <span role="gridcell" className="pointer-events-none truncate text-xs tabular-nums text-txt-muted">{entry.mtime ?? ''}</span>
                 </div>
               );
             })}
