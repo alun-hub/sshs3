@@ -25,6 +25,7 @@ import { AccessSetupPanel, type AccessState } from '../SSH/AccessSetupPanel';
 import { pickDefaultPkcs11Lib, pkcs11PlaceholderPath } from '../../lib/smartcard';
 import { IS_WINDOWS } from '../../lib/platform';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -82,6 +83,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   const [saveReminderOpen, setSaveReminderOpen] = useState(false);
   // Escape backs out of the reminder and returns to the form without saving.
   useEscapeToClose(() => setSaveReminderOpen(false), saveReminderOpen);
+  const reminderDialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(reminderDialogRef, saveReminderOpen);
   const [openInstallSignal, setOpenInstallSignal] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [dotfilePools, setDotfilePools] = useState<DotfilePool[]>([]);
@@ -1182,6 +1185,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       </div>
       {saveReminderOpen && (
         <div
+          ref={reminderDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="save-reminder-title"

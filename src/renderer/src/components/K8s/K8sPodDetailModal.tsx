@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -32,6 +32,7 @@ import { K8sPodMetrics } from './K8sPodMetrics';
 import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface K8sPodDetailModalProps {
   contextName: string;
@@ -68,6 +69,8 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
   const [pod, setPod] = useState<K8sPodDescription | null>(null);
   const [copied, setCopied] = useState(false);
   useEscapeToClose(onClose, true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
 
   const handleDeletePod = async () => {
     const confirmed = await confirm({
@@ -138,6 +141,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Pod ${podName}`}

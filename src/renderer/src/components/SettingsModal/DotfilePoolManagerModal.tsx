@@ -17,6 +17,7 @@ import type { DotfileImportedFile } from '@shared/types/dotfiles';
 import { DotfilePoolFileTable, type DotfileSourceStatus } from './DotfilePoolFileTable';
 import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { createRendererLogger } from '../../lib/log';
 const log = createRendererLogger('DotfilePoolManagerModal');
 
@@ -119,6 +120,10 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
   useModalDismiss(onClose, open);
   useModalDismiss(() => setGitImportOpen(false), gitImportOpen, !gitImporting);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const gitImportDialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
+  useDialogFocus(gitImportDialogRef, gitImportOpen);
   if (!open) return null;
 
   const dirty = draft ? savedSnapshot === null || poolSnapshot(draft) !== savedSnapshot : false;
@@ -311,7 +316,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4">
-      <div role="dialog" aria-modal="true" aria-label="Dotfile pools and master files" className="flex h-[600px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Dotfile pools and master files" className="flex h-[600px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
@@ -526,7 +531,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
       {gitImportOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-          <div role="dialog" aria-modal="true" aria-label="Import dotfiles from Git" className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+          <div ref={gitImportDialogRef} role="dialog" aria-modal="true" aria-label="Import dotfiles from Git" className="flex w-full max-w-md flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-sky-400" />

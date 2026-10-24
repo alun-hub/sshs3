@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   AlertCircle,
   Bug,
@@ -16,6 +16,7 @@ import {
 } from '@shared/types/kubernetes';
 import { describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 export interface K8sDebugModalProps {
   target: {
@@ -85,6 +86,8 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
   // Escape closes; a stray backdrop click would discard typed input, so it is intentionally ignored.
   useModalDismiss(onClose, open && !!target);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open && !!target);
   if (!open || !target) return null;
 
   const handlePresetChange = (presetId: string) => {
@@ -138,7 +141,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
-      <div role="dialog" aria-modal="true" aria-label="Attach debug container" className="flex w-full max-w-xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Attach debug container" className="flex w-full max-w-xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">

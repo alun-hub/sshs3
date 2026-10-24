@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Trash2, X } from 'lucide-react';
 import type { ClipboardHistoryEntry } from '@shared/types/clipboard';
 import { useModalDismiss } from '../lib/useModalDismiss';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { formatDateTime } from '../lib/format';
 
 interface ClipboardHistoryModalProps {
@@ -14,6 +15,8 @@ interface ClipboardHistoryModalProps {
 
 export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ hostKey, onPaste, onClose }) => {
   const onBackdrop = useModalDismiss(onClose, true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
   const [entries, setEntries] = useState<ClipboardHistoryEntry[]>([]);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -89,6 +92,7 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
       data-testid="clipboard-history-modal"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Clipboard history"

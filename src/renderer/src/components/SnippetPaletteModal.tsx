@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { Snippet } from '@shared/types/snippets';
 import { SNIPPET_MAX_COMMAND_CHARS, SNIPPET_MAX_NAME_CHARS } from '@shared/types/snippets';
 import { useModalDismiss } from '../lib/useModalDismiss';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { expandSnippet, type SnippetContext } from '../lib/snippets';
 
 interface SnippetPaletteModalProps {
@@ -26,6 +27,8 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
   onClose,
 }) => {
   const onBackdrop = useModalDismiss(onClose, true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -135,6 +138,7 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
       data-testid="snippet-palette-modal"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Snippets"

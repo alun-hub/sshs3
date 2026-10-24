@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { K8sProfile } from '@shared/types/kubernetes';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { newProfileId } from '../../lib/k8sProfiles';
 
 interface K8sTeamProfileFormProps {
@@ -32,6 +33,8 @@ export const K8sTeamProfileForm: React.FC<K8sTeamProfileFormProps> = ({ open, va
   }, [open, initial]);
 
   useModalDismiss(onClose, open, !saving);
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useDialogFocus(dialogRef, open);
   if (!open) return null;
 
   const submit = async (e: React.FormEvent) => {
@@ -69,6 +72,7 @@ export const K8sTeamProfileForm: React.FC<K8sTeamProfileFormProps> = ({ open, va
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
       <form
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Shared cluster"

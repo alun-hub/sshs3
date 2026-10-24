@@ -15,6 +15,7 @@ import {
 import type { K8sLoginResult, K8sProfile } from '@shared/types/kubernetes';
 import { parseOcLoginCommand } from '@shared/ocLogin';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { defaultProfileName, findMatchingProfile, newProfileId } from '../../lib/k8sProfiles';
 import { useOpenShiftWebLogin } from '../../lib/useOpenShiftWebLogin';
 import { OpenShiftWebLoginSection } from './OpenShiftWebLoginSection';
@@ -110,6 +111,8 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   // Escape cancels a pending browser sign-in first, otherwise it closes; a stray backdrop click would
   // discard typed input, so it is intentionally ignored.
   useModalDismiss(webLogin.waiting ? webLogin.cancel : onClose, open, !loading);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
   if (!open) return null;
 
   const handlePasteChange = (val: string) => {
@@ -166,7 +169,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
-      <div role="dialog" aria-modal="true" aria-label="OpenShift / Kubernetes login" className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="OpenShift / Kubernetes login" className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-4">
           <div className="flex items-center gap-2.5">

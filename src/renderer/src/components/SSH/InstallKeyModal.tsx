@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -20,6 +20,7 @@ import type {
 import { classNames, describeIpcError } from '../../lib/format';
 import { chooseLoginOrder, LOGIN_STEP_LABELS } from '@shared/loginOrder';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface InstallKeyModalProps {
   /** Profilen att installera nycklar på; får vara osparad. */
@@ -86,6 +87,8 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
 
   const busy = installing || loadingHardware || fetchingGit;
   const handleBackdrop = useModalDismiss(onClose, true, !busy);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
   const hasHardware =
     (connection.authType === 'smartcard' && !!connection.pkcs11LibPath) ||
     (connection.authType === 'fido2' && !!connection.fido2Resident);
@@ -314,6 +317,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="install-key-title"
