@@ -1277,7 +1277,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                   : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'
               }`}
             />
-            <span className="font-medium text-slate-200">
+            <span role="status" className="font-medium text-slate-200">
               Session ended{exitEvent.exitCode !== undefined ? ` (code ${exitEvent.exitCode})` : ''}
             </span>
           </div>
