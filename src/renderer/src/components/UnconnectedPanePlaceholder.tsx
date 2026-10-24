@@ -37,7 +37,7 @@ const WindowsShellButton: React.FC<{
           <Shield className="h-3.5 w-3.5" />
         </button>
       </span>
-      {error && <span className="mt-0.5 max-w-48 text-center text-2xs text-red-400">{error}</span>}
+      {error && <span role="alert" className="mt-0.5 max-w-48 text-center text-2xs text-red-400">{error}</span>}
     </span>
   );
 };

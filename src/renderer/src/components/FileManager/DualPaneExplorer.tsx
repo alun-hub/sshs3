@@ -687,7 +687,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         }}
       >
         {initError && (
-          <div className="border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">{initError}</div>
+          <div role="alert" className="border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">{initError}</div>
         )}
         <div ref={splitContainerRef} className="flex min-h-0 flex-1 p-1.5">
           <div style={{ flexGrow: splitRatio, flexBasis: 0, minWidth: 0 }} className="flex min-w-0">

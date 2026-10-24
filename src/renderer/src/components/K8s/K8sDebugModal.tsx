@@ -301,7 +301,7 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
           {/* Error Message */}
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
               <div className="min-w-0 flex-1 break-words">{error}</div>
             </div>

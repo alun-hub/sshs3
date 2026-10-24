@@ -839,7 +839,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
               </button>
 
               {ssoError && (
-                <p className="rounded-lg border border-red-800/60 bg-red-950/40 px-2.5 py-1.5 text-xs text-red-300">
+                <p role="alert" className="rounded-lg border border-red-800/60 bg-red-950/40 px-2.5 py-1.5 text-xs text-red-300">
                   {ssoError}
                 </p>
               )}

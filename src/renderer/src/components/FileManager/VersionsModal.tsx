@@ -147,7 +147,7 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
             </div>
           )}
           {error && (
-            <div className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
+            <div role="alert" className="mb-3 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
 
           {!loading && mode === 'bucket' && (

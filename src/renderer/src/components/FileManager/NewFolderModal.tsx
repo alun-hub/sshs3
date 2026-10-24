@@ -138,7 +138,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
           </div>
 
           {error && (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-2.5 text-xs text-red-400">
+            <div role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 p-2.5 text-xs text-red-400">
               {error}
             </div>
           )}

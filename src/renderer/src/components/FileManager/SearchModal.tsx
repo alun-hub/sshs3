@@ -396,7 +396,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         </div>
 
         {error && (
-          <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
+          <div role="alert" className="border-b border-red-900/60 bg-red-950/40 px-4 py-1.5 text-xs text-red-300">{error}</div>
         )}
 
         <div ref={splitContainerRef} className="relative flex min-h-0 flex-1 overflow-hidden">

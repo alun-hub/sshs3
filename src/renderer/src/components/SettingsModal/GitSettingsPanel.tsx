@@ -307,7 +307,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-300 flex items-center justify-between">
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-300 flex items-center justify-between">
           <span>{error}</span>
           <button aria-label="Close" title="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-white">
             <X className="h-3.5 w-3.5" />

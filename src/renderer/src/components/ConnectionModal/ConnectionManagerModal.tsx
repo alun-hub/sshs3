@@ -913,7 +913,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
           }
         >
           {error && !editing && (
-            <div className="mb-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+            <div role="alert" className="mb-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
               {error}
             </div>
           )}
@@ -921,7 +921,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
           {editing ? (
             <>
               {error && (
-                <div className="mx-4 mt-4 shrink-0 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                <div role="alert" className="mx-4 mt-4 shrink-0 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">
                   {error}
                 </div>
               )}

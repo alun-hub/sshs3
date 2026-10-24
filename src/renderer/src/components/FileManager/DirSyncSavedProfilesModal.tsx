@@ -187,7 +187,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
         {/* Profiles List */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 text-xs text-txt-secondary">
           {error && (
-            <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-red-300">{error}</div>
+            <div role="alert" className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-red-300">{error}</div>
           )}
 
           {loading ? (

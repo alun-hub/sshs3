@@ -570,7 +570,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                 className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-txt-primary placeholder:text-txt-muted/60 focus:border-sky-500 focus:outline-none"
               />
               {gitImportError && (
-                <div className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-300">
+                <div role="alert" className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-300">
                   <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <span>{gitImportError}</span>
                 </div>

@@ -136,7 +136,7 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs text-txt-secondary">
           {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-xs">
+            <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-xs">
               {error}
             </div>
           )}

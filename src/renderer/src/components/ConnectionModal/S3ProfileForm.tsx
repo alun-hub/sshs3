@@ -337,7 +337,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
           </button>
 
           {ssoError && (
-            <p className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-red-300">{ssoError}</p>
+            <p role="alert" className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-red-300">{ssoError}</p>
           )}
 
           {ssoAccessToken && !ssoManualEntry && (

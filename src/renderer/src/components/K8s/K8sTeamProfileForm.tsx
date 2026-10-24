@@ -118,7 +118,7 @@ export const K8sTeamProfileForm: React.FC<K8sTeamProfileFormProps> = ({ open, va
           <input type="checkbox" checked={insecure} onChange={(e) => setInsecure(e.target.checked)} />
           <span className="text-txt-primary">Skip TLS certificate verification</span>
         </label>
-        {error && <div className="rounded-lg border border-red-900/60 bg-red-950/40 p-2.5 text-red-300">{error}</div>}
+        {error && <div role="alert" className="rounded-lg border border-red-900/60 bg-red-950/40 p-2.5 text-red-300">{error}</div>}
         <div className="flex justify-end gap-2">
           <button type="button" disabled={saving} onClick={onClose} className="rounded-lg px-3.5 py-1.5 text-txt-muted hover:bg-app-surface-hover">
             Cancel

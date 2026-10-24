@@ -237,7 +237,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
             </div>
 
             {error && (
-              <div className="rounded-lg border border-red-900/60 bg-red-950/40 p-2.5 text-xs text-red-300 flex items-center gap-2">
+              <div role="alert" className="rounded-lg border border-red-900/60 bg-red-950/40 p-2.5 text-xs text-red-300 flex items-center gap-2">
                 <XCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -418,7 +418,7 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
                         )}
                       </div>
                       {pf.error && (
-                        <div className="flex items-center gap-1.5 text-xs text-rose-400 pt-0.5">
+                        <div role="alert" className="flex items-center gap-1.5 text-xs text-rose-400 pt-0.5">
                           <XCircle className="h-3 w-3 shrink-0" />
                           <span className="break-all">{pf.error}</span>
                         </div>

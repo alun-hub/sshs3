@@ -291,7 +291,7 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-xs text-red-300">
+            <div role="alert" className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-xs text-red-300">
               <div className="flex items-center gap-2 font-semibold">
                 <XCircle className="h-4 w-4" /> Failed to describe pod
               </div>

@@ -895,7 +895,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
         {/* Error banner */}
         {error && (
-          <div className="flex items-center justify-between gap-2 border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">
+          <div role="alert" className="flex items-center justify-between gap-2 border-b border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">
             <div className="flex items-center gap-1.5 truncate">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
               <span className="truncate">{error}</span>

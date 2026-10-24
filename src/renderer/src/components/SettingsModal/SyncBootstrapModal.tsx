@@ -134,7 +134,7 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
                 settings.
               </p>
               <SyncTargetForm draft={draft} onChange={setDraft} disabled={settingUpTarget} />
-              {targetError && <p className="text-xs text-red-400">{targetError}</p>}
+              {targetError && <p role="alert" className="text-xs text-red-400">{targetError}</p>}
               <button
                 type="button"
                 onClick={handleContinue}

@@ -371,7 +371,7 @@ export const MasterPasswordDialog: React.FC<MasterPasswordDialogProps> = ({
             )}
 
             {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300">{error}</div>
+              <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300">{error}</div>
             )}
           </div>
 

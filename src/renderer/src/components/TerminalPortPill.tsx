@@ -60,7 +60,7 @@ export const TerminalPortPill: React.FC<TerminalPortPillProps> = ({
             </div>
 
             {err && (
-              <span className="text-[11px] text-rose-400 max-w-[200px] truncate" title={err}>
+              <span role="alert" className="text-[11px] text-rose-400 max-w-[200px] truncate" title={err}>
                 {err}
               </span>
             )}

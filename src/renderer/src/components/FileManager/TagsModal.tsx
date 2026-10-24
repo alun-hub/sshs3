@@ -97,7 +97,7 @@ export const TagsModal: React.FC<TagsModalProps> = ({
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
+            <div role="alert" className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
 
           {!loading && (

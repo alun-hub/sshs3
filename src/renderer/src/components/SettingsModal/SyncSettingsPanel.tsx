@@ -658,7 +658,7 @@ export const SyncSettingsPanel: React.FC = () => {
                 </div>
               )}
 
-              {checkError && <p className="text-xs text-red-400">{checkError}</p>}
+              {checkError && <p role="alert" className="text-xs text-red-400">{checkError}</p>}
             </div>
           )}
 
@@ -735,7 +735,7 @@ export const SyncSettingsPanel: React.FC = () => {
           </div>
 
           {actionMessage && <p className="text-xs text-emerald-400">{actionMessage}</p>}
-          {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+          {actionError && <p role="alert" className="text-xs text-red-400">{actionError}</p>}
 
           {conflicts.length > 0 && (
             <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
@@ -820,7 +820,7 @@ export const SyncSettingsPanel: React.FC = () => {
                     Yes, delete everything
                   </button>
                 </div>
-                {wipeError && <p className="text-xs text-red-400">{wipeError}</p>}
+                {wipeError && <p role="alert" className="text-xs text-red-400">{wipeError}</p>}
               </div>
             )}
 
@@ -842,7 +842,7 @@ export const SyncSettingsPanel: React.FC = () => {
       {editingTarget && (
         <div className="space-y-3 rounded-lg border border-border-subtle bg-app-surface p-3.5">
           <SyncTargetForm draft={targetDraft} onChange={setTargetDraft} disabled={savingTarget} />
-          {targetError && <p className="text-xs text-red-400">{targetError}</p>}
+          {targetError && <p role="alert" className="text-xs text-red-400">{targetError}</p>}
           <div className="flex items-center justify-end gap-2">
             {status?.configured && (
               <button

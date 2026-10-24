@@ -560,7 +560,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
 
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs text-txt-secondary">
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>

@@ -171,7 +171,7 @@ export const WinAttributesModal: React.FC<WinAttributesModalProps> = ({ open, pr
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">
+            <div role="alert" className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">
               {error}
             </div>
           )}
