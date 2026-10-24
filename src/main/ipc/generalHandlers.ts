@@ -10,7 +10,7 @@ import type { IpcBridge } from '../IpcBridge';
 import { elevatedShellExecutable, elevatedStartCommand, isUacDeclined } from './elevatedShell';
 
 /** The part of IpcBridge this handler group may use. */
-export type GeneralHost = Pick<IpcBridge, 'getUpdateService' | 'registerHandler'>;
+export type GeneralHost = Pick<IpcBridge, 'getUpdateService' | 'registerHandler' | 'profileStore'>;
 
 const execFileAsync = promisify(execFile);
 
@@ -49,7 +49,9 @@ export function registerGeneralHandlers(bridge: GeneralHost): void {
   });
 
   bridge.registerHandler(IPC_CHANNELS.APP_GET_SECURITY_STATUS, async () => {
-    return { credentialEncryptionAvailable: isEncryptionAvailable() };
+    // Never let a failed read of the profile file turn into a failed security check: report 0 and carry on.
+    const undecryptableSecretCount = await bridge.profileStore.countUndecryptableSecrets().catch(() => 0);
+    return { credentialEncryptionAvailable: isEncryptionAvailable(), undecryptableSecretCount };
   });
 
   bridge.registerHandler(IPC_CHANNELS.APP_DETECT_LOCAL_SHELLS, async () => {

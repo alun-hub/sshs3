@@ -1090,7 +1090,7 @@ export const api: MultiSSHApi = {
   getHostname: (): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_HOSTNAME),
 
-  getSecurityStatus: (): Promise<{ credentialEncryptionAvailable: boolean }> =>
+  getSecurityStatus: (): Promise<{ credentialEncryptionAvailable: boolean; undecryptableSecretCount: number }> =>
     ipcRenderer.invoke(IPC_CHANNELS.APP_GET_SECURITY_STATUS),
 
   detectLocalShells: (): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }> =>

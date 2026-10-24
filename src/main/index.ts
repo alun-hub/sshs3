@@ -18,6 +18,7 @@ import { IPC_CHANNELS, type TabHandoff } from '../shared/types/ipc';
 import { restorableWindows } from './session/windowSessions';
 import type { SessionData } from '../shared/types/session';
 import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
+import { resolvePasswordStore } from './crypto/passwordStore';
 
 app.setName('sshs3');
 if (process.platform === 'linux') {
@@ -42,7 +43,7 @@ if (process.platform === 'linux') {
   // gnome-libsecret is also the normal, already-working backend on a vanilla GNOME session, and
   // if no Secret-Service-compatible store exists at all, Chromium just falls back to
   // 'basic_text', which the `!isEncryptionAvailable()` check below already warns about.
-  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+  app.commandLine.appendSwitch('password-store', resolvePasswordStore(process.env, app.isPackaged));
 }
 
 // Redirect userData to <exe-dir>/data if running as a portable executable (set by electron-builder)
@@ -464,7 +465,7 @@ async function initializeApp(): Promise<void> {
     );
   } else {
     // On Linux, safeStorage auto-selects a keyring backend (gnome_libsecret/kwallet*/basic_text)
-    // at startup unless pinned via `--password-store=...`, which this app doesn't do — if the
+    // at startup unless pinned via `--password-store=...` (pinned above on Linux) — if the
     // backend selected differs between runs (e.g. depending on which keyring daemon happens to be
     // reachable at the exact moment Electron starts), a secret encrypted under one backend's key
     // can silently fail to decrypt under a different one chosen on a later run (see

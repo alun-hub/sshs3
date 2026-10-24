@@ -290,6 +290,25 @@ export class ProfileStore {
     return byId;
   }
 
+  /**
+   * How many saved secrets (SSH passwords/passphrases, S3 secret keys/session tokens, proxy passwords) are encrypted on
+   * disk but cannot be decrypted now. They load as empty ("no credential saved"), so the user has to enter them again; this
+   * lets the UI say so instead of leaving them wondering why a login or an S3 call fails. Deleted entries do not count.
+   */
+  public async countUndecryptableSecrets(): Promise<number> {
+    const entries = await this.readRawEntries();
+    const lost = (value: unknown): boolean => isEncryptedSecret(value) && decryptSecretValue(value) === '';
+    let count = 0;
+    for (const entry of entries.values()) {
+      if (entry.deletedAt) continue;
+      for (const field of [...SSH_SECRET_FIELDS, ...S3_SECRET_FIELDS]) {
+        if (lost(entry[field as string])) count++;
+      }
+      if (entry.proxy && lost(entry.proxy.password)) count++;
+    }
+    return count;
+  }
+
   private keepUndecryptableSecrets<T extends { id: string; proxy?: any }>(
     entry: T,
     fields: Array<keyof T>,

@@ -992,7 +992,7 @@ export interface MultiSSHApi {
    * (safeStorage). When false — no keyring/libsecret backend available,
    * common on minimal Linux setups — they're stored in plaintext instead.
    */
-  getSecurityStatus(): Promise<{ credentialEncryptionAvailable: boolean }>;
+  getSecurityStatus(): Promise<{ credentialEncryptionAvailable: boolean; undecryptableSecretCount: number }>;
   /** Windows only: which optional local shells (PowerShell 7 / pwsh, WSL / wsl) and distributions are actually installed and available. */
   detectLocalShells(): Promise<{ pwsh: boolean; wsl: boolean; wslDistros: string[] }>;
   /** Windows only: opens cmd / PowerShell / pwsh in a separate elevated window via UAC. `started` is false if UAC was declined. */
