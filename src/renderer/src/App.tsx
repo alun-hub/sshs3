@@ -436,6 +436,9 @@ export const App: React.FC = () => {
             return (
               <div
                 key={tab.id}
+                id={`tab-panel-${tab.id}`}
+                role="tabpanel"
+                aria-labelledby={`tab-button-${tab.id}`}
                 data-testid={`tab-panel-${tab.id}`}
                 className={`h-full w-full ${isActive ? 'flex flex-1 flex-col' : 'hidden'}`}
                 style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column' }}

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { pkcs11LibDisplayName, looksLikeLibraryPath } from '../lib/smartcard';
+import { nextMenuIndex } from '../lib/menuNavigation';
 import {
   Terminal,
   Folder,
@@ -114,6 +115,18 @@ export const TabBar: React.FC<TabBarProps> = ({
     tabMenuReturnFocus.current?.focus();
   };
   const menuRef = useRef<HTMLDivElement>(null);
+  const newTabMenuRef = useRef<HTMLDivElement>(null);
+  // Opening the new-tab menu puts focus on its first item, and the arrow keys move through the items.
+  useEffect(() => {
+    if (isMenuOpen) newTabMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [isMenuOpen]);
+  const onNewTabMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const next = nextMenuIndex(items.length, items.indexOf(document.activeElement as HTMLElement), e.key);
+    if (next === null) return;
+    e.preventDefault();
+    items[next]?.focus();
+  };
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [lockingSmartcard, setLockingSmartcard] = useState(false);
   const [unlockingSmartcard, setUnlockingSmartcard] = useState(false);
@@ -219,20 +232,25 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <>
-    <div
-      role="tablist"
-      aria-label="Open tabs"
-      className="flex h-full w-full items-end bg-app-surface px-2 select-none"
-    >
-      <div className="flex min-w-0 flex-1 items-end gap-1 self-stretch overflow-x-auto no-scrollbar">
+    <div className="flex h-full w-full items-end bg-app-surface px-2 select-none">
+      {/* The tablist holds the tabs only: the new-tab menu and the toolbar buttons beside it are not tabs. */}
+      <div
+        role="tablist"
+        aria-label="Open tabs"
+        className="flex min-w-0 flex-1 items-end gap-1 self-stretch overflow-x-auto no-scrollbar"
+      >
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
             <div
               key={tab.id}
+              id={`tab-button-${tab.id}`}
               role="tab"
               aria-selected={isActive}
-              tabIndex={0}
+              aria-controls={`tab-panel-${tab.id}`}
+              // Roving tabindex: the tab strip is one Tab stop (the active tab, or the first when none is active);
+              // the arrow keys move between tabs.
+              tabIndex={isActive || (!tabs.some((t) => t.id === activeTabId) && tab.id === tabs[0]?.id) ? 0 : -1}
               data-testid={`tab-${tab.id}`}
               onClick={() => onSelectTab(tab.id)}
               onContextMenu={(e) => {
@@ -248,7 +266,20 @@ export const TabBar: React.FC<TabBarProps> = ({
                 watchDragReleasedOutsideWindow(() => onMoveTab?.(tab.id, 'new'));
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') &&
+                  !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+                  const strip = Array.from(
+                    e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []
+                  );
+                  const at = strip.indexOf(e.currentTarget);
+                  const next =
+                    e.key === 'Home' ? 0
+                    : e.key === 'End' ? strip.length - 1
+                    : e.key === 'ArrowRight' ? (at + 1) % strip.length
+                    : (at - 1 + strip.length) % strip.length;
+                  e.preventDefault();
+                  strip[next]?.focus();
+                } else if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onSelectTab(tab.id);
                 } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
@@ -289,6 +320,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                   />
                 )}
                 <span className="truncate">{tab.title}</span>
+                {tab.isDirty && <span className="sr-only"> (unsaved changes)</span>}
                 {tab.isDirty && (
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0"
@@ -332,7 +364,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         </button>
 
         {isMenuOpen && (
-          <div role="menu" className="absolute top-8 right-0 z-50 min-w-[210px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+          <div ref={newTabMenuRef} role="menu" aria-label="New tab" onKeyDown={onNewTabMenuKeyDown} className="absolute top-8 right-0 z-50 min-w-[210px] whitespace-nowrap rounded-xl border border-border-subtle bg-app-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
             <button
               role="menuitem"
               type="button"
@@ -410,7 +442,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               data-testid="quick-lock-smartcard-btn"
               title="Cached smartcard identities"
               aria-label="Cached smartcard identities"
-              aria-haspopup="menu"
+              aria-haspopup="true"
               aria-expanded={isSmartcardMenuOpen}
               onClick={() => {
                 const next = !isSmartcardMenuOpen;
@@ -429,7 +461,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             </button>
 
             {isSmartcardMenuOpen && (
-              <div role="menu" className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
+              <div role="region" aria-label="Cached smartcard identities" className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-border-subtle bg-app-card p-2.5 shadow-2xl">
                 <div className="mb-1.5 text-xs font-semibold text-txt-primary">Cached smartcard identities</div>
 
                 {loadingCachedAgents ? (
