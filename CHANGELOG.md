@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.96.64] - 2026-10-24
 
 ### Accessibility and keyboard
 - Dialogs move focus in, keep Tab inside, and give focus back when they close (all modal dialogs, including the host key, smartcard PIN and master password prompts, which keep Cancel as the default).
@@ -539,7 +539,7 @@ The 0.96.54 release build failed on Windows (a slow test, not a bug in the app) 
 - expand user guides with complete field reference, limitations and UI screenshots
 - add modular user guides, sync script, CI workflow and PR checklist
 
-## [Unreleased]
+## [0.96.64] - 2026-10-24
 
 ### Added
 - **Git & GitHub / GitLab integration hub (`Settings → Git & GitHub`).**
