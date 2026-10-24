@@ -52,4 +52,39 @@ describe('SSHTunnelsModal temporary tunnels', () => {
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Stop tunnel' }));
     await waitFor(() => expect(sshTunnelStop).toHaveBeenCalledWith('run-1'));
   });
+
+  it('shows the wizard progress as an ordered list that marks the current step', async () => {
+    window.multissh = {
+      sshTunnelList: vi.fn().mockResolvedValue([]),
+      onSshTunnelEvent: vi.fn(() => () => undefined),
+      sshTunnelCheckPort: vi.fn().mockResolvedValue(true),
+    } as unknown as typeof window.multissh;
+    render(
+      <ConfirmProvider>
+        <SSHTunnelsModal connection={connection} open onClose={vi.fn()} />
+      </ConfirmProvider>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /New Tunnel/ }));
+
+    const progress = screen.getByRole('list', { name: 'Progress' });
+    const steps = within(progress).getAllByRole('listitem');
+    expect(steps.map((li) => li.textContent?.trim())).toEqual(['1Type', '2Details', '3Done']);
+    expect(steps[0]).toHaveAttribute('aria-current', 'step');
+    expect(steps[1]).not.toHaveAttribute('aria-current');
+
+    // Pick the first tunnel type: the wizard moves to the second step
+    const typeButton = screen.getByRole('button', { name: /Reach a service beyond the server/ });
+    fireEvent.click(typeButton);
+    expect(typeButton).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => {
+      const items = within(screen.getByRole('list', { name: 'Progress' })).getAllByRole('listitem');
+      expect(items[1]).toHaveAttribute('aria-current', 'step');
+      expect(items[0]).not.toHaveAttribute('aria-current');
+      // The finished step says so beyond its check mark
+      expect(items[0]).toHaveTextContent('(completed)');
+    });
+  });
 });
+

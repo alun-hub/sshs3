@@ -188,7 +188,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             ) : (
             visibleCategoryGroups.map(({ group, items }) => (
               <div key={group} className="flex flex-col gap-1">
-                <div className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
+                <div aria-hidden="true" className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-txt-muted">
                   {group}
                 </div>
                 {items.map((cat) => {
@@ -197,20 +197,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   return (
                     <button
                       key={cat.id}
+                      id={`settings-tab-${cat.id}`}
                       type="button"
                       role="tab"
                       aria-selected={isActive}
+                      aria-controls="settings-panel"
                       data-autofocus={isActive ? true : undefined}
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => setActiveCategory(cat.id)}
                       onKeyDown={(e) => {
-                        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                        if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
                         e.preventDefault();
                         const idx = visibleCategories.findIndex((c) => c.id === cat.id);
                         const nextIdx =
-                          e.key === 'ArrowDown'
-                            ? (idx + 1) % visibleCategories.length
-                            : (idx - 1 + visibleCategories.length) % visibleCategories.length;
+                          e.key === 'Home'
+                            ? 0
+                            : e.key === 'End'
+                              ? visibleCategories.length - 1
+                              : e.key === 'ArrowDown'
+                                ? (idx + 1) % visibleCategories.length
+                                : (idx - 1 + visibleCategories.length) % visibleCategories.length;
                         const next = visibleCategories[nextIdx];
                         setActiveCategory(next.id);
                         sidebarButtonRefs.current[next.id]?.focus();
@@ -240,6 +246,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="relative flex-1 min-h-0">
             <div
               ref={contentRef}
+              id="settings-panel"
+              role="tabpanel"
+              aria-labelledby={`settings-tab-${activeCategory}`}
               onScroll={updateScrollShadow}
               className="h-full overflow-y-auto p-5 pb-8 text-xs text-txt-secondary space-y-5"
             >

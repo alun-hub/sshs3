@@ -346,6 +346,26 @@ describe('SettingsModal', () => {
     expect(screen.getByRole('tab', { name: 'Keyboard Shortcuts' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('jumps to the first and last category with Home and End, and links each tab to one named panel', () => {
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+    const general = screen.getByRole('tab', { name: 'General' });
+    const last = screen.getByRole('tab', { name: 'Keyboard Shortcuts' });
+    fireEvent.keyDown(general, { key: 'End' });
+    expect(last).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Home' });
+    expect(general).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(general);
+
+    // Every tab points at the one panel, which is named by the selected tab.
+    const panel = screen.getByRole('tabpanel', { name: 'General' });
+    expect(general).toHaveAttribute('aria-controls', panel.id);
+    expect(screen.getByRole('tab', { name: 'Terminal' })).toHaveAttribute('aria-controls', panel.id);
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' }));
+    expect(screen.getByRole('tabpanel', { name: 'Terminal' })).toBe(panel);
+  });
+
   it('keeps the same Cancel/Save Settings buttons in the footer for every category, including Sync and Team Vault', async () => {
     render(
       <ConfirmProvider>

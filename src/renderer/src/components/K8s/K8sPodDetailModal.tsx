@@ -33,6 +33,7 @@ import { formatDateTime } from '../../lib/dateFormat';
 import { describeIpcError } from '../../lib/format';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { nextTabIndex } from '../../lib/rovingNavigation';
 
 interface K8sPodDetailModalProps {
   contextName: string;
@@ -227,9 +228,26 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         </div>
 
         {/* Tab navigation */}
-        <div className="flex items-center gap-1 border-b border-divider bg-app-surface-subtle px-5 pt-2">
+        <div
+          role="tablist"
+          aria-label="Pod details"
+          onKeyDown={(e) => {
+            const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'));
+            const next = nextTabIndex(tabs.length, tabs.indexOf(document.activeElement as HTMLElement), e.key);
+            if (next === null) return;
+            e.preventDefault();
+            tabs[next]?.focus();
+            tabs[next]?.click();
+          }}
+          className="flex items-center gap-1 border-b border-divider bg-app-surface-subtle px-5 pt-2"
+        >
           <button
             type="button"
+            id="pod-tab-overview"
+            role="tab"
+            aria-selected={activeTab === 'overview'}
+            aria-controls="pod-tab-panel"
+            tabIndex={activeTab === 'overview' ? 0 : -1}
             onClick={() => setActiveTab('overview')}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === 'overview'
@@ -242,6 +260,11 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
           </button>
           <button
             type="button"
+            id="pod-tab-containers"
+            role="tab"
+            aria-selected={activeTab === 'containers'}
+            aria-controls="pod-tab-panel"
+            tabIndex={activeTab === 'containers' ? 0 : -1}
             onClick={() => setActiveTab('containers')}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === 'containers'
@@ -254,6 +277,11 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
           </button>
           <button
             type="button"
+            id="pod-tab-events"
+            role="tab"
+            aria-selected={activeTab === 'events'}
+            aria-controls="pod-tab-panel"
+            tabIndex={activeTab === 'events' ? 0 : -1}
             onClick={() => setActiveTab('events')}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === 'events'
@@ -269,6 +297,11 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
           </button>
           <button
             type="button"
+            id="pod-tab-yaml"
+            role="tab"
+            aria-selected={activeTab === 'yaml'}
+            aria-controls="pod-tab-panel"
+            tabIndex={activeTab === 'yaml' ? 0 : -1}
             onClick={() => setActiveTab('yaml')}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === 'yaml'
@@ -282,7 +315,12 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div
+          id="pod-tab-panel"
+          role="tabpanel"
+          aria-labelledby={`pod-tab-${activeTab}`}
+          className="flex-1 overflow-y-auto p-5"
+        >
           {loading && !pod && (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-txt-muted">
               <Loader2 className="h-6 w-6 animate-spin text-sky-400" />

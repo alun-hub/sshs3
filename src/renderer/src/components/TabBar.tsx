@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { pkcs11LibDisplayName, looksLikeLibraryPath } from '../lib/smartcard';
-import { nextMenuIndex } from '../lib/menuNavigation';
+import { nextMenuIndex, nextTabIndex } from '../lib/rovingNavigation';
 import {
   Terminal,
   Folder,
@@ -266,19 +266,13 @@ export const TabBar: React.FC<TabBarProps> = ({
                 watchDragReleasedOutsideWindow(() => onMoveTab?.(tab.id, 'new'));
               }}
               onKeyDown={(e) => {
-                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') &&
-                  !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+                if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && nextTabIndex(1, 0, e.key) !== null) {
                   const strip = Array.from(
                     e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []
                   );
-                  const at = strip.indexOf(e.currentTarget);
-                  const next =
-                    e.key === 'Home' ? 0
-                    : e.key === 'End' ? strip.length - 1
-                    : e.key === 'ArrowRight' ? (at + 1) % strip.length
-                    : (at - 1 + strip.length) % strip.length;
+                  const next = nextTabIndex(strip.length, strip.indexOf(e.currentTarget), e.key);
                   e.preventDefault();
-                  strip[next]?.focus();
+                  if (next !== null) strip[next]?.focus();
                 } else if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onSelectTab(tab.id);
