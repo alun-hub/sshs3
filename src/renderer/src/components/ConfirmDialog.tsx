@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
 import { useModalDismiss } from '../lib/useModalDismiss';
+import { useDialogFocus } from '../lib/useDialogFocus';
 
 /**
  * In-app replacement for window.confirm() for destructive/consequential
@@ -48,12 +49,16 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const handleBackdropClick = useModalDismiss(() => settle(false), pending !== null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // The Cancel button's `autoFocus` below runs first, so useDialogFocus leaves the default focus on Cancel.
+  useDialogFocus(dialogRef, pending !== null);
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
       {pending && (
         <div
+          ref={dialogRef}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="confirm-dialog-title"

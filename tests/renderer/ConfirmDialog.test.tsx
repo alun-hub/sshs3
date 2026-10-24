@@ -98,6 +98,36 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
   });
 
+  it('keeps Tab inside the dialog and never lands on the page behind it', () => {
+    render(
+      <ConfirmProvider>
+        <TestButton onResult={vi.fn()} />
+      </ConfirmProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+
+    confirmButton.focus();
+    fireEvent.keyDown(confirmButton, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(confirmButton).toHaveFocus();
+  });
+
+  it('gives focus back to the element that opened it once it closes', async () => {
+    render(
+      <ConfirmProvider>
+        <TestButton onResult={vi.fn()} />
+      </ConfirmProvider>
+    );
+    const trigger = screen.getByRole('button', { name: 'Trigger' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it('uses a neutral (non-red) confirm button and different default label when danger is false', async () => {
     const onResult = vi.fn();
     render(

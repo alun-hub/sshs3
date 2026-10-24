@@ -4,6 +4,7 @@ import type { SourceType } from './types';
 import { describeIpcError } from '../../lib/format';
 import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface NewFolderModalProps {
   open: boolean;
@@ -28,6 +29,8 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const handleBackdropClick = useModalDismiss(onClose, open, !submitting);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   const isFile = kind === 'file';
   const isS3Root = !isFile && sourceType === 's3' && (currentPath === '/' || currentPath === '');
@@ -85,6 +88,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
       onClick={handleBackdropClick}
     >
       <div
+        ref={dialogRef}
         className="w-full max-w-sm rounded-xl border border-border-subtle bg-app-card p-5 shadow-2xl space-y-4"
         role="dialog"
         aria-modal="true"
@@ -115,6 +119,7 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
             </label>
             <input
               ref={inputRef}
+              data-autofocus
               type="text"
               value={name}
               onChange={(e) => {

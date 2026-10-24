@@ -47,6 +47,7 @@ import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
 
 export type { Tab };
@@ -709,6 +710,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // silently discard it, since there's no unsaved-changes warning here.
   const handleBackdropClick = useModalDismiss(onClose, open, !editing);
   useModalDismiss(() => setImportCandidates(null), !!importCandidates);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   if (!open) return null;
 
@@ -718,7 +721,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150"
       onClick={handleBackdropClick}
     >
-      <div role="dialog" aria-modal="true" aria-label="Connection Manager" className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Connection Manager" className="flex h-[85vh] max-h-[720px] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex items-center gap-2">
@@ -951,6 +954,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
                       <input
                         type="text"
+                        data-autofocus
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => {

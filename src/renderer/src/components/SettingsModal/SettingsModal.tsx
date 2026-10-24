@@ -6,6 +6,7 @@ import { SyncSettingsPanel } from './SyncSettingsPanel';
 import { TeamVaultListPanel } from './TeamVaultListPanel';
 import { GitSettingsPanel } from './GitSettingsPanel';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useSettingsForm } from './useSettingsForm';
 import type { SettingsCategory } from './settingsConstants';
 import { GeneralSettingsSection } from './GeneralSettingsSection';
@@ -46,6 +47,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // and backdrop click via this shared hook; SettingsModal had never been
   // wired up to it, so Escape silently did nothing here.
   const handleBackdropClick = useModalDismiss(onClose, open);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   // Design audit Phase 2: several categories (Terminal, Security &
   // Smartcard, ...) have more content than fits in the modal's max-h.
@@ -136,7 +139,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {/* Fixed height (capped at 680px / 85vh): sizing to content made the dialog
           change height and jump on screen every time a different category was
           selected. Sparse categories now leave some empty space instead. */}
-      <div role="dialog" aria-modal="true" aria-label="Settings" className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Settings" className="flex h-[85vh] max-h-[680px] min-h-[420px] w-full max-w-3xl flex-col rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-divider bg-app-surface px-5">
           <div className="flex items-center gap-2.5">
@@ -197,6 +200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="button"
                       role="tab"
                       aria-selected={isActive}
+                      data-autofocus={isActive ? true : undefined}
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => setActiveCategory(cat.id)}
                       onKeyDown={(e) => {
