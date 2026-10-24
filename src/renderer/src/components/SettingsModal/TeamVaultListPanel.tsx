@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -20,6 +20,8 @@ import { SyncTargetForm, emptySyncTargetDraft, buildSyncTarget, type SyncTargetD
 import { describeIpcError } from '../../lib/format';
 import { buildTeamVaultJoinInfo } from '../../lib/teamVaultJoinInfo';
 import { useConfirm } from '../ConfirmDialog';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 
 function emptyS3TargetDraft(): SyncTargetDraft {
   return { ...emptySyncTargetDraft(), type: 's3' };
@@ -66,6 +68,11 @@ export const TeamVaultListPanel: React.FC = () => {
   const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
   const [recoverySaved, setRecoverySaved] = useState(false);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
+  // The recovery key is shown once and Done stays disabled until it is saved, so Escape is swallowed here
+  // (enabled = false) instead of reaching the Settings modal underneath and closing it with the key on screen.
+  useEscapeToClose(() => undefined, recoveryIdentity !== null, false);
+  const recoveryDialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(recoveryDialogRef, recoveryIdentity !== null);
 
   // Join an existing vault: needs the team's real vaultId (the remote object path is keyed by
   // it — see handleJoinExistingVault's doc comment) plus the S3 target it lives at, then pulls.
@@ -788,6 +795,7 @@ export const TeamVaultListPanel: React.FC = () => {
       {recoveryIdentity && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
           <div
+            ref={recoveryDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label="Save your recovery key"
