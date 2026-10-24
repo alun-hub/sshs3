@@ -679,6 +679,7 @@ describe('IpcBridge', () => {
       });
 
       it('does not load FIDO2 keys (or prompt for a PIN) when no security key is connected', async () => {
+        pretendUnix(); // Windows skips the FIDO2 startup step altogether
         mockSettingsStore.getSettings.mockResolvedValue({ smartcardUnlockAtStartup: true, smartcardAuthMode: 'agent-global' });
         const detectSpy = vi.spyOn(SmartcardDetector, 'detectAvailableLibraries').mockResolvedValue([]);
         const fidoSpy = vi.spyOn(Fido2DeviceDetector, 'isFido2DeviceConnected').mockResolvedValue(false);
