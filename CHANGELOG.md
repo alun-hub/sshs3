@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pressing Enter in the "Add Image" fields no longer saves and closes Settings.
 - The Delete item in the file context menu is readable in the Breeze theme.
 - Sync failures stay visible until dismissed.
+- After saved passwords or S3 secrets can no longer be decrypted (the OS keyring key was replaced or reset), a warning now says how many were lost and that they must be entered again, instead of leaving the fields silently empty.
+- Unlocking with `age` no longer waits for ever when `age` fails before writing its output: abandoned output pipes are released (four failures used to hang every file operation) and the wait after `age` exits is limited to 5 seconds.
 
 ### Changed
 - Deleting a dotfile pool, clearing the clipboard history, deleting a snippet, unlinking the smartcard from sync, stopping an unsaved tunnel, discarding unsaved editor changes and restarting a pod now ask first, with the app's own dialog.
