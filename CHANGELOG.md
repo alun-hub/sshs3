@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Accessibility and keyboard
+- Dialogs move focus in, keep Tab inside, and give focus back when they close (all modal dialogs, including the host key, smartcard PIN and master password prompts, which keep Cancel as the default).
+- The file list is a real grid with sortable, announced column headers; the tab strip is one Tab stop with arrow-key navigation; menus, Settings categories, pod details and the tunnel wizard have proper roles and keyboard navigation.
+- Icon-only buttons and form fields have accessible names, error messages are announced, selected states are exposed (theme, tunnel type, folder icon), and clickable areas are at least 24 px.
+- The X server mode options can be reached with the keyboard; toggle switches show a keyboard focus ring.
+
+### Fixed
+- Pressing Escape on the Team Vault recovery key dialog no longer closes Settings (and the key with it).
+- Pressing Enter in the "Add Image" fields no longer saves and closes Settings.
+- The Delete item in the file context menu is readable in the Breeze theme.
+- Sync failures stay visible until dismissed.
+
+### Changed
+- Deleting a dotfile pool, clearing the clipboard history, deleting a snippet, unlinking the smartcard from sync, stopping an unsaved tunnel, discarding unsaved editor changes and restarting a pod now ask first, with the app's own dialog.
+- The window has a minimum size of 1024 × 600; the file manager toolbar wraps instead of clipping.
+- Wording: one term (profile), sentence case, no "Please", proper plurals.
+
 ## [0.96.63] - 2026-10-23
 
 ### Changed

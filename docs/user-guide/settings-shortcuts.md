@@ -72,9 +72,12 @@ Deliver maximum keyboard efficiency by allowing operators to navigate across spl
   - Activates whatever element is currently focused: opens folders, launches connections, toggles checkboxes, and triggers focused action buttons.
 - **Dismiss & Return (<kbd>Escape</kbd>)**:
   - Closes open menus, popups, and modal dialogs, cleanly restoring keyboard focus back to the exact element or terminal pane you came from.
+- **Inside dialogs**: focus moves into the dialog when it opens, <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> stay inside it (they wrap at the ends instead of reaching the page behind), and closing it returns focus to where you were. A confirmation always starts on its safe choice (Cancel / Keep editing).
+- **Tab bar and lists**: the tab strip is a single <kbd>Tab</kbd> stop; <kbd>Left</kbd>/<kbd>Right</kbd>/<kbd>Home</kbd>/<kbd>End</kbd> move between tabs and <kbd>Enter</kbd> or <kbd>Space</kbd> opens one. Menus, Settings categories and the pod details tabs use the arrow keys, <kbd>Home</kbd> and <kbd>End</kbd> the same way. The file list is a grid of rows (<kbd>Up</kbd>/<kbd>Down</kbd>, <kbd>Enter</kbd>, <kbd>Shift+F10</kbd> or the menu key for the context menu) with sortable column headers.
 
 #### ⚠️ Limitations & Caveats
 - If desktop window managers (e.g. GNOME or Windows) bind these key combinations globally, shortcuts can be rebound in *Settings → Keyboard Shortcuts*.
+- The window cannot be made smaller than 1024 × 600 pixels: below that the file manager toolbar and the dialogs would have to clip their controls. At the minimum width the file manager toolbar wraps onto a second row.
 
 #### ⚙️ Technical Internals & Architecture
 `spatialNavigation.ts` reads the bounding boxes (`getBoundingClientRect`) of the candidate panes or focusable elements and, for the pressed arrow, scores each candidate in that direction by its gap along the axis plus a weighted offset across it (candidates that do not overlap the current element are penalized); the lowest score wins. When a modal closes, focus returns to the element that opened it if nothing else has taken focus.
