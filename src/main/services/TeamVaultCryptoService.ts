@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
-import { runAgeCommandViaPty, createSecretOutputChannel, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
+import { runAgeCommandViaPty, createSecretOutputChannel, readChannelAfterExit, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
 import { withPkcs11Lock } from '../smartcard/Pkcs11Lock';
 import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
 
@@ -285,7 +285,7 @@ export class TeamVaultCryptoService {
           stdin
         )
       );
-      return await channel.read();
+      return await readChannelAfterExit(channel);
     } finally {
       await channel.dispose();
       if (ciphertextFile) await fs.rm(ciphertextFile, { force: true });

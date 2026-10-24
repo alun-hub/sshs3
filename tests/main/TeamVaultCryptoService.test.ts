@@ -109,7 +109,10 @@ describe('TeamVaultCryptoService', () => {
     });
   });
 
-  describe('wrapVaultKeyForRecipient / unwrapVaultKey against the real `age` CLI', () => {
+  describe('wrapVaultKeyForRecipient / unwrapVaultKey against the real `age` CLI', { retry: 2 }, () => {
+    // Real age + pty + FIFO subprocesses: now and then (a few percent of full-suite runs) age exits 0 but the FIFO reader's
+    // open() never completes, which readChannelAfterExit turns into a 5 s "wrote no output" error. The round trip has
+    // no PIN or card, so a retry is harmless. The root cause is not found (CPU load alone does not reproduce it).
     // Prefer the CI-fetched copy (build-resources/age/<platform>) so this also runs on a machine
     // without a system-wide age: the real service resolves a bare `age` via PATH in this file.
     const bundledDir = path.join(process.cwd(), 'build-resources', 'age', process.platform === 'win32' ? 'win' : 'linux');
@@ -151,7 +154,10 @@ describe('TeamVaultCryptoService', () => {
     );
   });
 
-  describe('encryptForRecipient / decryptWithIdentity against the real `age` CLI', () => {
+  describe('encryptForRecipient / decryptWithIdentity against the real `age` CLI', { retry: 2 }, () => {
+    // Real age + pty + FIFO subprocesses: now and then (a few percent of full-suite runs) age exits 0 but the FIFO reader's
+    // open() never completes, which readChannelAfterExit turns into a 5 s "wrote no output" error. The round trip has
+    // no PIN or card, so a retry is harmless. The root cause is not found (CPU load alone does not reproduce it).
     const hasAge = !spawnSync('age', ['--version'], { stdio: 'ignore' }).error;
     const hasAgeKeygen = !spawnSync('age-keygen', ['--version'], { stdio: 'ignore' }).error;
 

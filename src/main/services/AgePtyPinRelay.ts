@@ -282,6 +282,45 @@ export function readFifoOnce(fifoPath: string): Promise<Buffer> {
   });
 }
 
+/**
+ * Lets a reader that is still waiting for a writer give up. `readFifoOnce` opens the FIFO for reading, and that open()
+ * blocks one of libuv's four threadpool threads until some writer opens the other end. If `age` fails before it opens
+ * `-o <fifo>` (wrong PIN, bad identity, cancelled), no writer ever comes: removing the FIFO does not wake the reader, the
+ * thread stays blocked for the life of the process, and after four such failures every async fs call in the app hangs.
+ * Opening the write end without writing a byte releases the reader, which then sees end-of-file. It does nothing when no
+ * reader is waiting (ENXIO) or the FIFO is already gone, and it runs on the calling thread (O_NONBLOCK) so it cannot
+ * itself get stuck behind a starved threadpool.
+ */
+export function releaseFifoReader(fifoPath: string): void {
+  try {
+    const fd = fs.openSync(fifoPath, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+    fs.closeSync(fd);
+  } catch {
+    // ENXIO: nobody is waiting (the reader already finished). ENOENT: already removed.
+  }
+}
+
+// After `age` has exited successfully, its output is already in the FIFO. If the reader still has nothing after this
+// long, `age` did not deliver it (seen once in a while on a heavily loaded machine: `age` exits 0 but the reader's open()
+// never completes) and waiting longer only freezes the unlock.
+export const CHANNEL_GRACE_MS = 5000;
+
+/**
+ * `channel.read()`, but bounded: rejects with a clear error instead of waiting forever when `age` finished without
+ * delivering its output. The caller's `dispose()` then releases the blocked reader.
+ */
+export async function readChannelAfterExit(channel: SecretOutputChannel, graceMs: number = CHANNEL_GRACE_MS): Promise<Buffer> {
+  let timer: NodeJS.Timeout | undefined;
+  const giveUp = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('"age" finished but wrote no output')), graceMs);
+  });
+  try {
+    return await Promise.race([channel.read(), giveUp]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Removes a FIFO created by `createFifo`. A no-op if it's already gone. */
 export async function removeFifo(fifoPath: string): Promise<void> {
   try {
@@ -327,7 +366,10 @@ export async function createSecretOutputChannel(dir: string): Promise<SecretOutp
     return {
       path: fifoPath,
       read: () => readPromise,
-      dispose: () => removeFifo(fifoPath),
+      dispose: async () => {
+        releaseFifoReader(fifoPath);
+        await removeFifo(fifoPath);
+      },
     };
   }
 

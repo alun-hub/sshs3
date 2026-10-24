@@ -54,6 +54,8 @@ import {
   readFifoOnce,
   removeFifo,
   createSecretOutputChannel,
+  releaseFifoReader,
+  readChannelAfterExit,
   stripAnsi,
   TeamVaultWrongPinError,
   TeamVaultDefaultCredentialsError,
@@ -388,6 +390,25 @@ describe.skipIf(process.platform === 'win32')('FIFO helpers (binary-safe path fo
   });
 });
 
+describe('readChannelAfterExit', () => {
+  const channelOf = (read: () => Promise<Buffer>) => ({ path: '/x', read, dispose: async () => undefined });
+
+  it('returns what the channel delivers', async () => {
+    const data = Buffer.from([1, 2, 3]);
+    await expect(readChannelAfterExit(channelOf(() => Promise.resolve(data)), 1000)).resolves.toBe(data);
+  });
+
+  it('passes a read failure through', async () => {
+    await expect(readChannelAfterExit(channelOf(() => Promise.reject(new Error('boom'))), 1000)).rejects.toThrow('boom');
+  });
+
+  it('gives up with a clear error when age finished but nothing ever arrives', async () => {
+    await expect(readChannelAfterExit(channelOf(() => new Promise<Buffer>(() => undefined)), 30)).rejects.toThrow(
+      '"age" finished but wrote no output'
+    );
+  });
+});
+
 describe('createSecretOutputChannel', () => {
   const payload = Buffer.from([0x00, 0x0a, 0x0d, 0xff, 0x41, 0x04]); // LF/CR/EOF-like bytes
 
@@ -426,5 +447,32 @@ describe('createSecretOutputChannel', () => {
     expect((await channel.read()).equals(payload)).toBe(true);
     await channel.dispose();
     expect(fs.existsSync(channel.path)).toBe(false);
+  });
+
+  // A failed `age` run never opens the FIFO for writing. The reader's blocking open() then holds one of libuv's four
+  // threadpool threads forever unless dispose() releases it; four failures used to hang every async fs call.
+  it.skipIf(process.platform === 'win32')(
+    'on POSIX dispose releases a reader that never got a writer, so failed runs do not exhaust the threadpool',
+    async () => {
+      // One failed run after another, as in the app: each reader is blocked in open() when its run "fails" and the
+      // channel is disposed. Without the release the fifth iteration would hang (all four threads blocked).
+      for (let i = 0; i < 8; i++) {
+        const channel = await createSecretOutputChannel(os.tmpdir());
+        const read = channel.read();
+        await new Promise((resolve) => setTimeout(resolve, 40)); // let the reader reach its blocking open()
+        await channel.dispose();
+        expect((await read).length).toBe(0);
+      }
+      // The threadpool still serves other fs work.
+      await expect(fsp.readFile(__filename, 'utf-8')).resolves.toContain('releaseFifoReader');
+    },
+    10000
+  );
+
+  it.skipIf(process.platform === 'win32')('releaseFifoReader does nothing for a missing path or a FIFO without a waiting reader', async () => {
+    expect(() => releaseFifoReader(path.join(os.tmpdir(), 'no-such.fifo'))).not.toThrow();
+    const fifoPath = await createFifo(os.tmpdir());
+    expect(() => releaseFifoReader(fifoPath)).not.toThrow();
+    await removeFifo(fifoPath);
   });
 });
