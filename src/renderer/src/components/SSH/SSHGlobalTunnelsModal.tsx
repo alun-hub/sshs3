@@ -190,6 +190,7 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
           {!loading && !wizardConnection && (
             <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-app-surface p-3">
               <select
+                aria-label="Connection for the new tunnel"
                 value={newTunnelConnectionId}
                 onChange={(e) => setNewTunnelConnectionId(e.target.value)}
                 className="flex-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-sm text-txt-primary focus:border-sky-500/50 focus:outline-none"

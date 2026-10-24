@@ -237,10 +237,11 @@ export const SSHTunnelWizard: React.FC<SSHTunnelWizardProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-txt-muted mb-1">
+            <label htmlFor="tunnel-wizard-local-port" className="block text-xs font-medium text-txt-muted mb-1">
               {type === 'remote' ? 'Port opened on the server' : 'Local port (on your computer)'}
             </label>
             <input
+              id="tunnel-wizard-local-port"
               type="number"
               min={1}
               max={65535}

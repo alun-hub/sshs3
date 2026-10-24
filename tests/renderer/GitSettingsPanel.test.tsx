@@ -136,6 +136,8 @@ describe('GitSettingsPanel', () => {
     render(<GitSettingsPanel />);
 
     const usernameInput = screen.getByPlaceholderText(/GitHub username/i);
+    // The field must have a real name, not only a placeholder that disappears once typing starts.
+    expect(screen.getByRole('textbox', { name: 'GitHub username' })).toBe(usernameInput);
     fireEvent.change(usernameInput, { target: { value: 'octocat' } });
 
     const fetchBtn = screen.getByRole('button', { name: /Fetch keys/i });

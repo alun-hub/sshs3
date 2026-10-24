@@ -94,6 +94,30 @@ describe('TeamVaultListPanel', () => {
       expect(screen.queryByRole('dialog', { name: 'Save your recovery key' })).not.toBeInTheDocument();
     });
 
+    it('binds every create and join field to its visible label', async () => {
+      mockApi();
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Create a new team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+      expect(screen.getByLabelText('Your recipient id')).toBeInTheDocument();
+      expect(screen.getByLabelText('Team name (optional)')).toBeInTheDocument();
+
+      cleanup();
+      mockApi();
+      renderPanel();
+      await waitFor(() => expect(screen.getByText(/No Team Vault has been set up/)).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /Join an existing team/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate my Team Vault ID/i }));
+      await waitFor(() => expect(screen.getByText('age1yubikey1testadmin')).toBeInTheDocument());
+      expect(screen.getByLabelText('Your recipient id')).toBeInTheDocument();
+      expect(screen.getByLabelText('Paste invite from your admin')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /\.\.\.or configure manually/i }));
+      expect(screen.getByLabelText('Team ID')).toBeInTheDocument();
+    });
+
     it('lets a new member copy a join-info blob to send to an existing team\'s admin', async () => {
       mockApi();
       renderPanel();

@@ -181,11 +181,12 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
 
           {/* Preset image selector */}
           <div className="space-y-1.5">
-            <label className="font-medium text-txt-primary flex items-center justify-between">
+            <label htmlFor="k8s-debug-preset" className="font-medium text-txt-primary flex items-center justify-between">
               <span>Debug Toolset / Image Preset</span>
               <span className="text-xs font-normal text-txt-muted">Configurable in Settings</span>
             </label>
             <select
+              id="k8s-debug-preset"
               value={selectedPresetId}
               onChange={(e) => handlePresetChange(e.target.value)}
               disabled={submitting}
@@ -230,11 +231,12 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Target Container for Process Namespace Sharing */}
             <div className="space-y-1.5">
-              <label className="font-medium text-txt-primary flex items-center gap-1.5">
+              <label htmlFor="k8s-debug-target-container" className="font-medium text-txt-primary flex items-center gap-1.5">
                 <Cpu className="h-3.5 w-3.5 text-txt-muted" />
                 <span>Target Container (PID Sharing)</span>
               </label>
               <select
+                id="k8s-debug-target-container"
                 value={targetContainer}
                 onChange={(e) => setTargetContainer(e.target.value)}
                 disabled={submitting}

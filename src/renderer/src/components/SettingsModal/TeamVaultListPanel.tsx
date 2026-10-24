@@ -570,8 +570,9 @@ export const TeamVaultListPanel: React.FC = () => {
             <div className="space-y-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
               <p className="break-all text-xs text-emerald-300">{myRecipient.recipient}</p>
               <div>
-                <label className="mb-1 block text-xs font-medium text-txt-secondary">Your recipient id</label>
+                <label htmlFor="team-create-recipient-id" className="mb-1 block text-xs font-medium text-txt-secondary">Your recipient id</label>
                 <input
+                  id="team-create-recipient-id"
                   type="text"
                   value={selfRecipientId}
                   onChange={(e) => setSelfRecipientId(e.target.value)}
@@ -580,8 +581,9 @@ export const TeamVaultListPanel: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-txt-secondary">Team name (optional)</label>
+                <label htmlFor="team-create-name" className="mb-1 block text-xs font-medium text-txt-secondary">Team name (optional)</label>
                 <input
+                  id="team-create-name"
                   type="text"
                   value={vaultNameDraft}
                   onChange={(e) => setVaultNameDraft(e.target.value)}
@@ -637,8 +639,9 @@ export const TeamVaultListPanel: React.FC = () => {
               <div className="space-y-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
                 <p className="break-all text-xs text-emerald-300">{myRecipient.recipient}</p>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-txt-secondary">Your recipient id</label>
+                  <label htmlFor="team-join-recipient-id" className="mb-1 block text-xs font-medium text-txt-secondary">Your recipient id</label>
                   <input
+                    id="team-join-recipient-id"
                     type="text"
                     value={selfRecipientId}
                     onChange={(e) => setSelfRecipientId(e.target.value)}
@@ -726,8 +729,9 @@ export const TeamVaultListPanel: React.FC = () => {
             ) : (
               <>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-txt-secondary">Paste invite from your admin</label>
+                  <label htmlFor="team-join-invite" className="mb-1 block text-xs font-medium text-txt-secondary">Paste invite from your admin</label>
                   <textarea
+                    id="team-join-invite"
                     value={inviteText}
                     onChange={(e) => setInviteText(e.target.value)}
                     placeholder="sshs3 Team Vault invite for ..."
@@ -766,8 +770,9 @@ export const TeamVaultListPanel: React.FC = () => {
                   target by hand.
                 </p>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-txt-secondary">Team ID</label>
+                  <label htmlFor="team-join-vault-id" className="mb-1 block text-xs font-medium text-txt-secondary">Team ID</label>
                   <input
+                    id="team-join-vault-id"
                     type="text"
                     value={joinVaultId}
                     onChange={(e) => setJoinVaultId(e.target.value)}

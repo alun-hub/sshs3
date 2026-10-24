@@ -495,6 +495,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
               {editingVaultName ? (
                 <div className="flex items-center gap-1.5">
                   <input
+                    aria-label="Vault name"
                     type="text"
                     autoFocus
                     value={vaultNameEdit}
@@ -579,6 +580,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
               {editingDescription ? (
                 <div className="flex min-w-0 flex-1 items-start gap-1.5">
                   <textarea
+                    aria-label="Description"
                     autoFocus
                     value={descriptionEdit}
                     onChange={(e) => setDescriptionEdit(e.target.value)}
@@ -699,6 +701,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
               ) : (
                 <>
                   <input
+                    aria-label="Your recipient id"
                     type="text"
                     value={unlockRecipientId}
                     onChange={(e) => setUnlockRecipientId(e.target.value)}
@@ -706,6 +709,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                   />
                   <input
+                    aria-label="Path to your identity file"
                     type="text"
                     value={unlockIdentityPath}
                     onChange={(e) => setUnlockIdentityPath(e.target.value)}
@@ -755,6 +759,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     admin-equivalent access so you can re-add yourself as a regular member.
                   </p>
                   <textarea
+                    aria-label="Recovery key"
                     value={recoveryTextInput}
                     onChange={(e) => setRecoveryTextInput(e.target.value)}
                     placeholder="AGE-SECRET-KEY-1..."
@@ -864,6 +869,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
               <li>3. Once added, send them "Copy invite" from their row below.</li>
             </ol>
             <textarea
+              aria-label="Join info from the new member"
               value={joinInfoPaste}
               onChange={(e) => handleJoinInfoPaste(e.target.value)}
               placeholder="Paste their join info (step 1 above)"
@@ -887,6 +893,7 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
               </div>
             )}
             <select
+              aria-label="Role for the new member"
               value={newRole}
               onChange={(e) => setNewRole(e.target.value as TeamVaultRole)}
               className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500"

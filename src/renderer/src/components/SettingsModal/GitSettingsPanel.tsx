@@ -678,6 +678,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
             />
           )}
           <input
+            aria-label={gitProvider === 'github' ? 'GitHub username' : 'GitLab username'}
             type="text"
             value={gitUsername}
             onChange={(e) => setGitUsername(e.target.value)}
