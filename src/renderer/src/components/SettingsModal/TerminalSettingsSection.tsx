@@ -47,11 +47,12 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* Font Size */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-txt-primary">Terminal Font Size</label>
+          <label htmlFor="terminal-font-size" className="text-xs font-medium text-txt-primary">Terminal Font Size</label>
           <span className="font-mono text-sky-400 font-semibold">{fontSize} px</span>
         </div>
         <div className="flex items-center gap-3">
           <input
+            id="terminal-font-size"
             type="range"
             min={8}
             max={32}
@@ -61,6 +62,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             className="flex-1 accent-sky-500 cursor-pointer"
           />
           <input
+            aria-label="Terminal font size in pixels"
             type="number"
             min={8}
             max={32}
@@ -78,8 +80,9 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
 
       {/* Font Family */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-txt-primary">Terminal Font Family</label>
+        <label htmlFor="terminal-font-family" className="text-xs font-medium text-txt-primary">Terminal Font Family</label>
         <select
+          id="terminal-font-family"
           value={FONT_PRESETS.some((f) => f.value === fontFamily) ? fontFamily : 'custom'}
           onChange={(e) => {
             if (e.target.value !== 'custom') {
@@ -107,9 +110,9 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
 
       {/* Terminal Live Preview */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider">
+        <div className="text-xs font-semibold text-txt-muted uppercase tracking-wider">
           Terminal Live Preview
-        </label>
+        </div>
         <div
           className={`rounded-lg border p-3 font-mono transition-colors shadow-inner ${
             theme === 'breeze'
@@ -133,8 +136,9 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* Cursor Style & Scrollback */}
       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-divider">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-txt-primary">Cursor Style</label>
+          <label htmlFor="terminal-cursor-style" className="text-xs font-medium text-txt-primary">Cursor Style</label>
           <select
+            id="terminal-cursor-style"
             value={cursorStyle}
             onChange={(e) => setCursorStyle(e.target.value as any)}
             className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
@@ -146,8 +150,9 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-txt-primary">Scrollback Buffer (lines)</label>
+          <label htmlFor="terminal-scrollback" className="text-xs font-medium text-txt-primary">Scrollback Buffer (lines)</label>
           <input
+            id="terminal-scrollback"
             type="number"
             min={500}
             max={50000}
@@ -210,10 +215,10 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* Session Exit Action */}
       <div className="space-y-2 pt-2 border-t border-divider">
         <div>
-          <label className="text-xs font-medium text-txt-primary">On Logout / Session End</label>
+          <div id="session-exit-action-label" className="text-xs font-medium text-txt-primary">On Logout / Session End</div>
           <p className="text-xs text-txt-muted">Choose what happens when an SSH session or local terminal ends.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div role="radiogroup" aria-labelledby="session-exit-action-label" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label
             className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               sessionExitAction === 'reconnect'
@@ -288,12 +293,13 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* SSH CLI & Agent Integration */}
       <div className="space-y-3 pt-3 border-t border-divider">
         <div>
-          <label className="text-xs font-medium text-txt-primary">Local Terminal SSH Agent</label>
+          <label htmlFor="local-terminal-agent-mode" className="text-xs font-medium text-txt-primary">Local Terminal SSH Agent</label>
           <p className="text-xs text-txt-muted">
             Configure how the <code>SSH_AUTH_SOCK</code> environment variable is set in local shell terminals.
           </p>
         </div>
         <select
+          id="local-terminal-agent-mode"
           value={localTerminalAgentMode}
           onChange={(e) =>
             setLocalTerminalAgentMode(

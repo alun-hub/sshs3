@@ -184,6 +184,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Owner read"
                       checked={perms.uR}
                       onChange={() => handleToggle('uR')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -192,6 +193,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Owner write"
                       checked={perms.uW}
                       onChange={() => handleToggle('uW')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -200,6 +202,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Owner execute"
                       checked={perms.uX}
                       onChange={() => handleToggle('uX')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -211,6 +214,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Group read"
                       checked={perms.gR}
                       onChange={() => handleToggle('gR')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -219,6 +223,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Group write"
                       checked={perms.gW}
                       onChange={() => handleToggle('gW')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -227,6 +232,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Group execute"
                       checked={perms.gX}
                       onChange={() => handleToggle('gX')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -238,6 +244,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Others read"
                       checked={perms.oR}
                       onChange={() => handleToggle('oR')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -246,6 +253,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Others write"
                       checked={perms.oW}
                       onChange={() => handleToggle('oW')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -254,6 +262,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                   <td className="py-2 text-center">
                     <input
                       type="checkbox"
+                      aria-label="Others execute"
                       checked={perms.oX}
                       onChange={() => handleToggle('oX')}
                       className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
@@ -266,8 +275,9 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
 
           {/* Numeric octal representation */}
           <div className="flex items-center gap-3">
-            <label className="text-xs text-txt-secondary font-medium">Octal notation:</label>
+            <label htmlFor="chmod-octal" className="text-xs text-txt-secondary font-medium">Octal notation:</label>
             <input
+              id="chmod-octal"
               type="text"
               value={octal}
               onChange={(e) => handleOctalChange(e.target.value)}
