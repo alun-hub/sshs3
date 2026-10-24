@@ -34,56 +34,76 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
     <div className="space-y-4">
       {/* Theme */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-txt-primary">Color Theme</label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <button
-            type="button"
-            onClick={() => setTheme('dark')}
-            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
+        <div id="color-theme-label" className="text-xs font-medium text-txt-primary">Color Theme</div>
+        <div role="radiogroup" aria-labelledby="color-theme-label" className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <label
+            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               theme === 'dark'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
             }`}
           >
+            <input
+              type="radio"
+              name="colorTheme"
+              checked={theme === 'dark'}
+              onChange={() => setTheme('dark')}
+              className="sr-only"
+            />
             <Moon className="h-4 w-4 text-sky-400" />
             Dark
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme('light')}
-            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
+          </label>
+          <label
+            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               theme === 'light'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
             }`}
           >
+            <input
+              type="radio"
+              name="colorTheme"
+              checked={theme === 'light'}
+              onChange={() => setTheme('light')}
+              className="sr-only"
+            />
             <Sun className="h-4 w-4 text-amber-400" />
             Light
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme('breeze')}
-            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
+          </label>
+          <label
+            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               theme === 'breeze'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
             }`}
           >
+            <input
+              type="radio"
+              name="colorTheme"
+              checked={theme === 'breeze'}
+              onChange={() => setTheme('breeze')}
+              className="sr-only"
+            />
             <Sliders className="h-4 w-4 text-cyan-400" />
             Breeze
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme('system')}
-            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
+          </label>
+          <label
+            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               theme === 'system'
                 ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                 : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
             }`}
           >
+            <input
+              type="radio"
+              name="colorTheme"
+              checked={theme === 'system'}
+              onChange={() => setTheme('system')}
+              className="sr-only"
+            />
             <Monitor className="h-4 w-4 text-sky-400" />
             System
-          </button>
+          </label>
         </div>
       </div>
 

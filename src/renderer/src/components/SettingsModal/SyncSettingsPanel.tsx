@@ -487,7 +487,7 @@ export const SyncSettingsPanel: React.FC = () => {
                 disabled={togglingAutoSync}
                 className="peer sr-only"
               />
-              <div className="peer h-5 w-9 rounded-full bg-app-input border border-border-subtle after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-txt-muted after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:bg-white peer-focus:outline-none" />
+              <div className="peer h-5 w-9 rounded-full bg-app-input border border-border-subtle after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-txt-muted after:transition-all after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-full peer-checked:after:bg-white peer-focus-visible:ring-2 peer-focus-visible:ring-sky-500 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-app-surface" />
             </label>
           </div>
 

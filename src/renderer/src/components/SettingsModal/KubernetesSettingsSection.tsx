@@ -22,6 +22,23 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
     setNewImageDesc,
   } = form;
 
+  const addImage = () => {
+    if (!newImageName.trim() || !newImageRef.trim()) return;
+    const newEntry: K8sDebugImage = {
+      id: `custom-${Date.now()}`,
+      name: newImageName.trim(),
+      image: newImageRef.trim(),
+      defaultCommand: newImageCmd.trim() || 'sh',
+      description: newImageDesc.trim() || undefined,
+    };
+    setK8sDebugImages((prev) => [...prev, newEntry]);
+    setShowAddDebugImage(false);
+    setNewImageName('');
+    setNewImageRef('');
+    setNewImageCmd('');
+    setNewImageDesc('');
+  };
+
   return (
     <div className="space-y-6">
       {/* OpenShift Support Toggle */}
@@ -72,7 +89,17 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
 
       {/* Add New Image Form Card */}
       {showAddDebugImage && (
-        <div className="rounded-xl border border-sky-500/30 bg-app-surface p-4 space-y-3">
+        <div
+          className="rounded-xl border border-sky-500/30 bg-app-surface p-4 space-y-3"
+          onKeyDown={(e) => {
+            // These fields sit inside the Settings <form>: Enter would submit it (saving and closing Settings and
+            // losing the image). Enter in a field adds the image instead.
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+              e.preventDefault();
+              addImage();
+            }
+          }}
+        >
           <div className="font-semibold text-xs text-txt-primary">Add Custom Debug Image</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -138,22 +165,7 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
             </button>
             <button
               type="button"
-              onClick={() => {
-                if (!newImageName.trim() || !newImageRef.trim()) return;
-                const newEntry: K8sDebugImage = {
-                  id: `custom-${Date.now()}`,
-                  name: newImageName.trim(),
-                  image: newImageRef.trim(),
-                  defaultCommand: newImageCmd.trim() || 'sh',
-                  description: newImageDesc.trim() || undefined,
-                };
-                setK8sDebugImages((prev) => [...prev, newEntry]);
-                setShowAddDebugImage(false);
-                setNewImageName('');
-                setNewImageRef('');
-                setNewImageCmd('');
-                setNewImageDesc('');
-              }}
+              onClick={addImage}
               disabled={!newImageName.trim() || !newImageRef.trim()}
               className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 transition-colors shadow-sm"
             >

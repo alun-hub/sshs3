@@ -103,9 +103,9 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
             </p>
 
             {/* Server Mode */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div role="radiogroup" aria-label="X server mode" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label
-                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                   x11ServerMode === 'auto'
                     ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                     : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -117,7 +117,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                     name="x11ServerMode"
                     checked={x11ServerMode === 'auto'}
                     onChange={() => setX11ServerMode('auto')}
-                    className="hidden"
+                    className="sr-only"
                   />
                   <span>Auto-start (Default)</span>
                 </div>
@@ -127,7 +127,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
               </label>
 
               <label
-                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                   x11ServerMode === 'always'
                     ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                     : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -139,7 +139,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                     name="x11ServerMode"
                     checked={x11ServerMode === 'always'}
                     onChange={() => setX11ServerMode('always')}
-                    className="hidden"
+                    className="sr-only"
                   />
                   <span>Always Running</span>
                 </div>
@@ -149,7 +149,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
               </label>
 
               <label
-                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+                className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                   x11ServerMode === 'manual'
                     ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                     : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -161,7 +161,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                     name="x11ServerMode"
                     checked={x11ServerMode === 'manual'}
                     onChange={() => setX11ServerMode('manual')}
-                    className="hidden"
+                    className="sr-only"
                   />
                   <span>Manual / External</span>
                 </div>
@@ -215,9 +215,9 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
       ) : (
         <>
           {/* Server Mode */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div role="radiogroup" aria-label="X server mode" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <label
-              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                 x11ServerMode === 'auto'
                   ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                   : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -229,7 +229,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                   name="x11ServerMode"
                   checked={x11ServerMode === 'auto'}
                   onChange={() => setX11ServerMode('auto')}
-                  className="hidden"
+                  className="sr-only"
                 />
                 <span>Auto-start (Default)</span>
               </div>
@@ -239,7 +239,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
             </label>
 
             <label
-              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                 x11ServerMode === 'always'
                   ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                   : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -251,7 +251,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                   name="x11ServerMode"
                   checked={x11ServerMode === 'always'}
                   onChange={() => setX11ServerMode('always')}
-                  className="hidden"
+                  className="sr-only"
                 />
                 <span>Always Running</span>
               </div>
@@ -261,7 +261,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
             </label>
 
             <label
-              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors ${
+              className={`flex flex-col gap-1 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
                 x11ServerMode === 'manual'
                   ? 'border-sky-500 bg-sky-500/15 text-sky-300'
                   : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
@@ -273,7 +273,7 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
                   name="x11ServerMode"
                   checked={x11ServerMode === 'manual'}
                   onChange={() => setX11ServerMode('manual')}
-                  className="hidden"
+                  className="sr-only"
                 />
                 <span>Manual / External</span>
               </div>

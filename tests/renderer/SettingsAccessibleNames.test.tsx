@@ -19,6 +19,21 @@ describe('Settings accessible names', () => {
     fireEvent.click(screen.getByRole('tab', { name }));
   }
 
+  it('General page: the color theme is a named radio group that exposes the selected theme', () => {
+    openTab(/General/);
+
+    const group = screen.getByRole('radiogroup', { name: 'Color Theme' });
+    const radios = Array.from(group.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+    expect(radios).toHaveLength(4);
+    // The selected state is exposed to assistive technology, not only drawn as a border and tint.
+    const checked = radios.filter((r) => r.checked);
+    expect(checked).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Light' }));
+    expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Dark' })).not.toBeChecked();
+  });
+
   it('Terminal page: every field is bound to its label', () => {
     openTab(/Terminal/);
 
@@ -35,6 +50,19 @@ describe('Settings accessible names', () => {
 
     const group = screen.getByRole('radiogroup', { name: 'On Logout / Session End' });
     expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(3);
+  });
+
+  it('Terminal page: the X server mode radios stay in the tab order (sr-only, never display:none)', () => {
+    openTab(/Terminal/);
+
+    const group = screen.getAllByRole('radiogroup', { name: 'X server mode' })[0];
+    const radios = Array.from(group.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+    expect(radios).toHaveLength(3);
+    for (const radio of radios) {
+      // Tailwind's `hidden` is display:none: the radio would leave the tab order and the accessibility tree.
+      expect(radio.classList.contains('hidden')).toBe(false);
+      expect(radio.classList.contains('sr-only')).toBe(true);
+    }
   });
 
   it('Terminal page: the live preview heading is not a label for nothing', () => {
