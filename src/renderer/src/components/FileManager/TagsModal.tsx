@@ -125,7 +125,9 @@ export const TagsModal: React.FC<TagsModalProps> = ({
                     onChange={(e) => handleChange(idx, 'value', e.target.value)}
                     className="w-1/2 rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                   />
-                  <button aria-label="Remove" title="Remove"
+                  <button
+                    aria-label="Remove"
+                    title="Remove"
                     type="button"
                     onClick={() => handleRemove(idx)}
                     className="shrink-0 rounded p-1.5 text-red-400 hover:bg-app-surface-hover transition-colors"

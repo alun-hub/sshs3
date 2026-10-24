@@ -99,7 +99,8 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
 
     {groupName !== 'Ungrouped' && (
       <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
-        <button aria-label="Rename folder"
+        <button
+          aria-label="Rename folder"
           type="button"
           title="Rename folder"
           onClick={() => {
@@ -110,7 +111,8 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
         >
           <Pencil className="h-3 w-3" />
         </button>
-        <button aria-label="Delete folder (ungroup profiles)"
+        <button
+          aria-label="Delete folder (ungroup profiles)"
           type="button"
           title="Delete folder (ungroup profiles)"
           onClick={() => void onDeleteFolder(groupName)}

@@ -617,7 +617,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
             {/* Search Toggle */}
             {!isDirectPreview && !(hasDualMode && viewMode === 'preview' && !isMarkdown) && (
-              <button aria-label="Search (Ctrl+F)"
+              <button
+                aria-label="Search (Ctrl+F)"
                 type="button"
                 title="Search (Ctrl+F)"
                 onClick={() => {
@@ -683,7 +684,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             )}
 
             {/* Reload from server */}
-            <button aria-label="Reload from storage"
+            <button
+              aria-label="Reload from storage"
               type="button"
               title="Reload from storage"
               disabled={loading || saving}
@@ -881,7 +883,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
             >
               Next
             </button>
-            <button aria-label="Close" title="Close"
+            <button
+              aria-label="Close"
+              title="Close"
               type="button"
               onClick={() => {
                 setShowSearch(false);
@@ -901,7 +905,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
               <span className="truncate">{error}</span>
             </div>
-            <button aria-label="Close" title="Close"
+            <button
+              aria-label="Close"
+              title="Close"
               type="button"
               onClick={() => setError(null)}
               className="rounded p-0.5 hover:bg-red-900/40 text-red-300"
@@ -956,7 +962,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               <Code className="h-4 w-4 shrink-0 text-sky-400" />
               <span>{externalStatus}</span>
             </div>
-            <button aria-label="Close" title="Close"
+            <button
+              aria-label="Close"
+              title="Close"
               type="button"
               onClick={() => setExternalStatus(null)}
               className="rounded p-0.5 hover:bg-sky-900/40 text-sky-300"

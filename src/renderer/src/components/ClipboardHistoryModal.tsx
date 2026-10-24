@@ -5,6 +5,7 @@ import type { ClipboardHistoryEntry } from '@shared/types/clipboard';
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useConfirm } from './ConfirmDialog';
+import { plural } from '../lib/plural';
 import { formatDateTime } from '../lib/format';
 
 interface ClipboardHistoryModalProps {
@@ -85,7 +86,7 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
   const clearAll = async (): Promise<void> => {
     const confirmed = await confirm({
       title: 'Clear clipboard history',
-      message: `Delete all ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} from the clipboard history? This cannot be undone.`,
+      message: `Delete all ${plural(entries.length, 'entry', 'entries')} from the clipboard history? This cannot be undone.`,
       confirmLabel: 'Clear history',
     });
     if (!confirmed) return;
@@ -150,7 +151,7 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
         </div>
 
         <div role="status" aria-live="polite" className="sr-only">
-          {visible.length === 0 ? 'No entries' : `${visible.length} ${visible.length === 1 ? 'entry' : 'entries'}`}
+          {visible.length === 0 ? 'No entries' : plural(visible.length, 'entry', 'entries')}
         </div>
         <ul id="clipboard-history-list" ref={listRef} aria-label="Clipboard history" className="min-h-0 flex-1 overflow-y-auto p-2">
           {visible.length === 0 && (

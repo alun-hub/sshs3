@@ -43,7 +43,8 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
               Stopped
             </span>
           )}
-          <button aria-label="Refresh X server status"
+          <button
+            aria-label="Refresh X server status"
             type="button"
             onClick={() => void refreshX11Status()}
             className="p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover rounded transition-colors"

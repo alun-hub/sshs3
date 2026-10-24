@@ -125,7 +125,9 @@ export const FileDiffModal: React.FC<FileDiffModalProps> = ({
               {relativePath}
             </h2>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="shrink-0 rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

@@ -196,7 +196,8 @@ export function TeamProfileTree<T>({
         } ${isPickingIcon ? 'z-10' : ''} ${dropZoneClasses(node.path, true)}`}
       >
         <div className="flex items-start justify-between w-full">
-          <button aria-label="Change folder icon"
+          <button
+            aria-label="Change folder icon"
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -238,7 +239,8 @@ export function TeamProfileTree<T>({
             </div>
           )}
           <div className="flex items-center gap-1">
-            <button aria-label="Rename folder"
+            <button
+              aria-label="Rename folder"
               type="button"
               title="Rename folder"
               onClick={(e) => {
@@ -250,7 +252,8 @@ export function TeamProfileTree<T>({
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
-            <button aria-label="Delete folder (ungroups profiles inside, including subfolders)"
+            <button
+              aria-label="Delete folder (ungroups profiles inside, including subfolders)"
               type="button"
               title="Delete folder (ungroups profiles inside, including subfolders)"
               onClick={(e) => {

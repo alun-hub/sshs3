@@ -103,7 +103,8 @@ export const DotfilesSyncBanner: React.FC = () => {
                 </button>
               </div>
             </div>
-            <button aria-label="Dismiss"
+            <button
+              aria-label="Dismiss"
               type="button"
               onClick={() => void respond('ignore')}
               className="rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

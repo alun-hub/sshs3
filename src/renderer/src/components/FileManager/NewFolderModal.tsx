@@ -102,7 +102,9 @@ export const NewFolderModal: React.FC<NewFolderModalProps> = ({
             )}
             <span>{title}</span>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             disabled={submitting}

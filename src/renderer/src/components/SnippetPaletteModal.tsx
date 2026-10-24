@@ -6,6 +6,7 @@ import { SNIPPET_MAX_COMMAND_CHARS, SNIPPET_MAX_NAME_CHARS } from '@shared/types
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useConfirm } from './ConfirmDialog';
+import { plural } from '../lib/plural';
 import { expandSnippet, type SnippetContext } from '../lib/snippets';
 
 interface SnippetPaletteModalProps {
@@ -258,7 +259,7 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
             </div>
 
             <div role="status" aria-live="polite" className="sr-only">
-              {visible.length === 0 ? 'No snippets' : `${visible.length} ${visible.length === 1 ? 'snippet' : 'snippets'}`}
+              {visible.length === 0 ? 'No snippets' : plural(visible.length, 'snippet')}
             </div>
             <ul id="snippet-list" ref={listRef} aria-label="Snippets" className="min-h-0 flex-1 overflow-y-auto p-2">
               {visible.length === 0 && (

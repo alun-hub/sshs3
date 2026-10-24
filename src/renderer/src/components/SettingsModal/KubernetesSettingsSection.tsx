@@ -94,7 +94,7 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
           onKeyDown={(e) => {
             // These fields sit inside the Settings <form>: Enter would submit it (saving and closing Settings and
             // losing the image). Enter in a field adds the image instead.
-            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.target instanceof HTMLInputElement) {
               e.preventDefault();
               addImage();
             }

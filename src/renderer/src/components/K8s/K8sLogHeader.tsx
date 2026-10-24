@@ -189,7 +189,8 @@ export const K8sLogHeader: React.FC<K8sLogHeaderProps> = ({
               placeholder="Search logs..."
               className="w-40 bg-transparent text-xs text-txt-primary outline-none placeholder-txt-muted"
             />
-            <button aria-label="Previous match (Shift+Enter)"
+            <button
+              aria-label="Previous match (Shift+Enter)"
               type="button"
               title="Previous match (Shift+Enter)"
               onClick={() => onRunSearch('previous')}
@@ -197,7 +198,8 @@ export const K8sLogHeader: React.FC<K8sLogHeaderProps> = ({
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
-            <button aria-label="Next match (Enter)"
+            <button
+              aria-label="Next match (Enter)"
               type="button"
               title="Next match (Enter)"
               onClick={() => onRunSearch('next')}
@@ -205,7 +207,8 @@ export const K8sLogHeader: React.FC<K8sLogHeaderProps> = ({
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
-            <button aria-label="Close search (Esc)"
+            <button
+              aria-label="Close search (Esc)"
               type="button"
               title="Close search (Esc)"
               onClick={onCloseSearch}

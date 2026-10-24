@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Accessibility and keyboard
 - Dialogs move focus in, keep Tab inside, and give focus back when they close (all modal dialogs, including the host key, smartcard PIN and master password prompts, which keep Cancel as the default).
-- The file list is a real grid with sortable, announced column headers; the tab strip is one Tab stop with arrow-key navigation; menus, Settings categories, pod details and the tunnel wizard have proper roles and keyboard navigation.
+- The file list is a real grid with sortable, announced column headers; the arrow keys, Home and End move between tabs; menus, Settings categories, pod details and the tunnel wizard have proper roles and keyboard navigation.
 - Icon-only buttons and form fields have accessible names, error messages are announced, selected states are exposed (theme, tunnel type, folder icon), and clickable areas are at least 24 px.
 - The X server mode options can be reached with the keyboard; toggle switches show a keyboard focus ring.
 

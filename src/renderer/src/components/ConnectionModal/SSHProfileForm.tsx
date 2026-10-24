@@ -478,7 +478,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
                 placeholder="~/.ssh/id_ed25519"
               />
-              <button aria-label="Browse"
+              <button
+                aria-label="Browse"
                 type="button"
                 onClick={() => void browseFor('privateKeyPath')}
                 className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -512,7 +513,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
               className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
               placeholder="/tmp/ssh-agent.sock"
             />
-            <button aria-label="Browse"
+            <button
+              aria-label="Browse"
               type="button"
               onClick={() => void browseFor('agentPath')}
               className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -535,7 +537,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                 placeholder={pkcs11PlaceholderPath(pickDefaultPkcs11Lib(smartcardLibs))}
               />
-              <button aria-label="Browse"
+              <button
+                aria-label="Browse"
                 type="button"
                 onClick={() => void browseFor('pkcs11LibPath')}
                 className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -695,7 +698,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                               </button>
                             </span>
                           ) : (
-                            <button aria-label="Delete this credential from the security key"
+                            <button
+                              aria-label="Delete this credential from the security key"
                               type="button"
                               onClick={() => {
                                 setFido2DeleteError(null);
@@ -724,7 +728,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                     className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                     placeholder="~/.ssh/id_ed25519_sk"
                   />
-                  <button aria-label="Browse"
+                  <button
+                    aria-label="Browse"
                     type="button"
                     onClick={() => void browseFor('privateKeyPath')}
                     className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -856,7 +861,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                       <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-2xs text-txt-secondary">
                         {fido2GenResult.publicKey}
                       </code>
-                      <button aria-label="Copy public key"
+                      <button
+                        aria-label="Copy public key"
                         type="button"
                         onClick={() => void navigator.clipboard.writeText(fido2GenResult.publicKey)}
                         className="shrink-0 rounded-md border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

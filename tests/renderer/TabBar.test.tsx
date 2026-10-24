@@ -127,6 +127,21 @@ describe('TabBar Component', () => {
       expect(items[items.length - 1]).toHaveFocus();
     });
 
+    it('Enter on a tab\'s close button closes the tab instead of selecting it', () => {
+      const onSelectTab = vi.fn();
+      const onCloseTab = vi.fn();
+      render(
+        <TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={onSelectTab} onCloseTab={onCloseTab} onNewTab={vi.fn()} />
+      );
+      const close = screen.getByTestId('close-tab-tab-2');
+      close.focus();
+      // The keydown bubbles to the tab; it must not be taken as "select this tab" (which would swallow the click).
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      close.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(onSelectTab).not.toHaveBeenCalled();
+    });
+
     it('links each tab to its panel', () => {
       renderBar('tab-1');
       expect(screen.getByTestId('tab-tab-1')).toHaveAttribute('aria-controls', 'tab-panel-tab-1');

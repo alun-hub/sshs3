@@ -145,7 +145,9 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
               <p className="text-xs text-txt-muted">All connections</p>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -262,7 +264,8 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <button aria-label="Edit tunnel"
+                              <button
+                                aria-label="Edit tunnel"
                                 type="button"
                                 title="Edit tunnel"
                                 onClick={() => setWizardTarget({ connectionId: profile.id, tunnelId: tunnel.id })}

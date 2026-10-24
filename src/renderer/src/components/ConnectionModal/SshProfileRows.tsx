@@ -78,7 +78,8 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
           while the identical profile, shown again below in its folder,
           also had Tunnels/Duplicate/Edit/Delete — same entity, two
           different action sets depending on where you saw it. */}
-      <button aria-label="Edit profile"
+      <button
+        aria-label="Edit profile"
         type="button"
         title="Edit profile"
         onClick={(e) => {
@@ -165,7 +166,8 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
       {onConnectSFTP && (
           <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} /> 
         )}
-      <button aria-label="Edit profile"
+      <button
+        aria-label="Edit profile"
         type="button"
         title="Edit profile"
         onClick={(e) => {

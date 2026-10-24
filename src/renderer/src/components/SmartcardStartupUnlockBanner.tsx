@@ -43,7 +43,8 @@ export const SmartcardStartupUnlockBanner: React.FC = () => {
             next time it&apos;s needed, or you can retry from the smartcard icon in the top bar.
           </p>
         </div>
-        <button aria-label="Dismiss"
+        <button
+          aria-label="Dismiss"
           type="button"
           onClick={() => setStatus(null)}
           className="rounded p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

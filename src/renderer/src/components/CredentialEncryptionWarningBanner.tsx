@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, X } from 'lucide-react';
+import { plural } from '../lib/plural';
 
 /**
  * Warns the user when the OS keyring backend (safeStorage) isn't available,
@@ -55,13 +56,13 @@ export const CredentialEncryptionWarningBanner: React.FC = () => {
           {lostSecrets > 0 ? (
             <>
               <p className="text-sm font-medium text-txt-primary">
-                {lostSecrets === 1 ? '1 saved secret' : `${lostSecrets} saved secrets`} could not be decrypted
+                {plural(lostSecrets, 'saved secret')} could not be decrypted
               </p>
               <p className="mt-0.5 text-xs text-txt-secondary">
-                The OS keyring key that protected your saved passwords, passphrases and S3 secret keys is no
-                longer available (it was replaced or reset), so they load as empty and logins or S3 requests
-                will fail. They cannot be recovered: open each affected profile in the Connection Manager and
-                enter the secret again.
+                They load as empty, so logins and S3 requests will fail. If your OS keyring was locked or not
+                ready when sshs3 started, unlock it and restart sshs3: they may come back. If the keyring key
+                was replaced or reset they cannot be recovered: open each affected profile in the Connection
+                Manager and enter the secret again.
               </p>
             </>
           ) : (

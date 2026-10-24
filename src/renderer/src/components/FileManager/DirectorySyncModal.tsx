@@ -547,7 +547,8 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
             >
               {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
-            <button aria-label="Close (Esc)"
+            <button
+              aria-label="Close (Esc)"
               type="button"
               title="Close (Esc)"
               onClick={onClose}

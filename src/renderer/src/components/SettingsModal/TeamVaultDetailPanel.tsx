@@ -513,7 +513,8 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   >
                     {savingVaultName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </button>
-                  <button aria-label="Cancel"
+                  <button
+                    aria-label="Cancel"
                     type="button"
                     onClick={() => setEditingVaultName(false)}
                     disabled={savingVaultName}
@@ -527,7 +528,8 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                 <div className="flex items-center gap-1.5">
                   <span className="text-txt-secondary">{status.vaultName || status.vaultId}</span>
                   {status.unlocked && isAdmin && (
-                    <button aria-label="Rename vault"
+                    <button
+                      aria-label="Rename vault"
                       type="button"
                       onClick={() => {
                         setVaultNameEdit(status.vaultName ?? '');
@@ -598,7 +600,8 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                   >
                     {savingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </button>
-                  <button aria-label="Cancel"
+                  <button
+                    aria-label="Cancel"
                     type="button"
                     onClick={() => setEditingDescription(false)}
                     disabled={savingDescription}
@@ -614,7 +617,8 @@ export const TeamVaultDetailPanel: React.FC<TeamVaultDetailPanelProps> = ({ vaul
                     {status.vaultDescription || '—'}
                   </span>
                   {status.unlocked && isAdmin && (
-                    <button aria-label="Edit description"
+                    <button
+                      aria-label="Edit description"
                       type="button"
                       onClick={() => {
                         setDescriptionEdit(status.vaultDescription ?? '');

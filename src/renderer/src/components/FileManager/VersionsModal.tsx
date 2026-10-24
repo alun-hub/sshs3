@@ -202,7 +202,8 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
                         <td className="px-3 py-2 text-xs">
                           <div className="flex items-center justify-end gap-1.5">
                             {!v.isDeleteMarker && !v.isLatest && (
-                              <button aria-label="Restore as current version"
+                              <button
+                                aria-label="Restore as current version"
                                 type="button"
                                 title="Restore as current version"
                                 disabled={busy}
@@ -212,7 +213,8 @@ export const VersionsModal: React.FC<VersionsModalProps> = ({
                                 <RotateCcw className="h-3.5 w-3.5" />
                               </button>
                             )}
-                            <button aria-label="Permanently delete this version"
+                            <button
+                              aria-label="Permanently delete this version"
                               type="button"
                               title="Permanently delete this version"
                               disabled={busy}

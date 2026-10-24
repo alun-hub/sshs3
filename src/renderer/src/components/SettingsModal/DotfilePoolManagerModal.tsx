@@ -336,7 +336,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               <p className="text-xs text-txt-muted">Choose the files that are synced to your servers</p>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -546,7 +548,9 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
                 <GitBranch className="h-4 w-4 text-sky-400" />
                 <span className="text-sm font-semibold text-txt-primary">Import Dotfiles from Git</span>
               </div>
-              <button aria-label="Close" title="Close"
+              <button
+                aria-label="Close"
+                title="Close"
                 type="button"
                 onClick={() => setGitImportOpen(false)}
                 disabled={gitImporting}

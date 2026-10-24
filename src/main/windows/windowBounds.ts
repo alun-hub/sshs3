@@ -11,6 +11,18 @@ export const DEFAULT_WINDOW_SIZE = { width: 1200, height: 800 };
  * controls. Also given to BrowserWindow as minWidth/minHeight, so dragging cannot go below it either.
  */
 export const MIN_WINDOW_SIZE = { width: 1024, height: 600 };
+
+/**
+ * The minimum size for a display: MIN_WINDOW_SIZE, but never larger than that display's work area. On a small or heavily
+ * scaled screen (1366x768 at 150% leaves about 910 DIPs) a hard 1024 would make the window wider than the screen, with
+ * controls off-screen and no way to shrink it.
+ */
+export function minimumSizeFor(workArea: { width: number; height: number }): { width: number; height: number } {
+  return {
+    width: Math.min(MIN_WINDOW_SIZE.width, workArea.width),
+    height: Math.min(MIN_WINDOW_SIZE.height, workArea.height),
+  };
+}
 /** How much of a restored window must overlap a display for the title bar to stay reachable. */
 const MIN_VISIBLE = { width: 120, height: 60 };
 
@@ -50,9 +62,10 @@ function centered(size: { width: number; height: number }, workArea: Rect): Rect
 export function resolveWindowBounds(saved: Rect | undefined | null, workAreas: Rect[], primary: Rect): Rect {
   if (!isFiniteRect(saved)) return centered(DEFAULT_WINDOW_SIZE, primary);
 
+  const min = minimumSizeFor(primary);
   const size = {
-    width: Math.max(MIN_WINDOW_SIZE.width, Math.round(saved.width)),
-    height: Math.max(MIN_WINDOW_SIZE.height, Math.round(saved.height)),
+    width: Math.max(min.width, Math.round(saved.width)),
+    height: Math.max(min.height, Math.round(saved.height)),
   };
   const candidate: Rect = { x: Math.round(saved.x), y: Math.round(saved.y), ...size };
   const visible = workAreas.some((area) => {

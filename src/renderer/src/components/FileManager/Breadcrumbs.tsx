@@ -167,7 +167,8 @@ export const Breadcrumbs = forwardRef<BreadcrumbsHandle, BreadcrumbsProps>(funct
         );
       })}
       </div>
-      <button aria-label="Edit path manually"
+      <button
+        aria-label="Edit path manually"
         type="button"
         title="Edit path manually"
         onClick={(e) => {

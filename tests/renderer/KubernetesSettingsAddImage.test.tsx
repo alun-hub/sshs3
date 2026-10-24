@@ -47,6 +47,22 @@ describe('Settings > Kubernetes & Debug > Add Image', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('does not add the image when Enter only commits an IME composition', () => {
+    const { onSave, onClose } = openAddImage();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'ReproImage' } });
+    fireEvent.change(screen.getByLabelText('Image reference'), { target: { value: 'repro:latest' } });
+
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true });
+    act(() => {
+      screen.getByLabelText('Display name').dispatchEvent(event);
+    });
+
+    expect(screen.getByLabelText('Display name')).toBeInTheDocument();
+    expect(screen.queryByText('ReproImage')).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('does not submit Settings on Enter while the required fields are empty, and adds nothing', () => {
     const { onSave, onClose } = openAddImage();
 

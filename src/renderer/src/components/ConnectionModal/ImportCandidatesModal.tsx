@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Upload, X } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { plural } from '../../lib/plural';
 
 interface ImportCandidatesModalProps {
   importCandidates: SSHConnectionConfig[];
@@ -34,7 +35,9 @@ export const ImportCandidatesModal: React.FC<ImportCandidatesModalProps> = ({
             <Upload className="h-4 w-4" />
             <span>Import Hosts from ~/.ssh/config</span>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={() => onClose()}
             className="rounded p-1 text-txt-muted hover:text-txt-primary"
@@ -122,7 +125,7 @@ export const ImportCandidatesModal: React.FC<ImportCandidatesModalProps> = ({
             disabled={selectedCandidateIds.size === 0}
             className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
           >
-            Import {selectedCandidateIds.size} Profile{selectedCandidateIds.size !== 1 ? 's' : ''}
+            Import {plural(selectedCandidateIds.size, 'profile')}
           </button>
         </div>
       </div>

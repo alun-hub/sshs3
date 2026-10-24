@@ -266,6 +266,8 @@ export const TabBar: React.FC<TabBarProps> = ({
                 watchDragReleasedOutsideWindow(() => onMoveTab?.(tab.id, 'new'));
               }}
               onKeyDown={(e) => {
+                // Keys that bubble up from the close button inside the tab belong to that button (Enter closes the tab).
+                if (e.target !== e.currentTarget) return;
                 if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && nextTabIndex(1, 0, e.key) !== null) {
                   const strip = Array.from(
                     e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []

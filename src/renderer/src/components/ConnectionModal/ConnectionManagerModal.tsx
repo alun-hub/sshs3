@@ -728,7 +728,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
             <Server className="h-4 w-4 text-sky-400" />
             <h2 className="text-sm font-semibold text-txt-primary">Connection Manager</h2>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -864,7 +866,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         <Check className="h-3.5 w-3.5" />
                       )}
                     </button>
-                    <button aria-label="Cancel"
+                    <button
+                      aria-label="Cancel"
                       type="button"
                       onClick={() => setEditingTabDescription(null)}
                       disabled={savingTabDescription}
@@ -881,7 +884,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         {activeTeamVaultTab.vaultDescription || 'No description yet.'}
                       </p>
                       {activeTeamVaultTab.selfRole === 'admin' && (
-                        <button aria-label="Edit description"
+                        <button
+                          aria-label="Edit description"
                           type="button"
                           onClick={() => {
                             setTabDescriptionDraft(activeTeamVaultTab.vaultDescription ?? '');
@@ -1106,7 +1110,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                       >
                         Create
                       </button>
-                      <button aria-label="Close" title="Close"
+                      <button
+                        aria-label="Close"
+                        title="Close"
                         type="button"
                         onClick={() => {
                           setNewFolderOpen(false);

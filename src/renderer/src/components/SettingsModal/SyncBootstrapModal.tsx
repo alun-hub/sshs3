@@ -86,7 +86,9 @@ export const SyncBootstrapModal: React.FC<SyncBootstrapModalProps> = ({ open, on
             </div>
             <h2 className="text-sm font-semibold text-txt-primary">Import profile from the cloud</h2>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

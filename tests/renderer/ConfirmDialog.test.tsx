@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { ConfirmProvider, useConfirm } from '../../src/renderer/src/components/ConfirmDialog';
 
@@ -146,6 +146,33 @@ describe('ConfirmDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'NoTitle' }));
     expect(screen.getByRole('alertdialog', { name: 'Confirm' })).toBeInTheDocument();
+  });
+
+  it('answers an earlier request "no" instead of leaving it hanging when a second one replaces it', async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const Two: React.FC = () => {
+      const confirm = useConfirm();
+      return (
+        <>
+          <button onClick={async () => first(await confirm({ title: 'First', message: 'one' }))}>Ask first</button>
+          <button onClick={async () => second(await confirm({ title: 'Second', message: 'two' }))}>Ask second</button>
+        </>
+      );
+    };
+    render(
+      <ConfirmProvider>
+        <Two />
+      </ConfirmProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask second' }));
+    await waitFor(() => expect(first).toHaveBeenCalledWith(false));
+    expect(screen.getByRole('alertdialog', { name: 'Second' })).toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(second).toHaveBeenCalledWith(true));
   });
 
   it('uses a neutral (non-red) confirm button and different default label when danger is false', async () => {

@@ -152,7 +152,9 @@ export const K8sDebugModal: React.FC<K8sDebugModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Attach Debug Container</h2>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             disabled={submitting}

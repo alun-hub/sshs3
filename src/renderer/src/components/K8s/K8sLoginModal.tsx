@@ -181,7 +181,9 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
               <p className="text-xs text-txt-muted">Log in to a cluster directly without needing the local oc CLI</p>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

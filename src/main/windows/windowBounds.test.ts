@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MIN_WINDOW_SIZE, placeNewWindow, resolveWindowBounds } from './windowBounds';
+import { MIN_WINDOW_SIZE, minimumSizeFor, placeNewWindow, resolveWindowBounds } from './windowBounds';
 
 const primary = { x: 0, y: 0, width: 1920, height: 1080 };
 const second = { x: 1920, y: 0, width: 2560, height: 1440 };
@@ -37,6 +37,22 @@ describe('resolveWindowBounds', () => {
   it('treats a window that only barely touches a display as off-screen', () => {
     const saved = { x: 1900, y: 0, width: 1100, height: 700 };
     expect(resolveWindowBounds(saved, [primary], primary).x).toBe(410);
+  });
+});
+
+describe('minimumSizeFor', () => {
+  it('is the full minimum on a roomy display', () => {
+    expect(minimumSizeFor({ width: 1920, height: 1080 })).toEqual(MIN_WINDOW_SIZE);
+  });
+
+  it('never exceeds a small or heavily scaled display, so the window can still fit on the screen', () => {
+    expect(minimumSizeFor({ width: 910, height: 512 })).toEqual({ width: 910, height: 512 });
+    expect(minimumSizeFor({ width: 1366, height: 500 })).toEqual({ width: 1024, height: 500 });
+  });
+
+  it('keeps restored bounds within a small primary display', () => {
+    const small = { x: 0, y: 0, width: 910, height: 512 };
+    expect(resolveWindowBounds({ x: 0, y: 0, width: 300, height: 200 }, [small], small)).toMatchObject({ width: 910, height: 512 });
   });
 });
 

@@ -166,7 +166,8 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
           </span>
         </div>
         <div className="flex items-center gap-0.5">
-          <button aria-label="Change connection"
+          <button
+            aria-label="Change connection"
             type="button"
             title="Change connection"
             data-testid={`change-pane-${node.id}`}
@@ -186,7 +187,8 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
               {props.zoomedPaneId === node.id ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
             </button>
           )}
-          <button aria-label="Split right"
+          <button
+            aria-label="Split right"
             type="button"
             title="Split right"
             data-testid={`split-row-${node.id}`}
@@ -195,7 +197,8 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
           >
             <Columns2 className="h-3 w-3" />
           </button>
-          <button aria-label="Split down"
+          <button
+            aria-label="Split down"
             type="button"
             title="Split down"
             data-testid={`split-column-${node.id}`}
@@ -205,7 +208,8 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
             <Rows2 className="h-3 w-3" />
           </button>
           {!isSole && (
-            <button aria-label="Close this pane"
+            <button
+              aria-label="Close this pane"
               type="button"
               title="Close this pane"
               data-testid={`close-pane-${node.id}`}

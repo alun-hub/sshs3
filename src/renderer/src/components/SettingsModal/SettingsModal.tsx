@@ -7,6 +7,7 @@ import { TeamVaultListPanel } from './TeamVaultListPanel';
 import { GitSettingsPanel } from './GitSettingsPanel';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { nextMenuIndex } from '../../lib/rovingNavigation';
 import { useSettingsForm } from './useSettingsForm';
 import type { SettingsCategory } from './settingsConstants';
 import { GeneralSettingsSection } from './GeneralSettingsSection';
@@ -150,7 +151,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Settings</h2>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
@@ -206,17 +209,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => setActiveCategory(cat.id)}
                       onKeyDown={(e) => {
-                        if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
-                        e.preventDefault();
                         const idx = visibleCategories.findIndex((c) => c.id === cat.id);
-                        const nextIdx =
-                          e.key === 'Home'
-                            ? 0
-                            : e.key === 'End'
-                              ? visibleCategories.length - 1
-                              : e.key === 'ArrowDown'
-                                ? (idx + 1) % visibleCategories.length
-                                : (idx - 1 + visibleCategories.length) % visibleCategories.length;
+                        const nextIdx = nextMenuIndex(visibleCategories.length, idx, e.key);
+                        if (nextIdx === null) return;
+                        e.preventDefault();
                         const next = visibleCategories[nextIdx];
                         setActiveCategory(next.id);
                         sidebarButtonRefs.current[next.id]?.focus();

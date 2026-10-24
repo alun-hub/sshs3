@@ -216,7 +216,8 @@ export const K8sPodDetailModal: React.FC<K8sPodDetailModalProps> = ({
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button aria-label="Close modal"
+            <button
+              aria-label="Close modal"
               type="button"
               onClick={onClose}
               className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

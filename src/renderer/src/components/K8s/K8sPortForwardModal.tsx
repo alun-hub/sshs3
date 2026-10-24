@@ -218,7 +218,9 @@ export const K8sPortForwardModal: React.FC<K8sPortForwardModalProps> = ({
               </p>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"

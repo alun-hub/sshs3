@@ -86,7 +86,9 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Choose folder" className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card shadow-2xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between border-b border-divider p-3">
           <div className="text-sm font-semibold text-txt-primary">Choose folder — {providerLabel}</div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="text-txt-muted hover:text-txt-primary transition-colors"

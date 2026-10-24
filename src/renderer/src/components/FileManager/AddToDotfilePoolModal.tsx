@@ -125,7 +125,9 @@ export const AddToDotfilePoolModal: React.FC<AddToDotfilePoolModalProps> = ({
               <h2 className="text-sm font-semibold text-txt-primary">Add to Dotfiles Pool</h2>
             </div>
           </div>
-          <button aria-label="Close" title="Close"
+          <button
+            aria-label="Close"
+            title="Close"
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
