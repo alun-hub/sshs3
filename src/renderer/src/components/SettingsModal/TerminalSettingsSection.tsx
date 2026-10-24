@@ -4,6 +4,7 @@ import { FONT_PRESETS } from './settingsConstants';
 import { X11ServerSection } from './X11ServerSection';
 import type { SettingsForm } from './useSettingsForm';
 import { validateCustomPortRegex } from '../../lib/portDetection';
+import { useConfirm } from '../ConfirmDialog';
 
 /** The "Terminal" page of the settings dialog. */
 export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -41,6 +42,15 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setLocalTerminalAgentMode,
   } = form;
   const portRegexError = validateCustomPortRegex(terminalPortForwardCustomRegex).error;
+  const confirm = useConfirm();
+  const clearClipboardHistory = async () => {
+    const confirmed = await confirm({
+      title: 'Clear clipboard history',
+      message: 'Delete every entry from the clipboard history on this device? This cannot be undone.',
+      confirmLabel: 'Clear history',
+    });
+    if (confirmed) await window.multissh.clipboardHistoryClear();
+  };
 
   return (
     <div className="space-y-4">
@@ -195,7 +205,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </select>
           <button
             type="button"
-            onClick={() => void window.multissh.clipboardHistoryClear()}
+            onClick={() => void clearClipboardHistory()}
             className="rounded-lg border border-border-subtle px-3 py-2 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary cursor-pointer"
           >
             Clear history

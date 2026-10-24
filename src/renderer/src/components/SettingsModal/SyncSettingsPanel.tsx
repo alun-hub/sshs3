@@ -31,6 +31,7 @@ import {
 } from './SyncTargetForm';
 import { MasterPasswordDialog } from './MasterPasswordDialog';
 import { Button } from '../ui/Button';
+import { useConfirm } from '../ConfirmDialog';
 import { formatSyncError } from '../../lib/syncErrors';
 import { formatDateTime as formatDateTimeCanonical } from '../../lib/dateFormat';
 import { createRendererLogger } from '../../lib/log';
@@ -92,6 +93,7 @@ export const SyncSettingsPanel: React.FC = () => {
   const [unlockingSmartcard, setUnlockingSmartcard] = useState(false);
   const [linkingSmartcard, setLinkingSmartcard] = useState(false);
   const [unlinkingSmartcard, setUnlinkingSmartcard] = useState(false);
+  const confirm = useConfirm();
   const [isLinkingDialog, setIsLinkingDialog] = useState(false);
   const [detectedLibs, setDetectedLibs] = useState<DetectedSmartcardLib[]>([]);
   const [selectedLibPath, setSelectedLibPath] = useState('');
@@ -262,6 +264,13 @@ export const SyncSettingsPanel: React.FC = () => {
   };
 
   const handleUnlinkSmartcard = async () => {
+    const confirmed = await confirm({
+      title: 'Unlink smartcard',
+      message:
+        'Remove the smartcard from profile sync? Sync will ask for the master password instead of the card until you link a card again.',
+      confirmLabel: 'Unlink card',
+    });
+    if (!confirmed) return;
     setUnlinkingSmartcard(true);
     setActionError(null);
     setActionMessage(null);

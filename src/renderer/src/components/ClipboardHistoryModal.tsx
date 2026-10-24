@@ -4,6 +4,7 @@ import { Trash2, X } from 'lucide-react';
 import type { ClipboardHistoryEntry } from '@shared/types/clipboard';
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
+import { useConfirm } from './ConfirmDialog';
 import { formatDateTime } from '../lib/format';
 
 interface ClipboardHistoryModalProps {
@@ -16,6 +17,7 @@ interface ClipboardHistoryModalProps {
 export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ hostKey, onPaste, onClose }) => {
   const onBackdrop = useModalDismiss(onClose, true);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
   useDialogFocus(dialogRef, true);
   const [entries, setEntries] = useState<ClipboardHistoryEntry[]>([]);
   const [query, setQuery] = useState('');
@@ -80,7 +82,13 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
     void window.multissh.clipboardHistoryDelete(id);
   };
 
-  const clearAll = (): void => {
+  const clearAll = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Clear clipboard history',
+      message: `Delete all ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} from the clipboard history? This cannot be undone.`,
+      confirmLabel: 'Clear history',
+    });
+    if (!confirmed) return;
     setEntries([]);
     void window.multissh.clipboardHistoryClear();
   };
@@ -130,7 +138,7 @@ export const ClipboardHistoryModal: React.FC<ClipboardHistoryModalProps> = ({ ho
           />
           <button
             type="button"
-            onClick={clearAll}
+            onClick={() => void clearAll()}
             disabled={entries.length === 0}
             className="shrink-0 rounded-lg border border-border-subtle px-3 py-2 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-40 cursor-pointer"
           >

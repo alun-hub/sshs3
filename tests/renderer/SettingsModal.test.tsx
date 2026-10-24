@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../src/shared/types/settings';
+
+// Settings pages ask for confirmations through the app's ConfirmDialog (e.g. Clear history), which needs its provider.
+function render(ui: React.ReactElement) {
+  const result = rtlRender(<ConfirmProvider>{ui}</ConfirmProvider>);
+  return {
+    ...result,
+    rerender: (next: React.ReactElement) => result.rerender(<ConfirmProvider>{next}</ConfirmProvider>),
+  };
+}
 
 describe('SettingsModal', () => {
   afterEach(() => {

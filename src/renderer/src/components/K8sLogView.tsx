@@ -14,6 +14,7 @@ import { registerTerminalLinks } from '../lib/terminalLinks';
 import { formatDateTime } from '../lib/dateFormat';
 import { K8sPodMetrics } from './K8s/K8sPodMetrics';
 import { K8sLogHeader } from './K8s/K8sLogHeader';
+import { useConfirm } from './ConfirmDialog';
 import {
   calculateReconnectDelay,
   formatReconnectCountdown,
@@ -355,11 +356,14 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
     }
   }, [autoReconnect, status, clearRetryTimer, connectStream]);
 
+  const confirm = useConfirm();
   const handleRestartPod = useCallback(async () => {
     const activePodName = currentPodNameRef.current;
-    const confirmed = window.confirm(
-      `Restart pod "${activePodName}" in namespace "${target.namespace}"?\n\nThe pod will be deleted so that its controller (Deployment/StatefulSet) can schedule a fresh replacement.`
-    );
+    const confirmed = await confirm({
+      title: 'Restart pod',
+      message: `Restart pod "${activePodName}" in namespace "${target.namespace}"? The pod will be deleted so that its controller (Deployment/StatefulSet) can schedule a fresh replacement.`,
+      confirmLabel: 'Restart pod',
+    });
     if (!confirmed) return;
 
     setRestartingPod(true);
@@ -382,7 +386,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
     } finally {
       setRestartingPod(false);
     }
-  }, [target.contextName, target.namespace, connectStream]);
+  }, [target.contextName, target.namespace, connectStream, confirm]);
 
   const handleSwitchContainer = useCallback(
     (newContainer: string) => {

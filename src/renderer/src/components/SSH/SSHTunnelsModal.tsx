@@ -114,6 +114,16 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
     }
   };
 
+  // A temporary tunnel is not saved: stopping it drops its configuration, so it asks first.
+  const handleStopTemporary = async (activeId: string, label: string) => {
+    const confirmed = await confirm({
+      title: 'Stop temporary tunnel',
+      message: `Stop the temporary tunnel ${label}? It is not saved, so you would have to set it up again.`,
+      confirmLabel: 'Stop tunnel',
+    });
+    if (confirmed) await handleStop(activeId);
+  };
+
   const handleDelete = async (tunnel: SSHTunnelConfig) => {
     if (!(await confirm({ title: 'Delete tunnel', message: `Delete the saved tunnel "${tunnel.name}"?` })))
       return;
@@ -309,7 +319,7 @@ export const SSHTunnelsModal: React.FC<SSHTunnelsModalProps> = ({
                       <button
                         type="button"
                         disabled={busyId === t.id}
-                        onClick={() => handleStop(t.id)}
+                        onClick={() => void handleStopTemporary(t.id, text)}
                         className="flex items-center gap-1 rounded-lg border border-rose-900/60 bg-rose-950/40 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-900/50 transition-colors disabled:opacity-50"
                       >
                         {busyId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}

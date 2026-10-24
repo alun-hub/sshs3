@@ -5,6 +5,7 @@ import type { Snippet } from '@shared/types/snippets';
 import { SNIPPET_MAX_COMMAND_CHARS, SNIPPET_MAX_NAME_CHARS } from '@shared/types/snippets';
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
+import { useConfirm } from './ConfirmDialog';
 import { expandSnippet, type SnippetContext } from '../lib/snippets';
 
 interface SnippetPaletteModalProps {
@@ -28,6 +29,7 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
 }) => {
   const onBackdrop = useModalDismiss(onClose, true);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
   useDialogFocus(dialogRef, true);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [query, setQuery] = useState('');
@@ -123,7 +125,14 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
     }
   };
 
-  const remove = (id: string): void => {
+  const remove = async (id: string): Promise<void> => {
+    const name = snippets.find((s) => s.id === id)?.name;
+    const confirmed = await confirm({
+      title: 'Delete snippet',
+      message: name ? `Delete the snippet "${name}"? This cannot be undone.` : 'Delete this snippet? This cannot be undone.',
+      confirmLabel: 'Delete snippet',
+    });
+    if (!confirmed) return;
     setSnippets((prev) => prev.filter((s) => s.id !== id));
     window.multissh.snippetsDelete(id).catch(() => {
       // Deleting failed: show what is really stored again.
@@ -288,7 +297,7 @@ export const SnippetPaletteModal: React.FC<SnippetPaletteModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => remove(snippet.id)}
+                    onClick={() => void remove(snippet.id)}
                     aria-label="Delete snippet"
                     className="my-2 mr-2 rounded-md p-1.5 text-txt-muted opacity-0 hover:text-rose-400 focus:opacity-100 group-hover:opacity-100 cursor-pointer"
                   >

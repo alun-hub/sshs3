@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, cleanup, act, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { K8sLogView } from '../../src/renderer/src/components/K8sLogView';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { K8sTerminalTarget, K8sPodNode } from '../../src/shared/types/kubernetes';
+
+// The log view asks for confirmations through the app's ConfirmDialog.
+function render(ui: React.ReactElement) {
+  const result = rtlRender(<ConfirmProvider>{ui}</ConfirmProvider>);
+  return {
+    ...result,
+    rerender: (next: React.ReactElement) => result.rerender(<ConfirmProvider>{next}</ConfirmProvider>),
+  };
+}
 
 // Polyfill ResizeObserver and matchMedia for JSDOM
 class MockResizeObserver {
@@ -72,6 +82,34 @@ describe('K8sLogView', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it('asks before restarting the pod and only deletes it once confirmed', async () => {
+    const k8sDeletePod = vi.fn().mockResolvedValue(undefined);
+    window.multissh.k8sDeletePod = k8sDeletePod;
+    await act(async () => {
+      render(<K8sLogView target={TARGET} />);
+      await Promise.resolve();
+    });
+
+    const restart = () => fireEvent.click(screen.getByRole('button', { name: 'Restart pod' }));
+    const settle = () =>
+      act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+    restart();
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent(`Restart pod "${TARGET.podName}" in namespace "default"?`);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await settle();
+    expect(k8sDeletePod).not.toHaveBeenCalled();
+
+    restart();
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Restart pod' }));
+    await settle();
+    expect(k8sDeletePod).toHaveBeenCalledWith('minikube', 'default', TARGET.podName);
   });
 
   it('starts follow log stream on mount with tailLines: 1000', async () => {

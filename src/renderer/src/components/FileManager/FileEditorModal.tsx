@@ -29,6 +29,7 @@ import { classNames, formatBytes, formatDateTime, describeIpcError } from '../..
 import type { SourceType } from './types';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { useConfirm } from '../ConfirmDialog';
 import { openEditorTab } from '../../lib/editorTabEvents';
 import { CodeEditor, type CodeEditorHandle } from '../Editor/CodeEditor';
 import {
@@ -131,6 +132,8 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   const [externalStatus, setExternalStatus] = useState<string | null>(null);
   const [externalLaunching, setExternalLaunching] = useState(false);
 
+  const confirm = useConfirm();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<CodeEditorHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const originalEolRef = useRef<'\r\n' | '\n'>('\n');
@@ -296,6 +299,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   useEffect(() => {
     if (open && !loading && viewMode === 'source' && !isDirectPreview && !isBinary) {
       const timer = setTimeout(() => {
+        // Something opened in the meantime (a confirmation dialog) owns the focus now: do not take it back.
+        const owner = document.activeElement?.closest('[aria-modal="true"]');
+        if (owner && owner !== dialogRef.current) return;
         editorRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
@@ -390,11 +396,15 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   }, [providerId, entry]);
 
   // Close confirmation if dirty
-  const handleRequestClose = useCallback(() => {
+  const handleRequestClose = useCallback(async () => {
     if (!embedded && isDirty && !tailModeActive) {
-      if (!window.confirm('You have unsaved changes. Discard them?')) {
-        return;
-      }
+      const discard = await confirm({
+        title: 'Discard unsaved changes',
+        message: `Discard your unsaved changes to ${entry?.name ?? 'this file'}?`,
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+      });
+      if (!discard) return;
     }
     // An embedded tab releases its sessions on unmount, once the parent has actually closed it.
     if (!embedded) {
@@ -410,7 +420,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       sessionsRef.current = { tailId: null, externalToken: null };
     }
     onClose();
-  }, [embedded, isDirty, tailModeActive, tailId, externalSessionToken, onClose]);
+  }, [embedded, isDirty, tailModeActive, tailId, externalSessionToken, onClose, confirm, entry?.name]);
 
   // Detach modal to a standalone tab
   const handleDetachToTab = useCallback(() => {
@@ -442,10 +452,9 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
       return;
     }
     if (!embedded) {
-      handleRequestClose();
+      void handleRequestClose();
     }
   }, open && !embedded);
-  const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, open && !embedded && !!entry);
 
   // Format JSON helper
@@ -677,8 +686,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               type="button"
               title="Reload from storage"
               disabled={loading || saving}
-              onClick={() => {
-                if (isDirty && !window.confirm('Discard unsaved changes and reload?')) return;
+              onClick={async () => {
+                if (
+                  isDirty &&
+                  !(await confirm({
+                    title: 'Reload from storage',
+                    message: 'Reloading discards your unsaved changes. Continue?',
+                    confirmLabel: 'Reload and discard',
+                    cancelLabel: 'Keep editing',
+                  }))
+                ) {
+                  return;
+                }
                 if (tailModeActive) {
                   void startTailSession();
                 } else {
@@ -755,7 +774,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
               type="button"
               title={embedded ? 'Close tab' : 'Close editor (Esc)'}
               aria-label={embedded ? 'Close tab' : 'Close editor'}
-              onClick={handleRequestClose}
+              onClick={() => void handleRequestClose()}
               className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors ml-1"
             >
               <X className="h-4 w-4" />

@@ -18,6 +18,7 @@ import { DotfilePoolFileTable, type DotfileSourceStatus } from './DotfilePoolFil
 import { Button } from '../ui/Button';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { useConfirm } from '../ConfirmDialog';
 import { createRendererLogger } from '../../lib/log';
 const log = createRendererLogger('DotfilePoolManagerModal');
 
@@ -121,6 +122,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   useModalDismiss(onClose, open);
   useModalDismiss(() => setGitImportOpen(false), gitImportOpen, !gitImporting);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
   const gitImportDialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, open);
   useDialogFocus(gitImportDialogRef, gitImportOpen);
@@ -308,6 +310,13 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
   };
 
   const handleDelete = async (id: string) => {
+    const name = pools.find((p) => p.id === id)?.name ?? draft?.name ?? 'this pool';
+    const confirmed = await confirm({
+      title: 'Delete dotfile pool',
+      message: `Delete the pool "${name}"? Its files and master directory on this device are removed, and the deletion syncs to your other devices. This cannot be undone.`,
+      confirmLabel: 'Delete pool',
+    });
+    if (!confirmed) return;
     await window.multissh.dotfilePoolsDelete(id);
     setSelectedId(null);
     setDraft(null);

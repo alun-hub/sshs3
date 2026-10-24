@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { FileEditorModal } from '../../src/renderer/src/components/FileManager/FileEditorModal';
 import { OPEN_EDITOR_TAB_EVENT } from '../../src/renderer/src/lib/editorTabEvents';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import type { FileEntry } from '../../src/shared/types/storage';
+
+// The editor asks for confirmations through the app's ConfirmDialog, which needs its provider.
+function render(ui: React.ReactElement) {
+  const result = rtlRender(<ConfirmProvider>{ui}</ConfirmProvider>);
+  return {
+    ...result,
+    rerender: (next: React.ReactElement) => result.rerender(<ConfirmProvider>{next}</ConfirmProvider>),
+  };
+}
 
 describe('FileEditorModal', () => {
   const mockFileRead = vi.fn();
@@ -314,7 +324,7 @@ describe('FileEditorModal', () => {
   });
 
   it('confirms discard if user closes with unsaved changes', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
+    const nativeConfirm = vi.spyOn(window, 'confirm');
     const onClose = vi.fn();
 
     render(
@@ -341,19 +351,61 @@ describe('FileEditorModal', () => {
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     });
 
-    // Close button
     const closeBtn = screen.getByTitle('Close editor (Esc)');
 
-    // User cancels confirm
-    confirmSpy.mockReturnValueOnce(false);
+    // The app's own dialog names the file and the consequence; the safe choice is the default
     fireEvent.click(closeBtn);
-    expect(confirmSpy).toHaveBeenCalledWith('You have unsaved changes. Discard them?');
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent(`Discard your unsaved changes to ${sampleEntry.name}?`);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Keep editing' })).toHaveFocus());
+
+    // User keeps editing
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(onClose).not.toHaveBeenCalled();
 
-    // User accepts confirm
-    confirmSpy.mockReturnValueOnce(true);
+    // User discards
     fireEvent.click(closeBtn);
-    expect(onClose).toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(nativeConfirm).not.toHaveBeenCalled();
+  });
+
+  it('asks before reloading over unsaved changes', async () => {
+    render(
+      <FileEditorModal
+        open={true}
+        providerId="sftp-1"
+        sourceType="sftp"
+        entry={sampleEntry}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument();
+    });
+    act(() => {
+      ((screen.getByTestId('code-editor')) as any).__cmChangeDoc('dirty change');
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    });
+
+    const reads = (window.multissh.fileRead as ReturnType<typeof vi.fn>).mock.calls.length;
+    fireEvent.click(screen.getByTitle('Reload from storage'));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Reloading discards your unsaved changes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect((window.multissh.fileRead as ReturnType<typeof vi.fn>).mock.calls.length).toBe(reads);
+
+    fireEvent.click(screen.getByTitle('Reload from storage'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload and discard' }));
+    await waitFor(() =>
+      expect((window.multissh.fileRead as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(reads)
+    );
   });
 
   it('does not trigger window.confirm when closing in embedded mode even if dirty', async () => {

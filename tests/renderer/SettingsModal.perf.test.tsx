@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
+import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
 import { DEFAULT_SETTINGS } from '../../src/shared/types/settings';
+
+// Asks for confirmations through the app's ConfirmDialog, which needs its provider.
+function render(ui: React.ReactElement) {
+  const result = rtlRender(<ConfirmProvider>{ui}</ConfirmProvider>);
+  return {
+    ...result,
+    rerender: (next: React.ReactElement) => result.rerender(<ConfirmProvider>{next}</ConfirmProvider>),
+  };
+}
 
 describe('SettingsModal performance bar section', () => {
   afterEach(cleanup);
