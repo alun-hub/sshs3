@@ -128,6 +128,26 @@ describe('ConfirmDialog', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
+  it('names the dialog by its title, or "Confirm" when it has none', () => {
+    const NoTitle: React.FC = () => {
+      const confirm = useConfirm();
+      return <button onClick={() => void confirm({ message: 'Proceed?' })}>NoTitle</button>;
+    };
+    render(
+      <ConfirmProvider>
+        <TestButton onResult={vi.fn()} />
+        <NoTitle />
+      </ConfirmProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
+    expect(screen.getByRole('alertdialog', { name: 'Delete thing' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'NoTitle' }));
+    expect(screen.getByRole('alertdialog', { name: 'Confirm' })).toBeInTheDocument();
+  });
+
   it('uses a neutral (non-red) confirm button and different default label when danger is false', async () => {
     const onResult = vi.fn();
     render(

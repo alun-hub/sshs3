@@ -1,5 +1,5 @@
 import { app, BrowserWindow, nativeImage } from 'electron';
-import { DEFAULT_WINDOW_SIZE, type Rect } from './windowBounds';
+import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE, type Rect } from './windowBounds';
 
 export interface AppWindowOptions {
   bounds?: Rect;
@@ -25,6 +25,8 @@ export function createAppWindow(options: AppWindowOptions): BrowserWindow {
     ...(options.bounds ? { x: options.bounds.x, y: options.bounds.y } : {}),
     width: size.width,
     height: size.height,
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     icon: appIcon,
     show: options.show,
     webPreferences: {

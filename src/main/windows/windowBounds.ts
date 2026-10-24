@@ -6,7 +6,11 @@ export interface Rect {
 }
 
 export const DEFAULT_WINDOW_SIZE = { width: 1200, height: 800 };
-const MIN_WINDOW_SIZE = { width: 400, height: 300 };
+/**
+ * Smallest window the UI is laid out for: below this the file manager toolbar and the dialogs clip their
+ * controls. Also given to BrowserWindow as minWidth/minHeight, so dragging cannot go below it either.
+ */
+export const MIN_WINDOW_SIZE = { width: 1024, height: 600 };
 /** How much of a restored window must overlap a display for the title bar to stay reachable. */
 const MIN_VISIBLE = { width: 120, height: 60 };
 

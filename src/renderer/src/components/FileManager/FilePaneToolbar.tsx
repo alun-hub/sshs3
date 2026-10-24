@@ -79,7 +79,8 @@ export const FilePaneToolbar: React.FC<FilePaneToolbarProps> = ({
   const [driveMenuRequest, setDriveMenuRequest] = React.useState(0);
   return (
   <div className="flex flex-col gap-0.5 border-b border-divider bg-app-surface-subtle px-2 py-0.5">
-    <div className="flex items-center gap-1">
+    {/* Wraps instead of clipping: at the 1024 px minimum window each pane is about 500 px wide. */}
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
       {/* Navigation Group */}
       <div className="flex items-center gap-0.5 shrink-0">
         <button
