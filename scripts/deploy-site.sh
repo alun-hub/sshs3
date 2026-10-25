@@ -29,7 +29,7 @@ TAG=""
 
 # Paths the build/sync may change and that this script commits. Everything else in the site
 # repo must already be committed.
-GENERATED_PATHS=(public/img public/docs content/_generated_metadata.json)
+GENERATED_PATHS=(public/img public/docs public/sitemap.xml content/_generated_metadata.json)
 
 YELLOW="\033[0;33m"; GREEN="\033[0;32m"; CYAN="\033[0;36m"; RED="\033[0;31m"; RESET="\033[0m"
 
