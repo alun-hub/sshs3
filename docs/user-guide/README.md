@@ -32,6 +32,8 @@ Every page follows the same shape, so new and updated text should too:
 5. **Troubleshooting last:** a `## N. Troubleshooting & Diagnostics` table (Symptom / Probable Root Cause / Corrective Action) closes the page.
 6. **Cross-links** use the new URLs (`/docs/workspace/terminal/`, `/docs/security/team-vault/`, …), never the old flat slugs.
 
+`npm run docs:lint` (`scripts/docs-lint.mjs`) checks this style: the title line, no emoji headings or retired blocks, no `<details>`, no callout inside a list, no bare `<tag>` outside backticks, balanced tables and fences, old flat or unknown page links, missing screenshots, shortcuts that are not defaults in `settings.ts`, plus numbered sections and a closing Troubleshooting section as warnings. It runs in pre-commit, in the docs CI workflow (`--strict`) and before `deploy-site.sh` builds. A page that legitimately has no Troubleshooting section goes on the allowlist at the top of the script.
+
 Before committing, run the site build (`npm run build:docs` then `npm run validate:links` in `sshs3-site`) and check the page in a browser in both themes.
 
 ## Writing rules

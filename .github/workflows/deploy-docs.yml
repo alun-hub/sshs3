@@ -27,6 +27,9 @@ jobs:
       - name: Validate documentation structure
         run: node scripts/sync-docs.mjs
 
+      - name: Lint documentation style
+        run: node scripts/docs-lint.mjs --strict
+
   dispatch-site-update:
     needs: validate-docs
     runs-on: ubuntu-24.04

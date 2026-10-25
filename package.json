@@ -29,6 +29,7 @@
     "package:appimage": "npm run build && electron-builder --linux AppImage",
     "package:win": "npm run build && electron-builder --win",
     "docs:sync": "node scripts/sync-docs.mjs",
+    "docs:lint": "node scripts/docs-lint.mjs",
     "deploy": "./scripts/deploy.sh",
     "copr": "./scripts/copr-build.sh"
   },

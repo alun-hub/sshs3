@@ -79,6 +79,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
+# 2a. Style lint of the guide itself (docs/user-guide); a failure stops here, before anything is built or pushed.
+node "$REPO_ROOT/scripts/docs-lint.mjs" --strict
+
 # 2. Screenshots (the script writes next to public/docs).
 SSHS3_SITE_DOCS_DIR="$SITE_DIR/public/docs" node "$REPO_ROOT/scripts/sync-docs.mjs" >/dev/null
 
