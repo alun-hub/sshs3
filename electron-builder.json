@@ -35,7 +35,8 @@
     "target": [
       "nsis",
       "portable",
-      "zip"
+      "zip",
+      "msi"
     ],
     "artifactName": "${name}-${version}.${ext}",
     "extraResources": [
@@ -72,6 +73,14 @@
       "--rpm-posttrans",
       "build/linux/rpm-posttrans.sh"
     ]
+  },
+  "msi": {
+    "oneClick": true,
+    "perMachine": true,
+    "upgradeCode": "E2342C4F-1463-4420-BB6B-CA3BDB735CB3",
+    "runAfterFinish": false,
+    "createDesktopShortcut": false,
+    "createStartMenuShortcut": true
   },
   "nsis": {
     "oneClick": false,
