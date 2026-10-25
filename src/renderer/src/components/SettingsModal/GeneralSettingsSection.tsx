@@ -167,7 +167,7 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
           Ask for confirmation when closing the window or quitting, so active SSH
           sessions and tunnels aren't closed by accident.
         </p>
-        <ManagedGroup managed={isManaged('autoCheckUpdates')}>
+        <ManagedGroup managed={isManaged('autoCheckUpdates')} indentNotice>
           <label className="flex items-center gap-2.5 cursor-pointer pt-1">
             <input
               type="checkbox"

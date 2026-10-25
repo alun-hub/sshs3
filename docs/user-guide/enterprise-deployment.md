@@ -46,9 +46,40 @@ A setting that is not in the policy stays under the user's control.
 
 ---
 
-## 3. Windows
+## 3. Installing on Windows
+
+Windows has two installers with different update paths:
+
+| | Installer (`sshs3-Setup-<version>.exe`) | MSI (`sshs3-<version>.msi`) |
+| :--- | :--- | :--- |
+| **Scope** | Per user | Per machine, 64-bit, in `C:\Program Files\sshs3`; needs administrator rights |
+| **Meant for** | Individuals and developers | SCCM, Intune or Group Policy software deployment |
+| **New versions** | Download them yourself for now; in-app updates need a code-signed build | Deploy a newer MSI; it replaces the installed version, and an older MSI is refused |
+| **In-app updater** | Not available yet (see left) | Never runs. sshs3 recognises the copy and says so under **Settings > General** |
+
+Do not install both on the same machine: they are separate copies.
+
+```text
+msiexec /i sshs3-<version>.msi /qn /l*v "%TEMP%\sshs3-install.log"
+msiexec /x sshs3-<version>.msi /qn
+```
+
+An exit code of `0` (or `3010`, restart needed) means success. Set the [policy](#2-available-policies) before the first start if you want it to apply from the beginning.
+
+> [!NOTE]
+> The MSI does not add the Windows Firewall rule that the interactive installer creates for the bundled X server. The rule is a precaution only: the X server is reached over the loopback interface.
+
+> [!WARNING]
+> Windows builds are not code-signed yet, so SmartScreen, AppLocker or another application-control policy may block the installer.
+
+---
+
+## 4. Group Policy and the Registry on Windows
 
 ### Group Policy
+
+> [!NOTE]
+> The registry values below are verified on Windows. The ADMX/ADML templates are checked by automated tests for structure and consistency, but have not yet been loaded in a Group Policy editor for this release.
 
 Copy `sshs3.admx` and `en-US\sshs3.adml` from `packaging/windows/policy/` in the repository into `C:\Windows\PolicyDefinitions` (or your central store). The policies appear under **Computer Configuration > Administrative Templates > sshs3**. For yes/no policies, **Enabled** forces the option on and **Disabled** forces it off; **Not configured** leaves it to the user.
 
@@ -61,7 +92,7 @@ reg add HKLM\SOFTWARE\Policies\sshs3 /v SmartcardAuthMode /t REG_SZ /d always-pr
 
 ---
 
-## 4. Linux and macOS
+## 5. Linux and macOS
 
 ```ini
 # Disable update checks on all machines
@@ -91,7 +122,7 @@ A commented example with every option is `packaging/policy.conf.example` in the 
 
 ---
 
-## 5. What Users See
+## 6. What Users See
 
 | Situation | Behaviour |
 | :--- | :--- |
@@ -106,13 +137,14 @@ A commented example with every option is `packaging/policy.conf.example` in the 
 
 ---
 
-## 6. Troubleshooting & Diagnostics
+## 7. Troubleshooting & Diagnostics
 
 | Symptom | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
 | Policy has no effect | sshs3 was not restarted, or the value name or type is wrong. | Restart the app; check the registry value name against section 2 and use `REG_DWORD` for yes/no. |
-| **Settings** warns that the policy could not be read | `policy.conf` or its folder is not owned by root, or is writable by group or others. | Fix the owner and mode as in section 4; the log shows the exact reason. |
+| **Settings** warns that the policy could not be read | `policy.conf` or its folder is not owned by root, or is writable by group or others. | Fix the owner and mode as in section 5; the log shows the exact reason. |
 | **Settings** warns about an ignored policy | The value has the wrong type, is not an allowed choice, or is registry text with non-ASCII characters. | Correct the value as in section 2. |
 | **Settings** warns that the key "exists but could not be read" | The registry key denies read access to ordinary users. | Give `Users` read access to `HKLM\SOFTWARE\Policies\sshs3`. |
 | A policy in `HKCU` or in `policy.conf` on Windows is ignored | Only `HKLM` is trusted on Windows. | Set the value under `HKLM\SOFTWARE\Policies\sshs3`. |
-| Group Policy editor shows no sshs3 folder | The templates are missing or the `.adml` is not in the language folder. | Copy both files to `PolicyDefinitions` as in section 3. |
+| Group Policy editor shows no sshs3 folder | The templates are missing or the `.adml` is not in the language folder. | Copy both files to `PolicyDefinitions` as in section 4. |
+| `msiexec /i … /qn` seems to do nothing | The command prompt was not elevated, or application control blocked the package (exit code `1625`). | Run it as administrator without `/qn` once to see any message, and add `/l*v <file>` for a log; read the exit code with `Start-Process msiexec -ArgumentList … -Wait -PassThru`. |

@@ -45,7 +45,7 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
     <div className="space-y-6">
       {/* OpenShift Support Toggle */}
       <div className="rounded-xl border border-border-subtle bg-app-surface p-4 space-y-2">
-        <ManagedGroup managed={isManaged('enableOpenShift')}>
+        <ManagedGroup managed={isManaged('enableOpenShift')} indentNotice>
           <label className="flex items-center gap-2.5 cursor-pointer">
             <input
               type="checkbox"
