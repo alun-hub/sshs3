@@ -26,8 +26,8 @@ describe('policy sources per platform', () => {
     expect(getPolicySources('win32', { SystemRoot: 'C:\\Windows' }).map((s) => s.name)).toEqual([
       'registry HKLM\\SOFTWARE\\Policies\\sshs3',
     ]);
-    expect(policyFilePath('linux')).toBe('/etc/sshs3/policy.json');
-    expect(policyFilePath('darwin')).toBe('/Library/Application Support/sshs3/policy.json');
+    expect(policyFilePath('linux')).toBe('/etc/sshs3/policy.conf');
+    expect(policyFilePath('darwin')).toBe('/Library/Application Support/sshs3/policy.conf');
     expect(policyFilePath('win32')).toBeNull();
     expect(getPolicySources('freebsd')).toEqual([]);
   });
@@ -78,7 +78,7 @@ describe('createFileSource', () => {
   /** A fake disk: an open file with the given stat and content, inside a folder with the given stat. */
   const disk = (opts: { file?: Partial<PolicyFileStat>; dir?: Partial<PolicyFileStat>; content?: string; openError?: string } = {}) => {
     const close = vi.fn(async () => {});
-    const readFile = vi.fn(async () => opts.content ?? '{"a":1}');
+    const readFile = vi.fn(async () => opts.content ?? 'autoCheckUpdates = false');
     const io: PolicyFileIo = {
       lstat: vi.fn(async () => dirStat(opts.dir)),
       open: vi.fn(async () => {
@@ -90,33 +90,37 @@ describe('createFileSource', () => {
   };
 
   it('reports absent when the file does not exist', async () => {
-    expect(await createFileSource('/p/policy.json', disk({ openError: 'ENOENT' }).io).read()).toEqual({ status: 'absent' });
+    expect(await createFileSource('/p/policy.conf', disk({ openError: 'ENOENT' }).io).read()).toEqual({ status: 'absent' });
   });
 
   it('refuses a symbolic link (opened with O_NOFOLLOW)', async () => {
-    const result = await createFileSource('/p/policy.json', disk({ openError: 'ELOOP' }).io).read();
-    expect(result).toEqual({ status: 'error', message: 'Ignoring /p/policy.json: it is a symbolic link.' });
+    const result = await createFileSource('/p/policy.conf', disk({ openError: 'ELOOP' }).io).read();
+    expect(result).toEqual({ status: 'error', message: 'Ignoring /p/policy.conf: it is a symbolic link.' });
   });
 
   it('checks the open file, refuses an untrusted one without reading it, and closes it', async () => {
     const d = disk({ file: { uid: 5 } });
-    const result = await createFileSource('/p/policy.json', d.io).read();
+    const result = await createFileSource('/p/policy.conf', d.io).read();
     expect(result.status).toBe('error');
     expect(d.readFile).not.toHaveBeenCalled();
     expect(d.close).toHaveBeenCalledTimes(1);
   });
 
-  it('reads and parses a trusted file, and reports bad JSON as an error', async () => {
-    const good = disk();
-    expect(await createFileSource('/p/policy.json', good.io).read()).toEqual({ status: 'ok', raw: { a: 1 } });
+  it('reads and parses a trusted file and closes it', async () => {
+    const good = disk({ content: '# comment\nautoCheckUpdates = false\nbogus line\n' });
+    const result = await createFileSource('/p/policy.conf', good.io).read();
+    expect(result).toEqual({
+      status: 'ok',
+      raw: { autoCheckUpdates: false },
+      warnings: ['Line 3 ignored: expected "name = value".'],
+    });
     expect(good.close).toHaveBeenCalledTimes(1);
-    expect((await createFileSource('/p/policy.json', disk({ content: '{' }).io).read()).status).toBe('error');
   });
 
   it('refuses a policy in a folder an ordinary user can write, since they could delete it', async () => {
     const d = disk({ dir: { uid: 1000 } });
-    const result = await createFileSource('/p/policy.json', d.io).read();
-    expect(result).toEqual({ status: 'error', message: 'Ignoring /p/policy.json: its folder is not owned by root.' });
+    const result = await createFileSource('/p/policy.conf', d.io).read();
+    expect(result).toEqual({ status: 'error', message: 'Ignoring /p/policy.conf: its folder is not owned by root.' });
     expect(d.readFile).not.toHaveBeenCalled();
   });
 });

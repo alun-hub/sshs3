@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { parseRegQueryOutput, registryValuesToRaw } from './policyParse';
+import { parsePolicyConf, parseRegQueryOutput, registryValuesToRaw } from './policyParse';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,10 +20,10 @@ export interface PolicySource {
 
 const REGISTRY_KEY = 'HKLM\\SOFTWARE\\Policies\\sshs3';
 
-/** Machine-wide, admin-only policy.json locations. Windows has none: HKLM is the protected store there. */
+/** Machine-wide, admin-only policy.conf locations. Windows has none: HKLM is the protected store there. */
 export function policyFilePath(platform: NodeJS.Platform): string | null {
-  if (platform === 'linux') return '/etc/sshs3/policy.json';
-  if (platform === 'darwin') return '/Library/Application Support/sshs3/policy.json';
+  if (platform === 'linux') return '/etc/sshs3/policy.conf';
+  if (platform === 'darwin') return '/Library/Application Support/sshs3/policy.conf';
   return null;
 }
 
@@ -136,7 +136,7 @@ const diskIo: PolicyFileIo = {
 };
 
 /**
- * Linux / macOS: a root-owned policy.json in a root-owned folder, so no ordinary user could have planted, edited or
+ * Linux / macOS: a root-owned policy.conf in a root-owned folder, so no ordinary user could have planted, edited or
  * removed it. The file is opened once (never following a symlink) and the trust check is made on that open file, so
  * it cannot be swapped between the check and the read.
  */
@@ -157,7 +157,8 @@ export function createFileSource(filePath: string, io: PolicyFileIo = diskIo): P
         const untrusted =
           describeUntrustedPolicyFile(await handle.stat()) ?? describeUntrustedPolicyDir(await io.lstat(path.dirname(filePath)));
         if (untrusted) return { status: 'error', message: `Ignoring ${filePath}: ${untrusted}.` };
-        return { status: 'ok', raw: JSON.parse(await handle.readFile('utf-8')) };
+        const { raw, warnings } = parsePolicyConf(await handle.readFile('utf-8'));
+        return { status: 'ok', raw, warnings };
       } catch (err) {
         return { status: 'error', message: `Could not read ${filePath}: ${(err as Error).message}` };
       } finally {

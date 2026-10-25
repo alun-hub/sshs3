@@ -1,6 +1,6 @@
 ## Enterprise Deployment & Policy
 
-Administrators can set sshs3 options once per machine and lock them for users, using Group Policy (the Windows registry) or a root-owned `policy.json` on Linux and macOS. A locked setting shows the policy value, cannot be changed in **Settings**, and is never written to the user's own settings, so removing the policy gives the user their own choice back.
+Administrators can set sshs3 options once per machine and lock them for users, using Group Policy (the Windows registry) or a root-owned `policy.conf` on Linux and macOS. A locked setting shows the policy value, cannot be changed in **Settings**, and is never written to the user's own settings, so removing the policy gives the user their own choice back.
 
 ![Settings dialog](/img/docs/settings-overview.png)
 
@@ -10,28 +10,28 @@ Administrators can set sshs3 options once per machine and lock them for users, u
 
 | | Windows | Linux | macOS |
 | :--- | :--- | :--- | :--- |
-| **Location** | `HKLM\SOFTWARE\Policies\sshs3` | `/etc/sshs3/policy.json` | `/Library/Application Support/sshs3/policy.json` |
+| **Location** | `HKLM\SOFTWARE\Policies\sshs3` | `/etc/sshs3/policy.conf` | `/Library/Application Support/sshs3/policy.conf` |
 | **Written by** | Group Policy (ADMX), Intune, `reg add` | `root` (config management, package) | `root` |
 | **Trusted when** | Always (only administrators can write `HKLM`) | The file and its folder are owned by root and not writable by group or others, and neither is a symbolic link | Same as Linux |
 
 - Policy is read once at startup. **Restart sshs3 after changing it.**
 - Per-user locations (`HKCU`, environment variables, files in the user's home) are deliberately ignored, because the user could change them.
-- If a policy exists but cannot be trusted or read (for example a `policy.json` that is writable by group), nothing from it is applied. **Settings** then shows a warning, and the log has the reason.
+- If a policy exists but cannot be trusted or read (for example a `policy.conf` that is writable by group), nothing from it is applied. **Settings** then shows a warning, and the log has the reason.
 - A value that is invalid (wrong type or not an allowed choice) is ignored with a warning; the other values still apply.
 
 > [!NOTE]
 > Policy is a configuration control. It stops users from changing a setting in the app or through files they own; it is not a defense against someone who can already run arbitrary code as an administrator on the machine.
 
 > [!IMPORTANT]
-> On Windows the policy is read from `HKLM` only. A `policy.json` is not read on Windows, because a standard user can create files under `%PROGRAMDATA%`.
+> On Windows the policy is read from `HKLM` only. A `policy.conf` is not read on Windows, because a standard user can create files under `%PROGRAMDATA%`.
 
 ---
 
 ## 2. Available Policies
 
-The registry value name is the JSON key with a capital first letter (`autoCheckUpdates` is `AutoCheckUpdates`). Use `REG_DWORD` `1` / `0` for true / false and `REG_SZ` for text. Text values in the registry must be plain ASCII (a value with other characters is ignored with a warning); use `policy.json` on Linux and macOS for anything else.
+The registry value name is the policy name with a capital first letter (`autoCheckUpdates` is `AutoCheckUpdates`); in `policy.conf` the names are not case-sensitive. Use `REG_DWORD` `1` / `0` for true / false and `REG_SZ` for text. Text values in the registry must be plain ASCII (a value with other characters is ignored with a warning); use `policy.conf` on Linux and macOS for anything else.
 
-| JSON key | Type | Allowed values | Effect |
+| Policy name | Type | Allowed values | Effect |
 | :--- | :--- | :--- | :--- |
 | `autoCheckUpdates` | boolean | `true`, `false` | `false` stops all update traffic, including **Check now**. Same effect as `SSHS3_DISABLE_UPDATES=1`, which still works. `true` keeps the check on and locks the option. |
 | `smartcardAuthMode` | text | `always-prompt`, `agent-per-session`, `agent-global` | Smartcard / FIDO2 PIN caching mode. |
@@ -63,18 +63,28 @@ reg add HKLM\SOFTWARE\Policies\sshs3 /v SmartcardAuthMode /t REG_SZ /d always-pr
 
 ## 4. Linux and macOS
 
-```json
-{
-  "autoCheckUpdates": false,
-  "smartcardAuthMode": "always-prompt",
-  "gitKeyFetch": false
-}
+```ini
+# Disable update checks on all machines
+autoCheckUpdates = false
+smartcardAuthMode = always-prompt
+gitKeyFetch = false
 ```
 
 ```text
 sudo install -d -m 0755 -o root -g root /etc/sshs3
-sudo install -m 0644 -o root -g root policy.json /etc/sshs3/policy.json
+sudo install -m 0644 -o root -g root policy.conf /etc/sshs3/policy.conf
 ```
+
+A commented example with every option is `packaging/policy.conf.example` in the repository; copy it and remove the `# ` in front of the lines you want to enforce.
+
+| Rule | Detail |
+| :--- | :--- |
+| Lines | One `name = value` per line. Blank lines are ignored. |
+| Comments | A line that starts with `#` or `;`. There are no comments after a value, so `#` and `;` are allowed inside a value. |
+| Values | The rest of the line, trimmed; no quotes or escapes. Yes/no values are exactly `true`, `false`, `1` or `0`. |
+| Names | Not case-sensitive, so the registry names such as `AutoCheckUpdates` work too. |
+| Repeats | If a name appears twice, the first value is used and a warning is shown. |
+| Section | An optional `[sshs3]` line at the top is accepted; other sections are ignored with a warning. |
 
 > [!NOTE]
 > On macOS use `/Library/Application Support/sshs3/` instead of `/etc/sshs3/`.
@@ -101,8 +111,8 @@ sudo install -m 0644 -o root -g root policy.json /etc/sshs3/policy.json
 | Symptom | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
 | Policy has no effect | sshs3 was not restarted, or the value name or type is wrong. | Restart the app; check the registry value name against section 2 and use `REG_DWORD` for yes/no. |
-| **Settings** warns that the policy could not be read | `policy.json` or its folder is not owned by root, or is writable by group or others. | Fix the owner and mode as in section 4; the log shows the exact reason. |
+| **Settings** warns that the policy could not be read | `policy.conf` or its folder is not owned by root, or is writable by group or others. | Fix the owner and mode as in section 4; the log shows the exact reason. |
 | **Settings** warns about an ignored policy | The value has the wrong type, is not an allowed choice, or is registry text with non-ASCII characters. | Correct the value as in section 2. |
 | **Settings** warns that the key "exists but could not be read" | The registry key denies read access to ordinary users. | Give `Users` read access to `HKLM\SOFTWARE\Policies\sshs3`. |
-| A policy in `HKCU` or in `policy.json` on Windows is ignored | Only `HKLM` is trusted on Windows. | Set the value under `HKLM\SOFTWARE\Policies\sshs3`. |
+| A policy in `HKCU` or in `policy.conf` on Windows is ignored | Only `HKLM` is trusted on Windows. | Set the value under `HKLM\SOFTWARE\Policies\sshs3`. |
 | Group Policy editor shows no sshs3 folder | The templates are missing or the `.adml` is not in the language folder. | Copy both files to `PolicyDefinitions` as in section 3. |

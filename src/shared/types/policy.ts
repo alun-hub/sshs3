@@ -2,7 +2,7 @@ import type { AppSettings } from './settings';
 
 /**
  * Enterprise policy: values an administrator sets once per machine (Windows registry / GPO, or a root-owned
- * policy.json) that override and lock the matching user setting. This table is the single source of truth:
+ * policy.conf) that override and lock the matching user setting. This table is the single source of truth:
  * parsing, registry reading, the settings UI and the ADMX/ADML templates all derive from it, so adding a policy
  * is one entry here plus its ADMX/ADML entry and its enforcement point.
  */
