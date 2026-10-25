@@ -99,6 +99,7 @@ import type { SessionData } from '../shared/types/session';
 import type { ClipboardHistoryEntry } from '../shared/types/clipboard';
 import type { Snippet } from '../shared/types/snippets';
 import type { AppSettings } from '../shared/types/settings';
+import type { PolicyInfo } from '../shared/types/policy';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from '../shared/types/perf';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../shared/types/sync';
 import type { TeamVaultPayload, TeamVaultRole, TeamVaultStatus, TeamVaultSyncPreview } from '../shared/types/teamVault';
@@ -523,6 +524,8 @@ export const api: MultiSSHApi = {
 
   settingsSave: (settings: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE, settings),
+
+  policyGet: (): Promise<PolicyInfo> => ipcRenderer.invoke(IPC_CHANNELS.POLICY_GET),
 
   settingsSetTeamVaultTabVisible: (vaultId: string, visible: boolean): Promise<AppSettings> =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_TEAM_VAULT_TAB_VISIBLE, vaultId, visible),

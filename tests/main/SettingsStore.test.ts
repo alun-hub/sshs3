@@ -103,3 +103,54 @@ describe('SettingsStore', () => {
     });
   });
 });
+
+describe('SettingsStore with a machine policy', () => {
+  let tempDir: string;
+  let settingsFile: string;
+  const policy = { settings: { autoCheckUpdates: false }, features: {} } as const;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'multissh-settings-policy-'));
+    settingsFile = path.join(tempDir, 'settings.json');
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('returns the policy value but keeps the stored one for sync', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ autoCheckUpdates: true }));
+    const store = new SettingsStore(settingsFile, policy);
+    expect((await store.getSettings()).autoCheckUpdates).toBe(false);
+    expect((await store.getStoredSettings()).autoCheckUpdates).toBe(true);
+  });
+
+  it('never writes a managed value to disk, so removing the policy restores the user choice', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ autoCheckUpdates: true }));
+    const managed = new SettingsStore(settingsFile, policy);
+    const saved = await managed.saveSettings({ autoCheckUpdates: true, theme: 'light' });
+    expect(saved.autoCheckUpdates).toBe(false);
+    await managed.setTeamVaultTabVisible('v1', true);
+    const onDisk = JSON.parse(await fs.readFile(settingsFile, 'utf-8'));
+    expect(onDisk.autoCheckUpdates).toBe(true);
+    expect(onDisk.theme).toBe('light');
+    expect((await new SettingsStore(settingsFile).getSettings()).autoCheckUpdates).toBe(true);
+  });
+
+  it('stores a synced value for a managed key when sync writes back, but never the policy value', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ autoCheckUpdates: true }));
+    const store = new SettingsStore(settingsFile, policy);
+    const stamp = '2026-10-25T12:00:00.000Z';
+    await store.saveSettings({ autoCheckUpdates: true, theme: 'light', updatedAt: stamp }, { preserveTimestamp: true });
+    const onDisk = JSON.parse(await fs.readFile(settingsFile, 'utf-8'));
+    expect(onDisk).toMatchObject({ autoCheckUpdates: true, theme: 'light', updatedAt: stamp });
+    expect((await store.getSettings()).autoCheckUpdates).toBe(false);
+  });
+
+  it('does not let a save try to change a locked value', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ autoCheckUpdates: true }));
+    const store = new SettingsStore(settingsFile, policy);
+    await store.saveSettings({ autoCheckUpdates: false });
+    expect(JSON.parse(await fs.readFile(settingsFile, 'utf-8')).autoCheckUpdates).toBe(true);
+  });
+});

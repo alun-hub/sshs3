@@ -2,12 +2,14 @@ import React from 'react';
 import { RotateCcw, Plus, Trash2 } from 'lucide-react';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { SettingsForm } from './useSettingsForm';
+import { ManagedGroup } from './Managed';
 
 /** The "Kubernetes & Debug" page of the settings dialog. */
 export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
   const {
     enableOpenShift,
     setEnableOpenShift,
+    isManaged,
     k8sDebugImages,
     setK8sDebugImages,
     showAddDebugImage,
@@ -43,17 +45,19 @@ export const KubernetesSettingsSection: React.FC<{ form: SettingsForm }> = ({ fo
     <div className="space-y-6">
       {/* OpenShift Support Toggle */}
       <div className="rounded-xl border border-border-subtle bg-app-surface p-4 space-y-2">
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={enableOpenShift}
-            onChange={(e) => setEnableOpenShift(e.target.checked)}
-            className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
-          />
-          <span className="text-xs font-semibold text-txt-primary">
-            Enable OpenShift Support
-          </span>
-        </label>
+        <ManagedGroup managed={isManaged('enableOpenShift')}>
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableOpenShift}
+              onChange={(e) => setEnableOpenShift(e.target.checked)}
+              className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+            />
+            <span className="text-xs font-semibold text-txt-primary">
+              Enable OpenShift Support
+            </span>
+          </label>
+        </ManagedGroup>
         <p className="pl-6 text-xs text-txt-muted leading-relaxed">
           Enables OpenShift-specific capabilities, such as the OpenShift Login dialog (token-based <code>oc login</code>) in the Kubernetes connection tree and the local <code>oc</code> CLI shim in terminal sessions.
         </p>

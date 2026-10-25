@@ -194,4 +194,15 @@ describe('DotfilePoolManagerModal Component', () => {
     // The pool stays open after saving.
     expect(screen.getByDisplayValue('Linux Servers')).toBeInTheDocument();
   });
+
+  it('disables importing from Git when an administrator blocks it', async () => {
+    window.multissh = {
+      ...window.multissh,
+      policyGet: vi.fn().mockResolvedValue({ managed: [], features: { dotfileGitImport: false }, warnings: [] }),
+    } as unknown as typeof window.multissh;
+    render(<DotfilePoolManagerModal open={true} onClose={vi.fn()} />);
+
+    expect(await screen.findByRole('note')).toHaveTextContent('Disabled by your administrator.');
+    expect(screen.getByRole('button', { name: /From Git/ })).toBeDisabled();
+  });
 });

@@ -24,6 +24,7 @@ import {
 } from '../../src/main/services/ProfileSyncService';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { DotfilePool } from '../../src/shared/types/dotfiles';
+import type { PolicyDocument } from '../../src/shared/types/policy';
 
 const FAST_PARAMS: ScryptParams = { N: 16, r: 1, p: 1, maxmem: 4 * 1024 * 1024 };
 
@@ -134,13 +135,13 @@ interface Harness {
   knownHostsPath: string;
 }
 
-async function makeHarness(topologySalt: Buffer, credentialsSalt: Buffer): Promise<Harness> {
+async function makeHarness(topologySalt: Buffer, credentialsSalt: Buffer, policy?: PolicyDocument): Promise<Harness> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-sync-test-'));
   const sshConfigPath = path.join(dir, 'ssh_config');
   const knownHostsPath = path.join(dir, 'known_hosts');
   const profileStore = new ProfileStore(path.join(dir, 'profiles.json'));
   const dotfilePoolStore = new DotfilePoolStore(path.join(dir, 'dotfile-pools.json'));
-  const settingsStore = new SettingsStore(path.join(dir, 'settings.json'));
+  const settingsStore = new SettingsStore(path.join(dir, 'settings.json'), policy);
   const dirSyncStore = new DirectorySyncProfileStore(path.join(dir, 'directory-sync-profiles.json'));
   const k8sStore = new K8sProfileStore(path.join(dir, 'k8s-profiles.json'));
   const sync = new ProfileSyncService(profileStore, dotfilePoolStore, settingsStore, makeCrypto(topologySalt, credentialsSalt), {
@@ -176,8 +177,8 @@ describe('ProfileSyncService', () => {
   });
 
   /** A "machine" already joined to the same sync setup as every other harness() call within one test. */
-  async function harness(): Promise<Harness> {
-    const h = await makeHarness(sharedTopologySalt, sharedCredentialsSalt);
+  async function harness(policy?: PolicyDocument): Promise<Harness> {
+    const h = await makeHarness(sharedTopologySalt, sharedCredentialsSalt, policy);
     dirs.push(h.dir);
     return h;
   }
@@ -749,6 +750,40 @@ describe('ProfileSyncService', () => {
     expect(settings.x11ServerPath).toBe('/usr/bin/Xorg');
     expect(settings.x11ServerArgs).toBeUndefined();
     expect(settings.smartcardLibPath).toBeUndefined();
+  });
+
+  describe('with a machine policy', () => {
+    const policy: PolicyDocument = { settings: { x11ServerMode: 'always' }, features: {} };
+
+    it('pushes the user\'s stored value, never the policy value, so unmanaged machines are unaffected', async () => {
+      const managed = await harness(policy);
+      await fs.writeFile(
+        path.join(managed.dir, 'settings.json'),
+        JSON.stringify({ x11ServerMode: 'manual', updatedAt: new Date().toISOString() })
+      );
+      expect((await managed.settingsStore.getSettings()).x11ServerMode).toBe('always');
+      await managed.sync.pushToRemote(provider);
+
+      const other = await harness();
+      await other.sync.pullFromRemote(provider);
+      expect((await other.settingsStore.getSettings()).x11ServerMode).toBe('manual');
+    });
+
+    it('keeps a pulled value for a managed setting underneath the policy value', async () => {
+      const managed = await harness(policy);
+      await managed.settingsStore.saveSettings({ theme: 'dark' });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      const other = await harness();
+      await other.settingsStore.saveSettings({ theme: 'light', x11ServerMode: 'manual' });
+      await other.sync.pushToRemote(provider);
+      await managed.sync.pullFromRemote(provider);
+
+      expect((await managed.settingsStore.getSettings()).theme).toBe('light');
+      expect((await managed.settingsStore.getSettings()).x11ServerMode).toBe('always');
+      // The synced value is kept underneath, so this machine's next push cannot revert it on the others.
+      expect((await managed.settingsStore.getStoredSettings()).x11ServerMode).toBe('manual');
+    });
   });
 
   it('keeps the whole settings object with the newer updatedAt (last-write-wins)', async () => {

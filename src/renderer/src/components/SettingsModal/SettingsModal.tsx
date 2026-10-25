@@ -248,6 +248,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onScroll={updateScrollShadow}
               className="h-full overflow-y-auto p-5 pb-8 text-xs text-txt-secondary space-y-5"
             >
+              {form.policyWarnings.length > 0 && (
+                <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs text-amber-300/90 space-y-1">
+                  <p className="font-medium">Your organization's policy was not fully applied.</p>
+                  {form.policyWarnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                </div>
+              )}
+
               {/* Category: General */}
               {activeCategory === 'general' && <GeneralSettingsSection form={form} />}
 

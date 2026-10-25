@@ -20,6 +20,8 @@ import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
 import { createRendererLogger } from '../../lib/log';
+import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
+import { FeatureBlockedNotice } from './Managed';
 const log = createRendererLogger('DotfilePoolManagerModal');
 
 interface DotfilePoolManagerModalProps {
@@ -70,6 +72,7 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
 
   // Git import state
   const [gitImportOpen, setGitImportOpen] = useState(false);
+  const gitImportBlocked = isFeatureBlocked(usePolicy(), 'dotfileGitImport');
   const [gitImportUrl, setGitImportUrl] = useState('');
   const [gitImporting, setGitImporting] = useState(false);
   const [gitImportError, setGitImportError] = useState<string | null>(null);
@@ -360,16 +363,19 @@ export const DotfilePoolManagerModal: React.FC<DotfilePoolManagerModalProps> = (
               </button>
               <button
                 type="button"
+                disabled={gitImportBlocked}
+                aria-describedby={gitImportBlocked ? 'dotfile-git-import-blocked' : undefined}
                 onClick={() => {
                   setGitImportError(null);
                   setGitImportOpen(true);
                 }}
-                className="flex items-center justify-center gap-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
+                className="flex items-center justify-center gap-1 disabled:opacity-50 rounded-lg border border-border-subtle bg-app-surface-subtle px-2 py-1.5 text-xs font-medium text-sky-400 hover:bg-app-surface-hover transition-colors"
               >
                 <GitBranch className="h-3.5 w-3.5" />
                 From Git
               </button>
             </div>
+            <FeatureBlockedNotice blocked={gitImportBlocked} id="dotfile-git-import-blocked" />
             {loading ? (
               <div className="flex items-center justify-center py-4 text-txt-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />

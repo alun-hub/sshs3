@@ -5,6 +5,7 @@ import { X11ServerSection } from './X11ServerSection';
 import type { SettingsForm } from './useSettingsForm';
 import { validateCustomPortRegex } from '../../lib/portDetection';
 import { useConfirm } from '../ConfirmDialog';
+import { ManagedGroup } from './Managed';
 
 /** The "Terminal" page of the settings dialog. */
 export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -40,6 +41,7 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setAutoSyncLocalSshConfig,
     localTerminalAgentMode,
     setLocalTerminalAgentMode,
+    isManaged,
   } = form;
   const portRegexError = validateCustomPortRegex(terminalPortForwardCustomRegex).error;
   const confirm = useConfirm();
@@ -308,20 +310,22 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             Configure how the <code>SSH_AUTH_SOCK</code> environment variable is set in local shell terminals.
           </p>
         </div>
-        <select
-          id="local-terminal-agent-mode"
-          value={localTerminalAgentMode}
-          onChange={(e) =>
-            setLocalTerminalAgentMode(
-              e.target.value as 'auto' | 'system' | 'app-managed' | 'disabled'
-            )
-          }
-          className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
-        >
-          <option value="auto">Auto (Active smartcard agent, else system/login shell agent, else sshs3-managed)</option>
-          <option value="system">System Only (Inherit system or login shell SSH_AUTH_SOCK)</option>
-          <option value="disabled">Disabled (Do not set SSH_AUTH_SOCK)</option>
-        </select>
+        <ManagedGroup managed={isManaged('localTerminalAgentMode')}>
+          <select
+            id="local-terminal-agent-mode"
+            value={localTerminalAgentMode}
+            onChange={(e) =>
+              setLocalTerminalAgentMode(
+                e.target.value as 'auto' | 'system' | 'app-managed' | 'disabled'
+              )
+            }
+            className="w-full rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
+          >
+            <option value="auto">Auto (Active smartcard agent, else system/login shell agent, else sshs3-managed)</option>
+            <option value="system">System Only (Inherit system or login shell SSH_AUTH_SOCK)</option>
+            <option value="disabled">Disabled (Do not set SSH_AUTH_SOCK)</option>
+          </select>
+        </ManagedGroup>
       </div>
 
       <div className="space-y-2 pt-3 border-t border-divider">

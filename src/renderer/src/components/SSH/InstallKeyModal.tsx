@@ -21,6 +21,8 @@ import { classNames, describeIpcError } from '../../lib/format';
 import { chooseLoginOrder, LOGIN_STEP_LABELS } from '@shared/loginOrder';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
+import { FeatureBlockedNotice } from '../SettingsModal/Managed';
 
 interface InstallKeyModalProps {
   /** Profilen att installera nycklar på; får vara osparad. */
@@ -80,6 +82,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
 
   // Git public key import state
   const [gitProvider, setGitProvider] = useState<'github' | 'gitlab' | 'custom'>('github');
+  const gitKeyFetchBlocked = isFeatureBlocked(usePolicy(), 'gitKeyFetch');
   const [gitUsername, setGitUsername] = useState('');
   const [gitCustomHost, setGitCustomHost] = useState('');
   const [fetchingGit, setFetchingGit] = useState(false);
@@ -258,6 +261,7 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
   };
 
   const fetchGitKeys = async () => {
+    if (gitKeyFetchBlocked) return;
     const user = gitUsername.trim();
     if (!user) return;
     setFetchingGit(true);
@@ -512,13 +516,15 @@ export const InstallKeyModal: React.FC<InstallKeyModalProps> = ({ connection, on
               <button
                 type="button"
                 onClick={() => void fetchGitKeys()}
-                disabled={!gitUsername.trim() || fetchingGit || busy}
+                disabled={!gitUsername.trim() || fetchingGit || busy || gitKeyFetchBlocked}
+                aria-describedby={gitKeyFetchBlocked ? 'install-git-key-fetch-blocked' : undefined}
                 className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1 text-xs text-txt-primary transition-colors hover:bg-app-surface-hover disabled:opacity-50"
               >
                 {fetchingGit && <Loader2 className="h-3 w-3 animate-spin" />}
                 Fetch keys
               </button>
             </div>
+            <FeatureBlockedNotice blocked={gitKeyFetchBlocked} id="install-git-key-fetch-blocked" />
           </div>
 
           <div className="space-y-1.5">

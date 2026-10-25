@@ -5,6 +5,7 @@ import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/
 import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppTheme, type SessionExitAction, type SmartcardAuthMode } from '@shared/types/settings';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
+import type { PolicyInfo, PolicySettingId } from '@shared/types/policy';
 import { comboFromKeyboardEvent, modifierPreviewFromKeyboardEvent } from '../../lib/shortcuts';
 import { validateCustomPortRegex } from '../../lib/portDetection';
 import { type SettingsCategory, normalizeAgentMode } from './settingsConstants';
@@ -62,6 +63,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     currentSettings.sessionExitAction ?? 'reconnect'
   );
   const updateState = useUpdateState();
+  const [policy, setPolicy] = useState<PolicyInfo | null>(null);
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(currentSettings.autoCheckUpdates ?? true);
   const [confirmBeforeQuit, setConfirmBeforeQuit] = useState<boolean>(
     currentSettings.confirmBeforeQuit ?? false
@@ -146,6 +148,23 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
 
   // null while unknown (still loading) - only "false" should ever trigger the warning card.
   const [credentialEncryptionAvailable, setCredentialEncryptionAvailable] = useState<boolean | null>(null);
+
+  // Which settings an administrator's policy locks (read each time the dialog opens; policy changes need a restart anyway).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    window.multissh
+      ?.policyGet?.()
+      .then((info) => {
+        if (!cancelled) setPolicy(info);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+  const isManaged = (id: PolicySettingId): boolean => policy?.managed.includes(id) ?? false;
+  const policyWarnings = policy?.warnings ?? [];
 
   // Re-seed the draft only when the dialog opens. An external settings change while it is open
   // (e.g. the font-size shortcuts) must not throw away what the user has edited.
@@ -493,6 +512,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     credentialEncryptionAvailable,
     setCredentialEncryptionAvailable,
     updateState,
+    isManaged,
+    policyWarnings,
     isLinux,
     refreshX11Status,
     handleStartX11,

@@ -209,4 +209,21 @@ describe('GitSettingsPanel', () => {
     expect(screen.getByText(/Disabled \(Git branch and actions hidden\)/i)).toBeInTheDocument();
     expect(screen.getByTestId('toggle-filemanager-git-integration')).not.toBeChecked();
   });
+
+  it('disables Fetch keys with an explanation when an administrator blocks it', async () => {
+    window.multissh = {
+      ...window.multissh,
+      policyGet: vi.fn().mockResolvedValue({ managed: [], features: { gitKeyFetch: false }, warnings: [] }),
+    } as any;
+    render(<GitSettingsPanel />);
+
+    fireEvent.change(screen.getByPlaceholderText(/GitHub username/i), { target: { value: 'octocat' } });
+    const fetchBtn = screen.getByRole('button', { name: /Fetch keys/i });
+    expect(await screen.findByRole('note')).toHaveTextContent('Disabled by your administrator.');
+    expect(fetchBtn).toBeDisabled();
+    expect(fetchBtn).toHaveAccessibleDescription('Disabled by your administrator.');
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/GitHub username/i), { key: 'Enter' });
+    expect(gitFetchPublicKeys).not.toHaveBeenCalled();
+  });
 });

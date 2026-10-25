@@ -3,6 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types/settings';
+import { EMPTY_POLICY, type PolicyDocument } from '../../shared/types/policy';
+import { applyPolicy, stripLockedKeys } from '../policy/policyApply';
 
 /**
  * The settings UI saves the whole shortcut map, defaults included, so a binding that was still the
@@ -31,7 +33,15 @@ export class SettingsStore {
   private filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(customPath?: string) {
+  /**
+   * @param policy Machine policy (see src/main/policy). Its values override the user's and are locked:
+   *   `getSettings()` returns them, and they are never written to `settings.json`, so removing the policy
+   *   gives the user their own choice back.
+   */
+  constructor(
+    customPath?: string,
+    private readonly policy: PolicyDocument = EMPTY_POLICY
+  ) {
     if (customPath) {
       this.filePath = customPath;
     } else {
@@ -61,7 +71,20 @@ export class SettingsStore {
     }
   }
 
+  /** The effective settings: what the user saved, with policy-managed values taken from the policy. */
   public async getSettings(): Promise<AppSettings> {
+    return applyPolicy(await this.readStored(), this.policy);
+  }
+
+  /**
+   * What is stored on disk, without policy. Only for profile sync, which must neither upload a managed value
+   * to an unmanaged machine nor compare against one.
+   */
+  public getStoredSettings(): Promise<AppSettings> {
+    return this.readStored();
+  }
+
+  private async readStored(): Promise<AppSettings> {
     try {
       const raw = await fs.readFile(this.filePath, 'utf-8');
       const data = migrateShortcuts(JSON.parse(raw));
@@ -92,20 +115,24 @@ export class SettingsStore {
   /**
    * @param options.preserveTimestamp When true, don't stamp `updatedAt` with
    *   "now". Used exclusively by remote profile sync when writing back the
-   *   winning side's settings object as-is.
+   *   winning side's settings object as-is. That write-back also keeps the synced
+   *   value of a policy-managed key: it is not the policy value (never stored), and
+   *   dropping it while adopting the newer timestamp would let this machine's stale
+   *   value overwrite the remote one on the next push.
    */
   public async saveSettings(
     partial: Partial<AppSettings>,
     options?: { preserveTimestamp?: boolean }
   ): Promise<AppSettings> {
     return this.queueMutation(async () => {
-      const current = await this.getSettings();
+      const current = await this.readStored();
+      const changes = options?.preserveTimestamp ? partial : stripLockedKeys(partial, this.policy);
       const updated: AppSettings = {
         ...current,
-        ...partial,
-        updatedAt: options?.preserveTimestamp ? (partial.updatedAt ?? current.updatedAt) : new Date().toISOString(),
+        ...changes,
+        updatedAt: options?.preserveTimestamp ? (changes.updatedAt ?? current.updatedAt) : new Date().toISOString(),
       };
-      return this.persist(updated);
+      return applyPolicy(await this.persist(updated), this.policy);
     });
   }
 
@@ -121,7 +148,7 @@ export class SettingsStore {
    */
   public async setTeamVaultTabVisible(vaultId: string, visible: boolean): Promise<AppSettings> {
     return this.queueMutation(async () => {
-      const current = await this.getSettings();
+      const current = await this.readStored();
       const updated: AppSettings = {
         ...current,
         connectionManagerVisibleTeamVaults: {
@@ -130,7 +157,7 @@ export class SettingsStore {
         },
         updatedAt: new Date().toISOString(),
       };
-      return this.persist(updated);
+      return applyPolicy(await this.persist(updated), this.policy);
     });
   }
 

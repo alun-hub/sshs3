@@ -63,6 +63,9 @@ import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHand
 import type { DragOutService } from './dragout/DragOutService';
 import { registerGeneralHandlers } from './ipc/generalHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
+import { registerPolicyHandlers } from './ipc/policyHandlers';
+import { NO_POLICY, type LoadedPolicy } from './policy/loadPolicy';
+import { isUpdateCheckDisabled } from './policy/policyApply';
 import { registerConnectionTestHandlers } from './ipc/connectionTestHandlers';
 import { registerGitHandlers } from './ipc/gitHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
@@ -111,6 +114,8 @@ interface PendingAwsSsoLogin {
 
 export interface IpcBridgeOptions {
   ipcMain?: IpcMain;
+  /** Machine policy loaded at startup (see src/main/policy); none when omitted. */
+  policy?: LoadedPolicy;
   /** Multi-window: true for the top-level frame of any app window. Falls back to the focused window's main frame. */
   isTrustedFrame?: (frame: Electron.WebFrameMain | null) => boolean;
   /** Creating windows and moving tabs between them (main process only). */
@@ -160,6 +165,7 @@ export class IpcBridge {
   public readonly clipboardHistoryStore: ClipboardHistoryStore;
   public readonly snippetStore: SnippetStore;
   public readonly settingsStore: SettingsStore;
+  public readonly policy: LoadedPolicy;
   public readonly dotfilePoolStore: DotfilePoolStore;
   public readonly dotfileSyncService: DotfileSyncService;
   public readonly directorySyncProfileStore: DirectorySyncProfileStore;
@@ -269,7 +275,8 @@ export class IpcBridge {
       }
     }
     this.ipcMain = options.ipcMain ?? electronIpcMain;
-    this.settingsStore = options.settingsStore ?? new SettingsStore();
+    this.policy = options.policy ?? NO_POLICY;
+    this.settingsStore = options.settingsStore ?? new SettingsStore(undefined, this.policy.policy);
     this.sshPtyManager =
       options.sshPtyManager ??
       new SSHPtyManager({
@@ -478,6 +485,7 @@ export class IpcBridge {
     registerClipboardHistoryHandlers(this);
     registerSnippetHandlers(this);
     registerSettingsHandlers(this);
+    registerPolicyHandlers(this);
     registerSyncHandlers(this);
     registerTeamVaultHandlers(this);
     void this.syncConfigStore
@@ -1527,7 +1535,7 @@ export class IpcBridge {
   public getUpdateService(): UpdateService {
     if (!this.updateService) {
       this.updateService = new UpdateService({
-        disabled: process.env.SSHS3_DISABLE_UPDATES === '1',
+        disabled: isUpdateCheckDisabled(process.env, this.policy.policy),
         confirmQuit: this.confirmQuit,
         getAutoCheck: async () => (await this.settingsStore.getSettings()).autoCheckUpdates !== false,
         send: (state) => {

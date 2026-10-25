@@ -551,4 +551,59 @@ describe('SettingsModal', () => {
       })
     );
   });
+
+  describe('with an administrator policy', () => {
+    const withPolicy = (info: { managed: string[]; warnings?: string[] }) => {
+      (window as any).multissh = {
+        policyGet: vi.fn().mockResolvedValue({ managed: info.managed, features: {}, warnings: info.warnings ?? [] }),
+      };
+    };
+
+    it('locks a managed setting and explains why, in the tab order', async () => {
+      withPolicy({ managed: ['enableOpenShift'] });
+      render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: /Kubernetes/ }));
+
+      const checkbox = await screen.findByRole('checkbox', { name: /Enable OpenShift Support/ });
+      await screen.findByRole('note');
+      expect(checkbox).toBeDisabled();
+      const note = screen.getByRole('note');
+      expect(note).toHaveTextContent('Managed by your organization');
+      expect(note).toHaveAttribute('tabindex', '0');
+    });
+
+    it('locks the PIN caching mode but still lets the user read what each mode does', async () => {
+      withPolicy({ managed: ['smartcardAuthMode'] });
+      render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: /Security/ }));
+
+      expect(await screen.findByRole('note')).toHaveTextContent('Managed by your organization');
+      for (const radio of screen.getAllByRole('radio')) {
+        expect(radio).toBeDisabled();
+        expect(radio).toHaveAccessibleDescription(/Managed by your organization/);
+      }
+      const learnMore = screen.getAllByRole('button', { name: 'Learn more' });
+      expect(learnMore.length).toBeGreaterThan(0);
+      for (const button of learnMore) expect(button).toBeEnabled();
+    });
+
+    it('leaves settings the policy does not touch editable', async () => {
+      withPolicy({ managed: ['autoCheckUpdates'] });
+      render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: /Kubernetes/ }));
+
+      expect(await screen.findByRole('checkbox', { name: /Enable OpenShift Support/ })).toBeEnabled();
+      expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    });
+
+    it('tells the user when the policy could not be applied', async () => {
+      withPolicy({ managed: [], warnings: ['Policy could not be read: boom'] });
+      render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Policy could not be read: boom');
+    });
+  });
 });

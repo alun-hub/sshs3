@@ -12,7 +12,7 @@ export type UpdateStatus =
 /**
  * dev: unpackaged build. windows-unsigned: Windows builds are not code-signed yet, so
  * updates are installed manually. disabled: switched off by the administrator
- * (SSHS3_DISABLE_UPDATES=1), e.g. on air-gapped machines.
+ * (SSHS3_DISABLE_UPDATES=1 or the autoCheckUpdates policy), e.g. on air-gapped machines.
  */
 export type UpdateUnsupportedReason = 'dev' | 'windows-unsigned' | 'disabled';
 

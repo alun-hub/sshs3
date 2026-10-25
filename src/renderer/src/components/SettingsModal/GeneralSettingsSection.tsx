@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Terminal, Monitor, Moon, Sun, Sliders, FolderTree } from 'lucide-react';
 import type { SettingsForm } from './useSettingsForm';
+import { ManagedGroup } from './Managed';
 
 /** The "General" page of the settings dialog. */
 export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -16,6 +17,7 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
     defaultNewTab,
     setDefaultNewTab,
     updateState,
+    isManaged,
   } = form;
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
 
@@ -165,16 +167,18 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
           Ask for confirmation when closing the window or quitting, so active SSH
           sessions and tunnels aren't closed by accident.
         </p>
-        <label className="flex items-center gap-2.5 cursor-pointer pt-1">
-          <input
-            type="checkbox"
-            checked={autoCheckUpdates && updateState?.unsupportedReason !== 'disabled'}
-            disabled={updateState?.unsupportedReason === 'disabled'}
-            onChange={(e) => setAutoCheckUpdates(e.target.checked)}
-            className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
-          />
-          <span className="text-xs text-txt-primary">Check for updates automatically</span>
-        </label>
+        <ManagedGroup managed={isManaged('autoCheckUpdates')}>
+          <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={autoCheckUpdates && updateState?.unsupportedReason !== 'disabled'}
+              disabled={updateState?.unsupportedReason === 'disabled'}
+              onChange={(e) => setAutoCheckUpdates(e.target.checked)}
+              className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+            />
+            <span className="text-xs text-txt-primary">Check for updates automatically</span>
+          </label>
+        </ManagedGroup>
         <div className="flex items-center gap-2 pl-6 text-xs text-txt-muted">
           <span data-testid="update-status">
             Version {updateState?.currentVersion ?? '…'}

@@ -44,7 +44,7 @@ export interface UpdateServiceOptions {
   isPackaged?: boolean;
   /** Defaults to process.platform. Windows is unsupported until the installer is code-signed. */
   platform?: NodeJS.Platform;
-  /** Administrator switch (SSHS3_DISABLE_UPDATES=1): no update traffic at all. */
+  /** Administrator switch (SSHS3_DISABLE_UPDATES=1, or the autoCheckUpdates policy set to false): no update traffic at all, including a manual check. */
   disabled?: boolean;
   /** Whether periodic background checks are enabled (user setting). */
   getAutoCheck: () => Promise<boolean> | boolean;

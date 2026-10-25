@@ -17,6 +17,8 @@ import {
 import type { LocalPublicKey } from '@shared/types/ssh';
 import type { GitSigningConfig } from '@shared/types/git';
 import { classNames, describeIpcError } from '../../lib/format';
+import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
+import { FeatureBlockedNotice } from './Managed';
 
 const SOURCE_LABEL: Record<string, string> = {
   file: 'File',
@@ -67,6 +69,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
   const [gitUsername, setGitUsername] = useState('');
   const [gitCustomHost, setGitCustomHost] = useState('');
   const [fetchingGit, setFetchingGit] = useState(false);
+  const gitKeyFetchBlocked = isFeatureBlocked(usePolicy(), 'gitKeyFetch');
   const [fetchedKeys, setFetchedKeys] = useState<LocalPublicKey[]>([]);
 
   const loadSigningConfig = useCallback(async (): Promise<GitSigningConfig | null> => {
@@ -235,7 +238,7 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
 
   const fetchGitKeys = async () => {
     const user = gitUsername.trim();
-    if (!user) return;
+    if (!user || gitKeyFetchBlocked) return;
     setFetchingGit(true);
     setError(null);
     try {
@@ -689,13 +692,15 @@ export const GitSettingsPanel: React.FC<GitSettingsPanelProps> = ({
           <button
             type="button"
             onClick={() => void fetchGitKeys()}
-            disabled={!gitUsername.trim() || fetchingGit}
+            disabled={!gitUsername.trim() || fetchingGit || gitKeyFetchBlocked}
+            aria-describedby={gitKeyFetchBlocked ? 'git-key-fetch-blocked' : undefined}
             className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50 transition-colors"
           >
             {fetchingGit && <Loader2 className="h-3 w-3 animate-spin" />}
             Fetch keys
           </button>
         </div>
+        <FeatureBlockedNotice blocked={gitKeyFetchBlocked} id="git-key-fetch-blocked" />
 
         {fetchedKeys.length > 0 && (
           <div className="divide-y divide-divider overflow-hidden rounded-lg border border-border-subtle bg-app-card mt-2">

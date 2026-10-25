@@ -726,7 +726,7 @@ export class ProfileSyncService {
     const [profiles, pools, settings, sshNativePayload, dirSyncProfiles, k8sProfiles] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
-      this.settingsStore.getSettings(),
+      this.settingsStore.getStoredSettings(),
       this.buildLocalSshNativePayload(),
       this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve(null),
       this.k8sProfileStore?.listIncludingTombstones() ?? Promise.resolve(null),
@@ -880,7 +880,7 @@ export class ProfileSyncService {
 
     if (settingsRaw !== null) {
       const remoteSettings: AppSettings = JSON.parse(settingsRaw);
-      const localSettings = await this.settingsStore.getSettings();
+      const localSettings = await this.settingsStore.getStoredSettings();
       if ((remoteSettings.updatedAt ?? '') > (localSettings.updatedAt ?? '')) {
         await this.settingsStore.saveSettings(withLocalOnlySettingsFrom(remoteSettings, localSettings), {
           preserveTimestamp: true,
@@ -967,7 +967,7 @@ export class ProfileSyncService {
     const [localProfiles, localPools, localSettings, localSshNative, localDirSync, localK8s] = await Promise.all([
       this.profileStore.getProfilesIncludingTombstones(),
       this.dotfilePoolStore.getPoolsIncludingTombstones(),
-      this.settingsStore.getSettings(),
+      this.settingsStore.getStoredSettings(),
       this.buildLocalSshNativePayload(),
       this.dirSyncProfileStore?.listIncludingTombstones() ?? Promise.resolve([] as DirectorySyncProfile[]),
       this.k8sProfileStore?.listIncludingTombstones() ?? Promise.resolve([] as K8sProfile[]),

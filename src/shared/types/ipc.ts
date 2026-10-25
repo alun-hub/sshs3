@@ -44,6 +44,7 @@ import type { SessionData } from './session';
 import type { ClipboardHistoryEntry } from './clipboard';
 import type { Snippet } from './snippets';
 import type { AppSettings } from './settings';
+import type { PolicyInfo } from './policy';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -213,6 +214,8 @@ export const IPC_CHANNELS = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  // Machine policy (which settings an administrator locks); read-only for the renderer.
+  POLICY_GET: 'policy:get',
   // Atomic read-modify-write for one team's entry in connectionManagerVisibleTeamVaults — see
   // SettingsStore.setTeamVaultTabVisible's doc comment for why this isn't just settingsSave().
   SETTINGS_SET_TEAM_VAULT_TAB_VISIBLE: 'settings:set-team-vault-tab-visible',
@@ -739,6 +742,7 @@ export interface MultiSSHApi {
   // Settings
   settingsGet(): Promise<AppSettings>;
   settingsSave(settings: Partial<AppSettings>): Promise<AppSettings>;
+  policyGet(): Promise<PolicyInfo>;
   /** Atomically flips one team's `connectionManagerVisibleTeamVaults` entry — see
    * `SettingsStore.setTeamVaultTabVisible`'s doc comment for why this exists instead of a plain
    * `settingsGet()` -> mutate -> `settingsSave()` round trip. */

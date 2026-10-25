@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Shield, CheckCircle2, Lock, ShieldAlert, Globe } from 'lucide-react';
 import { IS_WINDOWS } from '../../lib/platform';
 import { pkcs11LibDisplayName } from '../../lib/smartcard';
 import { WindowsAgentPathNotice } from './WindowsAgentPathNotice';
 import type { SettingsForm } from './useSettingsForm';
+import { ManagedNotice } from './Managed';
 
 /** The "Security & Smartcard" page of the settings dialog. */
 export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -19,10 +20,13 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     detectingSmartcard,
     setDetectingSmartcard,
     credentialEncryptionAvailable,
+    isManaged,
   } = form;
   // Which PIN-caching card's full explanation is expanded (§26: one sentence + "Learn more",
   // not a text wall by default) — at most one at a time.
   const [expandedCachingMode, setExpandedCachingMode] = useState<string | null>(null);
+  const authModeManaged = isManaged('smartcardAuthMode');
+  const authModeNoticeId = useId();
 
   return (
     <div className="space-y-4">
@@ -69,7 +73,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               : 'Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.'}
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-2 ${authModeManaged ? 'opacity-70' : ''}`}>
           <label
             className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               smartcardAuthMode === 'always-prompt'
@@ -81,6 +85,8 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <input
                 type="radio"
                 name="smartcardAuthMode"
+                disabled={authModeManaged}
+                aria-describedby={authModeManaged ? authModeNoticeId : undefined}
                 checked={smartcardAuthMode === 'always-prompt'}
                 onChange={() => setSmartcardAuthMode('always-prompt')}
                 className="sr-only"
@@ -119,6 +125,8 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <input
                 type="radio"
                 name="smartcardAuthMode"
+                disabled={authModeManaged}
+                aria-describedby={authModeManaged ? authModeNoticeId : undefined}
                 checked={smartcardAuthMode === 'agent-per-session'}
                 onChange={() => setSmartcardAuthMode('agent-per-session')}
                 className="sr-only"
@@ -158,6 +166,8 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
               <input
                 type="radio"
                 name="smartcardAuthMode"
+                disabled={authModeManaged}
+                aria-describedby={authModeManaged ? authModeNoticeId : undefined}
                 checked={smartcardAuthMode === 'agent-global'}
                 onChange={() => setSmartcardAuthMode('agent-global')}
                 className="sr-only"
@@ -188,6 +198,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             )}
           </label>
         </div>
+        <ManagedNotice managed={authModeManaged} id={authModeNoticeId} />
 
         {smartcardAuthMode === 'agent-global' && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2.5">

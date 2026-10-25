@@ -19,6 +19,7 @@ import { restorableWindows } from './session/windowSessions';
 import type { SessionData } from '../shared/types/session';
 import { configureLogging, createLogger, flushLogs, resolveLogLevel, setLogLevel } from './log';
 import { resolvePasswordStore } from './crypto/passwordStore';
+import { loadPolicy } from './policy/loadPolicy';
 
 app.setName('sshs3');
 if (process.platform === 'linux') {
@@ -416,6 +417,10 @@ async function initializeApp(): Promise<void> {
   const { IpcBridge } = await import('./IpcBridge');
   splash?.setProgress(35, 'Loading services…');
 
+  // Read the machine policy before any store exists, so every settings read already sees it.
+  const policy = await loadPolicy();
+  for (const warning of policy.warnings) log.warn(warning);
+
   // Set registry directory for ssh-agents
   configureRegistryDir(path.join(app.getPath('userData'), 'runtime-agents'));
 
@@ -424,6 +429,7 @@ async function initializeApp(): Promise<void> {
 
   // Initialize and register IPC bridge
   ipcBridge = new IpcBridge({
+    policy,
     getWebContents: () => windowManager.focusedWebContents() as Electron.WebContents | undefined,
     isTrustedFrame: (frame) => windowManager.isTrustedFrame(frame),
     windows: windowManager,

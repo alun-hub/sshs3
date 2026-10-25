@@ -10,6 +10,9 @@ This chapter provides a complete reference across all configuration panels in **
 
 Access the preferences dialog via the gear icon in the top toolbar or via the keyboard shortcut <kbd>Ctrl</kbd>+<kbd>,</kbd>.
 
+> [!NOTE]
+> Settings that an administrator has locked show **Managed by your organization** and cannot be changed here. See [Enterprise Deployment & Policy](/docs/reference/enterprise-deployment/).
+
 ### Instant Settings Filter
 The Settings modal features a real-time search filter at the top of the sidebar. Typing a search keyword filters across all 10 settings categories, option titles, and descriptions dynamically, allowing you to jump straight to any configuration option in under two seconds.
 
