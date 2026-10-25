@@ -21,6 +21,19 @@ this checkout: `npm run build:docs` in `sshs3-site` reads these files, the IPC c
   and fenced `mermaid` blocks for diagrams. Inline code is escaped, so `<placeholder>` and `*.log` are safe in backticks; outside backticks a bare `<tag>` disappears. Do not put a `> [!NOTE]` callout inside a list item (it is not parsed there); end the list or write it as bold text. They degrade to plain Markdown elsewhere.
 - **Language:** English only.
 
+## Page style (v2)
+
+Every page follows the same shape, so new and updated text should too:
+
+1. **Title line** `## <Title>`, one intro paragraph, then the page's hero screenshot. Follow with numbered sections `## 1. …`, `## 2. …`; a short `### …` subsection per feature. No emoji in headings and no Purpose / How to Use / Limitations blocks per feature.
+2. **Tables for reference data:** shortcuts, settings (label, default, effect), options and metrics go in tables, not bullet walls. Use `<kbd>` per key and the exact UI label in **bold**.
+3. **Callouts for caveats:** put limitations and gotchas next to the thing they affect as `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]` (a titled "Good to know" list is fine) or `> [!WARNING]`. Do not drop a caveat to save space; shorten it instead.
+4. **Internals stay short:** one `### Technical Architecture: …` (or `Technical Internals`) subsection per section, naming the module and the user-visible consequence. No `<details>` folding.
+5. **Troubleshooting last:** a `## N. Troubleshooting & Diagnostics` table (Symptom / Probable Root Cause / Corrective Action) closes the page.
+6. **Cross-links** use the new URLs (`/docs/workspace/terminal/`, `/docs/security/team-vault/`, …), never the old flat slugs.
+
+Before committing, run the site build (`npm run build:docs` then `npm run validate:links` in `sshs3-site`) and check the page in a browser in both themes.
+
 ## Writing rules
 
 - Describe what the app does today; verify button and setting names against the UI (`src/renderer`) and
