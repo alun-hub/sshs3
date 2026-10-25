@@ -3,6 +3,7 @@ import electronUpdater from 'electron-updater';
 import { createLogger } from '../log';
 import type { UpdateState, UpdateUnsupportedReason } from '../../shared/types/update';
 import { scheduleLinuxRelaunch } from './linuxRelaunch';
+import { isNsisInstall } from './installKind';
 
 const INITIAL_CHECK_DELAY_MS = 30_000;
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -46,6 +47,8 @@ export interface UpdateServiceOptions {
   platform?: NodeJS.Platform;
   /** Administrator switch (SSHS3_DISABLE_UPDATES=1, or the autoCheckUpdates policy set to false): no update traffic at all, including a manual check. */
   disabled?: boolean;
+  /** Whether this copy was installed by the NSIS installer (Windows only matters). Defaults to checking the install folder. */
+  isNsisInstall?: boolean;
   /** Whether periodic background checks are enabled (user setting). */
   getAutoCheck: () => Promise<boolean> | boolean;
   /**
@@ -95,7 +98,9 @@ export class UpdateService {
       : !isPackaged
         ? 'dev'
         : (options.platform ?? process.platform) === 'win32'
-          ? 'windows-unsigned'
+          ? (options.isNsisInstall ?? isNsisInstall()) === false
+            ? 'not-installer'
+            : 'windows-unsigned'
           : null;
     this.state = {
       status: this.unsupportedReason ? 'unsupported' : 'idle',

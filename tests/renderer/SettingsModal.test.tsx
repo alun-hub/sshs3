@@ -606,4 +606,20 @@ describe('SettingsModal', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Policy could not be read: boom');
     });
   });
+
+  it('explains why updates are not installed in-app for an MSI, ZIP or portable copy', async () => {
+    (window as any).multissh = {
+      getUpdateState: vi.fn().mockResolvedValue({
+        status: 'unsupported',
+        currentVersion: '1.2.3',
+        unsupportedReason: 'not-installer',
+      }),
+      onUpdateState: vi.fn().mockReturnValue(() => {}),
+    };
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+
+    expect(await screen.findByTestId('update-status')).toHaveTextContent(
+      'this copy was not installed with the sshs3 installer (MSI, ZIP or portable)'
+    );
+  });
 });

@@ -53,11 +53,17 @@ describe('UpdateService', () => {
     await dev.service.check();
     expect(dev.updater.checkForUpdates).not.toHaveBeenCalled();
 
-    const win = create({ isPackaged: true, platform: 'win32' });
+    const win = create({ isPackaged: true, platform: 'win32', isNsisInstall: true });
     expect(win.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'windows-unsigned' });
     win.service.start();
     await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
     expect(win.updater.checkForUpdates).not.toHaveBeenCalled();
+
+    const msi = create({ isPackaged: true, platform: 'win32', isNsisInstall: false });
+    expect(msi.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'not-installer' });
+    msi.service.start();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
+    expect(msi.updater.checkForUpdates).not.toHaveBeenCalled();
 
     const off = create({ isPackaged: true, platform: 'linux', disabled: true });
     expect(off.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'disabled' });
