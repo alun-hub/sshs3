@@ -12,7 +12,7 @@ const example = fs.readFileSync(path.join(root, 'packaging/policy.conf.example')
 function guideRows(): Map<string, { type: string; values: string[] }> {
   const section = guide.split(/^## 2\. /m)[1]?.split(/^## 3\. /m)[0] ?? '';
   const rows = new Map<string, { type: string; values: string[] }>();
-  for (const line of section.split('\n')) {
+  for (const line of section.split(/\r?\n/)) {
     const cells = line.split('|').map((cell) => cell.trim());
     const name = /^`([A-Za-z0-9]+)`$/.exec(cells[1] ?? '')?.[1];
     if (!name) continue;
@@ -39,7 +39,7 @@ describe('policy documentation', () => {
   it('has an example line for every policy in policy.conf.example, and every example value is valid', () => {
     const ids: string[] = POLICY_DEFINITIONS.map((def) => def.id);
     const enabled = example
-      .split('\n')
+      .split(/\r?\n/)
       .map((line) => {
         const match = /^#\s*([A-Za-z0-9]+)\s*=\s*(.*)$/.exec(line);
         return match && ids.includes(match[1]) ? `${match[1]} = ${match[2]}` : null;
