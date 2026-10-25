@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.67] - 2026-10-25
+
+### Added
+- do not self-update Windows copies the NSIS installer did not install
+- policy.conf instead of policy.json, plus an annotated example and docs drift test
+- machine policy for enterprise deployment (GPO registry / root-owned policy.json)
+
+### Changed
+- ship the ADMX/ADML templates and policy.conf.example as a release zip
+- Windows installers and updates in the enterprise guide; align the managed-setting note
+- make the policy docs drift test work with CRLF checkouts
+- native per-machine MSI target and a build-only mode for release.yml
+- align SECURITY.md with the FIDO2 PIN memory-cache exception
+- add a style lint for the user guide (docs:lint)
+- document the v2 page style in the user-guide README
+- commit public/sitemap.xml with the generated site paths, document build rules
+- fix team-vault callout inside a list and a bare <member> placeholder
+- v2 redesign of the user guide, new quickstart
+
 ## [0.96.66] - 2026-10-24
 
 ### Fixed
