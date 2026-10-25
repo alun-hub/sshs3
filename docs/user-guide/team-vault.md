@@ -112,9 +112,7 @@ sequenceDiagram
 ### Step 3: The New Member Verifies & Joins
 1. Back in **Settings → Team Vault → Join an existing team**, navigate to **Step 2**.
 2. Paste the invite block into **Paste invite from your admin** and click **Read invite**. Enter your PIV PIN and touch the key.
-3. **Verify the decoded team details:** sshs3 decrypts the invite and presents the Team ID, S3 Endpoint, Region, and Path for human verification.
-   > [!IMPORTANT]
-   > While `age` encryption proves the invite was addressed to your YubiKey, it does not authenticate the sender. Reviewing the decoded target before connecting prevents malicious endpoints from being accepted blindly.
+3. **Verify the decoded team details:** sshs3 decrypts the invite and presents the Team ID, S3 Endpoint, Region, and Path for human verification. **Important:** while `age` encryption proves the invite was addressed to your YubiKey, it does not authenticate the sender. Reviewing the decoded target before connecting prevents malicious endpoints from being accepted blindly.
 4. Click **This is my team — join**. sshs3 configures the S3 target, downloads the vault file from S3, and unlocks it immediately.
 
 *(If preferred, teams can bypass invite blobs and configure S3 targets manually via the collapsed fallback options).*
@@ -152,7 +150,7 @@ When an Admin removes a member (**Remove member**):
 4. The file's cryptographic rotation proof (`prevKeyProof`) is signed with the old Vault Key.
 5. The removed member retains only whatever local snapshot they had previously downloaded; they are permanently locked out of all subsequent pulls, profile updates, and key rotations.
 
-Keep **at least two admins** in every vault. The settings view warns whenever a vault has only one admin, as losing that single card leaves the emergency recovery key as the only administrative path. When another member is present, the warning provides a direct **"Promote <member>"** action to elevate them to co-admin with one click.
+Keep **at least two admins** in every vault. The settings view warns whenever a vault has only one admin, as losing that single card leaves the emergency recovery key as the only administrative path. When another member is present, the warning provides a direct **Promote** `<member>` action to elevate them to co-admin with one click.
 
 ---
 
