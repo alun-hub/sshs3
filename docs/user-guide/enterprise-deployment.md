@@ -81,7 +81,7 @@ An exit code of `0` (or `3010`, restart needed) means success. Set the [policy](
 > [!NOTE]
 > The registry values below are verified on Windows. The ADMX/ADML templates are checked by automated tests for structure and consistency, but have not yet been loaded in a Group Policy editor for this release.
 
-Copy `sshs3.admx` and `en-US\sshs3.adml` from `packaging/windows/policy/` in the repository into `C:\Windows\PolicyDefinitions` (or your central store). The policies appear under **Computer Configuration > Administrative Templates > sshs3**. For yes/no policies, **Enabled** forces the option on and **Disabled** forces it off; **Not configured** leaves it to the user.
+Download `sshs3-policy-templates-<version>.zip` from the release (it also holds `policy.conf.example`), and copy `sshs3.admx` and `en-US\sshs3.adml` from it into `C:\Windows\PolicyDefinitions` (or your central store). The policies appear under **Computer Configuration > Administrative Templates > sshs3**. For yes/no policies, **Enabled** forces the option on and **Disabled** forces it off; **Not configured** leaves it to the user.
 
 ### Without Group Policy
 
@@ -106,7 +106,7 @@ sudo install -d -m 0755 -o root -g root /etc/sshs3
 sudo install -m 0644 -o root -g root policy.conf /etc/sshs3/policy.conf
 ```
 
-A commented example with every option is `packaging/policy.conf.example` in the repository; copy it and remove the `# ` in front of the lines you want to enforce.
+A commented example with every option is `policy.conf.example` in `sshs3-policy-templates-<version>.zip` on the release page (and `packaging/policy.conf.example` in the repository); copy it and remove the `# ` in front of the lines you want to enforce.
 
 | Rule | Detail |
 | :--- | :--- |
