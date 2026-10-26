@@ -6,6 +6,7 @@ import { IS_WINDOWS } from '../../lib/platform';
 import { ChmodModal } from './ChmodModal';
 import { WinAttributesModal } from './WinAttributesModal';
 import { PropertiesModal } from './PropertiesModal';
+import { CertificateModal } from './CertificateModal';
 import { TagsModal } from './TagsModal';
 import { BucketPolicyModal } from './BucketPolicyModal';
 import { VersionsModal } from './VersionsModal';
@@ -33,6 +34,8 @@ export interface FilePaneModalsProps {
   setChmodOpen: SetFlag;
   propertiesOpen: boolean;
   setPropertiesOpen: SetFlag;
+  certificateOpen: boolean;
+  setCertificateOpen: SetFlag;
   tagsOpen: boolean;
   setTagsOpen: SetFlag;
   bucketPolicyOpen: boolean;
@@ -82,6 +85,8 @@ export const FilePaneModals: React.FC<FilePaneModalsProps> = ({
   setChmodOpen,
   propertiesOpen,
   setPropertiesOpen,
+  certificateOpen,
+  setCertificateOpen,
   tagsOpen,
   setTagsOpen,
   bucketPolicyOpen,
@@ -143,6 +148,13 @@ export const FilePaneModals: React.FC<FilePaneModalsProps> = ({
       entries={selectedEntries}
       onClose={() => setPropertiesOpen(false)}
       onSaved={() => void load()}
+    />
+
+    <CertificateModal
+      open={certificateOpen}
+      providerId={source.providerId}
+      entry={selectedEntries[0]}
+      onClose={() => setCertificateOpen(false)}
     />
 
     {(isBucketEntry || isS3ObjectEntry) && selectedEntries.length === 1 && (

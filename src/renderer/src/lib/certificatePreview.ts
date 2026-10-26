@@ -1,4 +1,4 @@
-import type { CertificateInfo } from '../../../shared/types/certificate';
+import type { CertificateInfo, CertificatePreviewError } from '../../../shared/types/certificate';
 import { formatDateTime } from './dateFormat';
 
 export type CertificateTone = 'ok' | 'warn' | 'bad';
@@ -19,5 +19,17 @@ export function describeValidity(cert: Pick<CertificateInfo, 'validity' | 'daysL
       return { label: days === 0 ? 'Expires today' : `Expires in ${days} ${plural}`, tone: 'warn' };
     default:
       return { label: `Valid, ${days} ${plural} left`, tone: 'ok' };
+  }
+}
+
+/** What to tell the user when a file yielded no certificate details. */
+export function describePreviewError(error: CertificatePreviewError | undefined): string {
+  switch (error) {
+    case 'too-large':
+      return 'This file is larger than 64 KiB, which is too large to preview as a certificate.';
+    case 'unreadable':
+      return 'The file could not be read or is not a valid certificate.';
+    default:
+      return 'No certificate was found in this file.';
   }
 }

@@ -132,6 +132,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [chmodOpen, setChmodOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [certificateOpen, setCertificateOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [bucketPolicyOpen, setBucketPolicyOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -760,6 +761,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setGitCloneTargetDir,
     setGitCloneOpen,
     setPropertiesOpen,
+    setCertificateOpen,
     setSearchOpen,
   });
 
@@ -1124,6 +1126,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         setChmodOpen={setChmodOpen}
         propertiesOpen={propertiesOpen}
         setPropertiesOpen={setPropertiesOpen}
+        certificateOpen={certificateOpen}
+        setCertificateOpen={setCertificateOpen}
         tagsOpen={tagsOpen}
         setTagsOpen={setTagsOpen}
         bucketPolicyOpen={bucketPolicyOpen}

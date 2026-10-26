@@ -84,7 +84,7 @@ Hovering over any recognized file or directory path in the terminal displays an 
 | :--- | :--- |
 | **Instant Peek** | Asynchronously loads the first 3 lines, total line count, and file size over the active SSH connection. |
 | **Image Thumbnails** | Renders live raster thumbnails for `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, and `.svg` files directly in the card. |
-| **Certificate Details** | For `.crt`, `.cer`, `.cert`, `.pem` and `.der` files the card shows the certificate instead of raw text: subject, issuer, validity (with days left), SANs, key type and size, signature algorithm, extended key usage, serial number and SHA-256 fingerprint. A bundle lists every certificate (the first 10). See [Certificate Preview](#certificate-preview). |
+| **Certificate Details** | For `.crt`, `.cer`, `.cert`, `.pem` and `.der` files the card shows the certificate instead of raw text: subject, issuer, validity (with days left), SANs, key type and size, signature algorithm, extended key usage, serial number and SHA-256 fingerprint. A bundle lists every certificate (the first 10). The file manager has the same view under **View Certificate...** in the right-click menu. See [Certificate Preview](#certificate-preview). |
 | **Edit File** | Opens the remote file directly in the built-in [CodeMirror 6 Editor](/docs/workspace/file-manager/#built-in-editor) without switching tabs. |
 | **Reveal in Manager** | Opens the dual-pane file manager, navigates to the parent directory, and highlights the target file. |
 | **Drag & Drop Handle** | Drag the grip handle, file icon, or preview to drop the file directly onto your desktop or email client (up to 500 MB). For remote SSH/K8s terminals, a confirmation dialog downloads a temporary copy before dragging. |

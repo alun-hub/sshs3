@@ -23,6 +23,7 @@ import {
   Scissors,
   Search,
   Shield,
+  ShieldCheck,
   Tag,
   Terminal,
   Trash2,
@@ -36,6 +37,7 @@ import type { SourceType } from './types';
 import { canCreateFileIn } from './filePaneHelpers';
 import { supportsArchives } from './useArchiveActions';
 import { detectArchiveKind } from '@shared/archiveNames';
+import { isCertificateFileName } from '@shared/certificateFileName';
 import type { FileClipboard } from './DragDropContext';
 import { toWebRepoUrl } from './filePaneHelpers';
 
@@ -81,6 +83,7 @@ export interface FilePaneContextMenuInput {
   setGitCloneTargetDir: (dir: string | null) => void;
   setGitCloneOpen: (open: boolean) => void;
   setPropertiesOpen: (open: boolean) => void;
+  setCertificateOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
 }
 
@@ -127,6 +130,7 @@ export function buildContextMenuItems(input: FilePaneContextMenuInput): ContextM
     setGitCloneTargetDir,
     setGitCloneOpen,
     setPropertiesOpen,
+    setCertificateOpen,
     setSearchOpen,
   } = input;
 
@@ -156,6 +160,16 @@ export function buildContextMenuItems(input: FilePaneContextMenuInput): ContextM
                     setEditorEntry(selectedEntries[0]);
                   },
                 },
+                ...(isCertificateFileName(selectedEntries[0].name)
+                  ? [
+                      {
+                        key: 'view-certificate',
+                        label: 'View Certificate...',
+                        icon: ShieldCheck,
+                        onSelect: () => setCertificateOpen(true),
+                      },
+                    ]
+                  : []),
                 {
                   key: 'tail',
                   label: 'Tail -f (Stream Log)',
