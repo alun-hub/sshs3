@@ -1,5 +1,6 @@
 import type { UpdateState } from '../shared/types/update';
 import type { LogLevel } from '../shared/types/log';
+import type { CertificatePreviewResult } from '../shared/types/certificate';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   IPC_CHANNELS,
@@ -806,6 +807,9 @@ export const api: MultiSSHApi = {
   // File Editor
   fileRead: (providerId: string, remotePath: string, maxBytes?: number): Promise<FileReadResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, providerId, remotePath, maxBytes),
+
+  certificatePreview: (providerId: string, remotePath: string): Promise<CertificatePreviewResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CERTIFICATE_PREVIEW, providerId, remotePath),
 
   fileSave: (providerId: string, remotePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE, providerId, remotePath, content),

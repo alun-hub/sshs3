@@ -84,9 +84,19 @@ Hovering over any recognized file or directory path in the terminal displays an 
 | :--- | :--- |
 | **Instant Peek** | Asynchronously loads the first 3 lines, total line count, and file size over the active SSH connection. |
 | **Image Thumbnails** | Renders live raster thumbnails for `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, and `.svg` files directly in the card. |
+| **Certificate Details** | For `.crt`, `.cer`, `.cert`, `.pem` and `.der` files the card shows the certificate instead of raw text: subject, issuer, validity (with days left), SANs, key type and size, signature algorithm, extended key usage, serial number and SHA-256 fingerprint. A bundle lists every certificate (the first 10). See [Certificate Preview](#certificate-preview). |
 | **Edit File** | Opens the remote file directly in the built-in [CodeMirror 6 Editor](/docs/workspace/file-manager/#built-in-editor) without switching tabs. |
 | **Reveal in Manager** | Opens the dual-pane file manager, navigates to the parent directory, and highlights the target file. |
 | **Drag & Drop Handle** | Drag the grip handle, file icon, or preview to drop the file directly onto your desktop or email client (up to 500 MB). For remote SSH/K8s terminals, a confirmation dialog downloads a temporary copy before dragging. |
+
+### Certificate Preview
+
+The certificate is read over the active connection and decoded **inside sshs3**, so `openssl` does not have to be installed on the remote host.
+
+> [!NOTE]
+> - **Dates only:** the status (*Valid*, *Expires in N days* within 30 days, *Expired*, *Not valid until*) only compares the validity period with your computer's clock. The chain, revocation and host name are **not** checked, so the card does not say whether a certificate is trusted. *Self-signed*, *CA* and *Weak signature* (SHA-1 or MD5) are shown as tags.
+> - **Keys stay out:** a `.pem` that also contains a private key shows the certificate only. Only the certificate fields are returned to the interface; key blocks are never decoded or displayed.
+> - **Limits:** files over 64 KiB, files without a `CERTIFICATE` block, and PKCS#12 / Java keystores (`.p12`, `.pfx`, `.jks`, which need a password) get the normal card.
 
 ### Path Detection Mechanics & Operational Filters
 - **Real-Time Existence Check:** Before a card opens, the path is verified over the active connection. Strings that merely look like paths (`Node.js`, `example.com`, `v1.2.3`, `3.5MB/s`, `Notes`) produce no card when the file does not exist.
@@ -204,4 +214,5 @@ Pressing <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> offers to re-run the last
 | Blank black terminal screen | System exhausted PTY descriptors | Check availability: `cat /proc/sys/kernel/pty/nr`. Close unneeded sessions. |
 | Swedish / non-ASCII characters garbled | Remote server locale is not UTF-8 | Check `echo $LANG` on remote host. Export UTF-8: `export LANG=en_US.UTF-8`. |
 | Path click (<kbd>Ctrl</kbd>+<kbd>Click</kbd>) does nothing | File does not exist or remote CWD unavailable | Absolute paths (`/...`) always resolve directly. Verify directory export via OSC 7. |
+| Certificate shows no details | File is over 64 KiB, has no `BEGIN CERTIFICATE` block, or is a password-protected keystore | Open it with **Edit**, or inspect it with `openssl x509 -in <file> -text -noout` where openssl is available. |
 | Clipboard history is empty | "Copy text automatically on selection" is disabled | Open *Settings → Terminal* and check **Copy text automatically on selection**. |

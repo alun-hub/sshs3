@@ -81,15 +81,27 @@ export class FileEditorService {
   }
 
   /**
-   * Reads up to maxBytes from the specified storage provider.
-   * Detects binary content (null bytes in first 8KB) and reports truncation.
+   * Reads up to maxBytes of a file as raw bytes, for callers that parse the content in the main process
+   * and return only what they derived from it. `truncated` is set when the file is larger than maxBytes.
    */
-  public async readFile(
+  public async readBytes(
     storageRegistry: StorageRegistry,
     providerId: string,
     remotePath: string,
-    maxBytes: number = 5 * 1024 * 1024
-  ): Promise<FileReadResult> {
+    maxBytes: number
+  ): Promise<{ buffer: Buffer; truncated: boolean } | { isDirectory: true }> {
+    const read = await this.readCapped(storageRegistry, providerId, remotePath, maxBytes);
+    if ('directorySize' in read) return { isDirectory: true };
+    return { buffer: read.buffer, truncated: read.truncated };
+  }
+
+  /** Reads at most maxBytes from a file (idle timeout, directory and special-file checks included). */
+  private async readCapped(
+    storageRegistry: StorageRegistry,
+    providerId: string,
+    remotePath: string,
+    maxBytes: number
+  ): Promise<{ buffer: Buffer; totalBytes: number; truncated: boolean } | { directorySize: number }> {
     const provider = storageRegistry.get(providerId);
     if (!provider) {
       throw new Error(`Storage provider not found: ${providerId}`);
@@ -97,7 +109,7 @@ export class FileEditorService {
 
     try {
       const stats = await provider.stat(remotePath);
-      if (stats?.isDirectory) return directoryResult(stats.size || 0);
+      if (stats?.isDirectory) return { directorySize: stats.size || 0 };
       if (stats?.isSpecial) throw new Error('Not a regular file');
     } catch (err: any) {
       if (err?.message === 'Not a regular file') throw err;
@@ -108,7 +120,7 @@ export class FileEditorService {
     try {
       stream = await provider.createReadStream(remotePath);
     } catch (err: any) {
-      if (isDirectoryReadError(err)) return directoryResult(0);
+      if (isDirectoryReadError(err)) return { directorySize: 0 };
       throw err;
     }
 
@@ -173,9 +185,23 @@ export class FileEditorService {
       });
     });
 
-    if (isDirDetected) return directoryResult(0);
+    if (isDirDetected) return { directorySize: 0 };
+    return { buffer: Buffer.concat(chunks), totalBytes, truncated };
+  }
 
-    const fullBuffer = Buffer.concat(chunks);
+  /**
+   * Reads up to maxBytes from the specified storage provider.
+   * Detects binary content (null bytes in first 8KB) and reports truncation.
+   */
+  public async readFile(
+    storageRegistry: StorageRegistry,
+    providerId: string,
+    remotePath: string,
+    maxBytes: number = 5 * 1024 * 1024
+  ): Promise<FileReadResult> {
+    const read = await this.readCapped(storageRegistry, providerId, remotePath, maxBytes);
+    if ('directorySize' in read) return directoryResult(read.directorySize);
+    const { buffer: fullBuffer, totalBytes, truncated } = read;
     const checkLength = Math.min(fullBuffer.length, 8000);
     let isBinary = false;
     for (let i = 0; i < checkLength; i++) {

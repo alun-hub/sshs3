@@ -1,5 +1,9 @@
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { IpcBridge } from '../IpcBridge';
+import type { CertificatePreviewResult } from '../../shared/types/certificate';
+import { isCertificateFileName } from '../../shared/certificateFileName';
+import { describeCertificateFile, MAX_CERTIFICATE_FILE_BYTES } from '../certs/certificateInfo';
+import { assertStrings } from './ipcHelpers';
 
 /** The part of IpcBridge this handler group may use. */
 export type FileEditorHost = Pick<
@@ -24,6 +28,30 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
         remotePath,
         maxBytes
       );
+    }
+  );
+
+  // Parsed here so that nothing but certificate facts reaches the renderer: a .pem often holds a private key too.
+  bridge.registerHandler(
+    IPC_CHANNELS.CERTIFICATE_PREVIEW,
+    async (_event, providerId: string, remotePath: string): Promise<CertificatePreviewResult> => {
+      assertStrings({ providerId, remotePath });
+      if (!isCertificateFileName(remotePath)) return { certs: [], moreCerts: 0, error: 'none' };
+      try {
+        await ensureLocalProvider(bridge, providerId);
+        const read = await bridge.fileEditorService.readBytes(
+          bridge.storageRegistry,
+          providerId,
+          remotePath,
+          MAX_CERTIFICATE_FILE_BYTES
+        );
+        if ('isDirectory' in read) return { certs: [], moreCerts: 0, error: 'none' };
+        if (read.truncated) return { certs: [], moreCerts: 0, error: 'too-large' };
+        return describeCertificateFile(read.buffer);
+      } catch {
+        // The error text can name the path or the host; the preview only needs to know it failed.
+        return { certs: [], moreCerts: 0, error: 'unreadable' };
+      }
     }
   );
 

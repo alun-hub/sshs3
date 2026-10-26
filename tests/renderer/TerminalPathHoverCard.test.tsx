@@ -375,4 +375,79 @@ describe('TerminalPathHoverCard', () => {
       expect(dragOutPrepare).not.toHaveBeenCalled();
     });
   });
+  describe('certificate preview', () => {
+    const cert = {
+      subject: 'C=SE, O=Test Org, CN=www.example.test',
+      issuer: 'CN=Test Root CA',
+      serialNumber: '01',
+      notBefore: '2026-01-01T00:00:00.000Z',
+      notAfter: '2126-01-01T00:00:00.000Z',
+      validity: 'valid',
+      daysLeft: 36000,
+      sans: ['DNS:www.example.test'],
+      moreSans: 0,
+      publicKey: 'RSA 2048',
+      signatureAlgorithm: 'SHA-256 with RSA',
+      weakSignature: false,
+      isCa: false,
+      selfSigned: false,
+      extendedKeyUsage: ['serverAuth'],
+      sha256: 'AA:BB',
+    };
+
+    it('shows the certificate facts, and does not read a .pem as text', async () => {
+      const fileRead = vi.fn();
+      const certificatePreview = vi.fn().mockResolvedValue({ certs: [cert], moreCerts: 0 });
+      (window as any).multissh = { fileRead, certificatePreview };
+
+      render(
+        <TerminalPathHoverCard path="/etc/ssl/site.pem" providerId="p1" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />
+      );
+
+      expect(await screen.findByTestId('certificate-preview')).toBeInTheDocument();
+      expect(screen.getByText('C=SE, O=Test Org, CN=www.example.test')).toBeInTheDocument();
+      expect(screen.getByText('Valid, 36000 days left')).toBeInTheDocument();
+      expect(screen.getByText('Certificate')).toBeInTheDocument();
+      expect(certificatePreview).toHaveBeenCalledWith('p1', '/etc/ssl/site.pem');
+      expect(fileRead).not.toHaveBeenCalled();
+    });
+
+    it('asks with the storage path and ignores files that are not named like certificates', async () => {
+      const certificatePreview = vi.fn().mockResolvedValue({ certs: [cert], moreCerts: 0 });
+      (window as any).multissh = { fileRead: vi.fn().mockResolvedValue(null), certificatePreview };
+
+      render(
+        <TerminalPathHoverCard
+          path="/mnt/c/a.crt"
+          providerId="wsl"
+          toStoragePath={(p) => p.replace('/mnt/c', 'C:')}
+          x={50}
+          y={50}
+          onClose={vi.fn()}
+          onCopyPath={vi.fn()}
+        />
+      );
+      await screen.findByTestId('certificate-preview');
+      expect(certificatePreview).toHaveBeenCalledWith('wsl', 'C:/a.crt');
+
+      certificatePreview.mockClear();
+      render(
+        <TerminalPathHoverCard path="/etc/hosts" providerId="p1" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />
+      );
+      await new Promise((r) => setTimeout(r, 80));
+      expect(certificatePreview).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the normal card when the file holds no certificate', async () => {
+      const certificatePreview = vi.fn().mockResolvedValue({ certs: [], moreCerts: 0, error: 'none' });
+      (window as any).multissh = { fileRead: vi.fn().mockResolvedValue(null), certificatePreview };
+
+      render(
+        <TerminalPathHoverCard path="/x/notes.crt" providerId="p1" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />
+      );
+      await new Promise((r) => setTimeout(r, 80));
+      expect(certificatePreview).toHaveBeenCalled();
+      expect(screen.queryByTestId('certificate-preview')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -7,6 +7,7 @@ import {
   FileArchive,
   FileText,
   Folder,
+  ShieldCheck,
   Copy,
   Check,
   ExternalLink,
@@ -19,6 +20,8 @@ import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '
 import { classNames, formatBytes } from '../lib/format';
 import { chooseHoverCardSide, hoverCardRoom, placeHoverCard } from '../lib/hoverCardPlacement';
 import { createRendererLogger } from '../lib/log';
+import { useCertificatePreview } from '../lib/useCertificatePreview';
+import { CertificatePreview } from './CertificatePreview';
 
 export interface TerminalPathHoverCardProps {
   path: string;
@@ -162,8 +165,10 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
 
   const isEffectiveDir = isDirOverride ?? details.isDir;
   const effectiveCategory: FileTypeCategory = isEffectiveDir ? 'directory' : details.category;
-  const effectiveLabel = isEffectiveDir ? 'Directory' : details.label;
-  const Icon = CATEGORY_ICONS[effectiveCategory] || File;
+  // Parsed in the main process (no openssl needed on the host); undefined unless the file holds a certificate.
+  const certificates = useCertificatePreview(providerId, toStoragePath(details.fullPath), !isEffectiveDir);
+  const effectiveLabel = isEffectiveDir ? 'Directory' : certificates ? 'Certificate' : details.label;
+  const Icon = certificates ? ShieldCheck : CATEGORY_ICONS[effectiveCategory] || File;
   const catStyle = CATEGORY_STYLES[effectiveCategory] || CATEGORY_STYLES.unknown;
 
   const [copied, setCopied] = useState(false);
@@ -344,8 +349,10 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
         </button>
       </div>
 
+      {certificates && <CertificatePreview result={certificates} />}
+
       {/* Quick Peek Preview (Snippet or Image Thumbnail) */}
-      {snippet && (
+      {snippet && !certificates && (
         <div
           {...dragSource}
           data-testid="path-hover-drag-preview"

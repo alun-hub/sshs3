@@ -45,6 +45,7 @@ import type { ClipboardHistoryEntry } from './clipboard';
 import type { Snippet } from './snippets';
 import type { AppSettings } from './settings';
 import type { PolicyInfo } from './policy';
+import type { CertificatePreviewResult } from './certificate';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -331,6 +332,7 @@ export const IPC_CHANNELS = {
 
   // File Editor
   FILE_READ: 'file:read',
+  CERTIFICATE_PREVIEW: 'certificate:preview',
   FILE_SAVE: 'file:save',
   FILE_OPEN_EXTERNAL: 'file:open-external',
   FILE_CLOSE_EXTERNAL: 'file:close-external',
@@ -916,6 +918,8 @@ export interface MultiSSHApi {
 
   // File Editor
   fileRead(providerId: string, remotePath: string, maxBytes?: number): Promise<FileReadResult>;
+  /** Human-readable facts about the certificates in a file, parsed locally; never returns file text or key material. */
+  certificatePreview(providerId: string, remotePath: string): Promise<CertificatePreviewResult>;
   fileSave(providerId: string, remotePath: string, content: string): Promise<void>;
   fileOpenExternal(providerId: string, remotePath: string): Promise<{ sessionToken: string; localPath: string }>;
   fileCloseExternal(sessionToken: string): Promise<void>;

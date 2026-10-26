@@ -34,7 +34,7 @@ const AUTH_EKU_OIDS = new Set([
 // --- Minimal definite-length DER/BER TLV reader --------------------------------------------
 // X.509 certificates always use definite-length DER encoding, so a full BER parser isn't needed.
 
-interface Tlv {
+export interface Tlv {
   tag: number;
   /** Start of the value bytes (i.e. right after tag + length octets). */
   start: number;
@@ -51,14 +51,14 @@ function readLength(buf: Buffer, pos: number): { length: number; bytesRead: numb
   return { length, bytesRead: 1 + numBytes };
 }
 
-function readTlv(buf: Buffer, pos: number): Tlv {
+export function readTlv(buf: Buffer, pos: number): Tlv {
   const tag = buf[pos];
   const { length, bytesRead } = readLength(buf, pos + 1);
   const start = pos + 1 + bytesRead;
   return { tag, start, end: start + length };
 }
 
-function* iterateChildren(buf: Buffer, start: number, end: number): Generator<Tlv> {
+export function* iterateChildren(buf: Buffer, start: number, end: number): Generator<Tlv> {
   let pos = start;
   while (pos < end) {
     const tlv = readTlv(buf, pos);
@@ -67,7 +67,7 @@ function* iterateChildren(buf: Buffer, start: number, end: number): Generator<Tl
   }
 }
 
-function decodeOid(buf: Buffer, start: number, end: number): string {
+export function decodeOid(buf: Buffer, start: number, end: number): string {
   const bytes = buf.subarray(start, end);
   const parts: number[] = [Math.floor(bytes[0] / 40), bytes[0] % 40];
   let value = 0;
