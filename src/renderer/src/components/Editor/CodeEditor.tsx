@@ -6,6 +6,7 @@ import { defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/command
 import { oneDark } from '@codemirror/theme-one-dark';
 import { search, setSearchQuery, SearchQuery, findNext, findPrevious } from '@codemirror/search';
 import { getLanguageExtension } from './editorLanguages';
+import { useIsLightTheme } from '../../lib/useIsLightTheme';
 
 export interface CodeEditorHandle {
   findNext: () => boolean;
@@ -72,6 +73,22 @@ const customAppTheme = EditorView.theme({
   },
 });
 
+// The dark editor theme is oneDark; in the light app theme the CodeMirror default (light) highlighting is used
+// and these overrides keep the same sky-blue accents readable on a light surface.
+const lightAppTheme = EditorView.theme(
+  {
+    '&': { backgroundColor: 'var(--color-app-card, #ffffff)', color: '#0f172a' },
+    '.cm-content': { caretColor: '#0f172a' },
+    '.cm-gutters': { color: '#475569' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(3, 105, 161, 0.12)', color: '#075985' },
+    '.cm-activeLine': { backgroundColor: 'rgba(3, 105, 161, 0.07)' },
+    '.cm-selectionBackground, ::selection': { backgroundColor: 'rgba(3, 105, 161, 0.25) !important' },
+    '.cm-searchMatch': { backgroundColor: 'rgba(3, 105, 161, 0.22)' },
+    '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'rgba(234, 179, 8, 0.5)', outline: '1px solid #b45309' },
+  },
+  { dark: false }
+);
+
 export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
   value,
   fileName,
@@ -109,6 +126,10 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
   const langCompartmentRef = useRef(new Compartment());
   const readOnlyCompartmentRef = useRef(new Compartment());
   const wordWrapCompartmentRef = useRef(new Compartment());
+  const themeCompartmentRef = useRef(new Compartment());
+  const isLight = useIsLightTheme();
+  const isLightRef = useRef(isLight);
+  isLightRef.current = isLight;
 
   useImperativeHandle(ref, () => ({
     findNext: () => {
@@ -159,8 +180,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
       extensions: [
         basicSetup,
         search({ top: false }),
-        oneDark,
         customAppTheme,
+        themeCompartmentRef.current.of(isLightRef.current ? lightAppTheme : oneDark),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         editorKeymap,
         EditorView.contentAttributes.of({
@@ -234,6 +255,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(({
       });
     }
   }, [value]);
+
+  // Follow the app theme (light surface vs. dark)
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: themeCompartmentRef.current.reconfigure(isLight ? lightAppTheme : oneDark),
+    });
+  }, [isLight]);
 
   // Update language dynamically on fileName change
   useEffect(() => {
