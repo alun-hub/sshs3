@@ -101,13 +101,13 @@ export const X11ServerSection: React.FC<{ form: SettingsForm }> = ({ form }) => 
         </div>
         <div className="flex items-center gap-2">
           {x11Status?.running ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-2xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Running ({x11Status.display})
               {x11Status.managedByApp && x11Status.pid ? ` [PID ${x11Status.pid}]` : ''}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-500/10 text-txt-muted border border-slate-500/20">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-2xs font-medium bg-slate-500/10 text-txt-muted border border-slate-500/20">
               Stopped
             </span>
           )}

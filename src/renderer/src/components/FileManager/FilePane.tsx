@@ -932,7 +932,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </span>
         </div>
         {isActive && (
-          <span className="rounded-full bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-2xs font-semibold text-sky-400 select-none">
+          <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-2xs font-semibold text-sky-400 select-none">
             Active
           </span>
         )}

@@ -609,7 +609,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
           }}
           data-testid="scroll-to-bottom-button"
           title="Scroll to latest logs"
-          className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 text-xs font-medium shadow-lg transition-all cursor-pointer animate-fade-in"
+          className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 text-xs font-medium shadow-lg transition-all cursor-pointer animate-fade-in"
         >
           <ArrowDown className="h-3.5 w-3.5" />
           Scroll to bottom

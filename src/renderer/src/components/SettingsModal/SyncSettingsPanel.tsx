@@ -568,37 +568,37 @@ export const SyncSettingsPanel: React.FC = () => {
                   ) : comparison ? (
                     <div className="flex items-center gap-2">
                       {comparison.state === 'in_sync' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           In sync with remote
                         </span>
                       )}
                       {comparison.state === 'ahead' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-xs font-medium text-sky-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-xs font-medium text-sky-400">
                           <ArrowUpCircle className="h-3.5 w-3.5" />
                           Client ahead ({comparison.aheadCount} unpushed {comparison.aheadCount === 1 ? 'change' : 'changes'})
                         </span>
                       )}
                       {comparison.state === 'behind' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400">
                           <ArrowDownCircle className="h-3.5 w-3.5" />
                           Client behind ({comparison.behindCount} remote {comparison.behindCount === 1 ? 'change' : 'changes'})
                         </span>
                       )}
                       {comparison.state === 'diverged' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 text-xs font-medium text-purple-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 text-xs font-medium text-purple-400">
                           <GitCompare className="h-3.5 w-3.5" />
                           Diverged ({comparison.aheadCount} ahead, {comparison.behindCount} behind)
                         </span>
                       )}
                       {comparison.state === 'not_initialized' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-xs font-medium text-indigo-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-xs font-medium text-indigo-400">
                           <UploadCloud className="h-3.5 w-3.5" />
                           Remote not initialized ({comparison.aheadCount} {comparison.aheadCount === 1 ? 'item' : 'items'} to push)
                         </span>
                       )}
                       {comparison.state === 'error' && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-xs font-medium text-red-400">
+                        <span className="inline-flex items-center gap-1.5 rounded bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 text-xs font-medium text-red-400">
                           <ShieldAlert className="h-3.5 w-3.5" />
                           Sync check failed
                         </span>
@@ -707,7 +707,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
                   <span>Push</span>
                   {comparison?.aheadCount && comparison.aheadCount > 0 ? (
-                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.2 text-2xs font-semibold text-sky-300">
+                    <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-2xs font-semibold text-sky-300">
                       {comparison.aheadCount}
                     </span>
                   ) : null}
@@ -725,7 +725,7 @@ export const SyncSettingsPanel: React.FC = () => {
                   {pulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
                   <span>Pull</span>
                   {comparison?.behindCount && comparison.behindCount > 0 ? (
-                    <span className="rounded-full bg-amber-500/20 px-1.5 py-0.2 text-2xs font-semibold text-amber-300">
+                    <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-2xs font-semibold text-amber-300">
                       {comparison.behindCount}
                     </span>
                   ) : null}

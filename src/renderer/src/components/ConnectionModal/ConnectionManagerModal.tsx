@@ -1070,7 +1070,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           key={m.key}
                           type="button"
                           onClick={() => setSource(m.key)}
-                          className="rounded-full border border-border-subtle bg-app-surface px-2 py-0.5 text-txt-secondary hover:border-sky-500/40 hover:text-sky-400 transition-colors"
+                          className="rounded border border-border-subtle bg-app-surface px-2 py-0.5 text-txt-secondary hover:border-sky-500/40 hover:text-sky-400 transition-colors"
                         >
                           {m.label} ({m.count})
                         </button>

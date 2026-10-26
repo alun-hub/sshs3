@@ -29,7 +29,7 @@ const Row: React.FC<{ label: string; children: React.ReactNode; title?: string; 
 const Tag: React.FC<{ children: React.ReactNode; warn?: boolean }> = ({ children, warn }) => (
   <span
     className={classNames(
-      'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-1 ring-inset',
+      'rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-1 ring-inset',
       warn ? TONE_STYLES.warn : 'bg-app-surface-hover text-txt-secondary ring-border-subtle'
     )}
   >
@@ -54,7 +54,7 @@ const CertificateBlock: React.FC<{ cert: CertificateInfo; detailed: boolean; ful
       <div className="mb-1 flex flex-wrap items-center gap-1">
         <span
           className={classNames(
-            'rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
+            'rounded px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
             TONE_STYLES[validity.tone]
           )}
         >
@@ -66,7 +66,7 @@ const CertificateBlock: React.FC<{ cert: CertificateInfo; detailed: boolean; ful
         {host && cert.hostMatch !== undefined && (
           <span
             className={classNames(
-              'rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
+              'rounded px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset',
               TONE_STYLES[cert.hostMatch ? 'ok' : 'bad']
             )}
           >

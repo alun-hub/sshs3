@@ -521,7 +521,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
           <Network className="h-3.5 w-3.5 text-sky-400" />
           Port Forwards
           {activePortForwardsCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/20 text-2xs font-bold text-emerald-400 px-1">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded bg-emerald-500/20 text-2xs font-bold text-emerald-400 px-1">
               {activePortForwardsCount}
             </span>
           )}

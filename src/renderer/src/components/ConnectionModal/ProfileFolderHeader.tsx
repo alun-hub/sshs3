@@ -92,7 +92,7 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
       ) : (
         <span>{label ?? groupName}</span>
       )}
-      <span className="rounded-full bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
+      <span className="rounded bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
         {profileCount}
       </span>
     </button>

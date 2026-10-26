@@ -71,7 +71,7 @@ export const TransferQueueDrawer: React.FC = () => {
             Transfers {activeCount > 0 ? `(${activeCount} active)` : jobs.length === 0 ? '· none active' : ''}
           </span>
           {failedCount > 0 && (
-            <span className="rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-2xs font-semibold text-red-400">
+            <span className="rounded bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-2xs font-semibold text-red-400">
               {failedCount} failed
             </span>
           )}

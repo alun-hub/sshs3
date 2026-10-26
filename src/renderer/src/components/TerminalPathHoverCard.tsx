@@ -294,8 +294,8 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       data-testid="terminal-path-hover-card"
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      style={{ left: `${left}px`, top: `${top}px`, maxHeight: `${maxHeight}px` }}
-      className="fixed z-50 flex flex-col w-[380px] overflow-y-auto rounded-2xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto"
+      style={{ left: `${Math.round(left)}px`, top: `${Math.round(top)}px`, maxHeight: `${maxHeight}px` }}
+      className="fixed z-50 flex flex-col w-[380px] overflow-y-auto rounded-xl border border-border-subtle bg-app-surface/95 p-3.5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 animate-fade-in text-txt-primary select-none pointer-events-auto"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2.5 border-b border-divider pb-2.5">
@@ -304,7 +304,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
             {...dragSource}
             data-testid="path-hover-drag-icon"
             className={classNames(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-xs transition-colors',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border shadow-xs transition-colors',
               dragCursor,
               catStyle.iconBg
             )}
@@ -315,14 +315,14 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           <div className="flex flex-col min-w-0 flex-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <span
-                className="truncate font-bold text-sm text-txt-primary leading-tight"
+                className="truncate font-bold text-sm text-txt-primary leading-[18px]"
                 title={details.basename}
               >
                 {details.basename}
               </span>
               <span
                 className={classNames(
-                  'rounded-full px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider uppercase ring-1 ring-inset shrink-0',
+                  'inline-flex h-4 items-center rounded px-2 pt-0.5 text-[9px] leading-none font-mono font-bold tracking-wider uppercase ring-1 ring-inset shrink-0',
                   catStyle.badgeBg,
                   catStyle.badgeText,
                   catStyle.badgeRing
@@ -333,7 +333,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
             </div>
 
             <span
-              className="truncate text-[11px] font-mono text-txt-muted mt-0.5 leading-normal select-all block"
+              className="truncate text-[11px] font-mono text-txt-muted mt-0.5 leading-4 select-all block"
               title={details.fullPath}
             >
               {details.fullPath}
@@ -345,7 +345,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           type="button"
           aria-label="Close hover preview"
           onClick={onClose}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors -mr-1 -mt-1"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors -mr-1 -mt-1"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -475,7 +475,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       {/* Footer shortcut helper */}
       <div className="mt-2.5 flex items-center justify-between border-t border-divider/60 pt-2 text-[10px] text-txt-muted select-none">
         <span className="flex items-center gap-1 opacity-70">
-          <kbd className="rounded border border-border-subtle bg-app-card px-1 py-0.2 font-mono text-[9px] text-txt-secondary">
+          <kbd className="inline-flex h-4 items-center rounded border border-border-subtle bg-app-card px-1 pt-px font-mono text-[9px] leading-none text-txt-secondary">
             Ctrl
           </kbd>
           <span>+ click to {isEffectiveDir ? 'browse' : 'reveal'}</span>

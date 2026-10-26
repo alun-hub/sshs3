@@ -273,7 +273,7 @@ export const DirSyncSavedProfilesModal: React.FC<DirSyncSavedProfilesModalProps>
 
                     {/* Direction Indicator */}
                     <div className="flex flex-col items-center justify-center gap-1 px-1 py-1">
-                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
+                      <div className="flex items-center justify-center w-7 h-7 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400">
                         <ArrowRight className="h-3.5 w-3.5" />
                       </div>
                       <span className="text-2xs font-medium text-txt-muted uppercase tracking-wider whitespace-nowrap">

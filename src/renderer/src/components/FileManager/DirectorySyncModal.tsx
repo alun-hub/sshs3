@@ -718,7 +718,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
 
               {/* Direction Indicator */}
               <div className="flex flex-col items-center justify-center gap-1 px-1 py-1">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
+                <div className="flex items-center justify-center w-8 h-8 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-400">
                   <ArrowRight className="h-4 w-4" />
                 </div>
                 <span className="text-2xs font-semibold text-txt-muted uppercase tracking-wider whitespace-nowrap">
