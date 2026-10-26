@@ -146,6 +146,15 @@ describe('FileEditor IPC handlers', () => {
       expect(JSON.stringify(res)).not.toMatch(/PRIVATE|U0VDUkVU/);
     });
 
+    it('checks the given host name', async () => {
+      storageRegistry.has.mockReturnValue(true);
+      fileEditorService.readBytes.mockResolvedValue({ buffer: certPem, truncated: false });
+      const handler = handlers.get(IPC_CHANNELS.CERTIFICATE_PREVIEW)!;
+      expect(((await handler({}, 'p1', '/a.crt', 'www.example.test')) as any).certs[0].hostMatch).toBe(true);
+      expect(((await handler({}, 'p1', '/a.crt', 'other.test')) as any).certs[0].hostMatch).toBe(false);
+      expect(((await handler({}, 'p1', '/a.crt', 'bad host')) as any).certs[0].hostMatch).toBeUndefined();
+    });
+
     it('rejects invalid arguments', async () => {
       const handler = handlers.get(IPC_CHANNELS.CERTIFICATE_PREVIEW)!;
       await expect(handler({}, '', '/a.pem')).rejects.toThrow('Invalid argument: providerId');

@@ -21,16 +21,24 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CertificatePreviewResult | null>(null);
+  const [hostInput, setHostInput] = useState('');
+  const [checkedHost, setCheckedHost] = useState('');
   const entryPath = entry?.path;
+
+  // A new file or a reopened dialog starts without a host to check.
+  useEffect(() => {
+    setHostInput('');
+    setCheckedHost('');
+    setResult(null);
+  }, [open, entryPath]);
 
   useEffect(() => {
     if (!open || !entryPath) return undefined;
     let cancelled = false;
-    setResult(null);
     setError(null);
     setLoading(true);
     window.multissh
-      .certificatePreview(providerId, entryPath)
+      .certificatePreview(providerId, entryPath, checkedHost || undefined)
       .then((res) => {
         if (cancelled) return;
         if (res.certs.length > 0) setResult(res);
@@ -45,7 +53,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
     return () => {
       cancelled = true;
     };
-  }, [open, providerId, entryPath]);
+  }, [open, providerId, entryPath, checkedHost]);
 
   const handleBackdropClick = useModalDismiss(onClose, open);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -63,7 +71,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
         role="dialog"
         aria-modal="true"
         aria-label="Certificate"
-        className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl"
+        className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-card shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -87,10 +95,37 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
           {error && (
             <div role="alert" className="rounded-lg border border-red-800/80 bg-red-950/40 p-2.5 text-xs text-red-300">{error}</div>
           )}
-          {result && <CertificatePreview result={result} />}
+          {result && (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setCheckedHost(hostInput.trim());
+              }}
+            >
+              <input
+                aria-label="Host name to check"
+                type="text"
+                value={hostInput}
+                onChange={(e) => setHostInput(e.target.value)}
+                placeholder="Check a host name or IP, e.g. www.example.com"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded-md border border-border-subtle bg-app-input px-2 py-1 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
+              />
+              <Button type="submit" variant="secondary" disabled={hostInput.trim() === '' && checkedHost === ''}>
+                {hostInput.trim() === '' ? 'Clear' : 'Check'}
+              </Button>
+            </form>
+          )}
+          {result && checkedHost && !result.checkedHost && (
+            <div role="alert" className="mt-2 rounded-lg border border-amber-800/80 bg-amber-950/40 p-2 text-xs text-amber-300">
+              That is not a valid host name or IP address.
+            </div>
+          )}
+          {result && <CertificatePreview result={result} full />}
           {result && (
             <p className="text-[10px] text-txt-muted">
-              Only the validity dates are checked against this computer&apos;s clock. The chain and revocation are not verified.
+              Only the validity dates are checked against this computer&apos;s clock, and a host name check only compares names. The chain and revocation are not verified.
             </p>
           )}
         </div>

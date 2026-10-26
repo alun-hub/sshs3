@@ -98,6 +98,17 @@ The certificate is read over the active connection and decoded **inside sshs3**,
 > - **Keys stay out:** a `.pem` that also contains a private key shows the certificate only. Only the certificate fields are returned to the interface; key blocks are never decoded or displayed.
 > - **Limits:** files over 64 KiB, files without a `CERTIFICATE` block, and PKCS#12 / Java keystores (`.p12`, `.pfx`, `.jks`, which need a password) get the normal card.
 
+**View Certificate...** in the file manager (right-click) opens a larger dialog with everything the hover card shows plus:
+
+| Detail | What it tells you |
+| :--- | :--- |
+| **Key usage**, **Path length** | Which operations the key may do (`digitalSignature`, `keyCertSign`, ...) and how many CAs may follow a CA certificate. |
+| **OCSP**, **CA issuer**, **CRL** | Where revocation is checked and where the issuing certificate can be fetched. Shown as text only; sshs3 never contacts them. |
+| **SHA-1**, **Key pin** | The SHA-1 fingerprint, and the base64 SHA-256 of the public key (the value of a `pin-sha256` pin). |
+| **Chain line** (bundles) | Whether each certificate is issued by the next, whether the order is wrong, or whether some certificates do not belong together, and whether the bundle ends with a self-signed root. |
+| **Host check** | Type a host name or IP address and **Check** to see whether each certificate is valid for it (SAN, falling back to the CN only when there is no DNS SAN; wildcards follow the usual single-label rule). |
+| **Copy buttons** | Subject, serial number, fingerprints, key pin, and a single certificate as PEM (useful to split one certificate out of a bundle). |
+
 ### Path Detection Mechanics & Operational Filters
 - **Real-Time Existence Check:** Before a card opens, the path is verified over the active connection. Strings that merely look like paths (`Node.js`, `example.com`, `v1.2.3`, `3.5MB/s`, `Notes`) produce no card when the file does not exist.
 - **Reliable CWD Tracking:** Relative paths (`config/app.json`) are checked only when the working directory is reliable: reported by the shell through OSC 7, or read from a local shell process via `/proc/<pid>/cwd`. In an SSH terminal without OSC 7, the directory can only be inferred from prompt heuristics.

@@ -24,10 +24,44 @@ export interface CertificateInfo {
   weakSignature: boolean;
   isCa: boolean;
   selfSigned: boolean;
+  /** Key Usage bits that are set, e.g. `digitalSignature`, `keyCertSign`. */
+  keyUsage: string[];
   /** Extended Key Usage names, e.g. `serverAuth`. */
   extendedKeyUsage: string[];
+  /** Basic Constraints pathLenConstraint, when set. */
+  pathLength?: number;
+  /** Where revocation is checked and the issuer can be fetched (shown as text; never opened). */
+  ocspUrls: string[];
+  caIssuerUrls: string[];
+  crlUrls: string[];
   /** `AA:BB:…` SHA-256 of the DER encoding. */
   sha256: string;
+  /** `AA:BB:…` SHA-1 of the DER encoding (what Windows and many appliances show). */
+  sha1: string;
+  /** Base64 SHA-256 of the public key (SubjectPublicKeyInfo), as used in `pin-sha256` pins. */
+  spkiSha256: string;
+  /** The certificate alone as PEM, for copying one certificate out of a bundle. */
+  pem: string;
+  /** Only when a host name was checked: whether this certificate is valid for it (SAN, else CN). */
+  hostMatch?: boolean;
+}
+
+/**
+ * How the certificates of a bundle relate, as listed. A relationship between the certificates only:
+ * says nothing about whether the top is trusted.
+ */
+export type CertificateChainStatus =
+  /** Each certificate is issued by the next one. */
+  | 'ordered'
+  /** The certificates form a chain, but not in leaf-to-root order. */
+  | 'out-of-order'
+  /** At least one certificate is not issued by any other in the file. */
+  | 'broken';
+
+export interface CertificateChainInfo {
+  status: CertificateChainStatus;
+  /** The last listed certificate is self-signed (a root). Only known when every certificate is shown. */
+  endsWithRoot?: boolean;
 }
 
 export type CertificatePreviewError =
@@ -42,5 +76,9 @@ export interface CertificatePreviewResult {
   certs: CertificateInfo[];
   /** Certificates in the file beyond `certs`. */
   moreCerts: number;
+  /** Present when the file holds more than one certificate. */
+  chain?: CertificateChainInfo;
+  /** The host name the certificates were checked against, when one was given. */
+  checkedHost?: string;
   error?: CertificatePreviewError;
 }

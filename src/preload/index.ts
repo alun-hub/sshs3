@@ -808,8 +808,8 @@ export const api: MultiSSHApi = {
   fileRead: (providerId: string, remotePath: string, maxBytes?: number): Promise<FileReadResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, providerId, remotePath, maxBytes),
 
-  certificatePreview: (providerId: string, remotePath: string): Promise<CertificatePreviewResult> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CERTIFICATE_PREVIEW, providerId, remotePath),
+  certificatePreview: (providerId: string, remotePath: string, host?: string): Promise<CertificatePreviewResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CERTIFICATE_PREVIEW, providerId, remotePath, host),
 
   fileSave: (providerId: string, remotePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE, providerId, remotePath, content),

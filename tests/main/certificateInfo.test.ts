@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { X509Certificate } from 'node:crypto';
 import {
   MAX_CERTIFICATE_FILE_BYTES,
   describeCertificateFile,
+  validHostInput,
   sanitizeDisplay,
   signatureAlgorithmName,
   validityStatus,
@@ -98,6 +100,89 @@ describe('describeCertificateFile', () => {
   it('refuses a file larger than the cap instead of parsing part of it', () => {
     const big = Buffer.concat([fixture('leaf.pem'), Buffer.alloc(MAX_CERTIFICATE_FILE_BYTES)]);
     expect(describeCertificateFile(big, NOW)).toEqual({ certs: [], moreCerts: 0, error: 'too-large' });
+  });
+});
+
+describe('extended details', () => {
+  const leaf2 = () => describeCertificateFile(fixture('leaf2.pem'), NOW).certs[0];
+
+  it('reads key usage, revocation URLs and the extra fingerprints', () => {
+    const cert = leaf2();
+    expect(cert.keyUsage).toEqual(['digitalSignature', 'keyEncipherment']);
+    expect(cert.extendedKeyUsage).toEqual(['serverAuth']);
+    expect(cert.ocspUrls).toEqual(['http://ocsp.example.test']);
+    expect(cert.caIssuerUrls).toEqual(['http://pki.example.test/int.crt']);
+    expect(cert.crlUrls).toEqual(['http://pki.example.test/int.crl']);
+    expect(cert.sha1).toMatch(/^([0-9A-F]{2}:){19}[0-9A-F]{2}$/);
+    expect(cert.spkiSha256).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(cert.pathLength).toBeUndefined();
+  });
+
+  it('reads CA key usage and the path length constraint', () => {
+    const int = describeCertificateFile(fixture('int.pem'), NOW).certs[0];
+    expect(int.isCa).toBe(true);
+    expect(int.keyUsage).toEqual(['keyCertSign', 'cRLSign']);
+    expect(int.pathLength).toBe(0);
+  });
+
+  it('leaves the new lists empty for a certificate without those extensions', () => {
+    const cert = describeCertificateFile(fixture('ec.pem'), NOW).certs[0];
+    expect(cert).toMatchObject({ keyUsage: expect.any(Array), ocspUrls: [], caIssuerUrls: [], crlUrls: [] });
+  });
+
+  it('returns one certificate as PEM that parses to the same certificate', () => {
+    const bundle = Buffer.concat([fixture('leaf2.pem'), fixture('int.pem')]);
+    const certs = describeCertificateFile(bundle, NOW).certs;
+    expect(certs[1].pem).toMatch(/^-----BEGIN CERTIFICATE-----\n[\s\S]+\n-----END CERTIFICATE-----\n$/);
+    expect(new X509Certificate(certs[1].pem).fingerprint256).toBe(certs[1].sha256);
+    expect(certs[1].pem).not.toBe(certs[0].pem);
+  });
+
+  it('describes how a bundle chains', () => {
+    const chain = (...names: string[]) => describeCertificateFile(Buffer.concat(names.map(fixture)), NOW).chain;
+    expect(chain('leaf2.pem')).toBeUndefined();
+    expect(chain('leaf2.pem', 'int.pem')).toEqual({ status: 'ordered', endsWithRoot: false });
+    expect(chain('leaf2.pem', 'int.pem', 'ca.pem')).toEqual({ status: 'ordered', endsWithRoot: true });
+    expect(chain('ca.pem', 'int.pem', 'leaf2.pem')?.status).toBe('out-of-order');
+    expect(chain('leaf2.pem', 'ec.pem', 'ca.pem')?.status).toBe('broken');
+    expect(chain('ca.pem', 'ca.pem')?.status).toBe('broken');
+  });
+
+  it('does not claim the root when certificates were cut from the list', () => {
+    const many = Buffer.concat([fixture('leaf2.pem'), fixture('int.pem'), ...Array.from({ length: 10 }, () => fixture('ca.pem'))]);
+    const res = describeCertificateFile(many, NOW);
+    expect(res.moreCerts).toBe(2);
+    expect(res.chain?.endsWithRoot).toBeUndefined();
+  });
+
+  it('checks a host name or IP address against the SANs, wildcards included', () => {
+    const check = (host: string, file = 'leaf2.pem') => describeCertificateFile(fixture(file), NOW, host);
+    expect(check('api.example.test').certs[0].hostMatch).toBe(true);
+    expect(check('api.example.test').checkedHost).toBe('api.example.test');
+    expect(check('foo.apps.example.test').certs[0].hostMatch).toBe(true);
+    expect(check('a.b.apps.example.test').certs[0].hostMatch).toBe(false);
+    expect(check('other.example.test').certs[0].hostMatch).toBe(false);
+    expect(check('192.0.2.10', 'leaf.pem').certs[0].hostMatch).toBe(true);
+    expect(check('192.0.2.11', 'leaf.pem').certs[0].hostMatch).toBe(false);
+  });
+
+  it('ignores a host that is not a plain host name, and does no check without one', () => {
+    for (const bad of ['', '   ', 'a b', 'x\u0000y', 'x'.repeat(300), 42, null, { a: 1 }]) {
+      const res = describeCertificateFile(fixture('leaf2.pem'), NOW, bad);
+      expect(res.checkedHost).toBeUndefined();
+      expect(res.certs[0].hostMatch).toBeUndefined();
+    }
+    expect(describeCertificateFile(fixture('leaf2.pem'), NOW).certs[0].hostMatch).toBeUndefined();
+    expect(validHostInput('  www.example.com ')).toBe('www.example.com');
+    expect(validHostInput('2001:db8::1')).toBe('2001:db8::1');
+  });
+
+  it('survives a certificate with a corrupted extension block', () => {
+    const der = new X509Certificate(fixture('leaf2.pem')).raw;
+    // Flip bytes inside the extensions (near the end of the TBS, before the signature) and re-parse.
+    const damaged = Buffer.from(der);
+    for (let i = 300; i < 330; i++) damaged[i] = 0xff;
+    expect(() => describeCertificateFile(Buffer.from(damaged), NOW)).not.toThrow();
   });
 });
 

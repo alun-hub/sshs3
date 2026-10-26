@@ -1,4 +1,8 @@
-import type { CertificateInfo, CertificatePreviewError } from '../../../shared/types/certificate';
+import type {
+  CertificateChainInfo,
+  CertificateInfo,
+  CertificatePreviewError,
+} from '../../../shared/types/certificate';
 import { formatDateTime } from './dateFormat';
 
 export type CertificateTone = 'ok' | 'warn' | 'bad';
@@ -31,5 +35,23 @@ export function describePreviewError(error: CertificatePreviewError | undefined)
       return 'The file could not be read or is not a valid certificate.';
     default:
       return 'No certificate was found in this file.';
+  }
+}
+
+/** One line about how the certificates of a bundle relate. Says nothing about whether the top is trusted. */
+export function describeChainStatus(chain: CertificateChainInfo): { label: string; tone: CertificateTone } {
+  switch (chain.status) {
+    case 'ordered':
+      if (chain.endsWithRoot === true) {
+        return { label: 'Each certificate is issued by the next, ending with a self-signed root.', tone: 'ok' };
+      }
+      if (chain.endsWithRoot === false) {
+        return { label: 'Each certificate is issued by the next; the root is not included.', tone: 'ok' };
+      }
+      return { label: 'Each certificate shown is issued by the next.', tone: 'ok' };
+    case 'out-of-order':
+      return { label: 'The certificates form a chain, but not in leaf-to-root order.', tone: 'warn' };
+    default:
+      return { label: 'Some certificates are not issued by any other certificate in this file.', tone: 'bad' };
   }
 }

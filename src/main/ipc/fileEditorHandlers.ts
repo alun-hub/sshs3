@@ -34,7 +34,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   // Parsed here so that nothing but certificate facts reaches the renderer: a .pem often holds a private key too.
   bridge.registerHandler(
     IPC_CHANNELS.CERTIFICATE_PREVIEW,
-    async (_event, providerId: string, remotePath: string): Promise<CertificatePreviewResult> => {
+    async (_event, providerId: string, remotePath: string, host?: string): Promise<CertificatePreviewResult> => {
       assertStrings({ providerId, remotePath });
       if (!isCertificateFileName(remotePath)) return { certs: [], moreCerts: 0, error: 'none' };
       try {
@@ -47,7 +47,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
         );
         if ('isDirectory' in read) return { certs: [], moreCerts: 0, error: 'none' };
         if (read.truncated) return { certs: [], moreCerts: 0, error: 'too-large' };
-        return describeCertificateFile(read.buffer);
+        return describeCertificateFile(read.buffer, Date.now(), host);
       } catch {
         // The error text can name the path or the host; the preview only needs to know it failed.
         return { certs: [], moreCerts: 0, error: 'unreadable' };

@@ -119,7 +119,7 @@ Inspect, edit, and preview remote files or monitor live server logs without open
 | **CSV / TSV Data Grid** | Parses tabular data into an interactive, sortable grid with column headers and text filter. |
 | **Media & Image Viewer** | Interactive zoom, pan dragging, and 90° rotation for `.png`, `.jpg`, `.webp`, `.gif`, `.svg` with dimensions and file size display. |
 | **PDF Documents** | Native PDF document preview powered by Chromium's embedded PDF engine. |
-| **Certificate Viewer** | Right-click a `.crt`, `.cer`, `.cert`, `.pem` or `.der` file and select **View Certificate...** for subject, issuer, validity, SANs, key and fingerprint in plain language. It is decoded inside sshs3, so `openssl` is not needed on the server. Details: [Certificate Preview](/docs/workspace/terminal/#certificate-preview). |
+| **Certificate Viewer** | Right-click a `.crt`, `.cer`, `.cert`, `.pem` or `.der` file and select **View Certificate...** for subject, issuer, validity, SANs, key, key usage, revocation URLs, fingerprints and the bundle's chain in plain language, with copy buttons and a host name check. It is decoded inside sshs3, so `openssl` is not needed on the server. Details: [Certificate Preview](/docs/workspace/terminal/#certificate-preview). |
 | **Live Log Tail (`tail -f`)** | Right-click any server log (e.g. `access.log`) and select **Tail -f**. Streams growing logs in real time with auto-scroll and pause/resume without loading giant files into memory. |
 
 ### External Editor Integration

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeValidity } from '../../src/renderer/src/lib/certificatePreview';
+import { describeChainStatus, describeValidity } from '../../src/renderer/src/lib/certificatePreview';
 import { isCertificateFileName } from '../../src/shared/certificateFileName';
 
 describe('describeValidity', () => {
@@ -25,5 +25,18 @@ describe('isCertificateFileName', () => {
     for (const p of ['/etc/passwd', '/x/server.key', '/x/crt', '/x/.crt', '/x/a.crt.bak', '/x/a.', '/x/dir/']) {
       expect(isCertificateFileName(p)).toBe(false);
     }
+  });
+});
+
+describe('describeChainStatus', () => {
+  it('words each chain state without calling the top trusted', () => {
+    expect(describeChainStatus({ status: 'ordered', endsWithRoot: true })).toEqual({
+      label: 'Each certificate is issued by the next, ending with a self-signed root.',
+      tone: 'ok',
+    });
+    expect(describeChainStatus({ status: 'ordered', endsWithRoot: false }).label).toMatch(/root is not included/);
+    expect(describeChainStatus({ status: 'ordered' }).label).toMatch(/shown is issued by the next/);
+    expect(describeChainStatus({ status: 'out-of-order' }).tone).toBe('warn');
+    expect(describeChainStatus({ status: 'broken' }).tone).toBe('bad');
   });
 });
