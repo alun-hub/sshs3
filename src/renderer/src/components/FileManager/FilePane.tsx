@@ -26,7 +26,8 @@ import { useNavHistory } from '../../lib/useNavHistory';
 import { SOURCE_ICONS, isNoopOsDrop } from './filePaneHelpers';
 import { recursiveFilterFiles, RECURSIVE_MAX_RESULTS } from '../../lib/recursiveFilter';
 import { buildDragPayload, type PaneSide, type PaneSource, type SourceType } from './types';
-import { AWS_SSO_EXPIRED_PREFIX } from '@shared/types/aws';
+import { offersAwsSsoSignIn } from '@shared/types/aws';
+import { isListingStale } from '../../lib/staleListing';
 import { comboFromKeyboardEvent } from '../../lib/shortcuts';
 import { DEFAULT_SHORTCUTS } from '@shared/types/settings';
 import { createRendererLogger } from '../../lib/log';
@@ -123,6 +124,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // Kept apart from `error` so a failed or cancelled sign-in leaves the expiry error, and its button, in place.
   const [ssoLoginError, setSsoLoginError] = useState<string | null>(null);
   const providerIdRef = useRef(source.providerId);
+  const lastLoadAtRef = useRef(0);
+  const loadingRef = useRef(false);
   /** Remote paths the user asked to drag out of sshs3 (shows DragOutDialog). */
   const [dragOutPaths, setDragOutPaths] = useState<string[] | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
@@ -228,6 +231,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     async (force?: boolean) => {
       const requestKey = `${source.providerId}::${currentPath}`;
       latestRequestRef.current = requestKey;
+      lastLoadAtRef.current = Date.now();
+      loadingRef.current = true;
       setLoading(true);
       setError(null);
       try {
@@ -299,7 +304,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
         setError(msg);
         setEntries([]);
       } finally {
-        if (latestRequestRef.current === requestKey) setLoading(false);
+        if (latestRequestRef.current === requestKey) {
+          loadingRef.current = false;
+          setLoading(false);
+        }
       }
     },
     [source.providerId, source.sourceType, currentPath, gitIntegrationEnabled]
@@ -354,6 +362,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setSelectedPaths(new Set());
     void load(true);
   }, [load, refreshToken, currentPath]);
+
+  // An S3 session can lapse while the window sits idle; reloading on return surfaces that (and the sign-in
+  // button) instead of leaving an old listing that looks fine.
+  useEffect(() => {
+    if (source.sourceType !== 's3') return;
+    const reloadIfStale = () => {
+      if (document.visibilityState !== 'visible' || loadingRef.current) return;
+      if (isListingStale(lastLoadAtRef.current, Date.now())) void load(true);
+    };
+    window.addEventListener('focus', reloadIfStale);
+    document.addEventListener('visibilitychange', reloadIfStale);
+    return () => {
+      window.removeEventListener('focus', reloadIfStale);
+      document.removeEventListener('visibilitychange', reloadIfStale);
+    };
+  }, [source.sourceType, load]);
 
   // Only navigation resets the filter; a refresh (e.g. after a finished transfer) keeps it.
   useEffect(() => {
@@ -975,7 +999,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{ssoLoginError ? `${error} ${ssoLoginError}` : error}</span>
           </div>
-          {source.sourceType === 's3' && error.startsWith(AWS_SSO_EXPIRED_PREFIX) && (
+          {source.sourceType === 's3' && offersAwsSsoSignIn(error) && (
             <button
               type="button"
               disabled={ssoSigningIn}

@@ -38,6 +38,8 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { fromSSO } from '@aws-sdk/credential-provider-sso';
 import { buildAwsNodeHttpHandler } from '../aws/buildAwsNodeHttpHandler';
+import { describeS3Error, isAwsCredentialsError, isAwsSsoSessionError } from '../aws/awsErrors';
+import { createLogger } from '../log';
 import {
   BaseStorageProvider,
   formatDate,
@@ -81,6 +83,7 @@ export function parseS3Path(remotePath: string): { bucket: string; key: string }
 
 /** A stalled proxy/TLS handshake should fail visibly instead of leaving the pane loading forever. */
 const S3_CONNECTION_TIMEOUT_MS = 15_000;
+const s3Log = createLogger('s3');
 
 export class S3StorageProvider extends BaseStorageProvider implements IStorageProvider {
   readonly id: string;
@@ -130,6 +133,25 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     });
 
     this.client = new S3Client(s3ClientConfig);
+
+    if (config.authMode === 'sso') {
+      // Every operation (not just listing) reports a lapsed SSO session the same way, so the pane can offer a sign-in.
+      this.client.middlewareStack?.add(
+        (next) => async (args) => {
+          try {
+            return await next(args);
+          } catch (err) {
+            if (isAwsSsoSessionError(err) || isAwsCredentialsError(err)) {
+              const e = err as Error;
+              s3Log.warn(`SSO credential problem for "${config.name}": ${e.name}: ${e.message}`);
+              throw new Error(describeS3Error(err, true), { cause: err });
+            }
+            throw err;
+          }
+        },
+        { step: 'initialize', name: 'ssoSessionErrorTranslator', priority: 'high' }
+      );
+    }
   }
 
   private listCache: Map<string, { entries: FileEntry[]; timestamp: number }> = new Map();

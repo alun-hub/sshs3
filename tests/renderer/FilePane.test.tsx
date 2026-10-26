@@ -460,6 +460,31 @@ describe('FilePane AWS SSO sign-in', () => {
     expect(screen.getByRole('button', { name: 'Sign in again' })).toBeEnabled();
   });
 
+  it('reloads an S3 listing when the window regains focus after a long idle, but not for a fresh one or SFTP', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { unmount } = renderPane();
+      await waitFor(() => expect(api.storageList).toHaveBeenCalledTimes(1));
+
+      fireEvent.focus(window);
+      expect(api.storageList).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      fireEvent.focus(window);
+      await waitFor(() => expect(api.storageList).toHaveBeenCalledTimes(2));
+      unmount();
+
+      api.storageList.mockClear();
+      renderPane('sftp');
+      await waitFor(() => expect(api.storageList).toHaveBeenCalledTimes(1));
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      fireEvent.focus(window);
+      expect(api.storageList).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not offer Sign in again for other errors or other storage types', async () => {
     api.storageList.mockRejectedValue(new Error('Access denied: nope'));
     renderPane();
