@@ -126,6 +126,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const providerIdRef = useRef(source.providerId);
   const lastLoadAtRef = useRef(0);
   const loadingRef = useRef(false);
+  /** A browser sign-in is pending; a refocus reload meanwhile would hide the sign-in button and its status. */
+  const ssoSigningInRef = useRef(false);
   /** Remote paths the user asked to drag out of sshs3 (shows DragOutDialog). */
   const [dragOutPaths, setDragOutPaths] = useState<string[] | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
@@ -316,12 +318,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => {
     providerIdRef.current = source.providerId;
+    ssoSigningInRef.current = false;
     setSsoSigningIn(false);
     setSsoLoginError(null);
   }, [source.providerId]);
 
   const handleSsoRelogin = useCallback(async () => {
     const providerId = source.providerId;
+    ssoSigningInRef.current = true;
     setSsoSigningIn(true);
     setSsoLoginError(null);
     try {
@@ -333,6 +337,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         setSsoLoginError(describeIpcError(err, 'AWS SSO sign-in failed').replace(/^Error:\s*/, ''));
       }
     } finally {
+      ssoSigningInRef.current = false;
       if (providerIdRef.current === providerId) setSsoSigningIn(false);
     }
   }, [source.providerId, load]);
@@ -369,7 +374,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     if (source.sourceType !== 's3') return;
     const reloadIfStale = () => {
-      if (document.visibilityState !== 'visible' || loadingRef.current) return;
+      if (document.visibilityState !== 'visible' || loadingRef.current || ssoSigningInRef.current) return;
       if (isListingStale(lastLoadAtRef.current, Date.now())) void load(true);
     };
     window.addEventListener('focus', reloadIfStale);

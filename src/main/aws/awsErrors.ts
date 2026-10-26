@@ -8,7 +8,8 @@ const SSO_ERROR_PATTERN =
 /**
  * True when `err` means the SSO sign-in behind an S3 profile is missing, expired or rejected.
  * `CredentialsProviderError` alone is not enough: it also covers a wrong account or role, which a
- * new sign-in does not fix.
+ * new sign-in does not fix. (The pane still offers a sign-in for it, see `isAwsCredentialsError`, but with
+ * the cause in the message instead of claiming the session expired.)
  */
 export function isAwsSsoSessionError(err: unknown): boolean {
   // The SDK and proxy layers wrap errors, so the real reason can sit a few `cause`s down.
