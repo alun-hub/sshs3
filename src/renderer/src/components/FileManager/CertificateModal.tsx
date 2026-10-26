@@ -42,10 +42,15 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
       .then((res) => {
         if (cancelled) return;
         if (res.certs.length > 0) setResult(res);
-        else setError(describePreviewError(res.error));
+        else {
+          setResult(null);
+          setError(describePreviewError(res.error));
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(describeIpcError(err, 'Failed to read the certificate'));
+        if (cancelled) return;
+        setResult(null);
+        setError(describeIpcError(err, 'Failed to read the certificate'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -117,7 +122,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ open, provid
               </Button>
             </form>
           )}
-          {result && checkedHost && !result.checkedHost && (
+          {result && !loading && checkedHost && !result.checkedHost && (
             <div role="alert" className="mt-2 rounded-lg border border-amber-800/80 bg-amber-950/40 p-2 text-xs text-amber-300">
               That is not a valid host name or IP address.
             </div>

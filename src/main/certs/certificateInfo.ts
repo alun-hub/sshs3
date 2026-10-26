@@ -283,21 +283,26 @@ export function describeCertificateFile(
   const host = validHostInput(hostInput);
   const certs: CertificateInfo[] = [];
   const parsed: X509Certificate[] = [];
+  let unreadable = 0;
   for (const der of blocks.slice(0, MAX_CERTIFICATES)) {
     try {
       const { info, x509 } = parseCertificate(der, now);
-      if (host) info.hostMatch = matchesHost(x509, host);
+      // A name belongs to the certificate that is presented for it; CAs in the bundle would only read as mismatches.
+      if (host && !info.isCa) info.hostMatch = matchesHost(x509, host);
       certs.push(info);
       parsed.push(x509);
     } catch {
-      // A block that does not parse is skipped; the others are still worth showing.
+      // A block that does not parse is skipped, and counted: the others are still worth showing.
+      unreadable++;
     }
   }
   const moreCerts = Math.max(0, blocks.length - MAX_CERTIFICATES);
   if (certs.length === 0) return { certs, moreCerts, error: 'unreadable' };
 
   const result: CertificatePreviewResult = { certs, moreCerts };
-  if (parsed.length > 1) {
+  if (unreadable > 0) result.unreadableCerts = unreadable;
+  // With a certificate missing the chain would be judged on the wrong list, so it is not judged at all.
+  if (parsed.length > 1 && unreadable === 0) {
     result.chain = describeChain(parsed, moreCerts === 0 ? certs[certs.length - 1].selfSigned : undefined);
   }
   if (host) result.checkedHost = host;

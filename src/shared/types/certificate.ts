@@ -76,6 +76,8 @@ export interface CertificatePreviewResult {
   certs: CertificateInfo[];
   /** Certificates in the file beyond `certs`. */
   moreCerts: number;
+  /** Certificates that could not be parsed and are left out of `certs` (the chain is then not judged). */
+  unreadableCerts?: number;
   /** Present when the file holds more than one certificate. */
   chain?: CertificateChainInfo;
   /** The host name the certificates were checked against, when one was given. */

@@ -166,7 +166,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const isEffectiveDir = isDirOverride ?? details.isDir;
   const effectiveCategory: FileTypeCategory = isEffectiveDir ? 'directory' : details.category;
   // Parsed in the main process (no openssl needed on the host); undefined unless the file holds a certificate.
-  const certificates = useCertificatePreview(providerId, toStoragePath(details.fullPath), !isEffectiveDir);
+  const { result: certificates, pending: certificatePending } = useCertificatePreview(providerId, toStoragePath(details.fullPath), !isEffectiveDir);
   const effectiveLabel = isEffectiveDir ? 'Directory' : certificates ? 'Certificate' : details.label;
   const Icon = certificates ? ShieldCheck : CATEGORY_ICONS[effectiveCategory] || File;
   const catStyle = CATEGORY_STYLES[effectiveCategory] || CATEGORY_STYLES.unknown;
@@ -184,6 +184,8 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   useEffect(() => {
     let cancelled = false;
     setSnippet(null);
+    // A certificate-named file is looked at as a certificate first; it is read as text only if it is not one.
+    if (certificatePending || certificates) return undefined;
     if (!providerId || isEffectiveDir || !window.multissh?.fileRead || isSensitiveFilePath(details.fullPath)) {
       return undefined;
     }
@@ -238,7 +240,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [providerId, details.fullPath, isEffectiveDir, details.category, toStoragePath]);
+  }, [providerId, details.fullPath, isEffectiveDir, details.category, toStoragePath, certificatePending, certificates]);
 
   // Local files are dragged out of the card in place; remote ones first ask to copy them here.
   const isLocalProvider = providerId === 'local';
@@ -357,7 +359,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           {...dragSource}
           data-testid="path-hover-drag-preview"
           className={classNames(
-            'my-2.5 overflow-hidden rounded-xl border border-divider/70 bg-slate-950/70 p-2 text-xs font-mono',
+            'my-2.5 overflow-hidden rounded-xl border border-border-subtle bg-app-surface-subtle p-2 text-xs font-mono',
             canDragOut ? 'select-none' : 'select-text',
             dragCursor
           )}
@@ -385,7 +387,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
                   <span className="text-txt-primary truncate">{line || ' '}</span>
                 </div>
               ))}
-              <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[10px] text-txt-muted">
+              <div className="mt-1.5 flex items-center justify-between border-t border-divider pt-1 text-[10px] text-txt-muted">
                 <span>{snippet.lineCount} lines</span>
                 {snippet.size !== undefined && <span>{formatBytes(snippet.size)}</span>}
               </div>

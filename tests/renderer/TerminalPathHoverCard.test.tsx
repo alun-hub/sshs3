@@ -438,6 +438,26 @@ describe('TerminalPathHoverCard', () => {
       expect(certificatePreview).not.toHaveBeenCalled();
     });
 
+    it('reads a certificate-named file once: as a certificate, and as text only when it is not one', async () => {
+      const fileRead = vi.fn().mockResolvedValue({ content: 'just notes\n', size: 11, isBinary: false });
+      const certificatePreview = vi.fn().mockResolvedValue({ certs: [], moreCerts: 0, error: 'none' });
+      (window as any).multissh = { fileRead, certificatePreview };
+      render(
+        <TerminalPathHoverCard path="/x/notes.crt" providerId="p1" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />
+      );
+      expect(await screen.findByText('just notes')).toBeInTheDocument();
+      expect(certificatePreview).toHaveBeenCalledTimes(1);
+      expect(fileRead).toHaveBeenCalledTimes(1);
+
+      fileRead.mockClear();
+      (window as any).multissh = { fileRead, certificatePreview: vi.fn().mockResolvedValue({ certs: [cert], moreCerts: 0 }) };
+      render(
+        <TerminalPathHoverCard path="/x/site.crt" providerId="p1" x={50} y={50} onClose={vi.fn()} onCopyPath={vi.fn()} />
+      );
+      await screen.findAllByTestId('certificate-preview');
+      expect(fileRead).not.toHaveBeenCalled();
+    });
+
     it('falls back to the normal card when the file holds no certificate', async () => {
       const certificatePreview = vi.fn().mockResolvedValue({ certs: [], moreCerts: 0, error: 'none' });
       (window as any).multissh = { fileRead: vi.fn().mockResolvedValue(null), certificatePreview };

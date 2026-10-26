@@ -97,6 +97,29 @@ describe('CertificateModal', () => {
     await waitFor(() => expect(screen.queryByText('Valid for www.example.test')).not.toBeInTheDocument());
   });
 
+  it('drops the old details when a later lookup fails', async () => {
+    const certificatePreview = vi
+      .fn()
+      .mockResolvedValueOnce({ moreCerts: 0, certs: [fullCert] })
+      .mockRejectedValueOnce(new Error('Connection lost'));
+    (window as any).multissh = { certificatePreview };
+    render(<CertificateModal open providerId="p1" entry={file('server.crt')} onClose={vi.fn()} />);
+
+    const input = await screen.findByLabelText('Host name to check');
+    fireEvent.change(input, { target: { value: 'www.example.test' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('certificate-preview')).not.toBeInTheDocument());
+  });
+
+  it('says when some certificates in the file could not be read', async () => {
+    (window as any).multissh = {
+      certificatePreview: vi.fn().mockResolvedValue({ moreCerts: 0, certs: [fullCert], unreadableCerts: 2 }),
+    };
+    render(<CertificateModal open providerId="p1" entry={file('server.crt')} onClose={vi.fn()} />);
+    expect(await screen.findByRole('note')).toHaveTextContent('2 certificates in this file could not be read');
+  });
+
   it('explains why there is nothing to show', async () => {
     (window as any).multissh = { certificatePreview: vi.fn().mockResolvedValue({ certs: [], moreCerts: 0, error: 'too-large' }) };
     render(<CertificateModal open providerId="p1" entry={file('big.pem')} onClose={vi.fn()} />);

@@ -8,7 +8,7 @@ import { CopyValueButton } from './CopyValueButton';
 const TONE_STYLES: Record<CertificateTone, string> = {
   ok: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
   warn: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
-  bad: 'bg-red-500/15 text-red-300 ring-red-500/30',
+  bad: 'bg-red-500/15 text-red-200 ring-red-500/30',
 };
 
 const Row: React.FC<{ label: string; children: React.ReactNode; title?: string; copy?: { value: string; label: string } }> = ({
@@ -30,7 +30,7 @@ const Tag: React.FC<{ children: React.ReactNode; warn?: boolean }> = ({ children
   <span
     className={classNames(
       'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-1 ring-inset',
-      warn ? TONE_STYLES.warn : 'bg-slate-500/15 text-slate-300 ring-slate-500/30'
+      warn ? TONE_STYLES.warn : 'bg-app-surface-hover text-txt-secondary ring-border-subtle'
     )}
   >
     {children}
@@ -126,14 +126,19 @@ export const CertificatePreview: React.FC<{ result: CertificatePreviewResult; fu
   result,
   full = false,
 }) => {
-  const { certs, moreCerts, chain, checkedHost } = result;
+  const { certs, moreCerts, chain, checkedHost, unreadableCerts } = result;
   const detailed = certs.length === 1;
   const chainLine = full && chain ? describeChainStatus(chain) : undefined;
   return (
     <div
       data-testid="certificate-preview"
-      className="my-2.5 space-y-2 overflow-hidden rounded-xl border border-divider/70 bg-slate-950/70 p-2 select-text"
+      className="my-2.5 space-y-2 overflow-hidden rounded-xl border border-border-subtle bg-app-surface-subtle p-2 select-text"
     >
+      {unreadableCerts !== undefined && unreadableCerts > 0 && (
+        <div role="note" className={classNames('rounded-lg px-2 py-1 text-[10px] ring-1 ring-inset', TONE_STYLES.warn)}>
+          {unreadableCerts} certificate{unreadableCerts === 1 ? '' : 's'} in this file could not be read and {unreadableCerts === 1 ? 'is' : 'are'} not shown.
+        </div>
+      )}
       {certs.length > 1 && (
         <div className="space-y-1 text-[10px] text-txt-muted">
           <div>
@@ -150,7 +155,7 @@ export const CertificatePreview: React.FC<{ result: CertificatePreviewResult; fu
         </div>
       )}
       {certs.map((cert, index) => (
-        <div key={`${index}-${cert.sha256}`} className="border-t border-white/5 pt-2 first:border-t-0 first:pt-0">
+        <div key={`${index}-${cert.sha256}`} className="border-t border-divider pt-2 first:border-t-0 first:pt-0">
           <CertificateBlock cert={cert} detailed={detailed || full} full={full} host={checkedHost} />
         </div>
       ))}

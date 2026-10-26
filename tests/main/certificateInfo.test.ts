@@ -166,6 +166,21 @@ describe('extended details', () => {
     expect(check('192.0.2.11', 'leaf.pem').certs[0].hostMatch).toBe(false);
   });
 
+  it('checks the host name against the end-entity certificate only, not against CAs in the bundle', () => {
+    const bundle = Buffer.concat([fixture('leaf2.pem'), fixture('int.pem'), fixture('ca.pem')]);
+    const res = describeCertificateFile(bundle, NOW, 'api.example.test');
+    expect(res.certs.map((c) => c.hostMatch)).toEqual([true, undefined, undefined]);
+  });
+
+  it('counts a certificate that cannot be read and does not judge the chain without it', () => {
+    const broken = Buffer.from(pemBlock('CERTIFICATE', 'AAAA'));
+    const res = describeCertificateFile(Buffer.concat([fixture('leaf2.pem'), broken, fixture('int.pem')]), NOW);
+    expect(res.certs).toHaveLength(2);
+    expect(res.unreadableCerts).toBe(1);
+    expect(res.chain).toBeUndefined();
+    expect(describeCertificateFile(fixture('leaf2.pem'), NOW).unreadableCerts).toBeUndefined();
+  });
+
   it('ignores a host that is not a plain host name, and does no check without one', () => {
     for (const bad of ['', '   ', 'a b', 'x\u0000y', 'x'.repeat(300), 42, null, { a: 1 }]) {
       const res = describeCertificateFile(fixture('leaf2.pem'), NOW, bad);
