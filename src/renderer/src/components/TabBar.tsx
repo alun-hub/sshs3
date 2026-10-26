@@ -28,6 +28,7 @@ import { TabContextMenu } from './TabContextMenu';
 import { watchDragReleasedOutsideWindow } from '../lib/dragLeaveWindow';
 import { OPEN_TAB_MENU_EVENT } from '../lib/tabMenuEvents';
 import { getShortcutKeys } from '../lib/shortcuts';
+import { formatDate } from '../lib/dateFormat';
 
 export type TabType = 'terminal' | 'filemanager' | 'editor';
 
@@ -175,11 +176,6 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   const liveTunnelCount = activeTunnels.filter((t) => t.status === 'active').length;
   const erroredTunnelCount = activeTunnels.filter((t) => t.status === 'error').length;
-
-  const formatCertDate = (isoLike: string): string => {
-    const d = new Date(isoLike);
-    return Number.isNaN(d.getTime()) ? isoLike : d.toLocaleDateString();
-  };
 
   const certSubjectCN = (subject: string): string => {
     const line = subject.split('\n').find((l) => l.startsWith('CN='));
@@ -545,7 +541,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                                       <div className="flex gap-1">
                                         <dt className="shrink-0 text-txt-muted/70">Valid:</dt>
                                         <dd className="truncate select-text text-txt-primary">
-                                          {formatCertDate(id.certificate.validFrom)} – {formatCertDate(id.certificate.validTo)}
+                                          {formatDate(id.certificate.validFrom)} – {formatDate(id.certificate.validTo)}
                                         </dd>
                                       </div>
                                     </dl>

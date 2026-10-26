@@ -21,6 +21,7 @@ import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
 import { createRendererLogger } from '../../lib/log';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
+import { formatDateTime } from '../../lib/dateFormat';
 import { FeatureBlockedNotice } from './Managed';
 const log = createRendererLogger('DotfilePoolManagerModal');
 
@@ -29,14 +30,7 @@ interface DotfilePoolManagerModalProps {
   onClose: () => void;
 }
 
-function formatTimestamp(d = new Date()): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
-}
+const formatTimestamp = (): string => formatDateTime(new Date());
 
 /** Stable fingerprint of what Save would persist (ignores timestamps), used for the unsaved-changes indicator. */
 function poolSnapshot(pool: DotfilePool): string {
