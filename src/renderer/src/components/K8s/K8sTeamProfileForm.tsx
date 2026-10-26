@@ -77,7 +77,7 @@ export const K8sTeamProfileForm: React.FC<K8sTeamProfileFormProps> = ({ open, va
         aria-modal="true"
         aria-label="Shared cluster"
         onSubmit={submit}
-        className="w-full max-w-md space-y-3.5 rounded-2xl border border-border-subtle bg-app-card p-5 text-xs shadow-2xl"
+        className="w-full max-w-md space-y-3.5 rounded-xl border border-border-subtle bg-app-card p-5 text-xs shadow-2xl"
       >
         <div className="flex items-start justify-between">
           <div>

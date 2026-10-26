@@ -92,7 +92,7 @@ export const K8sSharePicker: React.FC<K8sSharePickerProps> = ({ profile, groups,
   if (!profile) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Share to Team Vault" className="w-full max-w-sm space-y-3 rounded-2xl border border-border-subtle bg-app-card p-5 text-xs shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Share to Team Vault" className="w-full max-w-sm space-y-3 rounded-xl border border-border-subtle bg-app-card p-5 text-xs shadow-2xl">
         <h2 className="text-sm font-semibold text-txt-primary">Share “{profile.name}” to a team</h2>
         <p className="text-txt-muted">Shares the server, project and TLS option. No token is shared.</p>
         <div className="space-y-1">

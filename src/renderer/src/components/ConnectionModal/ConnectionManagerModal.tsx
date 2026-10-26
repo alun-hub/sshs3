@@ -821,7 +821,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                     // reachable via Tab even when the pointer never hovers it. `focus-visible`
                     // (not just `focus`) also reveals it, so a sighted keyboard user tabbing
                     // through sees it appear instead of invisibly activating a mystery control.
-                    className="absolute -right-1 -top-1 rounded-full bg-app-surface p-0.5 text-txt-muted opacity-0 outline-none transition-opacity hover:text-sky-400 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-sky-500 group-hover:opacity-100"
+                    className="absolute -right-1 -top-1 rounded bg-app-surface p-0.5 text-txt-muted opacity-0 outline-none transition-opacity hover:text-sky-400 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-sky-500 group-hover:opacity-100"
                   >
                     <Pin className="h-2.5 w-2.5" />
                   </button>

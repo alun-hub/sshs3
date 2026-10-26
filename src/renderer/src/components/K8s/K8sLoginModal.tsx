@@ -169,7 +169,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 animate-in fade-in duration-150">
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="OpenShift / Kubernetes login" className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="OpenShift / Kubernetes login" className="flex flex-col w-full max-w-xl max-h-[90vh] rounded-xl border border-border-subtle bg-app-card shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-divider bg-app-surface px-5 py-4">
           <div className="flex items-center gap-2.5">

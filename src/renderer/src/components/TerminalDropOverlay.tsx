@@ -19,8 +19,8 @@ export const TerminalDropOverlay: React.FC<TerminalDropOverlayProps> = ({
       data-testid="terminal-drop-overlay"
       className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm p-6 animate-fade-in"
     >
-      <div className="flex flex-col items-center max-w-md text-center rounded-2xl border-2 border-dashed border-sky-400/60 bg-sky-950/20 px-8 py-8 shadow-2xl">
-        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/20 text-sky-400 ring-8 ring-sky-500/10">
+      <div className="flex flex-col items-center max-w-md text-center rounded-xl border-2 border-dashed border-sky-400/60 bg-sky-950/20 px-8 py-8 shadow-2xl">
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-md bg-sky-500/20 text-sky-400 ring-8 ring-sky-500/10">
           <Upload className="h-7 w-7 animate-bounce" />
         </div>
 
