@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.69] - 2026-10-27
+
+Result of a code audit of the whole app: every finding was checked against the code before it was fixed.
+
+### Security
+- A saved key passphrase is only given to ssh's own local key prompt, never to a question a server asks; tunnels refuse an unknown host key instead of answering it with a secret
+- Linking a smartcard to Remote Profile Sync no longer stores the master passwords unencrypted when there is no OS keyring; it stops with a clear message instead
+- File manager connections no longer write passwords, passphrases or S3 keys to the saved session
+- Kubernetes sign-in no longer accepts a kubeconfig path from the UI
+- Remote search, file preview and tail can no longer be steered by file names that start with `-`
+- Hovering a network path (`\\server\share`) in the terminal no longer contacts that server, which would have sent Windows credentials to it
+- Dropping, pasting or `cd`-ing to a file name that contains control characters is refused
+- Team Vault only hands a strictly formatted age file to the age tool
+- The FIDO2 key manager only lists and deletes SSH credentials, never the key's web passkeys, and no longer runs ykman when the PIN prompt was dismissed
+
+### Fixed
+- Remote Profile Sync: local folders are no longer wiped by a pull, fields cleared on another device are cleared here too, and push, pull and compare no longer run on top of each other or leave the device falsely "ahead"
+- The sync target keeps its stored credentials when the OS keyring is locked, and an unreadable config is copied aside instead of discarded
+- Team Vault: local changes that were not pushed survive an app restart instead of being overwritten by the next pull; tunnels for shared profiles and for profiles with a saved password now get their credentials
+- Directory sync into a folder that does not exist yet over SFTP works
+- SFTP: large writes are split into packets the server accepts, and a call that was running when the connection dropped is retried
+- Kubernetes: symlinks and special files in a pod are skipped by transfers, a write to a pod waits for the pod to finish and reports errors such as a full disk, and an abandoned write no longer leaves a process running in the pod
+- Dotfile pools keep file deletions and no longer lose a file that was added at the same moment
+- A malformed certificate can no longer hang the app
+- Prompts (host key, PIN, transfer conflict, quit, dotfiles sync) no longer hang for ever when the window showing them crashes
+- Starting a tunnel when `ssh` is missing or its arguments are invalid now fails with a message and cleans up
+
 ## [0.96.68] - 2026-10-26
 
 ### Added
