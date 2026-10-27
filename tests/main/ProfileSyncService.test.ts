@@ -424,6 +424,69 @@ describe('ProfileSyncService', () => {
     expect(profiles.ssh[0].privateKeyPath).toBe('C:\\Users\\bob\\.ssh\\id_ed25519');
   });
 
+  it('clears an optional field on a pull when it was cleared on the other machine, and then reports in sync', async () => {
+    const base = { id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' as const };
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ ...base, group: 'OldFolder', proxyJump: 'bastion' });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    expect((await machineB.profileStore.getProfiles()).ssh[0]).toMatchObject({ group: 'OldFolder', proxyJump: 'bastion' });
+
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH(base); // folder and jump host removed
+    await machineA.sync.pushToRemote(provider);
+
+    await machineB.sync.pullFromRemote(provider);
+    const pulled = (await machineB.profileStore.getProfiles()).ssh[0];
+    expect(pulled.group).toBeUndefined();
+    expect(pulled.proxyJump).toBeUndefined();
+    const comparison = await machineB.sync.compareWithRemote(provider);
+    expect(comparison.state).toBe('in_sync');
+  });
+
+  it('keeps the local credentials when the remote has no credentials half to offer', async () => {
+    const machineB = await harness();
+    await machineB.profileStore.saveSSH({ id: 'ssh-1', name: 'Local', host: 'h', username: 'local-user', authType: 'password', password: 'local-pw' }); // pragma: allowlist secret
+
+    await new Promise((r) => setTimeout(r, 2));
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'Renamed', host: 'h', username: 'remote-user', authType: 'password', password: 'remote-pw' }); // pragma: allowlist secret
+    await machineA.sync.pushToRemote(provider);
+    await provider.delete('~/.sshs3/credentials.enc');
+
+    await machineB.sync.pullFromRemote(provider);
+
+    const pulled = (await machineB.profileStore.getProfiles()).ssh[0];
+    expect(pulled.name).toBe('Renamed');
+    expect(pulled.username).toBe('local-user');
+    expect(pulled.password).toBe('local-pw'); // pragma: allowlist secret
+  });
+
+  it('runs a push and a pull started together one after the other instead of tripping over each other', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider);
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'Prod 2', host: 'h', username: 'u', authType: 'password' });
+
+    // A slow remote lets the operations overlap; unserialised, the pull would see the push's own
+    // in-progress marker and throw SyncInProgressError.
+    const realStat = provider.stat.bind(provider);
+    provider.stat = async (remotePath: string) => {
+      await new Promise((r) => setTimeout(r, 3));
+      return realStat(remotePath);
+    };
+    const results = await Promise.allSettled([
+      machineA.sync.pushToRemote(provider),
+      machineA.sync.pullFromRemote(provider),
+      machineA.sync.compareWithRemote(provider),
+      machineA.sync.pushToRemote(provider),
+    ]);
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled', 'fulfilled']);
+  });
+
   it('does not let an older remote copy overwrite a newer local edit', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'Old name', host: 'h', username: 'u', authType: 'password' });

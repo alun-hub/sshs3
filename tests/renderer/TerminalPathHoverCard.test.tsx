@@ -190,6 +190,34 @@ describe('TerminalPathHoverCard', () => {
     expect(screen.getByText('requests>=2.31.0')).toBeInTheDocument();
   });
 
+  it('never reads a file or checks a certificate on a network share, and offers no drag-out for it', async () => {
+    // Opening \\server\share\x from here would make Windows send the user's NetNTLMv2 credentials to it.
+    const mockFileRead = vi.fn().mockResolvedValue({ content: 'x', size: 1, isBinary: false });
+    const mockCertificatePreview = vi.fn().mockResolvedValue(undefined);
+    const mockDragOutStart = vi.fn();
+    (window as any).multissh = {
+      fileRead: mockFileRead,
+      certificatePreview: mockCertificatePreview,
+      dragOutStart: mockDragOutStart,
+    };
+
+    render(
+      <TerminalPathHoverCard
+        path={'\\\\attacker.example.com\\share\\server.pem'}
+        providerId="local"
+        x={50}
+        y={50}
+        onClose={vi.fn()}
+        onCopyPath={vi.fn()}
+      />
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(mockFileRead).not.toHaveBeenCalled();
+    expect(mockCertificatePreview).not.toHaveBeenCalled();
+    expect(document.querySelector('[draggable="true"]')).toBeNull();
+  });
+
   it('loads and renders image thumbnail preview when providerId is supplied for images', async () => {
     const mockFileRead = vi.fn().mockResolvedValue({
       content: '',

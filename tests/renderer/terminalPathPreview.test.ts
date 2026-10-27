@@ -4,12 +4,22 @@ import {
   getFileExtension,
   getLanguageLabel,
   isSensitiveFilePath,
+  isNetworkUncPath,
   isUncPath,
   resolvePathDetails,
   truncateSnippet,
 } from '../../src/renderer/src/lib/terminalPathPreview';
 
 describe('terminalPathPreview', () => {
+  it('treats WSL shares as local but every other UNC path as a network share', () => {
+    expect(isNetworkUncPath('\\\\attacker\\share\\f')).toBe(true);
+    expect(isNetworkUncPath('//attacker/share/f')).toBe(true);
+    expect(isNetworkUncPath('\\\\wsl.localhost.evil.com\\share')).toBe(true);
+    expect(isNetworkUncPath('\\\\wsl.localhost\\Ubuntu\\home\\me\\a.md')).toBe(false);
+    expect(isNetworkUncPath('\\\\wsl$\\Ubuntu\\home')).toBe(false);
+    expect(isNetworkUncPath('C:\\Users\\me')).toBe(false);
+  });
+
   it('recognises UNC paths, which must never be stat-ed on hover', () => {
     expect(isUncPath('\\\\attacker.example.com\\share\\f.txt')).toBe(true);
     expect(isUncPath('//attacker.example.com/share/f.txt')).toBe(true);

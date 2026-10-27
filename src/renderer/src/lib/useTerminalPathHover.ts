@@ -14,7 +14,7 @@ import {
   type ExistenceCheck,
   type PathHoverMode,
 } from './pathPreviewGate';
-import { isUncPath, resolvePathDetails } from './terminalPathPreview';
+import { isNetworkUncPath, resolvePathDetails } from './terminalPathPreview';
 import { extractCwdFromPrompt } from './terminalOutput';
 import { wslToWindowsPath } from './wslPaths';
 import { pathBasename, terminalProviderId, terminalStorageConnectConfig, type TerminalStorageTarget } from './terminalStorage';
@@ -338,7 +338,7 @@ export function useTerminalPathHover({
   const checkExistence = useCallback(async (fullPath: string): Promise<ExistenceCheck> => {
     const id = terminalProviderId(targetRef.current);
     // Hovering must not make this machine authenticate to whatever server a path in the output names.
-    if (isUncPath(fullPath)) return 'unknown';
+    if (isNetworkUncPath(fullPath) || isNetworkUncPath(toStoragePathRef.current(fullPath))) return 'unknown';
     // Nothing to check against: behave as if the file exists.
     if (!id || !(window.multissh?.storageLookup || window.multissh?.storageStat)) return 'exists';
     const key = `${id}\0${fullPath}`;
@@ -409,6 +409,12 @@ export function useTerminalPathHover({
         }
         if (cancelled()) return;
         const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
+        // The card reads the file (preview, certificate check) as soon as it opens, so for a path that names
+        // another machine it must not open at all: that would send this user's NetNTLMv2 credentials to it.
+        if (isNetworkUncPath(details.fullPath) || isNetworkUncPath(toStoragePathRef.current(details.fullPath))) {
+          log.debug('card skipped, the path names a network share', { path });
+          return;
+        }
         const hasSlash = path.includes('/') || path.includes('\\');
         // A bare word is only previewed when the file really exists; text that merely looks like a path
         // (`Node.js`, a proposed `src/new.ts`) is dropped once the file is known not to exist.

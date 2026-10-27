@@ -16,7 +16,7 @@ import {
   GripVertical,
   X,
 } from 'lucide-react';
-import { isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
+import { isNetworkUncPath, isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
 import { chooseHoverCardSide, hoverCardRoom, placeHoverCard } from '../lib/hoverCardPlacement';
 import { createRendererLogger } from '../lib/log';
@@ -166,7 +166,13 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const isEffectiveDir = isDirOverride ?? details.isDir;
   const effectiveCategory: FileTypeCategory = isEffectiveDir ? 'directory' : details.category;
   // Parsed in the main process (no openssl needed on the host); undefined unless the file holds a certificate.
-  const { result: certificates, pending: certificatePending } = useCertificatePreview(providerId, toStoragePath(details.fullPath), !isEffectiveDir);
+  // Defence in depth (the hover hook never opens the card for these): no file access for a network share.
+  const networkPath = isNetworkUncPath(details.fullPath) || isNetworkUncPath(toStoragePath(details.fullPath));
+  const { result: certificates, pending: certificatePending } = useCertificatePreview(
+    providerId,
+    toStoragePath(details.fullPath),
+    !isEffectiveDir && !networkPath
+  );
   const effectiveLabel = isEffectiveDir ? 'Directory' : certificates ? 'Certificate' : details.label;
   const Icon = certificates ? ShieldCheck : CATEGORY_ICONS[effectiveCategory] || File;
   const catStyle = CATEGORY_STYLES[effectiveCategory] || CATEGORY_STYLES.unknown;
@@ -186,7 +192,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
     setSnippet(null);
     // A certificate-named file is looked at as a certificate first; it is read as text only if it is not one.
     if (certificatePending || certificates) return undefined;
-    if (!providerId || isEffectiveDir || !window.multissh?.fileRead || isSensitiveFilePath(details.fullPath)) {
+    if (!providerId || networkPath || isEffectiveDir || !window.multissh?.fileRead || isSensitiveFilePath(details.fullPath)) {
       return undefined;
     }
 
@@ -240,11 +246,11 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [providerId, details.fullPath, isEffectiveDir, details.category, toStoragePath, certificatePending, certificates]);
+  }, [providerId, details.fullPath, isEffectiveDir, networkPath, details.category, toStoragePath, certificatePending, certificates]);
 
   // Local files are dragged out of the card in place; remote ones first ask to copy them here.
   const isLocalProvider = providerId === 'local';
-  const canDragOut = Boolean(providerId) && (isLocalProvider ? Boolean(window.multissh?.dragOutStart) : Boolean(onDragOut));
+  const canDragOut = Boolean(providerId) && !networkPath && (isLocalProvider ? Boolean(window.multissh?.dragOutStart) : Boolean(onDragOut));
   // Dragging the file icon, the preview or the handle all start the same flow; a remote drag opens the confirmation instead.
   const handleDragStart = (e: React.DragEvent) => {
     e.preventDefault();

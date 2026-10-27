@@ -199,6 +199,11 @@ export function isUncPath(p: string): boolean {
   return /^[\\/]{2}/.test(p.trim());
 }
 
+/** A UNC path that leaves this machine. WSL's own `\\wsl.localhost\` / `\\wsl$\` shares are local and stay usable. */
+export function isNetworkUncPath(p: string): boolean {
+  return isUncPath(p) && !/^[\\/]{2}wsl(?:\.localhost|\$)[\\/]/i.test(p.trim());
+}
+
 export interface PathDetails {
   raw: string;
   basename: string;

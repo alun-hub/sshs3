@@ -284,6 +284,36 @@ function stripLocalOnlyFields<T extends object>(items: T[], spec: { excludedFiel
 }
 
 /**
+ * For `mergeRecords`' `onRemoteWins`: the remote record replaces the local one outright, so an optional
+ * field that was cleared on the other device (`group`, `proxyJump`, `poolId`, …) is cleared here too —
+ * layering it over the local record would keep the stale value and make this device look modified.
+ * What the sync payload never carries is kept from the local record: the local-only fields
+ * (`privateKeyPath`, `pkcs11LibPath`, …) and, when the credentials half was not pulled, the credential
+ * fields (including the proxy's), since the remote copy has none to offer.
+ */
+function replaceKeepingLocalOnly<T extends { proxy?: { username?: string; password?: string } }>(
+  spec: FieldSplitSpec<T>,
+  credentialsPulled: boolean
+): (localItem: T, remoteItem: T) => T {
+  return (localItem, remoteItem) => {
+    const result: any = { ...remoteItem };
+    const keepFromLocal: Array<keyof T> = [...spec.excludedFields];
+    if (!credentialsPulled) keepFromLocal.push(...spec.credentialFields);
+    for (const field of keepFromLocal) {
+      if (localItem[field] !== undefined) result[field] = localItem[field];
+    }
+    if (!credentialsPulled && localItem.proxy && result.proxy) {
+      const proxy = { ...result.proxy };
+      for (const field of spec.proxyCredentialFields) {
+        if (localItem.proxy[field] !== undefined) proxy[field] = localItem.proxy[field];
+      }
+      result.proxy = proxy;
+    }
+    return result as T;
+  };
+}
+
+/**
  * Settings that name a local executable, library or its arguments. They are machine-specific
  * and, if taken from a remote copy, would let a compromised sync source choose what the app
  * launches — so they are neither pushed nor applied from a pull.
@@ -635,6 +665,22 @@ export class ProfileSyncService {
   private readonly k8sProfileStore?: K8sProfileStore;
 
   private sshConfigWriteQueue: Promise<unknown> = Promise.resolve();
+  private syncOperationQueue: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Runs push, pull, compare and wipe one at a time. They are started independently (debounced auto
+   * push, the periodic auto pull, manual buttons), and overlapping ones trip over each other: a pull
+   * or compare that starts mid-push sees the push's own in-progress marker, and two pushes delete each
+   * other's marker and overwrite the remembered remote state.
+   */
+  private runExclusive<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.syncOperationQueue.then(task);
+    this.syncOperationQueue = result.then(
+      () => {},
+      () => {}
+    );
+    return result;
+  }
   /** Called after every automatic sync of the managed ~/.ssh/config block (also after a remote pull). */
   public onLocalSshConfigSynced?: () => void;
 
@@ -670,7 +716,11 @@ export class ProfileSyncService {
    * separately clearing local sync configuration (target, salts, smartcard
    * link) and locking the crypto service.
    */
-  public async wipeRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<{ deletedCount: number; errors: string[] }> {
+  public wipeRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<{ deletedCount: number; errors: string[] }> {
+    return this.runExclusive(() => this.wipeRemoteNow(provider, remoteBasePath));
+  }
+
+  private async wipeRemoteNow(provider: IStorageProvider, remoteBasePath: string): Promise<{ deletedCount: number; errors: string[] }> {
     const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
     const remoteFiles = buildRemoteFiles(effectiveBasePath);
     const syncDir = joinPaths('sftp', effectiveBasePath, SYNC_DIR_NAME);
@@ -705,7 +755,11 @@ export class ProfileSyncService {
   // Push
   // ---------------------------------------------------------------------
 
-  public async pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+  public pushToRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<void> {
+    return this.runExclusive(() => this.pushToRemoteNow(provider, remoteBasePath));
+  }
+
+  private async pushToRemoteNow(provider: IStorageProvider, remoteBasePath: string): Promise<void> {
     if (!this.cryptoService.isUnlocked('topology')) {
       throw new SyncLockedError('topology');
     }
@@ -815,9 +869,17 @@ export class ProfileSyncService {
   // Pull
   // ---------------------------------------------------------------------
 
-  public async pullFromRemote(
+  public pullFromRemote(
     provider: IStorageProvider,
     remoteBasePath = '',
+    passwords?: { topology?: string; credentials?: string }
+  ): Promise<PullResult> {
+    return this.runExclusive(() => this.pullFromRemoteNow(provider, remoteBasePath, passwords));
+  }
+
+  private async pullFromRemoteNow(
+    provider: IStorageProvider,
+    remoteBasePath: string,
     passwords?: { topology?: string; credentials?: string }
   ): Promise<PullResult> {
     const effectiveBasePath = resolveEffectiveBasePath(provider, remoteBasePath);
@@ -841,6 +903,10 @@ export class ProfileSyncService {
       this.downloadAndDecrypt(provider, 'k8s-profiles', remoteFiles, passwords?.topology),
     ]);
 
+    // The managed block is regenerated from the pulled profiles only after the remote block has been
+    // applied: done first (it used to run in the background), it stamps a newer time on an identical
+    // block, the remote one is then refused as older, and the next compare calls this device ahead.
+    let regenerateLocalSshConfig = false;
     if (topologyRaw !== null || credentialsRaw !== null) {
       const topology: TopologyPayload = topologyRaw ? JSON.parse(topologyRaw) : { ssh: [], s3: [] };
       const credentials: CredentialsPayload = credentialsRaw ? JSON.parse(credentialsRaw) : { ssh: [], s3: [] };
@@ -849,17 +915,21 @@ export class ProfileSyncService {
       const remoteS3 = stripLocalOnlyFields(joinById<S3Config>(topology.s3, credentials.s3), S3_FIELD_SPLIT);
 
       const local = await this.profileStore.getProfilesIncludingTombstones();
-      const sshResult = mergeRecords(local.ssh, remoteSsh);
-      const s3Result = mergeRecords(local.s3, remoteS3);
+      // Credentials not pulled (their password not given): the remote copy has none, which must not wipe the local ones.
+      const credentialsPulled = credentialsRaw !== null;
+      const sshResult = mergeRecords(local.ssh, remoteSsh, {
+        onRemoteWins: replaceKeepingLocalOnly(SSH_FIELD_SPLIT, credentialsPulled),
+      });
+      const s3Result = mergeRecords(local.s3, remoteS3, {
+        onRemoteWins: replaceKeepingLocalOnly(S3_FIELD_SPLIT, credentialsPulled),
+      });
 
       if (sshResult.changed || s3Result.changed) {
         // Folders are local-only (not part of the sync payload); replaceAll writes exactly what it is given.
         const merged: ProfilesData = { ssh: sshResult.merged, s3: s3Result.merged, folders: local.folders };
         await this.profileStore.replaceAll(merged);
         changedCategories.push('topology', 'credentials');
-        if (sshResult.changed) {
-          void this.autoSyncLocalSshConfig();
-        }
+        regenerateLocalSshConfig = sshResult.changed;
       }
     }
 
@@ -921,6 +991,9 @@ export class ProfileSyncService {
       }
       sshNativeConflicts = applied.conflicts;
     }
+    if (regenerateLocalSshConfig) {
+      await this.autoSyncLocalSshConfig();
+    }
 
     this.lastComparison = {
       state: 'in_sync',
@@ -945,10 +1018,11 @@ export class ProfileSyncService {
   // Compare / Sync state detection
   // ---------------------------------------------------------------------
 
-  public async compareWithRemote(
-    provider: IStorageProvider,
-    remoteBasePath = ''
-  ): Promise<SyncComparisonResult> {
+  public compareWithRemote(provider: IStorageProvider, remoteBasePath = ''): Promise<SyncComparisonResult> {
+    return this.runExclusive(() => this.compareWithRemoteNow(provider, remoteBasePath));
+  }
+
+  private async compareWithRemoteNow(provider: IStorageProvider, remoteBasePath: string): Promise<SyncComparisonResult> {
     if (!this.cryptoService.isUnlocked('topology') || !this.cryptoService.isUnlocked('credentials')) {
       throw new SyncLockedError('topology');
     }
@@ -1330,14 +1404,17 @@ export class ProfileSyncService {
     let changed = false;
     const conflicts: KnownHostsConflict[] = [];
 
-    if (remotePayload.sshConfigBlock) {
-      const localContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
-      const localBlock = parseManagedSshConfigBlock(localContent);
-      if (!localBlock || remotePayload.sshConfigBlock.updatedAt > localBlock.updatedAt) {
-        const updated = writeManagedSshConfigBlock(localContent, remotePayload.sshConfigBlock);
-        await this.writeLocalFile(this.sshConfigPath, updated);
-        changed = true;
-      }
+    const remoteBlock = remotePayload.sshConfigBlock;
+    if (remoteBlock) {
+      // Same read-modify-write as every other writer of ~/.ssh/config, so it cannot interleave with them.
+      const wrote = await this.enqueueSshConfigWrite(async () => {
+        const localContent = (await this.readLocalFile(this.sshConfigPath)) ?? '';
+        const localBlock = parseManagedSshConfigBlock(localContent);
+        if (localBlock && remoteBlock.updatedAt <= localBlock.updatedAt) return false;
+        await this.writeLocalFile(this.sshConfigPath, writeManagedSshConfigBlock(localContent, remoteBlock));
+        return true;
+      });
+      if (wrote) changed = true;
     }
 
     const localKnownHosts = (await this.readLocalFile(this.knownHostsPath)) ?? '';
