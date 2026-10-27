@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:45
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 02:30
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -64,4 +64,20 @@ Not changed:
 - **SFTP `write()` awaits each 64 KiB packet** (one round trip each). Real; a bounded pipelining window would fix it but is larger and needs a real server to test.
 - **"File tombstones are never created"** is wrong: the pool editor sets `deletedAt` on files in its draft (`DotfilePoolManagerModal.tsx:196`); the fix preserves the ones already stored.
 - **A cleared secret is restored while its ciphertext is undecryptable** (`SyncConfigStore`): accepted edge case (locked keyring); the alternative is destroying the ciphertext. The claim that `.corrupt` is rewritten on every save is wrong, since the first save replaces the file with valid JSON.
+
+## Code review of `8925d90..HEAD` (`faaa3e0`, `8539f87`)
+
+No critical findings; six remarks. Handled in the follow-up commit:
+
+| Remark | Verdict | Change |
+|---|---|---|
+| A relative search root printed as `./logs/…` by `find` no longer matched the root used for the displayed path | **valid, a regression from `faaa3e0`** (verified: `resolveRemotePath` returns a relative root unchanged) | new idempotent `anchorPath`; the search root is anchored once and that form is used both for `find` and for stripping the prefix from results |
+| K8s write timeout / destroy did not close the exec websocket | valid | the session is closed (once) on timeout and on an abort or failure, and straight away if it was abandoned before the session had opened; not closed after a clean finish |
+| `sshConfigResolve` doc claimed to cover every way of opening an SSH connection | partly valid (`gitHandlers` and `keyInstallHandlers` restore saved secrets but ignore a Team Vault reference) | comment corrected. The two flows are **not** switched over: whether a shared profile reaches them has not been checked |
+
+Not changed:
+
+- **60 s limit after the last byte** is my own choice; a slow PVC or NFS could need longer. Needs a decision.
+- **`//` UNC detection depends on `navigator.userAgent`**: matches the host OS in Electron in practice; a main-side guard is the larger question already noted above.
+- **A failing `ssh-native` payload leaves a partially applied pull unreported** and **`'error'` before a listener is attached**: both behave as before the changes under review.
 

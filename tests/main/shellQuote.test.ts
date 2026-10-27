@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { quotePathOperand, quoteShellArg } from '../../src/main/search/shellQuote';
+import { anchorPath, quotePathOperand, quoteShellArg } from '../../src/main/search/shellQuote';
 
 describe('quoteShellArg', () => {
   it('wraps plain string in single quotes', () => {
@@ -30,5 +30,14 @@ describe('quotePathOperand', () => {
     expect(quotePathOperand('!x')).toBe("'./!x'");
     expect(quotePathOperand('(dir')).toBe("'./(dir'");
     expect(quotePathOperand('dir/-file')).toBe("'./dir/-file'");
+  });
+});
+
+describe('anchorPath', () => {
+  it('is idempotent and leaves already safe forms alone', () => {
+    expect(anchorPath('logs')).toBe('./logs');
+    expect(anchorPath(anchorPath('logs'))).toBe('./logs');
+    for (const same of ['/abs/path', './rel', '../up/rel', '.', '..']) expect(anchorPath(same)).toBe(same);
+    expect(quotePathOperand('./logs')).toBe("'./logs'"); // not doubled
   });
 });

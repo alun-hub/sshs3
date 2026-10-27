@@ -391,6 +391,18 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     // disk, so the caller would verify (and report success on) a file that is not complete yet and
     // would never see a write error such as "No space left on device".
     let settleRemote!: { resolve: () => void; reject: (err: Error) => void };
+    let execConnection: { close?: () => void } | undefined;
+    /** Ends the exec session, so `cat` in the pod does not outlive a write that has already failed. */
+    let execClosed = false;
+    const closeExec = (): void => {
+      if (execClosed) return;
+      execClosed = true;
+      try {
+        execConnection?.close?.();
+      } catch {
+        // already closed
+      }
+    };
     const remoteDone = new Promise<void>((resolve, reject) => {
       settleRemote = { resolve, reject };
     });
@@ -404,10 +416,10 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       final(callback) {
         inStream.end();
         // All data has been handed over, so the command should exit promptly; do not wait on it forever.
-        const timer = setTimeout(
-          () => settleRemote.reject(new Error('Timed out waiting for the pod to finish writing the file')),
-          WRITE_FINISH_TIMEOUT_MS
-        );
+        const timer = setTimeout(() => {
+          settleRemote.reject(new Error('Timed out waiting for the pod to finish writing the file'));
+          closeExec();
+        }, WRITE_FINISH_TIMEOUT_MS);
         remoteDone.then(
           () => {
             clearTimeout(timer);
@@ -421,6 +433,8 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       },
       destroy(err, callback) {
         inStream.destroy();
+        // An aborted or failed write (not a finished one: its command has already exited) ends the session.
+        if (err) closeExec();
         callback(err);
       },
     });
@@ -455,6 +469,15 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
         }
       );
 
+      execConnection = conn;
+      if (execClosed) {
+        // The write was already abandoned while the session was still being opened.
+        try {
+          conn.close?.();
+        } catch {
+          // already closed
+        }
+      }
       conn.on('error', (err: any) => {
         settleRemote.reject(err instanceof Error ? err : new Error(String(err)));
         out.destroy(err instanceof Error ? err : new Error(String(err)));

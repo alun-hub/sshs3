@@ -382,6 +382,39 @@ describe('K8sPodStorageProvider', () => {
       expect((await outcome)?.message).toMatch(/Timed out waiting for the pod/);
     });
 
+    it('closes the exec session when the write times out or is aborted, but not after a clean finish', async () => {
+      // Timed out: the command may still be running in the pod.
+      const hung = podWithManualExit();
+      const timedOut = await provider.createWriteStream('/tmp/hung.bin');
+      timedOut.on('error', () => {});
+      vi.useFakeTimers();
+      try {
+        timedOut.end(Buffer.from('payload'));
+        await vi.advanceTimersByTimeAsync(60_001);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(hung.conn.close).toHaveBeenCalledTimes(1);
+
+      // Aborted by the caller (e.g. a cancelled transfer).
+      const aborted = podWithManualExit();
+      const cancelled = await provider.createWriteStream('/tmp/aborted.bin');
+      cancelled.on('error', () => {});
+      cancelled.write(Buffer.from('partial'));
+      (cancelled as import('node:stream').Writable).destroy(new Error('cancelled'));
+      await tick();
+      expect(aborted.conn.close).toHaveBeenCalledTimes(1);
+
+      // Finished cleanly: the command has already exited, nothing to end.
+      const clean = podWithManualExit();
+      const finished = await provider.createWriteStream('/tmp/clean.bin');
+      finished.end(Buffer.from('payload'));
+      await tick();
+      clean.pod.statusCb!({ status: 'Success' });
+      await tick();
+      expect(clean.conn.close).not.toHaveBeenCalled();
+    });
+
     it('does not wait forever when the connection closes without a status', async () => {
       const { conn } = podWithManualExit();
       const out = await provider.createWriteStream('/tmp/x.bin');

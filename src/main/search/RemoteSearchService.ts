@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
-import { quotePathOperand, quoteShellArg } from './shellQuote';
+import { anchorPath, quotePathOperand, quoteShellArg } from './shellQuote';
 import { buildLineMatcher } from './lineMatcher';
 import type {
   SearchDoneEvent,
@@ -100,7 +100,8 @@ export class RemoteSearchService {
       throw new Error('This SFTP connection does not support running remote commands');
     }
 
-    const resolvedRoot = await provider.resolveRemotePath(options.rootPath);
+    // Anchored like the `find` operand, because that is how `find` prints the root in every result path.
+    const resolvedRoot = anchorPath(await provider.resolveRemotePath(options.rootPath));
     const searchId = crypto.randomUUID();
     const cmd = buildFindGrepCommand(resolvedRoot, options);
 
