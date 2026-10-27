@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { RemoteSearchService } from '../../src/main/search/RemoteSearchService';
+import { RemoteSearchService, buildFindGrepCommand } from '../../src/main/search/RemoteSearchService';
 import { StorageRegistry } from '../../src/main/storage/StorageRegistry';
 import { SFTPStorageProvider } from '../../src/main/storage/SFTPStorageProvider';
 import type { SFTPConfig } from '../../src/shared/types/storage';
@@ -220,5 +220,22 @@ describe('RemoteSearchService', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('buildFindGrepCommand hardening', () => {
+  const base = { query: 'needle', mode: 'literal' as const, caseSensitive: true };
+
+  it('anchors a dash-leading root, ends grep options and sanitises numeric limits', () => {
+    const cmd = buildFindGrepCommand('-evil', {
+      ...base,
+      maxDepth: '1; id' as never,
+      maxResults: '5; id' as never,
+    } as never);
+    expect(cmd).toContain("find './-evil'");
+    expect(cmd).not.toContain('-maxdepth');
+    expect(cmd).toContain("-e 'needle' --");
+    expect(cmd).toContain('| head -n 600');
+    expect(cmd).not.toContain('; id');
   });
 });

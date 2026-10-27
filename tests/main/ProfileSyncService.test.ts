@@ -331,6 +331,26 @@ describe('ProfileSyncService', () => {
     expect(await machineB.k8sStore.list()).toHaveLength(1);
   });
 
+  it('keeps local folders when a pull changes profiles', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Prod',
+      host: 'prod.example.com',
+      username: 'admin',
+      authType: 'password',
+      password: 'pw', // pragma: allowlist secret
+    });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.profileStore.saveFolder('Staging');
+    const result = await machineB.sync.pullFromRemote(provider);
+
+    expect(result.changedCategories).toContain('topology');
+    expect((await machineB.profileStore.getProfiles()).folders).toEqual(['Staging']);
+  });
+
   it('round-trips an SSH profile between two machines, splitting secrets into credentials.enc', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({

@@ -36,6 +36,10 @@ export interface TeamVaultConfigEntry {
    * review) — this only drives the "remote changed" UI hint and a softer overwrite-conflict check,
    * both previously defaulting to "always assume changed"/"skip the check" on every fresh process. */
   lastKnownRemoteEntry?: FileEntry | null;
+  /** The local vault file's `revision` as of the last successful push/pull. Persisted so that local
+   * edits made before a restart are still recognised as unpushed afterwards (otherwise the first
+   * pull after a restart would silently overwrite them). Absent == never synced from this device. */
+  lastSyncedRevision?: number;
 }
 
 /** On-disk shape, keyed by `vaultId` — one entry per team this device knows about (multi-team
@@ -178,10 +182,26 @@ export class TeamVaultConfigStore {
     });
   }
 
-  public async setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null): Promise<void> {
+  public async setLastKnownRemoteEntry(
+    vaultId: string,
+    entry: FileEntry | null,
+    lastSyncedRevision?: number
+  ): Promise<void> {
     return this.queueMutation(async () => {
       const current = await this.getConfig(vaultId);
-      await this.persistEntry(vaultId, { ...current, lastKnownRemoteEntry: entry });
+      await this.persistEntry(vaultId, {
+        ...current,
+        lastKnownRemoteEntry: entry,
+        ...(lastSyncedRevision !== undefined ? { lastSyncedRevision } : {}),
+      });
+    });
+  }
+
+  /** Forgets the remembered remote state and synced revision, e.g. when the sync target changes. */
+  public async clearSyncState(vaultId: string): Promise<void> {
+    return this.queueMutation(async () => {
+      const { lastKnownRemoteEntry: _entry, lastSyncedRevision: _revision, ...rest } = await this.getConfig(vaultId);
+      await this.persistEntry(vaultId, rest);
     });
   }
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { getAgentIdentities, signChallengeWithAgent, verifyAgentSignature, getKeyAlgorithm } from '../smartcard/SmartcardSyncService';
-import { encryptSecretValue } from '../crypto/SecretFieldCrypto';
+import { encryptSecretValue, isEncryptedSecret } from '../crypto/SecretFieldCrypto';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../../shared/types/sync';
 import type { IpcBridge } from '../IpcBridge';
@@ -217,6 +217,12 @@ export function registerSyncHandlers(bridge: SyncHost): void {
         let wrappedPasswordsEncrypted: string | undefined;
         if (options.passwords?.topologyPassword && options.passwords?.credentialsPassword) {
           wrappedPasswordsEncrypted = encryptSecretValue(JSON.stringify(options.passwords));
+          // encryptSecretValue falls back to plaintext without an OS keyring; the master passwords must never reach disk that way.
+          if (!isEncryptedSecret(wrappedPasswordsEncrypted)) {
+            throw new Error(
+              'The OS keyring is unavailable, so the master passwords cannot be stored securely. Unlock your keyring (or install libsecret/kwallet) and try again.'
+            );
+          }
           if (!bridge.syncCryptoService.isUnlocked('topology') || !bridge.syncCryptoService.isUnlocked('credentials')) {
             await bridge.unlockSyncInternal(options.passwords);
           }

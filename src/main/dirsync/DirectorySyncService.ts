@@ -10,8 +10,10 @@ export type ScanProgressCallback = (side: ScanSide, filesCount: number, currentI
 
 function isNotFoundError(err: unknown): boolean {
   // Codes only: matching message text would also accept e.g. "bucket does not exist" or "network path not found".
-  const code = (err as { code?: unknown } | null)?.code;
-  return code === 'ENOENT' || code === 'NoSuchKey' || code === 2;
+  const e = err as { code?: unknown; name?: unknown; statusCode?: unknown } | null;
+  // The OpenSSH SFTP engine reports SSH_FX_NO_SUCH_FILE as SftpError.statusCode 2 and sets no `code`.
+  if (e?.name === 'SftpError' && e.statusCode === 2) return true;
+  return e?.code === 'ENOENT' || e?.code === 'NoSuchKey' || e?.code === 2;
 }
 
 /** True when `relativePath` is one of `skipped` or lies below one of them. */

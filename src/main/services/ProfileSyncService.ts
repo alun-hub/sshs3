@@ -853,7 +853,8 @@ export class ProfileSyncService {
       const s3Result = mergeRecords(local.s3, remoteS3);
 
       if (sshResult.changed || s3Result.changed) {
-        const merged: ProfilesData = { ssh: sshResult.merged, s3: s3Result.merged };
+        // Folders are local-only (not part of the sync payload); replaceAll writes exactly what it is given.
+        const merged: ProfilesData = { ssh: sshResult.merged, s3: s3Result.merged, folders: local.folders };
         await this.profileStore.replaceAll(merged);
         changedCategories.push('topology', 'credentials');
         if (sshResult.changed) {

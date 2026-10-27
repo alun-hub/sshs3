@@ -1485,6 +1485,38 @@ describe('TeamVaultService', () => {
     });
   });
 
+  it('still refuses to pull over unpushed local changes after a restart (regression: lastSyncedRevision must survive it)', async () => {
+    type Entry = import('../../src/shared/types/storage').FileEntry | null;
+    const persisted = new Map<string, { lastKnownRemoteEntry?: Entry; lastSyncedRevision?: number }>();
+    const configStore = {
+      getConfig: async (vaultId: string) => persisted.get(vaultId) ?? {},
+      setLastKnownRemoteEntry: async (vaultId: string, entry: Entry, lastSyncedRevision?: number) => {
+        persisted.set(vaultId, {
+          ...persisted.get(vaultId),
+          lastKnownRemoteEntry: entry,
+          ...(lastSyncedRevision !== undefined ? { lastSyncedRevision } : {}),
+        });
+      },
+    };
+    const provider = fakeProvider();
+
+    const first = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir, configStore });
+    const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+    await first.pushToRemote(vaultId, provider);
+    await first.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member'); // local revision 2, never pushed
+
+    await provider.writeFile!(
+      `team-vault/${vaultId}/vault.json`,
+      Buffer.from(foreignVaultFileJson(vaultId, 3, 'age1fakerecovery'))
+    );
+
+    // App restart: new instance, empty in-memory state, same on-disk vault file and config store.
+    const second = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir, configStore });
+    await second.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+    expect((await second.getSyncPreview(vaultId, provider)).hasUnpushedLocalChanges).toBe(true);
+    await expect(second.pullFromRemote(vaultId, provider)).rejects.toThrow(TeamVaultUnpushedChangesError);
+  });
+
   describe('shared SSH/S3 profiles (getPayload / save*Profile / delete*Profile)', () => {
     function sshProfile(id: string, name = 'web-1'): SSHConnectionConfig {
       return { id, name, host: 'example.com', username: 'root', authType: 'password', password: 'secret' }; // pragma: allowlist secret

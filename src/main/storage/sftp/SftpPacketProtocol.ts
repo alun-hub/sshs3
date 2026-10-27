@@ -8,6 +8,9 @@ import {
   type SftpNameEntry,
 } from './SftpConstants';
 
+/** Largest data payload per SSH_FXP_WRITE; well under sftp-server's 256 KiB message limit. */
+export const MAX_WRITE_DATA = 64 * 1024;
+
 export class SftpError extends Error {
   public readonly statusCode: number;
   public readonly statusName: string;
@@ -317,7 +320,25 @@ export class SftpPacketProtocol extends EventEmitter {
     );
   }
 
+  /**
+   * Writes `data` at `offset`, split into SSH_FXP_WRITE packets of at most `MAX_WRITE_DATA` bytes:
+   * OpenSSH's sftp-server drops the connection on any message over 256 KiB, so a single packet for
+   * a large buffer would kill the whole session.
+   */
   public async write(
+    handle: Buffer,
+    offset: number,
+    data: Buffer
+  ): Promise<void> {
+    if (data.length <= MAX_WRITE_DATA) {
+      return this.writePacket(handle, offset, data);
+    }
+    for (let pos = 0; pos < data.length; pos += MAX_WRITE_DATA) {
+      await this.writePacket(handle, offset + pos, data.subarray(pos, pos + MAX_WRITE_DATA));
+    }
+  }
+
+  private async writePacket(
     handle: Buffer,
     offset: number,
     data: Buffer

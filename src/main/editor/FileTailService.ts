@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { StorageRegistry } from '../storage/StorageRegistry';
 import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
-import { quoteShellArg } from '../search/shellQuote';
+import { quotePathOperand } from '../search/shellQuote';
 import { createLogger } from '../log';
 const filetailserviceLog = createLogger('FileTailService');
 
@@ -87,7 +87,7 @@ export class FileTailService {
       try {
         await provider.ensureConnected();
         const resolvedPath = await provider.resolveRemotePath(remotePath);
-        const cmd = `tail -n 0 -f ${quoteShellArg(resolvedPath)}`;
+        const cmd = `tail -n 0 -f ${quotePathOperand(resolvedPath)}`;
 
         if (typeof (provider as any).createExecStream === 'function') {
           try {

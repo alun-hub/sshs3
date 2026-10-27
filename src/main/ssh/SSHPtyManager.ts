@@ -55,7 +55,7 @@ function getSpawn(): typeof nodePty.spawn {
 }
 
 import type { AskpassPromptKind } from '../../shared/types/ipc';
-import { describeAskpassPrompt, isHostKeyConfirmPrompt } from './askpassPrompt';
+import { describeAskpassPrompt, isHostKeyConfirmPrompt, savedAskpassAnswer } from './askpassPrompt';
 import { isHostKeyChangedOutput } from './hostKeyChanged';
 import { parseHostKeyPrompt } from '../storage/sftp/OpenSshSftpProcess';
 import type { HostKeyPromptInfo } from './HostKeyVerifier';
@@ -634,22 +634,15 @@ export class SSHPtyManager extends EventEmitter {
           // Kind only, never the answer. A 'password' prompt on a key-based profile means ssh could not
           // authenticate with the agent and fell back to asking for the account password.
           const promptKind = describeAskpassPrompt(rawPrompt, config).kind ?? 'passphrase';
-          const savedAnswer = Boolean(
-            (config.authType === 'password' && config.password) || config.passphrase
-          );
+          const saved = savedAskpassAnswer(rawPrompt, config);
           sshLog.info('askpass prompt', {
             sessionId,
             kind: promptKind,
             authType: config.authType,
-            answeredFrom: savedAnswer ? 'saved' : 'ui',
+            answeredFrom: saved ? 'saved' : 'ui',
             retry: Boolean(retry),
           });
-          if (config.authType === 'password' && config.password) {
-            return config.password;
-          }
-          if (config.passphrase) {
-            return config.passphrase;
-          }
+          if (saved) return saved;
           if (this.listenerCount('askpass') > 0) {
             const { kind, prompt: promptText, context } = describeAskpassPrompt(rawPrompt, config);
             return new Promise<string>((resolve) => {
@@ -663,7 +656,7 @@ export class SSHPtyManager extends EventEmitter {
               });
             });
           }
-          return config.passphrase || config.password || '';
+          return '';
         },
       });
 

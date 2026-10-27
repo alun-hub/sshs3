@@ -477,8 +477,14 @@ export interface TeamVaultPinPrompter {
 export interface TeamVaultConfigReader {
   getConfig(
     vaultId: string
-  ): Promise<{ target?: StorageConnectConfig; remoteBasePath?: string; lastKnownRemoteEntry?: FileEntry | null }>;
-  setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null): Promise<void>;
+  ): Promise<{
+    target?: StorageConnectConfig;
+    remoteBasePath?: string;
+    lastKnownRemoteEntry?: FileEntry | null;
+    lastSyncedRevision?: number;
+  }>;
+  setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null, lastSyncedRevision?: number): Promise<void>;
+  clearSyncState?(vaultId: string): Promise<void>;
 }
 
 export interface TeamVaultServiceOptions {
@@ -626,11 +632,15 @@ export class TeamVaultService {
    * `configStore` (most tests) or a read failure just leaves the state as `stateFor` would. */
   private async hydratedState(vaultId: string): Promise<VaultRuntimeState> {
     const state = this.stateFor(vaultId);
-    if (state.lastKnownRemoteEntry === undefined && this.configStore) {
+    if ((state.lastKnownRemoteEntry === undefined || state.lastSyncedRevision === undefined) && this.configStore) {
       try {
         const config = await this.configStore.getConfig(vaultId);
-        if (config.lastKnownRemoteEntry !== undefined) {
+        if (state.lastKnownRemoteEntry === undefined && config.lastKnownRemoteEntry !== undefined) {
           state.lastKnownRemoteEntry = config.lastKnownRemoteEntry;
+        }
+        // Without this, unpushed local edits made before a restart look "in sync" and the next pull overwrites them.
+        if (state.lastSyncedRevision === undefined && config.lastSyncedRevision !== undefined) {
+          state.lastSyncedRevision = config.lastSyncedRevision;
         }
       } catch (err) {
         teamVaultLog.warn(`Failed to restore the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
@@ -643,11 +653,17 @@ export class TeamVaultService {
    * process start can restore it via `hydratedState` instead of starting blank — see that
    * method's doc comment. Best-effort on the persist: an in-memory-only failure here would just
    * reproduce today's "always unknown after restart" behavior, not corrupt anything. */
-  private async setLastKnownRemoteEntry(vaultId: string, state: VaultRuntimeState, entry: FileEntry | null): Promise<void> {
+  private async setLastKnownRemoteEntry(
+    vaultId: string,
+    state: VaultRuntimeState,
+    entry: FileEntry | null,
+    syncedRevision?: number
+  ): Promise<void> {
     state.lastKnownRemoteEntry = entry;
+    if (syncedRevision !== undefined) state.lastSyncedRevision = syncedRevision;
     if (this.configStore) {
       try {
-        await this.configStore.setLastKnownRemoteEntry(vaultId, entry);
+        await this.configStore.setLastKnownRemoteEntry(vaultId, entry, syncedRevision);
       } catch (err) {
         teamVaultLog.warn(`Failed to persist the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
       }
@@ -1525,6 +1541,10 @@ export class TeamVaultService {
       state.lastKnownRemoteEntry = undefined;
       state.lastSyncedRevision = undefined;
     }
+    // Also forget the persisted copy, or hydratedState would restore the old target's values.
+    void this.configStore?.clearSyncState?.(vaultId)?.catch((err) => {
+      teamVaultLog.warn(`Failed to clear the persisted sync state for vaultId=${vaultId} (non-fatal):`, err);
+    });
   }
 
   /** Whether a vault file already exists at the remote target — used by the UI to offer "Pull
@@ -1585,8 +1605,7 @@ export class TeamVaultService {
       }
 
       await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
-      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath));
-      state.lastSyncedRevision = file.revision;
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision);
     });
   }
 
@@ -1626,7 +1645,7 @@ export class TeamVaultService {
     return this.queueMutation(vaultId, async () => {
       const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
       const file = await this.readRemoteVaultFile(provider, remotePath);
-      const state = this.stateFor(vaultId);
+      const state = await this.hydratedState(vaultId);
 
       // The remote object's path already embeds `vaultId` (see `remoteVaultPath`'s doc comment),
       // but that only prevents two DIFFERENT teams' admins from accidentally colliding on the
@@ -1743,8 +1762,7 @@ export class TeamVaultService {
       }
 
       await this.writeFile(vaultId, file);
-      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath));
-      state.lastSyncedRevision = file.revision;
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision);
       // Only lock when the held key ISN'T proven still valid — e.g. after a removeMember
       // elsewhere rotated it (accessHeader.length dropped, so the check above never ran). A
       // background auto-poll (IpcBridge.runTeamVaultAutoPoll) pulling in a plain profile edit
@@ -1782,7 +1800,7 @@ export class TeamVaultService {
    * as a notice. */
   async hasUnpushedLocalChanges(vaultId: string): Promise<boolean> {
     const file = await this.readFile(vaultId);
-    const state = this.states.get(vaultId);
+    const state = file ? await this.hydratedState(vaultId) : undefined;
     if (!file || !state || state.lastSyncedRevision === undefined) return false;
     return file.revision !== state.lastSyncedRevision;
   }

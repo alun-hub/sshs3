@@ -75,7 +75,15 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
   bridge.registerHandler(IPC_CHANNELS.K8S_LOGIN, async (_event, options: K8sLoginOptions): Promise<K8sLoginResult> => {
     // Same server rules as saved profiles and browser sign-in: https only (loopback excepted), no embedded credentials.
     const server = parseK8sServerArg(options?.server);
-    return completeLogin({ ...options, server });
+    // Explicit fields only: `kubeConfigPath` is a test-only seam and must never be renderer-controlled
+    // (it is the file loginWithToken reads and overwrites).
+    return completeLogin({
+      server,
+      token: options.token,
+      insecureSkipTlsVerify: options.insecureSkipTlsVerify,
+      namespace: options.namespace,
+      username: options.username,
+    });
   });
 
   bridge.registerHandler(

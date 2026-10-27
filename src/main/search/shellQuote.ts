@@ -8,3 +8,13 @@ export function quoteShellArg(value: string): string {
   const sanitized = value.replace(/\0/g, '');
   return `'${sanitized.replace(/'/g, "'\\''")}'`;
 }
+
+/**
+ * Quotes a path for use as a file operand of a remote command. A path starting with `-` would be
+ * read as an option (GNU `sed -e1e…` runs shell commands), so it is anchored with `./`. Preferred
+ * over `--` because not every tool (e.g. `find`) accepts it.
+ */
+export function quotePathOperand(value: string): string {
+  const sanitized = value.replace(/\0/g, '');
+  return quoteShellArg(sanitized.startsWith('-') ? `./${sanitized}` : sanitized);
+}

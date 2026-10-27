@@ -31,6 +31,37 @@ describe('SftpPacketProtocol', () => {
     expect(errors).toHaveLength(1);
   });
 
+  it('splits a large write into packets below the sftp-server 256 KiB message limit', async () => {
+    const packets: { offset: number; length: number; size: number }[] = [];
+    clientOut.on('data', (buf: Buffer) => {
+      expect(buf.readUInt8(4)).toBe(FXP.WRITE);
+      const reqId = buf.readUInt32BE(5);
+      const handleLen = buf.readUInt32BE(9);
+      const offset = Number(buf.readBigUInt64BE(13 + handleLen));
+      const length = buf.readUInt32BE(21 + handleLen);
+      packets.push({ offset, length, size: buf.length });
+      const resp = Buffer.alloc(4 + 1 + 4 + 4 + 4);
+      resp.writeUInt32BE(1 + 4 + 4 + 4, 0);
+      resp.writeUInt8(FXP.STATUS, 4);
+      resp.writeUInt32BE(reqId, 5);
+      resp.writeUInt32BE(FX_STATUS.OK, 9);
+      resp.writeUInt32BE(0, 13);
+      clientIn.write(resp);
+    });
+
+    await protocol.write(Buffer.from('h1'), 1000, Buffer.alloc(300 * 1024, 1));
+
+    expect(packets.length).toBeGreaterThan(1);
+    expect(packets.every((pk) => pk.size < 256 * 1024)).toBe(true);
+    expect(packets.reduce((sum, pk) => sum + pk.length, 0)).toBe(300 * 1024);
+    // Consecutive, gap-free offsets starting where the caller asked.
+    let expected = 1000;
+    for (const pk of packets) {
+      expect(pk.offset).toBe(expected);
+      expected += pk.length;
+    }
+  });
+
   it('performs init handshake and receives version packet', async () => {
     // Listen for client init packet
     const clientPromise = protocol.init();

@@ -4,6 +4,7 @@ import net from 'node:net';
 import crypto from 'node:crypto';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
+import { isHostKeyConfirmPrompt, savedAskpassAnswer } from '../ssh/askpassPrompt';
 import type { SSHConnectionConfig, SSHTunnelConfig } from '../../shared/types/ssh';
 import type { SSHActiveTunnel } from '../../shared/types/ssh';
 
@@ -82,8 +83,10 @@ export class SSHTunnelManager extends EventEmitter {
     if (needsAskpass) {
       askpassServer = new AskpassServer({
         promptHandler: async (rawPrompt) => {
-          if (config.password) return config.password;
-          if (config.passphrase) return config.passphrase;
+          // No trust dialog here: fail closed, and never answer a trust question with a secret.
+          if (isHostKeyConfirmPrompt(rawPrompt)) return 'no';
+          const saved = savedAskpassAnswer(rawPrompt, config);
+          if (saved) return saved;
           if (promptHandler) return promptHandler(rawPrompt);
           return '';
         },

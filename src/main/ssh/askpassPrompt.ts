@@ -11,6 +11,24 @@ export function isHostKeyConfirmPrompt(rawPrompt: string): boolean {
 }
 
 /**
+ * The saved secret that may answer this prompt, if any. A key passphrase only ever answers a
+ * passphrase prompt and the account password only a password prompt on a password profile; any
+ * other prompt (a server-controlled keyboard-interactive question, a PIN) gets `undefined` so the
+ * caller asks the user. Otherwise a remote server's "password:" prompt would receive the local
+ * key passphrase.
+ */
+export function savedAskpassAnswer(
+  rawPrompt: string,
+  config: { authType?: string; password?: string; passphrase?: string }
+): string | undefined {
+  if (isPasswordPrompt(rawPrompt)) {
+    return config.authType === 'password' && config.password ? config.password : undefined;
+  }
+  if (/passphrase/i.test(rawPrompt)) return config.passphrase || undefined;
+  return undefined;
+}
+
+/**
  * Which kind of secret an OpenSSH askpass prompt wants. `undefined` is a key passphrase;
  * anything unrecognised is treated as a smartcard PIN.
  */

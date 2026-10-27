@@ -28,6 +28,17 @@ describe('DirectorySyncService', () => {
     expect(tree.size).toBe(0);
   });
 
+  it('treats an SFTP "no such file" status on the root as empty', async () => {
+    const err = Object.assign(new Error('No such file'), { name: 'SftpError', statusCode: 2 });
+    const tree = await buildTree(fakeProvider({ '/new': err }), '/new');
+    expect(tree.size).toBe(0);
+  });
+
+  it('still rethrows other SFTP statuses on the root', async () => {
+    const err = Object.assign(new Error('Permission denied'), { name: 'SftpError', statusCode: 3 });
+    await expect(buildTree(fakeProvider({ '/src': err }), '/src')).rejects.toThrow('Permission denied');
+  });
+
   it('rethrows a non-"not found" failure listing the root instead of treating it as empty', async () => {
     const provider = fakeProvider({ '/src': new Error('Connection lost') });
     await expect(buildTree(provider, '/src')).rejects.toThrow('Connection lost');

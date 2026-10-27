@@ -4,9 +4,20 @@ import {
   describeAskpassPrompt,
   isHostKeyConfirmPrompt,
   isPasswordPrompt,
+  savedAskpassAnswer,
 } from '../../src/main/ssh/askpassPrompt';
 
 describe('askpassPrompt', () => {
+  it('answers a prompt only with the secret of the matching kind', () => {
+    const cfg = { authType: 'privateKey', password: 'acct-pw', passphrase: 'key-pp' }; // pragma: allowlist secret
+    expect(savedAskpassAnswer('Enter passphrase for /home/me/.ssh/id_ed25519:', cfg)).toBe('key-pp');
+    // A server-controlled password prompt must never receive the local key passphrase.
+    expect(savedAskpassAnswer("bob@h's password: ", cfg)).toBeUndefined();
+    expect(savedAskpassAnswer("bob@h's password: ", { ...cfg, authType: 'password' })).toBe('acct-pw');
+    expect(savedAskpassAnswer('Verification code:', { ...cfg, authType: 'password' })).toBeUndefined();
+    expect(savedAskpassAnswer('Enter PIN for token:', cfg)).toBeUndefined();
+  });
+
   it('recognises account password prompts but not PIN or passphrase prompts mentioning "password"', () => {
     expect(isPasswordPrompt('alice@host.example.com\'s password: ')).toBe(true);
     expect(isPasswordPrompt('Enter passphrase for key (password protected):')).toBe(false);
