@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:00
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:45
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -25,6 +25,7 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:00
 | BUG-04-003 – fields cleared on another device survive a pull | yes | high → medium | fixed (uncommitted) | `mergeRecords` gets `onRemoteWins: replaceKeepingLocalOnly(spec, credentialsPulled)` for SSH and S3: the newer remote record replaces the local one; local-only fields (`privateKeyPath`, `pkcs11LibPath`, …) and, when the remote has no credentials half, the credential fields are kept from the local record | `tests/main/ProfileSyncService.test.ts` (clearing test fails without the fix; the credentials test is a regression guard) |
 | BUG-02-002 – FIDO2 key manager lists / deletes the key's web passkeys, runs ykman on a dismissed PIN prompt, unhandled EPIPE | yes (all three parts; the EPIPE reproduced as an unhandled error in the test run) | high → high (a delete button on the user's Google/GitHub passkeys) | fixed (uncommitted) | `listFido2ResidentKeys` keeps only `ssh:` relying parties (OpenSSH only creates those); `deleteFido2ResidentKey` re-lists with the PIN and refuses anything not found or not `ssh:` (the id comes from the renderer); an empty PIN throws "PIN entry was cancelled" instead of running ykman; `runYkman` swallows the stdin `EPIPE` (the exit code still reports the failure) | `tests/main/Fido2KeyManager.test.ts` (3 fail without the fix), `tests/main/YkmanFido.test.ts` |
 | BUG-07-001 – K8s write stream finishes before `cat` in the pod has | yes | high → medium | fixed (uncommitted) | `createWriteStream` overrides `_final` to wait for the exec status (same pattern as `S3StorageProvider`); a `Failure` status, a connection error or a close without status now fail the stream instead of being lost | `tests/main/K8sPodStorageProvider.test.ts` (3 tests, all fail without the fix) |
+| BUG-03-002 – `SSH_TUNNEL_START` skips Team Vault reference and saved-secret resolution | yes (handler compared with `terminalHandlers`) | high → medium | fixed (uncommitted) | new `ipc/sshConfigResolve.ts` (`resolveSshConfigForConnect`: Team Vault reference, then `restoreSavedSecrets`), used by both the terminal and the tunnel handler instead of two copies. **Not done:** the agent-lifetime part of the finding (see note below) | `tests/main/k8sHandlers.tunnel.test.ts` (both tests fail without the fix); the terminal path stays covered by `tests/main/IpcBridge.test.ts` |
 
 ## Triaged, not fixed yet
 
@@ -40,7 +41,8 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:00
 
 - SEC-03-001 follow-up (`aefa027`): the saved passphrase only answers ssh's own `Enter passphrase for …` prompt. A later automated review asked for a stronger guarantee (ssh version check, or answering at most once). Not done: it rests on OpenSSH prefixing server keyboard-interactive prompts with `(user@host) `, which has not been tested against a real `ssh`.
 - SEC-11-001: a `session.json` written by an earlier version may still hold secrets until the next save rewrites it (the app saves on startup once the session has loaded; `SessionStore` also sanitizes on read).
-- Unverified, still open: SEC-05-002 (age PTY input). Verified, not yet fixed: BUG-03-002 (tunnel start skips `restoreSavedSecrets`).
+- Unverified, still open: SEC-05-002 (age PTY input).
+- BUG-03-002, agent lifetime: a per-session smartcard/FIDO2 agent is registered under the profile id (`smartcardSessionAgents.set(config.id, …)`) and only torn down when a terminal with that id exits (or the app quits). A second concurrent connection with the same profile id overwrites the entry, so the first agent process is no longer tracked; a tunnel never triggers the teardown at all. This affects two terminal tabs of one profile equally, so it is a design limit of the per-profile key rather than a tunnel bug. A fix needs per-connection ids (the UI matches tunnels to profiles through `connectionId: config.id`, so that id cannot simply change) or reference counting. Left open.
 - BUG-04-003 changes a deliberate behaviour (the doc comment on `mergeRecords` described layering remote over local so local-only fields survive). Those fields are still kept; only fields the payload does carry now follow the remote. K8s profiles already worked this way (`replaceKeepingContext`).
 - The queue in BUG-04-005 means a hung provider call now blocks later sync operations instead of running beside it.
 

@@ -1,5 +1,6 @@
 import { XServerManager } from '../x11/XServerManager';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
+import { resolveSshConfigForConnect } from './sshConfigResolve';
 import type { SSHConnectionConfig, PtyOptions } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
@@ -40,18 +41,9 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
 
       let config = options.config;
       if (!options.local && config) {
-        if (config.teamVaultProfileRef) {
-          // Resolves the real secret fields server-side — a member's copy of this config may
-          // have had them stripped (TeamVaultService.getPayloadForRenderer), so never trust
-          // `config.password`/`passphrase` here when this ref is present.
-          const resolved = await bridge.teamVaultService.resolveProfileForConnect(
-            config.teamVaultProfileRef.vaultId,
-            'ssh',
-            config.teamVaultProfileRef.profileId
-          );
-          config = { ...(resolved as SSHConnectionConfig), id: config.id };
-        }
-        config = await bridge.restoreSavedSecrets(config);
+        // Real secrets are resolved server-side: a member's copy of a shared config has them stripped
+        // (TeamVaultService.getPayloadForRenderer), so never trust `config.password`/`passphrase` here.
+        config = await resolveSshConfigForConnect(bridge, config);
         config = await bridge.resolveProxyJumpConfig(config);
         config = await bridge.smartcard.prepareSmartcardConfig(config);
         config = await bridge.smartcard.prepareFido2Config(config);

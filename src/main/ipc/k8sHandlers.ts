@@ -5,6 +5,7 @@ import { OpenShiftWebLoginService } from '../services/OpenShiftWebLoginService';
 import type { K8sProfileStore } from '../profile/K8sProfileStore';
 import { parseK8sProfile, parseK8sServerArg, parseWebLoginOptions } from './ipcHelpers';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
+import { resolveSshConfigForConnect } from './sshConfigResolve';
 import type { K8sClusterNode, K8sNamespaceNode, K8sPodNode, K8sTerminalTarget, K8sPodDescription, K8sPortForwardTarget, K8sActivePortForward, K8sDebugTarget, K8sLoginOptions, K8sLoginResult, K8sOpenShiftProbeResult, K8sProfile, K8sWebLoginResult } from '../../shared/types/kubernetes';
 import type { SSHConnectionConfig, SSHTunnelConfig, SSHActiveTunnel } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
@@ -13,7 +14,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 /** The part of IpcBridge this handler group may use. */
 export type K8sHost = Pick<
   IpcBridge,
-  'assignSession' | 'broadcast' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'scheduleAutoSync' | 'sshTunnelManager'
+  'assignSession' | 'broadcast' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'sshTunnelManager' | 'teamVaultService'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig'>;
 };
@@ -253,7 +254,9 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
       // Same as terminal/SFTP sessions: pre-load a PKCS#11/FIDO2 resident credential
       // into a private agent so the ssh child just points IdentityAgent at it, rather
       // than needing an interactive PIN/passphrase for every standalone tunnel.
-      let config = await bridge.resolveProxyJumpConfig(rawConfig);
+      // Same resolution as a terminal: a Team Vault reference and a saved password/passphrase live in main only.
+      let config = await resolveSshConfigForConnect(bridge, rawConfig);
+      config = await bridge.resolveProxyJumpConfig(config);
       config = await bridge.smartcard.prepareSmartcardConfig(config);
       config = await bridge.smartcard.prepareFido2Config(config);
       const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
