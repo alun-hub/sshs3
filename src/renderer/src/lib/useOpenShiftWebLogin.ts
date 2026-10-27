@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { K8sWebLoginResult } from '@shared/types/kubernetes';
+import { ELECTRON_IPC_PREFIX } from './format';
 
 const PROBE_DEBOUNCE_MS = 600;
 const MIN_SERVER_LENGTH = 4;
@@ -16,7 +17,7 @@ interface UseOpenShiftWebLoginOptions {
 
 function cleanIpcError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  return raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
+  return raw.replace(ELECTRON_IPC_PREFIX, '');
 }
 
 /**

@@ -1,6 +1,4 @@
-// Electron wraps every main-process throw with this prefix, which leaks the
-// internal IPC channel name (e.g. "k8s:list-namespaces") to the user.
-export const ELECTRON_IPC_PREFIX = /^Error invoking remote method '[^']*':\s*/;
+import { ELECTRON_IPC_PREFIX } from './format';
 
 /** Known technical failure substrings mapped to actionable, user-facing text. */
 export const KNOWN_ERROR_HINTS: Array<{ match: RegExp; hint: string }> = [

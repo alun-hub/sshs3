@@ -297,7 +297,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
           }
         }
         let msg = describeIpcError(err, 'Could not read the folder contents');
-        msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
         if (msg.includes('All configured authentication methods failed') || msg.toLowerCase().includes('authentication failed')) {
           msg = 'Authentication failed: The password or key was rejected by the server.';
         } else if (msg.includes('getConnection')) {
@@ -519,8 +518,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setSelectedPaths(new Set());
       await load(true);
     } catch (err) {
-      let msg = describeIpcError(err, 'Failed to delete item(s)');
-      msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
+      const msg = describeIpcError(err, 'Failed to delete item(s)');
       setError(msg);
     } finally {
       setLoading(false);

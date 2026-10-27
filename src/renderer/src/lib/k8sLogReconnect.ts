@@ -56,7 +56,7 @@ export function formatK8sLogError(error: unknown): string {
   }
 
   // Strip Electron remote method IPC prefixes
-  const cleaned = msg.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  const cleaned = msg.replace(ELECTRON_IPC_PREFIX, '');
   const firstLine = cleaned.split('\n')[0].trim();
   if (firstLine.length > 50) return `${firstLine.slice(0, 47)}...`;
   return firstLine || 'Connection failed';
@@ -69,3 +69,4 @@ export {
   sortNewestPod,
   findReplacementPod,
 } from '@shared/k8sPodHelpers';
+import { ELECTRON_IPC_PREFIX } from './format';

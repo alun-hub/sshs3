@@ -19,6 +19,7 @@ import { useDialogFocus } from '../../lib/useDialogFocus';
 import { defaultProfileName, findMatchingProfile, newProfileId } from '../../lib/k8sProfiles';
 import { useOpenShiftWebLogin } from '../../lib/useOpenShiftWebLogin';
 import { OpenShiftWebLoginSection } from './OpenShiftWebLoginSection';
+import { ELECTRON_IPC_PREFIX } from '../../lib/format';
 
 interface K8sLoginModalProps {
   open: boolean;
@@ -163,7 +164,7 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
     } catch (err: any) {
       setLoading(false);
       const msg = err?.message || String(err);
-      setError(msg.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''));
+      setError(msg.replace(ELECTRON_IPC_PREFIX, ''));
     }
   };
 

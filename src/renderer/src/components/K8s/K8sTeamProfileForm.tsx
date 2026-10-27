@@ -4,6 +4,7 @@ import type { K8sProfile } from '@shared/types/kubernetes';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { newProfileId } from '../../lib/k8sProfiles';
+import { ELECTRON_IPC_PREFIX } from '../../lib/format';
 
 interface K8sTeamProfileFormProps {
   open: boolean;
@@ -60,7 +61,7 @@ export const K8sTeamProfileForm: React.FC<K8sTeamProfileFormProps> = ({ open, va
       onClose();
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      setError(raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''));
+      setError(raw.replace(ELECTRON_IPC_PREFIX, ''));
     } finally {
       setSaving(false);
     }

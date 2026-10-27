@@ -443,8 +443,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         setConnectionRequest(null);
         setPasswordPrompt(null);
       } catch (err) {
-        let msg = describeIpcError(err, 'Could not connect to the SFTP server');
-        msg = msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, '');
+        const msg = describeIpcError(err, 'Could not connect to the SFTP server');
         window.alert(msg);
       } finally {
         setConnecting(false);
