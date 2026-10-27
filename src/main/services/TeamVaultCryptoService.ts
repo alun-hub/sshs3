@@ -149,17 +149,20 @@ const BASE64_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
  * terminal: any byte other than the armor itself — a control character, a second line of text, a PIN
  * guess after the footer — would be treated as terminal input. It comes from an invite the user pasted or
  * from a vault file on a shared bucket, and the access header's MAC can only be checked after this very
- * decryption has produced the Vault Key, so it has to be validated here, at the sink. Accepts exactly one
- * armored file: the header, at least one base64 line, the footer, and at most a final newline.
+ * decryption has produced the Vault Key, so it has to be validated here, at the sink. Surrounding
+ * whitespace (a pasted blank line, a trailing newline or two) is dropped; what remains must be exactly one
+ * armored file: the header, at least one base64 line, the footer. Returns the text to send, which is the
+ * text that was validated.
  */
-export function assertAsciiArmoredAge(ciphertext: string): void {
-  const lines = typeof ciphertext === 'string' ? ciphertext.replace(/\r?\n$/, '').split(/\r?\n/) : [];
+export function normalizeAsciiArmoredAge(ciphertext: string): string {
+  const lines = typeof ciphertext === 'string' ? ciphertext.trim().split(/\r?\n/) : [];
   const valid =
     lines.length >= 3 &&
     lines[0] === AGE_ARMOR_BEGIN &&
     lines[lines.length - 1] === AGE_ARMOR_END &&
     lines.slice(1, -1).every((line) => BASE64_LINE.test(line));
   if (!valid) throw new Error('Not a valid ASCII-armored age ciphertext');
+  return `${lines.join('\n')}\n`;
 }
 
 /**
@@ -271,20 +274,20 @@ export class TeamVaultCryptoService {
     callbacks: AgePtyPromptCallbacks
   ): Promise<Buffer> {
     assertNotFlagLike(identityFilePath, 'identity file path');
-    assertAsciiArmoredAge(armoredCiphertext);
+    const armored = normalizeAsciiArmoredAge(armoredCiphertext);
     const agePath = resolveAgeBinary('age');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
     const channel = await createSecretOutputChannel(os.tmpdir());
     let ciphertextFile: string | undefined;
     try {
       const args = ['-d', '-i', identityFilePath, '-o', channel.path];
-      let stdin: string | undefined = armoredCiphertext;
+      let stdin: string | undefined = armored;
       if (process.platform === 'win32') {
         // A ConPTY has no Ctrl-D end-of-input, so the ciphertext can't be piped in through it.
         // It isn't a secret (the same text sits in the vault file on disk), so hand it over as a
         // file argument instead.
         ciphertextFile = path.join(os.tmpdir(), `${crypto.randomUUID()}.age`);
-        await fs.writeFile(ciphertextFile, armoredCiphertext, { mode: 0o600 });
+        await fs.writeFile(ciphertextFile, armored, { mode: 0o600 });
         args.push(ciphertextFile);
         stdin = undefined;
       }

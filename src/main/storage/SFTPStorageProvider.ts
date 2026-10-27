@@ -243,12 +243,18 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     );
   }
 
+  /** Counts deliberate `disconnect()` calls, so a call in flight when one happens is not retried onto a new connection. */
+  private disconnectCount = 0;
+
   private async executeWithReconnect<T>(fn: () => Promise<T>): Promise<T> {
+    const generation = this.disconnectCount;
     await this.ensureConnected();
     try {
       return await fn();
     } catch (err: any) {
-      if (this.isConnectionDropError(err)) {
+      // A disconnect() while the call was running also ends it with a "stream closed" error; reconnecting
+      // then would reopen a connection nobody holds a reference to any more.
+      if (this.isConnectionDropError(err) && generation === this.disconnectCount) {
         this.isConnected = false;
         await this.ensureConnected();
         return await fn();
@@ -555,6 +561,7 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   }
 
   async disconnect(): Promise<void> {
+    this.disconnectCount += 1;
     if (this.connectionPromise) {
       try {
         await this.connectionPromise;

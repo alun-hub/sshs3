@@ -57,7 +57,7 @@ import type { TeamVaultStatus } from '../shared/types/teamVault';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
-import { watchPromptWindow } from './ipc/promptWindowGuard';
+import { addGuardedPrompt } from './ipc/promptWindowGuard';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHandlers';
@@ -578,15 +578,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      const stopWatching = watchPromptWindow(webContents, () => {
-        if (this.pendingHostKeyPrompts.delete(id)) resolve(false); // fail closed
-      });
-      this.pendingHostKeyPrompts.set(id, {
-        callback: (trust) => {
-          stopWatching();
-          resolve(trust);
-        },
-      });
+      addGuardedPrompt(this.pendingHostKeyPrompts, id, webContents, () => resolve(false) /* fail closed */, resolve);
 
       const event: HostKeyPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.HOSTKEY_PROMPT, event);
@@ -614,15 +606,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      const stopWatching = watchPromptWindow(webContents, () => {
-        if (this.pendingAskpass.delete(id)) resolve('');
-      });
-      this.pendingAskpass.set(id, {
-        callback: (answer) => {
-          stopWatching();
-          resolve(answer);
-        },
-      });
+      addGuardedPrompt(this.pendingAskpass, id, webContents, () => resolve(''), resolve);
       webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
         id,
         prompt,
@@ -736,15 +720,13 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      const stopWatching = watchPromptWindow(webContents, () => {
-        if (this.pendingTransferConflicts.delete(id)) resolve({ resolution: 'skip', applyToAll: false });
-      });
-      this.pendingTransferConflicts.set(id, {
-        callback: (resolution, applyToAll) => {
-          stopWatching();
-          resolve({ resolution, applyToAll });
-        },
-      });
+      addGuardedPrompt(
+        this.pendingTransferConflicts,
+        id,
+        webContents,
+        () => resolve({ resolution: 'skip', applyToAll: false }),
+        (resolution, applyToAll) => resolve({ resolution, applyToAll })
+      );
 
       const event: TransferConflictPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT, event);
@@ -768,15 +750,7 @@ export class IpcBridge {
 
       const id = crypto.randomUUID();
       // No window left to ask: quit, as when there was no window to begin with.
-      const stopWatching = watchPromptWindow(webContents, () => {
-        if (this.pendingQuitConfirms.delete(id)) resolve(true);
-      });
-      this.pendingQuitConfirms.set(id, {
-        callback: (proceed) => {
-          stopWatching();
-          resolve(proceed);
-        },
-      });
+      addGuardedPrompt(this.pendingQuitConfirms, id, webContents, () => resolve(true), resolve);
 
       const event: QuitConfirmPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, event);
@@ -986,15 +960,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      const stopWatching = watchPromptWindow(webContents, () => {
-        if (this.pendingDotfilesSyncPrompts.delete(id)) resolve('ignore');
-      });
-      this.pendingDotfilesSyncPrompts.set(id, {
-        callback: (resolution) => {
-          stopWatching();
-          resolve(resolution);
-        },
-      });
+      addGuardedPrompt(this.pendingDotfilesSyncPrompts, id, webContents, () => resolve('ignore'), resolve);
 
       const event: DotfilesSyncPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, event);

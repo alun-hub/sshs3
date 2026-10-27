@@ -125,7 +125,7 @@ export class SSHTunnelManager extends EventEmitter {
     } catch (err) {
       // An invalid port, jump host or proxy throws here; the askpass server started above would otherwise
       // keep its socket, temp directory and registry entry for the rest of the app's life.
-      void askpassServer?.stop();
+      void askpassServer?.stop().catch(() => {});
       throw err;
     }
 

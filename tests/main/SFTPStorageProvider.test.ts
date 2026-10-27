@@ -720,6 +720,22 @@ describe('SFTPStorageProvider', () => {
   });
 
   describe('error handling and reconnection', () => {
+    it('does not reopen a connection that was closed on purpose while a call was in flight', async () => {
+      const provider = new SFTPStorageProvider(baseConfig);
+      mockList.mockResolvedValueOnce([]);
+      await provider.list('/warm-up'); // connected
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+
+      // The call is running when the user disconnects; the engine then fails it with "stream closed".
+      mockList.mockImplementationOnce(async () => {
+        await provider.disconnect();
+        throw new Error('SFTP stream closed');
+      });
+
+      await expect(provider.list('/in-flight')).rejects.toThrow('SFTP stream closed');
+      expect(mockConnect).toHaveBeenCalledTimes(1); // no new ssh process
+    });
+
     it.each(['SFTP stream closed', 'SFTP connection is closed'])(
       'retries the call that was in flight when the ssh process went away ("%s")',
       async (message) => {

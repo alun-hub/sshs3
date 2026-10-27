@@ -415,6 +415,44 @@ describe('K8sPodStorageProvider', () => {
       expect(clean.conn.close).not.toHaveBeenCalled();
     });
 
+    it('closes the exec session when the stream is destroyed without an error', async () => {
+      const { conn } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/cancelled.bin');
+      out.write(Buffer.from('partial'));
+      (out as import('node:stream').Writable).destroy(); // e.g. a cancelled upload
+      await tick();
+      expect(conn.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails a write in progress when the connection drops, instead of leaving it waiting for buffer room', async () => {
+      const { conn } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/dropped.bin');
+      const outcome = new Promise<Error | null>((resolve) => {
+        out.on('error', (err) => resolve(err));
+        out.on('finish', () => resolve(null));
+      });
+
+      out.write(Buffer.from('partial')); // not ended: final() is never reached
+      await tick();
+      conn.emit('close');
+
+      expect((await outcome)?.message).toMatch(/closed before the write finished/);
+    });
+
+    it('does not fail a finished write when its connection closes afterwards', async () => {
+      const { conn, pod } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/done.bin');
+      const errors: Error[] = [];
+      out.on('error', (err) => errors.push(err));
+      out.end(Buffer.from('payload'));
+      await tick();
+      pod.statusCb!({ status: 'Success' });
+      await tick();
+      conn.emit('close'); // the normal end of a websocket
+      await tick();
+      expect(errors).toEqual([]);
+    });
+
     it('does not wait forever when the connection closes without a status', async () => {
       const { conn } = podWithManualExit();
       const out = await provider.createWriteStream('/tmp/x.bin');

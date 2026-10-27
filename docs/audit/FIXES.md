@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 03:30
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 04:15
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -85,4 +85,24 @@ Not changed:
 - **60 s limit after the last byte** is my own choice; a slow PVC or NFS could need longer. Needs a decision.
 - **`//` UNC detection depends on `navigator.userAgent`**: matches the host OS in Electron in practice; a main-side guard is the larger question already noted above.
 - **A failing `ssh-native` payload leaves a partially applied pull unreported** and **`'error'` before a listener is attached**: both behave as before the changes under review.
+
+## Code review of `8925d90..HEAD`, second round (the four commits `faaa3e0`..`29de7f1`)
+
+No critical findings; nine remarks. Handled in the follow-up commit:
+
+| Remark | Verdict | Change |
+|---|---|---|
+| Retrying on `'SFTP stream closed'` reopens a connection that `disconnect()` just closed | **valid, a regression from `29de7f1`** (`disconnect()` fails the call in flight with that very message; the provider is already out of the registry, so the new ssh process would be unreachable) | `executeWithReconnect` records a disconnect counter at the start and retries only if it did not change |
+| K8s `destroy()` without an error left the exec session open | valid | closes unless `out.writableFinished` (a finished write is auto-destroyed afterwards, a cancelled one is not) |
+| K8s: a socket closing without status left a write in progress waiting for buffer room | valid | the close handler now also destroys the stream, guarded so a normal close after a successful status does nothing |
+| `assertAsciiArmoredAge` rejected a pasted blank line or an extra trailing newline that `age` accepts | valid | now `normalizeAsciiArmoredAge`: surrounding whitespace is dropped, the rest must be exactly one armored file, and the validated text is what is sent (also on the Windows file path). Anything inside the file, e.g. `\r\r\n`, is still rejected |
+| The watch / wrap / delete block was copied into five prompt methods in `IpcBridge` | valid, and `IpcBridge` is a file CLAUDE.md says must not grow | one `addGuardedPrompt` helper in `promptWindowGuard.ts`; each prompt is a short call; `IpcBridge.ts` ends up 6 lines longer than before the prompt change (1868 vs 1862) instead of about 50 |
+| `void askpassServer?.stop()` could become an unhandled rejection | marginal (`stop()` hardly rejects) | `.catch(() => {})` added. The claim that `buildProxyEnv` can throw between `start()` and the `try` does not hold: it only builds an object |
+
+Not changed:
+
+- **Git and key installation do not use `resolveSshConfigForConnect`** (and `storageHandlers` keeps its own Team Vault lookup): still open, whether a shared profile reaches those flows has not been checked.
+- **`render-process-gone` resolves the quit prompt with "quit"**: a crashed renderer cannot answer, and the alternative (never quitting) leaves the app impossible to close. A trade-off, left as is.
+- **`ProfileSyncService` `finally` could replace the original error**: `autoSyncLocalSshConfig` already catches its own failures, so only a throwing callback could; very low.
+- **Retrying non-idempotent calls (rename, delete) after a connection drop**: unchanged from how `EPIPE` and `ECONNRESET` were already handled.
 

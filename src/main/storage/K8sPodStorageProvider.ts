@@ -407,6 +407,15 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       settleRemote = { resolve, reject };
     });
     remoteDone.catch(() => {}); // surfaced through the stream; never an unhandled rejection
+    let remoteSettled = false;
+    remoteDone.then(
+      () => {
+        remoteSettled = true;
+      },
+      () => {
+        remoteSettled = true;
+      }
+    );
 
     // What callers get: it feeds the exec's stdin and only finishes once the command has reported back.
     const out = new Writable({
@@ -433,8 +442,9 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       },
       destroy(err, callback) {
         inStream.destroy();
-        // An aborted or failed write (not a finished one: its command has already exited) ends the session.
-        if (err) closeExec();
+        // An aborted or failed write ends the session; a finished one (destroyed automatically afterwards)
+        // has nothing left to end, its command has already exited.
+        if (!out.writableFinished) closeExec();
         callback(err);
       },
     });
@@ -483,8 +493,12 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
         out.destroy(err instanceof Error ? err : new Error(String(err)));
       });
       conn.on('close', () => {
-        // No status message before the socket closed: do not leave the writer waiting forever.
-        settleRemote.reject(new Error('Connection to the pod closed before the write finished'));
+        // No status message before the socket closed: fail the writer now. Nothing reads the exec's stdin
+        // any more, so a write in progress would otherwise wait for room in the buffer for ever.
+        if (remoteSettled) return;
+        const failure = new Error('Connection to the pod closed before the write finished');
+        settleRemote.reject(failure);
+        out.destroy(failure);
       });
     } catch (err) {
       const failure = err instanceof Error ? err : new Error(String(err));

@@ -34,7 +34,7 @@ vi.mock('../../src/main/services/AgePtyPinRelay', async (importOriginal) => {
   };
 });
 
-import { TeamVaultCryptoService, TeamVaultDecryptionError, assertAsciiArmoredAge } from '../../src/main/services/TeamVaultCryptoService';
+import { TeamVaultCryptoService, TeamVaultDecryptionError, normalizeAsciiArmoredAge } from '../../src/main/services/TeamVaultCryptoService';
 import type { AgePtyPromptCallbacks } from '../../src/main/services/AgePtyPinRelay';
 
 function noopCallbacks(): AgePtyPromptCallbacks {
@@ -227,6 +227,14 @@ describe('TeamVaultCryptoService', () => {
       expect(cbArg).toBe(callbacks);
       if (process.platform !== 'win32') expect(stdinArg).toBe(ARMOR);
       expect(channel.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends the validated, whitespace-trimmed text rather than what it was given', async () => {
+      fakeChannel();
+      mockRunAgeCommandViaPty.mockResolvedValue('');
+      await new TeamVaultCryptoService().decryptWithIdentity(`\n\n${ARMOR}  \n\n`, '/tmp/identity.txt', noopCallbacks());
+      const stdinArg = mockRunAgeCommandViaPty.mock.calls[0][5];
+      if (process.platform !== 'win32') expect(stdinArg).toBe(ARMOR);
     });
 
     it('refuses anything but a single armored age file before it can reach the pty', async () => {
@@ -784,19 +792,23 @@ describe('TeamVaultCryptoService', () => {
   });
 });
 
-describe('assertAsciiArmoredAge', () => {
-  it('accepts one armored file, with LF or CRLF lines and an optional final newline', () => {
+describe('normalizeAsciiArmoredAge', () => {
+  it('accepts one armored file, with LF or CRLF lines, and returns it with a single final newline', () => {
     const multi = `-----BEGIN AGE ENCRYPTED FILE-----\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\nYWJj\n-----END AGE ENCRYPTED FILE-----`;
-    expect(() => assertAsciiArmoredAge(multi)).not.toThrow();
-    expect(() => assertAsciiArmoredAge(`${multi}\n`)).not.toThrow();
-    expect(() => assertAsciiArmoredAge(multi.replace(/\n/g, '\r\n'))).not.toThrow();
+    expect(normalizeAsciiArmoredAge(multi)).toBe(`${multi}\n`);
+    expect(normalizeAsciiArmoredAge(`${multi}\n`)).toBe(`${multi}\n`);
+    expect(normalizeAsciiArmoredAge(multi.replace(/\n/g, '\r\n'))).toBe(`${multi}\n`);
   });
 
-  it('rejects an empty body, a bare carriage return and a second trailing newline', () => {
-    expect(() => assertAsciiArmoredAge('-----BEGIN AGE ENCRYPTED FILE-----\n-----END AGE ENCRYPTED FILE-----\n')).toThrow();
-    expect(() => assertAsciiArmoredAge(ARMOR.replace('\n', '\r'))).toThrow();
-    expect(() => assertAsciiArmoredAge(`${ARMOR}\n`)).toThrow();
-    expect(() => assertAsciiArmoredAge(undefined as unknown as string)).toThrow();
+  it('drops surrounding whitespace that a paste or an edit leaves behind, and returns what it validated', () => {
+    expect(normalizeAsciiArmoredAge(`\n\n  ${ARMOR}  \n\n`)).toBe(ARMOR);
+  });
+
+  it('rejects an empty body, a bare carriage return, text around the file and a non-string', () => {
+    expect(() => normalizeAsciiArmoredAge('-----BEGIN AGE ENCRYPTED FILE-----\n-----END AGE ENCRYPTED FILE-----\n')).toThrow();
+    expect(() => normalizeAsciiArmoredAge(ARMOR.replace('\n', '\r'))).toThrow();
+    expect(() => normalizeAsciiArmoredAge(`x ${ARMOR}`)).toThrow();
+    expect(() => normalizeAsciiArmoredAge(`${ARMOR}x`)).toThrow();
+    expect(() => normalizeAsciiArmoredAge(undefined as unknown as string)).toThrow();
   });
 });
-
