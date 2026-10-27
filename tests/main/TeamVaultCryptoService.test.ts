@@ -49,6 +49,10 @@ const armor = (body: string) => `-----BEGIN AGE ENCRYPTED FILE-----\n${body}\n--
 const ARMOR = armor('YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==');
 const ARMOR_1 = armor('QUFBQQ==');
 const ARMOR_2 = armor('QkJCQg==');
+// Malformed variants of ARMOR, built from its lines rather than by replacing characters in it.
+const [ARMOR_HEADER, ...ARMOR_AFTER_HEADER] = ARMOR.split('\n');
+const ARMOR_WITH_BLANK_LINE = [ARMOR_HEADER, '', ...ARMOR_AFTER_HEADER].join('\n'); // text between the lines
+const ARMOR_WITH_BARE_CR = `${ARMOR_HEADER}\r${ARMOR_AFTER_HEADER.join('\n')}`; // header ended by a lone CR
 
 describe('TeamVaultCryptoService', () => {
   const service = new TeamVaultCryptoService();
@@ -244,7 +248,7 @@ describe('TeamVaultCryptoService', () => {
         `${ARMOR}000000\n000000\n000000\n`, // PIN guesses typed after the footer
         ARMOR.replace('YWdl', 'YW\u0015dl'), // Ctrl+U inside the body
         `${ARMOR}\u0003`, // Ctrl+C after the footer
-        ARMOR.replace('\n', '\n\n'), // text between the lines
+        ARMOR_WITH_BLANK_LINE,
         `echo hi\n${ARMOR}`, // text before the header
         'armored-blob',
         '',
@@ -813,7 +817,7 @@ describe('normalizeAsciiArmoredAge', () => {
 
   it('rejects an empty body, a bare carriage return, text around the file and a non-string', () => {
     expect(() => normalizeAsciiArmoredAge('-----BEGIN AGE ENCRYPTED FILE-----\n-----END AGE ENCRYPTED FILE-----\n')).toThrow();
-    expect(() => normalizeAsciiArmoredAge(ARMOR.replace('\n', '\r'))).toThrow();
+    expect(() => normalizeAsciiArmoredAge(ARMOR_WITH_BARE_CR)).toThrow();
     expect(() => normalizeAsciiArmoredAge(`x ${ARMOR}`)).toThrow();
     expect(() => normalizeAsciiArmoredAge(`${ARMOR}x`)).toThrow();
     expect(() => normalizeAsciiArmoredAge(undefined as unknown as string)).toThrow();
