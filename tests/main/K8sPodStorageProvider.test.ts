@@ -89,6 +89,44 @@ describe('K8sPodStorageProvider', () => {
     expect(entries[1].permissions).toBe('644');
   });
 
+  it('flags symlinks and special files so recursive transfers can skip them', async () => {
+    execMock.mockImplementation(
+      async (_ns: string, _pod: string, _c: string, _cmd: string[], stdout: PassThrough, _e: PassThrough, _i: any, _t: boolean, statusCb: any) => {
+        stdout.write(
+          [
+            'file.txt\t0\t10 1727200000 644\t0\t1',
+            'loop\t1\t4096 1727200000 777\t1\t0',
+            'pipe\t0\t0 1727200000 644\t0\t0',
+          ].join('\n')
+        );
+        stdout.end();
+        statusCb({ status: 'Success' });
+        return new FakeConnection();
+      }
+    );
+
+    const byName = Object.fromEntries((await provider.list('/var')).map((e) => [e.name, e]));
+    expect(byName['file.txt']).toMatchObject({ isSymlink: false, isSpecial: false });
+    expect(byName['loop']).toMatchObject({ isDirectory: true, isSymlink: true });
+    expect(byName['pipe']).toMatchObject({ isSymlink: false, isSpecial: true });
+  });
+
+  it('flags a FIFO as special and a symlink as a symlink in stat()', async () => {
+    const run = async (line: string) => {
+      execMock.mockImplementation(
+        async (_ns: string, _pod: string, _c: string, _cmd: string[], stdout: PassThrough, _e: PassThrough, _i: any, _t: boolean, statusCb: any) => {
+          stdout.write(line);
+          stdout.end();
+          statusCb({ status: 'Success' });
+          return new FakeConnection();
+        }
+      );
+      return provider.stat('/tmp/x');
+    };
+    expect(await run('0\t0 1727200000 644\t0\t0\n')).toMatchObject({ isSpecial: true, isSymlink: false });
+    expect(await run('0\t5 1727200000 777\t1\t1\n')).toMatchObject({ isSpecial: false, isSymlink: true });
+  });
+
   it('stats root directory without exec call', async () => {
     const entry = await provider.stat('/');
     expect(entry.name).toBe('/');

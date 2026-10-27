@@ -142,12 +142,11 @@ for f in .* *; do
   [ "$f" = "." ] || [ "$f" = ".." ] && continue
   [ ! -e "$f" ] && [ ! -L "$f" ] && continue
   if [ -d "$f" ]; then isDir="1"; else isDir="0"; fi
+  if [ -L "$f" ]; then isLink="1"; else isLink="0"; fi
+  if [ -f "$f" ]; then isReg="1"; else isReg="0"; fi
   out=$(stat -c "%s %Y %a" "$f" 2>/dev/null || stat -f "%z %m %p" "$f" 2>/dev/null)
-  if [ -n "$out" ]; then
-    printf "%s\t%s\t%s\n" "$f" "$isDir" "$out"
-  else
-    printf "%s\t%s\t0 0 755\n" "$f" "$isDir"
-  fi
+  [ -n "$out" ] || out="0 0 755"
+  printf "%s\t%s\t%s\t%s\t%s\n" "$f" "$isDir" "$out" "$isLink" "$isReg"
 done
 `;
 
@@ -171,6 +170,10 @@ done
 
       const name = parts[0];
       const isDirectory = parts[1] === '1';
+      // Trailing flags (absent in older output): symlink / regular-file. Symlinks must be reported
+      // so TransferPipeline.scanDirectory skips them instead of following them out of the tree.
+      const isSymlink = parts[3]?.trim() === '1';
+      const isSpecial = parts[4] !== undefined && !isDirectory && parts[4].trim() !== '1';
       const statParts = parts[2].trim().split(/\s+/);
       const size = parseInt(statParts[0], 10) || 0;
       const mtimeSec = parseInt(statParts[1], 10);
@@ -189,6 +192,8 @@ done
         mtimeMs,
         mimeType: isDirectory ? undefined : getMimeType(name),
         permissions,
+        isSymlink,
+        isSpecial,
       });
     }
 
@@ -219,12 +224,11 @@ if [ ! -e "$f" ] && [ ! -L "$f" ]; then
   exit 2
 fi
 if [ -d "$f" ]; then isDir="1"; else isDir="0"; fi
+if [ -L "$f" ]; then isLink="1"; else isLink="0"; fi
+if [ -f "$f" ]; then isReg="1"; else isReg="0"; fi
 out=$(stat -c "%s %Y %a" "$f" 2>/dev/null || stat -f "%z %m %p" "$f" 2>/dev/null)
-if [ -n "$out" ]; then
-  printf "%s\t%s\n" "$isDir" "$out"
-else
-  printf "%s\t0 0 755\n" "$isDir"
-fi
+[ -n "$out" ] || out="0 0 755"
+printf "%s\t%s\t%s\t%s\n" "$isDir" "$out" "$isLink" "$isReg"
 `;
 
     let res: { stdout: Buffer; stderr: string };
@@ -242,8 +246,10 @@ fi
       throw new Error(`Could not stat path: ${targetPath}`);
     }
 
-    const [isDirStr, statDetails] = line.split('\t');
+    const [isDirStr, statDetails, isLinkStr, isRegStr] = line.split('\t');
     const isDirectory = isDirStr === '1';
+    const isSymlink = isLinkStr?.trim() === '1';
+    const isSpecial = isRegStr !== undefined && !isDirectory && isRegStr.trim() !== '1';
     const statParts = (statDetails || '').trim().split(/\s+/);
     const size = parseInt(statParts[0], 10) || 0;
     const mtimeSec = parseInt(statParts[1], 10);
@@ -261,6 +267,8 @@ fi
       mtimeMs,
       mimeType: isDirectory ? undefined : getMimeType(name),
       permissions,
+      isSymlink,
+      isSpecial,
     };
   }
 

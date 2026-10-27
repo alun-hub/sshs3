@@ -43,18 +43,24 @@ export interface Tlv {
 }
 
 function readLength(buf: Buffer, pos: number): { length: number; bytesRead: number } {
+  if (pos >= buf.length) throw new Error('DER: truncated length');
   const first = buf[pos];
   if ((first & 0x80) === 0) return { length: first, bytesRead: 1 };
   const numBytes = first & 0x7f;
+  // DER has no indefinite form; more than 4 length bytes cannot describe a certificate (and would
+  // overflow a 32-bit shift into a negative length, sending iterateChildren backwards forever).
+  if (numBytes < 1 || numBytes > 4 || pos + numBytes >= buf.length) throw new Error('DER: invalid length encoding');
   let length = 0;
-  for (let i = 0; i < numBytes; i++) length = (length << 8) | buf[pos + 1 + i];
+  for (let i = 0; i < numBytes; i++) length = length * 256 + buf[pos + 1 + i];
   return { length, bytesRead: 1 + numBytes };
 }
 
 export function readTlv(buf: Buffer, pos: number): Tlv {
+  if (pos >= buf.length) throw new Error('DER: truncated element');
   const tag = buf[pos];
   const { length, bytesRead } = readLength(buf, pos + 1);
   const start = pos + 1 + bytesRead;
+  if (start + length > buf.length) throw new Error('DER: element exceeds buffer');
   return { tag, start, end: start + length };
 }
 
