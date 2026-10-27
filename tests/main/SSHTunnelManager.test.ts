@@ -20,6 +20,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 // Mock AskpassServer to avoid opening actual listening servers
 vi.mock('../../src/main/smartcard/AskpassServer', () => {
   class MockAskpassServer {
+    static instances: MockAskpassServer[] = [];
+    constructor() {
+      MockAskpassServer.instances.push(this);
+    }
     start = vi.fn().mockResolvedValue(undefined);
     stop = vi.fn().mockResolvedValue(undefined);
     getEnv = vi.fn().mockReturnValue({ SSH_ASKPASS: '/mock/askpass', DISPLAY: ':99' });
@@ -29,6 +33,7 @@ vi.mock('../../src/main/smartcard/AskpassServer', () => {
   };
 });
 
+import { AskpassServer } from '../../src/main/smartcard/AskpassServer';
 import { SSHTunnelManager } from '../../src/main/services/SSHTunnelManager';
 import type { SSHConnectionConfig, SSHTunnelConfig } from '../../src/shared/types/ssh';
 
@@ -198,6 +203,20 @@ describe('SSHTunnelManager', () => {
       const current = manager.listActive().find((t) => t.id === active.id);
       expect(current?.status).toBe('error');
       expect(current?.error).toBe('Terminated (SIGTERM)');
+    });
+
+    it('stops the askpass server it started when ssh cannot be launched', async () => {
+      const servers = (AskpassServer as unknown as { instances: Array<{ stop: ReturnType<typeof vi.fn> }> }).instances;
+      servers.length = 0;
+      mockSpawnImpl = vi.fn().mockImplementation(() => {
+        throw new Error('spawn failed');
+      });
+
+      await expect(manager.startTunnel(mockConfig, mockTunnel)).rejects.toThrow('spawn failed');
+
+      expect(servers).toHaveLength(1);
+      expect(servers[0].stop).toHaveBeenCalledTimes(1);
+      expect(manager.listActive()).toHaveLength(0);
     });
 
     it('uses promptHandler if password and passphrase are not set on config', async () => {

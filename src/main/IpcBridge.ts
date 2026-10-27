@@ -57,6 +57,7 @@ import type { TeamVaultStatus } from '../shared/types/teamVault';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { registerSearchHandlers } from './ipc/searchHandlers';
+import { watchPromptWindow } from './ipc/promptWindowGuard';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHandlers';
@@ -577,7 +578,15 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      this.pendingHostKeyPrompts.set(id, { callback: resolve });
+      const stopWatching = watchPromptWindow(webContents, () => {
+        if (this.pendingHostKeyPrompts.delete(id)) resolve(false); // fail closed
+      });
+      this.pendingHostKeyPrompts.set(id, {
+        callback: (trust) => {
+          stopWatching();
+          resolve(trust);
+        },
+      });
 
       const event: HostKeyPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.HOSTKEY_PROMPT, event);
@@ -605,7 +614,15 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      this.pendingAskpass.set(id, { callback: resolve });
+      const stopWatching = watchPromptWindow(webContents, () => {
+        if (this.pendingAskpass.delete(id)) resolve('');
+      });
+      this.pendingAskpass.set(id, {
+        callback: (answer) => {
+          stopWatching();
+          resolve(answer);
+        },
+      });
       webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
         id,
         prompt,
@@ -719,8 +736,14 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
+      const stopWatching = watchPromptWindow(webContents, () => {
+        if (this.pendingTransferConflicts.delete(id)) resolve({ resolution: 'skip', applyToAll: false });
+      });
       this.pendingTransferConflicts.set(id, {
-        callback: (resolution, applyToAll) => resolve({ resolution, applyToAll }),
+        callback: (resolution, applyToAll) => {
+          stopWatching();
+          resolve({ resolution, applyToAll });
+        },
       });
 
       const event: TransferConflictPromptEvent = { id, ...info };
@@ -744,7 +767,16 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      this.pendingQuitConfirms.set(id, { callback: resolve });
+      // No window left to ask: quit, as when there was no window to begin with.
+      const stopWatching = watchPromptWindow(webContents, () => {
+        if (this.pendingQuitConfirms.delete(id)) resolve(true);
+      });
+      this.pendingQuitConfirms.set(id, {
+        callback: (proceed) => {
+          stopWatching();
+          resolve(proceed);
+        },
+      });
 
       const event: QuitConfirmPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, event);
@@ -954,7 +986,15 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      this.pendingDotfilesSyncPrompts.set(id, { callback: resolve });
+      const stopWatching = watchPromptWindow(webContents, () => {
+        if (this.pendingDotfilesSyncPrompts.delete(id)) resolve('ignore');
+      });
+      this.pendingDotfilesSyncPrompts.set(id, {
+        callback: (resolution) => {
+          stopWatching();
+          resolve(resolution);
+        },
+      });
 
       const event: DotfilesSyncPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, event);

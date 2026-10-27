@@ -34,7 +34,7 @@ vi.mock('../../src/main/services/AgePtyPinRelay', async (importOriginal) => {
   };
 });
 
-import { TeamVaultCryptoService, TeamVaultDecryptionError } from '../../src/main/services/TeamVaultCryptoService';
+import { TeamVaultCryptoService, TeamVaultDecryptionError, assertAsciiArmoredAge } from '../../src/main/services/TeamVaultCryptoService';
 import type { AgePtyPromptCallbacks } from '../../src/main/services/AgePtyPinRelay';
 
 function noopCallbacks(): AgePtyPromptCallbacks {
@@ -44,6 +44,11 @@ function noopCallbacks(): AgePtyPromptCallbacks {
     onTouchCleared: vi.fn(),
   };
 }
+
+const armor = (body: string) => `-----BEGIN AGE ENCRYPTED FILE-----\n${body}\n-----END AGE ENCRYPTED FILE-----\n`;
+const ARMOR = armor('YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==');
+const ARMOR_1 = armor('QUFBQQ==');
+const ARMOR_2 = armor('QkJCQg==');
 
 describe('TeamVaultCryptoService', () => {
   const service = new TeamVaultCryptoService();
@@ -212,7 +217,7 @@ describe('TeamVaultCryptoService', () => {
 
       const callbacks = noopCallbacks();
       const service2 = new TeamVaultCryptoService();
-      const result = await service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', callbacks);
+      const result = await service2.decryptWithIdentity(ARMOR, '/tmp/identity.txt', callbacks);
 
       expect(result).toBe('{"vaultId":"vlt_1"}');
       expect(mockCreateChannel).toHaveBeenCalledTimes(1);
@@ -220,8 +225,32 @@ describe('TeamVaultCryptoService', () => {
       expect(binary).toMatch(/age(\.exe)?$/);
       expect(args.slice(0, 5)).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake-invite.fifo']);
       expect(cbArg).toBe(callbacks);
-      if (process.platform !== 'win32') expect(stdinArg).toBe('armored-blob');
+      if (process.platform !== 'win32') expect(stdinArg).toBe(ARMOR);
       expect(channel.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses anything but a single armored age file before it can reach the pty', async () => {
+      fakeChannel();
+      const service2 = new TeamVaultCryptoService();
+      const hostile = [
+        `${ARMOR}000000\n000000\n000000\n`, // PIN guesses typed after the footer
+        ARMOR.replace('YWdl', 'YW\u0015dl'), // Ctrl+U inside the body
+        `${ARMOR}\u0003`, // Ctrl+C after the footer
+        ARMOR.replace('\n', '\n\n'), // text between the lines
+        `echo hi\n${ARMOR}`, // text before the header
+        'armored-blob',
+        '',
+      ];
+      for (const text of hostile) {
+        await expect(service2.decryptWithIdentity(text, '/tmp/identity.txt', noopCallbacks())).rejects.toThrow(
+          /valid ASCII-armored age ciphertext/
+        );
+        await expect(service2.unwrapVaultKey(text, '/tmp/identity.txt', noopCallbacks())).rejects.toThrow(
+          /valid ASCII-armored age ciphertext/
+        );
+      }
+      expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
+      expect(mockCreateChannel).not.toHaveBeenCalled();
     });
 
     it('still cleans up the channel when the pty run rejects (e.g. mismatched identity)', async () => {
@@ -230,7 +259,7 @@ describe('TeamVaultCryptoService', () => {
 
       const service2 = new TeamVaultCryptoService();
       await expect(
-        service2.decryptWithIdentity('armored-blob', '/tmp/identity.txt', noopCallbacks())
+        service2.decryptWithIdentity(ARMOR, '/tmp/identity.txt', noopCallbacks())
       ).rejects.toThrow('no identity matched');
       expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
@@ -238,7 +267,7 @@ describe('TeamVaultCryptoService', () => {
     it('rejects a flag-like identity file path before ever creating a channel or spawning (argument-injection guard)', async () => {
       const service2 = new TeamVaultCryptoService();
       await expect(
-        service2.decryptWithIdentity('armored-blob', '--output=/etc/passwd', noopCallbacks())
+        service2.decryptWithIdentity(ARMOR, '--output=/etc/passwd', noopCallbacks())
       ).rejects.toThrow('Invalid identity file path');
       expect(mockCreateChannel).not.toHaveBeenCalled();
       expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
@@ -267,7 +296,7 @@ describe('TeamVaultCryptoService', () => {
 
       const callbacks = noopCallbacks();
       const service2 = new TeamVaultCryptoService();
-      const result = await service2.unwrapVaultKey('wrapped-blob', '/tmp/identity.txt', callbacks);
+      const result = await service2.unwrapVaultKey(ARMOR, '/tmp/identity.txt', callbacks);
 
       expect(result.toString('utf8')).toBe('raw-vault-key-bytes');
       expect(mockCreateChannel).toHaveBeenCalledTimes(1);
@@ -283,7 +312,7 @@ describe('TeamVaultCryptoService', () => {
         expect(fs.existsSync(args[5])).toBe(false);
       } else {
         expect(args).toEqual(['-d', '-i', '/tmp/identity.txt', '-o', '/tmp/fake.fifo']);
-        expect(stdinArg).toBe('wrapped-blob');
+        expect(stdinArg).toBe(ARMOR);
       }
       expect(channel.dispose).toHaveBeenCalledTimes(1);
     });
@@ -293,7 +322,7 @@ describe('TeamVaultCryptoService', () => {
       mockRunAgeCommandViaPty.mockRejectedValue(new Error('age: error: no YubiKey detected'));
 
       const service2 = new TeamVaultCryptoService();
-      await expect(service2.unwrapVaultKey('wrapped-blob', '/tmp/identity.txt', noopCallbacks())).rejects.toThrow(
+      await expect(service2.unwrapVaultKey(ARMOR, '/tmp/identity.txt', noopCallbacks())).rejects.toThrow(
         'no YubiKey detected'
       );
       expect(channel.dispose).toHaveBeenCalledTimes(1);
@@ -302,7 +331,7 @@ describe('TeamVaultCryptoService', () => {
     it('rejects a flag-like identity file path before ever creating a channel or spawning (argument-injection guard)', async () => {
       const service2 = new TeamVaultCryptoService();
       await expect(
-        service2.unwrapVaultKey('wrapped-blob', '--output=/etc/passwd', noopCallbacks())
+        service2.unwrapVaultKey(ARMOR, '--output=/etc/passwd', noopCallbacks())
       ).rejects.toThrow('Invalid identity file path');
       expect(mockCreateChannel).not.toHaveBeenCalled();
       expect(mockRunAgeCommandViaPty).not.toHaveBeenCalled();
@@ -322,8 +351,8 @@ describe('TeamVaultCryptoService', () => {
 
       const service2 = new TeamVaultCryptoService();
       await Promise.all([
-        service2.unwrapVaultKey('wrapped-blob-1', '/tmp/identity-1.txt', noopCallbacks()),
-        service2.unwrapVaultKey('wrapped-blob-2', '/tmp/identity-2.txt', noopCallbacks()),
+        service2.unwrapVaultKey(ARMOR_1, '/tmp/identity-1.txt', noopCallbacks()),
+        service2.unwrapVaultKey(ARMOR_2, '/tmp/identity-2.txt', noopCallbacks()),
       ]);
 
       expect(maxInFlight).toBe(1);
@@ -493,7 +522,7 @@ describe('TeamVaultCryptoService', () => {
     it('feeds only the stanza on stdin, passes the ciphertext as a temp file, and removes that file', async () => {
       const stdinEnd = fakeAge(Buffer.from('vault-key'));
       const service2 = new TeamVaultCryptoService();
-      const result = await service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', CLEAN);
+      const result = await service2.unwrapVaultKeyWithRecoveryIdentity(ARMOR, CLEAN);
 
       expect(result.toString('utf8')).toBe('vault-key');
       const [, args] = mockExecFile.mock.calls[0];
@@ -507,13 +536,13 @@ describe('TeamVaultCryptoService', () => {
       const stdinEnd = fakeAge(Buffer.from('vault-key'));
       const service2 = new TeamVaultCryptoService();
       const pasted = `Hey, here is the recovery key we printed:\n\n${CLEAN}\n-- sent from my phone`;
-      await service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', pasted);
+      await service2.unwrapVaultKeyWithRecoveryIdentity(ARMOR, pasted);
       expect(stdinEnd.mock.calls[0][0].toString('utf8')).toBe(CLEAN);
     });
 
     it('rejects text with no recognizable AGE-SECRET-KEY-1... line without spawning age', async () => {
       const service2 = new TeamVaultCryptoService();
-      await expect(service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', 'not a key at all')).rejects.toThrow(
+      await expect(service2.unwrapVaultKeyWithRecoveryIdentity(ARMOR, 'not a key at all')).rejects.toThrow(
         'does not look like a Team Vault recovery key'
       );
       expect(mockExecFile).not.toHaveBeenCalled();
@@ -529,7 +558,7 @@ describe('TeamVaultCryptoService', () => {
         return { stdin: { end: vi.fn() } };
       });
       const service2 = new TeamVaultCryptoService();
-      await expect(service2.unwrapVaultKeyWithRecoveryIdentity('wrapped-blob', CLEAN)).rejects.toThrow('no identity matched');
+      await expect(service2.unwrapVaultKeyWithRecoveryIdentity(ARMOR, CLEAN)).rejects.toThrow('no identity matched');
       expect(fs.existsSync(seen)).toBe(false);
     });
 
@@ -754,3 +783,20 @@ describe('TeamVaultCryptoService', () => {
     });
   });
 });
+
+describe('assertAsciiArmoredAge', () => {
+  it('accepts one armored file, with LF or CRLF lines and an optional final newline', () => {
+    const multi = `-----BEGIN AGE ENCRYPTED FILE-----\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\nYWJj\n-----END AGE ENCRYPTED FILE-----`;
+    expect(() => assertAsciiArmoredAge(multi)).not.toThrow();
+    expect(() => assertAsciiArmoredAge(`${multi}\n`)).not.toThrow();
+    expect(() => assertAsciiArmoredAge(multi.replace(/\n/g, '\r\n'))).not.toThrow();
+  });
+
+  it('rejects an empty body, a bare carriage return and a second trailing newline', () => {
+    expect(() => assertAsciiArmoredAge('-----BEGIN AGE ENCRYPTED FILE-----\n-----END AGE ENCRYPTED FILE-----\n')).toThrow();
+    expect(() => assertAsciiArmoredAge(ARMOR.replace('\n', '\r'))).toThrow();
+    expect(() => assertAsciiArmoredAge(`${ARMOR}\n`)).toThrow();
+    expect(() => assertAsciiArmoredAge(undefined as unknown as string)).toThrow();
+  });
+});
+

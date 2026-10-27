@@ -720,6 +720,20 @@ describe('SFTPStorageProvider', () => {
   });
 
   describe('error handling and reconnection', () => {
+    it.each(['SFTP stream closed', 'SFTP connection is closed'])(
+      'retries the call that was in flight when the ssh process went away ("%s")',
+      async (message) => {
+        mockList.mockRejectedValueOnce(new Error(message));
+        mockList.mockResolvedValueOnce([]);
+        const provider = new SFTPStorageProvider(baseConfig);
+
+        await expect(provider.list('/data')).resolves.toEqual([]);
+
+        expect(mockList).toHaveBeenCalledTimes(2);
+        expect(mockConnect).toHaveBeenCalledTimes(2); // reconnected once in between
+      }
+    );
+
     it('should reject when connect fails and allow subsequent connection attempt', async () => {
       mockConnect.mockRejectedValueOnce(new Error('Connection refused'));
       mockConnect.mockResolvedValueOnce(undefined);

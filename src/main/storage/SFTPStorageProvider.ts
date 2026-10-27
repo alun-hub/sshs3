@@ -236,7 +236,10 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       msg.includes('ECONNRESET') ||
       msg.includes('EPIPE') ||
       msg.includes('Not connected') ||
-      msg.includes('No SFTP connection')
+      msg.includes('No SFTP connection') ||
+      // What SftpPacketProtocol rejects with when the ssh process went away under a call.
+      msg.includes('SFTP stream closed') ||
+      msg.includes('SFTP connection is closed')
     );
   }
 

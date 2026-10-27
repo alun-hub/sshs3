@@ -140,6 +140,28 @@ function assertNotFlagLike(value: string, label: string): void {
   }
 }
 
+const AGE_ARMOR_BEGIN = '-----BEGIN AGE ENCRYPTED FILE-----';
+const AGE_ARMOR_END = '-----END AGE ENCRYPTED FILE-----';
+const BASE64_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * The ciphertext is typed into a pty (on POSIX), where `age` and `age-plugin-yubikey` read from the same
+ * terminal: any byte other than the armor itself — a control character, a second line of text, a PIN
+ * guess after the footer — would be treated as terminal input. It comes from an invite the user pasted or
+ * from a vault file on a shared bucket, and the access header's MAC can only be checked after this very
+ * decryption has produced the Vault Key, so it has to be validated here, at the sink. Accepts exactly one
+ * armored file: the header, at least one base64 line, the footer, and at most a final newline.
+ */
+export function assertAsciiArmoredAge(ciphertext: string): void {
+  const lines = typeof ciphertext === 'string' ? ciphertext.replace(/\r?\n$/, '').split(/\r?\n/) : [];
+  const valid =
+    lines.length >= 3 &&
+    lines[0] === AGE_ARMOR_BEGIN &&
+    lines[lines.length - 1] === AGE_ARMOR_END &&
+    lines.slice(1, -1).every((line) => BASE64_LINE.test(line));
+  if (!valid) throw new Error('Not a valid ASCII-armored age ciphertext');
+}
+
 /**
  * Crypto primitives for the Team Vault (docs/team-vault-plan.md), a separate trust model from
  * `SyncCryptoService`: instead of one password shared by everyone, a random "Vault Key" encrypts
@@ -249,6 +271,7 @@ export class TeamVaultCryptoService {
     callbacks: AgePtyPromptCallbacks
   ): Promise<Buffer> {
     assertNotFlagLike(identityFilePath, 'identity file path');
+    assertAsciiArmoredAge(armoredCiphertext);
     const agePath = resolveAgeBinary('age');
     const pluginPath = resolveAgeBinary('age-plugin-yubikey');
     const channel = await createSecretOutputChannel(os.tmpdir());

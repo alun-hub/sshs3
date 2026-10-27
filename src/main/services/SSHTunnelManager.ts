@@ -113,13 +113,21 @@ export class SSHTunnelManager extends EventEmitter {
       ...config,
       tunnels: [{ ...tunnel, enabled: true }],
     };
-    const sshArgs = SmartcardDetector.buildSSHArguments(singleTunnelConfig);
-    // -N: no remote command (forwarding only). ExitOnForwardFailure: fail fast
-    // instead of silently keeping a session open on a port bind error.
-    sshArgs.unshift('-N', '-o', 'ExitOnForwardFailure=yes');
-    const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
+    let child: ChildProcess;
+    try {
+      const sshArgs = SmartcardDetector.buildSSHArguments(singleTunnelConfig);
+      // -N: no remote command (forwarding only). ExitOnForwardFailure: fail fast
+      // instead of silently keeping a session open on a port bind error.
+      sshArgs.unshift('-N', '-o', 'ExitOnForwardFailure=yes');
+      const sshBinary = process.platform === 'win32' ? 'ssh.exe' : 'ssh';
 
-    const child = spawn(sshBinary, sshArgs, { env, stdio: ['ignore', 'ignore', 'pipe'] });
+      child = spawn(sshBinary, sshArgs, { env, stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (err) {
+      // An invalid port, jump host or proxy throws here; the askpass server started above would otherwise
+      // keep its socket, temp directory and registry entry for the rest of the app's life.
+      void askpassServer?.stop();
+      throw err;
+    }
 
     const session: TunnelSession = {
       id,
