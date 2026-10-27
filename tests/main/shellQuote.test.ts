@@ -19,13 +19,16 @@ describe('quoteShellArg', () => {
 });
 
 describe('quotePathOperand', () => {
-  it('leaves normal paths alone', () => {
+  it('leaves absolute paths alone', () => {
     expect(quotePathOperand('/var/log/syslog')).toBe("'/var/log/syslog'");
-    expect(quotePathOperand('dir/-file')).toBe("'dir/-file'");
+    expect(quotePathOperand('/-odd/-file')).toBe("'/-odd/-file'");
   });
 
-  it('anchors a leading dash so the path cannot be read as an option', () => {
+  it('anchors every relative path so it cannot be read as an option or a find expression', () => {
     expect(quotePathOperand('-e1e id')).toBe("'./-e1e id'");
     expect(quotePathOperand('-f')).toBe("'./-f'");
+    expect(quotePathOperand('!x')).toBe("'./!x'");
+    expect(quotePathOperand('(dir')).toBe("'./(dir'");
+    expect(quotePathOperand('dir/-file')).toBe("'./dir/-file'");
   });
 });

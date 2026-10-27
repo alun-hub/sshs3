@@ -387,7 +387,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       // The (app-lifetime) TeamVaultService instance otherwise keeps comparing against whatever
       // remote state it last observed on the *previous* target — same reasoning as
       // ProfileSyncService.resetRemoteState() in syncHandlers.ts.
-      bridge.teamVaultService.resetRemoteState(vid);
+      await bridge.teamVaultService.resetRemoteState(vid);
       // Restart rather than merely leave running: a stale timer would otherwise keep polling
       // against whatever target it captured when first started, not this new one.
       if (bridge.teamVaultService.isUnlocked(vid)) {

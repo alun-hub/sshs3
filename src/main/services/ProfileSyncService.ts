@@ -983,16 +983,21 @@ export class ProfileSyncService {
     }
 
     let sshNativeConflicts: KnownHostsConflict[] = [];
-    if (sshNativeRaw !== null) {
-      const remotePayload: SshNativePayload = JSON.parse(sshNativeRaw);
-      const applied = await this.applySshNativePayload(remotePayload);
-      if (applied.changed) {
-        changedCategories.push('ssh-native');
+    try {
+      if (sshNativeRaw !== null) {
+        const remotePayload: SshNativePayload = JSON.parse(sshNativeRaw);
+        const applied = await this.applySshNativePayload(remotePayload);
+        if (applied.changed) {
+          changedCategories.push('ssh-native');
+        }
+        sshNativeConflicts = applied.conflicts;
       }
-      sshNativeConflicts = applied.conflicts;
-    }
-    if (regenerateLocalSshConfig) {
-      await this.autoSyncLocalSshConfig();
+    } finally {
+      // The profiles were already replaced above, so the local block must follow them even if the remote
+      // block could not be applied.
+      if (regenerateLocalSshConfig) {
+        await this.autoSyncLocalSshConfig();
+      }
     }
 
     this.lastComparison = {

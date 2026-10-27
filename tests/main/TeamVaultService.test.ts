@@ -1485,6 +1485,32 @@ describe('TeamVaultService', () => {
     });
   });
 
+  it('resetRemoteState waits until the persisted sync state is cleared, so a status refresh cannot restore the old target\'s values', async () => {
+    type Entry = import('../../src/shared/types/storage').FileEntry | null;
+    const persisted = new Map<string, { lastKnownRemoteEntry?: Entry; lastSyncedRevision?: number }>();
+    const configStore = {
+      getConfig: async (vaultId: string) => persisted.get(vaultId) ?? {},
+      setLastKnownRemoteEntry: async (vaultId: string, entry: Entry, lastSyncedRevision?: number) => {
+        persisted.set(vaultId, { lastKnownRemoteEntry: entry, ...(lastSyncedRevision !== undefined ? { lastSyncedRevision } : {}) });
+      },
+      clearSyncState: async (vaultId: string) => {
+        await new Promise((r) => setTimeout(r, 15)); // a slow write
+        persisted.set(vaultId, {});
+      },
+    };
+    const provider = fakeProvider();
+    const service = new TeamVaultService({ cryptoService: fakeCrypto(), baseDir: tempDir, configStore });
+    const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+    await service.pushToRemote(vaultId, provider);
+    expect(persisted.get(vaultId)?.lastSyncedRevision).toBeDefined();
+
+    await service.resetRemoteState(vaultId);
+
+    // Already cleared on disk when the call returns; nothing is left for hydratedState to restore.
+    expect(persisted.get(vaultId)).toEqual({});
+    expect((await service.getSyncPreview(vaultId, provider)).hasUnpushedLocalChanges).toBe(false);
+  });
+
   it('still refuses to pull over unpushed local changes after a restart (regression: lastSyncedRevision must survive it)', async () => {
     type Entry = import('../../src/shared/types/storage').FileEntry | null;
     const persisted = new Map<string, { lastKnownRemoteEntry?: Entry; lastSyncedRevision?: number }>();

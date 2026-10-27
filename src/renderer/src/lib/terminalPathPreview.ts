@@ -3,6 +3,7 @@
  * and preview metadata formatting.
  */
 
+import { IS_WINDOWS } from './platform';
 import {
   MARKDOWN_EXTENSIONS,
   RASTER_IMAGE_EXTENSIONS,
@@ -191,17 +192,21 @@ export function isWindowsPath(p: string): boolean {
 }
 
 /**
- * Two leading separators of either kind (`\\server\share`, `//server/share`, `\/server`, `\\?\…`, `\\.\…`): touching one on Windows opens an SMB connection and sends
+ * A UNC path (`\\server\share`, `\\?\…`, `\\.\…`): touching one on Windows opens an SMB connection and sends
  * the user's NetNTLMv2 credentials to that server. Terminal output is untrusted, so such a path must never be
- * looked up just because the pointer rests on it.
+ * looked up just because the pointer rests on it. Windows also accepts forward and mixed separators
+ * (`//server/share`, `\/server`), but on any other system `//usr/bin` is an ordinary path, so those forms
+ * only count where the renderer runs on Windows.
  */
-export function isUncPath(p: string): boolean {
-  return /^[\\/]{2}/.test(p.trim());
+export function isUncPath(p: string, windows: boolean = IS_WINDOWS): boolean {
+  const trimmed = p.trim();
+  if (trimmed.startsWith('\\\\')) return true;
+  return windows && /^[\\/]{2}/.test(trimmed);
 }
 
 /** A UNC path that leaves this machine. WSL's own `\\wsl.localhost\` / `\\wsl$\` shares are local and stay usable. */
-export function isNetworkUncPath(p: string): boolean {
-  return isUncPath(p) && !/^[\\/]{2}wsl(?:\.localhost|\$)[\\/]/i.test(p.trim());
+export function isNetworkUncPath(p: string, windows: boolean = IS_WINDOWS): boolean {
+  return isUncPath(p, windows) && !/^[\\/]{2}wsl(?:\.localhost|\$)[\\/]/i.test(p.trim());
 }
 
 export interface PathDetails {

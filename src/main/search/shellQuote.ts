@@ -10,11 +10,12 @@ export function quoteShellArg(value: string): string {
 }
 
 /**
- * Quotes a path for use as a file operand of a remote command. A path starting with `-` would be
- * read as an option (GNU `sed -e1e…` runs shell commands), so it is anchored with `./`. Preferred
+ * Quotes a path for use as a file operand of a remote command. A relative path is anchored with `./`
+ * so it can never be read as something else: a leading `-` is an option (GNU `sed -e1e…` runs shell
+ * commands), and `find` also takes a leading `!`, `(`, `)` or `,` for part of its expression. Preferred
  * over `--` because not every tool (e.g. `find`) accepts it.
  */
 export function quotePathOperand(value: string): string {
   const sanitized = value.replace(/\0/g, '');
-  return quoteShellArg(sanitized.startsWith('-') ? `./${sanitized}` : sanitized);
+  return quoteShellArg(sanitized.startsWith('/') ? sanitized : `./${sanitized}`);
 }

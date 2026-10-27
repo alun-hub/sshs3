@@ -12,25 +12,37 @@ import {
 
 describe('terminalPathPreview', () => {
   it('treats WSL shares as local but every other UNC path as a network share', () => {
-    expect(isNetworkUncPath('\\\\attacker\\share\\f')).toBe(true);
-    expect(isNetworkUncPath('//attacker/share/f')).toBe(true);
-    expect(isNetworkUncPath('\\\\wsl.localhost.evil.com\\share')).toBe(true);
-    expect(isNetworkUncPath('\\\\wsl.localhost\\Ubuntu\\home\\me\\a.md')).toBe(false);
-    expect(isNetworkUncPath('\\\\wsl$\\Ubuntu\\home')).toBe(false);
-    expect(isNetworkUncPath('C:\\Users\\me')).toBe(false);
+    expect(isNetworkUncPath('\\\\attacker\\share\\f', true)).toBe(true);
+    expect(isNetworkUncPath('//attacker/share/f', true)).toBe(true);
+    expect(isNetworkUncPath('\\\\wsl.localhost.evil.com\\share', true)).toBe(true);
+    expect(isNetworkUncPath('\\\\wsl.localhost\\Ubuntu\\home\\me\\a.md', true)).toBe(false);
+    expect(isNetworkUncPath('\\\\wsl$\\Ubuntu\\home', true)).toBe(false);
+    expect(isNetworkUncPath('C:\\Users\\me', true)).toBe(false);
   });
 
   it('recognises UNC paths, which must never be stat-ed on hover', () => {
-    expect(isUncPath('\\\\attacker.example.com\\share\\f.txt')).toBe(true);
-    expect(isUncPath('//attacker.example.com/share/f.txt')).toBe(true);
-    expect(isUncPath('\\\\?\\C:\\x')).toBe(true);
-    expect(isUncPath('\\\\.\\pipe\\x')).toBe(true);
-    expect(isUncPath('\\/attacker/share')).toBe(true);
-    expect(isUncPath('/\\attacker\\share')).toBe(true);
-    expect(isUncPath('  \\\\attacker\\share')).toBe(true);
-    expect(isUncPath('C:\\Users\\me\\a.txt')).toBe(false);
-    expect(isUncPath('/home/me/a.txt')).toBe(false);
-    expect(isUncPath('src/a.ts')).toBe(false);
+    for (const unc of [
+      '\\\\attacker.example.com\\share\\f.txt',
+      '//attacker.example.com/share/f.txt',
+      '\\\\?\\C:\\x',
+      '\\\\.\\pipe\\x',
+      '\\/attacker/share',
+      '/\\attacker\\share',
+      '  \\\\attacker\\share',
+    ]) {
+      expect(isUncPath(unc, true)).toBe(true);
+    }
+    for (const local of ['C:\\Users\\me\\a.txt', '/home/me/a.txt', 'src/a.ts']) {
+      expect(isUncPath(local, true)).toBe(false);
+    }
+  });
+
+  it('only counts forward and mixed separators as UNC on Windows; `//usr/bin` is an ordinary path elsewhere', () => {
+    expect(isUncPath('//usr/bin', false)).toBe(false);
+    expect(isNetworkUncPath('//etc/passwd', false)).toBe(false);
+    expect(isUncPath('/\\x', false)).toBe(false);
+    // The backslash form can only ever mean a network share, so it is blocked everywhere.
+    expect(isUncPath('\\\\attacker\\share', false)).toBe(true);
   });
 
   it('extracts correct file extensions', () => {

@@ -363,6 +363,25 @@ describe('K8sPodStorageProvider', () => {
       expect(err?.message).toContain('No space left on device');
     });
 
+    it('gives up when the pod never reports back after the last byte', async () => {
+      podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/hung.bin');
+      const outcome = new Promise<Error | null>((resolve) => {
+        out.on('error', (err) => resolve(err));
+        out.on('finish', () => resolve(null));
+      });
+
+      vi.useFakeTimers();
+      try {
+        out.end(Buffer.from('payload'));
+        await vi.advanceTimersByTimeAsync(60_001);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect((await outcome)?.message).toMatch(/Timed out waiting for the pod/);
+    });
+
     it('does not wait forever when the connection closes without a status', async () => {
       const { conn } = podWithManualExit();
       const out = await provider.createWriteStream('/tmp/x.bin');

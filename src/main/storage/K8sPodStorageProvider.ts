@@ -1,5 +1,5 @@
 import path from 'node:path';
-import stream, { PassThrough } from 'node:stream';
+import stream, { PassThrough, Writable } from 'node:stream';
 import type * as k8s from '@kubernetes/client-node';
 import { loadK8sClient } from '../services/k8sClient';
 import { loadKubeConfigForContext } from '../services/k8sKubeConfig';
@@ -14,6 +14,9 @@ import type {
   WriteStreamOptions,
 } from '../../shared/types/storage';
 import type { K8sStorageConfig } from '../../shared/types/kubernetes';
+
+/** How long a write stream waits, after its last byte, for the command in the pod to report back. */
+const WRITE_FINISH_TIMEOUT_MS = 60_000;
 
 export class K8sPodStorageProvider extends BaseStorageProvider {
   readonly id: string;
@@ -393,16 +396,35 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     });
     remoteDone.catch(() => {}); // surfaced through the stream; never an unhandled rejection
 
-    const originalFinal = inStream._final.bind(inStream);
-    inStream._final = (callback) => {
-      originalFinal((err) => {
-        if (err) return callback(err);
-        remoteDone.then(
-          () => callback(),
-          (remoteErr) => callback(remoteErr)
+    // What callers get: it feeds the exec's stdin and only finishes once the command has reported back.
+    const out = new Writable({
+      write(chunk, encoding, callback) {
+        inStream.write(chunk, encoding, callback);
+      },
+      final(callback) {
+        inStream.end();
+        // All data has been handed over, so the command should exit promptly; do not wait on it forever.
+        const timer = setTimeout(
+          () => settleRemote.reject(new Error('Timed out waiting for the pod to finish writing the file')),
+          WRITE_FINISH_TIMEOUT_MS
         );
-      });
-    };
+        remoteDone.then(
+          () => {
+            clearTimeout(timer);
+            callback();
+          },
+          (remoteErr) => {
+            clearTimeout(timer);
+            callback(remoteErr);
+          }
+        );
+      },
+      destroy(err, callback) {
+        inStream.destroy();
+        callback(err);
+      },
+    });
+    inStream.on('error', (err) => out.destroy(err));
 
     const modeStr = options?.mode ? (options.mode & 0o777).toString(8) : '';
     const script = `
@@ -426,7 +448,7 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
             const msg = Buffer.concat(stderrChunks).toString('utf-8').trim() || status.message || 'Failed to write file to pod';
             const failure = new Error(msg);
             settleRemote.reject(failure);
-            inStream.destroy(failure);
+            out.destroy(failure);
           } else {
             settleRemote.resolve();
           }
@@ -435,7 +457,7 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
 
       conn.on('error', (err: any) => {
         settleRemote.reject(err instanceof Error ? err : new Error(String(err)));
-        inStream.destroy(err);
+        out.destroy(err instanceof Error ? err : new Error(String(err)));
       });
       conn.on('close', () => {
         // No status message before the socket closed: do not leave the writer waiting forever.
@@ -444,10 +466,10 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     } catch (err) {
       const failure = err instanceof Error ? err : new Error(String(err));
       settleRemote.reject(failure);
-      inStream.destroy(failure);
+      out.destroy(failure);
     }
 
-    return inStream;
+    return out;
   }
 
   public async disconnect(): Promise<void> {

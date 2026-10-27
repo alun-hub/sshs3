@@ -1535,16 +1535,19 @@ export class TeamVaultService {
    * otherwise a stat recorded against a *previous* target would be compared against the newly
    * configured one on the next push, producing a spurious (or worse, falsely-absent) conflict.
    * Same reasoning as `ProfileSyncService.resetRemoteState()`. */
-  resetRemoteState(vaultId: string): void {
+  async resetRemoteState(vaultId: string): Promise<void> {
     const state = this.states.get(vaultId);
     if (state) {
       state.lastKnownRemoteEntry = undefined;
       state.lastSyncedRevision = undefined;
     }
-    // Also forget the persisted copy, or hydratedState would restore the old target's values.
-    void this.configStore?.clearSyncState?.(vaultId)?.catch((err) => {
+    // Also forget the persisted copy, or hydratedState would restore the old target's values. Awaited, so
+    // that a status refresh straight after cannot read the file before the clear has been written.
+    try {
+      await this.configStore?.clearSyncState?.(vaultId);
+    } catch (err) {
       teamVaultLog.warn(`Failed to clear the persisted sync state for vaultId=${vaultId} (non-fatal):`, err);
-    });
+    }
   }
 
   /** Whether a vault file already exists at the remote target — used by the UI to offer "Pull

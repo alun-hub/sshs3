@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
@@ -462,6 +462,21 @@ describe('ProfileSyncService', () => {
     expect(pulled.name).toBe('Renamed');
     expect(pulled.username).toBe('local-user');
     expect(pulled.password).toBe('local-pw'); // pragma: allowlist secret
+  });
+
+  it('still regenerates the local ssh block from the pulled profiles when applying the remote block fails', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    vi.spyOn(machineB.sync as any, 'applySshNativePayload').mockRejectedValue(new Error('cannot apply'));
+    const regenerate = vi.spyOn(machineB.sync, 'autoSyncLocalSshConfig').mockResolvedValue();
+
+    await expect(machineB.sync.pullFromRemote(provider)).rejects.toThrow('cannot apply');
+
+    expect((await machineB.profileStore.getProfiles()).ssh).toHaveLength(1); // already replaced
+    expect(regenerate).toHaveBeenCalledTimes(1);
   });
 
   it('runs a push and a pull started together one after the other instead of tripping over each other', async () => {

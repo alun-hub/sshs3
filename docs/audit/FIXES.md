@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 00:10
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 01:00
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -43,3 +43,23 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-28 00:10
 - Unverified, still open: SEC-05-002 (age PTY input). Verified, not yet fixed: BUG-03-002 (tunnel start skips `restoreSavedSecrets`).
 - BUG-04-003 changes a deliberate behaviour (the doc comment on `mergeRecords` described layering remote over local so local-only fields survive). Those fields are still kept; only fields the payload does carry now follow the remote. K8s profiles already worked this way (`replaceKeepingContext`).
 - The queue in BUG-04-005 means a hung provider call now blocks later sync operations instead of running beside it.
+
+## Code review of `1ff9c59..HEAD` (`/code-review high`)
+
+No critical findings; nine remarks. Handled in the follow-up commit:
+
+| Remark | Verdict | Change |
+|---|---|---|
+| `autoSyncLocalSshConfig` skipped when `applySshNativePayload` throws | valid | regeneration runs in a `finally`, because the profiles were already replaced |
+| `quotePathOperand` only anchored a leading `-` | valid (`find` also reads `!`, `(`, `)`, `,`) | every relative operand gets `./`; absolute paths are left alone |
+| `isUncPath` treated `//usr/bin` as a network share on Linux/macOS | valid, low | forward and mixed separator forms only count on Windows (`IS_WINDOWS`, overridable per call); the `\\server` form is blocked everywhere |
+| `resetRemoteState` cleared the persisted copy with a fire-and-forget `void` | valid | now `async`, awaited by the handler, so a status refresh cannot read the old values |
+| K8s write stream patched `PassThrough._final` and could wait forever | valid | a real `Writable` (`write`/`final`/`destroy`) that feeds the exec stdin; a 60 s timeout after the last byte |
+
+Not changed:
+
+- **Hung provider call blocks the sync queue** (`runExclusive` has no timeout). Known trade-off of BUG-04-005; needs a decision on the timeout.
+- **SFTP `write()` awaits each 64 KiB packet** (one round trip each). Real; a bounded pipelining window would fix it but is larger and needs a real server to test.
+- **"File tombstones are never created"** is wrong: the pool editor sets `deletedAt` on files in its draft (`DotfilePoolManagerModal.tsx:196`); the fix preserves the ones already stored.
+- **A cleared secret is restored while its ciphertext is undecryptable** (`SyncConfigStore`): accepted edge case (locked keyring); the alternative is destroying the ciphertext. The claim that `.corrupt` is rewritten on every save is wrong, since the first save replaces the file with valid JSON.
+
