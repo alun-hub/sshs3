@@ -403,19 +403,20 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
         // already closed
       }
     };
+    let remoteSettled = false;
     const remoteDone = new Promise<void>((resolve, reject) => {
-      settleRemote = { resolve, reject };
+      settleRemote = {
+        resolve: () => {
+          remoteSettled = true;
+          resolve();
+        },
+        reject: (err) => {
+          remoteSettled = true;
+          reject(err);
+        },
+      };
     });
     remoteDone.catch(() => {}); // surfaced through the stream; never an unhandled rejection
-    let remoteSettled = false;
-    remoteDone.then(
-      () => {
-        remoteSettled = true;
-      },
-      () => {
-        remoteSettled = true;
-      }
-    );
 
     // What callers get: it feeds the exec's stdin and only finishes once the command has reported back.
     const out = new Writable({
@@ -495,7 +496,7 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       conn.on('close', () => {
         // No status message before the socket closed: fail the writer now. Nothing reads the exec's stdin
         // any more, so a write in progress would otherwise wait for room in the buffer for ever.
-        if (remoteSettled) return;
+        if (remoteSettled || out.destroyed) return;
         const failure = new Error('Connection to the pod closed before the write finished');
         settleRemote.reject(failure);
         out.destroy(failure);

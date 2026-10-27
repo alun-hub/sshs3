@@ -1,6 +1,6 @@
 import type { WebContents } from 'electron';
 
-type WatchableWebContents = Partial<Pick<WebContents, 'once' | 'removeListener'>>;
+type WatchableWebContents = Partial<Pick<WebContents, 'once' | 'removeListener' | 'isDestroyed' | 'isCrashed'>>;
 
 /**
  * Calls `onLost` (once) if the window that is showing a prompt goes away before the user has answered:
@@ -41,6 +41,11 @@ export function addGuardedPrompt<A extends unknown[]>(
   answerWhenLost: () => void,
   answer: (...args: A) => void
 ): void {
+  // Its events have already been and gone: nobody is left to answer.
+  if (webContents.isDestroyed?.() || webContents.isCrashed?.()) {
+    answerWhenLost();
+    return;
+  }
   const stopWatching = watchPromptWindow(webContents, () => {
     if (pending.delete(id)) answerWhenLost();
   });
@@ -51,4 +56,3 @@ export function addGuardedPrompt<A extends unknown[]>(
     },
   });
 }
-

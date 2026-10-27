@@ -117,6 +117,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
   private isConnected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
   private cachedHomeDir?: string;
+  /** Counts deliberate `disconnect()` calls, so a call in flight when one happens is not retried onto a new connection. */
+  private disconnectCount = 0;
   private pinPromptHandler?: (prompt: string) => Promise<string> | string;
 
   constructor(
@@ -243,9 +245,6 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     );
   }
 
-  /** Counts deliberate `disconnect()` calls, so a call in flight when one happens is not retried onto a new connection. */
-  private disconnectCount = 0;
-
   private async executeWithReconnect<T>(fn: () => Promise<T>): Promise<T> {
     const generation = this.disconnectCount;
     await this.ensureConnected();
@@ -257,6 +256,8 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
       if (this.isConnectionDropError(err) && generation === this.disconnectCount) {
         this.isConnected = false;
         await this.ensureConnected();
+        // disconnect() can also come while the reconnect is under way.
+        if (generation !== this.disconnectCount) throw err;
         return await fn();
       }
       throw err;

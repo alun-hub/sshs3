@@ -146,6 +146,12 @@ export class SSHTunnelManager extends EventEmitter {
       stderrTail = (stderrTail + chunk.toString()).slice(-2000);
     });
 
+    // A missing `ssh` is not thrown by spawn(): it arrives here, and with no listener it would be an uncaught
+    // exception in the main process.
+    child.on('error', (err) => {
+      stderrTail = (stderrTail + err.message).slice(-2000);
+    });
+
     child.on('exit', (code, signal) => {
       const current = this.sessions.get(id);
       if (!current) return;
@@ -154,7 +160,7 @@ export class SSHTunnelManager extends EventEmitter {
         ? `Terminated (${signal})`
         : stderrTail.trim() || `ssh exited with code ${code}`;
       current.child = undefined;
-      void current.askpassServer?.stop();
+      void current.askpassServer?.stop().catch(() => {});
       this.emitChange();
     });
 
@@ -166,11 +172,16 @@ export class SSHTunnelManager extends EventEmitter {
         clearTimeout(timer);
         resolve(stderrTail.trim() || 'ssh exited immediately');
       });
+      // spawn failed (e.g. ENOENT): there may be no 'exit' at all.
+      child.once('error', () => {
+        clearTimeout(timer);
+        resolve(stderrTail.trim() || 'ssh could not be started');
+      });
     });
 
     if (startupError) {
       this.sessions.delete(id);
-      void askpassServer?.stop();
+      void askpassServer?.stop().catch(() => {});
       // The generic 'exit' handler above already fired and broadcast this session as
       // 'error' (still in the map at that point) to every listening renderer — without this,
       // that phantom entry would linger in the UI forever, since deleting it here alone never

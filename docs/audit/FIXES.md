@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 04:15
+before fixing; the audit text alone was not trusted. Updated: 2026-10-27 22:55
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -105,4 +105,22 @@ Not changed:
 - **`render-process-gone` resolves the quit prompt with "quit"**: a crashed renderer cannot answer, and the alternative (never quitting) leaves the app impossible to close. A trade-off, left as is.
 - **`ProfileSyncService` `finally` could replace the original error**: `autoSyncLocalSshConfig` already catches its own failures, so only a throwing callback could; very low.
 - **Retrying non-idempotent calls (rename, delete) after a connection drop**: unchanged from how `EPIPE` and `ECONNRESET` were already handled.
+
+## Code review of `75b9c18` and security review of `1ff9c59..HEAD`
+
+**Security review** (`/security-review`): eight candidates, all with confidence 1-3 of 10 (the bar is 8), so none is reported. The one that could have made `SEC-11-001` incomplete — whether `S3Config.sso` carries secrets — was checked: `S3SsoConfig` holds only `startUrl`, `region`, `accountId` and `roleName`. The per-candidate false-positive sub-tasks were not run (each would have inherited the whole conversation, ~600k tokens, and could only have lowered the scores).
+
+**Code review** of the last commit: seven remarks. Handled:
+
+| Remark | Verdict | Change |
+|---|---|---|
+| `ssh` missing: `spawn` reports ENOENT as an `'error'` event, with no listener it is an uncaught exception, and no `'exit'` follows | **valid, pre-existing, reproduced** (the test run showed `Unhandled Error: spawn ssh ENOENT` without the fix) | `child.on('error')` in `SSHTunnelManager`; the startup wait also resolves on `'error'`, so the askpass server is stopped and the start fails with a message |
+| `.catch` on `stop()` at one of three call sites | valid | all three |
+| `disconnect()` during the retry's own reconnect still ran the call again | valid | the disconnect counter is checked again after the reconnect; the field moved up with the other state |
+| `trim()` removes BOM, NBSP, U+2028, VT, FF, so armor padded with them was accepted | valid | `trimAsciiWhitespace`: space, tab, CR, LF only |
+| A window that had already crashed (or been destroyed) never raises its events again, so a prompt registered afterwards hung | valid | `addGuardedPrompt` answers at once with the safe answer when `isDestroyed()` / `isCrashed()` |
+| `remoteSettled` set a microtask late through a separate `.then` | valid, simplified | set inside the settle wrappers; the `close` handler also ignores an already destroyed stream |
+| Extra blank line at the end of `promptWindowGuard.ts` | valid | removed |
+
+Not changed: `destroy()` after `finish` skipping `closeExec()` (the remark's scenario cannot happen: `finish` is only emitted after the command has reported back).
 

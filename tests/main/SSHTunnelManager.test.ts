@@ -219,6 +219,22 @@ describe('SSHTunnelManager', () => {
       expect(manager.listActive()).toHaveLength(0);
     });
 
+    it('reports an ssh that cannot be started (ENOENT arrives as an error event) and stops the askpass server', async () => {
+      const servers = (AskpassServer as unknown as { instances: Array<{ stop: ReturnType<typeof vi.fn> }> }).instances;
+      servers.length = 0;
+      const missing = createMockChildProcess();
+      mockSpawnImpl = vi.fn().mockImplementation(() => {
+        // spawn() returns a child and reports the failure asynchronously; there is no 'exit'.
+        setTimeout(() => missing.emit('error', Object.assign(new Error('spawn ssh ENOENT'), { code: 'ENOENT' })), 5);
+        return missing;
+      });
+
+      await expect(manager.startTunnel(mockConfig, mockTunnel)).rejects.toThrow(/ENOENT/);
+
+      expect(servers[0].stop).toHaveBeenCalledTimes(1);
+      expect(manager.listActive()).toHaveLength(0);
+    });
+
     it('uses promptHandler if password and passphrase are not set on config', async () => {
       const configWithAskpass: SSHConnectionConfig = {
         ...mockConfig,

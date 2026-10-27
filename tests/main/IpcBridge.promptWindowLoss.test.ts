@@ -62,6 +62,16 @@ describe('prompts whose window goes away', () => {
     }
   );
 
+  it('answers at once, with the safe answer, when the window had already crashed before the prompt', async () => {
+    const { bridge, webContents } = makeBridge();
+    (webContents as unknown as { isCrashed: () => boolean }).isCrashed = () => true;
+
+    await expect(bridge.promptHostKeyTrust(hostKeyInfo)).resolves.toBe(false);
+    await expect(bridge.promptQuitConfirm({ kind: 'confirm-before-quit' } as never)).resolves.toBe(true);
+    expect(bridge.pendingHostKeyPrompts.size).toBe(0);
+    expect(bridge.pendingQuitConfirms.size).toBe(0);
+  });
+
   it('keeps the user\'s answer, and stops watching the window once a prompt has been answered', async () => {
     const { bridge, webContents } = makeBridge();
 

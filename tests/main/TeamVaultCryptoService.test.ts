@@ -804,6 +804,13 @@ describe('normalizeAsciiArmoredAge', () => {
     expect(normalizeAsciiArmoredAge(`\n\n  ${ARMOR}  \n\n`)).toBe(ARMOR);
   });
 
+  it('trims only ASCII whitespace: a BOM, NBSP or U+2028 around the armor is not "blank"', () => {
+    for (const edge of ['\uFEFF', '\u00A0', '\u2028', '\u000B']) {
+      expect(() => normalizeAsciiArmoredAge(`${edge}${ARMOR}`)).toThrow();
+      expect(() => normalizeAsciiArmoredAge(`${ARMOR.trimEnd()}${edge}`)).toThrow();
+    }
+  });
+
   it('rejects an empty body, a bare carriage return, text around the file and a non-string', () => {
     expect(() => normalizeAsciiArmoredAge('-----BEGIN AGE ENCRYPTED FILE-----\n-----END AGE ENCRYPTED FILE-----\n')).toThrow();
     expect(() => normalizeAsciiArmoredAge(ARMOR.replace('\n', '\r'))).toThrow();

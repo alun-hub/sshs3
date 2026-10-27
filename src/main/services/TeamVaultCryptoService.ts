@@ -140,6 +140,16 @@ function assertNotFlagLike(value: string, label: string): void {
   }
 }
 
+/** Like String.trim(), but only for space, tab, CR and LF: not a BOM, NBSP, U+2028 or the like. */
+function trimAsciiWhitespace(text: string): string {
+  const isBlank = (ch: string): boolean => ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n';
+  let start = 0;
+  let end = text.length;
+  while (start < end && isBlank(text[start])) start += 1;
+  while (end > start && isBlank(text[end - 1])) end -= 1;
+  return text.slice(start, end);
+}
+
 const AGE_ARMOR_BEGIN = '-----BEGIN AGE ENCRYPTED FILE-----';
 const AGE_ARMOR_END = '-----END AGE ENCRYPTED FILE-----';
 const BASE64_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -155,7 +165,7 @@ const BASE64_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
  * text that was validated.
  */
 export function normalizeAsciiArmoredAge(ciphertext: string): string {
-  const lines = typeof ciphertext === 'string' ? ciphertext.trim().split(/\r?\n/) : [];
+  const lines = typeof ciphertext === 'string' ? trimAsciiWhitespace(ciphertext).split(/\r?\n/) : [];
   const valid =
     lines.length >= 3 &&
     lines[0] === AGE_ARMOR_BEGIN &&
