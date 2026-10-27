@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-27 23:30
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 00:10
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -23,6 +23,8 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-27 23:30
 | BUG-04-005 – push/pull/compare/wipe not serialised | yes (no queue; started from debounced push, 60 s auto pull and manual calls) | high → medium | fixed (uncommitted) | `ProfileSyncService.runExclusive`: the four public methods queue behind each other (`…Now` implementations are private) | `tests/main/ProfileSyncService.test.ts` (fails without the fix; the fake provider is slowed so the operations overlap) |
 | BUG-04-002 – `applySshNativePayload` bypasses the `~/.ssh/config` write queue; background regenerate races it | yes | high → medium | fixed (uncommitted) | the remote managed block is applied inside `enqueueSshConfigWrite`; `pullFromRemote` now applies it first and then `await`s `autoSyncLocalSshConfig()` (was a background `void` before it), so a pull no longer leaves this device falsely `ahead` | same test (the compare after the pull reports `in_sync`) |
 | BUG-04-003 – fields cleared on another device survive a pull | yes | high → medium | fixed (uncommitted) | `mergeRecords` gets `onRemoteWins: replaceKeepingLocalOnly(spec, credentialsPulled)` for SSH and S3: the newer remote record replaces the local one; local-only fields (`privateKeyPath`, `pkcs11LibPath`, …) and, when the remote has no credentials half, the credential fields are kept from the local record | `tests/main/ProfileSyncService.test.ts` (clearing test fails without the fix; the credentials test is a regression guard) |
+| BUG-02-002 – FIDO2 key manager lists / deletes the key's web passkeys, runs ykman on a dismissed PIN prompt, unhandled EPIPE | yes (all three parts; the EPIPE reproduced as an unhandled error in the test run) | high → high (a delete button on the user's Google/GitHub passkeys) | fixed (uncommitted) | `listFido2ResidentKeys` keeps only `ssh:` relying parties (OpenSSH only creates those); `deleteFido2ResidentKey` re-lists with the PIN and refuses anything not found or not `ssh:` (the id comes from the renderer); an empty PIN throws "PIN entry was cancelled" instead of running ykman; `runYkman` swallows the stdin `EPIPE` (the exit code still reports the failure) | `tests/main/Fido2KeyManager.test.ts` (3 fail without the fix), `tests/main/YkmanFido.test.ts` |
+| BUG-07-001 – K8s write stream finishes before `cat` in the pod has | yes | high → medium | fixed (uncommitted) | `createWriteStream` overrides `_final` to wait for the exec status (same pattern as `S3StorageProvider`); a `Failure` status, a connection error or a close without status now fail the stream instead of being lost | `tests/main/K8sPodStorageProvider.test.ts` (3 tests, all fail without the fix) |
 
 ## Triaged, not fixed yet
 
@@ -32,6 +34,7 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-27 23:30
 | SEC-04-003 / SEC-03-002 | by design (`pkcs11provider` allowed); needs master password; medium/low |
 | SEC-09-002 | no trust boundary crossed; low |
 | SEC-06-001 | overstated: connection fails, no TOFU bypass |
+| BUG-07-002 – S3 upload never aborted | **refuted.** `pipeline()` destroys the sink with the error that ended it (`AbortError` or the source error), so the existing `'error'` handler calls `upload.abort()`; checked in Node 22 for both a failing source and an `AbortSignal`. The audit assumed `destroy()` without an error. A pipeline-level regression test now locks this in (`tests/main/S3StorageProvider.test.ts`); no code change |
 
 ## Notes
 

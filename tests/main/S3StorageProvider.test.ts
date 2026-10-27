@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Readable, PassThrough } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -1302,6 +1303,36 @@ describe('S3StorageProvider', () => {
       (writeStream as PassThrough).destroy(new Error('Consumer abort'));
 
       // Wait a tick for event handlers
+      await new Promise((r) => setTimeout(r, 10));
+      expect(uploadAbortMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('aborts the multipart upload when the transfer pipeline is aborted or its source fails', async () => {
+      // pipeline() destroys the sink with the error that ended it, so the sink's 'error' handler runs.
+      const ac = new AbortController();
+      const aborted = await provider.createWriteStream('/my-bucket/aborted.bin');
+      const source = Readable.from(
+        (async function* () {
+          for (;;) {
+            yield Buffer.alloc(8);
+            await new Promise((r) => setTimeout(r, 2));
+          }
+        })()
+      );
+      setTimeout(() => ac.abort(), 10);
+      await expect(pipeline(source, aborted, { signal: ac.signal })).rejects.toThrow();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(uploadAbortMock).toHaveBeenCalledTimes(1);
+
+      uploadAbortMock.mockClear();
+      const failed = await provider.createWriteStream('/my-bucket/failed.bin');
+      const failing = Readable.from(
+        (async function* () {
+          yield Buffer.alloc(8);
+          throw new Error('read failed');
+        })()
+      );
+      await expect(pipeline(failing, failed)).rejects.toThrow('read failed');
       await new Promise((r) => setTimeout(r, 10));
       expect(uploadAbortMock).toHaveBeenCalledTimes(1);
     });

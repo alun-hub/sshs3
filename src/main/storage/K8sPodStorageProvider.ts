@@ -383,6 +383,27 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
 
     errStream.on('data', (c: Buffer) => stderrChunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
 
+    // Settles when the command in the pod has exited. The stream must not report 'finish' before that:
+    // a PassThrough finishes once its last chunk is buffered, while `cat` is still writing to the pod's
+    // disk, so the caller would verify (and report success on) a file that is not complete yet and
+    // would never see a write error such as "No space left on device".
+    let settleRemote!: { resolve: () => void; reject: (err: Error) => void };
+    const remoteDone = new Promise<void>((resolve, reject) => {
+      settleRemote = { resolve, reject };
+    });
+    remoteDone.catch(() => {}); // surfaced through the stream; never an unhandled rejection
+
+    const originalFinal = inStream._final.bind(inStream);
+    inStream._final = (callback) => {
+      originalFinal((err) => {
+        if (err) return callback(err);
+        remoteDone.then(
+          () => callback(),
+          (remoteErr) => callback(remoteErr)
+        );
+      });
+    };
+
     const modeStr = options?.mode ? (options.mode & 0o777).toString(8) : '';
     const script = `
 mkdir -p "$(dirname "$1")" 2>/dev/null
@@ -403,16 +424,27 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
         (status) => {
           if (status?.status === 'Failure') {
             const msg = Buffer.concat(stderrChunks).toString('utf-8').trim() || status.message || 'Failed to write file to pod';
-            inStream.destroy(new Error(msg));
+            const failure = new Error(msg);
+            settleRemote.reject(failure);
+            inStream.destroy(failure);
+          } else {
+            settleRemote.resolve();
           }
         }
       );
 
       conn.on('error', (err: any) => {
+        settleRemote.reject(err instanceof Error ? err : new Error(String(err)));
         inStream.destroy(err);
       });
+      conn.on('close', () => {
+        // No status message before the socket closed: do not leave the writer waiting forever.
+        settleRemote.reject(new Error('Connection to the pod closed before the write finished'));
+      });
     } catch (err) {
-      inStream.destroy(err instanceof Error ? err : new Error(String(err)));
+      const failure = err instanceof Error ? err : new Error(String(err));
+      settleRemote.reject(failure);
+      inStream.destroy(failure);
     }
 
     return inStream;

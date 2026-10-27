@@ -307,6 +307,78 @@ describe('K8sPodStorageProvider', () => {
     expect(capturedInput).toBe('new content');
   });
 
+  describe('createWriteStream', () => {
+    /** Wires exec so the test decides when (and how) the command in the pod finishes. */
+    function podWithManualExit() {
+      const conn = new FakeConnection();
+      const pod: { statusCb?: (s: unknown) => void; stderr?: PassThrough; received: string } = { received: '' };
+      execMock.mockImplementation(
+        async (_ns: string, _p: string, _c: string, _cmd: string[], _out: PassThrough, stderr: PassThrough, stdin: Readable, _t: boolean, statusCb: any) => {
+          pod.statusCb = statusCb;
+          pod.stderr = stderr;
+          stdin.on('data', (c) => {
+            pod.received += c.toString('utf-8');
+          });
+          return conn;
+        }
+      );
+      return { conn, pod };
+    }
+    const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
+
+    it('does not finish before the command in the pod has exited', async () => {
+      const { pod } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/big.bin');
+      let finished = false;
+      out.on('finish', () => {
+        finished = true;
+      });
+
+      out.write(Buffer.from('payload'));
+      out.end();
+      await tick();
+      // All the data is buffered and sent, but `cat` in the pod has not reported back yet.
+      expect(pod.received).toBe('payload');
+      expect(finished).toBe(false);
+
+      pod.statusCb!({ status: 'Success' });
+      await tick();
+      expect(finished).toBe(true);
+    });
+
+    it('reports a write failure that only shows up after the data was sent', async () => {
+      const { pod } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/full.bin');
+      const outcome = new Promise<Error | null>((resolve) => {
+        out.on('error', (err) => resolve(err));
+        out.on('finish', () => resolve(null));
+      });
+
+      out.end(Buffer.from('payload'));
+      await tick();
+      pod.stderr!.write('cat: write error: No space left on device');
+      pod.statusCb!({ status: 'Failure', message: 'command terminated' });
+
+      const err = await outcome;
+      expect(err?.message).toContain('No space left on device');
+    });
+
+    it('does not wait forever when the connection closes without a status', async () => {
+      const { conn } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/x.bin');
+      const outcome = new Promise<Error | null>((resolve) => {
+        out.on('error', (err) => resolve(err));
+        out.on('finish', () => resolve(null));
+      });
+
+      out.end(Buffer.from('payload'));
+      await tick();
+      conn.emit('close');
+
+      expect((await outcome)?.message).toMatch(/closed before the write finished/);
+    });
+  });
+
   it('throws descriptive error on command failure', async () => {
     execMock.mockImplementation(
       async (
