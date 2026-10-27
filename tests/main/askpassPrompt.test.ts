@@ -16,6 +16,9 @@ describe('askpassPrompt', () => {
     expect(savedAskpassAnswer("bob@h's password: ", { ...cfg, authType: 'password' })).toBe('acct-pw');
     expect(savedAskpassAnswer('Verification code:', { ...cfg, authType: 'password' })).toBeUndefined();
     expect(savedAskpassAnswer('Enter PIN for token:', cfg)).toBeUndefined();
+    // A server's keyboard-interactive question mentioning "passphrase" must not get the key passphrase.
+    expect(savedAskpassAnswer('(bob@h) Enter passphrase: ', cfg)).toBeUndefined();
+    expect(savedAskpassAnswer('Server passphrase:', cfg)).toBeUndefined();
   });
 
   it('recognises account password prompts but not PIN or passphrase prompts mentioning "password"', () => {

@@ -24,7 +24,9 @@ export function savedAskpassAnswer(
   if (isPasswordPrompt(rawPrompt)) {
     return config.authType === 'password' && config.password ? config.password : undefined;
   }
-  if (/passphrase/i.test(rawPrompt)) return config.passphrase || undefined;
+  // Only ssh's own local key prompt ("Enter passphrase for key '…':"). A server-controlled
+  // keyboard-interactive question reaches askpass prefixed "(user@host) ", so it never matches.
+  if (/^\s*Enter passphrase for /i.test(rawPrompt)) return config.passphrase || undefined;
   return undefined;
 }
 
