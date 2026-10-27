@@ -12,6 +12,7 @@ import { useTerminalPathHover } from '../lib/useTerminalPathHover';
 import { CommandOutputTracker, isAtEmptyPrompt } from '../lib/terminalOutput';
 import { useSudoRetry } from '../lib/useSudoRetry';
 import { isTerminalReply, printableInput } from '../lib/terminalInput';
+import { hasControlChars } from '../lib/shellSafety';
 import { IS_WINDOWS } from '../lib/platform';
 import { SudoRetryPrompt } from './SudoRetryPrompt';
 import { TERMINAL_ACTION_EVENT, type TerminalAction } from '../lib/terminalActionEvents';
@@ -852,7 +853,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             if (cwdSent) return;
             cwdSent = true;
             const cwd = initialCwdRef.current;
-            if (cwd && sessionIdRef.current && window.multissh?.terminalWrite) {
+            // A cwd with control characters (it comes from the shell's own report) must not be typed back in.
+            if (cwd && !hasControlChars(cwd) && sessionIdRef.current && window.multissh?.terminalWrite) {
               setTimeout(() => {
                 if (!isDisposed && sessionIdRef.current) {
                   window.multissh.terminalWrite(sessionIdRef.current, `cd ${shellQuote(cwd)}\n`);

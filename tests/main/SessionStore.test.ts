@@ -22,6 +22,27 @@ describe('SessionStore', () => {
     }
   });
 
+  it('never writes file manager connection secrets to disk, even from a caller that did not sanitize', async () => {
+    await store.saveSession({
+      tabs: [
+        {
+          id: 'fm1',
+          type: 'filemanager',
+          title: 'FM',
+          initialSSHConfig: { id: 'c', host: 'h', username: 'u', authType: 'password', password: 'pw-secret', passphrase: 'pp-secret' }, // pragma: allowlist secret
+          initialS3Config: { id: 's', name: 'S', region: 'r', accessKeyId: 'AKIA', secretAccessKey: 's3-secret', sessionToken: 'tok-secret' }, // pragma: allowlist secret
+        },
+      ],
+      activeTabId: 'fm1',
+    } as unknown as SessionData);
+
+    const onDisk = await fs.readFile(sessionFile, 'utf-8');
+    for (const secret of ['pw-secret', 'pp-secret', 's3-secret', 'tok-secret']) {
+      expect(onDisk).not.toContain(secret);
+    }
+    expect(onDisk).toContain('"host": "h"');
+  });
+
   it('returns null when session file does not exist', async () => {
     const session = await store.getSession();
     expect(session).toBeNull();

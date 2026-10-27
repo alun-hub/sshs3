@@ -14,7 +14,7 @@ import {
   type ExistenceCheck,
   type PathHoverMode,
 } from './pathPreviewGate';
-import { resolvePathDetails } from './terminalPathPreview';
+import { isUncPath, resolvePathDetails } from './terminalPathPreview';
 import { extractCwdFromPrompt } from './terminalOutput';
 import { wslToWindowsPath } from './wslPaths';
 import { pathBasename, terminalProviderId, terminalStorageConnectConfig, type TerminalStorageTarget } from './terminalStorage';
@@ -337,6 +337,8 @@ export function useTerminalPathHover({
   // Hovering sweeps over many words; remember recent existence checks instead of stat-ing each time.
   const checkExistence = useCallback(async (fullPath: string): Promise<ExistenceCheck> => {
     const id = terminalProviderId(targetRef.current);
+    // Hovering must not make this machine authenticate to whatever server a path in the output names.
+    if (isUncPath(fullPath)) return 'unknown';
     // Nothing to check against: behave as if the file exists.
     if (!id || !(window.multissh?.storageLookup || window.multissh?.storageStat)) return 'exists';
     const key = `${id}\0${fullPath}`;

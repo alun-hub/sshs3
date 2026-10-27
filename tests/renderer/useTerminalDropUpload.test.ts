@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTerminalDropUpload, shellQuote, isUnpasteableWindowsPath } from '../../src/renderer/src/lib/useTerminalDropUpload';
+import { useTerminalDropUpload, shellQuote, isUnpasteableWindowsPath, isSafeEntryName } from '../../src/renderer/src/lib/useTerminalDropUpload';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
 describe('useTerminalDropUpload', () => {
@@ -160,6 +160,31 @@ describe('useTerminalDropUpload', () => {
     });
 
     expect(onPaste).toHaveBeenCalledWith("'/home/user/Downloads/report.pdf'");
+  });
+
+  it('never pastes or uploads names carrying control characters', async () => {
+    // Ctrl+U / Ctrl+C / CR / the end of a bracketed paste act before the shell parses the quotes.
+    for (const bad of ['a\u0015b', 'a\u0003b', 'a\nb', 'a\rb', 'a\u001b[201~b', 'a\u007fb']) {
+      expect(isSafeEntryName(bad)).toBe(false);
+    }
+    expect(isSafeEntryName('report final (1).pdf')).toBe(true);
+
+    const onPaste = vi.fn();
+    const onNotice = vi.fn();
+    const { result } = renderHook(() =>
+      useTerminalDropUpload({ isRemote: false, targetFolder: '/home/user', onPaste, onNotice })
+    );
+    const drop = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: { files: [{ name: 'x', path: "/tmp/'\u0015rm -rf ~\u0015" }, { name: 'ok.txt', path: '/tmp/ok.txt' }] },
+    } as any;
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(drop);
+    });
+    expect(onPaste).toHaveBeenCalledTimes(1);
+    expect(onPaste).toHaveBeenCalledWith("'/tmp/ok.txt'");
+    expect(onNotice).toHaveBeenCalled();
   });
 
   it('uploads to remote CWD via SFTP and pastes remote path when dropping in SSH session', async () => {

@@ -190,6 +190,15 @@ export function isWindowsPath(p: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(p) || /^\\\\[^\\]/.test(p);
 }
 
+/**
+ * Two leading separators of either kind (`\\server\share`, `//server/share`, `\/server`, `\\?\…`, `\\.\…`): touching one on Windows opens an SMB connection and sends
+ * the user's NetNTLMv2 credentials to that server. Terminal output is untrusted, so such a path must never be
+ * looked up just because the pointer rests on it.
+ */
+export function isUncPath(p: string): boolean {
+  return /^[\\/]{2}/.test(p.trim());
+}
+
 export interface PathDetails {
   raw: string;
   basename: string;

@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
 import type { SavedTab, SavedWindowBounds, SessionData } from '../../shared/types/session';
-import { sanitizePaneNode } from '../../shared/sessionSanitize';
+import { sanitizePaneNode, sanitizeTabConfigs } from '../../shared/sessionSanitize';
 import {
   mergeWindowBounds,
   mergeWindowSave,
@@ -26,7 +26,8 @@ export function sanitizeSessionData(data: SessionData): SessionData {
 }
 
 function sanitizeTabs(tabs: SavedTab[]): SavedTab[] {
-  return tabs.map((tab) => {
+  return tabs.map((rawTab) => {
+    const tab = sanitizeTabConfigs(rawTab);
     if (!tab.paneTree) return tab;
     return {
       ...tab,

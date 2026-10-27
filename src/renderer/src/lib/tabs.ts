@@ -4,7 +4,7 @@ import type { PaneNode } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { FileEntry, S3Config } from '@shared/types/storage';
 import type { SourceType } from '../components/FileManager/types';
-import { sanitizePaneNode } from '@shared/sessionSanitize';
+import { sanitizePaneNode, sanitizeTabConfigs } from '@shared/sessionSanitize';
 import { createLeaf } from './paneTree';
 import type { FileManagerSnapshot } from './fileManagerState';
 
@@ -61,7 +61,9 @@ export function tabForNumber(tabs: AppTab[], n: number): AppTab | null {
   return n >= 1 ? (tabs[n - 1] ?? null) : null;
 }
 
-export function sanitizeTabForSession(tab: AppTab): AppTab {
+export function sanitizeTabForSession(rawTab: AppTab): AppTab {
+  // initialSSHConfig / initialS3Config hold the connection with its secrets, on tabs with or without a pane tree.
+  const tab = sanitizeTabConfigs(rawTab);
   if (tab.restoredPanes) {
     // Only meaningful while the providers it names are still connected, i.e. right after a move.
     const { restoredPanes: _restoredPanes, ...withoutPanes } = tab;

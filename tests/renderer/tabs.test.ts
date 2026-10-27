@@ -66,4 +66,28 @@ describe('tabs helpers', () => {
     expect(saved).not.toContain('1234');
     expect(saved).toContain('"host":"h"');
   });
+  it('strips secrets from the connection a file manager tab was opened with (no pane tree)', () => {
+    const tab = {
+      id: 'fm1',
+      type: 'filemanager',
+      title: 'FM',
+      initialSSHConfig: {
+        id: 'c', host: 'h', username: 'u', authType: 'password',
+        password: 'pw-secret', passphrase: 'pp-secret', pin: '9876', // pragma: allowlist secret
+        proxy: { type: 'socks5', host: 'p', port: 1080, password: 'proxy-secret' }, // pragma: allowlist secret
+      },
+      initialS3Config: {
+        id: 's', name: 'S', region: 'r', accessKeyId: 'AKIA',
+        secretAccessKey: 's3-secret', sessionToken: 'tok-secret', // pragma: allowlist secret
+      },
+    } as unknown as AppTab;
+    const saved = JSON.stringify(sanitizeTabForSession(tab));
+    for (const secret of ['pw-secret', 'pp-secret', '9876', 'proxy-secret', 's3-secret', 'tok-secret']) {
+      expect(saved).not.toContain(secret);
+    }
+    expect(saved).toContain('"host":"h"');
+    expect(saved).toContain('"accessKeyId":"AKIA"');
+    // The live in-memory tab is untouched: the file manager still needs the secrets to connect.
+    expect((tab.initialSSHConfig as { password?: string }).password).toBe('pw-secret');
+  });
 });

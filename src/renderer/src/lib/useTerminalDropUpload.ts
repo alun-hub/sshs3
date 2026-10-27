@@ -5,6 +5,7 @@ import { isValidDragPayload, DRAG_MIME_TYPE } from '../components/FileManager/ty
 import { terminalProviderId, terminalStorageConnectConfig } from './terminalStorage';
 import { isWindowsPath } from './terminalPathPreview';
 import { windowsToWslPath } from './wslPaths';
+import { hasControlChars } from './shellSafety';
 
 export interface UseTerminalDropUploadOptions {
   isRemote: boolean;
@@ -53,7 +54,7 @@ export function getFilePath(file: File): string {
 
 /** True for a plain file name that cannot escape the destination directory. */
 export function isSafeEntryName(name: string): boolean {
-  return Boolean(name) && name !== '.' && name !== '..' && !/[\\/\0]/.test(name);
+  return Boolean(name) && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !hasControlChars(name);
 }
 
 /** Joins a destination directory and a file name using POSIX separators. */
@@ -137,7 +138,9 @@ export function useTerminalDropUpload({
       const quoteLocal = (p: string): string => shellQuote(wsl ? windowsToWslPath(p) : p);
       /** Quotes local paths for pasting and reports the ones that cannot be quoted safely for the shell. */
       const pasteLocal = (rawPaths: string[]) => {
-        const safe = wsl ? rawPaths : rawPaths.filter((p) => !isUnpasteableWindowsPath(p));
+        const safe = (wsl ? rawPaths : rawPaths.filter((p) => !isUnpasteableWindowsPath(p))).filter(
+          (p) => !hasControlChars(p)
+        );
         if (safe.length < rawPaths.length) onNotice('Skipped a file whose name cannot be pasted safely into the shell');
         if (safe.length > 0) onPaste(safe.map(quoteLocal).join(' '));
       };
@@ -147,6 +150,10 @@ export function useTerminalDropUpload({
         if (!targetConnect) return;
         if (!targetFolder) {
           onNotice('The current directory is not known yet. Press Enter in the terminal and drop again.');
+          return;
+        }
+        if (hasControlChars(targetFolder)) {
+          onNotice('The current directory name contains control characters; not uploading into it');
           return;
         }
         const pasted: string[] = [];
@@ -168,7 +175,8 @@ export function useTerminalDropUpload({
               continue;
             }
             // The transfer may have written elsewhere (e.g. "keep both" renames the file)
-            pasted.push(shellQuote(res?.targetPath || remotePath));
+            const finalPath = res?.targetPath || remotePath;
+            if (!hasControlChars(finalPath)) pasted.push(shellQuote(finalPath));
             uploaded.push(item.name);
           }
           if (uploaded.length > 0) {
@@ -239,7 +247,8 @@ export function useTerminalDropUpload({
           onNotice(`Could not resolve local path for ${file.name}`);
         }
       }
-      if (unresolved.length > 0) onPaste(unresolved.map(shellQuote).join(' '));
+      const pasteableNames = unresolved.filter((name) => !hasControlChars(name));
+      if (pasteableNames.length > 0) onPaste(pasteableNames.map(shellQuote).join(' '));
       if (items.length > 0) await uploadAndPaste(items);
     },
     [isRemote, wsl, config, k8sTarget, targetFolder, onPaste, onNotice]

@@ -4,11 +4,25 @@ import {
   getFileExtension,
   getLanguageLabel,
   isSensitiveFilePath,
+  isUncPath,
   resolvePathDetails,
   truncateSnippet,
 } from '../../src/renderer/src/lib/terminalPathPreview';
 
 describe('terminalPathPreview', () => {
+  it('recognises UNC paths, which must never be stat-ed on hover', () => {
+    expect(isUncPath('\\\\attacker.example.com\\share\\f.txt')).toBe(true);
+    expect(isUncPath('//attacker.example.com/share/f.txt')).toBe(true);
+    expect(isUncPath('\\\\?\\C:\\x')).toBe(true);
+    expect(isUncPath('\\\\.\\pipe\\x')).toBe(true);
+    expect(isUncPath('\\/attacker/share')).toBe(true);
+    expect(isUncPath('/\\attacker\\share')).toBe(true);
+    expect(isUncPath('  \\\\attacker\\share')).toBe(true);
+    expect(isUncPath('C:\\Users\\me\\a.txt')).toBe(false);
+    expect(isUncPath('/home/me/a.txt')).toBe(false);
+    expect(isUncPath('src/a.ts')).toBe(false);
+  });
+
   it('extracts correct file extensions', () => {
     expect(getFileExtension('/var/log/nginx/access.log')).toBe('log');
     expect(getFileExtension('src/components/Terminal.tsx')).toBe('tsx');
