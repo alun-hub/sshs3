@@ -31,6 +31,23 @@ describe('withSavedSshSecrets', () => {
     expect(withSavedSshSecrets(restored, undefined)).toBe(restored);
   });
 
+  it('does not hand the secrets to another server: the session file is not trusted', () => {
+    const saved = ssh({ password: 'pw', passphrase: 'pp', proxy: { type: 'socks5', host: 'p', port: 1080, password: 'proxy-pw' } }); // pragma: allowlist secret
+    const proxied = { proxy: { type: 'socks5' as const, host: 'p', port: 1080 } };
+
+    for (const redirected of [{ host: 'attacker.example.com' }, { port: 2222 }, { username: 'root' }]) {
+      const restored = ssh({ ...redirected, ...proxied });
+      expect(withSavedSshSecrets(restored, [saved])).toBe(restored);
+    }
+    // A proxy pointed elsewhere does not get the proxy's password; the rest still follows the profile.
+    const viaOtherProxy = ssh({ proxy: { type: 'socks5', host: 'attacker-proxy', port: 1080 } });
+    const result = withSavedSshSecrets(viaOtherProxy, [saved]);
+    expect(result.password).toBe('pw'); // pragma: allowlist secret
+    expect(result.proxy?.password).toBeUndefined();
+    // The default port is the same thing as 22.
+    expect(withSavedSshSecrets(ssh({ port: 22, ...proxied }), [ssh({ password: 'pw', proxy: proxied.proxy })]).password).toBe('pw'); // pragma: allowlist secret
+  });
+
   it('does not use the secret of a deleted profile or one whose authentication type has changed', () => {
     const restored = ssh();
     expect(withSavedSshSecrets(restored, [ssh({ password: 'pw', deletedAt: '2026-10-01T00:00:00.000Z' })])).toBe(restored); // pragma: allowlist secret
@@ -42,6 +59,14 @@ describe('withSavedS3Secrets', () => {
   it('fills in the saved secret key and session token', () => {
     const saved = s3({ secretAccessKey: 'secret-key', sessionToken: 'tok' }); // pragma: allowlist secret
     expect(withSavedS3Secrets(s3(), [saved])).toMatchObject({ secretAccessKey: 'secret-key', sessionToken: 'tok' }); // pragma: allowlist secret
+  });
+
+  it('does not hand the secret key to another endpoint, region or access key', () => {
+    const saved = s3({ secretAccessKey: 'secret-key', endpoint: 'https://s3.example.com' }); // pragma: allowlist secret
+    for (const redirected of [{ endpoint: 'https://attacker.example.com' }, { endpoint: undefined }, { region: 'eu-north-1' }, { accessKeyId: 'AKIAOTHER' }]) {
+      const restored = s3({ endpoint: 'https://s3.example.com', ...redirected });
+      expect(withSavedS3Secrets(restored, [saved])).toBe(restored);
+    }
   });
 
   it('keeps a key the tab already has and leaves a tab without a saved profile alone', () => {

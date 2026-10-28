@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 18:40
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 18:56
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -162,4 +162,8 @@ SEC-11-001 stopped file manager tabs from writing their secrets to `session.json
 - **S3 tab after a restart:** it connected with no secret key (`secretAccessKey` is taken straight from the tab's config). Not shown against a real S3 server; the inference rests on the session file and `S3StorageProvider.ts`, so a real server would be expected to reject it.
 
 **Fix:** `lib/savedSecrets.ts` (`withSavedSshSecrets`, `withSavedS3Secrets`) fills in what a restored tab lacks from the saved profile, matched by profile id, only the fields that are missing (password, passphrase, S3 secret key, session token, proxy password; never a PIN), and not from a deleted profile or one whose authentication type has changed. `DualPaneExplorer` applies it where a restored tab connects by itself. Secrets stay out of the session file. 6 unit tests (`tests/renderer/savedSecrets.test.ts`); re-run in the app: after a restart the SFTP tab shows no dialog and connects straight away, as before the restart. The S3 half was covered by the unit tests only when this was written; afterwards it was run by hand against real servers (`npm run dev:prod`, i.e. a build with the fix): an SFTP profile and an S3 profile, both with a saved password / secret key, reconnected by themselves after a restart. That says nothing about the released `0.96.69`, which was only seen failing in the test profile (SFTP dialog), not with a real S3 server. This is in the working tree after `0.96.69`; the released `0.96.69` still has the problem. <!-- pragma: allowlist secret -->
+
+### Follow-up: the restored secrets must not follow an edited target (automated security review of `d3ee1f3`)
+
+The first version of `savedSecrets.ts` matched a restored tab to its profile by id alone. The session file is not protected against being edited, and since the fix to SEC-11-001 it no longer holds the secrets itself, so editing a tab's `host` to another server and restarting would have made the app fill in the profile's password and connect there. The secrets are now only filled in when the tab still names the same target as the profile: for SSH the host, the port (a missing port is 22) and the user; for S3 the endpoint, the region and the access key; for a proxy password the proxy's host and port (the rest of the profile's secrets still follow when only the proxy differs). A tab opened by the app itself always matches, so normal restores are unaffected. Tests for each mismatch (they fail without the change). Not done: rebuilding the whole connection from the saved profile and taking only view state (paths) from the session, which would be stricter but is a larger change.
 
