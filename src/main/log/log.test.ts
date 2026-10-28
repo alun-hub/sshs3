@@ -48,10 +48,18 @@ describe('redact', () => {
 
   it('leaves ordinary text and short strings unchanged and handles very long input quickly', () => {
     expect(redactString('connected to host:22 in 30ms')).toBe('connected to host:22 in 30ms');
-    const start = Date.now();
     const out = redactString('a'.repeat(5_000_000));
-    expect(Date.now() - start).toBeLessThan(2000);
     expect(out.endsWith('…[truncated]')).toBe(true);
+  });
+
+  it('stays fast on input that makes the URL and KEY=value patterns backtrack', () => {
+    // 200 000 characters of this took about 15 s when the whole input was scanned.
+    for (const unit of ['a.', 'a-', 'password']) {
+      const start = Date.now();
+      const out = redactString(unit.repeat(100_000));
+      expect(Date.now() - start).toBeLessThan(500);
+      expect(out.endsWith('…[truncated]')).toBe(true);
+    }
   });
 
   it('handles errors, binary, circular and over-deep values without throwing', () => {
