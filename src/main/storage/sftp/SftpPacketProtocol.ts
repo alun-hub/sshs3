@@ -158,13 +158,13 @@ export class SftpPacketProtocol extends EventEmitter {
       switch (type) {
         case FXP.HANDLE: {
           const handleLen = packet.readUInt32BE(5);
-          const handle = Buffer.from(packet.subarray(9, 9 + handleLen));
+          const handle = Buffer.from(packet.subarray(9, fieldEnd(packet, 9, handleLen)));
           pending.resolve(handle);
           break;
         }
         case FXP.DATA: {
           const dataLen = packet.readUInt32BE(5);
-          const data = Buffer.from(packet.subarray(9, 9 + dataLen));
+          const data = Buffer.from(packet.subarray(9, fieldEnd(packet, 9, dataLen)));
           pending.resolve(data);
           break;
         }
@@ -176,13 +176,13 @@ export class SftpPacketProtocol extends EventEmitter {
             if (offset + 4 > packet.length) break;
             const fnLen = packet.readUInt32BE(offset);
             offset += 4;
-            const filename = packet.subarray(offset, offset + fnLen).toString('utf-8');
+            const filename = packet.subarray(offset, fieldEnd(packet, offset, fnLen)).toString('utf-8');
             offset += fnLen;
 
             if (offset + 4 > packet.length) break;
             const lnLen = packet.readUInt32BE(offset);
             offset += 4;
-            const longname = packet.subarray(offset, offset + lnLen).toString('utf-8');
+            const longname = packet.subarray(offset, fieldEnd(packet, offset, lnLen)).toString('utf-8');
             offset += lnLen;
 
             const { stats, nextOffset } = parseAttrs(packet, offset);
@@ -583,6 +583,16 @@ export class SftpPacketProtocol extends EventEmitter {
     }
     return remotePath;
   }
+}
+
+/**
+ * End offset of a length-prefixed field. A length that runs past the packet is a malformed reply:
+ * subarray() would silently clamp it, handing back a truncated handle, file chunk or name.
+ */
+function fieldEnd(packet: Buffer, start: number, length: number): number {
+  const end = start + length;
+  if (end > packet.length) throw new Error('Malformed SFTP reply: field length exceeds packet size');
+  return end;
 }
 
 function parseAttrs(

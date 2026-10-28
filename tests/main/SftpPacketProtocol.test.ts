@@ -244,6 +244,51 @@ describe('SftpPacketProtocol', () => {
     expect(entries![0].attrs.size).toBe(1024);
     expect(entries![0].attrs.isDirectory).toBe(false);
   });
+
+  describe('malformed replies', () => {
+    /** Answers the next request with `type`, a request id and `body` (the bytes after the id). */
+    function replyToNext(type: number, body: Buffer): void {
+      clientOut.once('data', (data: Buffer) => {
+        const resp = Buffer.alloc(4 + 1 + 4 + body.length);
+        resp.writeUInt32BE(1 + 4 + body.length, 0);
+        resp.writeUInt8(type, 4);
+        resp.writeUInt32BE(data.readUInt32BE(5), 5);
+        body.copy(resp, 9);
+        clientIn.write(resp);
+      });
+    }
+
+    function lengthPrefixed(declared: number, actual: Buffer): Buffer {
+      const b = Buffer.alloc(4 + actual.length);
+      b.writeUInt32BE(declared, 0);
+      actual.copy(b, 4);
+      return b;
+    }
+
+    it('rejects a handle whose length runs past the packet', async () => {
+      replyToNext(FXP.HANDLE, lengthPrefixed(100, Buffer.from('abc')));
+      await expect(protocol.opendir('/x')).rejects.toThrow(/Malformed SFTP reply/);
+    });
+
+    it('rejects a data chunk whose length runs past the packet instead of returning it truncated', async () => {
+      replyToNext(FXP.DATA, lengthPrefixed(1000, Buffer.from('short')));
+      await expect(protocol.read(Buffer.from('h'), 0, 1000)).rejects.toThrow(/Malformed SFTP reply/);
+    });
+
+    it('rejects a name entry whose filename length runs past the packet', async () => {
+      const count = Buffer.alloc(4);
+      count.writeUInt32BE(1, 0);
+      replyToNext(FXP.NAME, Buffer.concat([count, lengthPrefixed(500, Buffer.from('name'))]));
+      await expect(protocol.readdir(Buffer.from('h'))).rejects.toThrow(/Malformed SFTP reply/);
+    });
+
+    it('still accepts a handle and a data chunk that exactly fill the packet', async () => {
+      replyToNext(FXP.HANDLE, lengthPrefixed(3, Buffer.from('abc')));
+      await expect(protocol.opendir('/x')).resolves.toEqual(Buffer.from('abc'));
+      replyToNext(FXP.DATA, lengthPrefixed(5, Buffer.from('hello')));
+      await expect(protocol.read(Buffer.from('h'), 0, 5)).resolves.toEqual(Buffer.from('hello'));
+    });
+  });
 });
 
 describe('SftpStreams', () => {

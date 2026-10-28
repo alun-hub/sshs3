@@ -89,6 +89,9 @@ export class OpenSshSftpClientAdapter extends EventEmitter implements ISftpBacke
         if (!entries || entries.length === 0) break;
         for (const e of entries) {
           if (e.filename === '.' || e.filename === '..') continue;
+          // A directory entry is one path component: a name with a separator or NUL would make
+          // path.posix.join() (rmdir -r, list paths) leave the directory being listed.
+          if (e.filename === '' || e.filename.includes('/') || e.filename.includes('\0')) continue;
           results.push({
             name: e.filename,
             type: e.attrs.isDirectory ? 'd' : e.attrs.isSymlink ? 'l' : '-',

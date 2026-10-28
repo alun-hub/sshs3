@@ -28,14 +28,28 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b([a-z0-9_]*(?:password|passphrase|passwd|secret|token)[a-z0-9_]*|pin)\s*[=:]\s*\S+/gi,
 ];
 
+/** Team Vault / age private identities (Bech32, upper case); a truncated one is masked too. */
+const AGE_SECRET_KEY = /AGE-SECRET-KEY-1[A-Z0-9]*/gi;
+
+/** Signature, credential and session-token parameters of a presigned S3 URL. */
+const PRESIGNED_URL_PARAM = /\b(X-Amz-(?:Signature|Credential|Security-Token))=[^&\s"'<>]+/gi;
+
+/** Bounds regex work on absurdly long input; far above MAX_STRING_LENGTH so no secret in the kept text is cut. */
+const MAX_SCAN_LENGTH = 200_000;
+
 export function redactString(input: string): string {
-  let out = input.length > MAX_STRING_LENGTH ? `${input.slice(0, MAX_STRING_LENGTH)}…[truncated]` : input;
+  // Mask before truncating: cutting first can split a secret (a URL password before its "@", a key
+  // header) so that no pattern matches the remainder.
+  let out = input.length > MAX_SCAN_LENGTH ? input.slice(0, MAX_SCAN_LENGTH) : input;
+  out = out.replace(AGE_SECRET_KEY, REDACTED);
+  out = out.replace(PRESIGNED_URL_PARAM, `$1=${REDACTED}`);
   out = out.replace(SECRET_PATTERNS[0], REDACTED);
   out = out.replace(SECRET_PATTERNS[1], REDACTED);
   out = out.replace(SECRET_PATTERNS[2], `$1=${REDACTED}`);
   out = out.replace(SECRET_PATTERNS[3], `Bearer ${REDACTED}`);
   out = out.replace(SECRET_PATTERNS[4], `$1${REDACTED}@`);
   out = out.replace(SECRET_PATTERNS[5], `$1=${REDACTED}`);
+  if (out.length > MAX_STRING_LENGTH) out = `${out.slice(0, MAX_STRING_LENGTH)}…[truncated]`;
   return out;
 }
 
