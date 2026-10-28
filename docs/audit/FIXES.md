@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 18:16
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 18:40
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -153,4 +153,13 @@ Not changed:
 `apply()` can copy over and delete files, and had almost no tests (the file was at 53.8 % line coverage). 20 tests added in `tests/main/DirectorySyncService.test.ts`; the file is now at about 91 % lines / 86 % branches. They cover: the sync root is created first (and an existing one is fine), folders are created shallowest first before files go into them, new and changed files are copied from the source entry path to `target/relativePath` (with `jobId`, `totalBytes`, progress callback), the source modification time is kept on the target (a failure or a missing time is not a failed copy), a failed copy or folder is recorded and the rest carries on, nothing is deleted unless `deleteExtraneous` is set, deletion goes deepest first and tells folders from files, a failed delete is recorded, and only the entries it is given are touched. Four deliberate mutations of `apply()` (reversed delete order, no mtime, delete without the flag, reversed folder order) are each caught.
 
 **SEC-09-002 re-checked, still dismissed, now with a test.** The worry was a path leaving the target through `relativePath`. For entries the app builds itself it cannot: `buildTree` keys every entry by the last path segment of the name the provider returned and skips `.` and `..`, so a hostile SFTP server listing `../../evil.txt` ends up as `evil.txt` (test: *buildTree with names chosen by a hostile server*). What remains is unchanged: `apply()` trusts the `relativePath` of entries that arrive directly over IPC, and `joinPaths` for a local target is `path.join`, which would leave the target directory for a `..` segment. Only a compromised renderer can send such entries, and it can already call the storage IPC directly. Not asserted by a test, so that behaviour is not cemented; a check in `apply()` (reject absolute paths and `..` segments) would be the defence in depth if wanted.
+
+## Session restore after SEC-11-001 (found by running the app)
+
+SEC-11-001 stopped file manager tabs from writing their secrets to `session.json`, which is right, but a tab restored after a restart then had no password, passphrase or secret key. Run in the real app with a saved SFTP profile (password) and a saved S3 profile:
+
+- **SFTP tab after a restart:** a dialog *"Password Required for SFTP — Profile … has no saved password"*, although the profile has one. Before the fix to SEC-11-001 the tab connected by itself, from the session file.
+- **S3 tab after a restart:** it connected with no secret key (`secretAccessKey` is taken straight from the tab's config). Not shown against a real S3 server; the inference rests on the session file and `S3StorageProvider.ts`, so a real server would be expected to reject it.
+
+**Fix:** `lib/savedSecrets.ts` (`withSavedSshSecrets`, `withSavedS3Secrets`) fills in what a restored tab lacks from the saved profile, matched by profile id, only the fields that are missing (password, passphrase, S3 secret key, session token, proxy password; never a PIN), and not from a deleted profile or one whose authentication type has changed. `DualPaneExplorer` applies it where a restored tab connects by itself. Secrets stay out of the session file. 6 unit tests (`tests/renderer/savedSecrets.test.ts`); re-run in the app: after a restart the SFTP tab shows no dialog and connects straight away, as before the restart. The S3 half was covered by the unit tests only when this was written; afterwards it was run by hand against real servers (`npm run dev:prod`, i.e. a build with the fix): an SFTP profile and an S3 profile, both with a saved password / secret key, reconnected by themselves after a restart. That says nothing about the released `0.96.69`, which was only seen failing in the test profile (SFTP dialog), not with a real S3 server. This is in the working tree after `0.96.69`; the released `0.96.69` still has the problem. <!-- pragma: allowlist secret -->
 

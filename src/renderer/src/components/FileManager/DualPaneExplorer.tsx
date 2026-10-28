@@ -14,6 +14,7 @@ import type { TransferConflictResolution } from '@shared/types/ipc';
 import { isElementVisible } from '../../lib/spatialNavigation';
 import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
+import { withSavedS3Secrets, withSavedSshSecrets } from '../../lib/savedSecrets';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { createRendererLogger } from '../../lib/log';
@@ -557,7 +558,11 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   useEffect(() => {
     if (initialSSHConfig && ready && !autoConnectedSSHRef.current) {
       autoConnectedSSHRef.current = true;
-      void connectPaneToSSH(initialSSHConfig, undefined, 'right');
+      // A tab restored after a restart has no secrets (they are not kept in the session): take them from its profile.
+      void (async () => {
+        const profiles = await window.multissh.profilesGet?.().catch(() => undefined);
+        await connectPaneToSSH(withSavedSshSecrets(initialSSHConfig, profiles?.ssh), undefined, 'right');
+      })();
     }
     // Runs once per mount, for the same reason as the k8s effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -566,7 +571,10 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   useEffect(() => {
     if (initialS3Config && ready && !autoConnectedS3Ref.current) {
       autoConnectedS3Ref.current = true;
-      void connectPaneToS3(initialS3Config, 'right');
+      void (async () => {
+        const profiles = await window.multissh.profilesGet?.().catch(() => undefined);
+        await connectPaneToS3(withSavedS3Secrets(initialS3Config, profiles?.s3), 'right');
+      })();
     }
     // Runs once per mount, for the same reason as the k8s effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
