@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-28 19:45
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 19:55
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -32,12 +32,14 @@ before fixing; the audit text alone was not trusted. Updated: 2026-10-28 19:45
 | BUG-01-001 – prompts hang when their window crashes or is destroyed | yes, but narrower: only while a prompt is open (a quit prompt needs active transfers or `confirmBeforeQuit`) and the renderer is gone; a crashed renderer is not `isDestroyed()` | high → low-medium | fixed (uncommitted) | new `ipc/promptWindowGuard.ts` (`watchPromptWindow`): host-key, PIN, transfer-conflict, quit and dotfiles-sync prompts settle with their safe answer (deny, empty, skip, quit, ignore) on `render-process-gone` / `destroyed`. A page reload is **not** covered (`did-start-loading` can fire for other reasons, and a wrong cancel of the quit prompt would quit the app) | `tests/main/IpcBridge.promptWindowLoss.test.ts` (times out without the fix) |
 | SEC-01-001 – log redaction truncates before masking; no pattern for age keys / presigned URLs | yes (URL password cut before its `@` stayed in the log; `AGE-SECRET-KEY-1…` had no pattern; nothing logs the key today, so a hardening rather than a live leak) | high → medium | fixed (uncommitted) | `redactString` masks first (input capped at 8 000 chars to bound regex work; a first cap of 200 000 made the URL/KEY=value patterns quadratic, 15 s for `a.a.a.…`, found by the automated security review of b56212f and fixed in the follow-up commit) and truncates to 2000 afterwards; new patterns for `AGE-SECRET-KEY-1…` (also a cut one) and the `X-Amz-Signature`/`Credential`/`Security-Token` parameters | `src/main/log/log.test.ts` (3 fail without the fix; plain text and a 5 MB string are checked as regressions) |
 | SEC-06-003 – SFTP file names and lengths from the server not validated | partly: names with `/` or NUL passed `list()` and reach `path.posix.join` in `rmdir -r` and `list` paths, and a length past the packet gave a silently truncated handle/chunk/name. Downloads were already safe (`scanDirectory` uses `basename` for the local target) and dirsync sanitizes names, so the effect is limited to the server's own files | high → low-medium | fixed (uncommitted) | `list()` skips empty names and names with `/` or NUL (backslash and non-ASCII stay valid); `SftpPacketProtocol` rejects a HANDLE/DATA/NAME field whose length runs past the packet (`fieldEnd`). **Not done:** the audit's size caps on `list()`/`get()` (memory exhaustion, a denial of service) | `tests/main/SftpPacketProtocol.test.ts`, `tests/main/OpenSshSftpClientAdapter.test.ts` (all new tests fail without the fix, ordinary names are checked as regressions) |
+| SEC-08-002 – shim directory falls back to the fixed, pre-creatable `/tmp/sshs3-bin` (first in the PATH of local terminals) | yes, but only when `~/.sshs3/bin` cannot be created (read-only home) and on a shared machine; the primary directory (`0o755` in the user's home) is not attackable. The old fallback also returned without writing `oc` | high → low-medium | fixed (uncommitted) | `K8sShimManager.getFallbackDir`: `mkdtempSync` (unpredictable name, mode 0700), cached for the life of the app and re-created if the temp cleaner removed it; the shim is now written there too. The primary path and its mode are unchanged | `tests/main/K8sShimManager.test.ts` (4 new tests, all fail without the fix) |
 
 ## Triaged, not fixed yet
 
 | Finding | Verdict |
 |---|---|
 | SEC-05-001 – Team Vault `pkcs11LibPath` | real, medium; design decision (see `docs/team-vault-plan.md`) |
+| SEC-04-002 – JSON profile import accepts `pkcs11LibPath` (written as `PKCS11Provider` into `~/.ssh/config`) | real but narrow: needs the user to import a file written by someone else; `extraOptions` are already allowlisted when the block is written, `agentPath` is not written and `privateKeyPath` is only read. **Decision: accepted, not changed.** Stripping the field would cost a user who restores their own export on a new machine their library path (profile sync already strips it, but it has no user-chosen file). A confirmation dialog on a differing path was the alternative |
 | SEC-04-003 / SEC-03-002 | by design (`pkcs11provider` allowed); needs master password; medium/low |
 | SEC-09-002 | no trust boundary crossed; low |
 | SEC-06-001 | overstated: connection fails, no TOFU bypass |
