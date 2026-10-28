@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.70] - 2026-10-28
+
+Follow-up to the code audit in 0.96.69, including a fix for a side effect of it.
+
+### Security
+- Log lines mask a secret even when it sits where a long line is cut off, and now also mask Team Vault (age) private keys and the signature and token of presigned S3 links
+- SFTP: a reply from the server that is cut short is refused instead of giving a damaged file or name, and an entry whose name contains `/` is ignored
+- Restored file manager tabs only reuse the saved password or key of their profile while they still point at that profile's server
+- If the OpenShift helper folder cannot be created in your home folder, a private temporary folder is used instead of a fixed, shared one
+
+### Fixed
+- File manager tabs reconnect automatically again after a restart, with the secrets of their saved profile (0.96.69 stopped saving secrets in the session but did not look them up again)
+- Remote Profile Sync keeps the "last used" time of a profile when another device's copy is pulled
+- Prompts are not sent to a window that has already crashed or closed
+- The `oc` helper is also installed when the fallback folder is used
+
 ## [0.96.69] - 2026-10-27
 
 Result of a code audit of the whole app: every finding was checked against the code before it was fixed.
