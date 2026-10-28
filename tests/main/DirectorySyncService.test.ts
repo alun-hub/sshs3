@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { buildTree, computeDiff } from '../../src/main/dirsync/DirectorySyncService';
-import type { FileEntry } from '../../src/shared/types/storage';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import path from 'node:path';
+
+const { transferFileMock } = vi.hoisted(() => ({ transferFileMock: vi.fn() }));
+// Only the copy itself is replaced; joinPaths and getBaseName stay real, since they decide where things land.
+vi.mock('../../src/main/transfer/TransferPipeline', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/main/transfer/TransferPipeline')>()),
+  transferFile: transferFileMock,
+}));
+
+import { apply, buildTree, computeDiff } from '../../src/main/dirsync/DirectorySyncService';
+import type { FileEntry, StorageType } from '../../src/shared/types/storage';
+import type { DirectoryDiffEntry } from '../../src/shared/types/dirsync';
 
 type Node = FileEntry[] | Error;
 
@@ -101,3 +111,270 @@ describe('DirectorySyncService', () => {
     expect(onlyTarget).toEqual(['extra.txt']);
   });
 });
+
+describe('buildTree with names chosen by a hostile server', () => {
+  it('never lets a listed name leave the tree: the key is the last path segment, and . / .. are skipped', async () => {
+    // A real provider normalises `path` (path.posix.join) but passes the server's `name` through untouched.
+    const provider = fakeProvider({
+      '/root': [
+        file('/root', '../../evil.txt'),
+        file('/root', 'a\\b\\win.txt'),
+        file('/root', '..'),
+        file('/root', '.'),
+        file('/root', 'fine.txt'),
+        dir('/root', 'nested/../sneaky', { path: '/root/sneaky' }),
+      ],
+      '/root/sneaky': [file('/root/sneaky', '../../../up.txt')],
+    });
+
+    const tree = await buildTree(provider, '/root');
+
+    expect([...tree.keys()].sort()).toEqual(['evil.txt', 'fine.txt', 'sneaky', 'sneaky/up.txt', 'win.txt']);
+    for (const key of tree.keys()) {
+      expect(key.split('/')).not.toContain('..');
+      expect(key.startsWith('/')).toBe(false);
+    }
+  });
+});
+
+describe('apply', () => {
+  const sourceTime = Date.UTC(2026, 9, 1, 12, 0, 0);
+
+  /** A provider that records what apply() does to it. `fail` makes an operation on a path throw. */
+  function recording(type: StorageType, fail: Partial<Record<'createFolder' | 'delete' | 'setModifiedTime', string[]>> = {}) {
+    const calls = {
+      createFolder: [] as string[],
+      delete: [] as Array<{ path: string; isDirectory: boolean }>,
+      setModifiedTime: [] as Array<{ path: string; mtimeMs: number }>,
+    };
+    const guard = (op: keyof typeof fail, target: string) => {
+      if (fail[op]?.includes(target)) throw new Error(`${op} failed: ${target}`);
+    };
+    const provider = {
+      type,
+      calls,
+      createFolder: async (p: string) => {
+        calls.createFolder.push(p);
+        guard('createFolder', p);
+      },
+      delete: async (p: string, isDirectory: boolean) => {
+        calls.delete.push({ path: p, isDirectory });
+        guard('delete', p);
+      },
+      setModifiedTime: async (p: string, mtimeMs: number) => {
+        calls.setModifiedTime.push({ path: p, mtimeMs });
+        guard('setModifiedTime', p);
+      },
+    };
+    return provider;
+  }
+  const diff = (relativePath: string, status: DirectoryDiffEntry['status'], isDirectory = false, extra: Partial<DirectoryDiffEntry> = {}): DirectoryDiffEntry => ({
+    relativePath,
+    isDirectory,
+    status,
+    ...extra,
+  });
+  const srcEntry = (p: string, extra: Partial<FileEntry> = {}): FileEntry =>
+    ({ name: path.posix.basename(p), path: p, isDirectory: false, size: 10, mtimeMs: sourceTime, ...extra }) as FileEntry;
+
+  beforeEach(() => {
+    transferFileMock.mockReset();
+    transferFileMock.mockResolvedValue(undefined);
+  });
+
+  it('creates the sync root first and carries on when it already exists', async () => {
+    const target = recording('sftp', { createFolder: ['/backup/proj'] });
+
+    const result = await apply([], recording('sftp') as never, target as never, '/backup/proj', { deleteExtraneous: false });
+
+    expect(target.calls.createFolder).toEqual(['/backup/proj']);
+    expect(result).toEqual({ copied: 0, deleted: 0, failed: 0, errors: [] });
+  });
+
+  it('creates new folders shallowest first, before any file is copied into them', async () => {
+    const target = recording('sftp');
+    const order: string[] = [];
+    target.createFolder = async (p: string) => {
+      order.push(`mkdir ${p}`);
+    };
+    transferFileMock.mockImplementation(async (o: { targetPath: string }) => {
+      order.push(`copy ${o.targetPath}`);
+    });
+
+    await apply(
+      [
+        diff('a/b/c.txt', 'new', false, { sourceEntry: srcEntry('/src/a/b/c.txt') }),
+        diff('a/b', 'new', true),
+        diff('a', 'new', true),
+      ],
+      recording('local') as never,
+      target as never,
+      '/dst',
+      { deleteExtraneous: false }
+    );
+
+    expect(order).toEqual(['mkdir /dst', 'mkdir /dst/a', 'mkdir /dst/a/b', 'copy /dst/a/b/c.txt']);
+  });
+
+  it('copies new and changed files from the source entry path to target/relativePath and counts them', async () => {
+    const onProgress = vi.fn();
+    const source = recording('local');
+    const target = recording('sftp');
+
+    const result = await apply(
+      [
+        diff('new.txt', 'new', false, { sourceEntry: srcEntry('/src/new.txt', { size: 5 }) }),
+        diff('sub/changed.txt', 'changed', false, { sourceEntry: srcEntry('/src/sub/changed.txt', { size: 9 }) }),
+      ],
+      source as never,
+      target as never,
+      '/dst',
+      { deleteExtraneous: false },
+      onProgress
+    );
+
+    expect(result).toMatchObject({ copied: 2, failed: 0, deleted: 0 });
+    expect(transferFileMock).toHaveBeenCalledTimes(2);
+    expect(transferFileMock.mock.calls[0][0]).toMatchObject({
+      jobId: 'dirsync-apply',
+      sourceProvider: source,
+      sourcePath: '/src/new.txt',
+      targetProvider: target,
+      targetPath: '/dst/new.txt',
+      totalBytes: 5,
+      onProgress,
+    });
+    expect(transferFileMock.mock.calls[1][0]).toMatchObject({ sourcePath: '/src/sub/changed.txt', targetPath: '/dst/sub/changed.txt', totalBytes: 9 });
+  });
+
+  it('builds a local target path with the platform separator and an SFTP one with slashes', async () => {
+    await apply([diff('x/y.txt', 'new', false, { sourceEntry: srcEntry('/src/x/y.txt') })], recording('sftp') as never, recording('local') as never, '/tmp/out', { deleteExtraneous: false });
+    expect(transferFileMock.mock.calls[0][0].targetPath).toBe(path.join('/tmp/out', 'x/y.txt'));
+  });
+
+  it('keeps the source modification time on the target, so the next diff does not see every file as changed', async () => {
+    const target = recording('sftp');
+
+    await apply([diff('a.txt', 'new', false, { sourceEntry: srcEntry('/src/a.txt') })], recording('local') as never, target as never, '/dst', { deleteExtraneous: false });
+
+    expect(target.calls.setModifiedTime).toEqual([{ path: '/dst/a.txt', mtimeMs: sourceTime }]);
+  });
+
+  it('does not count a copy as failed when the modification time cannot be set, or when there is none to set', async () => {
+    const target = recording('s3', { setModifiedTime: ['/dst/a.txt'] });
+
+    const result = await apply(
+      [
+        diff('a.txt', 'new', false, { sourceEntry: srcEntry('/src/a.txt') }),
+        diff('b.txt', 'new', false, { sourceEntry: srcEntry('/src/b.txt', { mtimeMs: undefined }) }),
+      ],
+      recording('local') as never,
+      target as never,
+      '/dst',
+      { deleteExtraneous: false }
+    );
+
+    expect(result).toMatchObject({ copied: 2, failed: 0 });
+    expect(target.calls.setModifiedTime.map((c) => c.path)).toEqual(['/dst/a.txt']); // b.txt has no time
+  });
+
+  it('records a failed copy and a failed folder, and keeps going with the rest', async () => {
+    const target = recording('sftp', { createFolder: ['/dst/bad-dir'] });
+    transferFileMock.mockImplementation(async (o: { sourcePath: string }) => {
+      if (o.sourcePath === '/src/boom.txt') throw new Error('disk full');
+    });
+
+    const result = await apply(
+      [
+        diff('bad-dir', 'new', true),
+        diff('boom.txt', 'new', false, { sourceEntry: srcEntry('/src/boom.txt') }),
+        diff('ok.txt', 'new', false, { sourceEntry: srcEntry('/src/ok.txt') }),
+      ],
+      recording('local') as never,
+      target as never,
+      '/dst',
+      { deleteExtraneous: false }
+    );
+
+    expect(result.copied).toBe(1);
+    expect(result.failed).toBe(2);
+    expect(result.errors).toEqual([
+      { path: 'bad-dir', error: expect.stringContaining('createFolder failed') },
+      { path: 'boom.txt', error: 'disk full' },
+    ]);
+    expect(target.calls.setModifiedTime.map((c) => c.path)).toEqual(['/dst/ok.txt']); // not for the one that failed
+  });
+
+  it('falls back to a path built from the relative path when the entry has no source path', async () => {
+    await apply([diff('c.txt', 'new', false)], recording('local') as never, recording('sftp') as never, '/dst', { deleteExtraneous: false });
+    expect(transferFileMock.mock.calls[0][0]).toMatchObject({ sourcePath: 'c.txt', targetPath: '/dst/c.txt' });
+  });
+
+  describe('deleting what only the target has', () => {
+    const extraneous = [
+      diff('old', 'only-target', true, { targetEntry: srcEntry('/dst/old', { isDirectory: true }) }),
+      diff('old/deep/file.txt', 'only-target', false, { targetEntry: srcEntry('/dst/old/deep/file.txt') }),
+      diff('old/deep', 'only-target', true, { targetEntry: srcEntry('/dst/old/deep', { isDirectory: true }) }),
+    ];
+
+    it('never deletes anything unless asked to', async () => {
+      const target = recording('sftp');
+
+      const result = await apply(extraneous, recording('local') as never, target as never, '/dst', { deleteExtraneous: false });
+
+      expect(target.calls.delete).toEqual([]);
+      expect(result.deleted).toBe(0);
+    });
+
+    it('deletes deepest paths first, so a folder is emptied before it is removed, and tells folders from files', async () => {
+      const target = recording('sftp');
+
+      const result = await apply(extraneous, recording('local') as never, target as never, '/dst', { deleteExtraneous: true });
+
+      expect(target.calls.delete).toEqual([
+        { path: '/dst/old/deep/file.txt', isDirectory: false },
+        { path: '/dst/old/deep', isDirectory: true },
+        { path: '/dst/old', isDirectory: true },
+      ]);
+      expect(result.deleted).toBe(3);
+    });
+
+    it('does not delete when the entries are only new or changed, and copies are not affected by the flag', async () => {
+      const target = recording('sftp');
+      await apply([diff('a.txt', 'new', false, { sourceEntry: srcEntry('/src/a.txt') })], recording('local') as never, target as never, '/dst', { deleteExtraneous: true });
+      expect(target.calls.delete).toEqual([]);
+      expect(transferFileMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('records a failed delete and carries on with the others', async () => {
+      const target = recording('sftp', { delete: ['/dst/old/deep'] });
+
+      const result = await apply(extraneous, recording('local') as never, target as never, '/dst', { deleteExtraneous: true });
+
+      expect(result.deleted).toBe(2);
+      expect(result.failed).toBe(1);
+      expect(result.errors).toEqual([{ path: 'old/deep', error: expect.stringContaining('delete failed') }]);
+    });
+
+    it('builds the path to delete from the relative path when the entry has no target path', async () => {
+      const target = recording('sftp');
+      await apply([diff('gone.txt', 'only-target')], recording('local') as never, target as never, '/dst', { deleteExtraneous: true });
+      expect(target.calls.delete).toEqual([{ path: '/dst/gone.txt', isDirectory: false }]);
+    });
+  });
+
+  it('touches only the entries it is given: a filtered-out difference is left alone', async () => {
+    const target = recording('sftp');
+    const all = [
+      diff('keep-this.txt', 'new', false, { sourceEntry: srcEntry('/src/keep-this.txt') }),
+      diff('skip-this.txt', 'new', false, { sourceEntry: srcEntry('/src/skip-this.txt') }),
+      diff('delete-this', 'only-target', false),
+    ];
+
+    await apply(all.filter((e) => e.relativePath === 'keep-this.txt'), recording('local') as never, target as never, '/dst', { deleteExtraneous: true });
+
+    expect(transferFileMock).toHaveBeenCalledTimes(1);
+    expect(target.calls.delete).toEqual([]);
+  });
+});
+

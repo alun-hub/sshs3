@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-27 22:55
+before fixing; the audit text alone was not trusted. Updated: 2026-10-28 18:16
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -123,4 +123,34 @@ Not changed:
 | Extra blank line at the end of `promptWindowGuard.ts` | valid | removed |
 
 Not changed: `destroy()` after `finish` skipping `closeExec()` (the remark's scenario cannot happen: `finish` is only emitted after the command has reported back).
+
+## Follow-up check of `replaceKeepingLocalOnly` (BUG-04-003), after release 0.96.69
+
+Read against the profile types and the push path (everything except the excluded fields is pushed, so the merge sees every other field).
+
+- **Regression found and fixed: `lastUsedAt`.** It records when a *device* last opened a profile, but travels in the payload like any field. Before BUG-04-003 a newer remote record without it left the local value alone; with "remote replaces local" it was cleared, so this device lost its entry in the recent connections after any remote edit. The merge now keeps the later of the local and remote value (`laterTimestamp`). Test: `tests/main/ProfileSyncService.test.ts` (fails without the fix). **Not in 0.96.69**; needs the next release.
+- **Known trade-off, not fixable here: version skew.** "The remote record replaces the local one" cannot tell a field that was cleared on another device from a field an *older app version* does not know about. Profile saving has no allow-list (`PROFILES_SAVE_SSH` stores the object as sent), so an older version only drops a newer field if its own edit form rebuilds the object field by field; that cannot be checked from this code base (it holds one version). If two app versions are used side by side, a profile edited on the older one can clear a newer-version-only field on the newer one at the next pull. A schema/version marker in the sync payload would be needed to do better.
+
+## Code review of `76f2e30` (the fixes made after the last review)
+
+Seven remarks. Handled:
+
+| Remark | Verdict | Change |
+|---|---|---|
+| `addGuardedPrompt` answered a prompt for an already crashed window, but the five callers still sent the prompt to it | valid: a reloaded renderer would show a dialog whose id is no longer pending, so the answer is dropped | it returns `false` when it answered on the spot, and every caller then skips the send. The crashed-window test now also asserts that nothing was sent (fails without the fix) |
+| The `out.destroyed` early return in the K8s `close` handler left the 60 s timer running when a write was abandoned while `final()` waited | valid, **my regression from `76f2e30`** | the timer is cleared in `destroy()`, and the `close` handler always settles `remoteDone` and only destroys a stream that is not already destroyed. New fake-timer test (`vi.getTimerCount()` is 0; fails without the fix) |
+| `child.once('error')` at tunnel start treats every error as a failed start, but `error` is also emitted when a running process could not be signalled | valid in principle (low) | the failed start now also kills the child (a no-op when it never started) |
+
+Not changed:
+
+- **A late `'error'` after start never changes the session status.** A spawn failure is reported immediately; a later `'error'` can only come from `kill()` or IPC, and `'exit'` still ends the session. Low.
+- **The SFTP retry rethrows the original "stream closed" error when the user disconnects during the reconnect.** The call was in flight when the connection went, so that error is accurate; the extra generation check is a deliberate second guard.
+- **"`Updated` in this file moved backwards".** The earlier `2026-10-28 04:15` was invented (the real clock was `2026-10-27 22:52`); the corrected value looks like a step back. The file now uses the output of `date`.
+- **"No K8s test for the settled flag".** The write-stream tests (fails after the last byte, closes after a status, aborted, dropped connection, finished then closed) already cover it; one was added for the timer.
+
+## Tests for `DirectorySyncService.apply()` (coverage follow-up) and a second look at SEC-09-002
+
+`apply()` can copy over and delete files, and had almost no tests (the file was at 53.8 % line coverage). 20 tests added in `tests/main/DirectorySyncService.test.ts`; the file is now at about 91 % lines / 86 % branches. They cover: the sync root is created first (and an existing one is fine), folders are created shallowest first before files go into them, new and changed files are copied from the source entry path to `target/relativePath` (with `jobId`, `totalBytes`, progress callback), the source modification time is kept on the target (a failure or a missing time is not a failed copy), a failed copy or folder is recorded and the rest carries on, nothing is deleted unless `deleteExtraneous` is set, deletion goes deepest first and tells folders from files, a failed delete is recorded, and only the entries it is given are touched. Four deliberate mutations of `apply()` (reversed delete order, no mtime, delete without the flag, reversed folder order) are each caught.
+
+**SEC-09-002 re-checked, still dismissed, now with a test.** The worry was a path leaving the target through `relativePath`. For entries the app builds itself it cannot: `buildTree` keys every entry by the last path segment of the name the provider returned and skips `.` and `..`, so a hostile SFTP server listing `../../evil.txt` ends up as `evil.txt` (test: *buildTree with names chosen by a hostile server*). What remains is unchanged: `apply()` trusts the `relativePath` of entries that arrive directly over IPC, and `joinPaths` for a local target is `path.join`, which would leave the target directory for a `..` segment. Only a compromised renderer can send such entries, and it can already call the storage IPC directly. Not asserted by a test, so that behaviour is not cemented; a check in `apply()` (reject absolute paths and `..` segments) would be the defence in depth if wanted.
 

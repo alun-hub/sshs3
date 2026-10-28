@@ -180,6 +180,12 @@ export class SSHTunnelManager extends EventEmitter {
     });
 
     if (startupError) {
+      // 'error' is also emitted when a process that is running could not be signalled: do not leave it bound.
+      try {
+        child.kill();
+      } catch {
+        // already gone
+      }
       this.sessions.delete(id);
       void askpassServer?.stop().catch(() => {});
       // The generic 'exit' handler above already fired and broadcast this session as

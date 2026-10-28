@@ -578,7 +578,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      addGuardedPrompt(this.pendingHostKeyPrompts, id, webContents, () => resolve(false) /* fail closed */, resolve);
+      if (!addGuardedPrompt(this.pendingHostKeyPrompts, id, webContents, () => resolve(false) /* fail closed */, resolve)) return;
 
       const event: HostKeyPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.HOSTKEY_PROMPT, event);
@@ -606,7 +606,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      addGuardedPrompt(this.pendingAskpass, id, webContents, () => resolve(''), resolve);
+      if (!addGuardedPrompt(this.pendingAskpass, id, webContents, () => resolve(''), resolve)) return;
       webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
         id,
         prompt,
@@ -720,13 +720,14 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      addGuardedPrompt(
+      const registered = addGuardedPrompt(
         this.pendingTransferConflicts,
         id,
         webContents,
         () => resolve({ resolution: 'skip', applyToAll: false }),
         (resolution, applyToAll) => resolve({ resolution, applyToAll })
       );
+      if (!registered) return;
 
       const event: TransferConflictPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.TRANSFER_CONFLICT_PROMPT, event);
@@ -750,7 +751,7 @@ export class IpcBridge {
 
       const id = crypto.randomUUID();
       // No window left to ask: quit, as when there was no window to begin with.
-      addGuardedPrompt(this.pendingQuitConfirms, id, webContents, () => resolve(true), resolve);
+      if (!addGuardedPrompt(this.pendingQuitConfirms, id, webContents, () => resolve(true), resolve)) return;
 
       const event: QuitConfirmPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.QUIT_CONFIRM_PROMPT, event);
@@ -960,7 +961,7 @@ export class IpcBridge {
       }
 
       const id = crypto.randomUUID();
-      addGuardedPrompt(this.pendingDotfilesSyncPrompts, id, webContents, () => resolve('ignore'), resolve);
+      if (!addGuardedPrompt(this.pendingDotfilesSyncPrompts, id, webContents, () => resolve('ignore'), resolve)) return;
 
       const event: DotfilesSyncPromptEvent = { id, ...info };
       webContents.send(IPC_CHANNELS.DOTFILES_SYNC_PROMPT, event);

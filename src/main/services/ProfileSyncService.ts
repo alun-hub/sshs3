@@ -289,9 +289,10 @@ function stripLocalOnlyFields<T extends object>(items: T[], spec: { excludedFiel
  * layering it over the local record would keep the stale value and make this device look modified.
  * What the sync payload never carries is kept from the local record: the local-only fields
  * (`privateKeyPath`, `pkcs11LibPath`, …) and, when the credentials half was not pulled, the credential
- * fields (including the proxy's), since the remote copy has none to offer.
+ * fields (including the proxy's), since the remote copy has none to offer. `lastUsedAt` is a fact about when
+ * each device last opened the profile, which the payload only happens to carry: the later of the two is kept.
  */
-function replaceKeepingLocalOnly<T extends { proxy?: { username?: string; password?: string } }>(
+function replaceKeepingLocalOnly<T extends { proxy?: { username?: string; password?: string }; lastUsedAt?: string }>(
   spec: FieldSplitSpec<T>,
   credentialsPulled: boolean
 ): (localItem: T, remoteItem: T) => T {
@@ -309,8 +310,17 @@ function replaceKeepingLocalOnly<T extends { proxy?: { username?: string; passwo
       }
       result.proxy = proxy;
     }
+    const lastUsed = laterTimestamp(localItem.lastUsedAt, remoteItem.lastUsedAt);
+    if (lastUsed) result.lastUsedAt = lastUsed;
     return result as T;
   };
+}
+
+/** The later of two timestamps (either may be missing or unparsable); undefined when neither is usable. */
+function laterTimestamp(a?: string, b?: string): string | undefined {
+  const valid = [a, b].filter((t): t is string => Boolean(t) && !Number.isNaN(Date.parse(t as string)));
+  if (valid.length === 0) return undefined;
+  return valid.reduce((latest, t) => (Date.parse(t) > Date.parse(latest) ? t : latest));
 }
 
 /**

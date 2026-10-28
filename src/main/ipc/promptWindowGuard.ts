@@ -32,7 +32,8 @@ export function watchPromptWindow(webContents: WatchableWebContents, onLost: () 
 /**
  * Registers a pending prompt that settles itself when its window goes away: `answer` is called with the
  * user's answer (and stops the watching), `answerWhenLost` if the window is lost first. Exactly one of
- * the two happens, and the entry leaves `pending` either way.
+ * the two happens, and the entry leaves `pending` either way. Returns false when the window was already
+ * gone and the prompt has been answered on the spot: the caller must then not send the prompt to it.
  */
 export function addGuardedPrompt<A extends unknown[]>(
   pending: Map<string, { callback: (...args: A) => void }>,
@@ -40,11 +41,11 @@ export function addGuardedPrompt<A extends unknown[]>(
   webContents: WatchableWebContents,
   answerWhenLost: () => void,
   answer: (...args: A) => void
-): void {
+): boolean {
   // Its events have already been and gone: nobody is left to answer.
   if (webContents.isDestroyed?.() || webContents.isCrashed?.()) {
     answerWhenLost();
-    return;
+    return false;
   }
   const stopWatching = watchPromptWindow(webContents, () => {
     if (pending.delete(id)) answerWhenLost();
@@ -55,4 +56,5 @@ export function addGuardedPrompt<A extends unknown[]>(
       answer(...args);
     },
   });
+  return true;
 }

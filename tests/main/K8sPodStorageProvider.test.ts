@@ -453,6 +453,26 @@ describe('K8sPodStorageProvider', () => {
       expect(errors).toEqual([]);
     });
 
+    it('leaves no timer behind when a write is abandoned while it waits for the pod to finish', async () => {
+      const { conn } = podWithManualExit();
+      const out = await provider.createWriteStream('/tmp/abandoned.bin');
+      out.on('error', () => {});
+
+      vi.useFakeTimers();
+      try {
+        out.end(Buffer.from('payload')); // final() starts waiting, with its limit running
+        await vi.advanceTimersByTimeAsync(5);
+        (out as import('node:stream').Writable).destroy(new Error('cancelled'));
+        await vi.advanceTimersByTimeAsync(5);
+        conn.emit('close'); // closing the session produces this
+        await vi.advanceTimersByTimeAsync(5);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(conn.close).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('does not wait forever when the connection closes without a status', async () => {
       const { conn } = podWithManualExit();
       const out = await provider.createWriteStream('/tmp/x.bin');

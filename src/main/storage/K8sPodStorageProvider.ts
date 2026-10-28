@@ -393,6 +393,7 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     let settleRemote!: { resolve: () => void; reject: (err: Error) => void };
     let execConnection: { close?: () => void } | undefined;
     /** Ends the exec session, so `cat` in the pod does not outlive a write that has already failed. */
+    let finishTimer: ReturnType<typeof setTimeout> | undefined;
     let execClosed = false;
     const closeExec = (): void => {
       if (execClosed) return;
@@ -426,22 +427,23 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       final(callback) {
         inStream.end();
         // All data has been handed over, so the command should exit promptly; do not wait on it forever.
-        const timer = setTimeout(() => {
+        finishTimer = setTimeout(() => {
           settleRemote.reject(new Error('Timed out waiting for the pod to finish writing the file'));
           closeExec();
         }, WRITE_FINISH_TIMEOUT_MS);
         remoteDone.then(
           () => {
-            clearTimeout(timer);
+            clearTimeout(finishTimer);
             callback();
           },
           (remoteErr) => {
-            clearTimeout(timer);
+            clearTimeout(finishTimer);
             callback(remoteErr);
           }
         );
       },
       destroy(err, callback) {
+        clearTimeout(finishTimer); // a write abandoned while final() waits must not leave its timer behind
         inStream.destroy();
         // An aborted or failed write ends the session; a finished one (destroyed automatically afterwards)
         // has nothing left to end, its command has already exited.
@@ -496,10 +498,10 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
       conn.on('close', () => {
         // No status message before the socket closed: fail the writer now. Nothing reads the exec's stdin
         // any more, so a write in progress would otherwise wait for room in the buffer for ever.
-        if (remoteSettled || out.destroyed) return;
+        if (remoteSettled) return;
         const failure = new Error('Connection to the pod closed before the write finished');
         settleRemote.reject(failure);
-        out.destroy(failure);
+        if (!out.destroyed) out.destroy(failure);
       });
     } catch (err) {
       const failure = err instanceof Error ? err : new Error(String(err));

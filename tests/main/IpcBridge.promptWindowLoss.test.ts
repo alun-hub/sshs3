@@ -68,8 +68,11 @@ describe('prompts whose window goes away', () => {
 
     await expect(bridge.promptHostKeyTrust(hostKeyInfo)).resolves.toBe(false);
     await expect(bridge.promptQuitConfirm({ kind: 'confirm-before-quit' } as never)).resolves.toBe(true);
+    await expect(bridge.promptForPinDirect('PIN:', 'smartcard')).resolves.toBe('');
     expect(bridge.pendingHostKeyPrompts.size).toBe(0);
     expect(bridge.pendingQuitConfirms.size).toBe(0);
+    // Nothing is sent to the dead window: a reloaded renderer would otherwise show a dialog nobody can answer.
+    expect(webContents.send).not.toHaveBeenCalled();
   });
 
   it('keeps the user\'s answer, and stops watching the window once a prompt has been answered', async () => {

@@ -446,6 +446,37 @@ describe('ProfileSyncService', () => {
     expect(comparison.state).toBe('in_sync');
   });
 
+  it('keeps when this device last opened a profile when a newer remote edit does not carry it, and takes a later remote value', async () => {
+    const base = { id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' as const };
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH(base);
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    // B opens the profile (and this is saved on the profile); A has never opened it.
+    await new Promise((r) => setTimeout(r, 2));
+    await machineB.profileStore.saveSSH({ ...base, lastUsedAt: '2026-10-20T10:00:00.000Z' });
+
+    // A edits the profile afterwards: its record is newer and has no lastUsedAt at all.
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH({ ...base, name: 'Prod renamed' });
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+
+    let pulled = (await machineB.profileStore.getProfiles()).ssh[0];
+    expect(pulled.name).toBe('Prod renamed');
+    expect(pulled.lastUsedAt).toBe('2026-10-20T10:00:00.000Z');
+
+    // A then opens it later than B did: that later time wins.
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH({ ...base, name: 'Prod renamed', lastUsedAt: '2026-10-25T08:30:00.000Z' });
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+    pulled = (await machineB.profileStore.getProfiles()).ssh[0];
+    expect(pulled.lastUsedAt).toBe('2026-10-25T08:30:00.000Z');
+  });
+
   it('keeps the local credentials when the remote has no credentials half to offer', async () => {
     const machineB = await harness();
     await machineB.profileStore.saveSSH({ id: 'ssh-1', name: 'Local', host: 'h', username: 'local-user', authType: 'password', password: 'local-pw' }); // pragma: allowlist secret
