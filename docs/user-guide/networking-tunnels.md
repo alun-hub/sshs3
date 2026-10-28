@@ -45,6 +45,12 @@ Manage persistent background port forwards with automated reconnection and healt
 > - Local forwarding fails if the local port is already bound by another application.
 > - Remote forwarding needs `GatewayPorts yes` in the server's `/etc/ssh/sshd_config` if the forwarded port must be reachable from third-party hosts.
 
+### Credentials, Host Keys & Start-Up Errors
+
+- **Saved Credentials:** A tunnel uses the profile's saved password or key passphrase, also for profiles shared through [Team Vault](/docs/security/team-vault/), so starting it does not ask again. If the server asks something else (a verification code, a PIN) you are asked.
+- **Unknown Host Keys:** A tunnel never trusts a new host key by itself. If the host is not yet known, the start fails with *Host key verification failed*; connect to the host once (terminal or file manager), confirm the key, then start the tunnel.
+- **No OpenSSH Client:** If `ssh` cannot be started, the tunnel shows the error (for example `spawn ssh ENOENT`) and nothing is left running.
+
 ### Technical Architecture: Background Daemon & Health Monitoring
 
 Tunnels execute as background processes managed by `SSHTunnelManager` (`src/main/services/SSHTunnelManager.ts`). Each tunnel process features health monitoring and automated reconnect logic with exponential backoff if the network connection drops or the server reboots.
@@ -81,3 +87,5 @@ Uses OpenSSH trusted forwarding (`-Y`). On Windows, access control is strictly p
 | `channel 1: open failed: connect failed` | Target host or port behind bastion is unreachable | Verify target reachability from the bastion (`ssh bastion "nc -zv target port"`). |
 | `Error: Can't open display: localhost:10.0` | `xauth` is missing on the remote host | Install xauth: `sudo apt install xauth` or `sudo dnf install xorg-x11-xauth`. |
 | SOCKS5 proxy fails in browser | DNS queries not routing through proxy | In browser network settings, ensure **Proxy DNS when using SOCKS v5** is checked. |
+| `Host key verification failed.` when starting a tunnel | The host key is not trusted yet, and a tunnel never accepts one by itself | Connect to the host once from a terminal or the file manager, confirm the key, then start the tunnel again. |
+| `spawn ssh ENOENT` | The OpenSSH client is not installed or not on `PATH` | Install the OpenSSH client, then start the tunnel again. |

@@ -65,6 +65,21 @@ sequenceDiagram
 
 After a wrong master password the keys are not kept in memory; unlock again with the right password before pushing.
 
+### How Profiles Are Merged on a Pull
+
+When the same profile exists on both devices, the version that was changed **later** replaces the other one as a whole:
+
+| What | Behaviour on a pull |
+| :--- | :--- |
+| **A setting you cleared on another device** (folder, jump host, dotfile pool) | Cleared here too, because the newer profile wins. |
+| **Machine-specific fields** (key path, PKCS#11 library, agent) | Kept from this device, see *What Stays Strictly Local* above. |
+| **Saved passwords and keys** | Taken from the synced profile when the credentials are part of the pull; otherwise the ones on this device are kept. |
+| **When you last opened a profile** | The later of the two times is kept, so the recent connections on this device are not lost. |
+| **Your local folders** | A pull never removes them. |
+
+> [!NOTE]
+> If you use different versions of sshs3 on different devices, a profile edited on the older version can clear a setting that only the newer one knows about. Keep all devices on the same version.
+
 ### Deleting Your Sync Data
 In the **Synchronization** panel, the **Danger zone** has a **Delete sync data...** button. After an itemized confirmation it:
 - permanently deletes the encrypted sync files (topology, credentials, dotfile pools, settings, saved directory-sync and Kubernetes profiles, SSH config/known_hosts data) from the remote target;
@@ -108,3 +123,4 @@ Host prod-db
 | `ECDSA key not supported for derivation` | Linked smartcard uses non-deterministic ECDSA | Unlock with master password and use card for session caching instead. |
 | `Sync conflict detected` | Same profile modified concurrently on two workstations | Review the conflict resolution dialog to select which version should take precedence. |
 | Remote sync data corrupted | Incomplete write or network failure during upload | Re-authenticate target and click **Push** to overwrite remote files with valid local state. |
+| `The OS keyring is unavailable, so the master passwords cannot be stored securely` | Linking a smartcard stores the master passwords encrypted by the OS keyring, and none is available or unlocked | Unlock the keyring or install a Secret Service (libsecret, KWallet) and link the card again. sshs3 will not keep the passwords unencrypted. |

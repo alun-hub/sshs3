@@ -59,6 +59,10 @@ Browse and edit files inside a running container using the standard dual-pane fi
 2. The pod opens as a pane in the dual-pane file manager.
 3. Browse directory trees, download logs or dumps, upload configs, and edit files in-place using the built-in [CodeMirror 6 Editor](/docs/workspace/file-manager/#built-in-editor).
 
+> [!NOTE]
+> - **Uploads are checked:** A write to a pod counts as done only when the container has finished writing the file. A full disk or a read-only file system shows up as an error, and cancelling an upload stops the write in the container.
+> - **Symlinks and special files:** Copying a folder skips symbolic links and special files, so a link inside the container cannot lead the copy outside the folder or into an endless loop.
+
 ### Technical Architecture: How Pod File Browsing Works Without Remote Daemons
 
 `K8sPodStorageProvider` (`src/main/storage/K8sPodStorageProvider.ts`) implements `IStorageProvider`. It executes non-interactive POSIX commands (`stat`, `cat`, `dd`, `chmod`) over the container's exec WebSocket API, streaming raw bytes into `TransferPipeline`.
@@ -159,3 +163,5 @@ When you enter the API server URL, sshs3 checks whether the cluster has OpenShif
 | `pods/ephemeralcontainers is forbidden` | User role lacks RBAC patch permissions | Request `patch` rights on `pods/ephemeralcontainers` from cluster admin. |
 | Cluster missing from tree view | Context absent in `~/.kube/config` | Run `kubectl config get-contexts` or re-authenticate via OpenShift login. |
 | Port forward drops on idle | Corporate firewall or API server idle timeout | Forwarder reconnects automatically; verify network keep-alives. |
+| `Timed out waiting for the pod to finish writing the file` | The container did not report back within 60 seconds after the last byte (slow disk or network) | Retry the upload; check the container's disk and the connection to the cluster. |
+| `Connection to the pod closed before the write finished` | The connection to the Kubernetes API dropped during an upload | Retry the upload. |

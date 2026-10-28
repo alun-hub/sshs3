@@ -202,6 +202,7 @@ Typing into the search bar instantly searches across **all** profiles in the act
 - **Background Polling:** While unlocked, sshs3 checks S3 every 3 minutes for remote revisions. New changes are pulled automatically, marking the team with an **Updated** badge.
 - **Sync Status Preview:** In Settings, the **Push** and **Pull** buttons display a live status preview (indicating whether there are unpushed local changes or remote updates waiting to be pulled) before initiating a sync.
 - **Conflict Resolution:** If remote changes occur while you have unpushed local modifications, sshs3 refuses to push over the newer remote revision (there is no merge and no force-push) and shows "A newer version is available — your unsynced changes here will be lost." with a **Get latest** button. **Get latest** discards your unsynced local changes and pulls the remote state; copy anything you want to keep first.
+- **Unpushed Changes Survive a Restart:** Edits you have not pushed are still remembered after you restart sshs3. A **Pull** then asks you to confirm **Pull anyway (discard local changes)** instead of silently replacing them. Push first to keep them.
 
 ---
 

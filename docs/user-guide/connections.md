@@ -60,11 +60,15 @@ sshs3 supports five distinct authentication mechanisms:
 4. **FIDO2 / Hardware Security Key**: Hardware WebAuthn/FIDO2 credentials via YubiKey (`ed25519-sk`, `ecdsa-sk`).
 5. **Smartcard (PKCS#11)**: Smartcards (PIV, CAC, SITHS) via native PKCS#11 libraries (`p11-kit`, `opensc`, `libykcs11`).
 
+> [!NOTE]
+> **A saved password or passphrase is only used where it belongs.** It answers ssh's own prompt for it. If a server asks something else, such as a verification code, you are asked instead.
+
 ![FIDO2 Authentication](/img/docs/profile-auth-fido2.png)
 ![Smartcard Authentication](/img/docs/profile-auth-smartcard.png)
 
 ### Hardware Key Guidelines
 - **FIDO2 Resident Credentials:** Select FIDO2 and tick *Use a resident (discoverable) credential stored on the device*. No key file is needed: the app queries resident credentials stored inside the physical token upon connection.
+- **Reading the Key:** Click **Re-scan connected security key** (it also runs when you open the profile, except on Windows), enter the key's PIN and touch it. The list shows only your **SSH** keys; other passkeys on the key, such as those for GitHub or Google, are not shown and cannot be deleted here. The trash icon (**Delete this credential from the security key**) asks *Delete?* first and needs YubiKey Manager (`ykman`). If you dismiss the PIN dialog, nothing is sent to the key and *PIN entry was cancelled* is shown.
 - **Generate New FIDO2 Key:** Expand *Generate a new key on this security key*, choose `ED25519-SK` (or `ECDSA-SK` for legacy firmware), tick *Require PIN + touch on every use*, and touch your key when prompted.
 - **U2F-Only Keys:** Older keys (YubiKey 4, NEO) lack FIDO2 support (`ykman info` reports `FIDO2 Not available`). On these devices, generate an `ECDSA-SK` key without PIN and without resident storage, or use the token's PIV smartcard application instead.
 - **Safe Password Fallback:** When password authentication is chosen, sshs3 passes `-o PubkeyAuthentication=no` so inserted hardware keys cannot trigger unexpected touch prompts.

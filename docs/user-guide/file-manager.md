@@ -53,6 +53,14 @@ ssh <SmartcardFlags> -o BatchMode=no -s -- [user@]host sftp
 - **POSIX ACLs:** SFTP v3 does not natively support advanced POSIX Access Control Lists (ACLs) or extended attributes (`xattr`) within the protocol frame; standard POSIX mode bits (`0755`, `0644`) are preserved.
 - **Large Directories:** Exceptionally large directory listings (>100,000 files) may take a few seconds to enumerate over high-latency WAN links.
 
+### Reopening Tabs After a Restart
+
+File manager tabs come back when you restart sshs3. A tab that was opened from a saved connection reconnects by itself with that connection's saved password, key passphrase or S3 secret key, so you are not asked again. The saved session itself never contains those secrets.
+
+- If the profile has no saved password, the tab asks for it (**Password Required for SFTP**).
+- If the profile's host, port or user (SFTP), or its endpoint, region or access key (S3), was changed after the tab was saved, the tab asks again instead of sending the saved secret to the new address.
+- A tab opened from a quick `user@host` has no profile behind it and always asks.
+
 ---
 
 ## 2. In-Memory Streaming Across Storage Backends
@@ -97,6 +105,7 @@ Files are compared using file size and last modification timestamp. A configurab
 
 ### Good to Know & Limitations: Directory Synchronization & Mirroring
 - **One-Way Sync:** Synchronization is strictly one-way from the selected source to the target directory.
+- **New Target Folders:** The target folder does not have to exist: the first sync creates it, over SFTP as well.
 - **Symlinks & Unreadable Folders:** Symbolic links pointing to directories are listed but not recursively traversed. Folders that cannot be read (e.g. permission denied) are reported as skipped; nothing below a skipped folder is copied or, in Mirror mode, deleted, because its contents cannot be verified. If the root folder of the source or target cannot be listed for any reason other than not existing yet, the comparison stops with an error instead of treating it as empty.
 
 ---
@@ -157,3 +166,4 @@ When browsing any local or remote directory containing a `.git` repository, sshs
 | `SFTP subsystem not found` | Remote `sshd_config` lacks subsystem definition | Verify `Subsystem sftp /usr/lib/openssh/sftp-server` exists in `/etc/ssh/sshd_config`. |
 | External editor edits do not upload | Editor saves via atomic temporary files | Configure editor to write in-place (e.g. in Vim: `:set backupcopy=yes`). |
 | "Forbidden" cursor while dragging (Linux) | Upstream Chromium / Wayland cursor quirk | Cosmetic issue: the drop operation completes normally when you release the mouse button. |
+| **Password Required for SFTP** appears after a restart although a password is saved | The tab was saved for another host, port or user than the profile has now | Reconnect from **Saved Connections**; the tab then uses the current profile. |
