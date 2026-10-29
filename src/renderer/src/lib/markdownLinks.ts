@@ -1,4 +1,14 @@
 /**
+ * The tooltip of a link: where it really goes, after the title its author gave it (`[text](url "title")`)
+ * when there is one, so that the destination is never hidden behind the author's own words.
+ */
+export function linkTitle(authorTitle: string | undefined, destination: string | undefined): string | undefined {
+  const title = authorTitle?.trim();
+  if (title && destination) return `${title} (${destination})`;
+  return title || destination || undefined;
+}
+
+/**
  * The address a link of the markdown preview may open in the system browser, or null when it must not
  * be opened at all (relative links, `#anchors`, `mailto:`, `javascript:`, `file:`, `data:` …).
  *

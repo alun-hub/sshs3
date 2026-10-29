@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { externalLinkTarget } from '../../src/renderer/src/lib/markdownLinks';
+import { externalLinkTarget, linkTitle } from '../../src/renderer/src/lib/markdownLinks';
 
 describe('externalLinkTarget', () => {
   it('accepts absolute http and https addresses, in their normalised form', () => {
@@ -42,5 +42,23 @@ describe('externalLinkTarget', () => {
   it('does not let whitespace or control characters smuggle in another scheme', () => {
     expect(externalLinkTarget('java\tscript:alert(1)')).toBeNull();
     expect(externalLinkTarget('\u0001javascript:alert(1)')).toBeNull();
+  });
+});
+
+describe('linkTitle', () => {
+  it('shows only the destination when the link has no title of its own', () => {
+    expect(linkTitle(undefined, 'https://example.com/')).toBe('https://example.com/');
+    expect(linkTitle('  ', 'https://example.com/')).toBe('https://example.com/');
+  });
+
+  it('keeps the title the author gave and adds the destination after it', () => {
+    expect(linkTitle('Open the docs', 'https://example.com/')).toBe('Open the docs (https://example.com/)');
+  });
+
+  it('works for a link that is not opened, and for no information at all', () => {
+    expect(linkTitle('Other file', './other.md')).toBe('Other file (./other.md)');
+    expect(linkTitle(undefined, './other.md')).toBe('./other.md');
+    expect(linkTitle('Only a title', undefined)).toBe('Only a title');
+    expect(linkTitle(undefined, undefined)).toBeUndefined();
   });
 });

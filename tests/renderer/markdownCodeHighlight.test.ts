@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createElement } from 'react';
+import { getLanguageExtension } from '../../src/renderer/src/components/Editor/editorLanguages';
 import {
   MAX_HIGHLIGHT_CHARS,
   codeToCopy,
   highlightCode,
   readCodeBlock,
 } from '../../src/renderer/src/lib/markdownCodeHighlight';
+
+vi.mock('../../src/renderer/src/components/Editor/editorLanguages', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/renderer/src/components/Editor/editorLanguages')>();
+  return { ...actual, getLanguageExtension: vi.fn(actual.getLanguageExtension) };
+});
 
 const joined = (code: string, lang: string) => highlightCode(code, lang)?.map((s) => s.text).join('');
 
@@ -49,6 +55,26 @@ describe('highlightCode', () => {
   it('does not parse very large blocks', () => {
     expect(highlightCode('a'.repeat(MAX_HIGHLIGHT_CHARS + 1), 'bash')).toBeNull();
     expect(highlightCode('a'.repeat(MAX_HIGHLIGHT_CHARS), 'bash')).not.toBeNull();
+  });
+});
+
+describe('highlightCode language cache', () => {
+  it('builds the language of a fence only once, however many blocks use it', () => {
+    vi.mocked(getLanguageExtension).mockClear();
+    for (let i = 0; i < 5; i++) expect(highlightCode(`key = ${i}`, 'toml')).not.toBeNull();
+    expect(getLanguageExtension).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers that a language is unknown too', () => {
+    vi.mocked(getLanguageExtension).mockClear();
+    for (let i = 0; i < 3; i++) expect(highlightCode('text', 'cache-test-unknown')).toBeNull();
+    expect(getLanguageExtension).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the same colours the second time as the first', () => {
+    const first = highlightCode('echo "a" # b', 'sh');
+    const second = highlightCode('echo "a" # b', 'sh');
+    expect(second).toEqual(first);
   });
 });
 

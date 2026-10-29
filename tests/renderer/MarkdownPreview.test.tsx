@@ -3,6 +3,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import MarkdownPreview from '../../src/renderer/src/components/FileManager/MarkdownPreview';
+import { highlightCode } from '../../src/renderer/src/lib/markdownCodeHighlight';
+
+vi.mock('../../src/renderer/src/lib/markdownCodeHighlight', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/renderer/src/lib/markdownCodeHighlight')>();
+  return { ...actual, highlightCode: vi.fn(actual.highlightCode) };
+});
 
 const DOC = [
   '# Title',
@@ -59,6 +65,19 @@ describe('MarkdownPreview', () => {
 
     expect(writeText).toHaveBeenCalledWith('ssh user@host -p 22\necho "hej"');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument());
+  });
+
+  it('does not parse the code again when the copy button changes state', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<MarkdownPreview content={DOC} />);
+    const parsedOnRender = vi.mocked(highlightCode).mock.calls.length;
+    expect(parsedOnRender).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument());
+
+    expect(vi.mocked(highlightCode).mock.calls.length).toBe(parsedOnRender);
   });
 
   it('does not break when the clipboard refuses', async () => {
@@ -138,6 +157,28 @@ describe('MarkdownPreview', () => {
         expect(screen.getByText(text)).toBeInTheDocument();
       }
       expect(openExternal).not.toHaveBeenCalled();
+    });
+
+    it('keeps the title the author gave a link and adds where it goes', () => {
+      withApi();
+      render(<MarkdownPreview content={'[docs](https://example.com/d "Open the docs")'} />);
+      expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute(
+        'title',
+        'Open the docs (https://example.com/d)'
+      );
+    });
+
+    it('attaches a handler to a failed open, so it cannot become an unhandled rejection', () => {
+      const failed = Promise.reject(new Error('no handler for this scheme'));
+      failed.catch(() => {}); // keeps this test itself clean
+      const then = vi.spyOn(failed, 'then');
+      // A plain function: vi.fn() would attach a handler of its own to the promise it returns.
+      (window as unknown as { multissh: unknown }).multissh = { openExternal: () => failed };
+      render(<MarkdownPreview content="[x](https://example.com)" />);
+
+      fireEvent.click(screen.getByRole('link', { name: 'x' }));
+
+      expect(then).toHaveBeenCalled();
     });
 
     it('does nothing, and does not throw, when the app API is missing', () => {

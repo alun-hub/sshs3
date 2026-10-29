@@ -47,6 +47,21 @@ function parserOf(extension: Extension | null): Parser | null {
 }
 
 /**
+ * The parser of each file name asked for so far. Building a language is not free (each call to
+ * getLanguageExtension defines a new one) and a README repeats the same few languages; unknown
+ * languages are remembered too.
+ */
+const parserCache = new Map<string, Parser | null>();
+
+function parserForFile(fileName: string): Parser | null {
+  const cached = parserCache.get(fileName);
+  if (cached !== undefined) return cached;
+  const parser = parserOf(getLanguageExtension(fileName));
+  parserCache.set(fileName, parser);
+  return parser;
+}
+
+/**
  * Splits `code` into syntax-coloured segments using the same languages as the editor, or returns
  * null when the language is unknown, the block is large or anything goes wrong. The segments always
  * join back to exactly `code`; if they ever would not, null is returned so that what is shown and
@@ -56,7 +71,7 @@ export function highlightCode(code: string, lang: string | undefined): CodeSegme
   if (!lang || !code || code.length > MAX_HIGHLIGHT_CHARS) return null;
   const fileName = fileNameForFence(lang);
   if (!fileName) return null;
-  const parser = parserOf(getLanguageExtension(fileName));
+  const parser = parserForFile(fileName);
   if (!parser) return null;
 
   try {

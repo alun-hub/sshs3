@@ -13,9 +13,12 @@ function CodeBlockFrame({ children, highlight }: { children?: ReactNode; highlig
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const block = readCodeBlock(children);
   const text = block ? codeToCopy(block.code) : '';
+  const lang = block?.lang;
+  // Depend on the strings, not on `block`: that object is new on every render, which would parse the
+  // whole block again each time the copy button changes state.
   const segments = useMemo(
-    () => (highlight && block ? highlightCode(text, block.lang) : null),
-    [highlight, block, text]
+    () => (highlight && text ? highlightCode(text, lang) : null),
+    [highlight, text, lang]
   );
 
   useEffect(() => () => clearTimeout(resetTimer.current), []);
