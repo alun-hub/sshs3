@@ -123,7 +123,7 @@ Inspect, edit, and preview remote files or monitor live server logs without open
 | :--- | :--- |
 | **CodeMirror 6 Editor** | Syntax highlighting for 15+ languages (JS, TS, Python, Bash, Nginx, YAML, JSON, SQL, Rust, Go). Monospaced font with line numbers, active line highlight, bracket matching, cursor coordinates (`Ln X, Col Y`), word-wrap toggle, and <kbd>Ctrl</kbd>+<kbd>F</kbd> search. For JSON files, **Format JSON** beautifies and re-indents minified payloads. |
 | **Atomic Save (<kbd>Ctrl</kbd>+<kbd>S</kbd>)** | Saves updates back to remote SFTP, S3, or Kubernetes with timestamp confirmation (`yyyy-mm-dd HH:mm`). CRLF line endings are preserved. |
-| **Markdown Preview** | Toggle between raw source and rendered GitHub Flavored Markdown with formatted code blocks, tables, and task lists. |
+| **Markdown Preview** | Toggle between raw source and rendered GitHub Flavored Markdown with tables and task lists. You can select and copy any text. Code blocks in common languages are colored and have a copy button (hover over the block, or tab to it). While you search, code blocks show without colors so that a phrase is found even where the colors would split it. |
 | **HTML Sandbox** | Static preview in a hardened, sandboxed iframe (`sandbox=""` with external scripts and navigation blocked). |
 | **CSV / TSV Data Grid** | Parses tabular data into an interactive, sortable grid with column headers and text filter. |
 | **Media & Image Viewer** | Interactive zoom, pan dragging, and 90° rotation for `.png`, `.jpg`, `.webp`, `.gif`, `.svg` with dimensions and file size display. |
