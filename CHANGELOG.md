@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.71] - 2026-10-29
+
+A better Markdown preview, and updated components.
+
+### Added
+- Markdown preview: you can now select and copy any text (it could not be selected before)
+- Markdown preview: code blocks in common languages (shell, TypeScript, YAML, JSON, Python, Dockerfile and more) are colored, and have a copy button that copies exactly the code
+- Markdown preview: links to web pages open in your browser, and hovering a link shows where it really goes; other links (to another file, to a heading, `mailto:`) are shown as plain text instead of looking clickable
+
+### Changed
+- Markdown preview: no backticks around inline code, tables have a grid, and task lists show only the checkbox. While you search, code blocks are shown without colors so that a phrase is found even where the colors would split it
+- Updated components within their version ranges: Electron 44.10, the AWS SDK, the Kubernetes client, the updater and the build tools
+- The terminal now uses the maintained `@xterm/xterm` package instead of the deprecated `xterm` (same version line, no change in behavior)
+
 ## [0.96.70] - 2026-10-28
 
 Follow-up to the code audit in 0.96.69, including a fix for a side effect of it.
