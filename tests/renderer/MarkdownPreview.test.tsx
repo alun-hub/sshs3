@@ -20,6 +20,7 @@ const DOC = [
 
 afterEach(() => {
   vi.restoreAllMocks();
+  delete (window as unknown as { multissh?: unknown }).multissh;
 });
 
 describe('MarkdownPreview', () => {
@@ -90,6 +91,58 @@ describe('MarkdownPreview', () => {
       expect(container.querySelector('pre code [class*="tok-"]')).not.toBeNull();
       expect(container.querySelector('mark.md-search-hit')).toBeNull();
       expect((container.querySelector('pre code') as HTMLElement).textContent).toBe('ssh user@host -p 22\necho "hej"');
+    });
+  });
+
+  describe('links', () => {
+    const openExternal = vi.fn().mockResolvedValue(undefined);
+    const withApi = () => {
+      openExternal.mockClear();
+      (window as unknown as { multissh: unknown }).multissh = { openExternal };
+    };
+
+    it('opens a web link in the system browser instead of navigating the window', () => {
+      withApi();
+      render(<MarkdownPreview content="See [the docs](https://example.com/docs) now." />);
+      const link = screen.getByRole('link', { name: 'the docs' });
+
+      const notPrevented = fireEvent.click(link);
+
+      expect(openExternal).toHaveBeenCalledTimes(1);
+      expect(openExternal).toHaveBeenCalledWith('https://example.com/docs');
+      expect(notPrevented).toBe(false); // preventDefault was called
+    });
+
+    it('shows where a link really goes, whatever its text says', () => {
+      withApi();
+      render(<MarkdownPreview content="[https://github.com](https://evil.example/login)" />);
+      expect(screen.getByRole('link')).toHaveAttribute('title', 'https://evil.example/login');
+    });
+
+    it('does not turn relative links, anchors, mailto and script links into clickable links', () => {
+      withApi();
+      render(
+        <MarkdownPreview
+          content={[
+            '[rel](./other.md)',
+            '[anchor](#section)',
+            '[mail](mailto:a@example.com)',
+            '[script](javascript:alert(1))',
+            '[file](file:///etc/passwd)',
+            '[creds](https://github.com@evil.example/)',
+          ].join('\n\n')}
+        />
+      );
+      expect(screen.queryByRole('link')).toBeNull();
+      for (const text of ['rel', 'anchor', 'mail', 'script', 'file', 'creds']) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+      expect(openExternal).not.toHaveBeenCalled();
+    });
+
+    it('does nothing, and does not throw, when the app API is missing', () => {
+      render(<MarkdownPreview content="[x](https://example.com)" />);
+      expect(() => fireEvent.click(screen.getByRole('link', { name: 'x' }))).not.toThrow();
     });
   });
 });

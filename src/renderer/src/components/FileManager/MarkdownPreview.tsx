@@ -2,9 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HighlightedCodeBlock, PlainCodeBlock } from './MarkdownCodeBlock';
+import { MarkdownLink } from './MarkdownLink';
 
-const HIGHLIGHTED_COMPONENTS: Components = { pre: HighlightedCodeBlock };
-const PLAIN_COMPONENTS: Components = { pre: PlainCodeBlock };
+const HIGHLIGHTED_COMPONENTS: Components = { pre: HighlightedCodeBlock, a: MarkdownLink };
+const PLAIN_COMPONENTS: Components = { pre: PlainCodeBlock, a: MarkdownLink };
 
 interface MarkdownPreviewProps {
   content: string;
