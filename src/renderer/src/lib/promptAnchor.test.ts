@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Terminal } from 'xterm';
+import type { Terminal } from '@xterm/xterm';
 import { IDLE_MS, PromptAnchorTracker, prefixLooksLikePrompt, stripRightPrompt } from './promptAnchor';
 import { CommandOutputTracker, isAtEmptyPrompt, stripPromptLoose } from './terminalOutput';
 

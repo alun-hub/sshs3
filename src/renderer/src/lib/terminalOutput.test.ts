@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Terminal } from 'xterm';
+import type { Terminal } from '@xterm/xterm';
 import { CommandOutputTracker, endsAtPrompt, stripPrompt, stripPromptLoose } from './terminalOutput';
 
 interface FakeLine {

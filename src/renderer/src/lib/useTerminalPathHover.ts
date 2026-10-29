@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { Terminal } from 'xterm';
+import type { Terminal } from '@xterm/xterm';
 import type { FileEntry } from '@shared/types/storage';
 import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';

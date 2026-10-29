@@ -1,4 +1,4 @@
-import type { IMarker, Terminal } from 'xterm';
+import type { IMarker, Terminal } from '@xterm/xterm';
 import {
   PROMPT_TERMINATOR_CLASS,
   PromptAnchorTracker,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import type { Terminal } from 'xterm';
+import type { Terminal } from '@xterm/xterm';
 import { endsAtPrompt, isPromptLine, type CommandOutputTracker } from './terminalOutput';
 import { detectSudoRetry, isRootPromptLine, manualSudoInput, type SudoRetrySuggestion } from './sudoRetry';
 import { createRendererLogger } from './log';

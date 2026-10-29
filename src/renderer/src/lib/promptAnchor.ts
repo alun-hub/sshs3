@@ -1,4 +1,4 @@
-import type { IMarker, Terminal } from 'xterm';
+import type { IMarker, Terminal } from '@xterm/xterm';
 
 /**
  * Where the command starts on its row, learned from the cursor instead of from the look of the prompt.

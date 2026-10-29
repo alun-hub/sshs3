@@ -394,7 +394,7 @@ describe('TerminalView Component', () => {
     window.multissh.openExternal = mockOpenExternal;
 
     let capturedLinkHandler: any = null;
-    const { Terminal } = await import('xterm');
+    const { Terminal } = await import('@xterm/xterm');
     const openSpy = vi.spyOn(Terminal.prototype, 'open').mockImplementation(function (this: any, element: HTMLElement) {
       capturedLinkHandler = this.options.linkHandler;
       return openSpy.getMockImplementation() ? undefined : (openSpy as any)(element);
@@ -472,7 +472,7 @@ describe('TerminalView Component', () => {
 
   it('pastes from system clipboard on Shift+Insert and Ctrl+Shift+V', async () => {
     let capturedKeyHandler: any = null;
-    const { Terminal } = await import('xterm');
+    const { Terminal } = await import('@xterm/xterm');
     const pasteSpy = vi.spyOn(Terminal.prototype, 'paste').mockImplementation(() => {});
     const attachSpy = vi.spyOn(Terminal.prototype, 'attachCustomKeyEventHandler').mockImplementation(function (this: any, handler: any) {
       capturedKeyHandler = handler;

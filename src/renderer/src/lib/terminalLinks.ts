@@ -1,4 +1,4 @@
-import type { IDisposable, ILink, Terminal } from 'xterm';
+import type { IDisposable, ILink, Terminal } from '@xterm/xterm';
 import { isWindowsPath } from './terminalPathPreview';
 
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
