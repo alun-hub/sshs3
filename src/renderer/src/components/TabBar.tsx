@@ -428,15 +428,9 @@ export const TabBar: React.FC<TabBarProps> = ({
         )}
       </div>
 
-      {/* Search: divided from the tabs and from the quick links, as the quick links are */}
-      {onOpenGlobalSearch && (
-        <div className="ml-2 flex shrink-0 items-center self-center border-l border-divider px-2">
-          <GlobalSearchButton onOpen={onOpenGlobalSearch} shortcuts={shortcuts} />
-        </div>
-      )}
-
-      {/* Quick links: Smartcard lock, Connections & Settings */}
+      {/* Quick links: Search, Smartcard lock, Connections & Settings */}
       <div className="flex items-center gap-1 self-center border-l border-divider pl-2">
+        {onOpenGlobalSearch && <GlobalSearchButton onOpen={onOpenGlobalSearch} shortcuts={shortcuts} />}
         {showLockSmartcardButton && (
           <div className="relative flex items-center" ref={smartcardMenuRef}>
             <button

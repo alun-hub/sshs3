@@ -163,11 +163,14 @@ describe('TabBar Component', () => {
     });
   });
 
-  it('sets the search button off from the tabs with a divider, and does not draw one without a search', () => {
+  it('puts the search button first among the quick links, after the divider, and none without a search', () => {
     const { unmount } = render(
       <TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} onOpenGlobalSearch={vi.fn()} />
     );
-    expect(screen.getByTestId('global-search-btn').parentElement).toHaveClass('border-l', 'border-divider', 'px-2');
+    const search = screen.getByTestId('global-search-btn');
+    expect(search.parentElement).toHaveClass('border-l', 'border-divider');
+    expect(search.parentElement).toContainElement(screen.getByTestId('quick-profiles-btn'));
+    expect(search.parentElement?.firstElementChild).toBe(search);
     unmount();
     render(<TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} />);
     expect(screen.queryByTestId('global-search-btn')).not.toBeInTheDocument();
