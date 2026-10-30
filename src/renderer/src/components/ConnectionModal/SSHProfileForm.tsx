@@ -26,6 +26,7 @@ import { pickDefaultPkcs11Lib, pkcs11PlaceholderPath } from '../../lib/smartcard
 import { IS_WINDOWS } from '../../lib/platform';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { ProfileOrganizationFields } from './ProfileOrganizationFields';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -37,6 +38,8 @@ interface SSHProfileFormProps {
    * a Team Vault profile, whose folder tree can be arbitrarily deep (`"Acme Infra/Cluster A"`),
    * so autocomplete matters more than for a personal profile's flat, usually-short list. */
   folderSuggestions?: string[];
+  /** Tags already used on other profiles, offered while typing in the Tags field. */
+  tagSuggestions?: string[];
   /** false for a Team Vault member (not admin): the password/passphrase/proxy-password fields
    * are shown disabled with a placeholder instead of the real value — TeamVaultService enforces
    * the same rule server-side regardless of this prop, this only drives the UI. Defaults to true
@@ -74,6 +77,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   onCancel,
   dotfilesPoolEnabled = false,
   folderSuggestions,
+  tagSuggestions,
   canEditSecret = true,
 }) => {
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
@@ -330,23 +334,15 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             placeholder="e.g. Production Server"
           />
         </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Group / Folder (optional)
-          <input
-            value={config.group ?? ''}
-            onChange={(e) => update('group', e.target.value)}
-            list={folderSuggestions ? 'ssh-folder-suggestions' : undefined}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : 'e.g. Production or Web Servers'}
-          />
-          {folderSuggestions && (
-            <datalist id="ssh-folder-suggestions">
-              {folderSuggestions.map((path) => (
-                <option key={path} value={path} />
-              ))}
-            </datalist>
-          )}
-        </label>
+        <ProfileOrganizationFields
+          group={config.group}
+          tags={config.tags}
+          onGroupChange={(group) => update('group', group)}
+          onTagsChange={(tags) => update('tags', tags)}
+          groupPlaceholder="e.g. Production or Web Servers"
+          folderSuggestions={folderSuggestions}
+          tagSuggestions={tagSuggestions}
+        />
       </div>
 
       <div className="grid grid-cols-[1fr_80px_1fr] gap-2.5">

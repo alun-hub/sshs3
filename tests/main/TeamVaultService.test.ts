@@ -1708,6 +1708,28 @@ describe('TeamVaultService', () => {
         expect(payload.s3[0]).toMatchObject({ name: 'renamed', region: 'us-east-1', secretAccessKey: 'shh' }); // pragma: allowlist secret
       });
 
+      it('lets a member edit the tags of a profile with a stored secret, and shows them to every member', async () => {
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
+        await admin.saveS3Profile(vaultId, s3Profile('s1'));
+
+        await expect(
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), tags: ['prod', 'web'], password: undefined })
+        ).resolves.toBeUndefined();
+        await expect(
+          asBob.saveS3Profile(vaultId, { ...s3Profile('s1'), tags: ['assets'], secretAccessKey: '' })
+        ).resolves.toBeUndefined();
+
+        const adminPayload = await admin.getPayload(vaultId);
+        expect(adminPayload.ssh[0].tags).toEqual(['prod', 'web']);
+        expect(adminPayload.ssh[0].password).toBe('secret'); // pragma: allowlist secret
+        expect(adminPayload.s3[0].tags).toEqual(['assets']);
+
+        const memberPayload = await asBob.getPayloadForRenderer(vaultId);
+        expect(memberPayload.ssh[0].tags).toEqual(['prod', 'web']);
+        expect(memberPayload.s3[0].tags).toEqual(['assets']);
+      });
+
       it('getPayloadForRenderer strips secrets for a member but not for an admin', async () => {
         const { admin, asBob, vaultId } = await makeAdminAndBob();
         await admin.saveSSHProfile(vaultId, sshProfile('p1'));

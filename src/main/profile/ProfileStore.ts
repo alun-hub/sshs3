@@ -4,6 +4,7 @@ import os from 'node:os';
 import { app } from 'electron';
 import type { SSHConnectionConfig, SSHTunnelConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
+import { withNormalizedTags } from '../../shared/tags';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
@@ -107,7 +108,11 @@ export class ProfileStore {
 
     return this.queueMutation(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
-      const stamped: SSHConnectionConfig = { ...config, updatedAt: new Date().toISOString(), deletedAt: undefined };
+      const stamped: SSHConnectionConfig = {
+        ...withNormalizedTags(config),
+        updatedAt: new Date().toISOString(),
+        deletedAt: undefined,
+      };
       const index = profiles.ssh.findIndex((p) => p.id === config.id);
       if (index >= 0) {
         profiles.ssh[index] = stamped;
@@ -139,7 +144,11 @@ export class ProfileStore {
 
     return this.queueMutation(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
-      const stamped: S3Config = { ...config, updatedAt: new Date().toISOString(), deletedAt: undefined };
+      const stamped: S3Config = {
+        ...withNormalizedTags(config),
+        updatedAt: new Date().toISOString(),
+        deletedAt: undefined,
+      };
       const index = profiles.s3.findIndex((p) => p.id === config.id);
       if (index >= 0) {
         profiles.s3[index] = stamped;

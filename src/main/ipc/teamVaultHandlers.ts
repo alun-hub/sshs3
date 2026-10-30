@@ -13,6 +13,7 @@ import type { IpcBridge } from '../IpcBridge';
 import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateReader';
 import { testS3ConnectionConfig } from './connectionTestHandlers';
 import { toTeamK8sProfile } from '../services/teamVaultK8s';
+import { withNormalizedTags } from '../../shared/tags';
 import { createLogger } from '../log';
 
 const teamVaultLog = createLogger('team-vault');
@@ -491,7 +492,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, async (_event, vaultId: string, profile: SSHConnectionConfig) => {
     const vid = requireVaultId(vaultId);
     requireProfile(profile, 'SSH profile');
-    await bridge.teamVaultService.saveSSHProfile(vid, profile);
+    await bridge.teamVaultService.saveSSHProfile(vid, withNormalizedTags(profile));
     bridge.scheduleTeamVaultAutoPush(vid);
   });
 
@@ -520,7 +521,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, async (_event, vaultId: string, profile: S3Config) => {
     const vid = requireVaultId(vaultId);
     requireProfile(profile, 'S3 profile');
-    await bridge.teamVaultService.saveS3Profile(vid, profile);
+    await bridge.teamVaultService.saveS3Profile(vid, withNormalizedTags(profile));
     bridge.scheduleTeamVaultAutoPush(vid);
   });
 

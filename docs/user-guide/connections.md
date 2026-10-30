@@ -24,12 +24,28 @@ Matches outside the current view display an **origin badge** (e.g. `Team: Infra`
 ### "Unlock All" for Locked Hardware Teams
 When one or more Team Vaults are currently locked, an **Unlock all** action button is displayed. Clicking it sequentially prompts your hardware security key or smartcard PIN to unlock all your team vaults in one flow.
 
+### Tags
+A profile lives in one folder but can carry several tags, so the same server can be both under `Production/Web` and found as `#web` or `#prod`. SSH and S3 profiles, personal and Team Vault, support tags.
+
+| Action | How |
+| :--- | :--- |
+| Add a tag | Type it in **Tags** in the profile form and press <kbd>Enter</kbd> or <kbd>,</kbd>. A leading `#` is ignored. Text left in the field is added when you leave it. |
+| Remove a tag | Press <kbd>Backspace</kbd> in the empty field to remove the last one, or use the **x** on a chip. |
+| Search by tag | Type the tag in the search bar, with or without `#` (`prod` or `#prod`). Tags match as part of a word, like the other fields. |
+
+> [!NOTE]
+> Tags start with a letter or digit and may contain letters, digits and `. _ : / -` (no spaces). Duplicates are merged ignoring case, and tags are kept sorted, so the same profile looks identical on every device.
+
+> [!NOTE]
+> In a Team Vault, tags are part of the shared profile: every member sees them, and members may edit them even though they cannot change a stored password or the host.
+
 ### SSH Profile Field Reference
 
 | Field Name | Default | Purpose & Description | Constraints |
 | :--- | :--- | :--- | :--- |
 | **Profile Name** | *Required* | Display label used in tab headers and connection lists. | Cannot be empty. |
 | **Group / Folder** | *Empty* | Organizes profiles into folder trees (e.g. `Production/Web`). | Subfolders supported with `/`. |
+| **Tags** | *Empty* | Labels that cut across folders (e.g. `prod`, `db`). Shown as chips on the profile and searchable. | Up to 10 per profile, 32 characters each. See [Tags](#tags). |
 | **Hostname / IP** | *Required* | Target FQDN (e.g. `server.internal`) or IPv4/IPv6 address. | Resolvable via DNS or reachable via ProxyJump. |
 | **Port** | `22` | Target SSH daemon listening port. | Integer between 1 and 65535. |
 | **Username** | *Required* | Remote user account (e.g. `ubuntu`, `root`, `deploy`). | POSIX username standards. |

@@ -636,6 +636,19 @@ describe('Team Vault IPC handlers', () => {
       expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
     });
 
+    it('normalizes the tags of a saved SSH profile and leaves the rest of it untouched', async () => {
+      const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', tags: ['#web', 'Prod', 'prod'] };
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile);
+      expect(teamVaultService.saveSSHProfile).toHaveBeenCalledWith(VAULT_ID, { ...profile, tags: ['Prod', 'web'] });
+    });
+
+    it('does not persist an invalid tags value on a saved SSH profile', async () => {
+      const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', tags: 'prod' };
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile);
+      const saved = teamVaultService.saveSSHProfile.mock.calls[0][1];
+      expect(saved.tags).toBeUndefined();
+    });
+
     it('rejects an SSH profile whose serialized size exceeds the cap', async () => {
       const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', group: 'x'.repeat(300_000) };
       await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile)).rejects.toThrow('is too large');
@@ -665,6 +678,12 @@ describe('Team Vault IPC handlers', () => {
       await call(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, VAULT_ID, profile);
       expect(teamVaultService.saveS3Profile).toHaveBeenCalledWith(VAULT_ID, profile);
       expect(scheduleTeamVaultAutoPush).toHaveBeenCalledWith(VAULT_ID);
+    });
+
+    it('normalizes the tags of a saved S3 profile', async () => {
+      const profile = { id: 'p1', name: 'x', region: 'us-east-1', accessKeyId: 'a', secretAccessKey: 'b', tags: ['b', 'A'] };
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_S3_PROFILE, VAULT_ID, profile);
+      expect(teamVaultService.saveS3Profile).toHaveBeenCalledWith(VAULT_ID, { ...profile, tags: ['A', 'b'] });
     });
 
     it('rejects an S3 profile whose serialized size exceeds the cap', async () => {

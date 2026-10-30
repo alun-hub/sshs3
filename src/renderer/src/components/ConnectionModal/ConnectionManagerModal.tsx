@@ -24,6 +24,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { TeamVaultStatus } from '@shared/types/teamVault';
+import { collectTags } from '@shared/tags';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
@@ -653,6 +654,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   );
   const isTeamAdmin = Boolean(editingTeamMeta?.isAdmin);
   const teamFolderSuggestions = editingTeamMeta?.folderSuggestions ?? [];
+  const personalTagSuggestions = useMemo(() => collectTags([...sshProfiles, ...s3Profiles]), [sshProfiles, s3Profiles]);
 
   const allFolderNames = useMemo(
     () => collectFolderNames(folders, sshProfiles, s3Profiles),
@@ -942,6 +944,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onCancel={() => setEditing(null)}
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
+                  tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               ) : (
@@ -950,6 +953,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onSave={handleSaveS3}
                   onCancel={() => setEditing(null)}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
+                  tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               )}

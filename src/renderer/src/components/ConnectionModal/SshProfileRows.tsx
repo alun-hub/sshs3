@@ -4,6 +4,7 @@ import { Cable, Copy, Folder, KeyRound, Pencil, Trash2 } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { SftpButton } from '../SftpButton';
 import { OverflowMenu } from '../ui/OverflowMenu';
+import { TagChips } from '../ui/TagChips';
 import type { EditingState } from './types';
 
 interface SshProfileRowProps {
@@ -129,6 +130,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         <span className="truncate text-sm text-txt-primary font-medium">
           {profile.name}
         </span>
+        <TagChips tags={profile.tags} />
         {profile.proxyJump && (
           <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
             Jump
