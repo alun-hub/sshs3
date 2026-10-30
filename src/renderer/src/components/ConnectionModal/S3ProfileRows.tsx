@@ -3,7 +3,8 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Copy, Folder, Pencil, Trash2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
 import { TagChips } from '../ui/TagChips';
-import type { EditingState } from './types';
+import { ProfileRowCheckbox } from './ProfileRowCheckbox';
+import type { EditingState, RowSelect } from './types';
 
 interface S3ProfileRowProps {
   profile: S3Config;
@@ -12,6 +13,8 @@ interface S3ProfileRowProps {
   handleCloneS3: (profile: S3Config) => Promise<void> | void;
   handleDeleteS3: (id: string, name: string) => Promise<void> | void;
   setEditing: Dispatch<SetStateAction<EditingState | null>>;
+  /** Set by a list that supports selecting several profiles. */
+  select?: RowSelect;
 }
 
 /** One entry of the "Recently Used" box for S3 profiles. */
@@ -109,6 +112,7 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
   handleCloneS3,
   handleDeleteS3,
   setEditing,
+  select,
 }) => (
   <div
     draggable
@@ -118,9 +122,10 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
     }}
     onDoubleClick={() => void handleConnectS3(profile)}
     title="Double-click to connect (or drag to folder)"
-    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
+    className="group flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
   >
-    <div className="min-w-0">
+    {select && <ProfileRowCheckbox name={profile.name} select={select} />}
+    <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
         <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
         <TagChips tags={profile.tags} />

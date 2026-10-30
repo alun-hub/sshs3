@@ -7,6 +7,7 @@ import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault'
 import type { EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './types';
 import { TeamProfileTree } from './TeamProfileTree';
 import { TeamFolderSidebar } from './TeamFolderSidebar';
+import { TeamBulkEdit } from './TeamBulkEdit';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
@@ -341,6 +342,14 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     }
   };
 
+  /** Saves a profile from the list as it is shown, without the vault reference the list adds to each one for connecting. */
+  const saveSharedProfile = (vaultId: string, kind: 'ssh' | 's3', profile: SSHConnectionConfig | S3Config) => {
+    const { teamVaultProfileRef: _ref, ...saved } = profile as (SSHConnectionConfig | S3Config) & { teamVaultProfileRef?: unknown };
+    return kind === 'ssh'
+      ? window.multissh.teamVaultSaveSSHProfile(vaultId, saved as SSHConnectionConfig)
+      : window.multissh.teamVaultSaveS3Profile(vaultId, saved as S3Config);
+  };
+
   const handleDropOnTeamFolder = async (
     vaultId: string,
     targetPath: string | undefined,
@@ -585,6 +594,15 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                 {query ? 'No shared profiles matched your search' : 'No shared profiles yet'}
               </p>
             ) : (
+              <TeamBulkEdit<SSHConnectionConfig | S3Config>
+                key={`${vaultId}/${tab}`}
+                profiles={activeProfiles}
+                save={(profile) => saveSharedProfile(vaultId, tab, profile)}
+                reload={() => loadPayload(vaultId)}
+                onError={setError}
+                folderSuggestions={collectTeamFolderSuggestions(entry.payload?.folders ?? [], ssh, s3)}
+              >
+                {(rowSelect) => (
               <div className="flex gap-3">
                 {/* The folder tree beside the list; while searching, the results are one flat list and the tree is not needed. */}
                 {tree.roots.length > 0 && !query.trim() && (
@@ -615,6 +633,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                       handleCloneSSH={(p) => handleCloneSSH(vaultId, p)}
                       handleDeleteSSH={(id, name) => handleDeleteSSH(vaultId, id, name)}
                       setEditing={setEditing}
+                      select={rowSelect(profile.id)}
                     />
                   ) : (
                     <TeamS3ProfileRow
@@ -624,6 +643,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                       handleCloneS3={(p) => handleCloneS3(vaultId, p)}
                       handleDeleteS3={(id, name) => handleDeleteS3(vaultId, id, name)}
                       setEditing={setEditing}
+                      select={rowSelect(profile.id)}
                     />
                   )
                 }
@@ -635,6 +655,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               />
                 </div>
               </div>
+                )}
+              </TeamBulkEdit>
             )}
           </div>
         );

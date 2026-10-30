@@ -6,7 +6,8 @@ import type { S3Config } from '@shared/types/storage';
 import { SftpButton } from '../SftpButton';
 import { OverflowMenu } from '../ui/OverflowMenu';
 import { TagChips } from '../ui/TagChips';
-import type { EditingState } from './types';
+import { ProfileRowCheckbox } from './ProfileRowCheckbox';
+import type { EditingState, RowSelect } from './types';
 
 interface TeamSshProfileRowProps {
   profile: SSHConnectionConfig;
@@ -15,6 +16,8 @@ interface TeamSshProfileRowProps {
   handleCloneSSH: (profile: SSHConnectionConfig) => Promise<void> | void;
   handleDeleteSSH: (id: string, name: string) => Promise<void> | void;
   setEditing: Dispatch<SetStateAction<EditingState | null>>;
+  /** Set by a list that supports selecting several profiles. */
+  select?: RowSelect;
 }
 
 /**
@@ -32,6 +35,7 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
   handleCloneSSH,
   handleDeleteSSH,
   setEditing,
+  select,
 }) => (
   <div className="flex flex-col gap-1">
     <div
@@ -40,9 +44,10 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
         e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'ssh', id: profile.id }));
         e.dataTransfer.effectAllowed = 'move';
       }}
-      className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
+      className="group flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
     >
-      <div className="min-w-0">
+      {select && <ProfileRowCheckbox name={profile.name} select={select} />}
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
           <TagChips tags={profile.tags} />
@@ -101,6 +106,8 @@ interface TeamS3ProfileRowProps {
   handleCloneS3: (profile: S3Config) => Promise<void> | void;
   handleDeleteS3: (id: string, name: string) => Promise<void> | void;
   setEditing: Dispatch<SetStateAction<EditingState | null>>;
+  /** Set by a list that supports selecting several profiles. */
+  select?: RowSelect;
 }
 
 export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
@@ -109,6 +116,7 @@ export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
   handleCloneS3,
   handleDeleteS3,
   setEditing,
+  select,
 }) => (
   <div
     draggable
@@ -116,9 +124,10 @@ export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
       e.dataTransfer.setData('text/plain', JSON.stringify({ type: 's3', id: profile.id }));
       e.dataTransfer.effectAllowed = 'move';
     }}
-    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
+    className="group flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
   >
-    <div className="min-w-0">
+    {select && <ProfileRowCheckbox name={profile.name} select={select} />}
+    <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
         <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
         <TagChips tags={profile.tags} />

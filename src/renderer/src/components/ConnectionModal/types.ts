@@ -46,3 +46,11 @@ export interface TeamVaultMeta {
 export interface TeamProfileTreeListHandle {
   refreshVault: (vaultId: string) => Promise<void>;
 }
+
+/** Lets a profile row take part in a multi-selection: the list owns the selection, the row only shows and toggles it. */
+export interface RowSelect {
+  checked: boolean;
+  /** Some profile in the list is selected, so every row shows its checkbox, not only the one pointed at. */
+  anyChecked: boolean;
+  onToggle: () => void;
+}

@@ -31,6 +31,7 @@ import { K8sConnectionTree } from './K8sConnectionTree';
 import type { Tab, EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './types';
 import { SshProfileRow, SshRecentRow } from './SshProfileRows';
 import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
+import { BulkActionBar } from './BulkActionBar';
 import { TeamProfileTreeList } from './TeamProfileTreeList';
 import {
   collectFolderNames,
@@ -48,6 +49,7 @@ import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { prepareConnect } from '../../lib/openProfile';
+import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
@@ -650,6 +652,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, filteredSSH, query), [filteredSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
+  const bulk = usePersonalBulkEdit({
+    tab,
+    source,
+    open,
+    sshProfiles: filteredSSH,
+    s3Profiles: filteredS3,
+    sshFolders: sshFolderNames,
+    s3Folders: s3FolderNames,
+    reload: load,
+    onError: setError,
+  });
+
   // "N more results elsewhere" (§8): the search field only filters the active source
   // (Personal, or one team), so surface — without switching away — whatever else matches in
   // Personal and every other unlocked team, each one jump-to-able.
@@ -1115,6 +1129,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 </div>
               )}
 
+              {source === 'personal' && (tab === 'ssh' || tab === 's3') && (
+                <div className="mb-3">
+                  <BulkActionBar {...bulk.barProps} />
+                </div>
+              )}
+
               {tab === 'k8s' && (
                 <K8sConnectionTree
                   enableOpenShift={enableOpenShift}
@@ -1291,6 +1311,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                     setEditing={setEditing}
                                     setInstallKeyProfile={setInstallKeyProfile}
                                     setTunnelsProfile={setTunnelsProfile}
+                                    select={bulk.ssh.rowSelect(profile.id)}
                                   />
                                 ))
                               )}
@@ -1418,6 +1439,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                     handleCloneS3={handleCloneS3}
                                     handleDeleteS3={handleDeleteS3}
                                     setEditing={setEditing}
+                                    select={bulk.s3.rowSelect(profile.id)}
                                   />
                                 ))
                               )}

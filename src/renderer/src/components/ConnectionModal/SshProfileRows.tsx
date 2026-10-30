@@ -5,7 +5,8 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { SftpButton } from '../SftpButton';
 import { OverflowMenu } from '../ui/OverflowMenu';
 import { TagChips } from '../ui/TagChips';
-import type { EditingState } from './types';
+import { ProfileRowCheckbox } from './ProfileRowCheckbox';
+import type { EditingState, RowSelect } from './types';
 
 interface SshProfileRowProps {
   profile: SSHConnectionConfig;
@@ -17,6 +18,8 @@ interface SshProfileRowProps {
   setEditing: Dispatch<SetStateAction<EditingState | null>>;
   setInstallKeyProfile: (profile: SSHConnectionConfig) => void;
   setTunnelsProfile: (profile: SSHConnectionConfig) => void;
+  /** Set by a list that supports selecting several profiles. */
+  select?: RowSelect;
 }
 
 /** One entry of the "Recently Used" box for SSH profiles. */
@@ -114,6 +117,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
   setEditing,
   setInstallKeyProfile,
   setTunnelsProfile,
+  select,
 }) => (
   <div
     draggable
@@ -123,9 +127,10 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
     }}
     onDoubleClick={() => void handleConnectSSH(profile)}
     title="Double-click to connect (or drag to folder)"
-    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
+    className="group flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
   >
-    <div className="min-w-0">
+    {select && <ProfileRowCheckbox name={profile.name} select={select} />}
+    <div className="min-w-0 flex-1">
       <div className="flex items-center gap-2">
         <span className="truncate text-sm text-txt-primary font-medium">
           {profile.name}
