@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.74] - 2026-10-30
+
+### Changed
+- the search button is a magnifier among the quick links
+- the search button is an icon button among the quick links
+- match the search button to the design: subtle key cap, room before the divider
+- shorter search button with a divider and a blue border on hover
+
 ## [0.96.73] - 2026-10-30
 
 ### Added
