@@ -19,6 +19,13 @@ Electron 45, a second round of fixes from the code audit, and the system librari
 - Git commit signing with an ECDSA or a security key (FIDO2) now works: such a key is stored the way Git needs it, and a key pasted with the `key::` prefix also updates `allowed_signers`
 - Creating a folder over SFTP reports an error such as "Permission denied" instead of looking as if it worked
 - A failed start of `ssh` for a remote command no longer ends in an uncaught error
+- Linux: if you cancel the password prompt of an update ("Restart to update"), the app is no longer restarted by itself when you close it a little later, and you can try the update again
+- Settings: switching "Show as tab" for a Team Vault, or changing the Connection Manager's start tab, is no longer undone by pressing Save in Settings, toggling hidden files or changing the font size
+- The dotfiles sync notice no longer takes over `Ctrl+Shift+Arrow`, so you can keep moving between panes and tabs while it is shown
+- Tabs and the file manager's folders are saved together reliably (one could overwrite the other), and the app opens even if the saved session cannot be read
+- Renaming a folder in Connection Manager: typing a space no longer folds the folder
+- Team Vault in Connection Manager: you stay in the folder you were in after creating or editing a profile, and an error (a wrong passphrase when unlocking, for example) is shown as a message you can dismiss, with the unlock form still there to try again. If the list of teams cannot be loaded there is a Retry button
+- OpenShift/Kubernetes tree: expanding a cluster or namespace asks for its content once, a refresh also collapses expanded pods, and a failure to share a cluster with the team is shown
 
 ### Changed
 - Updated Electron to 45 (Chromium 156, Node 24.22)
