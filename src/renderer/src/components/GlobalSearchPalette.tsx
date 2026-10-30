@@ -8,6 +8,7 @@ import { useDialogFocus } from '../lib/useDialogFocus';
 import { useGlobalSearchIndex } from '../lib/useGlobalSearchIndex';
 import { buildPaletteGroups, nextFilter, type PaletteFilter, type PaletteRow } from '../lib/globalSearchRows';
 import { buildAdHocConfig, prepareConnect } from '../lib/openProfile';
+import { parseSearchQuery } from '../lib/searchQuery';
 import { buildActionEntries, isGlobalActionId, type GlobalActionId } from '../lib/globalActions';
 import type { AppTab } from '../lib/tabs';
 import { Kbd } from './ui/Kbd';
@@ -68,6 +69,7 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  const actionMode = useMemo(() => parseSearchQuery(query).actionMode, [query]);
   const actions = useMemo(() => buildActionEntries(shortcuts), [shortcuts]);
   const groups = useMemo(
     () => buildPaletteGroups({ entries, actions, locked, query, filter }),
@@ -127,7 +129,7 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
       e.preventDefault();
       const row = rows[activeIndex];
       if (row) void activate(row, e.shiftKey);
-    } else if (e.key === 'Tab' && !e.shiftKey) {
+    } else if (e.key === 'Tab' && !e.shiftKey && !actionMode) {
       e.preventDefault();
       setFilter(nextFilter(filter));
       setActive(0);
@@ -180,27 +182,29 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 border-b border-divider px-4 py-2" role="group" aria-label="Show">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              aria-pressed={filter === f.id}
-              onClick={() => {
-                setFilter(f.id);
-                setActive(0);
-                inputRef.current?.focus();
-              }}
-              className={`rounded-full px-2.5 py-0.5 text-xs cursor-pointer ${
-                filter === f.id
-                  ? 'bg-sky-600 font-medium text-white'
-                  : 'border border-border-subtle text-txt-secondary hover:bg-app-surface-hover'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {!actionMode && (
+          <div className="flex items-center gap-1.5 border-b border-divider px-4 py-2" role="group" aria-label="Show">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                aria-pressed={filter === f.id}
+                onClick={() => {
+                  setFilter(f.id);
+                  setActive(0);
+                  inputRef.current?.focus();
+                }}
+                className={`rounded-full px-2.5 py-0.5 text-xs cursor-pointer ${
+                  filter === f.id
+                    ? 'bg-sky-600 font-medium text-white'
+                    : 'border border-border-subtle text-txt-secondary hover:bg-app-surface-hover'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <ul id="global-search-list" role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-2">
           {rows.length === 0 && (
@@ -233,9 +237,9 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-divider px-4 py-2 text-[11px] text-txt-muted">
           <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> navigate</span>
-          <span><Kbd>Enter</Kbd> connect</span>
-          <span><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> SFTP</span>
-          <span><Kbd>Tab</Kbd> filter</span>
+          <span><Kbd>Enter</Kbd> {actionMode ? 'run' : 'connect'}</span>
+          {!actionMode && <span><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> SFTP</span>}
+          {!actionMode && <span><Kbd>Tab</Kbd> filter</span>}
           <span><Kbd>Esc</Kbd> close</span>
         </div>
       </div>

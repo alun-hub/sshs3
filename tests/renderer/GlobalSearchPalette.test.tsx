@@ -224,6 +224,22 @@ describe('GlobalSearchPalette', () => {
       expect(handlers.onConnectSSH).not.toHaveBeenCalled();
     });
 
+    it('says Enter runs the action and hides the type filter, which does not apply to actions', async () => {
+      const { input } = setup();
+      const hint = () => screen.getByText('close').parentElement!.parentElement!.textContent ?? '';
+      expect(screen.getByRole('group', { name: 'Show' })).toBeInTheDocument();
+      expect(hint()).toContain('connect');
+      expect(hint()).toContain('SFTP');
+      type(input, '>');
+      expect(screen.queryByRole('group', { name: 'Show' })).not.toBeInTheDocument();
+      expect(hint()).toContain('run');
+      expect(hint()).not.toContain('connect');
+      expect(hint()).not.toContain('SFTP');
+      expect(hint()).not.toContain('filter');
+      type(input, '');
+      expect(screen.getByRole('group', { name: 'Show' })).toBeInTheDocument();
+    });
+
     it('does not list the actions among the ordinary results', async () => {
       const { input } = setup();
       type(input, 'new');
