@@ -150,7 +150,7 @@ sshs3 bundles its core runtime, but delegates host connectivity and smartcard co
 | Symptom | Root Cause | Immediate Fix |
 | :--- | :--- | :--- |
 | `dlopen(): error loading libfuse.so.2` | Modern Linux missing FUSE compatibility library | Run `sudo apt install libfuse2t64` (Ubuntu/Debian) and relaunch AppImage. |
-| `error while loading shared libraries: libasound.so.2` (or `libgbm.so.1`) | A `.deb` older than the release that declares these packages, or one installed with `dpkg -i`, which does not resolve dependencies | Run `sudo apt install libasound2t64 libgbm1` (Ubuntu 24.04+, Debian 13; `libasound2` on older releases). Installing with `sudo apt install ./sshs3_<version>_amd64.deb` pulls them in automatically. |
+| `error while loading shared libraries: libasound.so.2` (or `libgbm.so.1`) | A package older than the release that declares them, or a `.deb` installed with `dpkg -i`, which does not install missing dependencies | Run `sudo apt install libasound2t64 libgbm1` (Ubuntu 24.04+, Debian 13; `libasound2` on older releases) or `sudo dnf install alsa-lib mesa-libgbm` (Fedora/RHEL). Installing with `sudo apt install ./sshs3_<version>_amd64.deb` pulls them in automatically. |
 | Windows SmartScreen Warning | Commercial EV certificate not attached | Click **More info** → **Run anyway**. Validate against `SHA256SUMS`. |
 | `Cannot connect to X server` (Linux) | Display mismatch or forced `--ozone-platform=x11` on Wayland | Launch with `--ozone-platform=wayland` in Wayland desktop sessions. |
 | Update toggle disabled in Settings | `SSHS3_DISABLE_UPDATES=1` is active in environment | Unset the variable in `/etc/environment` or user profile if updates are desired. |

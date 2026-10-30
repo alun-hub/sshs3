@@ -33,8 +33,8 @@ ExclusiveArch:  x86_64
 BuildRequires:  rpm
 BuildRequires:  cpio
 
-# The upstream RPM's runtime dependencies, plus alsa-lib (the app links libasound.so.2) and
-# hicolor-icon-theme (owner of the icon directories below). Auto-generated requires are off.
+# The upstream RPM's runtime dependencies, plus alsa-lib and mesa-libgbm (the app links libasound.so.2
+# and libgbm.so.1) and hicolor-icon-theme (owner of the icon directories below). Auto-generated requires are off.
 Requires:       alsa-lib
 Requires:       at-spi2-core
 Requires:       gtk3
@@ -43,6 +43,7 @@ Requires:       libXScrnSaver
 Requires:       libXtst
 Requires:       libnotify
 Requires:       libuuid
+Requires:       mesa-libgbm
 Requires:       nss
 Requires:       xdg-utils
 

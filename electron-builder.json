@@ -81,7 +81,8 @@
       "xdg-utils",
       "at-spi2-core",
       "(libuuid or libuuid1)",
-      "(alsa-lib or libasound2)"
+      "(alsa-lib or libasound2)",
+      "(mesa-libgbm or libgbm1)"
     ],
     "afterRemove": "build/linux/rpm-after-remove.sh",
     "fpm": [
