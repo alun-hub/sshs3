@@ -346,6 +346,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           groupPlaceholder="e.g. Production or Web Servers"
           folderSuggestions={folderSuggestions}
           tagSuggestions={tagSuggestions}
+          groupFollowsSystem={!!initial?.system}
         />
         <div className="col-span-2">
           <SystemMembershipFields

@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { FolderInput, Tag, X } from 'lucide-react';
+import { FolderInput, Layers, Tag, X } from 'lucide-react';
 import { TagInput } from '../ui/TagInput';
 
 interface BulkActionBarProps {
@@ -14,10 +14,14 @@ interface BulkActionBarProps {
   /** `''` takes the profiles out of their folder. */
   onMove: (folder: string) => void;
   onAddTags: (tags: string[]) => void;
+  /** Names of the systems that exist, offered while typing in "Group as system…". */
+  systemSuggestions?: string[];
+  /** Puts the selected profiles into a system (and a folder; `''` means the system's own or the one most are in). Omit where systems are not supported. */
+  onGroupAsSystem?: (name: string, folder: string) => void;
   onClear: () => void;
 }
 
-type Panel = 'move' | 'tags' | null;
+type Panel = 'move' | 'tags' | 'system' | null;
 
 const BUTTON =
   'flex items-center gap-1.5 rounded-lg border border-border-subtle px-2.5 py-1 text-xs font-medium text-txt-secondary transition-colors hover:bg-app-surface-hover hover:text-txt-primary disabled:cursor-not-allowed disabled:opacity-50';
@@ -36,11 +40,14 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
   folderSuggestions,
   onMove,
   onAddTags,
+  systemSuggestions,
+  onGroupAsSystem,
   onClear,
 }) => {
   const [panel, setPanel] = useState<Panel>(null);
   const [folder, setFolder] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [systemName, setSystemName] = useState('');
   const listId = useId();
 
   if (count === 0 && !notice) return null;
@@ -49,10 +56,12 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
     setPanel(null);
     setFolder('');
     setTags([]);
+    setSystemName('');
   };
   const toggle = (next: Exclude<Panel, null>) => {
     setFolder('');
     setTags([]);
+    setSystemName('');
     setPanel((current) => (current === next ? null : next));
   };
   const move = (target: string) => {
@@ -86,6 +95,12 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
           <Tag className="h-3.5 w-3.5" aria-hidden="true" />
           Add tags…
         </button>
+        {onGroupAsSystem && (
+          <button type="button" disabled={busy} aria-expanded={panel === 'system'} onClick={() => toggle('system')} className={BUTTON}>
+            <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+            Group as system…
+          </button>
+        )}
         <button type="button" onClick={onClear} aria-label="Clear selection" className={`${BUTTON} ml-auto`}>
           <X className="h-3.5 w-3.5" aria-hidden="true" />
           Clear
@@ -129,6 +144,66 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
           </button>
           <button type="button" disabled={busy} onClick={() => move('')} className={BUTTON}>
             Take out of folder
+          </button>
+        </div>
+      )}
+
+      {panel === 'system' && onGroupAsSystem && (
+        <div role="group" aria-label="Group as system" className="flex flex-wrap items-center gap-2" onKeyDown={escapeCloses}>
+          <label htmlFor={`${listId}-system`} className="text-xs text-txt-secondary">
+            System
+          </label>
+          <input
+            id={`${listId}-system`}
+            autoFocus
+            value={systemName}
+            list={systemSuggestions && systemSuggestions.length > 0 ? `${listId}-systems` : undefined}
+            onChange={(e) => setSystemName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && systemName.trim() !== '') {
+                e.preventDefault();
+                onGroupAsSystem(systemName, folder);
+                close();
+              }
+            }}
+            placeholder="Existing or new, e.g. Webshop"
+            className={PANEL_INPUT}
+          />
+          {systemSuggestions && systemSuggestions.length > 0 && (
+            <datalist id={`${listId}-systems`}>
+              {systemSuggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          )}
+          <label htmlFor={`${listId}-system-folder`} className="text-xs text-txt-secondary">
+            Folder (optional)
+          </label>
+          <input
+            id={`${listId}-system-folder`}
+            value={folder}
+            list={folderSuggestions.length > 0 ? listId : undefined}
+            onChange={(e) => setFolder(e.target.value)}
+            placeholder="Default: the system's folder"
+            className={PANEL_INPUT}
+          />
+          {folderSuggestions.length > 0 && (
+            <datalist id={listId}>
+              {folderSuggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          )}
+          <button
+            type="button"
+            disabled={busy || systemName.trim() === ''}
+            onClick={() => {
+              onGroupAsSystem(systemName, folder);
+              close();
+            }}
+            className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Group
           </button>
         </div>
       )}

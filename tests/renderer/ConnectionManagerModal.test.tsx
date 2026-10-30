@@ -1033,6 +1033,29 @@ describe('ConnectionManagerModal multi-select', () => {
     expect(screen.getByRole('checkbox', { name: 'Select Prod Web 01' })).not.toBeChecked();
   });
 
+  it('groups the selected profiles into a system, in a folder, and says so', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod DB 01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Group as system…' }));
+    fireEvent.change(screen.getByLabelText('System'), { target: { value: 'Prod stack' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Group' }));
+
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(2));
+    for (const call of (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[0]).toMatchObject({ group: 'Produktion', system: { name: 'Prod stack' } });
+    }
+    expect(await screen.findByText('Grouped 2 profiles into "Prod stack".')).toBeInTheDocument();
+  });
+
+  it('does not offer grouping as a system for S3 profiles', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Backup Bucket' }));
+    expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Group as system…' })).not.toBeInTheDocument();
+  });
+
   it('selects S3 profiles too, and saves them through the S3 store', async () => {
     await openList();
     fireEvent.click(screen.getByRole('button', { name: /S3/i }));
@@ -1106,6 +1129,50 @@ describe('ConnectionManagerModal systems', () => {
     expect(production).toHaveTextContent('Blog');
     const development = screen.getByText('Utveckling').closest('div.space-y-1\\.5') as HTMLElement;
     expect(development).not.toHaveTextContent('Shop');
+  });
+
+  const dropOnFolder = (folder: string, id: string) => {
+    const header = screen.getByText(folder).closest('div[class*="rounded-lg"]') as HTMLElement;
+    fireEvent.drop(header, { dataTransfer: { getData: () => JSON.stringify({ type: 'ssh', id }) } });
+  };
+
+  it('moves the whole system when one of its servers is dropped on another folder', async () => {
+    await openList();
+    dropOnFolder('Utveckling', 'b');
+    // 'c' already says Utveckling, so only the two servers that disagree are saved.
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(2));
+    const saved = (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls.map(([p]) => [p.id, p.group]);
+    expect(saved).toEqual([['a', 'Utveckling'], ['b', 'Utveckling']]);
+  });
+
+  it('renames a system by saving each of its servers with the new name', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Shop' }));
+    const field = screen.getByRole('textbox', { name: 'New name for Shop' });
+    fireEvent.change(field, { target: { value: 'Webshop' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(3));
+    const saved = (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls.map(([x]) => [x.id, x.system.name]);
+    expect(saved.sort()).toEqual([['a', 'Webshop'], ['b', 'Webshop'], ['c', 'Webshop']]);
+  });
+
+  it('ungrouping asks first, then takes every server out of the system but keeps the profiles', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('button', { name: 'Ungroup Shop' }));
+    expect(window.multissh.profilesSaveSSH).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ungroup' }));
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(3));
+    for (const [saved] of (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls) {
+      expect('system' in saved).toBe(false);
+      expect(saved.name).toMatch(/^Shop/);
+    }
+  });
+
+  it('still moves a plain profile on its own', async () => {
+    await openList();
+    dropOnFolder('Utveckling', 'd');
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(1));
+    expect((window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({ id: 'd', group: 'Utveckling' });
   });
 
   it('connects to every server of the system, as personal, in one call', async () => {

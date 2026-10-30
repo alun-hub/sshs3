@@ -268,6 +268,83 @@ describe('TeamProfileTreeList multi-select', () => {
     expect(screen.getByText('1 selected')).toBeInTheDocument();
   });
 
+  it('groups the selected shared profiles into a system through the vault, without the vault reference', async () => {
+    renderList();
+    await select('web-1', 'db-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Group as system…' }));
+    fireEvent.change(screen.getByLabelText('System'), { target: { value: 'Stack' } });
+    fireEvent.change(screen.getByLabelText('Folder (optional)'), { target: { value: 'Acme Infra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Group' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    for (const [vaultId, profile] of save.mock.calls) {
+      expect(vaultId).toBe('v1');
+      expect(profile).toMatchObject({ group: 'Acme Infra', system: { name: 'Stack' } });
+      expect('teamVaultProfileRef' in profile).toBe(false);
+    }
+  });
+
+  it('moves the whole system when one of its servers is moved to another folder', async () => {
+    getPayload.mockResolvedValue({
+      ssh: [
+        { id: 'p1', name: 'web-1', host: 'h1', username: 'root', authType: 'password', system: { name: 'Stack' } },
+        { id: 'p2', name: 'web-2', host: 'h2', username: 'root', authType: 'password', system: { name: 'Stack' } },
+        { id: 'p3', name: 'db-1', host: 'h3', username: 'root', authType: 'password' },
+      ],
+      s3: [],
+      folders: ['Acme Infra'],
+    });
+    renderList();
+    await select('web-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Acme Infra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls.map(([, p]) => p.id)).toEqual(['p1', 'p2']);
+  });
+
+  describe('managing a shared system', () => {
+    beforeEach(() => {
+      getPayload.mockResolvedValue({
+        ssh: [
+          { id: 'p1', name: 'web-1', host: 'h1', username: 'root', authType: 'password', system: { name: 'Stack' } },
+          { id: 'p2', name: 'web-2', host: 'h2', username: 'root', authType: 'password', system: { name: 'Stack', startDirectory: '/srv' } },
+        ],
+        s3: [],
+        folders: [],
+      });
+    });
+
+    it('renames it by saving each server through the vault', async () => {
+      renderList();
+      fireEvent.click(await screen.findByRole('button', { name: 'Rename Stack' }));
+      const field = screen.getByRole('textbox', { name: 'New name for Stack' });
+      fireEvent.change(field, { target: { value: 'Platform' } });
+      fireEvent.keyDown(field, { key: 'Enter' });
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      expect(save.mock.calls.map(([vault, p]) => [vault, p.id, p.system])).toEqual([
+        ['v1', 'p1', { name: 'Platform' }],
+        ['v1', 'p2', { name: 'Platform', startDirectory: '/srv' }],
+      ]);
+    });
+
+    it('ungroups it after asking, keeping the profiles', async () => {
+      renderList();
+      fireEvent.click(await screen.findByRole('button', { name: 'Ungroup Stack' }));
+      expect(save).not.toHaveBeenCalled();
+      fireEvent.click(await screen.findByRole('button', { name: 'Ungroup' }));
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      for (const [, p] of save.mock.calls) expect('system' in p).toBe(false);
+    });
+  });
+
+  it('does not offer grouping as a system on the S3 tab', async () => {
+    getPayload.mockResolvedValue({ ssh: [], s3: [{ id: 'b1', name: 'bucket', region: 'r', accessKeyId: 'a', secretAccessKey: 'b' }], folders: [] }); // pragma: allowlist secret
+    renderList({ tab: 's3' });
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select bucket' }));
+    expect(screen.queryByRole('button', { name: 'Group as system…' })).not.toBeInTheDocument();
+  });
+
   it('starts with an empty selection on the S3 tab', async () => {
     const { rerender } = renderList();
     await select('web-1');

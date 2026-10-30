@@ -51,6 +51,8 @@ import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { prepareConnect } from '../../lib/openProfile';
+import { saveInOrder } from '../../lib/saveInOrder';
+import { moveWithSystems, renameSystem, ungroupSystem } from '../../lib/systemEdit';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
@@ -527,10 +529,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       const targetGroup = groupName === 'Ungrouped' ? undefined : groupName;
 
       if (data.type === 'ssh') {
-        const profile = sshProfiles.find((p) => p.id === data.id);
-        if (profile && profile.group !== targetGroup) {
-          await window.multissh.profilesSaveSSH({ ...profile, group: targetGroup });
-          await load();
+        // A server in a system takes the whole system along.
+        const changed = moveWithSystems(sshProfiles, new Set([data.id]), targetGroup);
+        if (changed.length > 0) {
+          await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to move the profile');
         }
       } else if (data.type === 's3') {
         const profile = s3Profiles.find((p) => p.id === data.id);
@@ -542,6 +544,18 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     } catch {
       // Ignore invalid drag-drop data
     }
+  };
+
+  const handleRenameSystem = async (members: SSHConnectionConfig[], newName: string) => {
+    const changed = renameSystem(sshProfiles, members[0].system!.name, newName);
+    await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to rename the system');
+  };
+
+  const handleUngroupSystem = async (members: SSHConnectionConfig[]) => {
+    const name = members[0].system!.name;
+    if (!(await confirm({ title: 'Ungroup system', message: `Ungroup "${name}"? The servers stay, they are just no longer a system.`, confirmLabel: 'Ungroup', danger: false }))) return;
+    const changed = ungroupSystem(sshProfiles, name);
+    await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to ungroup the system');
   };
 
   // Team Vault folder CRUD and drag-and-drop moves now live entirely inside
@@ -664,6 +678,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     source,
     open,
     sshProfiles: filteredSSH,
+    allSshProfiles: sshProfiles,
     s3Profiles: filteredS3,
     sshFolders: sshFolderNames,
     s3Folders: s3FolderNames,
@@ -1330,6 +1345,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onConnectSystem={onConnectSystem}
                                   collapsed={collapsedGroups}
                                   onToggle={toggleGroup}
+                                  onRenameSystem={(members, name) => void handleRenameSystem(members, name)}
+                                  onUngroupSystem={(members) => void handleUngroupSystem(members)}
                                 />
                               )}
                             </div>

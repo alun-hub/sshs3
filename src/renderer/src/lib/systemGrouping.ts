@@ -26,7 +26,7 @@ const systemNameOf = (profile: SystemProfile): string | undefined => {
 const key = (name: string) => name.toLowerCase();
 
 /** The folder most of `members` are in, counting "no folder" as one; a tie goes to the first of them. */
-function mostCommonFolder(members: readonly SystemProfile[]): string | undefined {
+export function mostCommonFolder(members: readonly SystemProfile[]): string | undefined {
   const counts = new Map<string | undefined, number>();
   for (const member of members) counts.set(member.group, (counts.get(member.group) ?? 0) + 1);
   let best: string | undefined = members[0].group;

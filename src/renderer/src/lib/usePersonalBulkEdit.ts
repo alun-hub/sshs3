@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { useBulkProfileEdit } from './useBulkProfileEdit';
+import { systemNames } from './systemGrouping';
 
 interface UsePersonalBulkEditOptions {
   tab: string;
@@ -10,6 +11,8 @@ interface UsePersonalBulkEditOptions {
   open: boolean;
   /** The profiles the lists are showing now (after the search filter). */
   sshProfiles: SSHConnectionConfig[];
+  /** Every SSH profile, also the ones the search hides: a moved server takes its whole system along. */
+  allSshProfiles?: SSHConnectionConfig[];
   s3Profiles: S3Config[];
   sshFolders: string[];
   s3Folders: string[];
@@ -27,6 +30,7 @@ export function usePersonalBulkEdit({
   source,
   open,
   sshProfiles,
+  allSshProfiles,
   s3Profiles,
   sshFolders,
   s3Folders,
@@ -35,6 +39,7 @@ export function usePersonalBulkEdit({
 }: UsePersonalBulkEditOptions) {
   const ssh = useBulkProfileEdit<SSHConnectionConfig>({
     profiles: sshProfiles,
+    allProfiles: allSshProfiles,
     save: (profile) => window.multissh.profilesSaveSSH(profile),
     reload,
     onError,
@@ -64,6 +69,8 @@ export function usePersonalBulkEdit({
       folderSuggestions: tab === 's3' ? s3Folders : sshFolders,
       onMove: (folder: string) => void active.moveTo(folder),
       onAddTags: (tags: string[]) => void active.addTags(tags),
+      systemSuggestions: tab === 's3' ? undefined : systemNames(allSshProfiles ?? sshProfiles),
+      onGroupAsSystem: tab === 's3' ? undefined : (name: string, folder: string) => void ssh.groupAsSystem(name, folder),
       onClear: active.clear,
     },
   };

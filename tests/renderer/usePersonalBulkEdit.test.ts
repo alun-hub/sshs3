@@ -135,4 +135,51 @@ describe('usePersonalBulkEdit', () => {
     rerender({ ...base, sshProfiles: ssh as never } as Parameters<typeof usePersonalBulkEdit>[0]);
     expect(result.current.barProps.count).toBe(2);
   });
+
+  it('offers "Group as system" on the SSH tab only, with the names of the existing systems', () => {
+    const withSystem = [
+      { id: 's1', name: 'web', system: { name: 'Shop' } },
+      { id: 's2', name: 'db' },
+    ];
+    const { result, rerender } = setup({ sshProfiles: withSystem as never, allSshProfiles: withSystem as never });
+    expect(result.current.barProps.systemSuggestions).toEqual(['Shop']);
+    expect(typeof result.current.barProps.onGroupAsSystem).toBe('function');
+    rerender({
+      tab: 's3',
+      source: 'personal',
+      open: true,
+      sshProfiles: withSystem as never,
+      allSshProfiles: withSystem as never,
+      s3Profiles: s3 as never,
+      sshFolders: [],
+      s3Folders: [],
+      reload: vi.fn(),
+      onError: vi.fn(),
+    } as Parameters<typeof usePersonalBulkEdit>[0]);
+    expect(result.current.barProps.onGroupAsSystem).toBeUndefined();
+    expect(result.current.barProps.systemSuggestions).toBeUndefined();
+  });
+
+  it('groups the selected SSH profiles into a system through the personal store', async () => {
+    const { result, profilesSaveSSH, reload } = setup();
+    act(() => result.current.ssh.toggle('s2'));
+    await act(async () => {
+      result.current.barProps.onGroupAsSystem?.('Shop', 'Prod');
+    });
+    expect(profilesSaveSSH).toHaveBeenCalledWith({ id: 's2', name: 'db', group: 'Prod', system: { name: 'Shop' } });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves a whole system when one of its servers is moved, also servers a search hides', async () => {
+    const all = [
+      { id: 's1', name: 'web', group: 'Old', system: { name: 'Shop' } },
+      { id: 's2', name: 'db', group: 'Old', system: { name: 'Shop' } },
+    ];
+    const { result, profilesSaveSSH } = setup({ sshProfiles: [all[0]] as never, allSshProfiles: all as never });
+    act(() => result.current.ssh.toggle('s1'));
+    await act(async () => {
+      result.current.barProps.onMove('Prod');
+    });
+    expect(profilesSaveSSH.mock.calls.map(([p]) => p.id)).toEqual(['s1', 's2']);
+  });
 });

@@ -10,6 +10,8 @@ import { TeamFolderSidebar } from './TeamFolderSidebar';
 import { TeamBulkEdit } from './TeamBulkEdit';
 import { SystemAwareRows } from './SystemAwareRows';
 import { alignSystemMembers, systemNames } from '../../lib/systemGrouping';
+import { saveInOrder } from '../../lib/saveInOrder';
+import { moveWithSystems, renameSystem, ungroupSystem } from '../../lib/systemEdit';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
@@ -372,10 +374,16 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
       if (data.type !== kind) return;
       const payload = entries[vaultId]?.payload;
       if (kind === 'ssh') {
-        const profile = payload?.ssh.find((p) => p.id === data.id);
-        if (profile && profile.group !== targetPath) {
-          await window.multissh.teamVaultSaveSSHProfile(vaultId, { ...profile, group: targetPath });
-          await loadPayload(vaultId);
+        // A server in a system takes the whole system along.
+        const changed = moveWithSystems(payload?.ssh ?? [], new Set([data.id]), targetPath);
+        if (changed.length > 0) {
+          await saveInOrder(
+            changed,
+            (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p),
+            () => loadPayload(vaultId),
+            setError,
+            'Failed to move the profile'
+          );
         }
       } else {
         const profile = payload?.s3.find((p) => p.id === data.id);
@@ -387,6 +395,18 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     } catch {
       // Ignore invalid drag-drop data
     }
+  };
+
+  const handleRenameSystem = async (vaultId: string, members: SSHConnectionConfig[], newName: string) => {
+    const changed = renameSystem(entries[vaultId]?.payload?.ssh ?? [], members[0].system!.name, newName);
+    await saveInOrder(changed, (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p), () => loadPayload(vaultId), setError, 'Failed to rename the system');
+  };
+
+  const handleUngroupSystem = async (vaultId: string, members: SSHConnectionConfig[]) => {
+    const name = members[0].system!.name;
+    if (!(await confirm({ title: 'Ungroup system', message: `Ungroup "${name}"? The servers stay, they are just no longer a system.`, confirmLabel: 'Ungroup', danger: false }))) return;
+    const changed = ungroupSystem(entries[vaultId]?.payload?.ssh ?? [], name);
+    await saveInOrder(changed, (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p), () => loadPayload(vaultId), setError, 'Failed to ungroup the system');
   };
 
   if (loading) {
@@ -605,6 +625,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               <TeamBulkEdit<SSHConnectionConfig | S3Config>
                 key={`${vaultId}/${tab}`}
                 profiles={activeProfiles}
+                allProfiles={tab === 'ssh' ? sshWithRef : s3WithRef}
+                systemSuggestions={tab === 'ssh' ? systemNames(ssh) : undefined}
                 save={(profile) => saveSharedProfile(vaultId, tab, profile)}
                 reload={() => loadPayload(vaultId)}
                 onError={setError}
@@ -667,6 +689,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                           onConnectSystem={onConnectSystem}
                           collapsed={collapsedSystems}
                           onToggle={toggleSystem}
+                          onRenameSystem={(members, name) => void handleRenameSystem(vaultId, members, name)}
+                          onUngroupSystem={(members) => void handleUngroupSystem(vaultId, members)}
                         />
                       )
                     : undefined

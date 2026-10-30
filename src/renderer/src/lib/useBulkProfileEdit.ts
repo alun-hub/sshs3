@@ -1,16 +1,19 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { describeIpcError } from './format';
-import { normalizeFolderName, withAddedTags, withGroup } from './bulkProfileEdit';
+import { saveInOrder } from './saveInOrder';
+import { normalizeSystem } from '@shared/system';
+import { normalizeFolderName, withAddedTags } from './bulkProfileEdit';
+import { defaultSystemFolder, groupAsSystem as groupAsSystemOf, moveWithSystems } from './systemEdit';
+import type { SystemProfile } from './systemGrouping';
 
-interface BulkProfile {
-  id: string;
-  group?: string;
+interface BulkProfile extends SystemProfile {
   tags?: string[];
 }
 
 interface UseBulkProfileEditOptions<T extends BulkProfile> {
   /** The profiles of the list being shown (one protocol, one source); a selected id that leaves it is forgotten. */
   profiles: readonly T[];
+  /** Every profile of the list, also the ones a search hides. Moving a server moves its whole system, hidden servers included. */
+  allProfiles?: readonly T[];
   /** Saves one profile through the same path a drag and drop uses (personal store, or the Team Vault). */
   save: (profile: T) => Promise<unknown>;
   /** Reads the list again after profiles were saved. */
@@ -27,7 +30,8 @@ const plural = (n: number) => `${n} profile${n === 1 ? '' : 's'}`;
  * retried. Only profiles that would actually change are saved, so a Team Vault revision is not
  * bumped for nothing.
  */
-export function useBulkProfileEdit<T extends BulkProfile>({ profiles, save, reload, onError }: UseBulkProfileEditOptions<T>) {
+export function useBulkProfileEdit<T extends BulkProfile>({ profiles, allProfiles, save, reload, onError }: UseBulkProfileEditOptions<T>) {
+  const everyone = allProfiles ?? profiles;
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,22 +57,7 @@ export function useBulkProfileEdit<T extends BulkProfile>({ profiles, save, relo
     setChosen(new Set());
   }, []);
 
-  /**
-   * Saves `changed` in order. Resolves true when all were saved; on the first failure it stops, reloads
-   * what was saved and only then reports the error (reloading usually clears the error showing), and
-   * resolves false.
-   */
-  const saveAll = async (changed: T[], failure: string): Promise<boolean> => {
-    let message: string | null = null;
-    try {
-      for (const profile of changed) await save(profile);
-    } catch (err) {
-      message = describeIpcError(err, failure);
-    }
-    await reload();
-    if (message !== null) onError(message);
-    return message === null;
-  };
+  const saveAll = (changed: T[], failure: string) => saveInOrder(changed, save, reload, onError, failure);
 
   const run = async (work: () => Promise<void>) => {
     if (busyRef.current || selection.size === 0) return;
@@ -85,7 +74,7 @@ export function useBulkProfileEdit<T extends BulkProfile>({ profiles, save, relo
   const moveTo = (rawFolder: string) =>
     run(async () => {
       const folder = normalizeFolderName(rawFolder);
-      const changed = withGroup(profiles, selection, folder);
+      const changed = moveWithSystems(everyone, selection, folder);
       if (changed.length === 0) {
         setNotice(folder ? `Already in "${folder}".` : 'None of them is in a folder.');
         return;
@@ -93,6 +82,25 @@ export function useBulkProfileEdit<T extends BulkProfile>({ profiles, save, relo
       if (await saveAll(changed, 'Failed to move the profiles')) {
         setChosen(new Set());
         setNotice(folder ? `Moved ${plural(changed.length)} to "${folder}".` : `Moved ${plural(changed.length)} out of ${changed.length === 1 ? 'its' : 'their'} folder.`);
+      }
+    });
+
+  const groupAsSystem = (rawName: string, rawFolder: string) =>
+    run(async () => {
+      const name = normalizeSystem({ name: rawName }, undefined)?.name;
+      if (!name) {
+        setNotice('Enter a name for the system.');
+        return;
+      }
+      const folder = rawFolder.trim() !== '' ? normalizeFolderName(rawFolder) : defaultSystemFolder(everyone, selection, name);
+      const changed = groupAsSystemOf(everyone, selection, name, folder);
+      if (changed.length === 0) {
+        setNotice(`Already in "${name}".`);
+        return;
+      }
+      if (await saveAll(changed, 'Failed to group the profiles')) {
+        setChosen(new Set());
+        setNotice(`Grouped ${plural(selection.size)} into "${name}".`);
       }
     });
 
@@ -117,6 +125,7 @@ export function useBulkProfileEdit<T extends BulkProfile>({ profiles, save, relo
     toggle,
     clear,
     moveTo,
+    groupAsSystem,
     addTags,
     busy,
     notice,

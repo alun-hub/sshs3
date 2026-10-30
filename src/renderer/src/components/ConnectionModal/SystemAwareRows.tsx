@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronRight, Layers, Pencil, Unlink } from 'lucide-react';
 import { groupBySystem, type SystemProfile } from '../../lib/systemGrouping';
 
 interface SystemAwareRowsProps<T extends SystemProfile> {
@@ -13,6 +13,10 @@ interface SystemAwareRowsProps<T extends SystemProfile> {
   /** Collapsed systems, by `sys-<source>-<name in lower case>`. */
   collapsed: Record<string, boolean>;
   onToggle: (key: string) => void;
+  /** Gives every server of a system a new name. Omit where editing is not offered: the button is left out. */
+  onRenameSystem?: (members: T[], newName: string) => void;
+  /** Takes every server out of its system (the profiles stay). The caller confirms. */
+  onUngroupSystem?: (members: T[]) => void;
 }
 
 const ROW =
@@ -29,7 +33,10 @@ export function SystemAwareRows<T extends SystemProfile>({
   onConnectSystem,
   collapsed,
   onToggle,
+  onRenameSystem,
+  onUngroupSystem,
 }: SystemAwareRowsProps<T>): React.ReactElement | null {
+  const [renaming, setRenaming] = useState<{ key: string; value: string } | null>(null);
   const { systems, loose } = groupBySystem(profiles);
   if (systems.length === 0 && loose.length === 0) return null;
   return (
@@ -51,9 +58,52 @@ export function SystemAwareRows<T extends SystemProfile>({
                 {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
               </button>
               <Layers className="h-3.5 w-3.5 shrink-0 text-sky-400" aria-hidden="true" />
-              <span className="min-w-0 truncate text-sm font-semibold text-txt-primary">{system.name}</span>
+              {renaming?.key === key ? (
+                <input
+                  autoFocus
+                  aria-label={`New name for ${system.name}`}
+                  value={renaming.value}
+                  onChange={(e) => setRenaming({ key, value: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onRenameSystem?.(system.members, renaming.value);
+                      setRenaming(null);
+                    } else if (e.key === 'Escape') {
+                      // Only the field closes, not the whole Connection Manager.
+                      e.stopPropagation();
+                      setRenaming(null);
+                    }
+                  }}
+                  onBlur={() => setRenaming(null)}
+                  className="min-w-0 flex-1 rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+                />
+              ) : (
+                <span className="min-w-0 truncate text-sm font-semibold text-txt-primary">{system.name}</span>
+              )}
               <span className="shrink-0 text-xs text-txt-muted">{`${count} server${count === 1 ? '' : 's'}`}</span>
               <span className="flex-1" />
+              {onRenameSystem && (
+                <button
+                  type="button"
+                  aria-label={`Rename ${system.name}`}
+                  title="Rename system"
+                  onClick={() => setRenaming({ key, value: system.name })}
+                  className="shrink-0 rounded p-1 text-txt-muted hover:text-txt-primary"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+              {onUngroupSystem && (
+                <button
+                  type="button"
+                  aria-label={`Ungroup ${system.name}`}
+                  title="Ungroup system (the servers stay)"
+                  onClick={() => onUngroupSystem(system.members)}
+                  className="shrink-0 rounded p-1 text-txt-muted hover:text-txt-primary"
+                >
+                  <Unlink className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
               {onConnectSystem && (
                 <button
                   type="button"

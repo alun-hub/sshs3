@@ -92,6 +92,42 @@ describe('SystemAwareRows', () => {
     expect(screen.getByText('2 servers')).toBeInTheDocument();
   });
 
+  it('has no Rename or Ungroup buttons when editing is not offered', () => {
+    setup([p('1', 'web', 'shop')]);
+    expect(screen.queryByRole('button', { name: 'Rename shop' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ungroup shop' })).not.toBeInTheDocument();
+  });
+
+  it('renames a system in place: Enter hands over the servers and the new name', () => {
+    const onRenameSystem = vi.fn();
+    setup([p('1', 'web', 'shop'), p('2', 'db', 'shop')], { onRenameSystem });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
+    const field = screen.getByRole('textbox', { name: 'New name for shop' });
+    expect(field).toHaveValue('shop');
+    fireEvent.change(field, { target: { value: 'webshop' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onRenameSystem).toHaveBeenCalledTimes(1);
+    expect(onRenameSystem.mock.calls[0][0].map((m: SystemProfile) => m.id)).toEqual(['2', '1']);
+    expect(onRenameSystem.mock.calls[0][1]).toBe('webshop');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('Escape closes the rename field without renaming', () => {
+    const onRenameSystem = vi.fn();
+    setup([p('1', 'web', 'shop')], { onRenameSystem });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(onRenameSystem).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('hands the servers of the system over when it is ungrouped', () => {
+    const onUngroupSystem = vi.fn();
+    setup([p('1', 'web', 'shop'), p('2', 'other', 'blog')], { onUngroupSystem });
+    fireEvent.click(screen.getByRole('button', { name: 'Ungroup shop' }));
+    expect(onUngroupSystem.mock.calls[0][0].map((m: SystemProfile) => m.id)).toEqual(['1']);
+  });
+
   it('draws nothing for no profiles', () => {
     const { container } = render(
       <SystemAwareRows profiles={[]} source="personal" renderProfile={() => null} collapsed={{}} onToggle={vi.fn()} />

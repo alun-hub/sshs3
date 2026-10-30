@@ -399,6 +399,20 @@ describe('SSHProfileForm', () => {
       expect(onSave.mock.calls[0][0].system).toEqual({ name: 'shop', startDirectory: '/srv/web', tunnelIds: ['t1'] });
     });
 
+    it('shows the folder of a server in a system but does not let it be edited there', () => {
+      render(<SSHProfileForm initial={{ ...base, group: 'Prod', system: { name: 'shop' } }} onSave={vi.fn()} onCancel={vi.fn()} />);
+      const folder = screen.getByLabelText(/Group \/ Folder/);
+      expect(folder).toHaveValue('Prod');
+      expect(folder).toHaveAttribute('readonly');
+      expect(screen.getByText('Follows the system')).toBeInTheDocument();
+    });
+
+    it('lets the folder be edited for a server that is in no system', () => {
+      render(<SSHProfileForm initial={{ ...base, group: 'Prod' }} onSave={vi.fn()} onCancel={vi.fn()} />);
+      expect(screen.getByLabelText(/Group \/ Folder/)).not.toHaveAttribute('readonly');
+      expect(screen.queryByText('Follows the system')).not.toBeInTheDocument();
+    });
+
     it('shows the system a server is already in, and takes it out when the name is cleared', async () => {
       const onSave = vi.fn();
       render(<SSHProfileForm initial={{ ...base, system: { name: 'shop', shell: false } }} onSave={onSave} onCancel={vi.fn()} />);

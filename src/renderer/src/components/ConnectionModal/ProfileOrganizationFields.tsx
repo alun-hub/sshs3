@@ -11,6 +11,8 @@ interface ProfileOrganizationFieldsProps {
   folderSuggestions?: string[];
   /** Tags already in use on other profiles, offered while typing. */
   tagSuggestions?: string[];
+  /** The folder belongs to the profile's system, so it is shown but not edited here (move the system instead). */
+  groupFollowsSystem?: boolean;
 }
 
 /**
@@ -25,6 +27,7 @@ export const ProfileOrganizationFields: React.FC<ProfileOrganizationFieldsProps>
   groupPlaceholder,
   folderSuggestions,
   tagSuggestions,
+  groupFollowsSystem = false,
 }) => {
   const baseId = useId();
   const folderListId = `${baseId}-folders`;
@@ -36,11 +39,14 @@ export const ProfileOrganizationFields: React.FC<ProfileOrganizationFieldsProps>
         <input
           value={group ?? ''}
           onChange={(e) => onGroupChange(e.target.value)}
-          list={folderSuggestions ? folderListId : undefined}
+          readOnly={groupFollowsSystem}
+          title={groupFollowsSystem ? 'The folder follows the system. Move the system to change it.' : undefined}
+          list={folderSuggestions && !groupFollowsSystem ? folderListId : undefined}
           className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
           placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : groupPlaceholder}
         />
-        {folderSuggestions && (
+        {groupFollowsSystem && <span className="text-xs text-txt-muted">Follows the system</span>}
+        {folderSuggestions && !groupFollowsSystem && (
           <datalist id={folderListId}>
             {folderSuggestions.map((path) => (
               <option key={path} value={path} />
