@@ -19,9 +19,10 @@ interface Setup {
   vaults?: unknown[];
   payload?: { ssh: unknown[]; s3: unknown[] } | null;
   tabs?: AppTab[];
+  shortcuts?: Record<string, string>;
 }
 
-function setup({ personal, vaults = [], payload = null, tabs = [] }: Setup = {}) {
+function setup({ personal, vaults = [], payload = null, tabs = [], shortcuts }: Setup = {}) {
   const multissh = {
     profilesGet: vi.fn().mockResolvedValue(
       personal ?? {
@@ -46,8 +47,9 @@ function setup({ personal, vaults = [], payload = null, tabs = [] }: Setup = {})
     onConnectS3: vi.fn(),
     onSelectTab: vi.fn(),
     onOpenConnectionManager: vi.fn(),
+    onRunAction: vi.fn(),
   };
-  render(<GlobalSearchPalette tabs={tabs} {...handlers} />);
+  render(<GlobalSearchPalette tabs={tabs} shortcuts={shortcuts} {...handlers} />);
   return { multissh, handlers, input: screen.getByRole('combobox') };
 }
 
@@ -199,6 +201,43 @@ describe('GlobalSearchPalette', () => {
     fireEvent.keyDown(input, { key: 'Tab' });
     expect(within(group).getByRole('button', { name: 'Open tabs' })).toHaveAttribute('aria-pressed', 'true');
     expect(optionTexts()[0]).toContain('web shell');
+  });
+
+  describe('actions (>)', () => {
+    it('lists the actions with their key combinations when the input is a lone >', async () => {
+      const { input } = setup({ shortcuts: { newTerminal: 'Ctrl+Alt+T' } });
+      await waitFor(() => expect(options().length).toBeGreaterThan(0));
+      type(input, '>');
+      expect(optionTexts()).toHaveLength(7);
+      const terminal = optionTexts().find((t) => t.includes('New Terminal'))!;
+      expect(terminal).toContain('Ctrl+Alt+T');
+      expect(screen.getByText('Actions')).toBeInTheDocument();
+    });
+
+    it('narrows them as you type and runs the chosen one on Enter, then closes', async () => {
+      const { input, handlers } = setup();
+      type(input, '>settings');
+      await waitFor(() => expect(optionTexts()[0]).toContain('Settings'));
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(handlers.onRunAction).toHaveBeenCalledWith('openSettings'));
+      expect(handlers.onClose).toHaveBeenCalled();
+      expect(handlers.onConnectSSH).not.toHaveBeenCalled();
+    });
+
+    it('does not list the actions among the ordinary results', async () => {
+      const { input } = setup();
+      type(input, 'new');
+      expect(optionTexts().join(' ')).not.toContain('New Terminal');
+    });
+
+    it('ignores Shift+Enter on an action instead of running it as something else', async () => {
+      const { input, handlers } = setup();
+      type(input, '>new terminal');
+      await waitFor(() => expect(optionTexts()[0]).toContain('New Terminal'));
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      await waitFor(() => expect(handlers.onRunAction).toHaveBeenCalledWith('newTerminal'));
+      expect(handlers.onOpenSFTP).not.toHaveBeenCalled();
+    });
   });
 
   it('closes on Escape and from the close button and the backdrop', async () => {

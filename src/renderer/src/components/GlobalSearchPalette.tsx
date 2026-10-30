@@ -8,12 +8,15 @@ import { useDialogFocus } from '../lib/useDialogFocus';
 import { useGlobalSearchIndex } from '../lib/useGlobalSearchIndex';
 import { buildPaletteGroups, nextFilter, type PaletteFilter, type PaletteRow } from '../lib/globalSearchRows';
 import { buildAdHocConfig, prepareConnect } from '../lib/openProfile';
+import { buildActionEntries, isGlobalActionId, type GlobalActionId } from '../lib/globalActions';
 import type { AppTab } from '../lib/tabs';
 import { Kbd } from './ui/Kbd';
 import { GlobalSearchResultRow } from './GlobalSearchResultRow';
 
 interface GlobalSearchPaletteProps {
   tabs: AppTab[];
+  /** The user's key bindings, shown next to the actions. */
+  shortcuts: Record<string, string> | undefined;
   onClose: () => void;
   /** Opens a terminal (reusing an empty active tab, as Connection Manager does). */
   onConnectSSH: (config: SSHConnectionConfig) => void;
@@ -22,6 +25,8 @@ interface GlobalSearchPaletteProps {
   onSelectTab: (tabId: string) => void;
   /** Opens Connection Manager, where a locked Team Vault can be unlocked. */
   onOpenConnectionManager: () => void;
+  /** Runs a `>` action (new tab, Settings, ...). */
+  onRunAction: (id: GlobalActionId) => void;
 }
 
 const FILTERS: Array<{ id: PaletteFilter; label: string }> = [
@@ -32,17 +37,19 @@ const FILTERS: Array<{ id: PaletteFilter; label: string }> = [
 
 /**
  * "Go to anything": one input that finds saved profiles (personal and Team Vault), open tabs and a
- * typed user@host. Mounted only while open. Enter connects, Shift+Enter opens SFTP, Tab cycles the
- * type filter, Esc closes.
+ * typed user@host; a leading `>` lists actions instead. Mounted only while open. Enter connects,
+ * Shift+Enter opens SFTP, Tab cycles the type filter, Esc closes.
  */
 export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
   tabs,
+  shortcuts,
   onClose,
   onConnectSSH,
   onOpenSFTP,
   onConnectS3,
   onSelectTab,
   onOpenConnectionManager,
+  onRunAction,
 }) => {
   const onBackdrop = useModalDismiss(onClose, true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -61,7 +68,11 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
-  const groups = useMemo(() => buildPaletteGroups({ entries, locked, query, filter }), [entries, locked, query, filter]);
+  const actions = useMemo(() => buildActionEntries(shortcuts), [shortcuts]);
+  const groups = useMemo(
+    () => buildPaletteGroups({ entries, actions, locked, query, filter }),
+    [entries, actions, locked, query, filter]
+  );
   const rows = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
   const activeIndex = Math.min(active, Math.max(rows.length - 1, 0));
   const activeId = rows.length > 0 ? `global-search-row-${activeIndex}` : undefined;
@@ -81,6 +92,10 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
         const config = buildAdHocConfig(row.target);
         onClose();
         (sftp ? onOpenSFTP : onConnectSSH)(config);
+      } else if (row.entry.kind === 'action') {
+        const id = row.entry.ref;
+        onClose();
+        if (isGlobalActionId(id)) onRunAction(id);
       } else if (row.entry.kind === 'tab') {
         onClose();
         onSelectTab(row.entry.ref);
@@ -152,7 +167,7 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search profiles, tags (#prod) or type user@host…"
+            placeholder="Search profiles, tags (#prod), user@host or > for actions…"
             className="min-w-0 flex-1 bg-transparent text-sm text-txt-primary outline-none placeholder-txt-muted"
           />
           <button

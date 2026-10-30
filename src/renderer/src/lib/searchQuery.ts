@@ -7,12 +7,16 @@ export interface ParsedSearch {
   tags: string[];
   /** Set when the whole input is `user@host[:port]`: the palette then offers a one-off connection. */
   adHoc: { username: string; host: string; port?: number } | null;
+  /** True when the input starts with `>`: the palette lists actions instead of profiles and tabs. */
+  actionMode: boolean;
   empty: boolean;
 }
 
-/** Splits the palette's input into words, `#tag` filters and a possible quick-connect target. */
+/** Splits the palette's input into words, `#tag` filters, a possible quick-connect target and the `>` action mode. */
 export function parseSearchQuery(raw: string): ParsedSearch {
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
+  const actionMode = trimmed.startsWith('>');
+  if (actionMode) trimmed = trimmed.slice(1).trim();
   const terms: string[] = [];
   const tags: string[] = [];
   for (const token of trimmed.split(/\s+/)) {
@@ -24,5 +28,11 @@ export function parseSearchQuery(raw: string): ParsedSearch {
       terms.push(token);
     }
   }
-  return { terms, tags, adHoc: parseAdHocTarget(trimmed), empty: terms.length === 0 && tags.length === 0 };
+  return {
+    terms,
+    tags,
+    adHoc: actionMode ? null : parseAdHocTarget(trimmed),
+    actionMode,
+    empty: terms.length === 0 && tags.length === 0,
+  };
 }

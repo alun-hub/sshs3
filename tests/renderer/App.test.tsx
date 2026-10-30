@@ -626,6 +626,27 @@ describe('App Component', () => {
       expect(screen.getByRole('tab')).toHaveTextContent('web-01');
     });
 
+    it('runs an action chosen after > : a new terminal tab, and Settings', async () => {
+      render(<App />);
+      await screen.findByTestId('tab-term-1');
+
+      fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      let input = await screen.findByRole('combobox');
+      fireEvent.change(input, { target: { value: '>new terminal' } });
+      await waitFor(() => expect(screen.getAllByRole('option')[0]).toHaveTextContent('New Terminal'));
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument());
+      expect(screen.getAllByRole('tab')).toHaveLength(2);
+
+      fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      input = await screen.findByRole('combobox');
+      fireEvent.change(input, { target: { value: '>settings' } });
+      await waitFor(() => expect(screen.getAllByRole('option')[0]).toHaveTextContent('Settings'));
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument());
+      expect(screen.getByRole('dialog', { name: /Settings/i })).toBeInTheDocument();
+    });
+
     it('is switched off by the setting: no button, and the shortcut is left alone', async () => {
       const { DEFAULT_SETTINGS } = await import('../../src/shared/types/settings');
       window.multissh.settingsGet = vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, enableGlobalSearch: false });
