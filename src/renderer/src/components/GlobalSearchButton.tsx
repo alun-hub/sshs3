@@ -26,6 +26,11 @@ export const GlobalSearchButton: React.FC<GlobalSearchButtonProps> = ({ onOpen, 
     <span className="hidden flex-1 truncate text-left text-xs xl:inline" aria-hidden="true">
       Search
     </span>
-    <Shortcut id="globalSearch" shortcuts={shortcuts} className="hidden lg:inline-block" />
+    <Shortcut
+      id="globalSearch"
+      shortcuts={shortcuts}
+      variant="plain"
+      className="hidden rounded border border-border-subtle bg-app-surface-subtle px-1 leading-4 lg:inline-block"
+    />
   </button>
 );

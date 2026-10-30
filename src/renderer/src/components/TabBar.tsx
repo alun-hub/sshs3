@@ -430,7 +430,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
       {/* Search: divided from the tabs and from the quick links, as the quick links are */}
       {onOpenGlobalSearch && (
-        <div className="ml-2 flex shrink-0 items-center self-center border-l border-divider pl-2">
+        <div className="ml-2 flex shrink-0 items-center self-center border-l border-divider px-2">
           <GlobalSearchButton onOpen={onOpenGlobalSearch} shortcuts={shortcuts} />
         </div>
       )}

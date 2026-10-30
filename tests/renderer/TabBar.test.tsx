@@ -167,7 +167,7 @@ describe('TabBar Component', () => {
     const { unmount } = render(
       <TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} onOpenGlobalSearch={vi.fn()} />
     );
-    expect(screen.getByTestId('global-search-btn').parentElement).toHaveClass('border-l', 'border-divider');
+    expect(screen.getByTestId('global-search-btn').parentElement).toHaveClass('border-l', 'border-divider', 'px-2');
     unmount();
     render(<TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} />);
     expect(screen.queryByTestId('global-search-btn')).not.toBeInTheDocument();
