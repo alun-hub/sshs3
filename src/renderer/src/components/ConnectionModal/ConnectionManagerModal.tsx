@@ -33,7 +33,7 @@ import { SshProfileRow, SshRecentRow } from './SshProfileRows';
 import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
 import { BulkActionBar } from './BulkActionBar';
 import { SystemAwareRows } from './SystemAwareRows';
-import { alignSystemMembers, systemNames } from '../../lib/systemGrouping';
+import { alignSystemMembers, systemMembersOf, systemNameOf, systemNames } from '../../lib/systemGrouping';
 import { TeamProfileTreeList } from './TeamProfileTreeList';
 import {
   collectFolderNames,
@@ -52,7 +52,8 @@ import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { prepareConnect } from '../../lib/openProfile';
 import { saveInOrder } from '../../lib/saveInOrder';
-import { moveWithSystems, renameSystem, ungroupSystem } from '../../lib/systemEdit';
+import { moveWithSystems } from '../../lib/systemEdit';
+import { createSystemActions } from '../../lib/systemActions';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
@@ -337,8 +338,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   // Team profiles skip the "lastUsedAt" write-back deliberately (see prepareConnect).
+  // Rows may show a profile with its system's folder (for drawing only): connecting stamps and saves the stored one.
+  const storedSSH = (profile: SSHConnectionConfig) => sshProfiles.find((p) => p.id === profile.id) ?? profile;
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
-    onConnectSSH?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveSSH(p)));
+    onConnectSSH?.(await prepareConnect(storedSSH(profile), source, (p) => window.multissh.profilesSaveSSH(p)));
   };
 
   // UX audit finding #3: the quickstart card promised "a local shell, ad-hoc
@@ -546,17 +549,13 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     }
   };
 
-  const handleRenameSystem = async (members: SSHConnectionConfig[], newName: string) => {
-    const changed = renameSystem(sshProfiles, members[0].system!.name, newName);
-    await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to rename the system');
-  };
-
-  const handleUngroupSystem = async (members: SSHConnectionConfig[]) => {
-    const name = members[0].system!.name;
-    if (!(await confirm({ title: 'Ungroup system', message: `Ungroup "${name}"? The servers stay, they are just no longer a system.`, confirmLabel: 'Ungroup', danger: false }))) return;
-    const changed = ungroupSystem(sshProfiles, name);
-    await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to ungroup the system');
-  };
+  const systemActions = createSystemActions({
+    profiles: sshProfiles,
+    save: (p: SSHConnectionConfig) => window.multissh.profilesSaveSSH(p),
+    reload: load,
+    onError: setError,
+    confirm,
+  });
 
   // Team Vault folder CRUD and drag-and-drop moves now live entirely inside
   // `TeamProfileTreeList`, which owns every unlocked vault's payload/folder state itself (and is
@@ -669,7 +668,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   );
 
   // A system lives in one folder: its servers are drawn there even if their own folder differs.
-  const alignedSSH = useMemo(() => alignSystemMembers(filteredSSH), [filteredSSH]);
+  // A system's folder comes from all of its servers, so align before the search narrows the list.
+  const alignedSSH = useMemo(() => filterSshProfiles(alignSystemMembers(sshProfiles), query), [sshProfiles, query]);
   const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, alignedSSH, query), [alignedSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
@@ -1342,11 +1342,15 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   profiles={profiles}
                                   source={source}
                                   renderProfile={renderSshProfile}
-                                  onConnectSystem={onConnectSystem}
+                                  onConnectSystem={
+                                    onConnectSystem &&
+                                    // All of the system, not only the servers a search leaves in the list.
+                                    ((members, src) => onConnectSystem(systemMembersOf(sshProfiles, systemNameOf(members[0]) ?? ''), src))
+                                  }
                                   collapsed={collapsedGroups}
                                   onToggle={toggleGroup}
-                                  onRenameSystem={(members, name) => void handleRenameSystem(members, name)}
-                                  onUngroupSystem={(members) => void handleUngroupSystem(members)}
+                                  onRenameSystem={(members, name) => void systemActions.rename(members, name)}
+                                  onUngroupSystem={(members) => void systemActions.ungroup(members)}
                                 />
                               )}
                             </div>

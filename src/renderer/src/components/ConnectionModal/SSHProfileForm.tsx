@@ -346,7 +346,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           groupPlaceholder="e.g. Production or Web Servers"
           folderSuggestions={folderSuggestions}
           tagSuggestions={tagSuggestions}
-          groupFollowsSystem={!!initial?.system}
+          // Only while it is in one: clearing the System field frees the folder in the same save.
+          groupFollowsSystem={!!initial?.system && !!config.system}
         />
         <div className="col-span-2">
           <SystemMembershipFields

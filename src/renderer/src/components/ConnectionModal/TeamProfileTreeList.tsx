@@ -11,7 +11,8 @@ import { TeamBulkEdit } from './TeamBulkEdit';
 import { SystemAwareRows } from './SystemAwareRows';
 import { alignSystemMembers, systemNames } from '../../lib/systemGrouping';
 import { saveInOrder } from '../../lib/saveInOrder';
-import { moveWithSystems, renameSystem, ungroupSystem } from '../../lib/systemEdit';
+import { moveWithSystems } from '../../lib/systemEdit';
+import { createSystemActions } from '../../lib/systemActions';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
@@ -397,18 +398,6 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     }
   };
 
-  const handleRenameSystem = async (vaultId: string, members: SSHConnectionConfig[], newName: string) => {
-    const changed = renameSystem(entries[vaultId]?.payload?.ssh ?? [], members[0].system!.name, newName);
-    await saveInOrder(changed, (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p), () => loadPayload(vaultId), setError, 'Failed to rename the system');
-  };
-
-  const handleUngroupSystem = async (vaultId: string, members: SSHConnectionConfig[]) => {
-    const name = members[0].system!.name;
-    if (!(await confirm({ title: 'Ungroup system', message: `Ungroup "${name}"? The servers stay, they are just no longer a system.`, confirmLabel: 'Ungroup', danger: false }))) return;
-    const changed = ungroupSystem(entries[vaultId]?.payload?.ssh ?? [], name);
-    await saveInOrder(changed, (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p), () => loadPayload(vaultId), setError, 'Failed to ungroup the system');
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
@@ -549,7 +538,16 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
         const ssh = entry.payload?.ssh ?? [];
         const s3 = entry.payload?.s3 ?? [];
-        const sshWithRef = alignSystemMembers(ssh).map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
+        // `storedSshWithRef` is what edits start from; `sshWithRef` only differs in the folder of a system's servers, for drawing.
+        const storedSshWithRef = ssh.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
+        const sshWithRef = alignSystemMembers(storedSshWithRef);
+        const systemActions = createSystemActions({
+          profiles: ssh,
+          save: (p: SSHConnectionConfig) => window.multissh.teamVaultSaveSSHProfile(vaultId, p),
+          reload: () => loadPayload(vaultId),
+          onError: setError,
+          confirm,
+        });
         const s3WithRef = s3.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
         const filteredSSH = filterSshProfiles(sshWithRef, query);
         const filteredS3 = filterS3Profiles(s3WithRef, query);
@@ -625,7 +623,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               <TeamBulkEdit<SSHConnectionConfig | S3Config>
                 key={`${vaultId}/${tab}`}
                 profiles={activeProfiles}
-                allProfiles={tab === 'ssh' ? sshWithRef : s3WithRef}
+                allProfiles={tab === 'ssh' ? storedSshWithRef : s3WithRef}
                 systemSuggestions={tab === 'ssh' ? systemNames(ssh) : undefined}
                 save={(profile) => saveSharedProfile(vaultId, tab, profile)}
                 reload={() => loadPayload(vaultId)}
@@ -689,8 +687,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                           onConnectSystem={onConnectSystem}
                           collapsed={collapsedSystems}
                           onToggle={toggleSystem}
-                          onRenameSystem={(members, name) => void handleRenameSystem(vaultId, members, name)}
-                          onUngroupSystem={(members) => void handleUngroupSystem(vaultId, members)}
+                          onRenameSystem={(members, name) => void systemActions.rename(members, name)}
+                          onUngroupSystem={(members) => void systemActions.ungroup(members)}
                         />
                       )
                     : undefined

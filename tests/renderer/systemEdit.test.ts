@@ -6,6 +6,7 @@ import {
   moveWithSystems,
   removeFromSystem,
   renameSystem,
+  systemNameTaken,
   ungroupSystem,
 } from '../../src/renderer/src/lib/systemEdit';
 import type { SSHSystemMembership } from '../../src/shared/types/ssh';
@@ -156,5 +157,34 @@ describe('renameSystem', () => {
 
   it('can change only the capitalisation', () => {
     expect(renameSystem([p('1', 'a', undefined, { name: 'shop' })], 'shop', 'Shop')).toHaveLength(1);
+  });
+});
+
+describe('renameSystem onto an existing system', () => {
+  it('refuses a name another system already has, so two systems are not merged by accident', () => {
+    expect(renameSystem(profiles, 'Api', 'SHOP')).toEqual([]);
+    expect(systemNameTaken(profiles, 'Api', 'shop')).toBe(true);
+  });
+
+  it('allows a new name, and the same system under another capitalisation', () => {
+    expect(systemNameTaken(profiles, 'shop', 'Webshop')).toBe(false);
+    expect(systemNameTaken(profiles, 'shop', 'SHOP')).toBe(false);
+  });
+});
+
+describe('malformed systems from sync or another version', () => {
+  const odd = [
+    { id: 'x', name: 'x', system: {} },
+    { id: 'y', name: 'y', system: { name: 5 } },
+    { id: 'z', name: 'z', system: { name: 'Shop' } },
+  ] as unknown as P[];
+
+  it('are profiles in no system, and do not throw', () => {
+    expect(() => expandToSystems(odd, new Set(['x', 'y', 'z']))).not.toThrow();
+    expect([...expandToSystems(odd, new Set(['x']))]).toEqual(['x']);
+    expect(ungroupSystem(odd, 'Shop').map((r) => r.id)).toEqual(['z']);
+    expect(renameSystem(odd, 'Shop', 'Webshop').map((r) => r.id)).toEqual(['z']);
+    // z is already in Shop and in the right folder, so only x changes.
+    expect(groupAsSystem(odd, new Set(['x']), 'Shop', undefined).map((r) => r.id)).toEqual(['x']);
   });
 });

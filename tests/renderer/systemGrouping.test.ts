@@ -111,3 +111,20 @@ describe('systemNames and systemMembersOf', () => {
     expect(systemMembersOf(profiles, 'nope')).toEqual([]);
   });
 });
+
+describe('malformed memberships', () => {
+  const odd = [
+    { id: '1', name: 'a', system: {} },
+    { id: '2', name: 'b', system: { name: 7 } },
+    { id: '3', name: 'c', system: { name: 'shop' } },
+  ] as unknown as P[];
+
+  it('count as no system and do not throw', () => {
+    const { systems, loose } = groupBySystem(odd);
+    expect(systems.map((s) => s.name)).toEqual(['shop']);
+    expect(loose.map((x) => x.id)).toEqual(['1', '2']);
+    expect(() => alignSystemMembers(odd)).not.toThrow();
+    expect(systemMembersOf(odd, 'shop').map((x) => x.id)).toEqual(['3']);
+    expect(systemNames(odd)).toEqual(['shop']);
+  });
+});

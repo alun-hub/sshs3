@@ -407,6 +407,12 @@ describe('SSHProfileForm', () => {
       expect(screen.getByText('Follows the system')).toBeInTheDocument();
     });
 
+    it('frees the folder as soon as the System field is cleared', () => {
+      render(<SSHProfileForm initial={{ ...base, group: 'Prod', system: { name: 'shop' } }} onSave={vi.fn()} onCancel={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText('System (optional)'), { target: { value: '' } });
+      expect(screen.getByLabelText(/Group \/ Folder/)).not.toHaveAttribute('readonly');
+    });
+
     it('lets the folder be edited for a server that is in no system', () => {
       render(<SSHProfileForm initial={{ ...base, group: 'Prod' }} onSave={vi.fn()} onCancel={vi.fn()} />);
       expect(screen.getByLabelText(/Group \/ Folder/)).not.toHaveAttribute('readonly');

@@ -19,8 +19,12 @@ export interface SystemBlock<T> {
 }
 
 const byName = (a: SystemProfile, b: SystemProfile) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-const systemNameOf = (profile: SystemProfile): string | undefined => {
-  const name = profile.system?.name.trim();
+/**
+ * The system a profile belongs to, trimmed, or undefined. Tolerant of a malformed membership (a sync
+ * or Team Vault entry written by another version never passed `normalizeSystem`): that is a profile in no system.
+ */
+export const systemNameOf = (profile: SystemProfile): string | undefined => {
+  const name = typeof profile.system?.name === 'string' ? profile.system.name.trim() : '';
   return name ? name : undefined;
 };
 const key = (name: string) => name.toLowerCase();
@@ -88,5 +92,5 @@ export function systemNames(profiles: readonly SystemProfile[]): string[] {
 
 /** The servers of the system called `name` (ignoring case), by name. */
 export function systemMembersOf<T extends SystemProfile>(profiles: readonly T[], name: string): T[] {
-  return profiles.filter((p) => p.system && sameSystemName(p.system.name, name)).sort(byName);
+  return profiles.filter((p) => sameSystemName(systemNameOf(p) ?? '', name) && systemNameOf(p) !== undefined).sort(byName);
 }

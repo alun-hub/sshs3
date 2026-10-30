@@ -1,7 +1,7 @@
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { collectLeaves } from './paneTree';
-import { groupBySystem } from './systemGrouping';
+import { groupBySystem, systemNameOf } from './systemGrouping';
 import { sftpUnavailableReason } from './platform';
 import type { AppTab } from './tabs';
 
@@ -50,7 +50,7 @@ export function buildProfileEntries(sources: SearchSource[]): SearchEntry[] {
         title: p.name,
         subtitle: `${p.username}@${p.host}${port}`,
         group: p.group,
-        system: p.system?.name.trim() || undefined,
+        system: systemNameOf(p),
         tags: p.tags ?? [],
         source,
         sourceLabel: label,

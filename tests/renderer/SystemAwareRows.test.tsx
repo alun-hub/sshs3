@@ -115,11 +115,48 @@ describe('SystemAwareRows', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
+  it('keeps what was typed when the field is left, and renames only once', () => {
+    const onRenameSystem = vi.fn();
+    setup([p('1', 'web', 'shop')], { onRenameSystem });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: 'webshop' } });
+    fireEvent.blur(field);
+    expect(onRenameSystem).toHaveBeenCalledTimes(1);
+    expect(onRenameSystem.mock.calls[0][1]).toBe('webshop');
+  });
+
+  it('does not rename a second time when Enter closes the field and it then loses focus', () => {
+    const onRenameSystem = vi.fn();
+    setup([p('1', 'web', 'shop')], { onRenameSystem });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: 'webshop' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.blur(field);
+    expect(onRenameSystem).toHaveBeenCalledTimes(1);
+  });
+
+  it('can be renamed again after an earlier rename', () => {
+    const onRenameSystem = vi.fn();
+    setup([p('1', 'web', 'shop')], { onRenameSystem });
+    for (const value of ['one', 'two']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
+      const field = screen.getByRole('textbox');
+      fireEvent.change(field, { target: { value } });
+      fireEvent.keyDown(field, { key: 'Enter' });
+    }
+    expect(onRenameSystem.mock.calls.map((c) => c[1])).toEqual(['one', 'two']);
+  });
+
   it('Escape closes the rename field without renaming', () => {
     const onRenameSystem = vi.fn();
     setup([p('1', 'web', 'shop')], { onRenameSystem });
     fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: 'changed' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.blur(field);
     expect(onRenameSystem).not.toHaveBeenCalled();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });

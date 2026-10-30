@@ -27,6 +27,7 @@ import { OPEN_CLIPBOARD_HISTORY_EVENT } from '../lib/clipboardHistoryEvents';
 import { usePerfSamples } from '../lib/usePerfSamples';
 import type { PerfLayout, PerfMetricId } from '@shared/types/perf';
 import { extractHostnameFromCommand, scanOutputForHost } from '../lib/terminalTitle';
+import { cdCommand } from '../lib/cdCommand';
 import { usePortDetection } from '../lib/usePortDetection';
 import { TerminalPortPill } from './TerminalPortPill';
 import { useTerminalDropUpload } from '../lib/useTerminalDropUpload';
@@ -86,10 +87,6 @@ export interface TerminalViewProps {
   onCloseTab?: () => void;
   /** Emitted when an OSC 0 or OSC 2 title sequence is received from the shell. */
   onTitleChange?: (title: string) => void;
-}
-
-function shellQuote(path: string): string {
-  return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
 // Every ANSI foreground is >= 7:1 on the #f8fafc background, so `minimumContrastRatio` 7 never has to
@@ -857,7 +854,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
             if (cwd && !hasControlChars(cwd) && sessionIdRef.current && window.multissh?.terminalWrite) {
               setTimeout(() => {
                 if (!isDisposed && sessionIdRef.current) {
-                  window.multissh.terminalWrite(sessionIdRef.current, `cd ${shellQuote(cwd)}\n`);
+                  window.multissh.terminalWrite(sessionIdRef.current, `${cdCommand(cwd)}\n`);
                 }
               }, 400);
             }

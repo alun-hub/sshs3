@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Layers, Pencil, Unlink } from 'lucide-react';
 import { groupBySystem, type SystemProfile } from '../../lib/systemGrouping';
 
@@ -37,6 +37,14 @@ export function SystemAwareRows<T extends SystemProfile>({
   onUngroupSystem,
 }: SystemAwareRowsProps<T>): React.ReactElement | null {
   const [renaming, setRenaming] = useState<{ key: string; value: string } | null>(null);
+  // Enter, Escape and leaving the field each end the edit once; removing the field must not end it a second time.
+  const settled = useRef(false);
+  const finishRename = (members: T[] | null, value: string) => {
+    if (settled.current) return;
+    settled.current = true;
+    setRenaming(null);
+    if (members) onRenameSystem?.(members, value);
+  };
   const { systems, loose } = groupBySystem(profiles);
   if (systems.length === 0 && loose.length === 0) return null;
   return (
@@ -67,15 +75,15 @@ export function SystemAwareRows<T extends SystemProfile>({
                   onChange={(e) => setRenaming({ key, value: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      onRenameSystem?.(system.members, renaming.value);
-                      setRenaming(null);
+                      finishRename(system.members, renaming.value);
                     } else if (e.key === 'Escape') {
                       // Only the field closes, not the whole Connection Manager.
                       e.stopPropagation();
-                      setRenaming(null);
+                      finishRename(null, '');
                     }
                   }}
-                  onBlur={() => setRenaming(null)}
+                  // Leaving the field keeps what was typed rather than throwing it away.
+                  onBlur={() => finishRename(system.members, renaming.value)}
                   className="min-w-0 flex-1 rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-sm text-txt-primary outline-none focus:border-sky-500"
                 />
               ) : (
@@ -88,7 +96,10 @@ export function SystemAwareRows<T extends SystemProfile>({
                   type="button"
                   aria-label={`Rename ${system.name}`}
                   title="Rename system"
-                  onClick={() => setRenaming({ key, value: system.name })}
+                  onClick={() => {
+                    settled.current = false;
+                    setRenaming({ key, value: system.name });
+                  }}
                   className="shrink-0 rounded p-1 text-txt-muted hover:text-txt-primary"
                 >
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" />

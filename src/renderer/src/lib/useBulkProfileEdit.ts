@@ -106,7 +106,7 @@ export function useBulkProfileEdit<T extends BulkProfile>({ profiles, allProfile
 
   const addTags = (tags: readonly string[]) =>
     run(async () => {
-      const changed = withAddedTags(profiles, selection, tags);
+      const changed = withAddedTags(everyone, selection, tags);
       if (changed.length === 0) {
         setNotice('They already have those tags.');
         return;

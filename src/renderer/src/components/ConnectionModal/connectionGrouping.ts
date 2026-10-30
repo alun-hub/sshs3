@@ -1,5 +1,6 @@
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
+import { systemNameOf } from '../../lib/systemGrouping';
 
 export const UNGROUPED = 'Ungrouped';
 
@@ -28,7 +29,7 @@ export function filterSshProfiles(profiles: SSHConnectionConfig[], query: string
       p.host.toLowerCase().includes(query) ||
       p.username.toLowerCase().includes(query) ||
       (p.group && p.group.toLowerCase().includes(query)) ||
-      (p.system && p.system.name.toLowerCase().includes(query)) ||
+      (systemNameOf(p) ?? '').toLowerCase().includes(query) ||
       matchesTag(p.tags, query)
   );
 }

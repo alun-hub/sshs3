@@ -188,6 +188,17 @@ describe('useBulkProfileEdit moveTo', () => {
 });
 
 describe('useBulkProfileEdit addTags', () => {
+  it('saves the profile as it is stored, not as it is drawn, so a tags change leaves the folder alone', async () => {
+    const stored: P[] = [{ id: 'a', name: 'A', group: 'Stray' }];
+    const drawn: P[] = [{ id: 'a', name: 'A', group: 'Prod' }];
+    const { result, save } = setup(drawn, { allProfiles: stored });
+    act(() => result.current.toggle('a'));
+    await act(async () => {
+      await result.current.addTags(['prod']);
+    });
+    expect(save.mock.calls.map(([p]) => p)).toEqual([{ id: 'a', name: 'A', group: 'Stray', tags: ['prod'] }]);
+  });
+
   it('adds the tags to every selected profile that lacks them, then reloads and clears', async () => {
     const list: P[] = [{ id: 'a', name: 'A', tags: ['web'] }, { id: 'b', name: 'B' }];
     const { result, save, reload } = setup(list);

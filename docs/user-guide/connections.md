@@ -42,7 +42,7 @@ A **system** groups the servers that belong together, for example the web, datab
 | :--- | :--- |
 | **System** | The name of the system. Profiles with the same name (ignoring case) form it. Existing systems are suggested while you type. Clear the field to take the server out of the system. |
 | **Open a terminal to this server** | On by default. Switch it off for a server that should only contribute tunnels. |
-| **Start directory** | The directory the terminal starts in. |
+| **Start directory** | The directory the terminal starts in. `~` and `~/path` mean the home directory on the server. |
 | **Tunnels to start** | Which of the profile's own tunnels are started with the system. Shown when the profile has tunnels. |
 
 The system is drawn as one row with the number of servers and a **Connect all** button, and its servers indented below it. Click the chevron to collapse it. **Connect all** opens one terminal tab per server (the first one is selected), starts the chosen tunnels, and reports tunnels that could not start in a message at the bottom of the window. Searching for the system's name shows all its servers.
@@ -53,11 +53,11 @@ Select profiles with their checkboxes and choose **Group as system…** in the b
 | To | Do this |
 | :--- | :--- |
 | Move a system | Drag any one of its servers to another folder, or select one and use **Move to folder…**. The whole system moves. |
-| Rename it | Click the pencil on the system row, type the new name and press <kbd>Enter</kbd> (<kbd>Esc</kbd> cancels). |
+| Rename it | Click the pencil on the system row, type the new name and press <kbd>Enter</kbd> or click away (<kbd>Esc</kbd> cancels). A name another system already has is refused, so two systems are never merged by accident. |
 | Ungroup it | Click the unlink button on the system row and confirm. The profiles stay, they are just no longer a system. |
 | Take one server out | Clear **System** in that server's profile form. |
 
-A server in a system shows its folder as **Follows the system** in the profile form, so it is changed by moving the system.
+A server in a system shows its folder as **Follows the system** in the profile form, so it is changed by moving the system. Clear **System** to free the folder again.
 
 > [!NOTE]
 > A system lives in one folder: the one most of its servers are in. Its servers are drawn there even if their own **Group / Folder** differs. Each server still asks for its own password or PIN, since they are different hosts.
