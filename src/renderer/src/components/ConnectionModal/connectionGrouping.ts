@@ -28,6 +28,7 @@ export function filterSshProfiles(profiles: SSHConnectionConfig[], query: string
       p.host.toLowerCase().includes(query) ||
       p.username.toLowerCase().includes(query) ||
       (p.group && p.group.toLowerCase().includes(query)) ||
+      (p.system && p.system.name.toLowerCase().includes(query)) ||
       matchesTag(p.tags, query)
   );
 }

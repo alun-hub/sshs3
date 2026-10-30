@@ -1054,3 +1054,84 @@ describe('ConnectionManagerModal multi-select', () => {
     expect(screen.getByText('1 selected')).toBeInTheDocument();
   });
 });
+
+describe('ConnectionManagerModal systems', () => {
+  const servers: SSHConnectionConfig[] = [
+    { id: 'a', name: 'Shop Web', host: 'web.example.com', username: 'deploy', authType: 'password', group: 'Produktion', system: { name: 'shop' } },
+    { id: 'b', name: 'Shop Web 2', host: 'web2.example.com', username: 'deploy', authType: 'password', group: 'Produktion', system: { name: 'shop', startDirectory: '/srv' } },
+    { id: 'c', name: 'Shop Db', host: 'db.example.com', username: 'deploy', authType: 'password', group: 'Utveckling', system: { name: 'Shop' } },
+    { id: 'd', name: 'Blog', host: 'blog.example.com', username: 'deploy', authType: 'password', group: 'Produktion' },
+  ];
+
+  beforeEach(() => {
+    window.multissh = {
+      settingsGet: vi.fn().mockResolvedValue({}),
+      settingsSave: vi.fn().mockResolvedValue({}),
+      profilesGet: vi.fn().mockResolvedValue({ ssh: servers, s3: [], folders: ['Produktion', 'Utveckling'] }),
+      profilesSaveSSH: vi.fn().mockResolvedValue(undefined),
+      profilesSaveS3: vi.fn().mockResolvedValue(undefined),
+      teamVaultGetStatus: vi.fn().mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' }),
+      teamVaultList: vi.fn().mockResolvedValue([]),
+    } as unknown as typeof window.multissh;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  async function openList(onConnectSystem = vi.fn()) {
+    render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} onConnectSSH={vi.fn()} onConnectSystem={onConnectSystem} />
+      </ConfirmProvider>
+    );
+    await screen.findByText('Shop');
+    return onConnectSystem;
+  }
+
+  it('draws the servers that form a system as one row with the servers below it', async () => {
+    await openList();
+    expect(screen.getByText('3 servers')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: 'Shop' });
+    expect(group).toHaveTextContent('Shop Db');
+    expect(group).toHaveTextContent('Shop Web');
+    expect(group).toHaveTextContent('Shop Web 2');
+  });
+
+  it('keeps the whole system in the folder most of its servers are in, whatever the others say', async () => {
+    await openList();
+    const production = screen.getByText('Produktion').closest('div.space-y-1\\.5') as HTMLElement;
+    expect(production).toContainElement(screen.getByRole('group', { name: 'Shop' }));
+    expect(production).toHaveTextContent('Blog');
+    const development = screen.getByText('Utveckling').closest('div.space-y-1\\.5') as HTMLElement;
+    expect(development).not.toHaveTextContent('Shop');
+  });
+
+  it('connects to every server of the system, as personal, in one call', async () => {
+    const onConnectSystem = await openList();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect all servers in Shop' }));
+    expect(onConnectSystem).toHaveBeenCalledTimes(1);
+    const [members, source] = onConnectSystem.mock.calls[0];
+    expect(members.map((m: SSHConnectionConfig) => m.id)).toEqual(['c', 'a', 'b']);
+    expect(source).toBe('personal');
+  });
+
+  it('still lets a server of a system be selected like any other profile', async () => {
+    await openList();
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Shop Db' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('leaves the list as it was when no profile belongs to a system', async () => {
+    (window.multissh.profilesGet as ReturnType<typeof vi.fn>).mockResolvedValue({ ssh: [servers[3]], s3: [], folders: [] });
+    render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} onConnectSSH={vi.fn()} onConnectSystem={vi.fn()} />
+      </ConfirmProvider>
+    );
+    await screen.findByText('Blog');
+    expect(screen.queryByText(/servers?$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Connect all/ })).not.toBeInTheDocument();
+  });
+});

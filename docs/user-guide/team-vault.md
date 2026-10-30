@@ -189,6 +189,7 @@ Shared profiles can be organized into arbitrary directory trees synchronized acr
 - Organize profiles by **dragging and dropping** them onto folder rows, folders in the tree, **All folders** (to take a profile out of its folder) or breadcrumb segments, or by setting the profile's **Group / Folder** property (e.g. `Databases/Postgres/Replica`).
 - Click the icon on any folder row to choose from 12 distinct icons (**server**, **database**, **cloud**, **shield**, **globe**, **box**, **hard-drive**, **network**, **git-branch**, **cpu**, **layers**, or default **folder**).
 - To move or tag many profiles at once, tick their checkboxes and use **Move to folder…** or **Add tags…** in the bar above the list; see [Working with Several Profiles](/docs/workspace/connections/#working-with-several-profiles).
+- Servers that belong together can be grouped into a **system** with one **Connect all** button; see [Systems](/docs/workspace/connections/#systems). A team's system only contains that team's profiles.
 - Deleting a folder moves its profiles to **Ungrouped** rather than deleting them.
 
 ![Subfolders and breadcrumb](/img/docs/team-vault-subfolders.png)

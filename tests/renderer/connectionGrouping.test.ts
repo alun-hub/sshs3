@@ -47,6 +47,13 @@ describe('connectionGrouping', () => {
     expect(filterS3Profiles(buckets, 'asset').map((p) => p.id)).toEqual(['x']);
   });
 
+  it('matches the name of the system a profile belongs to, so a search for the system shows all its servers', () => {
+    const profiles = [ssh('a', { system: { name: 'Shop' } }), ssh('b', { system: { name: 'shop checkout' } }), ssh('c')];
+    expect(filterSshProfiles(profiles, 'shop').map((p) => p.id)).toEqual(['a', 'b']);
+    expect(filterSshProfiles(profiles, 'checkout').map((p) => p.id)).toEqual(['b']);
+    expect(filterSshProfiles(profiles, 'nope')).toEqual([]);
+  });
+
   it('collects saved folders and profile groups, sorted and trimmed', () => {
     expect(collectFolderNames(['Zeta'], [ssh('a', { group: ' Alpha ' })], [s3('b', { group: 'Mid' })])).toEqual([
       'Alpha',

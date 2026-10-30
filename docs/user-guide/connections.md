@@ -35,6 +35,24 @@ The selection belongs to the list you are looking at: it is forgotten when you s
 > [!NOTE]
 > In a Team Vault each profile is saved to the vault one at a time, exactly like dragging it to a folder, so moving many profiles makes many small changes that sync to the other members. If a save is refused (for example because the vault is read-only for you) the rest are not attempted, the profiles saved so far stay moved, and the selection is kept so you can try again.
 
+### Systems
+A **system** groups the servers that belong together, for example the web, database and cache servers of one application, so that you can connect to all of them with one click. A system is made by giving several SSH profiles the same **System** name in the profile form; it has no settings of its own.
+
+| In the profile form | What it does |
+| :--- | :--- |
+| **System** | The name of the system. Profiles with the same name (ignoring case) form it. Existing systems are suggested while you type. Clear the field to take the server out of the system. |
+| **Open a terminal to this server** | On by default. Switch it off for a server that should only contribute tunnels. |
+| **Start directory** | The directory the terminal starts in. |
+| **Tunnels to start** | Which of the profile's own tunnels are started with the system. Shown when the profile has tunnels. |
+
+The system is drawn as one row with the number of servers and a **Connect all** button, and its servers indented below it. Click the chevron to collapse it. **Connect all** opens one terminal tab per server (the first one is selected), starts the chosen tunnels, and reports tunnels that could not start in a message at the bottom of the window. Searching for the system's name shows all its servers.
+
+> [!NOTE]
+> A system lives in one folder: the one most of its servers are in. Its servers are drawn there even if their own **Group / Folder** differs. Each server still asks for its own password or PIN, since they are different hosts.
+
+> [!NOTE]
+> In a Team Vault a system can only contain that team's own profiles, and every member sees it. Members may change which system a server belongs to, like its folder. Older versions of sshs3 show the servers as ordinary profiles and keep the system when they save other changes.
+
 ### Global Search
 Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
 

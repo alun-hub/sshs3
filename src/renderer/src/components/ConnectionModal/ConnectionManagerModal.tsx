@@ -32,6 +32,8 @@ import type { Tab, EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from
 import { SshProfileRow, SshRecentRow } from './SshProfileRows';
 import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
 import { BulkActionBar } from './BulkActionBar';
+import { SystemAwareRows } from './SystemAwareRows';
+import { alignSystemMembers, systemNames } from '../../lib/systemGrouping';
 import { TeamProfileTreeList } from './TeamProfileTreeList';
 import {
   collectFolderNames,
@@ -67,6 +69,8 @@ interface ConnectionManagerModalProps {
   /** When set, opens SFTP dual-pane file manager for the given SSH profile. */
   onConnectSFTP?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
+  /** Connects to every server of a system ("Connect all"); `source` is 'personal' or the Team Vault id. Omit to hide the button. */
+  onConnectSystem?: (members: SSHConnectionConfig[], source: string) => void;
   onConnectK8s?: (target: K8sTerminalTarget) => void;
   /** Opens a new tab following a container's logs. */
   onViewK8sLogs?: (target: K8sTerminalTarget) => void;
@@ -88,6 +92,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onConnectSSH,
   onConnectSFTP,
   onConnectS3,
+  onConnectSystem,
   onConnectK8s,
   onViewK8sLogs,
   onBrowseK8sFiles,
@@ -649,7 +654,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     [allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes]
   );
 
-  const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, filteredSSH, query), [filteredSSH, sshFolderNames, query]);
+  // A system lives in one folder: its servers are drawn there even if their own folder differs.
+  const alignedSSH = useMemo(() => alignSystemMembers(filteredSSH), [filteredSSH]);
+  const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, alignedSSH, query), [alignedSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
   const bulk = usePersonalBulkEdit({
@@ -953,6 +960,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
                   tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
+                  systemSuggestions={editingTeamVaultId ? editingTeamMeta?.systemSuggestions : systemNames(sshProfiles)}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               ) : (
@@ -1315,7 +1323,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onDrop={(e) => void handleDropOnGroup(e, groupName)}
                                 />
                               ) : (
-                                profiles.map(renderSshProfile)
+                                <SystemAwareRows
+                                  profiles={profiles}
+                                  source={source}
+                                  renderProfile={renderSshProfile}
+                                  onConnectSystem={onConnectSystem}
+                                  collapsed={collapsedGroups}
+                                  onToggle={toggleGroup}
+                                />
                               )}
                             </div>
                           )}
@@ -1343,6 +1358,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   activeVaultId={source}
                   onConnectSSH={onConnectSSH}
                   onConnectSFTP={onConnectSFTP}
+                  onConnectSystem={onConnectSystem}
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}
                   onVaultsMetaChange={handleVaultsMetaChange}

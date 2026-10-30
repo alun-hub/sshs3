@@ -288,3 +288,81 @@ describe('TeamProfileTreeList multi-select', () => {
     expect(values).toContain('Acme Infra');
   });
 });
+
+describe('TeamProfileTreeList systems', () => {
+  const unlocked = { ...lockedStatus, unlocked: true } as TeamVaultStatus;
+  const host = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    host: `${name}.example.com`,
+    username: 'root',
+    authType: 'password',
+    ...extra,
+  });
+  const withSystems = {
+    ssh: [
+      host('a', 'shop-web', { system: { name: 'shop' }, hasPassword: true }),
+      host('b', 'shop-db', { system: { name: 'shop', startDirectory: '/var/lib' } }),
+      host('c', 'blog'),
+    ],
+    s3: [],
+    folders: [],
+  } as unknown as TeamVaultPayload;
+
+  beforeEach(() =>
+    setApi({
+      teamVaultList: vi.fn().mockResolvedValue([unlocked]),
+      teamVaultGetStatus: vi.fn().mockResolvedValue(unlocked),
+      teamVaultGetPayload: vi.fn().mockResolvedValue(withSystems),
+    })
+  );
+
+  it('draws the shared servers of a system as one row with the servers below it', async () => {
+    renderList();
+    expect(await screen.findByText('2 servers')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: 'shop' });
+    expect(group).toHaveTextContent('shop-db');
+    expect(group).toHaveTextContent('shop-web');
+    expect(screen.getByText('blog')).toBeInTheDocument();
+  });
+
+  it('connects to the system with the vault reference of every server, so the main process can add the secrets', async () => {
+    const onConnectSystem = vi.fn();
+    renderList({ onConnectSystem });
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect all servers in shop' }));
+    expect(onConnectSystem).toHaveBeenCalledTimes(1);
+    const [members, source] = onConnectSystem.mock.calls[0];
+    expect(source).toBe('v1');
+    expect(members.map((m: { id: string }) => m.id)).toEqual(['b', 'a']);
+    for (const member of members) expect(member.teamVaultProfileRef).toEqual({ vaultId: 'v1', profileId: member.id });
+    expect(members[0].system).toEqual({ name: 'shop', startDirectory: '/var/lib' });
+    expect(members.find((m: { id: string }) => m.id === 'a').password).toBeUndefined();
+  });
+
+  it('keeps the servers on one line each, without a system row, in search results', async () => {
+    renderList({ query: 'shop' });
+    await screen.findByText(/Search results for/);
+    expect(screen.queryByText('2 servers')).not.toBeInTheDocument();
+    expect(screen.getByText('shop-web')).toBeInTheDocument();
+    expect(screen.getByText('shop-db')).toBeInTheDocument();
+  });
+
+  it('finds the servers of a system by the name of the system', async () => {
+    renderList({ query: 'shop' });
+    await screen.findByText(/Search results for/);
+    expect(screen.queryByText('blog')).not.toBeInTheDocument();
+  });
+
+  it('does not draw systems on the S3 tab', async () => {
+    renderList({ tab: 's3' });
+    await screen.findByText(/No profiles|New Profile/);
+    expect(screen.queryByText('2 servers')).not.toBeInTheDocument();
+  });
+
+  it('shows no system row when no server belongs to a system', async () => {
+    window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [host('c', 'blog')], s3: [], folders: [] });
+    renderList();
+    await screen.findByText('blog');
+    expect(screen.queryByRole('button', { name: /Connect all/ })).not.toBeInTheDocument();
+  });
+});
