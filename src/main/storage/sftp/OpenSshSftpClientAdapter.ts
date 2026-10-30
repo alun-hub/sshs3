@@ -136,12 +136,16 @@ export class OpenSshSftpClientAdapter extends EventEmitter implements ISftpBacke
     if (recursive) {
       const parts = remotePath.split('/').filter(Boolean);
       let current = remotePath.startsWith('/') ? '' : '.';
-      for (const part of parts) {
+      for (const [index, part] of parts.entries()) {
         current = current === '' ? `/${part}` : `${current}/${part}`;
         try {
           await this.protocol.mkdir(current);
-        } catch {
-          // Directory may already exist
+        } catch (err) {
+          // A parent that already exists makes mkdir fail; that is fine, and if one really cannot be
+          // created the last step below fails too. Only the folder that was asked for must end up a directory.
+          if (index < parts.length - 1) continue;
+          const existing = await this.protocol.stat(current).catch(() => null);
+          if (!existing?.isDirectory) throw err;
         }
       }
       return;

@@ -4,6 +4,7 @@ import {
   describeAskpassPrompt,
   isHostKeyConfirmPrompt,
   isPasswordPrompt,
+  isServerAskedPrompt,
   savedAskpassAnswer,
 } from '../../src/main/ssh/askpassPrompt';
 
@@ -34,6 +35,36 @@ describe('askpassPrompt', () => {
     expect(classifyAskpassPrompt('Enter anything', 'fido2')).toBe('fido2');
     expect(classifyAskpassPrompt('Enter passphrase for /home/me/.ssh/id_ed25519:')).toBeUndefined();
     expect(classifyAskpassPrompt('Enter PIN for PIV_II (PIV Card Holder pin):', 'smartcard')).toBe('smartcard');
+  });
+
+  it('never presents a question the server asked as a local smartcard or FIDO2 PIN prompt', () => {
+    for (const authType of ['smartcard', 'fido2', 'privateKey', undefined]) {
+      for (const text of [
+        '(bob@h) Verification code: ',
+        '(bob@h) Password or PIN: ',
+        '(bob@h) Enter PIN for YubiKey: ',
+        '(bob@h) Enter PIN for sk-ssh-ed25519@openssh.com key: ',
+      ]) {
+        expect(isServerAskedPrompt(text), text).toBe(true);
+        expect(classifyAskpassPrompt(text, authType), `${authType} ${text}`).toBe('password');
+      }
+    }
+    // The server's own words are shown, not replaced by "Enter your smartcard PIN …".
+    expect(describeAskpassPrompt('(bob@h) Verification code: ', { authType: 'smartcard', name: 'Prod', host: 'h' })).toEqual({
+      kind: 'password',
+      prompt: '(bob@h) Verification code:',
+      context: 'SSH: Prod (h)',
+    });
+  });
+
+  it("still treats ssh's own local PIN prompts as PIN prompts", () => {
+    // Formats taken from the ssh binary: "Enter PIN for '%.32s': " (PKCS#11), "Enter PIN for %s key %s: " (FIDO).
+    expect(isServerAskedPrompt("Enter PIN for 'PIV_II (PIV Card Holder pin)': ")).toBe(false);
+    expect(isServerAskedPrompt('Enter PIN for ED25519-SK key /home/me/.ssh/id_ed25519_sk: ')).toBe(false);
+    expect(classifyAskpassPrompt("Enter PIN for 'PIV_II (PIV Card Holder pin)': ", 'smartcard')).toBe('smartcard');
+    expect(classifyAskpassPrompt('Enter PIN for ED25519-SK key /home/me/.ssh/id_ed25519_sk: ', 'fido2')).toBe('fido2');
+    // A parenthesis later in the text is not the server prefix.
+    expect(isServerAskedPrompt('Enter PIN for (bob@h) token: ')).toBe(false);
   });
 
   it('describes a prompt with the host label used in the dialog', () => {

@@ -234,64 +234,65 @@ export class OpenSshSftpProcess {
     return this.controlPath;
   }
 
-  public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
-    const sshBinary = resolveSshBinary();
-
-    // If ControlPath is available, use multiplexed master (fastest)
+  /**
+   * The ssh command line and environment for one remote command, which must be non-interactive (BatchMode):
+   * - Through the live control socket: ssh only talks to the master. `ProxyCommand=false` makes it fail
+   *   closed if the socket turns out to be stale; without it ssh falls back to a fresh connection to
+   *   `host` on port 22 as the local user, past the profile's port, user, proxy and jump host.
+   * - Otherwise an independent connection built from the profile, with the proxy credentials and agent
+   *   socket in the environment like the SFTP process itself (a ProxyCommand with no
+   *   ELECTRON_RUN_AS_NODE starts a second copy of the app).
+   */
+  private buildExecInvocation(cmd: string): { args: string[]; env?: Record<string, string> } {
     if (this.controlPath && fs.existsSync(this.controlPath)) {
-      return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
-        execFile(
-          sshBinary,
-          ['-S', this.controlPath!, '-o', 'BatchMode=yes', '--', this.host, cmd],
-          { maxBuffer: 10 * 1024 * 1024 },
-          (err, stdout, stderr) => {
-            if (err) return reject(err);
-            resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
-          }
-        );
-      });
+      return {
+        args: ['-S', this.controlPath, '-o', 'BatchMode=yes', '-o', 'ProxyCommand=false', '--', this.host, cmd],
+      };
     }
-
-    // Fallback: spawn independent command
     if (!this.config) {
       throw new Error('Cannot run exec: process configuration not available');
     }
     const args = SmartcardDetector.buildSSHArguments(toSshConfig(this.config));
-    args.push(cmd); // builder already ended with `-- [user@]host`
+    // The builder ends with `-- [user@]host`; options go before that pair and the command after it.
+    const destination = args.splice(-2);
+    args.push('-o', 'BatchMode=yes', ...destination, cmd);
+    const env: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      ...SmartcardDetector.buildProxyEnv(toSshConfig(this.config)),
+    };
+    if (this.config.agentPath) {
+      env.SSH_AUTH_SOCK = this.config.agentPath;
+    }
+    return { args, env };
+  }
+
+  public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
+    const sshBinary = resolveSshBinary();
+    const { args, env } = this.buildExecInvocation(cmd);
 
     return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
-      execFile(
-        sshBinary,
-        args,
-        { maxBuffer: 10 * 1024 * 1024 },
-        (err, stdout, stderr) => {
-          if (err) return reject(err);
-          resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
-        }
-      );
+      execFile(sshBinary, args, { maxBuffer: 10 * 1024 * 1024, ...(env ? { env } : {}) }, (err, stdout, stderr) => {
+        if (err) return reject(err);
+        resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
+      });
     });
   }
 
   public createExecStream(cmd: string): NodeJS.ReadableStream {
-    const sshBinary = resolveSshBinary();
-    let childProc: ChildProcess;
-
-    if (this.controlPath && fs.existsSync(this.controlPath)) {
-      childProc = spawn(sshBinary, ['-S', this.controlPath, '-o', 'BatchMode=yes', '--', this.host, cmd], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } else if (this.config) {
-      const args = SmartcardDetector.buildSSHArguments(toSshConfig(this.config));
-      args.push(cmd);
-      childProc = spawn(sshBinary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    } else {
+    if (!this.config && !(this.controlPath && fs.existsSync(this.controlPath))) {
       const errStream = new Readable({ read() {} });
       errStream.destroy(new Error('Process not initialized'));
       return errStream;
     }
+    const sshBinary = resolveSshBinary();
+    const { args, env } = this.buildExecInvocation(cmd);
+    const childProc = spawn(sshBinary, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) });
 
     childProc.stderr?.resume();
     const stdout = childProc.stdout!;
+    // A failed spawn (ssh missing, bad cwd) is reported on the child, not on its pipes: without a
+    // listener it would be an uncaught exception in the main process.
+    childProc.on('error', (err) => stdout.destroy(err));
     stdout.on('close', () => {
       try {
         if (!childProc.killed) {

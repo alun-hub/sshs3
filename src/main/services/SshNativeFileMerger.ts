@@ -366,35 +366,108 @@ function parseKnownHostsLines(content: string): ParsedKnownHostsLine[] {
   return lines;
 }
 
+/** The comma-separated host patterns of a known_hosts line; ssh trusts the key if any of them matches. */
+function patternTokens(patternField: string): string[] {
+  return patternField.split(',').filter(Boolean);
+}
+
+const hasWildcard = (token: string): boolean => token.includes('*') || token.includes('?');
+
+/**
+ * A line from the remote may add trust for hosts, but not widen it to hosts it does not name: no negation
+ * and no catch-all pattern (`*`, `*.*`, `?` — a token without a letter or digit). It must also look like a
+ * key. Narrow wildcards such as `*.corp.example.com` stay allowed.
+ */
+function isAcceptableRemoteLine(line: ParsedKnownHostsLine): boolean {
+  const tokens = patternTokens(line.patternField);
+  if (tokens.length === 0) return false;
+  if (tokens.some((t) => t.startsWith('!') || !/[A-Za-z0-9]/.test(t))) return false;
+  return /^[A-Za-z0-9@._-]+$/.test(line.keyType) && /^[A-Za-z0-9+/]+={0,2}$/.test(line.keyBase64);
+}
+
+/** ssh's pattern match: `*` any run, `?` any one character, case-insensitive. Iterative, so no regex blow-up. */
+function globMatches(pattern: string, text: string): boolean {
+  const p = pattern.toLowerCase();
+  const t = text.toLowerCase();
+  let pi = 0;
+  let ti = 0;
+  let starPi = -1;
+  let starTi = 0;
+  while (ti < t.length) {
+    if (pi < p.length && (p[pi] === '?' || p[pi] === t[ti])) {
+      pi++;
+      ti++;
+    } else if (pi < p.length && p[pi] === '*') {
+      starPi = pi++;
+      starTi = ti;
+    } else if (starPi !== -1) {
+      pi = starPi + 1;
+      ti = ++starTi;
+    } else {
+      return false;
+    }
+  }
+  while (pi < p.length && p[pi] === '*') pi++;
+  return pi === p.length;
+}
+
+/** Two host patterns can both apply to one host: equal, or one is a wildcard that matches the other. */
+function tokensOverlap(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (hasWildcard(a) && globMatches(a, b)) return true;
+  return hasWildcard(b) && globMatches(b, a);
+}
+
 /**
  * Merges a downloaded `~/.ssh/known_hosts` into the local file. Strictly
  * append-only: local lines are never modified or removed. A remote entry
  * for a host/key combination already present locally is skipped; a remote
  * entry for a host that exists locally under a *different* key is reported
  * as a conflict rather than applied, since that's the same signal that
- * would indicate a possible MITM if seen during a live connection.
+ * would indicate a possible MITM if seen during a live connection. "Same
+ * host" is decided per name of a comma list and through wildcards, and a
+ * remote line that widens trust (negation, catch-all pattern) is dropped.
  */
 export function mergeKnownHosts(localContent: string, remoteContent: string): KnownHostsMergeResult {
   const localLines = parseKnownHostsLines(localContent);
   const remoteLines = parseKnownHostsLines(remoteContent);
 
-  const localByPattern = new Map<string, ParsedKnownHostsLine[]>();
+  // Every local host token, so that a remote line is checked against each name it covers: ssh trusts a
+  // key if any pattern of any line matches, so a comma list or a wildcard must not hide a clash.
+  const localByToken = new Map<string, ParsedKnownHostsLine[]>();
+  const localEntries: Array<{ token: string; line: ParsedKnownHostsLine }> = [];
   for (const line of localLines) {
-    const arr = localByPattern.get(line.patternField) ?? [];
-    arr.push(line);
-    localByPattern.set(line.patternField, arr);
+    for (const token of patternTokens(line.patternField)) {
+      const arr = localByToken.get(token) ?? [];
+      arr.push(line);
+      localByToken.set(token, arr);
+      localEntries.push({ token, line });
+    }
   }
+  const localWildcards = localEntries.filter((e) => hasWildcard(e.token));
   const seenExact = new Set(localLines.map((l) => `${l.patternField} ${l.keyType} ${l.keyBase64}`));
+
+  const clashes = (remoteLine: ParsedKnownHostsLine): ParsedKnownHostsLine | undefined => {
+    const differs = (l: ParsedKnownHostsLine) => l.keyType === remoteLine.keyType && l.keyBase64 !== remoteLine.keyBase64;
+    for (const token of patternTokens(remoteLine.patternField)) {
+      const candidates = hasWildcard(token)
+        ? localEntries.filter((e) => tokensOverlap(token, e.token)).map((e) => e.line)
+        : [...(localByToken.get(token) ?? []), ...localWildcards.filter((e) => tokensOverlap(token, e.token)).map((e) => e.line)];
+      const found = candidates.find(differs);
+      if (found) return found;
+    }
+    return undefined;
+  };
 
   const linesToAppend: string[] = [];
   const conflicts: KnownHostsConflict[] = [];
 
   for (const remoteLine of remoteLines) {
+    if (!isAcceptableRemoteLine(remoteLine)) continue;
     const exactKey = `${remoteLine.patternField} ${remoteLine.keyType} ${remoteLine.keyBase64}`;
     if (seenExact.has(exactKey)) continue;
 
-    const existingForHost = localByPattern.get(remoteLine.patternField) ?? [];
-    const conflicting = existingForHost.find((l) => l.keyType === remoteLine.keyType && l.keyBase64 !== remoteLine.keyBase64);
+    const conflicting = clashes(remoteLine);
     if (conflicting) {
       conflicts.push({
         hostPatternField: remoteLine.patternField,
@@ -406,7 +479,7 @@ export function mergeKnownHosts(localContent: string, remoteContent: string): Kn
       continue;
     }
 
-    linesToAppend.push(`${remoteLine.patternField} ${remoteLine.keyType} ${remoteLine.keyBase64}`);
+    linesToAppend.push(exactKey);
     seenExact.add(exactKey);
   }
 

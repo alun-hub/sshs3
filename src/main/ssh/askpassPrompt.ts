@@ -31,11 +31,20 @@ export function savedAskpassAnswer(
 }
 
 /**
+ * A question the SSH server asked (keyboard-interactive). ssh always shows those as "(user@host) <text>",
+ * whereas its own local prompts (key passphrase, PKCS#11 / FIDO PIN) have no such prefix.
+ */
+export function isServerAskedPrompt(rawPrompt: string): boolean {
+  return /^\s*\([^)\r\n]*@[^)\r\n]*\)\s/.test(rawPrompt);
+}
+
+/**
  * Which kind of secret an OpenSSH askpass prompt wants. `undefined` is a key passphrase;
- * anything unrecognised is treated as a smartcard PIN.
+ * anything unrecognised is treated as a smartcard PIN, except a question the server asked: that is
+ * never presented as a local PIN prompt, so a server cannot make the user type a hardware PIN into it.
  */
 export function classifyAskpassPrompt(rawPrompt: string, authType?: string): AskpassPromptKind | undefined {
-  if (isPasswordPrompt(rawPrompt)) return 'password';
+  if (isPasswordPrompt(rawPrompt) || isServerAskedPrompt(rawPrompt)) return 'password';
   if (authType === 'fido2' || /authenticator|security key|yubikey|fido|sk-/i.test(rawPrompt)) return 'fido2';
   return /passphrase/i.test(rawPrompt) ? undefined : 'smartcard';
 }
