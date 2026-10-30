@@ -375,7 +375,7 @@ describe('OpenSshSftpProcess exec / createExecStream', () => {
   });
 
   it.skipIf(process.platform === 'win32')(
-    'falls back to an independent connection when the control socket has no master, and only then',
+    'asks the master first and uses an independent connection only when it is gone, never by retrying',
     async () => {
       const { default: fs } = await import('node:fs');
       const { default: os } = await import('node:os');
@@ -386,27 +386,35 @@ describe('OpenSshSftpProcess exec / createExecStream', () => {
       try {
         const proc = await started(profile, socket);
         const calls: string[][] = [];
-        const stale = Object.assign(new Error('ssh failed'), { code: 255 });
-        vi.mocked(execFile).mockImplementation(((_b: string, args: string[], _o: any, cb: any) => {
-          calls.push(args);
-          if (args[0] === '-S') cb(stale, '', 'Control socket connect(/x): Connection refused\nConnection closed by UNKNOWN port 65535\n');
-          else cb(null, 'out', '');
-        }) as any);
+        const isCheck = (args: string[]) => args.includes('-O');
+        const answer = (masterAlive: boolean, runResult: { err?: unknown; stderr?: string } = {}) =>
+          vi.mocked(execFile).mockImplementation(((_b: string, args: string[], _o: any, cb: any) => {
+            calls.push(args);
+            if (isCheck(args)) return cb(masterAlive ? null : Object.assign(new Error('no master'), { code: 255 }), '', '');
+            cb(runResult.err ?? null, 'out', runResult.stderr ?? '');
+          }) as any);
+
+        // Master alive: the command goes through the socket, once.
+        answer(true);
+        await proc.exec('echo hi');
+        expect(calls.map((c) => (isCheck(c) ? 'check' : c[0] === '-S' ? 'socket' : 'independent'))).toEqual(['check', 'socket']);
+        expect(calls[0]).toEqual(['-S', socket, '-O', 'check', '--', 'myserver.com']);
+
+        // Master gone (the socket file is left over): the independent connection, once.
+        calls.length = 0;
+        answer(false);
         const result = await proc.exec('echo hi');
         expect(result.stdout.toString()).toBe('out');
-        expect(calls).toHaveLength(2);
-        expect(calls[0][0]).toBe('-S');
-        expect(calls[1]).not.toContain('-S');
-        expect(calls[1].slice(-5)).toEqual(['-o', 'BatchMode=yes', '--', 'alice@myserver.com', 'echo hi']);
+        expect(calls.map((c) => (isCheck(c) ? 'check' : c[0] === '-S' ? 'socket' : 'independent'))).toEqual(['check', 'independent']);
 
-        // The remote command itself failing (even with exit 255) must never run it a second time.
+        // A failing command is never run again, whatever its stderr says (the remote side writes it).
         calls.length = 0;
-        vi.mocked(execFile).mockImplementation(((_b: string, args: string[], _o: any, cb: any) => {
-          calls.push(args);
-          cb(Object.assign(new Error('exit'), { code: 255 }), '', 'rm: cannot remove: Permission denied\n');
-        }) as any);
+        answer(true, {
+          err: Object.assign(new Error('exit'), { code: 255 }),
+          stderr: 'Control socket connect(/x): Connection refused\nConnection closed by UNKNOWN port 65535\n',
+        });
         await expect(proc.exec('rm x')).rejects.toThrow('exit');
-        expect(calls).toHaveLength(1);
+        expect(calls.filter((c) => !isCheck(c))).toHaveLength(1);
         await proc.close();
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });

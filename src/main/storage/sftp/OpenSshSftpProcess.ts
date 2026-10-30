@@ -270,32 +270,30 @@ export class OpenSshSftpProcess {
     return { args, env, viaControlSocket: false };
   }
 
+  /** Asks the master behind the control socket whether it is alive (`ssh -O check`); its answer does not depend on any remote output. */
+  private masterIsAlive(sshBinary: string): Promise<boolean> {
+    if (!this.controlPath) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      execFile(sshBinary, ['-S', this.controlPath!, '-O', 'check', '--', this.host], { timeout: 5000 }, (err) =>
+        resolve(!err)
+      );
+    });
+  }
+
   public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
     const sshBinary = resolveSshBinary();
-    const run = (invocation: { args: string[]; env?: Record<string, string> }) =>
-      new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
-        execFile(
-          sshBinary,
-          invocation.args,
-          { maxBuffer: 10 * 1024 * 1024, ...(invocation.env ? { env: invocation.env } : {}) },
-          (err, stdout, stderr) => {
-            if (err) return reject(Object.assign(err, { stderr: stderr.toString() }));
-            resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
-          }
-        );
-      });
+    // Decided before the command runs, never by retrying afterwards: a failed run says nothing about whether
+    // the remote command already ran, and its stderr is the remote side's to write. A socket file whose
+    // master is gone is skipped here; the independent connection is built from the profile.
+    const useControlSocket = Boolean(this.controlPath && fs.existsSync(this.controlPath)) && (await this.masterIsAlive(sshBinary));
+    const { args, env } = this.buildExecInvocation(cmd, useControlSocket);
 
-    const first = this.buildExecInvocation(cmd);
-    try {
-      return await run(first);
-    } catch (err) {
-      // The socket file outlived its master (ssh exits 255 before any command ran, so nothing runs twice):
-      // use an independent connection instead, as before the socket existed.
-      const failure = err as { code?: unknown; stderr?: string };
-      const socketGone = failure.code === 255 && /Control socket connect|Connection closed by UNKNOWN/i.test(failure.stderr ?? '');
-      if (!first.viaControlSocket || !socketGone || !this.config) throw err;
-      return await run(this.buildExecInvocation(cmd, false));
-    }
+    return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
+      execFile(sshBinary, args, { maxBuffer: 10 * 1024 * 1024, ...(env ? { env } : {}) }, (err, stdout, stderr) => {
+        if (err) return reject(err);
+        resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
+      });
+    });
   }
 
   public createExecStream(cmd: string): NodeJS.ReadableStream {
