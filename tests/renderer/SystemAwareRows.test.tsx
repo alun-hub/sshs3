@@ -104,6 +104,9 @@ describe('SystemAwareRows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rename shop' }));
     const field = screen.getByRole('textbox', { name: 'New name for shop' });
     expect(field).toHaveValue('shop');
+    // The old name is selected, so typing replaces it.
+    expect((field as HTMLInputElement).selectionStart).toBe(0);
+    expect((field as HTMLInputElement).selectionEnd).toBe(4);
     fireEvent.change(field, { target: { value: 'webshop' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(onRenameSystem).toHaveBeenCalledTimes(1);

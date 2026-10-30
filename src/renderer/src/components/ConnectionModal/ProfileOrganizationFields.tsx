@@ -42,7 +42,9 @@ export const ProfileOrganizationFields: React.FC<ProfileOrganizationFieldsProps>
           readOnly={groupFollowsSystem}
           title={groupFollowsSystem ? 'The folder follows the system. Move the system to change it.' : undefined}
           list={folderSuggestions && !groupFollowsSystem ? folderListId : undefined}
-          className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+          className={`rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted ${
+            groupFollowsSystem ? 'cursor-not-allowed opacity-60' : ''
+          }`}
           placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : groupPlaceholder}
         />
         {groupFollowsSystem && <span className="text-xs text-txt-muted">Follows the system</span>}

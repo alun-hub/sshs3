@@ -61,6 +61,7 @@ export function SystemAwareRows<T extends SystemProfile>({
               {renaming?.key === key ? (
                 <input
                   autoFocus
+                  onFocus={(e) => e.currentTarget.select()}
                   aria-label={`New name for ${system.name}`}
                   value={renaming.value}
                   onChange={(e) => setRenaming({ key, value: e.target.value })}
