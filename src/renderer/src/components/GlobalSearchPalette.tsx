@@ -159,27 +159,29 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
         className="flex max-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-subtle bg-app-surface shadow-2xl"
       >
         <div className="flex items-center gap-2 border-b border-divider px-4 py-3">
-          <Search className="h-4 w-4 shrink-0 text-txt-muted" aria-hidden="true" />
-          <input
-            ref={inputRef}
-            data-autofocus
-            type="text"
-            role="combobox"
-            aria-label="Search profiles, tabs and hosts"
-            aria-expanded="true"
-            aria-controls="global-search-list"
-            aria-activedescendant={activeId}
-            autoComplete="off"
-            spellCheck={false}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(0);
-            }}
-            onKeyDown={onKeyDown}
-            placeholder="Search profiles, tags (#prod), user@host or > for actions…"
-            className="min-w-0 flex-1 bg-transparent text-sm text-txt-primary outline-none placeholder-txt-muted"
-          />
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-txt-muted" aria-hidden="true" />
+            <input
+              ref={inputRef}
+              data-autofocus
+              type="text"
+              role="combobox"
+              aria-label="Search profiles, tabs and hosts"
+              aria-expanded="true"
+              aria-controls="global-search-list"
+              aria-activedescendant={activeId}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onKeyDown}
+              placeholder="Search profiles, tags (#prod), user@host or > for actions…"
+              className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+            />
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -202,7 +204,7 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
                   setActive(0);
                   inputRef.current?.focus();
                 }}
-                className={`rounded-full px-2.5 py-0.5 text-xs cursor-pointer ${
+                className={`rounded px-2.5 py-0.5 text-xs cursor-pointer ${
                   filter === f.id
                     ? 'bg-sky-600 font-medium text-white'
                     : 'border border-border-subtle text-txt-secondary hover:bg-app-surface-hover'

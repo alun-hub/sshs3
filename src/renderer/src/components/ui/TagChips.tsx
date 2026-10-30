@@ -16,7 +16,7 @@ export const TagChips: React.FC<TagChipsProps> = ({ tags, max = 3 }) => {
       {shown.map((tag) => (
         <span
           key={tag}
-          className="rounded-full border border-border-subtle bg-app-surface px-1.5 py-px text-2xs text-txt-secondary"
+          className="rounded border border-border-subtle bg-app-surface px-1.5 py-px text-2xs text-txt-secondary"
         >
           {tag}
         </span>
