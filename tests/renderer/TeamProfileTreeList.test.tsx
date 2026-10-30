@@ -102,7 +102,7 @@ describe('TeamProfileTreeList folder position', () => {
     const onFolderPathChange = vi.fn();
     const first = renderList({ folderPaths: {}, onFolderPathChange });
 
-    fireEvent.click(await screen.findByText('Acme Infra'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Acme Infra' }));
     expect(onFolderPathChange).toHaveBeenCalledWith('ssh/v1', ['Acme Infra']);
     first.unmount();
 
@@ -115,5 +115,62 @@ describe('TeamProfileTreeList folder position', () => {
     renderList({ tab: 's3', folderPaths: { 'ssh/v1': ['Acme Infra'] } });
     await screen.findByText(/No profiles|New Profile/);
     expect(screen.queryByText('web-1')).not.toBeInTheDocument();
+  });
+});
+
+describe('TeamProfileTreeList folder sidebar', () => {
+  const unlocked = { ...lockedStatus, unlocked: true } as TeamVaultStatus;
+  const nested = {
+    ssh: [
+      { id: 'p1', name: 'web-1', host: 'web-1.example.com', username: 'root', authType: 'password', group: 'Acme Infra' },
+      { id: 'p2', name: 'node-1', host: 'node-1.example.com', username: 'root', authType: 'password', group: 'Acme Infra/Cluster A' },
+    ],
+    s3: [],
+    folders: ['Acme Infra', 'Acme Infra/Cluster A'],
+  } as unknown as TeamVaultPayload;
+
+  beforeEach(() =>
+    setApi({
+      teamVaultList: vi.fn().mockResolvedValue([unlocked]),
+      teamVaultGetStatus: vi.fn().mockResolvedValue(unlocked),
+      teamVaultGetPayload: vi.fn().mockResolvedValue(nested),
+    })
+  );
+
+  it('shows the folder tree beside the list, with the number of profiles in each folder', async () => {
+    renderList();
+    const tree = await screen.findByRole('navigation', { name: 'Folders' });
+    expect(tree).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Acme Infra (2 profiles)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All folders (2 profiles)' })).toBeInTheDocument();
+  });
+
+  it('browses a folder picked in the tree with the same position the breadcrumb uses', async () => {
+    const onFolderPathChange = vi.fn();
+    renderList({ folderPaths: {}, onFolderPathChange });
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme Infra (2 profiles)' }));
+    expect(onFolderPathChange).toHaveBeenCalledWith('ssh/v1', ['Acme Infra']);
+  });
+
+  it('highlights, and opens the tree down to, the folder the list is showing', async () => {
+    renderList({ folderPaths: { 'ssh/v1': ['Acme Infra', 'Cluster A'] }, onFolderPathChange: vi.fn() });
+    expect(await screen.findByRole('button', { name: 'Cluster A (1 profile)' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('is not shown while searching, when the results are one flat list', async () => {
+    renderList({ query: 'web' });
+    await screen.findByText(/Search results for/);
+    expect(screen.queryByRole('navigation', { name: 'Folders' })).not.toBeInTheDocument();
+  });
+
+  it('is not shown for a team without folders', async () => {
+    window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({
+      ssh: [{ id: 'p1', name: 'web-1', host: 'h', username: 'root', authType: 'password' }],
+      s3: [],
+      folders: [],
+    });
+    renderList();
+    await screen.findByText('web-1');
+    expect(screen.queryByRole('navigation', { name: 'Folders' })).not.toBeInTheDocument();
   });
 });

@@ -3,9 +3,11 @@ import {
   buildTeamFolderTree,
   collectAllTeamFolderPaths,
   collectTeamFolderSuggestions,
+  countTeamFolderProfiles,
   filterTeamFolderNamesForTab,
   findFolderNode,
   flattenTeamFolderTree,
+  folderAncestors,
 } from '../../src/renderer/src/components/ConnectionModal/teamFolderTree';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
@@ -152,5 +154,41 @@ describe('teamFolderTree', () => {
       expect(filterTeamFolderNamesForTab('ssh', folders, [], [])).toEqual(['New Folder']);
       expect(filterTeamFolderNamesForTab('s3', folders, [], [])).toEqual(['New Folder']);
     });
+  });
+});
+
+describe('countTeamFolderProfiles', () => {
+  it('counts the profiles in a folder and in every folder below it', () => {
+    const { roots } = buildTeamFolderTree(
+      ['Acme', 'Acme/Prod', 'Acme/Prod/Web'],
+      [
+        { group: 'Acme' },
+        { group: 'Acme/Prod' },
+        { group: 'Acme/Prod' },
+        { group: 'Acme/Prod/Web' },
+        { group: 'Other' },
+      ],
+      {}
+    );
+    const acme = roots.find((n) => n.name === 'Acme')!;
+    expect(countTeamFolderProfiles(acme)).toBe(4);
+    expect(countTeamFolderProfiles(acme.children[0])).toBe(3);
+    expect(countTeamFolderProfiles(acme.children[0].children[0])).toBe(1);
+  });
+
+  it('is zero for an empty folder', () => {
+    const { roots } = buildTeamFolderTree(['Empty'], [], {});
+    expect(countTeamFolderProfiles(roots[0])).toBe(0);
+  });
+});
+
+describe('folderAncestors', () => {
+  it('lists the paths of every folder above the given one, outermost first', () => {
+    expect(folderAncestors(['Acme', 'Prod', 'Web'])).toEqual(['Acme', 'Acme/Prod']);
+  });
+
+  it('is empty for a top-level folder and for the root', () => {
+    expect(folderAncestors(['Acme'])).toEqual([]);
+    expect(folderAncestors([])).toEqual([]);
   });
 });

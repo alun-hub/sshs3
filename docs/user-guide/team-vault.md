@@ -179,14 +179,15 @@ When Team Vaults are configured, the **Connection Manager** (<kbd>Ctrl+Shift+O</
 - **PKCS#11 / Smartcard Profiles:** Leave the PKCS#11 library path blank on shared profiles. Each member's local default from **Settings → Security & Smartcard** is applied automatically, accommodating differing Linux distributions without per-profile configuration.
 - **Private Key Paths:** File paths to private keys are shared verbatim. If team members use SSH private keys, ensure the key files are stored at consistent filesystem paths across workstations.
 
-![Folder cards](/img/docs/team-vault-folders.png)
+![Team Vault folders](/img/docs/team-vault-folders.png)
 
 ### Hierarchical Folders & Custom Icons
 Shared profiles can be organized into arbitrary directory trees synchronized across all team members:
-- Folders are rendered as interactive **cards**. Press <kbd>Enter</kbd> or click a card to navigate inside. Breadcrumb navigation at the top provides quick traversal back up the hierarchy.
+- The folders of a team are listed one per row: icon, name, how many profiles and subfolders it holds (or **Empty**), and rename and delete buttons that appear when you point at or focus the row. Press <kbd>Enter</kbd> or click a row to navigate inside. Breadcrumb navigation at the top provides quick traversal back up the hierarchy.
+- A **folder tree** beside the list shows every folder with its number of profiles, opened down to the folder you are in. Click a folder to go there, or **All folders** to return to the top. The tree is hidden while you search and in narrow windows.
 - **New top-level folder** and **New subfolder** create empty directories that persist across team syncs.
-- Organize profiles by **dragging and dropping** cards onto folder cards or breadcrumb segments, or by setting the profile's **Group / Folder** property (e.g. `Databases/Postgres/Replica`).
-- Click the icon on any folder card to choose from 12 distinct icons (**server**, **database**, **cloud**, **shield**, **globe**, **box**, **hard-drive**, **network**, **git-branch**, **cpu**, **layers**, or default **folder**).
+- Organize profiles by **dragging and dropping** them onto folder rows, folders in the tree, **All folders** (to take a profile out of its folder) or breadcrumb segments, or by setting the profile's **Group / Folder** property (e.g. `Databases/Postgres/Replica`).
+- Click the icon on any folder row to choose from 12 distinct icons (**server**, **database**, **cloud**, **shield**, **globe**, **box**, **hard-drive**, **network**, **git-branch**, **cpu**, **layers**, or default **folder**).
 - Deleting a folder moves its profiles to **Ungrouped** rather than deleting them.
 
 ![Subfolders and breadcrumb](/img/docs/team-vault-subfolders.png)
