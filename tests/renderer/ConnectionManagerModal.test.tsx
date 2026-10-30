@@ -931,3 +931,126 @@ describe('ConnectionManagerModal', () => {
     });
   });
 });
+
+describe('ConnectionManagerModal multi-select', () => {
+  beforeEach(() => {
+    window.multissh = {
+      settingsGet: vi.fn().mockResolvedValue({}),
+      settingsSave: vi.fn().mockResolvedValue({}),
+      profilesGet: vi.fn().mockResolvedValue({ ssh: mockSSHProfiles, s3: mockS3Profiles }),
+      profilesSaveSSH: vi.fn().mockResolvedValue(undefined),
+      profilesSaveS3: vi.fn().mockResolvedValue(undefined),
+      teamVaultGetStatus: vi.fn().mockResolvedValue({ exists: false, unlocked: false, filePath: '/x' }),
+      teamVaultList: vi.fn().mockResolvedValue([]),
+    } as unknown as typeof window.multissh;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  async function openList() {
+    render(
+      <ConfirmProvider>
+        <ConnectionManagerModal open={true} onClose={vi.fn()} onConnectSSH={vi.fn()} />
+      </ConfirmProvider>
+    );
+    await screen.findByRole('checkbox', { name: 'Select Dev Sandbox' });
+  }
+
+  it('shows a checkbox on every profile of the list, and the action bar once one is selected', async () => {
+    await openList();
+    expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dev Sandbox' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select Prod Web 01' })).toBeChecked();
+  });
+
+  it('moves the selected profiles to a new folder and reloads the list', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dev Sandbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: ' Nytt ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(2));
+    expect(window.multissh.profilesSaveSSH).toHaveBeenCalledWith(expect.objectContaining({ id: 'ssh-1', group: 'Nytt' }));
+    expect(window.multissh.profilesSaveSSH).toHaveBeenCalledWith(expect.objectContaining({ id: 'ssh-3', group: 'Nytt' }));
+    await waitFor(() => expect(window.multissh.profilesGet).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Moved 2 profiles to "Nytt".')).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ selected/)).not.toBeInTheDocument();
+  });
+
+  it('takes the selected profiles out of their folder', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Take out of folder' }));
+
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledTimes(1));
+    const saved = (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(saved.id).toBe('ssh-1');
+    expect('group' in saved).toBe(false);
+  });
+
+  it('adds tags to the selected profiles', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add tags…' }));
+    const input = screen.getByLabelText('Tags to add');
+    fireEvent.change(input, { target: { value: 'prod' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(window.multissh.profilesSaveSSH).toHaveBeenCalledWith(expect.objectContaining({ id: 'ssh-1', tags: ['prod'] })));
+    expect(await screen.findByText('Added tags to 1 profile.')).toBeInTheDocument();
+  });
+
+  it('shows a failed save and keeps the selection so it can be tried again', async () => {
+    (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('disk is read-only'));
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Nytt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+
+    expect(await screen.findByText(/disk is read-only/)).toBeInTheDocument();
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('forgets the selection when the tab is switched', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    await screen.findByRole('checkbox', { name: 'Select Backup Bucket' });
+    expect(screen.queryByText(/\d+ selected/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /SSH/i }));
+    await screen.findByRole('checkbox', { name: 'Select Prod Web 01' });
+    expect(screen.getByRole('checkbox', { name: 'Select Prod Web 01' })).not.toBeChecked();
+  });
+
+  it('selects S3 profiles too, and saves them through the S3 store', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Backup Bucket' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Arkiv' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+
+    await waitFor(() => expect(window.multissh.profilesSaveS3).toHaveBeenCalledWith(expect.objectContaining({ id: 's3-1', group: 'Arkiv' })));
+    expect(window.multissh.profilesSaveSSH).not.toHaveBeenCalled();
+  });
+
+  it('only counts the profiles the search leaves visible', async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dev Sandbox' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Search profiles/i), { target: { value: 'sandbox' } });
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+});

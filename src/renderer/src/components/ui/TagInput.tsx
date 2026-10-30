@@ -5,6 +5,8 @@ import { MAX_TAGS, MAX_TAG_LENGTH, normalizeTag, normalizeTags } from '@shared/t
 export interface TagInputProps {
   /** Id for the text field, so a visible <label htmlFor> can name it. */
   id?: string;
+  /** Accessible name when there is no visible label. */
+  ariaLabel?: string;
   value: string[];
   onChange: (tags: string[]) => void;
   /** Existing tags offered by the browser's autocomplete (those already on the profile are left out). */
@@ -17,7 +19,7 @@ export interface TagInputProps {
  * removes the last one, and text still in the field is added on blur so Save never loses it.
  * Enter with an empty field is left alone, so it still submits the surrounding form.
  */
-export const TagInput: React.FC<TagInputProps> = ({ id, value, onChange, suggestions, disabled }) => {
+export const TagInput: React.FC<TagInputProps> = ({ id, ariaLabel, value, onChange, suggestions, disabled }) => {
   const [draft, setDraft] = useState('');
   const [invalid, setInvalid] = useState(false);
   const listId = useId();
@@ -80,6 +82,7 @@ export const TagInput: React.FC<TagInputProps> = ({ id, value, onChange, suggest
       ))}
       <input
         id={id}
+        aria-label={ariaLabel}
         value={draft}
         disabled={disabled || atLimit}
         maxLength={MAX_TAG_LENGTH + 1}

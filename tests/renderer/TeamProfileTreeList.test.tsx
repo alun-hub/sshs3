@@ -174,3 +174,117 @@ describe('TeamProfileTreeList folder sidebar', () => {
     expect(screen.queryByRole('navigation', { name: 'Folders' })).not.toBeInTheDocument();
   });
 });
+
+describe('TeamProfileTreeList multi-select', () => {
+  const unlocked = { ...lockedStatus, unlocked: true } as TeamVaultStatus;
+  const loose = {
+    ssh: [
+      { id: 'p1', name: 'web-1', host: 'web-1.example.com', username: 'root', authType: 'password', hasPassword: true },
+      { id: 'p2', name: 'web-2', host: 'web-2.example.com', username: 'root', authType: 'password', tags: ['web'] },
+      { id: 'p3', name: 'db-1', host: 'db-1.example.com', username: 'root', authType: 'password' },
+    ],
+    s3: [],
+    folders: ['Acme Infra'],
+  } as unknown as TeamVaultPayload;
+  let save: ReturnType<typeof vi.fn>;
+  let getPayload: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    save = vi.fn().mockResolvedValue(undefined);
+    getPayload = vi.fn().mockResolvedValue(loose);
+    setApi({
+      teamVaultList: vi.fn().mockResolvedValue([unlocked]),
+      teamVaultGetStatus: vi.fn().mockResolvedValue(unlocked),
+      teamVaultGetPayload: getPayload,
+      teamVaultSaveSSHProfile: save,
+      teamVaultSaveS3Profile: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  const select = async (...names: string[]) => {
+    for (const name of names) fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${name}` }));
+  };
+
+  it('shows a checkbox on each shared profile and the action bar once some are selected', async () => {
+    renderList();
+    await select('web-1', 'db-1');
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('moves the selected profiles into a folder through the vault, without the reference the list adds, then reloads', async () => {
+    renderList();
+    await select('web-1', 'web-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Acme Infra/Cluster A' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    const saved = save.mock.calls.map(([, profile]) => profile);
+    expect(saved.map((p) => p.id)).toEqual(['p1', 'p2']);
+    for (const profile of saved) {
+      expect(profile.group).toBe('Acme Infra/Cluster A');
+      expect('teamVaultProfileRef' in profile).toBe(false);
+    }
+    expect(save.mock.calls[0][0]).toBe('v1');
+    await waitFor(() => expect(getPayload).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Moved 2 profiles to "Acme Infra/Cluster A".')).toBeInTheDocument();
+  });
+
+  it('keeps what a member sees of a profile as it is: no secret is added back when saving', async () => {
+    renderList();
+    await select('web-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Acme Infra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const saved = save.mock.calls[0][1];
+    expect(saved).toMatchObject({ id: 'p1', hasPassword: true, group: 'Acme Infra' });
+    expect(saved.password).toBeUndefined();
+  });
+
+  it('adds tags to the selected shared profiles', async () => {
+    renderList();
+    await select('web-2', 'db-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Add tags…' }));
+    const input = screen.getByLabelText('Tags to add');
+    fireEvent.change(input, { target: { value: 'prod' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls[0][1]).toMatchObject({ id: 'p2', tags: ['prod', 'web'] });
+    expect(save.mock.calls[1][1]).toMatchObject({ id: 'p3', tags: ['prod'] });
+  });
+
+  it('shows the error when the vault refuses a save, and keeps the selection', async () => {
+    save.mockRejectedValue(new Error('Only a Team Vault admin can do that'));
+    renderList();
+    await select('web-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Acme Infra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only a Team Vault admin can do that');
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('starts with an empty selection on the S3 tab', async () => {
+    const { rerender } = renderList();
+    await select('web-1');
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    rerender(
+      <ConfirmProvider>
+        <TeamProfileTreeList tab="s3" query="" activeVaultId="v1" setEditing={vi.fn()} onNewProfile={vi.fn()} onVaultsMetaChange={vi.fn()} />
+      </ConfirmProvider>
+    );
+    await waitFor(() => expect(screen.queryByText('1 selected')).not.toBeInTheDocument());
+  });
+
+  it('offers the folders of the team as destinations', async () => {
+    const { container } = renderList();
+    await select('web-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    const values = Array.from(container.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'));
+    expect(values).toContain('Acme Infra');
+  });
+});

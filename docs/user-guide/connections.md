@@ -21,6 +21,20 @@ Typing in the search bar finds matching profiles across **all** profile backends
 
 Matches outside the current view display an **origin badge** (e.g. `Team: Infra` or `Sync`), making it effortless to jump to any server across all your teams without switching tabs.
 
+### Working with Several Profiles
+Every profile row has a checkbox at its start. It appears when you point at or tab to the row, and on all rows as soon as one is selected. Select a few and an action bar appears above the list.
+
+| Action | What it does |
+| :--- | :--- |
+| **Move to folder…** | Moves all selected profiles to the folder you type: an existing one (suggested while you type) or a new one. A path such as `Prod/Web` makes nested folders. **Take out of folder** removes them from their folder instead. |
+| **Add tags…** | Adds the tags you enter to every selected profile, next to the tags they already have. |
+| **Clear** | Deselects everything. |
+
+The selection belongs to the list you are looking at: it is forgotten when you switch between **SSH / SFTP** and **S3 Object Storage**, choose another team, or close the dialog. While you search, only the profiles that are still visible count. The bar says how many profiles were changed, and profiles that are already in the folder or already have the tags are left alone.
+
+> [!NOTE]
+> In a Team Vault each profile is saved to the vault one at a time, exactly like dragging it to a folder, so moving many profiles makes many small changes that sync to the other members. If a save is refused (for example because the vault is read-only for you) the rest are not attempted, the profiles saved so far stay moved, and the selection is kept so you can try again.
+
 ### Global Search
 Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
 
