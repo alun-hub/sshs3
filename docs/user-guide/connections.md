@@ -66,7 +66,7 @@ A server in a system shows its folder as **Follows the system** in the profile f
 > In a Team Vault a system can only contain that team's own profiles, and every member sees it. Members may change which system a server belongs to, like its folder. Older versions of sshs3 show the servers as ordinary profiles and keep the system when they save other changes.
 
 ### Global Search
-Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
+Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the magnifier at the start of the quick links in the top bar to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
 
 | Input | Result |
 | :--- | :--- |
