@@ -664,6 +664,22 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     onError: setError,
   });
 
+  const renderSshProfile = (profile: SSHConnectionConfig) => (
+    <SshProfileRow
+      key={profile.id}
+      profile={profile}
+      onConnectSSH={onConnectSSH}
+      onConnectSFTP={onConnectSFTP}
+      handleConnectSSH={handleConnectSSH}
+      handleCloneSSH={handleCloneSSH}
+      handleDeleteSSH={handleDeleteSSH}
+      setEditing={setEditing}
+      setInstallKeyProfile={setInstallKeyProfile}
+      setTunnelsProfile={setTunnelsProfile}
+      select={bulk.ssh.rowSelect(profile.id)}
+    />
+  );
+
   // "N more results elsewhere" (§8): the search field only filters the active source
   // (Personal, or one team), so surface — without switching away — whatever else matches in
   // Personal and every other unlocked team, each one jump-to-able.
@@ -1299,21 +1315,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onDrop={(e) => void handleDropOnGroup(e, groupName)}
                                 />
                               ) : (
-                                profiles.map((profile) => (
-                                  <SshProfileRow
-                                    key={profile.id}
-                                    profile={profile}
-                                    onConnectSSH={onConnectSSH}
-                                    onConnectSFTP={onConnectSFTP}
-                                    handleConnectSSH={handleConnectSSH}
-                                    handleCloneSSH={handleCloneSSH}
-                                    handleDeleteSSH={handleDeleteSSH}
-                                    setEditing={setEditing}
-                                    setInstallKeyProfile={setInstallKeyProfile}
-                                    setTunnelsProfile={setTunnelsProfile}
-                                    select={bulk.ssh.rowSelect(profile.id)}
-                                  />
-                                ))
+                                profiles.map(renderSshProfile)
                               )}
                             </div>
                           )}
