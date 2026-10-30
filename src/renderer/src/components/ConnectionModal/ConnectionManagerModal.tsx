@@ -47,6 +47,7 @@ import { ImportCandidatesModal } from './ImportCandidatesModal';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
+import { shouldTouchLastUsed } from '../../lib/openProfile';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
@@ -327,11 +328,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
-    // Team profiles skip the "lastUsedAt" touch write-back deliberately: bumping it would bump
-    // the vault's revision (every mutating write does — see TeamVaultService.persistPayload),
-    // which every other member's background poll would then pick up as "something changed" for
-    // what's really just a per-viewer stat nobody else needs to see.
-    if (source !== 'personal') {
+    // Team profiles skip the "lastUsedAt" write-back deliberately (see shouldTouchLastUsed).
+    if (!shouldTouchLastUsed(source)) {
       onConnectSSH?.(profile);
       return;
     }
@@ -382,7 +380,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
-    if (source !== 'personal') {
+    if (!shouldTouchLastUsed(source)) {
       onConnectS3?.(profile);
       return;
     }

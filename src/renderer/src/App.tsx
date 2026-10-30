@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Terminal } from 'lucide-react';
 import { UnsplitButton } from './components/UnsplitButton';
 import { TabBar } from './components/TabBar';
-import { isEmptyUnconnectedTab, type AppTab } from './lib/tabs';
+import type { AppTab } from './lib/tabs';
 import { useAppKeyboard } from './lib/useAppKeyboard';
 import { useTabActions } from './lib/useTabActions';
 import { useSessionPersistence } from './lib/useSessionPersistence';
@@ -146,6 +146,8 @@ const AppContent: React.FC = () => {
     handleSelectPane,
     handleConnectTerminal,
     handleConnectK8sTerminal,
+    handleOpenSSHInTab,
+    handleOpenK8sInTab,
     handleViewK8sLogs,
     handleOpenLocalTerminal,
     handlePaneTitleChange,
@@ -609,42 +611,10 @@ const AppContent: React.FC = () => {
           setProfilesModalOpen(false);
           setProfilesModalNew(false);
         }}
-        onConnectSSH={(config) => {
-          const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
-            handleConnectTerminal({ tabId: activeTab.id }, config);
-          } else {
-            const newId = `term-${Date.now()}`;
-            const newTab: AppTab = {
-              id: newId,
-              type: 'terminal',
-              title: config.name,
-              paneTree: createLeaf(`${newId}-root`, { config }),
-            };
-            setTabs((prev) => [...prev, newTab]);
-            setActiveTabId(newId);
-          }
-          setProfilesModalOpen(false);
-        }}
+        onConnectSSH={handleOpenSSHInTab}
         onConnectSFTP={handleConnectSFTP}
         onConnectS3={handleConnectS3}
-        onConnectK8s={(target) => {
-          const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
-            handleConnectK8sTerminal({ tabId: activeTab.id }, target);
-          } else {
-            const newId = `term-${Date.now()}`;
-            const newTab: AppTab = {
-              id: newId,
-              type: 'terminal',
-              title: target.podName,
-              paneTree: createLeaf(`${newId}-root`, { k8sTarget: target }),
-            };
-            setTabs((prev) => [...prev, newTab]);
-            setActiveTabId(newId);
-          }
-          setProfilesModalOpen(false);
-        }}
+        onConnectK8s={handleOpenK8sInTab}
         onViewK8sLogs={handleViewK8sLogs}
         onBrowseK8sFiles={handleBrowseK8sFiles}
       />
