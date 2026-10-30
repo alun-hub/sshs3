@@ -140,6 +140,12 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   // So a save made through the edit form (rendered here, not by TeamProfileTreeList) can refresh
   // that one vault's cached payload immediately — see TeamProfileTreeListHandle's doc comment.
   const teamProfileTreeListRef = useRef<TeamProfileTreeListHandle>(null);
+  // Where each team's folder browser is. Here rather than in TeamProfileTreeList, which is unmounted while
+  // a profile is edited and would otherwise start at the root again afterwards.
+  const [teamFolderPaths, setTeamFolderPaths] = useState<Record<string, string[]>>({});
+  const handleTeamFolderPathChange = useCallback((vaultId: string, path: string[]) => {
+    setTeamFolderPaths((prev) => ({ ...prev, [vaultId]: path }));
+  }, []);
 
   const loadTeamVaultTabs = useCallback(async () => {
     try {
@@ -1325,6 +1331,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 // moment the "N more results elsewhere" notice below actually needs the data.
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
+                  folderPaths={teamFolderPaths}
+                  onFolderPathChange={handleTeamFolderPathChange}
                   tab="ssh"
                   query={query}
                   activeVaultId={source}
@@ -1444,6 +1452,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                 // See the "ssh" mount above for why this is gated on `query` while on Personal.
                 <TeamProfileTreeList
                   ref={teamProfileTreeListRef}
+                  folderPaths={teamFolderPaths}
+                  onFolderPathChange={handleTeamFolderPathChange}
                   tab="s3"
                   query={query}
                   activeVaultId={source}

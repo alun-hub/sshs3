@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { AlertTriangle, CloudDownload, Loader2, Lock, Plus, Unlock } from 'lucide-react';
+import { AlertTriangle, CloudDownload, Loader2, Lock, Plus, Unlock, X } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault';
@@ -45,6 +45,10 @@ interface TeamProfileTreeListProps {
    * only place that can answer "is the signed-in identity an admin of vault X" without a second,
    * redundant fetch. */
   onVaultsMetaChange: (metas: TeamVaultMeta[]) => void;
+  /** Where each team's folder browser is, by vaultId. Kept by the parent so that it survives this
+   * component being unmounted while a profile is edited; without it the position is kept here. */
+  folderPaths?: Record<string, string[]>;
+  onFolderPathChange?: (vaultId: string, path: string[]) => void;
 }
 
 /**
@@ -60,7 +64,19 @@ interface TeamProfileTreeListProps {
  * `setEditing`/`onNewProfile`), since the form itself is rendered by `ConnectionManagerModal`.
  */
 export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamProfileTreeListProps>(function TeamProfileTreeList(
-  { tab, query, activeVaultId, onConnectSSH, onConnectSFTP, onConnectS3, setEditing, onNewProfile, onVaultsMetaChange },
+  {
+    tab,
+    query,
+    activeVaultId,
+    onConnectSSH,
+    onConnectSFTP,
+    onConnectS3,
+    setEditing,
+    onNewProfile,
+    onVaultsMetaChange,
+    folderPaths,
+    onFolderPathChange,
+  },
   ref
 ) {
   const confirm = useConfirm();
@@ -363,9 +379,42 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     );
   }
 
-  if (error) {
-    return <p className="py-6 text-center text-sm text-red-300">{error}</p>;
+  // The list itself could not be loaded: there is nothing else to show, so offer another try.
+  if (error && vaultOrder.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <p role="alert" className="text-sm text-red-300">
+          {error}
+        </p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-medium text-txt-secondary transition-colors hover:bg-app-surface-hover hover:text-txt-primary"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
+
+  // A failed action (unlock, folder change, sync) is shown above the teams, which stay usable.
+  const errorBanner = error ? (
+    <div
+      role="alert"
+      className="flex items-start justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+    >
+      <span className="min-w-0 break-words">{error}</span>
+      <button
+        type="button"
+        aria-label="Dismiss error"
+        title="Dismiss"
+        onClick={() => setError(null)}
+        className="shrink-0 rounded p-0.5 transition-colors hover:bg-red-500/20"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  ) : null;
 
   if (vaultOrder.length === 0) {
     return (
@@ -384,6 +433,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
   return (
     <div className="space-y-4">
+      {errorBanner}
       {visibleVaultIds.map((vaultId) => {
         const entry = entries[vaultId];
         if (!entry) return null;
@@ -532,8 +582,10 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               <TeamProfileTree
                 roots={tree.roots}
                 ungrouped={tree.ungrouped}
-                currentPath={entry.folderPath}
-                onNavigate={(path) => updateEntry(vaultId, { folderPath: path })}
+                currentPath={folderPaths ? (folderPaths[vaultId] ?? []) : entry.folderPath}
+                onNavigate={(path) =>
+                  onFolderPathChange ? onFolderPathChange(vaultId, path) : updateEntry(vaultId, { folderPath: path })
+                }
                 query={query}
                 renderProfile={(profile: SSHConnectionConfig | S3Config) =>
                   tab === 'ssh' ? (

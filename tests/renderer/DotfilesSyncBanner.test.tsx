@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { DotfilesSyncBanner } from '../../src/renderer/src/components/DotfilesSyncBanner';
-import type { DotfilesSyncStatusEvent } from '../../src/shared/types/dotfiles';
+import type { DotfilesSyncPromptEvent, DotfilesSyncStatusEvent } from '../../src/shared/types/dotfiles';
+import { getTopmostOverlay } from '../../src/renderer/src/lib/spatialNavigation';
 
 describe('DotfilesSyncBanner status toast', () => {
   let emitStatus: ((event: DotfilesSyncStatusEvent) => void) | null = null;
@@ -61,5 +62,39 @@ describe('DotfilesSyncBanner status toast', () => {
     act(() => vi.advanceTimersByTime(10_000));
 
     expect(screen.getByTestId('dotfiles-sync-status')).toHaveTextContent('boom');
+  });
+});
+
+describe('DotfilesSyncBanner prompt', () => {
+  let emitPrompt: ((event: DotfilesSyncPromptEvent) => void) | null = null;
+
+  beforeEach(() => {
+    emitPrompt = null;
+    window.multissh = {
+      onDotfilesSyncPrompt: vi.fn((cb: (event: DotfilesSyncPromptEvent) => void) => {
+        emitPrompt = cb;
+        return () => undefined;
+      }),
+      onDotfilesSyncStatus: vi.fn(() => () => undefined),
+      respondDotfilesSyncPrompt: vi.fn().mockResolvedValue(undefined),
+    } as unknown as typeof window.multissh;
+  });
+
+  afterEach(() => cleanup());
+
+  it('is a labelled region, not a dialog', () => {
+    render(<DotfilesSyncBanner />);
+    act(() =>
+      emitPrompt!({ id: 'p1', sessionId: 's1', poolName: 'Work', hostLabel: 'web-1', entries: [{ fileId: 'f', remotePath: '~/.bashrc', reason: 'changed' } as never] })
+    );
+    expect(screen.getByRole('region', { name: 'Dotfiles out of date on web-1' })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('is not taken for a modal overlay, so Ctrl+Shift+Arrow keeps navigating the app', () => {
+    render(<DotfilesSyncBanner />);
+    act(() => emitPrompt!({ id: 'p1', sessionId: 's1', poolName: 'Work', hostLabel: 'web-1', entries: [] }));
+    expect(screen.getByTestId('dotfiles-sync-banner')).toBeInTheDocument();
+    expect(getTopmostOverlay()).toBeNull();
   });
 });

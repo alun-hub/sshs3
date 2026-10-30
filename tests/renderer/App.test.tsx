@@ -726,5 +726,18 @@ describe('App Component', () => {
     fireEvent.keyDown(window, { key: 'O', ctrlKey: true, shiftKey: true });
     await waitFor(() => expect(activeTab().className).not.toContain('ring-sky-400'));
   });
+
+  it('saves a font size change as that one setting, so a stale copy of the others is never sent back', async () => {
+    render(<App />);
+    await screen.findByTestId('tab-term-1');
+
+    fireEvent.keyDown(window, { key: '+', ctrlKey: true });
+
+    await waitFor(() => expect(window.multissh.settingsSave).toHaveBeenCalled());
+    const sent = vi.mocked(window.multissh.settingsSave).mock.calls[0][0];
+    // Not the whole object: connectionManagerVisibleTeamVaults and connectionManagerDefaultTab are written
+    // by their own calls and App's copy of them can be out of date.
+    expect(Object.keys(sent)).toEqual(['terminalFontSize']);
+  });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildLinuxRelaunchScript, scheduleLinuxRelaunch } from './linuxRelaunch';
+import { buildLinuxRelaunchScript, scheduleLinuxRelaunch, startLinuxRelaunch } from './linuxRelaunch';
 import { spawn } from 'node:child_process';
 
 vi.mock('node:child_process', () => ({
@@ -90,6 +90,31 @@ describe('linuxRelaunch', () => {
       } else {
         expect(scheduled).toBe(false);
       }
+    });
+
+    it('returns a handle that stops the helper', () => {
+      const kill = vi.fn();
+      vi.mocked(spawn).mockReturnValue({ unref: vi.fn(), kill } as any);
+
+      const handle = startLinuxRelaunch({ pid: 9999, maxWaitSeconds: 10 });
+      if (process.platform === 'linux') {
+        expect(handle).not.toBeNull();
+        handle!.cancel();
+        expect(kill).toHaveBeenCalledWith('SIGTERM');
+      } else {
+        expect(handle).toBeNull();
+      }
+    });
+
+    it('does not throw when the helper cannot be signalled', () => {
+      vi.mocked(spawn).mockReturnValue({
+        unref: vi.fn(),
+        kill: vi.fn(() => {
+          throw new Error('ESRCH');
+        }),
+      } as any);
+      const handle = startLinuxRelaunch({ pid: 9999 });
+      if (process.platform === 'linux') expect(() => handle!.cancel()).not.toThrow();
     });
   });
 });

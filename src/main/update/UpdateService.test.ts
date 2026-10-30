@@ -202,6 +202,40 @@ describe('UpdateService', () => {
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, false);
   });
 
+  it('stops the Linux relaunch helper when the install fails or is cancelled, so a later quit does not restart the app', async () => {
+    const cancel = vi.fn();
+    const relaunchOnLinux = vi.fn(() => ({ cancel }));
+    const { updater, service } = create({ platform: 'linux', relaunchOnLinux });
+    updater.emit('update-downloaded', { version: '2.0.0' });
+    updater.quitAndInstall.mockImplementationOnce(() => {
+      updater.emit('error', new Error('polkit dismissed'));
+    });
+    await service.install();
+    expect(service.getState().status).toBe('ready');
+    expect(cancel).toHaveBeenCalledOnce();
+
+    // A second attempt starts a new helper, and an install that goes through leaves it running.
+    await service.install();
+    expect(relaunchOnLinux).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('stops the relaunch helper and stays retryable when quitAndInstall throws', async () => {
+    const cancel = vi.fn();
+    const relaunchOnLinux = vi.fn(() => ({ cancel }));
+    const { updater, service } = create({ platform: 'linux', relaunchOnLinux });
+    updater.emit('update-downloaded', { version: '2.0.0' });
+    updater.quitAndInstall.mockImplementationOnce(() => {
+      throw new Error('spawn failed');
+    });
+    await expect(service.install()).rejects.toThrow('spawn failed');
+    expect(cancel).toHaveBeenCalledOnce();
+    // Not stuck on the installing overlay: the user can try again.
+    expect(service.getState()).toMatchObject({ status: 'ready', error: 'spawn failed' });
+    await service.install();
+    expect(relaunchOnLinux).toHaveBeenCalledTimes(2);
+  });
+
   it('calls quitAndInstall(false, true) on non-Linux platforms', async () => {
     const relaunchOnLinux = vi.fn();
     const { updater, service } = create({ platform: 'darwin', relaunchOnLinux });

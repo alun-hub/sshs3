@@ -2,7 +2,7 @@ import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 import { createLogger } from '../log';
 import type { UpdateState, UpdateUnsupportedReason } from '../../shared/types/update';
-import { scheduleLinuxRelaunch } from './linuxRelaunch';
+import { startLinuxRelaunch, type LinuxRelaunchHandle } from './linuxRelaunch';
 import { isNsisInstall } from './installKind';
 
 const INITIAL_CHECK_DELAY_MS = 30_000;
@@ -64,8 +64,11 @@ export interface UpdateServiceOptions {
    * synchronous installer blocks the main process. Defaults to 300 ms; 0 skips the wait.
    */
   paintDelayMs?: number;
-  /** Custom Linux relaunch hook (overrides scheduleLinuxRelaunch, e.g. in tests). */
-  relaunchOnLinux?: () => boolean | void;
+  /**
+   * Custom Linux relaunch hook (overrides startLinuxRelaunch, e.g. in tests). A returned handle is
+   * cancelled when the install fails or is cancelled, so the helper does not relaunch the app later.
+   */
+  relaunchOnLinux?: () => LinuxRelaunchHandle | boolean | void;
 }
 
 /** Reduces an updater error to one short line; never forwards stacks or raw payloads. */
@@ -89,6 +92,7 @@ export class UpdateService {
   private initialTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private installing = false;
+  private pendingRelaunch?: LinuxRelaunchHandle;
 
   constructor(options: UpdateServiceOptions) {
     this.options = options;
@@ -199,16 +203,30 @@ export class UpdateService {
       if (paintDelay > 0) await new Promise((resolve) => setTimeout(resolve, paintDelay));
       log.info('quitAndInstall', { version: this.state.version });
       if ((this.options.platform ?? process.platform) === 'linux') {
-        const relaunch = this.options.relaunchOnLinux ?? scheduleLinuxRelaunch;
-        relaunch();
+        // A helper from an earlier attempt that did not go through must not stay behind a new one.
+        this.cancelPendingRelaunch();
+        const relaunch = this.options.relaunchOnLinux ?? (() => startLinuxRelaunch());
+        const started = relaunch();
+        this.pendingRelaunch = typeof started === 'object' && started !== null ? started : undefined;
         this.updater.autoRunAppAfterInstall = false;
         this.updater.quitAndInstall(false, false);
       } else {
         this.updater.quitAndInstall(false, true);
       }
+    } catch (err) {
+      this.cancelPendingRelaunch();
+      // Like a failed install reported through the updater's 'error' event: stay retryable instead of
+      // leaving the installing overlay up for good.
+      if (this.getState().status === 'installing') this.setState({ status: 'ready', error: sanitizeUpdateError(err) });
+      throw err;
     } finally {
       this.installing = false;
     }
+  }
+
+  private cancelPendingRelaunch(): void {
+    this.pendingRelaunch?.cancel();
+    this.pendingRelaunch = undefined;
   }
 
   private isBusy(): boolean {
@@ -243,6 +261,7 @@ export class UpdateService {
     updater.on('error', (err) => {
       // A failed or cancelled install (e.g. dismissed polkit prompt) keeps the downloaded update retryable.
       const status = this.state.status === 'installing' ? 'ready' : 'error';
+      if (this.state.status === 'installing') this.cancelPendingRelaunch();
       this.setState({ status, error: sanitizeUpdateError(err), progress: undefined });
     });
   }

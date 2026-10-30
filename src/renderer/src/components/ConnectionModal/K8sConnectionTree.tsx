@@ -99,6 +99,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
   }, [enableOpenShiftProp]);
   const [contexts, setContexts] = useState<Loadable<K8sClusterNode[]>>({ status: 'loading' });
   const [execAuthWarning, setExecAuthWarning] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
   const [namespacesByContext, setNamespacesByContext] = useState<Record<string, Loadable<K8sNamespaceNode[]>>>({});
   const [expandedNamespaces, setExpandedNamespaces] = useState<Set<string>>(new Set());
@@ -199,6 +200,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
     setPodsByNamespace({});
     setExpandedContexts(new Set());
     setExpandedNamespaces(new Set());
+    setExpandedPods(new Set());
     loadContexts();
   };
 
@@ -222,16 +224,15 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
   };
 
   const toggleContext = (contextName: string) => {
+    const opening = !expandedContexts.has(contextName);
     setExpandedContexts((prev) => {
       const next = new Set(prev);
-      if (next.has(contextName)) {
-        next.delete(contextName);
-        return next;
-      }
-      next.add(contextName);
-      if (!namespacesByContext[contextName]) loadNamespaces(contextName);
+      if (next.has(contextName)) next.delete(contextName);
+      else next.add(contextName);
       return next;
     });
+    // Outside the updater: a state updater must be pure (StrictMode runs it twice, which sent the request twice).
+    if (opening && !namespacesByContext[contextName]) loadNamespaces(contextName);
   };
 
   const confirm = useConfirm();
@@ -338,8 +339,18 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
     await teamK8s.reload();
   };
 
+  /** Sharing is started from a button with nothing waiting for the result, so a failure is shown here. */
+  const shareTemplate = async (group: TeamK8sGroup, template: K8sProfile) => {
+    setShareError(null);
+    try {
+      await saveTeamTemplate(group, template);
+    } catch (err) {
+      setShareError(describeError(err));
+    }
+  };
+
   const shareProfile = (profile: K8sProfile) => {
-    if (teamK8s.groups.length === 1) void saveTeamTemplate(teamK8s.groups[0], templateFromProfile(profile));
+    if (teamK8s.groups.length === 1) void shareTemplate(teamK8s.groups[0], templateFromProfile(profile));
     else setSharing(profile);
   };
   const onShare = teamK8s.groups.length > 0 ? shareProfile : undefined;
@@ -368,7 +379,7 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
         profile={sharing}
         groups={teamK8s.groups}
         onPick={(group) => {
-          if (sharing) void saveTeamTemplate(group, templateFromProfile(sharing));
+          if (sharing) void shareTemplate(group, templateFromProfile(sharing));
           setSharing(null);
         }}
         onClose={() => setSharing(null)}
@@ -378,19 +389,17 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
 
   const toggleNamespace = (contextName: string, namespace: string) => {
     const key = `${contextName}/${namespace}`;
+    const opening = !expandedNamespaces.has(key);
     setExpandedNamespaces((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-        return next;
-      }
-      next.add(key);
-      if (!podsByNamespace[key]) {
-        setPodsByNamespace((p) => ({ ...p, [key]: { status: 'loading' } }));
-        refreshPods(contextName, namespace);
-      }
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+    if (opening && !podsByNamespace[key]) {
+      setPodsByNamespace((p) => ({ ...p, [key]: { status: 'loading' } }));
+      refreshPods(contextName, namespace);
+    }
   };
 
   const togglePod = (podKey: string) => {
@@ -469,6 +478,23 @@ export const K8sConnectionTree: React.FC<K8sConnectionTreeProps> = ({
     <>
       {execAuthWarning && (
         <ExecAuthWarningBanner warning={execAuthWarning} onDismiss={() => setExecAuthWarning(null)} />
+      )}
+      {shareError && (
+        <div
+          role="alert"
+          className="mb-2 flex items-start gap-2 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs text-red-300"
+        >
+          <span className="flex-1">Could not share the cluster with the team: {shareError}</span>
+          <button
+            type="button"
+            aria-label="Dismiss error"
+            title="Dismiss"
+            onClick={() => setShareError(null)}
+            className="shrink-0 rounded p-0.5 transition-colors hover:bg-red-500/20"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
       <div className="space-y-2">
       <p className="text-2xs text-txt-muted">

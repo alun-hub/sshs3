@@ -96,12 +96,20 @@ fi
 `.trim();
 }
 
+/** The helper that is waiting to relaunch the app; `cancel()` stops it before it has done so. */
+export interface LinuxRelaunchHandle {
+  cancel(): void;
+}
+
 /**
  * Launches the background helper process that monitors parent termination and
- * starts a clean, top-level instance once this process exits.
+ * starts a clean, top-level instance once this process exits. Returns a handle to
+ * stop it again, because the install it belongs to can still fail or be cancelled
+ * (a dismissed polkit prompt): the helper would otherwise relaunch the app whenever
+ * the user quits it within the next minute.
  */
-export function scheduleLinuxRelaunch(options: LinuxRelaunchOptions = {}): boolean {
-  if (process.platform !== 'linux') return false;
+export function startLinuxRelaunch(options: LinuxRelaunchOptions = {}): LinuxRelaunchHandle | null {
+  if (process.platform !== 'linux') return null;
   try {
     const script = buildLinuxRelaunchScript(options);
     log.info('scheduling Linux relaunch helper');
@@ -113,9 +121,23 @@ export function scheduleLinuxRelaunch(options: LinuxRelaunchOptions = {}): boole
       },
     });
     child.unref();
-    return true;
+    return {
+      cancel: () => {
+        try {
+          // A no-op once the helper has exited, so it cannot signal an unrelated process.
+          child.kill('SIGTERM');
+          log.info('cancelled the Linux relaunch helper');
+        } catch (err) {
+          log.error('failed to cancel the Linux relaunch helper', err);
+        }
+      },
+    };
   } catch (err) {
     log.error('failed to schedule Linux relaunch helper', err);
-    return false;
+    return null;
   }
+}
+
+export function scheduleLinuxRelaunch(options: LinuxRelaunchOptions = {}): boolean {
+  return startLinuxRelaunch(options) !== null;
 }

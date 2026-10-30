@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
@@ -110,6 +111,41 @@ describe('K8sConnectionTree', () => {
       podName: 'nginx-pod',
       containerName: 'nginx',
     });
+  });
+
+  it('requests namespaces and pods once per expansion, also when React runs state updaters twice (StrictMode)', async () => {
+    render(
+      <React.StrictMode>
+        <ConfirmProvider>
+          <K8sConnectionTree />
+        </ConfirmProvider>
+      </React.StrictMode>
+    );
+    expect(await screen.findByText('minikube')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('minikube'));
+    });
+    expect(await screen.findByText('default')).toBeInTheDocument();
+    expect((window as any).multissh.k8sListNamespaces).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('default'));
+    });
+    expect(await screen.findByText('nginx-pod')).toBeInTheDocument();
+    expect((window as any).multissh.k8sListPods).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses and expands again without asking for the namespaces a second time', async () => {
+    renderTree(<K8sConnectionTree />);
+    expect(await screen.findByText('minikube')).toBeInTheDocument();
+
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        fireEvent.click(screen.getByText('minikube'));
+      });
+    }
+    expect((window as any).multissh.k8sListNamespaces).toHaveBeenCalledTimes(1);
   });
 
   it('does not show OpenShift login button when enableOpenShift is false or omitted', async () => {
@@ -365,6 +401,32 @@ describe('K8sConnectionTree', () => {
         namespace: 'dev',
         insecureSkipTlsVerify: undefined,
       });
+    });
+
+    it('shows why sharing failed instead of dropping the error, and the message can be dismissed', async () => {
+      const personal = { id: 'p9', name: 'Mine', server: 'https://own.example.com:6443', namespace: 'dev', contextName: 'dev/own/alice', lastUsedAt: '2026-01-01T00:00:00.000Z' };
+      mockTeam({
+        k8sProfilesList: vi.fn().mockResolvedValue([personal]),
+        teamVaultSaveK8sProfile: vi.fn().mockRejectedValue(new Error('vault is read-only')),
+      });
+      const unhandled = vi.fn();
+      process.on('unhandledRejection', unhandled);
+      try {
+        renderTree(<K8sConnectionTree enableOpenShift={true} />);
+        await screen.findByText('Shared prod');
+        await act(async () => {
+          fireEvent.click(await screen.findByRole('button', { name: 'Share profile Mine to a team' }));
+        });
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not share the cluster with the team');
+        expect(screen.getByRole('alert')).toHaveTextContent('vault is read-only');
+        await new Promise((r) => setTimeout(r, 20));
+        expect(unhandled).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Dismiss error' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      } finally {
+        process.off('unhandledRejection', unhandled);
+      }
     });
 
     it('removes a template for the team after confirming', async () => {

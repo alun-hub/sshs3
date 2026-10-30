@@ -16,6 +16,7 @@ import { describeIpcError } from '../../lib/format';
 import { sftpUnavailableReason } from '../../lib/platform';
 import { withSavedS3Secrets, withSavedSshSecrets } from '../../lib/savedSecrets';
 import { useModalDismiss } from '../../lib/useModalDismiss';
+import { updateSession } from '../../lib/sessionUpdate';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { createRendererLogger } from '../../lib/log';
 import { registerFileManager, type FileManagerSnapshot } from '../../lib/fileManagerState';
@@ -319,31 +320,31 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   }, []);
 
   const persistPaneState = (updatedPanes: Record<PaneSide, PaneState>) => {
-    void window.multissh.sessionGet?.().then((session) => {
-      const lastPaths = {
+    // Queued with the tab saves (see sessionUpdate.ts), so neither can write the other's part back stale.
+    updateSession((session) => ({
+      tabs: session?.tabs || [],
+      activeTabId: session?.activeTabId || '',
+      lastPaths: {
         ...(session?.lastPaths || {}),
         [updatedPanes.left.source.providerId]: updatedPanes.left.path,
         [updatedPanes.right.source.providerId]: updatedPanes.right.path,
-      };
-      void window.multissh.sessionSave?.({
-        tabs: session?.tabs || [],
-        activeTabId: session?.activeTabId || '',
-        lastPaths,
-        panes: {
-          left: {
-            sourceType: updatedPanes.left.source.sourceType,
-            providerId: updatedPanes.left.source.providerId,
-            label: updatedPanes.left.source.label,
-            path: updatedPanes.left.path,
-          },
-          right: {
-            sourceType: updatedPanes.right.source.sourceType,
-            providerId: updatedPanes.right.source.providerId,
-            label: updatedPanes.right.source.label,
-            path: updatedPanes.right.path,
-          },
+      },
+      panes: {
+        left: {
+          sourceType: updatedPanes.left.source.sourceType,
+          providerId: updatedPanes.left.source.providerId,
+          label: updatedPanes.left.source.label,
+          path: updatedPanes.left.path,
         },
-      });
+        right: {
+          sourceType: updatedPanes.right.source.sourceType,
+          providerId: updatedPanes.right.source.providerId,
+          label: updatedPanes.right.source.label,
+          path: updatedPanes.right.path,
+        },
+      },
+    })).catch(() => {
+      // Best effort: the next change saves the pane state again.
     });
   };
 

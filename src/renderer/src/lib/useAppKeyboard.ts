@@ -406,9 +406,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
                 const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
                 const next = Math.min(current + 1, 32);
                 if (next === current) return prev;
-                const updated = { ...prev, terminalFontSize: next };
-                void window.multissh?.settingsSave?.(updated);
-                return updated;
+                // Only this key: `prev` can be out of date for the others (see settingsSave.ts).
+                void window.multissh?.settingsSave?.({ terminalFontSize: next });
+                return { ...prev, terminalFontSize: next };
               });
               break;
             }
@@ -417,9 +417,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
                 const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
                 const next = Math.max(current - 1, 8);
                 if (next === current) return prev;
-                const updated = { ...prev, terminalFontSize: next };
-                void window.multissh?.settingsSave?.(updated);
-                return updated;
+                // Only this key: `prev` can be out of date for the others (see settingsSave.ts).
+                void window.multissh?.settingsSave?.({ terminalFontSize: next });
+                return { ...prev, terminalFontSize: next };
               });
               break;
             }
@@ -427,9 +427,8 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               setSettings((prev) => {
                 const defaultSize = DEFAULT_SETTINGS.terminalFontSize;
                 if (prev.terminalFontSize === defaultSize) return prev;
-                const updated = { ...prev, terminalFontSize: defaultSize };
-                void window.multissh?.settingsSave?.(updated);
-                return updated;
+                void window.multissh?.settingsSave?.({ terminalFontSize: defaultSize });
+                return { ...prev, terminalFontSize: defaultSize };
               });
               break;
             }

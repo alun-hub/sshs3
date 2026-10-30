@@ -23,6 +23,21 @@ interface ProfileFolderHeaderProps {
   onDeleteFolder: (groupName: string) => Promise<void> | void;
 }
 
+const FolderIcons: React.FC<{ isCollapsed: boolean }> = ({ isCollapsed }) => (
+  <>
+    {isCollapsed ? (
+      <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
+    ) : (
+      <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
+    )}
+    <Folder className="h-3.5 w-3.5 text-amber-400" />
+  </>
+);
+
+const CountBadge: React.FC<{ count: number }> = ({ count }) => (
+  <span className="rounded bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">{count}</span>
+);
+
 /** A folder row in the profile list: collapse toggle, inline rename, delete, and drop target for dragged profiles. */
 export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
   groupName,
@@ -57,23 +72,15 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
         : 'hover:bg-app-surface-hover'
     }`}
   >
-    <button
-      type="button"
-      onClick={() => onToggle()}
-      className="flex min-h-6 flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
-    >
-      {isCollapsed ? (
-        <ChevronRight className="h-3.5 w-3.5 text-txt-muted" />
-      ) : (
-        <ChevronDown className="h-3.5 w-3.5 text-txt-muted" />
-      )}
-      <Folder className="h-3.5 w-3.5 text-amber-400" />
-      {renamingFolder === groupName ? (
+    {renamingFolder === groupName ? (
+      // Not inside the button: an input in a button makes every Space typed in the name click the button
+      // (the folder folds and unfolds while it is being renamed), and is not valid HTML.
+      <div className="flex min-h-6 flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary">
+        <FolderIcons isCollapsed={isCollapsed} />
         <input
           type="text"
           autoFocus
           value={renameFolderValue}
-          onClick={(e) => e.stopPropagation()}
           onChange={(e) => setRenameFolderValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void onCommitRename(groupName);
@@ -87,15 +94,22 @@ export const ProfileFolderHeader: React.FC<ProfileFolderHeaderProps> = ({
               setRenamingFolder(null);
             }
           }}
+          aria-label="Folder name"
           className="rounded border border-sky-500 bg-app-input px-1.5 py-0.5 text-xs text-txt-primary outline-none"
         />
-      ) : (
+        <CountBadge count={profileCount} />
+      </div>
+    ) : (
+      <button
+        type="button"
+        onClick={() => onToggle()}
+        className="flex min-h-6 flex-1 items-center gap-1.5 text-xs font-semibold text-txt-secondary"
+      >
+        <FolderIcons isCollapsed={isCollapsed} />
         <span>{label ?? groupName}</span>
-      )}
-      <span className="rounded bg-app-surface px-1.5 py-0.2 text-2xs text-txt-muted">
-        {profileCount}
-      </span>
-    </button>
+        <CountBadge count={profileCount} />
+      </button>
+    )}
 
     {groupName !== 'Ungrouped' && (
       <div className="flex items-center gap-1 opacity-80 hover:opacity-100">

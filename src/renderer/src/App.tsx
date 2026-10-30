@@ -28,6 +28,10 @@ import { installSpatialNavPointerReset } from './lib/spatialNavigation';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
 import { FileEditorModal } from './components/FileManager/FileEditorModal';
 import { OPEN_EDITOR_TAB_EVENT, type OpenEditorTabDetail } from './lib/editorTabEvents';
+import { createRendererLogger } from './lib/log';
+import { mergeSavedSettings, settingsPatchFromForm } from './lib/settingsSave';
+
+const log = createRendererLogger('App');
 
 const AppContent: React.FC = () => {
   const confirm = useConfirm();
@@ -244,13 +248,26 @@ const AppContent: React.FC = () => {
     });
   };
 
+  /** Sends only what changed, and takes back what the main process kept (it merges, and applies the policy). */
+  const saveSettingsPatch = async (patch: Partial<AppSettings>) => {
+    try {
+      const saved = await window.multissh.settingsSave?.(patch);
+      if (saved) setSettings((prev) => mergeSavedSettings(prev, saved, patch));
+    } catch (err) {
+      log.error('Failed to save settings:', err);
+    }
+  };
+
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
-    void window.multissh.settingsSave?.(newSettings);
+    void saveSettingsPatch(settingsPatchFromForm(newSettings));
   };
 
   const handleToggleHiddenFiles = () => {
-    handleSaveSettings({ ...settings, showHiddenFiles: !(settings.showHiddenFiles ?? false) });
+    // Just this key: a copy of every setting from this component can be out of date.
+    const showHiddenFiles = !(settings.showHiddenFiles ?? false);
+    setSettings((prev) => ({ ...prev, showHiddenFiles }));
+    void saveSettingsPatch({ showHiddenFiles });
   };
 
   const focusActiveTabContent = useCallback(() => {
