@@ -21,8 +21,46 @@ Typing in the search bar finds matching profiles across **all** profile backends
 
 Matches outside the current view display an **origin badge** (e.g. `Team: Infra` or `Sync`), making it effortless to jump to any server across all your teams without switching tabs.
 
+### Global Search
+Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
+
+| Input | Result |
+| :--- | :--- |
+| Plain words (`web prod`) | Profiles and tabs where **every** word matches, fuzzy: the letters only have to appear in order, so `w01` finds `web-01`. Names rank above hosts and folders. |
+| `#prod` | Only profiles with a tag containing `prod`. Combine with words (`#prod db`). |
+| `alice@host` or `alice@host:2222` | A **Connect to** row for a one-off connection that is not saved. |
+| Nothing | Your most recently used profiles and the open tabs. |
+
+| Key | Action |
+| :--- | :--- |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the results. |
+| <kbd>Enter</kbd> | Connect (SSH or S3), switch to an open tab, or start the one-off connection. |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile. |
+| <kbd>Tab</kbd> | Cycle the filter: **All**, **Profiles**, **Open tabs**. |
+| <kbd>Esc</kbd> | Close and return to where you were. |
+
+Profiles from every unlocked Team Vault are included, with the team name as a badge. A locked vault is listed at the bottom so it is not silently missing; choosing it opens Connection Manager, where you unlock it. Vaults you have hidden in Connection Manager are left out.
+
+> [!NOTE]
+> Connecting from the search follows the same rules as the **Connect** button: an empty terminal tab is reused, otherwise a new tab opens, and the last-used time of a personal profile is updated. Team Vault profiles never get a last-used time written back, so the search cannot list them under "recent".
+
 ### "Unlock All" for Locked Hardware Teams
 When one or more Team Vaults are currently locked, an **Unlock all** action button is displayed. Clicking it sequentially prompts your hardware security key or smartcard PIN to unlock all your team vaults in one flow.
+
+### Tags
+A profile lives in one folder but can carry several tags, so the same server can be both under `Production/Web` and found as `#web` or `#prod`. SSH and S3 profiles, personal and Team Vault, support tags.
+
+| Action | How |
+| :--- | :--- |
+| Add a tag | Type it in **Tags** in the profile form and press <kbd>Enter</kbd> or <kbd>,</kbd>. A leading `#` is ignored. Text left in the field is added when you leave it. |
+| Remove a tag | Press <kbd>Backspace</kbd> in the empty field to remove the last one, or use the **x** on a chip. |
+| Search by tag | Type the tag in the search bar, with or without `#` (`prod` or `#prod`). Tags match as part of a word, like the other fields. |
+
+> [!NOTE]
+> Tags start with a letter or digit and may contain letters, digits and `. _ : / -` (no spaces). Duplicates are merged ignoring case, and tags are kept sorted, so the same profile looks identical on every device.
+
+> [!NOTE]
+> In a Team Vault, tags are part of the shared profile: every member sees them, and members may edit them even though they cannot change a stored password or the host.
 
 ### SSH Profile Field Reference
 
@@ -30,6 +68,7 @@ When one or more Team Vaults are currently locked, an **Unlock all** action butt
 | :--- | :--- | :--- | :--- |
 | **Profile Name** | *Required* | Display label used in tab headers and connection lists. | Cannot be empty. |
 | **Group / Folder** | *Empty* | Organizes profiles into folder trees (e.g. `Production/Web`). | Subfolders supported with `/`. |
+| **Tags** | *Empty* | Labels that cut across folders (e.g. `prod`, `db`). Shown as chips on the profile and searchable. | Up to 10 per profile, 32 characters each. See [Tags](#tags). |
 | **Hostname / IP** | *Required* | Target FQDN (e.g. `server.internal`) or IPv4/IPv6 address. | Resolvable via DNS or reachable via ProxyJump. |
 | **Port** | `22` | Target SSH daemon listening port. | Integer between 1 and 65535. |
 | **Username** | *Required* | Remote user account (e.g. `ubuntu`, `root`, `deploy`). | POSIX username standards. |

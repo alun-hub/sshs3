@@ -42,7 +42,8 @@ export interface AppTab extends TabItem {
 /** True when a terminal tab has a single, not-yet-connected pane (safe to fill in-place instead of opening a new tab). */
 export function isEmptyUnconnectedTab(tab: AppTab): boolean {
   if (tab.type !== 'terminal' || !tab.paneTree) return true;
-  return tab.paneTree.type === 'leaf' && !tab.paneTree.config && !tab.paneTree.local;
+  const pane = tab.paneTree;
+  return pane.type === 'leaf' && !pane.config && !pane.local && !pane.k8sTarget && !pane.k8sLogTarget;
 }
 
 /** Ensures every terminal tab carries a pane tree, synthesizing a single leaf for legacy/corrupted saved state. */

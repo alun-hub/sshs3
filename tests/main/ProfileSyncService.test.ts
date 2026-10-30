@@ -446,6 +446,53 @@ describe('ProfileSyncService', () => {
     expect(comparison.state).toBe('in_sync');
   });
 
+  it('carries tags on SSH and S3 profiles to the other machine, normalized, and then reports in sync', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({
+      id: 'ssh-1',
+      name: 'Prod',
+      host: 'h',
+      username: 'u',
+      authType: 'password',
+      tags: ['web', '#Prod'],
+    });
+    await machineA.profileStore.saveS3({
+      id: 's3-1',
+      name: 'Assets',
+      region: 'eu-north-1',
+      accessKeyId: 'AKIA',
+      secretAccessKey: 'secret', // pragma: allowlist secret
+      tags: ['b', 'A'],
+    });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    const pulled = await machineB.profileStore.getProfiles();
+    expect(pulled.ssh[0].tags).toEqual(['Prod', 'web']);
+    expect(pulled.s3[0].tags).toEqual(['A', 'b']);
+    expect((await machineB.sync.compareWithRemote(provider)).state).toBe('in_sync');
+  });
+
+  it('removes tags on a pull when they were cleared on the other machine, and then reports in sync', async () => {
+    const base = { id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' as const };
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ ...base, tags: ['prod'] });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    expect((await machineB.profileStore.getProfiles()).ssh[0].tags).toEqual(['prod']);
+
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH(base);
+    await machineA.sync.pushToRemote(provider);
+
+    await machineB.sync.pullFromRemote(provider);
+    expect((await machineB.profileStore.getProfiles()).ssh[0].tags).toBeUndefined();
+    expect((await machineB.sync.compareWithRemote(provider)).state).toBe('in_sync');
+  });
+
   it('keeps when this device last opened a profile when a newer remote edit does not carry it, and takes a later remote value', async () => {
     const base = { id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' as const };
     const machineA = await harness();

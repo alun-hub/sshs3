@@ -6,7 +6,7 @@ import type { SSHConnectionConfig, LocalShellType } from '@shared/types/ssh';
 import type { PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { S3Config } from '@shared/types/storage';
-import type { AppTab } from './tabs';
+import { isEmptyUnconnectedTab, type AppTab } from './tabs';
 import { formatDateTime } from './format';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
@@ -250,6 +250,33 @@ export function useTabActions(ctx: TabActionsContext) {
     );
     setConnectTarget(null);
   };
+
+  /**
+   * Connection Manager's Connect: fills the active tab when it is an empty terminal, otherwise opens
+   * a new terminal tab titled `title` around `leaf`; the modal closes either way.
+   */
+  const openInTerminalTab = (
+    title: string,
+    leaf: { config: SSHConnectionConfig } | { k8sTarget: K8sTerminalTarget },
+    fillActive: (tabId: string) => void
+  ) => {
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
+      fillActive(activeTab.id);
+    } else {
+      const newId = `term-${Date.now()}`;
+      const newTab: AppTab = { id: newId, type: 'terminal', title, paneTree: createLeaf(`${newId}-root`, leaf) };
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newId);
+    }
+    setProfilesModalOpen(false);
+  };
+
+  const handleOpenSSHInTab = (config: SSHConnectionConfig) =>
+    openInTerminalTab(config.name, { config }, (tabId) => handleConnectTerminal({ tabId }, config));
+
+  const handleOpenK8sInTab = (k8sTarget: K8sTerminalTarget) =>
+    openInTerminalTab(k8sTarget.podName, { k8sTarget }, (tabId) => handleConnectK8sTerminal({ tabId }, k8sTarget));
 
   const handleViewK8sLogs = useCallback((k8sLogTarget: K8sTerminalTarget) => {
     const newId = `term-${Date.now()}`;
@@ -562,6 +589,8 @@ export function useTabActions(ctx: TabActionsContext) {
     handleSelectPane,
     handleConnectTerminal,
     handleConnectK8sTerminal,
+    handleOpenSSHInTab,
+    handleOpenK8sInTab,
     handleViewK8sLogs,
     handleOpenLocalTerminal,
     handlePaneTitleChange,

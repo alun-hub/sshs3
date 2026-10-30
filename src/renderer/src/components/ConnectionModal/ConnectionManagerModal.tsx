@@ -24,6 +24,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { TeamVaultStatus } from '@shared/types/teamVault';
+import { collectTags } from '@shared/tags';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
@@ -46,6 +47,7 @@ import { ImportCandidatesModal } from './ImportCandidatesModal';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
+import { prepareConnect } from '../../lib/openProfile';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
@@ -325,22 +327,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
+  // Team profiles skip the "lastUsedAt" write-back deliberately (see prepareConnect).
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
-    // Team profiles skip the "lastUsedAt" touch write-back deliberately: bumping it would bump
-    // the vault's revision (every mutating write does — see TeamVaultService.persistPayload),
-    // which every other member's background poll would then pick up as "something changed" for
-    // what's really just a per-viewer stat nobody else needs to see.
-    if (source !== 'personal') {
-      onConnectSSH?.(profile);
-      return;
-    }
-    const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
-    try {
-      await window.multissh.profilesSaveSSH(updated);
-    } catch {
-      // Safe to proceed even if touch fails
-    }
-    onConnectSSH?.(updated);
+    onConnectSSH?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveSSH(p)));
   };
 
   // UX audit finding #3: the quickstart card promised "a local shell, ad-hoc
@@ -381,17 +370,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
-    if (source !== 'personal') {
-      onConnectS3?.(profile);
-      return;
-    }
-    const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
-    try {
-      await window.multissh.profilesSaveS3(updated);
-    } catch {
-      // Safe to proceed even if touch fails
-    }
-    onConnectS3?.(updated);
+    onConnectS3?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveS3(p)));
   };
 
   // Which team the open edit form's profile belongs to, if any — a NEW shared profile carries
@@ -653,6 +632,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   );
   const isTeamAdmin = Boolean(editingTeamMeta?.isAdmin);
   const teamFolderSuggestions = editingTeamMeta?.folderSuggestions ?? [];
+  const personalTagSuggestions = useMemo(() => collectTags([...sshProfiles, ...s3Profiles]), [sshProfiles, s3Profiles]);
 
   const allFolderNames = useMemo(
     () => collectFolderNames(folders, sshProfiles, s3Profiles),
@@ -942,6 +922,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onCancel={() => setEditing(null)}
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
+                  tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               ) : (
@@ -950,6 +931,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   onSave={handleSaveS3}
                   onCancel={() => setEditing(null)}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
+                  tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               )}

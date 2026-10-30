@@ -223,6 +223,8 @@ export interface S3Config {
   initialPath?: string;
   proxy?: ProxyConfig;
   group?: string;
+  /** Free-form labels for searching and filtering; cleaned by `normalizeTags` (shared/tags.ts) on every save. */
+  tags?: string[];
   lastUsedAt?: string;
   /** ISO 8601 timestamp of the last edit. Used by remote profile sync to resolve conflicts. */
   updatedAt?: string;

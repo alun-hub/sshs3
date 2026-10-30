@@ -24,6 +24,7 @@ import {
 import type { CachedSmartcardAgent, SSHActiveTunnel } from '@shared/types/ssh';
 import type { MoveTabTarget, WindowInfo } from '@shared/types/ipc';
 import { Shortcut } from './ui/Shortcut';
+import { GlobalSearchButton } from './GlobalSearchButton';
 import { TabContextMenu } from './TabContextMenu';
 import { watchDragReleasedOutsideWindow } from '../lib/dragLeaveWindow';
 import { OPEN_TAB_MENU_EVENT } from '../lib/tabMenuEvents';
@@ -53,6 +54,8 @@ export interface TabBarProps {
   /** Opens the Connection Manager directly on the Kubernetes tab, for picking a pod/container to exec into or follow logs from. */
   onNewK8sSession?: () => void;
   onOpenProfiles?: () => void;
+  /** Opens the global search. Omit to hide its button (it can be switched off in Settings). */
+  onOpenGlobalSearch?: () => void;
   onOpenSettings?: () => void;
   onOpenDirSyncProfiles?: () => void;
   onOpenTunnels?: () => void;
@@ -76,6 +79,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onNewTab,
   onNewK8sSession,
   onOpenProfiles,
+  onOpenGlobalSearch,
   onOpenSettings,
   onOpenDirSyncProfiles,
   onOpenTunnels,
@@ -423,6 +427,12 @@ export const TabBar: React.FC<TabBarProps> = ({
           </div>
         )}
       </div>
+
+      {onOpenGlobalSearch && (
+        <div className="ml-2 flex shrink-0 items-center self-center">
+          <GlobalSearchButton onOpen={onOpenGlobalSearch} shortcuts={shortcuts} />
+        </div>
+      )}
 
       {/* Quick links: Smartcard lock, Connections & Settings */}
       <div className="flex items-center gap-1 self-center border-l border-divider pl-2">

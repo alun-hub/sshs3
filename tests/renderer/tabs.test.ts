@@ -50,6 +50,13 @@ describe('tabs helpers', () => {
     ).toBe(false);
   });
 
+  it('does not treat a pane that runs a Kubernetes shell or log view as empty, so connecting never replaces it', () => {
+    const base = { id: 't1', type: 'terminal', title: 'T' };
+    const target = { contextName: 'c', namespace: 'n', podName: 'p', containerName: 'x' };
+    expect(isEmptyUnconnectedTab({ ...base, paneTree: { type: 'leaf', id: 'a', k8sTarget: target } } as AppTab)).toBe(false);
+    expect(isEmptyUnconnectedTab({ ...base, paneTree: { type: 'leaf', id: 'a', k8sLogTarget: target } } as AppTab)).toBe(false);
+  });
+
   it('strips credentials from the pane tree before a tab is saved', () => {
     const tab = {
       id: 't1',

@@ -2,6 +2,7 @@ import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Copy, Folder, Pencil, Trash2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
+import { TagChips } from '../ui/TagChips';
 import type { EditingState } from './types';
 
 interface S3ProfileRowProps {
@@ -120,7 +121,10 @@ export const S3ProfileRow: React.FC<S3ProfileRowProps> = ({
     className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all select-none"
   >
     <div className="min-w-0">
-      <div className="truncate text-sm font-medium text-txt-primary">{profile.name}</div>
+      <div className="flex items-center gap-2">
+        <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+        <TagChips tags={profile.tags} />
+      </div>
       <div className="truncate text-xs text-txt-muted">
         {profile.endpoint || 'AWS S3'} · {profile.region}
       </div>

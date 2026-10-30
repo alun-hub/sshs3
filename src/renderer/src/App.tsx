@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Terminal } from 'lucide-react';
 import { UnsplitButton } from './components/UnsplitButton';
 import { TabBar } from './components/TabBar';
-import { isEmptyUnconnectedTab, type AppTab } from './lib/tabs';
+import type { AppTab } from './lib/tabs';
 import { useAppKeyboard } from './lib/useAppKeyboard';
 import { useTabActions } from './lib/useTabActions';
 import { useSessionPersistence } from './lib/useSessionPersistence';
@@ -17,6 +17,7 @@ import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSaved
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
 import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
+import { GlobalSearchPalette } from './components/GlobalSearchPalette';
 import type { SettingsCategory } from './components/SettingsModal/settingsConstants';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
@@ -52,6 +53,7 @@ const AppContent: React.FC = () => {
   const [syncBootstrapModalOpen, setSyncBootstrapModalOpen] = useState(false);
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
   const [tunnelsModalOpen, setTunnelsModalOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   // Design audit Phase 1: Connection Manager, Settings, Tunnels and Dir Sync
   // are independent toggles that used to be able to open simultaneously
   // (e.g. Settings opened from the toolbar while Connection Manager was
@@ -67,6 +69,7 @@ const AppContent: React.FC = () => {
     setSettingsModalOpen(false);
     setTunnelsModalOpen(false);
     setDirSyncProfilesOpen(false);
+    setGlobalSearchOpen(false);
     open();
   }, []);
   // UX audit finding #4: these four full-screen modals render as `fixed`
@@ -76,7 +79,7 @@ const AppContent: React.FC = () => {
   // (native DOM, not React-typed pre-19) removes the header from hit-testing
   // and keyboard focus entirely while any of the four is open.
   const anyTopLevelModalOpen =
-    profilesModalOpen || settingsModalOpen || tunnelsModalOpen || dirSyncProfilesOpen;
+    profilesModalOpen || settingsModalOpen || tunnelsModalOpen || dirSyncProfilesOpen || globalSearchOpen;
   const headerRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = headerRef.current as (HTMLElement & { inert?: boolean }) | null;
@@ -146,6 +149,8 @@ const AppContent: React.FC = () => {
     handleSelectPane,
     handleConnectTerminal,
     handleConnectK8sTerminal,
+    handleOpenSSHInTab,
+    handleOpenK8sInTab,
     handleViewK8sLogs,
     handleOpenLocalTerminal,
     handlePaneTitleChange,
@@ -220,6 +225,9 @@ const AppContent: React.FC = () => {
     setProfilesModalTab('ssh');
     openTopLevelModal(() => setProfilesModalOpen(true));
   };
+
+  const globalSearchEnabled = settings.enableGlobalSearch !== false;
+  const handleOpenGlobalSearch = () => openTopLevelModal(() => setGlobalSearchOpen(true));
 
   const handleNewProfile = () => {
     setProfilesModalTab('ssh');
@@ -341,6 +349,7 @@ const AppContent: React.FC = () => {
     setSettings,
     setProfilesModalOpen,
     setSettingsModalOpen,
+    setGlobalSearchOpen,
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,
@@ -400,6 +409,7 @@ const AppContent: React.FC = () => {
             onNewTab={handleNewTab}
             onNewK8sSession={handleNewK8sSession}
             onOpenProfiles={handleOpenProfiles}
+            onOpenGlobalSearch={globalSearchEnabled ? handleOpenGlobalSearch : undefined}
             onOpenSettings={handleOpenSettings}
             onOpenTunnels={handleOpenTunnels}
             onOpenDirSyncProfiles={() => openTopLevelModal(() => setDirSyncProfilesOpen(true))}
@@ -609,45 +619,26 @@ const AppContent: React.FC = () => {
           setProfilesModalOpen(false);
           setProfilesModalNew(false);
         }}
-        onConnectSSH={(config) => {
-          const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
-            handleConnectTerminal({ tabId: activeTab.id }, config);
-          } else {
-            const newId = `term-${Date.now()}`;
-            const newTab: AppTab = {
-              id: newId,
-              type: 'terminal',
-              title: config.name,
-              paneTree: createLeaf(`${newId}-root`, { config }),
-            };
-            setTabs((prev) => [...prev, newTab]);
-            setActiveTabId(newId);
-          }
-          setProfilesModalOpen(false);
-        }}
+        onConnectSSH={handleOpenSSHInTab}
         onConnectSFTP={handleConnectSFTP}
         onConnectS3={handleConnectS3}
-        onConnectK8s={(target) => {
-          const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab && activeTab.type === 'terminal' && isEmptyUnconnectedTab(activeTab)) {
-            handleConnectK8sTerminal({ tabId: activeTab.id }, target);
-          } else {
-            const newId = `term-${Date.now()}`;
-            const newTab: AppTab = {
-              id: newId,
-              type: 'terminal',
-              title: target.podName,
-              paneTree: createLeaf(`${newId}-root`, { k8sTarget: target }),
-            };
-            setTabs((prev) => [...prev, newTab]);
-            setActiveTabId(newId);
-          }
-          setProfilesModalOpen(false);
-        }}
+        onConnectK8s={handleOpenK8sInTab}
         onViewK8sLogs={handleViewK8sLogs}
         onBrowseK8sFiles={handleBrowseK8sFiles}
       />
+
+      {/* Ctrl+Shift+G / top bar: find a profile, tab or user@host and go to it */}
+      {globalSearchOpen && globalSearchEnabled && (
+        <GlobalSearchPalette
+          tabs={tabs}
+          onClose={() => setGlobalSearchOpen(false)}
+          onConnectSSH={handleOpenSSHInTab}
+          onOpenSFTP={handleConnectSFTP}
+          onConnectS3={handleConnectS3}
+          onSelectTab={handleSelectTab}
+          onOpenConnectionManager={handleOpenProfiles}
+        />
+      )}
 
       {/* Settings Modal */}
       <SettingsModal

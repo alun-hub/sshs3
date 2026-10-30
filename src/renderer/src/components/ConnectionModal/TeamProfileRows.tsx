@@ -5,6 +5,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { SftpButton } from '../SftpButton';
 import { OverflowMenu } from '../ui/OverflowMenu';
+import { TagChips } from '../ui/TagChips';
 import type { EditingState } from './types';
 
 interface TeamSshProfileRowProps {
@@ -42,7 +43,10 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
       className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
     >
       <div className="min-w-0">
-        <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+          <TagChips tags={profile.tags} />
+        </div>
         <div className="truncate text-xs text-txt-muted">
           {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
         </div>
@@ -115,7 +119,10 @@ export const TeamS3ProfileRow: React.FC<TeamS3ProfileRowProps> = ({
     className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 hover:border-border-strong transition-colors"
   >
     <div className="min-w-0">
-      <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+      <div className="flex items-center gap-2">
+        <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+        <TagChips tags={profile.tags} />
+      </div>
       <div className="truncate text-xs text-txt-muted">
         {profile.endpoint || 'AWS S3'} · {profile.region}
       </div>

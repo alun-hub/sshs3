@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } fro
 import type { S3Config } from '@shared/types/storage';
 import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
 import { describeIpcError } from '../../lib/format';
+import { ProfileOrganizationFields } from './ProfileOrganizationFields';
 
 interface S3ProfileFormProps {
   initial?: S3Config;
@@ -10,6 +11,8 @@ interface S3ProfileFormProps {
   onCancel: () => void;
   /** See `SSHProfileFormProps.folderSuggestions` — same Team Vault folder-path autocomplete. */
   folderSuggestions?: string[];
+  /** See `SSHProfileFormProps.tagSuggestions`. */
+  tagSuggestions?: string[];
   /** See `SSHProfileFormProps.canEditSecret` — same Team Vault admin-only secret gate, applied
    * here to `secretAccessKey`/`sessionToken`. */
   canEditSecret?: boolean;
@@ -34,6 +37,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
   onSave,
   onCancel,
   folderSuggestions,
+  tagSuggestions,
   canEditSecret = true,
 }) => {
   const [config, setConfig] = useState<S3Config>(initial ?? emptyConfig());
@@ -181,23 +185,15 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
             placeholder="e.g. Backup Bucket"
           />
         </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Group / Folder (optional)
-          <input
-            value={config.group ?? ''}
-            onChange={(e) => update('group', e.target.value)}
-            list={folderSuggestions ? 's3-folder-suggestions' : undefined}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder={folderSuggestions ? 'e.g. Acme Infra/Cluster A' : 'e.g. Production or MinIO'}
-          />
-          {folderSuggestions && (
-            <datalist id="s3-folder-suggestions">
-              {folderSuggestions.map((path) => (
-                <option key={path} value={path} />
-              ))}
-            </datalist>
-          )}
-        </label>
+        <ProfileOrganizationFields
+          group={config.group}
+          tags={config.tags}
+          onGroupChange={(group) => update('group', group)}
+          onTagsChange={(tags) => update('tags', tags)}
+          groupPlaceholder="e.g. Production or MinIO"
+          folderSuggestions={folderSuggestions}
+          tagSuggestions={tagSuggestions}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
