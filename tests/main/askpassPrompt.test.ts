@@ -63,6 +63,9 @@ describe('askpassPrompt', () => {
     expect(isServerAskedPrompt('Enter PIN for ED25519-SK key /home/me/.ssh/id_ed25519_sk: ')).toBe(false);
     expect(classifyAskpassPrompt("Enter PIN for 'PIV_II (PIV Card Holder pin)': ", 'smartcard')).toBe('smartcard');
     expect(classifyAskpassPrompt('Enter PIN for ED25519-SK key /home/me/.ssh/id_ed25519_sk: ', 'fido2')).toBe('fido2');
+    // A user name with a parenthesis does not hide the prefix.
+    expect(isServerAskedPrompt('(svc(prod)@host) Verification code: ')).toBe(true);
+    expect(classifyAskpassPrompt('(svc(prod)@host) Enter PIN: ', 'smartcard')).toBe('password');
     // A parenthesis later in the text is not the server prefix.
     expect(isServerAskedPrompt('Enter PIN for (bob@h) token: ')).toBe(false);
   });

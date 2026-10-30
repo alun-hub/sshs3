@@ -373,15 +373,32 @@ function patternTokens(patternField: string): string[] {
 
 const hasWildcard = (token: string): boolean => token.includes('*') || token.includes('?');
 
+/** ssh matches host names case-insensitively; a hashed entry (`|1|salt|hash`) is base64 and is not a name. */
+const normalizeToken = (token: string): string => (token.startsWith('|') ? token : token.toLowerCase());
+
+/** Dot-separated parts of `text` that contain a letter or digit. */
+const nameLabels = (text: string): number => text.split('.').filter((label) => /[A-Za-z0-9]/.test(label)).length;
+
+/**
+ * A wildcard that names its domain: at least two labels stay literal after the last wildcard
+ * (`*.corp.example.com`, `web?.example.com`) or before the first one (`192.168.*`). `*`, `*.com`,
+ * `10.*` or `*e*` would give one key trust over a whole class of hosts.
+ */
+function isNarrowWildcard(token: string): boolean {
+  if (!hasWildcard(token)) return true;
+  const first = Math.min(...[token.indexOf('*'), token.indexOf('?')].filter((i) => i >= 0));
+  const last = Math.max(token.lastIndexOf('*'), token.lastIndexOf('?'));
+  return nameLabels(token.slice(last + 1)) >= 2 || nameLabels(token.slice(0, first)) >= 2;
+}
+
 /**
  * A line from the remote may add trust for hosts, but not widen it to hosts it does not name: no negation
- * and no catch-all pattern (`*`, `*.*`, `?` — a token without a letter or digit). It must also look like a
- * key. Narrow wildcards such as `*.corp.example.com` stay allowed.
+ * and no broad wildcard (see `isNarrowWildcard`). It must also look like a key.
  */
 function isAcceptableRemoteLine(line: ParsedKnownHostsLine): boolean {
   const tokens = patternTokens(line.patternField);
   if (tokens.length === 0) return false;
-  if (tokens.some((t) => t.startsWith('!') || !/[A-Za-z0-9]/.test(t))) return false;
+  if (tokens.some((t) => t.startsWith('!') || !/[A-Za-z0-9]/.test(t) || !isNarrowWildcard(t))) return false;
   return /^[A-Za-z0-9@._-]+$/.test(line.keyType) && /^[A-Za-z0-9+/]+={0,2}$/.test(line.keyBase64);
 }
 
@@ -411,7 +428,7 @@ function globMatches(pattern: string, text: string): boolean {
   return pi === p.length;
 }
 
-/** Two host patterns can both apply to one host: equal, or one is a wildcard that matches the other. */
+/** Two host patterns (already normalised) can both apply to one host: equal, or one is a wildcard that matches the other. */
 function tokensOverlap(a: string, b: string): boolean {
   if (a === b) return true;
   if (hasWildcard(a) && globMatches(a, b)) return true;
@@ -426,7 +443,7 @@ function tokensOverlap(a: string, b: string): boolean {
  * as a conflict rather than applied, since that's the same signal that
  * would indicate a possible MITM if seen during a live connection. "Same
  * host" is decided per name of a comma list and through wildcards, and a
- * remote line that widens trust (negation, catch-all pattern) is dropped.
+ * remote line that widens trust (negation, broad wildcard) is dropped.
  */
 export function mergeKnownHosts(localContent: string, remoteContent: string): KnownHostsMergeResult {
   const localLines = parseKnownHostsLines(localContent);
@@ -437,7 +454,8 @@ export function mergeKnownHosts(localContent: string, remoteContent: string): Kn
   const localByToken = new Map<string, ParsedKnownHostsLine[]>();
   const localEntries: Array<{ token: string; line: ParsedKnownHostsLine }> = [];
   for (const line of localLines) {
-    for (const token of patternTokens(line.patternField)) {
+    for (const raw of patternTokens(line.patternField)) {
+      const token = normalizeToken(raw);
       const arr = localByToken.get(token) ?? [];
       arr.push(line);
       localByToken.set(token, arr);
@@ -449,11 +467,13 @@ export function mergeKnownHosts(localContent: string, remoteContent: string): Kn
 
   const clashes = (remoteLine: ParsedKnownHostsLine): ParsedKnownHostsLine | undefined => {
     const differs = (l: ParsedKnownHostsLine) => l.keyType === remoteLine.keyType && l.keyBase64 !== remoteLine.keyBase64;
-    for (const token of patternTokens(remoteLine.patternField)) {
-      const candidates = hasWildcard(token)
-        ? localEntries.filter((e) => tokensOverlap(token, e.token)).map((e) => e.line)
-        : [...(localByToken.get(token) ?? []), ...localWildcards.filter((e) => tokensOverlap(token, e.token)).map((e) => e.line)];
-      const found = candidates.find(differs);
+    const scan = (token: string, entries: typeof localEntries) =>
+      entries.find((e) => tokensOverlap(token, e.token) && differs(e.line))?.line;
+    for (const raw of patternTokens(remoteLine.patternField)) {
+      const token = normalizeToken(raw);
+      const found = hasWildcard(token)
+        ? scan(token, localEntries)
+        : (localByToken.get(token) ?? []).find(differs) ?? scan(token, localWildcards);
       if (found) return found;
     }
     return undefined;

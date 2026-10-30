@@ -25,6 +25,10 @@ describe('literalSigningKey / signingKeyConfigValue', () => {
     expect(literalSigningKey(`  key:: ${SK}  `)).toBe(SK);
     expect(literalSigningKey('/home/alice/.ssh/id_ed25519.pub')).toBeNull();
     expect(literalSigningKey('~/.ssh/id_ecdsa.pub')).toBeNull();
+    // A file whose name merely starts like a key type is still a path.
+    expect(literalSigningKey('ecdsa-work.pub')).toBeNull();
+    expect(literalSigningKey('ssh-keys/id.pub')).toBeNull();
+    expect(literalSigningKey('sk-key')).toBeNull();
   });
 
   it('adds key:: for every literal key Git would otherwise read as a file name', () => {
@@ -90,6 +94,13 @@ describe.skipIf(!gitAvailable())('GitConfigService.configureSigning with real gi
     expect(res.allowedSignersUpdated).toBe(true);
     expect(stored()).toBe(`key::${ECDSA}`);
     expect(allowedSigners()).toContain(`a@example.com namespaces="git" ${ECDSA}`);
+  });
+
+  it('stores a file named like a key type unchanged, without a key:: prefix', async () => {
+    const res = await GitConfigService.configureSigning({ signingKey: 'ecdsa-work.pub', email: 'a@example.com' });
+    expect(res.success).toBe(true);
+    expect(stored()).toBe('ecdsa-work.pub');
+    expect(fs.existsSync(path.join(home, '.ssh', 'allowed_signers'))).toBe(false);
   });
 
   it('stores a key file path unchanged and leaves allowed_signers alone', async () => {

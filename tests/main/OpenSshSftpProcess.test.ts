@@ -374,10 +374,50 @@ describe('OpenSshSftpProcess exec / createExecStream', () => {
     await proc.close();
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'falls back to an independent connection when the control socket has no master, and only then',
+    async () => {
+      const { default: fs } = await import('node:fs');
+      const { default: os } = await import('node:os');
+      const { default: path } = await import('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-test-'));
+      const socket = path.join(dir, 'terminal.sock');
+      fs.writeFileSync(socket, '');
+      try {
+        const proc = await started(profile, socket);
+        const calls: string[][] = [];
+        const stale = Object.assign(new Error('ssh failed'), { code: 255 });
+        vi.mocked(execFile).mockImplementation(((_b: string, args: string[], _o: any, cb: any) => {
+          calls.push(args);
+          if (args[0] === '-S') cb(stale, '', 'Control socket connect(/x): Connection refused\nConnection closed by UNKNOWN port 65535\n');
+          else cb(null, 'out', '');
+        }) as any);
+        const result = await proc.exec('echo hi');
+        expect(result.stdout.toString()).toBe('out');
+        expect(calls).toHaveLength(2);
+        expect(calls[0][0]).toBe('-S');
+        expect(calls[1]).not.toContain('-S');
+        expect(calls[1].slice(-5)).toEqual(['-o', 'BatchMode=yes', '--', 'alice@myserver.com', 'echo hi']);
+
+        // The remote command itself failing (even with exit 255) must never run it a second time.
+        calls.length = 0;
+        vi.mocked(execFile).mockImplementation(((_b: string, args: string[], _o: any, cb: any) => {
+          calls.push(args);
+          cb(Object.assign(new Error('exit'), { code: 255 }), '', 'rm: cannot remove: Permission denied\n');
+        }) as any);
+        await expect(proc.exec('rm x')).rejects.toThrow('exit');
+        expect(calls).toHaveLength(1);
+        await proc.close();
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
+
   it('refuses to run before it has been started', async () => {
     const proc = new OpenSshSftpProcess();
     await expect(proc.exec('echo hi')).rejects.toThrow('process configuration not available');
     const errored = new Promise<Error>((resolve) => proc.createExecStream('x').on('error', resolve));
-    expect((await errored).message).toBe('Process not initialized');
+    expect((await errored).message).toBe('Cannot run exec: process configuration not available');
   });
 });

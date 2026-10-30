@@ -18,7 +18,8 @@ export function normalizeGitConfigPath(filePath: string): string {
 
 /** `key::` marks a literal public key in `user.signingkey`; it is not part of the key. */
 const LITERAL_KEY_PREFIX = /^key::\s*/;
-const PUBLIC_KEY_LINE = /^(?:ssh-|ecdsa-|sk-)/;
+// `<type> <base64 blob> [comment]`: a file called `ecdsa-work.pub` is a path, not a key.
+const PUBLIC_KEY_LINE = /^(?:ssh-|ecdsa-|sk-)\S*\s+[A-Za-z0-9+/]+={0,2}(?:\s|$)/;
 
 /**
  * The public key line inside a `user.signingkey` value, or null when the value is something else

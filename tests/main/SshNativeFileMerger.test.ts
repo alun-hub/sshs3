@@ -397,10 +397,38 @@ describe('SshNativeFileMerger — known_hosts', () => {
   });
 
   it('matches wildcards without regex blow-up on a hostile pattern', () => {
-    const local = `${'a'.repeat(200)}.example.com ssh-ed25519 ${KEY_A}\n`;
+    // A hostile wildcard on the local side is matched against a long remote name.
+    const local = `${'*a'.repeat(40)}*b ssh-ed25519 ${KEY_A}\n`;
     const started = Date.now();
-    mergeKnownHosts(local, `${'*a'.repeat(40)}*b ssh-ed25519 ${KEY_B}\n`);
+    mergeKnownHosts(local, `${'a'.repeat(200)}.example.com ssh-ed25519 ${KEY_B}\n`);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('compares host names case-insensitively, but not hashed entries', () => {
+    const local = `github.com ssh-ed25519 ${KEY_A}\n`;
+    const upper = mergeKnownHosts(local, `GITHUB.COM ssh-ed25519 ${KEY_B}\n`);
+    expect(upper.changed).toBe(false);
+    expect(upper.conflicts).toHaveLength(1);
+    const listed = mergeKnownHosts(local, `x.example.com,GitHub.Com ssh-ed25519 ${KEY_B}\n`);
+    expect(listed.conflicts).toHaveLength(1);
+
+    // Two different hashes only differ in case: they are different hosts, not a clash.
+    const hashedLocal = `|1|AAAA|BBBB ssh-ed25519 ${KEY_A}\n`;
+    const hashed = mergeKnownHosts(hashedLocal, `|1|aaaa|bbbb ssh-ed25519 ${KEY_B}\n`);
+    expect(hashed.conflicts).toHaveLength(0);
+    expect(hashed.addedCount).toBe(1);
+  });
+
+  it('refuses a wildcard that covers a whole class of hosts, but keeps one that names its domain', () => {
+    const local = `prod.example.com ssh-ed25519 ${KEY_A}\n`;
+    for (const pattern of ['*e*', '*.com', '10.*', 'prod-*', '?', '*.*.*', '[*]:22']) {
+      const result = mergeKnownHosts(local, `${pattern} ssh-ed25519 ${KEY_B}\n`);
+      expect(result.addedCount, pattern).toBe(0);
+      expect(result.conflicts, pattern).toHaveLength(0);
+    }
+    for (const pattern of ['*.corp.internal', 'web?.corp.internal', '192.168.*', '[*.corp.internal]:2222']) {
+      expect(mergeKnownHosts(local, `${pattern} ssh-ed25519 ${KEY_B}\n`).addedCount, pattern).toBe(1);
+    }
   });
 });
 

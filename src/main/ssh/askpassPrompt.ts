@@ -35,7 +35,8 @@ export function savedAskpassAnswer(
  * whereas its own local prompts (key passphrase, PKCS#11 / FIDO PIN) have no such prefix.
  */
 export function isServerAskedPrompt(rawPrompt: string): boolean {
-  return /^\s*\([^)\r\n]*@[^)\r\n]*\)\s/.test(rawPrompt);
+  // `.` stops at a line break; a user or host name may itself contain `)`, so it is not excluded.
+  return /^\s*\(.*@.*\)\s/.test(rawPrompt);
 }
 
 /**

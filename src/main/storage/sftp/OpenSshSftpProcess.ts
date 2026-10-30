@@ -239,14 +239,18 @@ export class OpenSshSftpProcess {
    * - Through the live control socket: ssh only talks to the master. `ProxyCommand=false` makes it fail
    *   closed if the socket turns out to be stale; without it ssh falls back to a fresh connection to
    *   `host` on port 22 as the local user, past the profile's port, user, proxy and jump host.
-   * - Otherwise an independent connection built from the profile, with the proxy credentials and agent
-   *   socket in the environment like the SFTP process itself (a ProxyCommand with no
-   *   ELECTRON_RUN_AS_NODE starts a second copy of the app).
+   * - Otherwise (or with `useControlSocket` off) an independent connection built from the profile, with the
+   *   proxy credentials and agent socket in the environment like the SFTP process itself (a ProxyCommand
+   *   with no ELECTRON_RUN_AS_NODE starts a second copy of the app).
    */
-  private buildExecInvocation(cmd: string): { args: string[]; env?: Record<string, string> } {
-    if (this.controlPath && fs.existsSync(this.controlPath)) {
+  private buildExecInvocation(
+    cmd: string,
+    useControlSocket = true
+  ): { args: string[]; env?: Record<string, string>; viaControlSocket: boolean } {
+    if (useControlSocket && this.controlPath && fs.existsSync(this.controlPath)) {
       return {
         args: ['-S', this.controlPath, '-o', 'BatchMode=yes', '-o', 'ProxyCommand=false', '--', this.host, cmd],
+        viaControlSocket: true,
       };
     }
     if (!this.config) {
@@ -263,29 +267,48 @@ export class OpenSshSftpProcess {
     if (this.config.agentPath) {
       env.SSH_AUTH_SOCK = this.config.agentPath;
     }
-    return { args, env };
+    return { args, env, viaControlSocket: false };
   }
 
   public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
     const sshBinary = resolveSshBinary();
-    const { args, env } = this.buildExecInvocation(cmd);
-
-    return new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
-      execFile(sshBinary, args, { maxBuffer: 10 * 1024 * 1024, ...(env ? { env } : {}) }, (err, stdout, stderr) => {
-        if (err) return reject(err);
-        resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
+    const run = (invocation: { args: string[]; env?: Record<string, string> }) =>
+      new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
+        execFile(
+          sshBinary,
+          invocation.args,
+          { maxBuffer: 10 * 1024 * 1024, ...(invocation.env ? { env: invocation.env } : {}) },
+          (err, stdout, stderr) => {
+            if (err) return reject(Object.assign(err, { stderr: stderr.toString() }));
+            resolve({ stdout: Buffer.from(stdout), stderr: stderr.toString() });
+          }
+        );
       });
-    });
+
+    const first = this.buildExecInvocation(cmd);
+    try {
+      return await run(first);
+    } catch (err) {
+      // The socket file outlived its master (ssh exits 255 before any command ran, so nothing runs twice):
+      // use an independent connection instead, as before the socket existed.
+      const failure = err as { code?: unknown; stderr?: string };
+      const socketGone = failure.code === 255 && /Control socket connect|Connection closed by UNKNOWN/i.test(failure.stderr ?? '');
+      if (!first.viaControlSocket || !socketGone || !this.config) throw err;
+      return await run(this.buildExecInvocation(cmd, false));
+    }
   }
 
   public createExecStream(cmd: string): NodeJS.ReadableStream {
-    if (!this.config && !(this.controlPath && fs.existsSync(this.controlPath))) {
+    let invocation: ReturnType<OpenSshSftpProcess['buildExecInvocation']>;
+    try {
+      invocation = this.buildExecInvocation(cmd);
+    } catch (err) {
       const errStream = new Readable({ read() {} });
-      errStream.destroy(new Error('Process not initialized'));
+      errStream.destroy(err instanceof Error ? err : new Error(String(err)));
       return errStream;
     }
     const sshBinary = resolveSshBinary();
-    const { args, env } = this.buildExecInvocation(cmd);
+    const { args, env } = invocation;
     const childProc = spawn(sshBinary, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) });
 
     childProc.stderr?.resume();
