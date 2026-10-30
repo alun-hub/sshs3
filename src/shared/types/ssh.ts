@@ -28,6 +28,18 @@ export interface SSHActiveTunnel {
   pid?: number;
 }
 
+/** What one profile contributes when its system is connected to. */
+export interface SSHSystemMembership {
+  /** The system's name; see `SSHConnectionConfig.system`. */
+  name: string;
+  /** Open a terminal to this server. On unless set to false (then the server only contributes tunnels). */
+  shell?: boolean;
+  /** Directory the terminal starts in. */
+  startDirectory?: string;
+  /** Ids of this profile's own `tunnels` that are started with the system. */
+  tunnelIds?: string[];
+}
+
 export interface SSHConnectionConfig {
   id: string;
   name: string;
@@ -70,6 +82,13 @@ export interface SSHConnectionConfig {
   group?: string;
   /** Free-form labels for searching and filtering; cleaned by `normalizeTags` (shared/tags.ts) on every save. */
   tags?: string[];
+  /**
+   * Makes this profile one server of a system: profiles with the same `name` (ignoring case), in the
+   * same place (personal, or one Team Vault), form it, the way a shared `group` forms a folder. A
+   * system is connected to in one go ("Connect all"). Cleaned by `normalizeSystem` (shared/system.ts)
+   * on every save.
+   */
+  system?: SSHSystemMembership;
   lastUsedAt?: string;
   /** ISO 8601 timestamp of the last edit. Used by remote profile sync to resolve conflicts. */
   updatedAt?: string;
