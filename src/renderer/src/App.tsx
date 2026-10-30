@@ -18,6 +18,7 @@ import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal'
 import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { GlobalSearchPalette } from './components/GlobalSearchPalette';
+import { runGlobalAction, type GlobalActionId } from './lib/globalActions';
 import type { SettingsCategory } from './components/SettingsModal/settingsConstants';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
@@ -243,6 +244,15 @@ const AppContent: React.FC = () => {
   const handleOpenSettings = () => {
     openTopLevelModal(() => setSettingsModalOpen(true));
   };
+
+  const handleRunGlobalAction = (id: GlobalActionId) =>
+    runGlobalAction(id, {
+      newTab: handleNewTab,
+      openProfiles: handleOpenProfiles,
+      openSettings: handleOpenSettings,
+      newWindow: () => void window.multissh.windowNew(),
+      showShortcuts: openShortcutsHelp,
+    });
 
   const handleOpenTunnels = () => {
     openTopLevelModal(() => setTunnelsModalOpen(true));
@@ -637,6 +647,8 @@ const AppContent: React.FC = () => {
           onConnectS3={handleConnectS3}
           onSelectTab={handleSelectTab}
           onOpenConnectionManager={handleOpenProfiles}
+          shortcuts={settings.shortcuts}
+          onRunAction={handleRunGlobalAction}
         />
       )}
 

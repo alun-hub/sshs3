@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, Terminal, Zap } from 'lucide-react';
+import { ChevronRight, Lock, Terminal, Zap } from 'lucide-react';
 import { splitHighlight, type PaletteRow } from '../lib/globalSearchRows';
 import { TagChips } from './ui/TagChips';
 
@@ -55,7 +55,11 @@ export const GlobalSearchResultRow: React.FC<GlobalSearchResultRowProps> = ({ id
   } else {
     const { entry } = row;
     badge =
-      entry.kind === 'tab' ? (
+      entry.kind === 'action' ? (
+        <span className={`${BADGE} bg-violet-500/15 text-violet-400`}>
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      ) : entry.kind === 'tab' ? (
         <span className={`${BADGE} bg-app-surface-subtle text-txt-muted`}>
           <Terminal className="h-3 w-3" aria-hidden="true" />
         </span>

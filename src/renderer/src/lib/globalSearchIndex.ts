@@ -12,7 +12,7 @@ import type { AppTab } from './tabs';
 export interface SearchEntry {
   /** Unique across kinds and sources. */
   id: string;
-  kind: 'ssh' | 's3' | 'tab';
+  kind: 'ssh' | 's3' | 'tab' | 'action';
   title: string;
   subtitle: string;
   /** Folder path of a profile, searched like the subtitle. */

@@ -118,6 +118,51 @@ describe('buildPaletteGroups', () => {
   });
 });
 
+describe('buildPaletteGroups in action mode', () => {
+  const action = (ref: string, title: string): SearchEntry => ({
+    id: `action:${ref}`,
+    kind: 'action',
+    title,
+    subtitle: 'Ctrl+Shift+X',
+    tags: [],
+    source: '',
+    ref,
+    sftp: false,
+  });
+  const actions = [action('newTerminal', 'New Terminal'), action('openSettings', 'Settings'), action('newWindow', 'New Window')];
+  const entries = [profile('web-01', { lastUsedAt: '2026-10-29 10:00' }), tab('t1', 'Web One')];
+  const base = { entries, actions, locked: [{ vaultId: 'v', name: 'Team' }], filter: 'all' as const };
+
+  it('lists every action for a lone >', () => {
+    const groups = buildPaletteGroups({ ...base, query: '>' });
+    expect(labels(groups)).toEqual(['Actions']);
+    expect(keys(groups[0].rows)).toEqual(['action:newTerminal', 'action:openSettings', 'action:newWindow']);
+  });
+
+  it('narrows the actions with the words after the >', () => {
+    const groups = buildPaletteGroups({ ...base, query: '>new' });
+    expect(keys(groups[0].rows).sort()).toEqual(['action:newTerminal', 'action:newWindow']);
+    expect(keys(buildPaletteGroups({ ...base, query: '>sett' })[0].rows)).toEqual(['action:openSettings']);
+  });
+
+  it('shows no group at all when no action matches', () => {
+    expect(buildPaletteGroups({ ...base, query: '>zzz' })).toEqual([]);
+  });
+
+  it('shows profiles, tabs, quick connect and locked vaults in no other mode, and the actions only here', () => {
+    const groups = buildPaletteGroups({ ...base, query: '>web' });
+    expect(labels(groups)).not.toContain('Profiles');
+    expect(labels(groups)).not.toContain('Open tabs');
+    expect(labels(groups)).not.toContain('Locked Team Vaults');
+    expect(labels(buildPaletteGroups({ ...base, query: 'new' }))).not.toContain('Actions');
+    expect(labels(buildPaletteGroups({ ...base, query: '' }))).not.toContain('Actions');
+  });
+
+  it('ignores the type filter, since the actions are not profiles or tabs', () => {
+    expect(labels(buildPaletteGroups({ ...base, query: '>', filter: 'tabs' }))).toEqual(['Actions']);
+  });
+});
+
 describe('nextFilter', () => {
   it('cycles all, profiles, open tabs and back', () => {
     expect(nextFilter('all')).toBe('profiles');

@@ -32,13 +32,24 @@ export function nextFilter(filter: PaletteFilter): PaletteFilter {
  */
 export function buildPaletteGroups(args: {
   entries: SearchEntry[];
+  /** Actions (new tab, settings, ...), listed only when the input starts with `>`. */
+  actions?: SearchEntry[];
   locked: LockedVault[];
   query: string;
   filter: PaletteFilter;
   perGroup?: number;
 }): PaletteGroup[] {
-  const { entries, locked, query, filter, perGroup = DEFAULT_PER_GROUP } = args;
+  const { entries, actions = [], locked, query, filter, perGroup = DEFAULT_PER_GROUP } = args;
   const parsed = parseSearchQuery(query);
+
+  if (parsed.actionMode) {
+    const found = parsed.empty ? actions.map((entry) => ({ entry, titleIndices: [] as number[] })) : searchEntries(actions, parsed);
+    const rows = found
+      .slice(0, perGroup)
+      .map((r): PaletteRow => ({ type: 'entry', key: r.entry.id, entry: r.entry, titleIndices: r.titleIndices }));
+    return rows.length > 0 ? [{ label: 'Actions', rows }] : [];
+  }
+
   const showProfiles = filter !== 'tabs';
   const showTabs = filter !== 'profiles';
   const groups: PaletteGroup[] = [];

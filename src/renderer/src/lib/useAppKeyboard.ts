@@ -7,6 +7,7 @@ import type { PaneOrientation } from '@shared/types/session';
 import { tabForNumber, type AppTab } from './tabs';
 import { collectLeafIds } from './paneTree';
 import { comboFromKeyboardEvent } from './shortcuts';
+import { isGlobalActionId, runGlobalAction } from './globalActions';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from './clipboardHistoryEvents';
 import { dispatchTerminalAction } from './terminalActionEvents';
 import { openTabMenuFor } from './tabMenuEvents';
@@ -190,16 +191,18 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
         if (isMatch) {
           e.preventDefault();
           e.stopPropagation();
+          // The focus-independent actions are shared with the global search (see globalActions.ts).
+          if (isGlobalActionId(actionId)) {
+            runGlobalAction(actionId, {
+              newTab: handleNewTab,
+              openProfiles: () => openTopLevelModal(() => setProfilesModalOpen(true)),
+              openSettings: () => openTopLevelModal(() => setSettingsModalOpen(true)),
+              newWindow: () => void window.multissh.windowNew(),
+              showShortcuts: openShortcutsHelp,
+            });
+            break;
+          }
           switch (actionId) {
-            case 'newTerminal':
-              handleNewTab('terminal');
-              break;
-            case 'newFileManager':
-              handleNewTab('filemanager');
-              break;
-            case 'newRemoteFileManager':
-              handleNewTab('filemanager', { remote: true });
-              break;
             case 'closeTab':
               if (activeTabId) handleCloseTab(activeTabId);
               break;
@@ -221,12 +224,6 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               }
               break;
             }
-            case 'openProfiles':
-              openTopLevelModal(() => setProfilesModalOpen(true));
-              break;
-            case 'openSettings':
-              openTopLevelModal(() => setSettingsModalOpen(true));
-              break;
             case 'globalSearch':
               openTopLevelModal(() => setGlobalSearchOpen(true));
               break;
@@ -250,12 +247,6 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               break;
             case 'moveTabToNewWindow':
               if (activeTabId) handleMoveTabToNewWindow(activeTabId);
-              break;
-            case 'newWindow':
-              void window.multissh.windowNew();
-              break;
-            case 'showShortcuts':
-              openShortcutsHelp();
               break;
             case 'navigateLeft':
             case 'navigateRight':
