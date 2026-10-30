@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.73] - 2026-10-30
+
+### Added
+- find systems in global search and connect to all of them
+- group servers into a system and manage it
+- systems in Connection Manager, with Connect all
+- a profile can belong to a system
+- select several profiles and move or tag them together
+- Team Vault folders as rows, with a folder tree beside the list
+- actions in the global search (type > to list them)
+- global search (Ctrl+Shift+G) for profiles, tabs and user@host
+- tags on SSH and S3 profiles
+
+### Fixed
+- review findings on systems
+- select the name when renaming a system; dim a folder that follows its system
+- the search footer and filter fit the action mode
+- a Kubernetes terminal is never treated as an empty tab
+
+### Changed
+- retake the Team Vault folders screenshot
+- boxed search field and square chips in the search palette
+- seams for drawing a folder's profiles as a whole
+- share the open-profile-in-tab path
+
 ## [0.96.72] - 2026-10-30
 
 Electron 45, a second round of fixes from the code audit, and the system libraries the Linux packages were missing.
