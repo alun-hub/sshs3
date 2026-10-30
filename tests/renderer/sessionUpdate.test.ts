@@ -73,6 +73,21 @@ describe('useSessionPersistence', () => {
   beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => undefined));
   afterEach(() => vi.restoreAllMocks());
 
+  it('tries the restore once more, and restores normally when that works', async () => {
+    const saved = { tabs: [{ id: 't1', type: 'terminal', title: 'T' }], activeTabId: 't1' };
+    const sessionGet = vi.fn().mockRejectedValueOnce(new Error('ipc hiccup')).mockResolvedValue(saved);
+    const sessionSave = vi.fn().mockResolvedValue(undefined);
+    window.multissh = { sessionGet, sessionSave } as unknown as typeof window.multissh;
+    const setTabs = vi.fn();
+
+    const { result } = renderHook(() => useSessionPersistence([tab('t1')], 't1', setTabs, vi.fn()));
+
+    await waitFor(() => expect(result.current).toBe(true));
+    expect(sessionGet.mock.calls.length).toBeGreaterThanOrEqual(2); // the failed read and its retry
+    expect(setTabs).toHaveBeenCalled();
+    await waitFor(() => expect(sessionSave).toHaveBeenCalled());
+  });
+
   it('opens the app when the saved session cannot be read, and does not save over it', async () => {
     const sessionGet = vi.fn().mockRejectedValue(new Error('ipc failed'));
     const sessionSave = vi.fn().mockResolvedValue(undefined);

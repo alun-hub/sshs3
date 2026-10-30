@@ -82,12 +82,12 @@ describe('DotfilesSyncBanner prompt', () => {
 
   afterEach(() => cleanup());
 
-  it('is a labelled region, not a dialog', () => {
+  it('is a labelled status notice that is announced, not a dialog', () => {
     render(<DotfilesSyncBanner />);
     act(() =>
       emitPrompt!({ id: 'p1', sessionId: 's1', poolName: 'Work', hostLabel: 'web-1', entries: [{ fileId: 'f', remotePath: '~/.bashrc', reason: 'changed' } as never] })
     );
-    expect(screen.getByRole('region', { name: 'Dotfiles out of date on web-1' })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Dotfiles out of date on web-1' })).toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 

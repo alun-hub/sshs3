@@ -401,35 +401,21 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
             case 'rerunWithSudo':
               dispatchTerminalAction(actionId === 'terminalSearch' ? 'search' : actionId);
               break;
-            case 'increaseFontSize': {
-              setSettings((prev) => {
-                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
-                const next = Math.min(current + 1, 32);
-                if (next === current) return prev;
-                // Only this key: `prev` can be out of date for the others (see settingsSave.ts).
-                void window.multissh?.settingsSave?.({ terminalFontSize: next });
-                return { ...prev, terminalFontSize: next };
-              });
-              break;
-            }
-            case 'decreaseFontSize': {
-              setSettings((prev) => {
-                const current = prev.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
-                const next = Math.max(current - 1, 8);
-                if (next === current) return prev;
-                // Only this key: `prev` can be out of date for the others (see settingsSave.ts).
-                void window.multissh?.settingsSave?.({ terminalFontSize: next });
-                return { ...prev, terminalFontSize: next };
-              });
-              break;
-            }
+            case 'increaseFontSize':
+            case 'decreaseFontSize':
             case 'resetFontSize': {
-              setSettings((prev) => {
-                const defaultSize = DEFAULT_SETTINGS.terminalFontSize;
-                if (prev.terminalFontSize === defaultSize) return prev;
-                void window.multissh?.settingsSave?.({ terminalFontSize: defaultSize });
-                return { ...prev, terminalFontSize: defaultSize };
-              });
+              const current = settings.terminalFontSize || DEFAULT_SETTINGS.terminalFontSize;
+              const next =
+                actionId === 'increaseFontSize'
+                  ? Math.min(current + 1, 32)
+                  : actionId === 'decreaseFontSize'
+                    ? Math.max(current - 1, 8)
+                    : DEFAULT_SETTINGS.terminalFontSize;
+              if (next === current) break;
+              setSettings((prev) => ({ ...prev, terminalFontSize: next }));
+              // Only this key (the app's copy of the others can be out of date, see settingsSave.ts), and
+              // outside the updater, which has to be pure.
+              void window.multissh?.settingsSave?.({ terminalFontSize: next });
               break;
             }
             default: {
@@ -453,6 +439,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     tabBarFocused,
     anyTopLevelModalOpen,
     settings.shortcuts,
+    settings.terminalFontSize,
     setActiveTabId,
     setTabBarFocused,
     setSettings,

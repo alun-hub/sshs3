@@ -40,11 +40,24 @@ describe('mergeSavedSettings', () => {
     expect(next.connectionManagerDefaultTab).toBe('vault-1');
   });
 
+  it('does not undo a newer change of a key that was sent: the response belongs to the older save', () => {
+    // Hidden files toggled on, then off again before the first save came back.
+    const current = settings({ showHiddenFiles: false });
+    const saved = settings({ showHiddenFiles: true });
+    expect(mergeSavedSettings(current, saved, { showHiddenFiles: true }).showHiddenFiles).toBe(false);
+  });
+
+  it('compares nested values by content', () => {
+    const current = settings({ shortcuts: { a: 'Ctrl+A' } as never });
+    const saved = settings({ shortcuts: { a: 'Ctrl+B' } as never });
+    expect(mergeSavedSettings(current, saved, { shortcuts: { a: 'Ctrl+A' } as never }).shortcuts).toEqual({ a: 'Ctrl+B' });
+  });
+
   it('leaves what was not sent alone, so a change made while the save was under way survives', () => {
-    const current = settings({ showHiddenFiles: true, terminalFontSize: 18 });
-    const saved = settings({ showHiddenFiles: false, terminalFontSize: 14 });
+    const current = settings({ showHiddenFiles: false, terminalFontSize: 18 });
+    const saved = settings({ showHiddenFiles: true, terminalFontSize: 14 });
     const next = mergeSavedSettings(current, saved, { showHiddenFiles: false });
-    expect(next.showHiddenFiles).toBe(false);
+    expect(next.showHiddenFiles).toBe(true); // what the main process kept for the key that was sent
     expect(next.terminalFontSize).toBe(18);
   });
 });

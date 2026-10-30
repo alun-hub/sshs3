@@ -103,11 +103,17 @@ describe('TeamProfileTreeList folder position', () => {
     const first = renderList({ folderPaths: {}, onFolderPathChange });
 
     fireEvent.click(await screen.findByText('Acme Infra'));
-    expect(onFolderPathChange).toHaveBeenCalledWith('v1', ['Acme Infra']);
+    expect(onFolderPathChange).toHaveBeenCalledWith('ssh/v1', ['Acme Infra']);
     first.unmount();
 
     // A new instance (the list is unmounted while a profile is edited) opens in that folder.
-    renderList({ folderPaths: { v1: ['Acme Infra'] }, onFolderPathChange });
+    renderList({ folderPaths: { 'ssh/v1': ['Acme Infra'] }, onFolderPathChange });
     expect(await screen.findByText('web-1')).toBeInTheDocument();
+  });
+
+  it('keeps a position per tab: the S3 tab does not inherit the SSH tab\'s folder', async () => {
+    renderList({ tab: 's3', folderPaths: { 'ssh/v1': ['Acme Infra'] } });
+    await screen.findByText(/No profiles|New Profile/);
+    expect(screen.queryByText('web-1')).not.toBeInTheDocument();
   });
 });

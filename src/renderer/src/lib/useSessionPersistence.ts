@@ -23,7 +23,10 @@ export function useSessionPersistence(
 
   // Load saved session on mount
   useEffect(() => {
-    Promise.resolve(window.multissh.sessionGet?.())
+    const read = () => Promise.resolve(window.multissh.sessionGet?.());
+    // One more try: a failed read is usually a hiccup, and giving up means nothing is saved this run.
+    read()
+      .catch(() => read())
       .then((session) => {
         if (session?.tabs && session.tabs.length > 0) {
           setTabs(session.tabs.map(normalizeTab));

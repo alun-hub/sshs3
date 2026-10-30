@@ -45,10 +45,11 @@ interface TeamProfileTreeListProps {
    * only place that can answer "is the signed-in identity an admin of vault X" without a second,
    * redundant fetch. */
   onVaultsMetaChange: (metas: TeamVaultMeta[]) => void;
-  /** Where each team's folder browser is, by vaultId. Kept by the parent so that it survives this
-   * component being unmounted while a profile is edited; without it the position is kept here. */
+  /** Where each team's folder browser is, by `<tab>/<vaultId>` (the SSH and S3 tabs show different folders).
+   * Kept by the parent so that it survives this component being unmounted while a profile is edited;
+   * without it the position is kept here. */
   folderPaths?: Record<string, string[]>;
-  onFolderPathChange?: (vaultId: string, path: string[]) => void;
+  onFolderPathChange?: (key: string, path: string[]) => void;
 }
 
 /**
@@ -582,9 +583,9 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               <TeamProfileTree
                 roots={tree.roots}
                 ungrouped={tree.ungrouped}
-                currentPath={folderPaths ? (folderPaths[vaultId] ?? []) : entry.folderPath}
+                currentPath={folderPaths ? (folderPaths[`${tab}/${vaultId}`] ?? []) : entry.folderPath}
                 onNavigate={(path) =>
-                  onFolderPathChange ? onFolderPathChange(vaultId, path) : updateEntry(vaultId, { folderPath: path })
+                  onFolderPathChange ? onFolderPathChange(`${tab}/${vaultId}`, path) : updateEntry(vaultId, { folderPath: path })
                 }
                 query={query}
                 renderProfile={(profile: SSHConnectionConfig | S3Config) =>

@@ -1,7 +1,7 @@
 # Audit fix tracker
 
 Status of audit findings that have been triaged and acted on. Each entry was re-checked against the code
-before fixing; the audit text alone was not trusted. Updated: 2026-10-30 10:25
+before fixing; the audit text alone was not trusted. Updated: 2026-10-30 11:05
 
 | Finding | Verified | Severity (audit → assessed) | Status | Fix | Test |
 |---|---|---|---|---|---|
@@ -205,3 +205,20 @@ Nine findings, each checked against the code. Fixed in the commit after `8ead191
 | recursive `mkdir` reports the last segment's error for a failing parent; a failed `stat` can hide a drop | no change. The error is a real one (the folder could not be created) and a dropped connection fails the `stat` and the `mkdir` alike; keeping each parent's error would cost a `stat` per existing parent |
 | a local line with a negation is not counted as "to push" (`mergeKnownHosts(remote, local)`) | accepted. The push uploads the whole file, only the counter in the comparison ignores such lines, and the other device would drop them on pull by design |
 | `clashes` rescans and reallocates per token | small. Rewritten with `find`/early exit; known_hosts files are a few thousand lines |
+
+## Code review of `e6b43f0` and `f5f6231` (`/code-review high`)
+
+Ten findings, each checked against the code.
+
+| Finding | Verdict |
+|---|---|
+| the folder position of a team is shared by the SSH and S3 tabs, which show different folders | real. The position is now kept per `<tab>/<vaultId>` |
+| `mergeSavedSettings` puts the response of an older save over a newer change of the same key (hidden files toggled twice quickly) | real. A sent key takes the saved value only while it still has the value that was sent; the two keys written elsewhere are always refreshed |
+| after Enter/Escape in the rename field the focus falls to the page | real (and against the Escape rule in CLAUDE.md). The folder row's button gets the focus back when a rename ends, and only then |
+| the font shortcuts still call `settingsSave` inside a `setSettings` updater | real, small. The value is computed from `settings.terminalFontSize` (now a dependency of the key handler), the state update is pure and the save is made outside it |
+| one failed `sessionGet` at start disables saving for the whole run | partly. Not reachable in practice (`getSession` catches its errors) and saving is skipped on purpose so the stored session is not overwritten by an empty one, but a hiccup should not cost the run: the restore is tried once more before giving up |
+| a live region created already filled is often not announced | real. `role="status"` (like `UpdateBanner`), which is announced when it appears, replaces `region` + `aria-live` |
+| `cancel()` only signals the `sh` helper and is useless once it has `exec`'d into systemd-run | no change. The helper only gets past its wait loop when the app has exited, and then nothing in this process is left to cancel it; while the app lives (the install failed or was cancelled) the helper is still in the loop. A stray `sleep 0.1` ends by itself |
+| `toggleContext` / `toggleNamespace` decide from a stale closure when toggled twice in one batch | no change. A click or key press is a discrete event that React renders before the next one, and the loaders set `loading` at once, so the second toggle sees it. Covered by the "once per expansion" test |
+| a `load()` failure after a first successful load leaves stale data with a banner but no Retry | no change. `load()` runs only on mount, so the case does not occur; a failure of the first load has the Retry button |
+| `WRITTEN_ELSEWHERE` is a hand-kept list; other keys written outside the form could be overwritten the same way | accepted. These are the only two keys with another write path (checked with grep for every `settingsSave` and `settingsSetTeamVaultTabVisible` caller); `updatedAt` is stamped by the main process. Sending only the keys that differ from when the form was opened would be more general but is a larger change of `useSettingsForm` |

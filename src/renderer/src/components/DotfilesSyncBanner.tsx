@@ -54,9 +54,9 @@ export const DotfilesSyncBanner: React.FC = () => {
       {currentPrompt && (
         <div
           // Not a dialog: an `alertdialog` is taken for a modal overlay by getTopmostOverlay(), which
-          // would capture Ctrl+Shift+Arrow and stop all navigation while this banner is up.
-          role="region"
-          aria-live="polite"
+          // would capture Ctrl+Shift+Arrow and stop all navigation while this banner is up. `status` is
+          // announced when it appears (a live region that is created already filled often is not).
+          role="status"
           aria-labelledby="dotfiles-sync-banner-title"
           data-testid="dotfiles-sync-banner"
           className="w-full rounded-xl border border-border-subtle bg-app-card shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"

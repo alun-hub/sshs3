@@ -65,6 +65,40 @@ describe('ProfileFolderHeader', () => {
     expect(props.onToggle).not.toHaveBeenCalled();
   });
 
+  it('gives the focus back to the folder row when the rename ends, instead of dropping it on the page', () => {
+    const base: React.ComponentProps<typeof ProfileFolderHeader> = {
+      groupName: 'Prod',
+      profileCount: 3,
+      isCollapsed: false,
+      isDragOver: false,
+      dragOverGroup: null,
+      setDragOverGroup: vi.fn(),
+      renamingFolder: 'Prod',
+      setRenamingFolder: vi.fn(),
+      renameFolderValue: 'Prod',
+      setRenameFolderValue: vi.fn(),
+      onToggle: vi.fn(),
+      onDrop: vi.fn(),
+      onCommitRename: vi.fn(),
+      onDeleteFolder: vi.fn(),
+    };
+    const { rerender } = render(<ProfileFolderHeader {...base} />);
+    screen.getByRole('textbox', { name: 'Folder name' }).focus();
+
+    rerender(<ProfileFolderHeader {...base} renamingFolder={null} />);
+
+    expect(screen.getByRole('button', { name: /Prod/ })).toHaveFocus();
+  });
+
+  it('does not take the focus when the row was never being renamed', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    renderHeader();
+    expect(outside).toHaveFocus();
+    outside.remove();
+  });
+
   it('shows no rename or delete buttons for the Ungrouped row', () => {
     renderHeader({ groupName: 'Ungrouped' });
     expect(screen.queryByRole('button', { name: 'Rename folder' })).not.toBeInTheDocument();
