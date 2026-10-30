@@ -41,6 +41,11 @@ describe('searchEntries', () => {
     expect(ids('staging', entries)).toContain('staging-web');
   });
 
+  it('finds a server by the name of its system, ranking its own name above that', () => {
+    const list = [entry('billing-db'), entry('a1', { system: 'Billing' }), entry('zz')];
+    expect(ids('billing', list)).toEqual(['billing-db', 'a1']);
+  });
+
   it('requires every word to match somewhere', () => {
     expect(ids('web prod', entries)).toEqual(['web-01']);
     expect(ids('web nothing', entries)).toEqual([]);

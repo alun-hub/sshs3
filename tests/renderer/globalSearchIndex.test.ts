@@ -64,6 +64,59 @@ describe('buildProfileEntries', () => {
   });
 });
 
+describe('buildProfileEntries: systems', () => {
+  const sources = [
+    {
+      source: 'personal',
+      ssh: [
+        ssh('web', { group: 'Prod', system: { name: 'Shop' } }),
+        ssh('db', { group: 'Prod', system: { name: 'shop' } }),
+        ssh('blog'),
+      ],
+      s3: [],
+    },
+  ];
+
+  it('adds one row per system, in its folder, counting its servers', () => {
+    const rows = buildProfileEntries(sources).filter((e) => e.kind === 'system');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'system:personal:shop',
+      subtitle: 'System · 2 servers',
+      group: 'Prod',
+      source: 'personal',
+      sftp: false,
+      tags: [],
+    });
+    // Spelled as its first server by name ('db') spells it.
+    expect(rows[0].title).toBe('shop');
+    expect(rows[0].ref).toBe('shop');
+  });
+
+  it('says "1 server" for a system of one', () => {
+    const [row] = buildProfileEntries([{ source: 'personal', ssh: [ssh('a', { system: { name: 'Solo' } })], s3: [] }]).filter((e) => e.kind === 'system');
+    expect(row.subtitle).toBe('System · 1 server');
+  });
+
+  it('gives each server the name of its system so it is found by it, and none to a loose server', () => {
+    const servers = buildProfileEntries(sources).filter((e) => e.kind === 'ssh');
+    expect(servers.map((e) => [e.ref, e.system])).toEqual([['web', 'Shop'], ['db', 'shop'], ['blog', undefined]]);
+  });
+
+  it('keeps systems of the same name in different sources apart', () => {
+    const rows = buildProfileEntries([
+      { source: 'personal', ssh: [ssh('a', { system: { name: 'Shop' } })], s3: [] },
+      { source: 'v1', label: 'Team', ssh: [ssh('b', { system: { name: 'Shop' } })], s3: [] },
+    ]).filter((e) => e.kind === 'system');
+    expect(rows.map((r) => r.id)).toEqual(['system:personal:shop', 'system:v1:shop']);
+    expect(rows[1].sourceLabel).toBe('Team');
+  });
+
+  it('adds nothing when no profile is in a system', () => {
+    expect(buildProfileEntries([{ source: 'personal', ssh: [ssh('a')], s3: [] }]).some((e) => e.kind === 'system')).toBe(false);
+  });
+});
+
 describe('buildTabEntries', () => {
   const terminal = (id: string, title: string, leaf: object): AppTab =>
     ({ id, type: 'terminal', title, paneTree: { type: 'leaf', id: `${id}-root`, ...leaf } }) as AppTab;

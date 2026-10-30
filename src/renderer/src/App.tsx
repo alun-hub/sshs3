@@ -657,6 +657,7 @@ const AppContent: React.FC = () => {
           onOpenConnectionManager={handleOpenProfiles}
           shortcuts={settings.shortcuts}
           onRunAction={handleRunGlobalAction}
+          onConnectSystem={(members, source) => void handleConnectSystem(members, source)}
         />
       )}
 

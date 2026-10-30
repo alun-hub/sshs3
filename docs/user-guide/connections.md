@@ -74,13 +74,14 @@ Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button i
 | `#prod` | Only profiles with a tag containing `prod`. Combine with words (`#prod db`). |
 | `alice@host` or `alice@host:2222` | A **Connect to** row for a one-off connection that is not saved. |
 | `>` then words (`>new term`) | Actions instead of profiles: **New Terminal**, **New File Manager**, **New Remote File Manager**, **New Window**, **Connection Manager**, **Settings** and **Keyboard Shortcuts**, each with its current key combination. A lone `>` lists them all. |
+| A system's name (`shop`) | The system as one row (**System · 3 servers**) and its servers. <kbd>Enter</kbd> on the system row does **Connect all**. |
 | Nothing | Your most recently used profiles and the open tabs. |
 
 | Key | Action |
 | :--- | :--- |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the results. |
 | <kbd>Enter</kbd> | Connect (SSH or S3), switch to an open tab, start the one-off connection, or run the chosen action. |
-| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile. |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile (not offered for a system). |
 | <kbd>Tab</kbd> | Cycle the filter: **All**, **Profiles**, **Open tabs**. |
 | <kbd>Esc</kbd> | Close and return to where you were. |
 

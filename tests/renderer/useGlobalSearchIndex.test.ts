@@ -32,6 +32,24 @@ describe('useGlobalSearchIndex', () => {
     ]);
   });
 
+  it('resolves a system entry to its servers, by name, within its own source', async () => {
+    (window.multissh.profilesGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ssh: [{ ...sshProfile('web'), system: { name: 'Shop' } }, { ...sshProfile('db'), system: { name: 'shop' } }, sshProfile('blog')],
+      s3: [],
+    });
+    (window.multissh.teamVaultGetPayload as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ssh: [{ ...sshProfile('other'), system: { name: 'Shop' } }],
+      s3: [],
+    });
+    const { result } = renderHook(() => useGlobalSearchIndex([]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const personal = result.current.entries.find((e) => e.id === 'system:personal:shop')!;
+    expect(result.current.getProfile(personal).members?.map((m) => m.id)).toEqual(['db', 'web']);
+    const shared = result.current.entries.find((e) => e.id === 'system:v1:shop')!;
+    expect(result.current.getProfile(shared).members?.map((m) => m.id)).toEqual(['other']);
+    expect(result.current.getProfile({ ...personal, source: 'gone' })).toEqual({});
+  });
+
   it('follows the open tabs without reading the profiles again', async () => {
     const { result, rerender } = renderHook(({ tabs }) => useGlobalSearchIndex(tabs), {
       initialProps: { tabs: [tab('t1', 'One')] },

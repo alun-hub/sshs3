@@ -28,6 +28,8 @@ interface GlobalSearchPaletteProps {
   onOpenConnectionManager: () => void;
   /** Runs a `>` action (new tab, Settings, ...). */
   onRunAction: (id: GlobalActionId) => void;
+  /** Connects to every server of a system found by name. */
+  onConnectSystem: (members: SSHConnectionConfig[], source: string) => void;
 }
 
 const FILTERS: Array<{ id: PaletteFilter; label: string }> = [
@@ -51,6 +53,7 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
   onSelectTab,
   onOpenConnectionManager,
   onRunAction,
+  onConnectSystem,
 }) => {
   const onBackdrop = useModalDismiss(onClose, true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,11 @@ export const GlobalSearchPalette: React.FC<GlobalSearchPaletteProps> = ({
       } else if (row.entry.kind === 'tab') {
         onClose();
         onSelectTab(row.entry.ref);
+      } else if (row.entry.kind === 'system') {
+        const { members } = getProfile(row.entry);
+        if (sftp || !members) return;
+        onClose();
+        onConnectSystem(members, row.entry.source);
       } else {
         const { ssh, s3 } = getProfile(row.entry);
         if (ssh) {

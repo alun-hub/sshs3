@@ -48,6 +48,7 @@ function setup({ personal, vaults = [], payload = null, tabs = [], shortcuts }: 
     onSelectTab: vi.fn(),
     onOpenConnectionManager: vi.fn(),
     onRunAction: vi.fn(),
+    onConnectSystem: vi.fn(),
   };
   render(<GlobalSearchPalette tabs={tabs} shortcuts={shortcuts} {...handlers} />);
   return { multissh, handlers, input: screen.getByRole('combobox') };
@@ -264,6 +265,58 @@ describe('GlobalSearchPalette', () => {
     expect(handlers.onClose).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByTestId('global-search-palette'));
     expect(handlers.onClose).toHaveBeenCalledTimes(3);
+  });
+
+  describe('systems', () => {
+    const shop = {
+      ssh: [
+        ssh('shop-web', { system: { name: 'Shop' }, group: 'Prod' }),
+        ssh('shop-db', { system: { name: 'shop', startDirectory: '/data' }, group: 'Prod' }),
+        ssh('blog'),
+      ],
+      s3: [],
+    };
+
+    it('lists a system as one row with its number of servers, next to its servers', async () => {
+      const { input } = setup({ personal: shop });
+      type(input, 'shop');
+      await waitFor(() => expect(options()).toHaveLength(3));
+      expect(optionTexts().some((t) => t.includes('System · 2 servers'))).toBe(true);
+    });
+
+    it('finds the servers of a system by the system name, not only their own names', async () => {
+      const { input } = setup({ personal: { ssh: [ssh('a1', { system: { name: 'Billing' } }), ssh('zz')], s3: [] } });
+      type(input, 'billing');
+      await waitFor(() => expect(options().length).toBeGreaterThan(0));
+      expect(optionTexts().some((t) => t.startsWith('SSH') && t.includes('a1'))).toBe(true);
+      expect(optionTexts().some((t) => t.includes('zz'))).toBe(false);
+    });
+
+    it('connects to every server of the system on Enter, passing the source, and closes', async () => {
+      const { input, handlers } = setup({ personal: shop });
+      type(input, 'shop');
+      await waitFor(() => expect(options().length).toBeGreaterThan(0));
+      const systemIndex = optionTexts().findIndex((t) => t.includes('System · 2 servers'));
+      for (let i = 0; i < systemIndex; i++) fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(handlers.onConnectSystem).toHaveBeenCalledTimes(1));
+      const [members, source] = handlers.onConnectSystem.mock.calls[0];
+      expect(members.map((m: { id: string }) => m.id)).toEqual(['shop-db', 'shop-web']);
+      expect(source).toBe('personal');
+      expect(handlers.onClose).toHaveBeenCalled();
+      expect(handlers.onConnectSSH).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on Shift+Enter, since a system has no SFTP', async () => {
+      const { input, handlers } = setup({ personal: shop });
+      type(input, 'shop');
+      await waitFor(() => expect(options().length).toBeGreaterThan(0));
+      const systemIndex = optionTexts().findIndex((t) => t.includes('System · 2 servers'));
+      for (let i = 0; i < systemIndex; i++) fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      expect(handlers.onConnectSystem).not.toHaveBeenCalled();
+      expect(handlers.onClose).not.toHaveBeenCalled();
+    });
   });
 
   it('never puts a stored secret on the page', async () => {

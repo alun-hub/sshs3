@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Lock, Terminal, Zap } from 'lucide-react';
+import { ChevronRight, Layers, Lock, Terminal, Zap } from 'lucide-react';
 import { splitHighlight, type PaletteRow } from '../lib/globalSearchRows';
 import { TagChips } from './ui/TagChips';
 
@@ -62,6 +62,10 @@ export const GlobalSearchResultRow: React.FC<GlobalSearchResultRowProps> = ({ id
       ) : entry.kind === 'tab' ? (
         <span className={`${BADGE} bg-app-surface-subtle text-txt-muted`}>
           <Terminal className="h-3 w-3" aria-hidden="true" />
+        </span>
+      ) : entry.kind === 'system' ? (
+        <span className={`${BADGE} bg-sky-500/15 text-sky-400`}>
+          <Layers className="h-3 w-3" aria-hidden="true" />
         </span>
       ) : (
         <span className={`${BADGE} ${entry.kind === 'ssh' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-sky-500/15 text-sky-400'}`}>

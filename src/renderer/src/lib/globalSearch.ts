@@ -10,7 +10,7 @@ export interface SearchResult {
 }
 
 // Added to a word's fuzzy score by the field it matched in: a name match beats the same-quality match in the host or folder.
-const FIELD_BONUS = { title: 2, tags: 1.6, subtitle: 1.2, group: 1, source: 0.6 };
+const FIELD_BONUS = { title: 2, tags: 1.6, system: 1.4, subtitle: 1.2, group: 1, source: 0.6 };
 
 function byRecency(a: SearchEntry, b: SearchEntry): number {
   return (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? '');
@@ -32,6 +32,7 @@ function matchWord(word: string, entry: SearchEntry): { score: number; titleIndi
   };
   consider(entry.title, FIELD_BONUS.title, true);
   consider(entry.tags.join(' '), FIELD_BONUS.tags, false);
+  consider(entry.system, FIELD_BONUS.system, false);
   consider(entry.subtitle, FIELD_BONUS.subtitle, false);
   consider(entry.group, FIELD_BONUS.group, false);
   consider(entry.sourceLabel, FIELD_BONUS.source, false);
