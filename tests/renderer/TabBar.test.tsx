@@ -163,6 +163,16 @@ describe('TabBar Component', () => {
     });
   });
 
+  it('sets the search button off from the tabs with a divider, and does not draw one without a search', () => {
+    const { unmount } = render(
+      <TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} onOpenGlobalSearch={vi.fn()} />
+    );
+    expect(screen.getByTestId('global-search-btn').parentElement).toHaveClass('border-l', 'border-divider');
+    unmount();
+    render(<TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} />);
+    expect(screen.queryByTestId('global-search-btn')).not.toBeInTheDocument();
+  });
+
   it('calls onSelectTab when an inactive tab is clicked', () => {
     const onSelectTab = vi.fn();
     const onCloseTab = vi.fn();
