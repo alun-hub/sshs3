@@ -7,7 +7,9 @@ import type { PaneOrientation } from '@shared/types/session';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import type { S3Config } from '@shared/types/storage';
 import { isEmptyUnconnectedTab, type AppTab } from './tabs';
-import { formatDateTime } from './format';
+import { planSystemConnect } from './connectSystem';
+import { prepareConnect } from './openProfile';
+import { describeIpcError, formatDateTime } from './format';
 import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane, updateLeaf, updateSplitWeights } from './paneTree';
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
@@ -26,11 +28,13 @@ export interface TabActionsContext {
   setProfilesModalOpen: Dispatch<SetStateAction<boolean>>;
   /** The app's confirmation dialog (ConfirmDialog's useConfirm), used before discarding unsaved changes. */
   confirm: (options: ConfirmOptions) => Promise<boolean>;
+  /** Shows a short message that no dialog is open to show (for example tunnels that failed to start). */
+  notify?: (message: string) => void;
 }
 
 /** Everything that creates, closes, splits or connects tabs and panes. */
 export function useTabActions(ctx: TabActionsContext) {
-  const { tabs, activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen, confirm } = ctx;
+  const { tabs, activeTabId, settings, localHostname, setTabs, setActiveTabId, setTabBarFocused, setConnectTarget, setProfilesModalOpen, confirm, notify } = ctx;
 
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
@@ -277,6 +281,51 @@ export function useTabActions(ctx: TabActionsContext) {
 
   const handleOpenK8sInTab = (k8sTarget: K8sTerminalTarget) =>
     openInTerminalTab(k8sTarget.podName, { k8sTarget }, (tabId) => handleConnectK8sTerminal({ tabId }, k8sTarget));
+
+  /**
+   * "Connect all" for a system: a terminal tab per server (all created in one update so their ids
+   * cannot collide, the first one selected) and the tunnels its servers list. `source` is the
+   * Connection Manager's tab key: a personal server gets its last-used time written, a Team Vault
+   * one never does. A tunnel that fails to start does not stop the rest; they are reported together.
+   */
+  const handleConnectSystem = useCallback(
+    async (members: SSHConnectionConfig[], source: string) => {
+      const plan = planSystemConnect(members);
+      if (plan.tabs.length === 0 && plan.tunnels.length === 0) return;
+
+      if (plan.tabs.length > 0) {
+        const stamp = Date.now();
+        const opened: AppTab[] = plan.tabs.map(({ title, config, startDirectory }, i) => {
+          const id = `term-${stamp}-${i}`;
+          return {
+            id,
+            type: 'terminal',
+            title,
+            paneTree: createLeaf(`${id}-root`, { config }),
+            ...(startDirectory ? { initialCwd: startDirectory } : {}),
+          };
+        });
+        setTabs((prev) => [...prev, ...opened]);
+        setActiveTabId(opened[0].id);
+      }
+      setProfilesModalOpen(false);
+
+      void Promise.all(
+        members.map((member) => prepareConnect(member, source, (profile) => window.multissh.profilesSaveSSH(profile)))
+      ).catch(() => {});
+
+      const results = await Promise.allSettled(plan.tunnels.map(({ config, tunnel }) => window.multissh.sshTunnelStart(config, tunnel)));
+      const failures = results.flatMap((result, i) =>
+        result.status === 'rejected'
+          ? [`${plan.tunnels[i].config.name}: ${plan.tunnels[i].tunnel.name} (${describeIpcError(result.reason, 'could not start')})`]
+          : []
+      );
+      if (failures.length > 0) {
+        notify?.(`${failures.length} of ${plan.tunnels.length} tunnels could not start. ${failures.join('; ')}`);
+      }
+    },
+    [notify, setActiveTabId, setProfilesModalOpen, setTabs]
+  );
 
   const handleViewK8sLogs = useCallback((k8sLogTarget: K8sTerminalTarget) => {
     const newId = `term-${Date.now()}`;
@@ -591,6 +640,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handleConnectK8sTerminal,
     handleOpenSSHInTab,
     handleOpenK8sInTab,
+    handleConnectSystem,
     handleViewK8sLogs,
     handleOpenLocalTerminal,
     handlePaneTitleChange,

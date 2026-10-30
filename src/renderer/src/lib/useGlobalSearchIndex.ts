@@ -3,11 +3,14 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { buildProfileEntries, buildTabEntries, type SearchEntry } from './globalSearchIndex';
 import { loadSearchSources, type LoadedSearchSources } from './globalSearchSources';
+import { systemMembersOf } from './systemGrouping';
 import type { AppTab } from './tabs';
 
 export interface SearchProfile {
   ssh?: SSHConnectionConfig;
   s3?: S3Config;
+  /** The servers of a system entry. */
+  members?: SSHConnectionConfig[];
 }
 
 /**
@@ -40,6 +43,10 @@ export function useGlobalSearchIndex(tabs: AppTab[]) {
       if (entry.kind === 'ssh') {
         const ssh = source.ssh.find((p) => p.id === entry.ref);
         return ssh ? { ssh } : {};
+      }
+      if (entry.kind === 'system') {
+        const members = systemMembersOf(source.ssh, entry.ref);
+        return members.length > 0 ? { members } : {};
       }
       if (entry.kind === 's3') {
         const s3 = source.s3.find((p) => p.id === entry.ref);

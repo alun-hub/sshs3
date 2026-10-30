@@ -14,6 +14,7 @@ import { readSmartcardCertificates } from '../smartcard/SmartcardCertificateRead
 import { testS3ConnectionConfig } from './connectionTestHandlers';
 import { toTeamK8sProfile } from '../services/teamVaultK8s';
 import { withNormalizedTags } from '../../shared/tags';
+import { withNormalizedSystem } from '../../shared/system';
 import { createLogger } from '../log';
 
 const teamVaultLog = createLogger('team-vault');
@@ -492,7 +493,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
   bridge.registerHandler(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, async (_event, vaultId: string, profile: SSHConnectionConfig) => {
     const vid = requireVaultId(vaultId);
     requireProfile(profile, 'SSH profile');
-    await bridge.teamVaultService.saveSSHProfile(vid, withNormalizedTags(profile));
+    await bridge.teamVaultService.saveSSHProfile(vid, withNormalizedSystem(withNormalizedTags(profile)));
     bridge.scheduleTeamVaultAutoPush(vid);
   });
 

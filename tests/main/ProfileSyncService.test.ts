@@ -493,6 +493,36 @@ describe('ProfileSyncService', () => {
     expect((await machineB.sync.compareWithRemote(provider)).state).toBe('in_sync');
   });
 
+  it('carries the system membership of each server to the other machine, and removes it again when it is taken away', async () => {
+    const machineA = await harness();
+    const base = { host: 'h', username: 'u', authType: 'password' as const };
+    await machineA.profileStore.saveSSH({
+      ...base,
+      id: 'ssh-1',
+      name: 'Web',
+      tunnels: [{ id: 't1', name: 'db', type: 'local', localPort: 5432, remoteHost: 'localhost', remotePort: 5432 }],
+      system: { name: 'shop', startDirectory: '/srv/web', tunnelIds: ['t1'] },
+    });
+    await machineA.profileStore.saveSSH({ ...base, id: 'ssh-2', name: 'Db', system: { name: 'shop', shell: false } });
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await machineB.sync.pullFromRemote(provider);
+    const pulled = (await machineB.profileStore.getProfiles()).ssh;
+    expect(pulled.find((p) => p.id === 'ssh-1')?.system).toEqual({ name: 'shop', startDirectory: '/srv/web', tunnelIds: ['t1'] });
+    expect(pulled.find((p) => p.id === 'ssh-2')?.system).toEqual({ name: 'shop', shell: false });
+    expect((await machineB.sync.compareWithRemote(provider)).state).toBe('in_sync');
+
+    await new Promise((r) => setTimeout(r, 2));
+    await machineA.profileStore.saveSSH({ ...base, id: 'ssh-2', name: 'Db' });
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+    const after = (await machineB.profileStore.getProfiles()).ssh;
+    expect(after.find((p) => p.id === 'ssh-2')?.system).toBeUndefined();
+    expect(after.find((p) => p.id === 'ssh-1')?.system?.name).toBe('shop');
+    expect((await machineB.sync.compareWithRemote(provider)).state).toBe('in_sync');
+  });
+
   it('keeps when this device last opened a profile when a newer remote edit does not carry it, and takes a later remote value', async () => {
     const base = { id: 'ssh-1', name: 'Prod', host: 'h', username: 'u', authType: 'password' as const };
     const machineA = await harness();

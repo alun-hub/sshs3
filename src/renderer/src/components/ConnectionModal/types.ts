@@ -28,6 +28,8 @@ export interface TeamVaultMeta {
   vaultName?: string;
   isAdmin: boolean;
   folderSuggestions: string[];
+  /** Names of the systems that exist in this team, offered in the profile form. */
+  systemSuggestions: string[];
   /** Mirrors `TeamVaultStatus.unlocked` so `ConnectionManagerModal` can keep its tab row's lock
    * icon in sync the moment `TeamProfileTreeList` unlocks/locks a vault, instead of waiting for
    * the next `loadTeamVaultTabs()` poll. */

@@ -8,6 +8,11 @@ import type { EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './t
 import { TeamProfileTree } from './TeamProfileTree';
 import { TeamFolderSidebar } from './TeamFolderSidebar';
 import { TeamBulkEdit } from './TeamBulkEdit';
+import { SystemAwareRows } from './SystemAwareRows';
+import { alignSystemMembers, systemNames } from '../../lib/systemGrouping';
+import { saveInOrder } from '../../lib/saveInOrder';
+import { moveWithSystems } from '../../lib/systemEdit';
+import { createSystemActions } from '../../lib/systemActions';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
@@ -41,6 +46,8 @@ interface TeamProfileTreeListProps {
   onConnectS3?: (config: S3Config) => void;
   setEditing: Dispatch<SetStateAction<EditingState | null>>;
   onNewProfile: (type: 'ssh' | 's3', vaultId: string) => void;
+  /** Connects to every server of a system ("Connect all"); `source` is the Team Vault id. Omit to hide the button. */
+  onConnectSystem?: (members: SSHConnectionConfig[], source: string) => void;
   /** Reported every time known vaults/payloads change, so `ConnectionManagerModal` can look up
    * `isAdmin`/`folderSuggestions` for whichever vaultId the open edit form belongs to — this
    * component is the only one that actually fetches every unlocked vault's payload, so it's the
@@ -74,6 +81,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     onConnectSSH,
     onConnectSFTP,
     onConnectS3,
+    onConnectSystem,
     setEditing,
     onNewProfile,
     onVaultsMetaChange,
@@ -87,6 +95,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
   const [vaultOrder, setVaultOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedSystems, setCollapsedSystems] = useState<Record<string, boolean>>({});
+  const toggleSystem = (key: string) => setCollapsedSystems((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const loadPayload = useCallback(async (vaultId: string) => {
     try {
@@ -195,6 +205,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
         vaultName: e.status.vaultName,
         isAdmin: !!e.status.members?.some((m) => m.recipientId === e.status.selfRecipientId && m.role === 'admin'),
         folderSuggestions: collectTeamFolderSuggestions(e.payload?.folders ?? [], e.payload?.ssh ?? [], e.payload?.s3 ?? []),
+        systemSuggestions: systemNames(e.payload?.ssh ?? []),
         unlocked: e.status.unlocked,
         matchCount: !trimmedQuery
           ? 0
@@ -364,10 +375,16 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
       if (data.type !== kind) return;
       const payload = entries[vaultId]?.payload;
       if (kind === 'ssh') {
-        const profile = payload?.ssh.find((p) => p.id === data.id);
-        if (profile && profile.group !== targetPath) {
-          await window.multissh.teamVaultSaveSSHProfile(vaultId, { ...profile, group: targetPath });
-          await loadPayload(vaultId);
+        // A server in a system takes the whole system along.
+        const changed = moveWithSystems(payload?.ssh ?? [], new Set([data.id]), targetPath);
+        if (changed.length > 0) {
+          await saveInOrder(
+            changed,
+            (p) => window.multissh.teamVaultSaveSSHProfile(vaultId, p),
+            () => loadPayload(vaultId),
+            setError,
+            'Failed to move the profile'
+          );
         }
       } else {
         const profile = payload?.s3.find((p) => p.id === data.id);
@@ -521,7 +538,16 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
 
         const ssh = entry.payload?.ssh ?? [];
         const s3 = entry.payload?.s3 ?? [];
-        const sshWithRef = ssh.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
+        // `storedSshWithRef` is what edits start from; `sshWithRef` only differs in the folder of a system's servers, for drawing.
+        const storedSshWithRef = ssh.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
+        const sshWithRef = alignSystemMembers(storedSshWithRef);
+        const systemActions = createSystemActions({
+          profiles: ssh,
+          save: (p: SSHConnectionConfig) => window.multissh.teamVaultSaveSSHProfile(vaultId, p),
+          reload: () => loadPayload(vaultId),
+          onError: setError,
+          confirm,
+        });
         const s3WithRef = s3.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
         const filteredSSH = filterSshProfiles(sshWithRef, query);
         const filteredS3 = filterS3Profiles(s3WithRef, query);
@@ -597,33 +623,15 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               <TeamBulkEdit<SSHConnectionConfig | S3Config>
                 key={`${vaultId}/${tab}`}
                 profiles={activeProfiles}
+                allProfiles={tab === 'ssh' ? storedSshWithRef : s3WithRef}
+                systemSuggestions={tab === 'ssh' ? systemNames(ssh) : undefined}
                 save={(profile) => saveSharedProfile(vaultId, tab, profile)}
                 reload={() => loadPayload(vaultId)}
                 onError={setError}
                 folderSuggestions={collectTeamFolderSuggestions(entry.payload?.folders ?? [], ssh, s3)}
               >
-                {(rowSelect) => (
-              <div className="flex gap-3">
-                {/* The folder tree beside the list; while searching, the results are one flat list and the tree is not needed. */}
-                {tree.roots.length > 0 && !query.trim() && (
-                  <div className="hidden md:block">
-                    <TeamFolderSidebar
-                      roots={tree.roots}
-                      ungroupedCount={tree.ungrouped.length}
-                      currentPath={currentFolderPath}
-                      onNavigate={navigateToFolder}
-                      onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(vaultId, targetPath, e, tab)}
-                    />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-              <TeamProfileTree
-                roots={tree.roots}
-                ungrouped={tree.ungrouped}
-                currentPath={currentFolderPath}
-                onNavigate={navigateToFolder}
-                query={query}
-                renderProfile={(profile: SSHConnectionConfig | S3Config) =>
+                {(rowSelect) => {
+                  const renderTeamProfile = (profile: SSHConnectionConfig | S3Config) => (
                   tab === 'ssh' ? (
                     <TeamSshProfileRow
                       key={profile.id}
@@ -646,6 +654,44 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                       select={rowSelect(profile.id)}
                     />
                   )
+                  );
+                  return (
+              <div className="flex gap-3">
+                {/* The folder tree beside the list; while searching, the results are one flat list and the tree is not needed. */}
+                {tree.roots.length > 0 && !query.trim() && (
+                  <div className="hidden md:block">
+                    <TeamFolderSidebar
+                      roots={tree.roots}
+                      ungroupedCount={tree.ungrouped.length}
+                      currentPath={currentFolderPath}
+                      onNavigate={navigateToFolder}
+                      onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(vaultId, targetPath, e, tab)}
+                    />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+              <TeamProfileTree
+                roots={tree.roots}
+                ungrouped={tree.ungrouped}
+                currentPath={currentFolderPath}
+                onNavigate={navigateToFolder}
+                query={query}
+                renderProfile={renderTeamProfile}
+                renderProfileList={
+                  tab === 'ssh'
+                    ? (list) => (
+                        <SystemAwareRows
+                          profiles={list as SSHConnectionConfig[]}
+                          source={vaultId}
+                          renderProfile={renderTeamProfile}
+                          onConnectSystem={onConnectSystem}
+                          collapsed={collapsedSystems}
+                          onToggle={toggleSystem}
+                          onRenameSystem={(members, name) => void systemActions.rename(members, name)}
+                          onUngroupSystem={(members) => void systemActions.ungroup(members)}
+                        />
+                      )
+                    : undefined
                 }
                 onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(vaultId, targetPath, e, tab)}
                 onCreateFolder={(fullPath) => handleCreateTeamFolder(vaultId, fullPath)}
@@ -655,7 +701,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
               />
                 </div>
               </div>
-                )}
+                  );
+                }}
               </TeamBulkEdit>
             )}
           </div>

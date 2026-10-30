@@ -27,6 +27,7 @@ import { IS_WINDOWS } from '../../lib/platform';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { ProfileOrganizationFields } from './ProfileOrganizationFields';
+import { SystemMembershipFields } from './SystemMembershipFields';
 
 interface SSHProfileFormProps {
   initial?: SSHConnectionConfig;
@@ -40,6 +41,8 @@ interface SSHProfileFormProps {
   folderSuggestions?: string[];
   /** Tags already used on other profiles, offered while typing in the Tags field. */
   tagSuggestions?: string[];
+  /** Names of the systems that exist, offered while typing in the System field. */
+  systemSuggestions?: string[];
   /** false for a Team Vault member (not admin): the password/passphrase/proxy-password fields
    * are shown disabled with a placeholder instead of the real value — TeamVaultService enforces
    * the same rule server-side regardless of this prop, this only drives the UI. Defaults to true
@@ -78,6 +81,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
   dotfilesPoolEnabled = false,
   folderSuggestions,
   tagSuggestions,
+  systemSuggestions,
   canEditSecret = true,
 }) => {
   const [config, setConfig] = useState<SSHConnectionConfig>(initial ?? emptyConfig());
@@ -342,7 +346,17 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           groupPlaceholder="e.g. Production or Web Servers"
           folderSuggestions={folderSuggestions}
           tagSuggestions={tagSuggestions}
+          // Only while it is in one: clearing the System field frees the folder in the same save.
+          groupFollowsSystem={!!initial?.system && !!config.system}
         />
+        <div className="col-span-2">
+          <SystemMembershipFields
+            system={config.system}
+            tunnels={config.tunnels}
+            onChange={(system) => update('system', system)}
+            suggestions={systemSuggestions}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-[1fr_80px_1fr] gap-2.5">

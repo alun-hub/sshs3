@@ -1730,6 +1730,34 @@ describe('TeamVaultService', () => {
         expect(memberPayload.s3[0].tags).toEqual(['assets']);
       });
 
+      it('lets a member put a profile with a stored secret into a system, and keeps it when the profile is saved for another reason', async () => {
+        const { admin, asBob, vaultId } = await makeAdminAndBob();
+        await admin.saveSSHProfile(vaultId, sshProfile('p1'));
+
+        await expect(
+          asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), system: { name: 'shop', startDirectory: '/srv' }, password: undefined })
+        ).resolves.toBeUndefined();
+        await asBob.saveSSHProfile(vaultId, { ...sshProfile('p1'), system: { name: 'shop', startDirectory: '/srv' }, group: 'Prod', password: undefined });
+
+        const adminPayload = await admin.getPayload(vaultId);
+        expect(adminPayload.ssh[0].system).toEqual({ name: 'shop', startDirectory: '/srv' });
+        expect(adminPayload.ssh[0].group).toBe('Prod');
+        expect(adminPayload.ssh[0].password).toBe('secret'); // pragma: allowlist secret
+
+        const memberPayload = await asBob.getPayloadForRenderer(vaultId);
+        expect(memberPayload.ssh[0].system).toEqual({ name: 'shop', startDirectory: '/srv' });
+        expect(memberPayload.ssh[0].password).toBeUndefined();
+      });
+
+      it('keeps the system of a profile when its folder is renamed', async () => {
+        const { admin, vaultId } = await makeAdminAndBob();
+        await admin.saveTeamFolder(vaultId, 'Prod');
+        await admin.saveSSHProfile(vaultId, { ...sshProfile('p1'), group: 'Prod', system: { name: 'shop' } });
+        await admin.renameTeamFolder(vaultId, 'Prod', 'Production');
+        const payload = await admin.getPayload(vaultId);
+        expect(payload.ssh[0]).toMatchObject({ group: 'Production', system: { name: 'shop' } });
+      });
+
       it('getPayloadForRenderer strips secrets for a member but not for an admin', async () => {
         const { admin, asBob, vaultId } = await makeAdminAndBob();
         await admin.saveSSHProfile(vaultId, sshProfile('p1'));

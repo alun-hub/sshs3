@@ -125,6 +125,63 @@ describe('BulkActionBar', () => {
     });
   });
 
+  describe('group as system', () => {
+    const open = () => fireEvent.click(screen.getByRole('button', { name: 'Group as system…' }));
+
+    it('is only offered where systems are supported', () => {
+      setup();
+      expect(screen.queryByRole('button', { name: 'Group as system…' })).not.toBeInTheDocument();
+    });
+
+    it('groups into the typed system and folder on Enter or the Group button, and closes the panel', () => {
+      const onGroupAsSystem = vi.fn();
+      setup({ onGroupAsSystem, systemSuggestions: ['Shop'] });
+      open();
+      fireEvent.change(screen.getByLabelText('System'), { target: { value: 'Webshop' } });
+      fireEvent.change(screen.getByLabelText('Folder (optional)'), { target: { value: 'Prod' } });
+      fireEvent.keyDown(screen.getByLabelText('System'), { key: 'Enter' });
+      expect(onGroupAsSystem).toHaveBeenLastCalledWith('Webshop', 'Prod');
+      expect(screen.queryByRole('group', { name: 'Group as system' })).not.toBeInTheDocument();
+
+      open();
+      fireEvent.change(screen.getByLabelText('System'), { target: { value: 'Blog' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Group' }));
+      expect(onGroupAsSystem).toHaveBeenLastCalledWith('Blog', '');
+    });
+
+    it('offers existing systems and folders as suggestions', () => {
+      const { container } = setup({ onGroupAsSystem: vi.fn(), systemSuggestions: ['Shop', 'Blog'], folderSuggestions: ['Prod'] });
+      open();
+      const lists = Array.from(container.querySelectorAll('datalist')).map((l) => Array.from(l.querySelectorAll('option')).map((o) => o.getAttribute('value')));
+      expect(lists).toEqual([['Shop', 'Blog'], ['Prod']]);
+    });
+
+    it('cannot group without a system name', () => {
+      const onGroupAsSystem = vi.fn();
+      setup({ onGroupAsSystem });
+      open();
+      expect(screen.getByRole('button', { name: 'Group' })).toBeDisabled();
+      fireEvent.keyDown(screen.getByLabelText('System'), { key: 'Enter' });
+      expect(onGroupAsSystem).not.toHaveBeenCalled();
+    });
+
+    it('closes on Escape without that Escape reaching the dialog around it', () => {
+      setup({ onGroupAsSystem: vi.fn() });
+      const onWindowKey = vi.fn();
+      window.addEventListener('keydown', onWindowKey);
+      open();
+      fireEvent.keyDown(screen.getByLabelText('System'), { key: 'Escape' });
+      window.removeEventListener('keydown', onWindowKey);
+      expect(screen.queryByRole('group', { name: 'Group as system' })).not.toBeInTheDocument();
+      expect(onWindowKey).not.toHaveBeenCalled();
+    });
+
+    it('is disabled while a save is running', () => {
+      setup({ onGroupAsSystem: vi.fn(), busy: true });
+      expect(screen.getByRole('button', { name: 'Group as system…' })).toBeDisabled();
+    });
+  });
+
   it('disables the actions while a save is running', () => {
     setup({ busy: true });
     expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeDisabled();

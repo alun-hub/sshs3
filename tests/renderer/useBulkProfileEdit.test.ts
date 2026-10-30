@@ -8,6 +8,7 @@ interface P {
   name: string;
   group?: string;
   tags?: string[];
+  system?: { name: string; startDirectory?: string };
 }
 
 const profiles: P[] = [
@@ -16,11 +17,11 @@ const profiles: P[] = [
   { id: 'c', name: 'C', group: 'Prod' },
 ];
 
-function setup(list: P[] = profiles, over: Partial<{ save: (p: P) => Promise<void>; reload: () => Promise<void>; onError: (m: string) => void }> = {}) {
+function setup(list: P[] = profiles, over: Partial<{ save: (p: P) => Promise<void>; reload: () => Promise<void>; onError: (m: string) => void; allProfiles: P[] }> = {}) {
   const save = over.save ?? vi.fn().mockResolvedValue(undefined);
   const reload = over.reload ?? vi.fn().mockResolvedValue(undefined);
   const onError = over.onError ?? vi.fn();
-  const hook = renderHook(({ items }) => useBulkProfileEdit<P>({ profiles: items, save, reload, onError }), {
+  const hook = renderHook(({ items }) => useBulkProfileEdit<P>({ profiles: items, allProfiles: over.allProfiles, save, reload, onError }), {
     initialProps: { items: list },
   });
   return { ...hook, save: save as ReturnType<typeof vi.fn>, reload: reload as ReturnType<typeof vi.fn>, onError: onError as ReturnType<typeof vi.fn> };
@@ -187,6 +188,17 @@ describe('useBulkProfileEdit moveTo', () => {
 });
 
 describe('useBulkProfileEdit addTags', () => {
+  it('saves the profile as it is stored, not as it is drawn, so a tags change leaves the folder alone', async () => {
+    const stored: P[] = [{ id: 'a', name: 'A', group: 'Stray' }];
+    const drawn: P[] = [{ id: 'a', name: 'A', group: 'Prod' }];
+    const { result, save } = setup(drawn, { allProfiles: stored });
+    act(() => result.current.toggle('a'));
+    await act(async () => {
+      await result.current.addTags(['prod']);
+    });
+    expect(save.mock.calls.map(([p]) => p)).toEqual([{ id: 'a', name: 'A', group: 'Stray', tags: ['prod'] }]);
+  });
+
   it('adds the tags to every selected profile that lacks them, then reloads and clears', async () => {
     const list: P[] = [{ id: 'a', name: 'A', tags: ['web'] }, { id: 'b', name: 'B' }];
     const { result, save, reload } = setup(list);
@@ -240,5 +252,95 @@ describe('useBulkProfileEdit notice', () => {
     expect(result.current.notice).not.toBeNull();
     act(() => result.current.toggle('a'));
     expect(result.current.notice).toBeNull();
+  });
+});
+
+describe('useBulkProfileEdit with systems', () => {
+  const all: P[] = [
+    { id: 'a', name: 'A', group: 'Prod', system: { name: 'Shop' } },
+    { id: 'b', name: 'B', group: 'Prod', system: { name: 'shop' } },
+    { id: 'c', name: 'C', group: 'Prod' },
+    { id: 'd', name: 'D' },
+  ];
+
+  it('moves every server of a system when one of its servers is moved, also ones the search hides', async () => {
+    const visible = all.filter((p) => p.id !== 'b');
+    const { result, save } = setup(visible, { allProfiles: all });
+    act(() => result.current.toggle('a'));
+    await act(async () => {
+      await result.current.moveTo('Elsewhere');
+    });
+    expect(save.mock.calls.map(([p]) => [p.id, p.group])).toEqual([
+      ['a', 'Elsewhere'],
+      ['b', 'Elsewhere'],
+    ]);
+    expect(result.current.notice).toBe('Moved 2 profiles to "Elsewhere".');
+  });
+
+  it('moves a profile that is in no system on its own', async () => {
+    const { result, save } = setup(all, { allProfiles: all });
+    act(() => result.current.toggle('c'));
+    await act(async () => {
+      await result.current.moveTo('Elsewhere');
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('groups the selected profiles into a system in the folder given', async () => {
+    const { result, save } = setup(all, { allProfiles: all });
+    act(() => {
+      result.current.toggle('c');
+      result.current.toggle('d');
+    });
+    await act(async () => {
+      await result.current.groupAsSystem(' Blog ', ' Content ');
+    });
+    expect(save.mock.calls.map(([p]) => [p.id, p.group, p.system?.name])).toEqual([
+      ['c', 'Content', 'Blog'],
+      ['d', 'Content', 'Blog'],
+    ]);
+    expect(result.current.notice).toBe('Grouped 2 profiles into "Blog".');
+    expect(result.current.count).toBe(0);
+  });
+
+  it('puts the profiles into the folder of an existing system when no folder is given', async () => {
+    const { result, save } = setup(all, { allProfiles: all });
+    act(() => result.current.toggle('d'));
+    await act(async () => {
+      await result.current.groupAsSystem('Shop', '');
+    });
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 'd', group: 'Prod', system: { name: 'Shop' } });
+  });
+
+  it('refuses a name that is not a valid system name', async () => {
+    const { result, save } = setup(all, { allProfiles: all });
+    act(() => result.current.toggle('c'));
+    await act(async () => {
+      await result.current.groupAsSystem('   ', 'X');
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.notice).toBe('Enter a name for the system.');
+    expect(result.current.count).toBe(1);
+  });
+
+  it('says so when everything is already in the system and its folder', async () => {
+    const { result, save } = setup(all, { allProfiles: all });
+    act(() => result.current.toggle('a'));
+    await act(async () => {
+      await result.current.groupAsSystem('Shop', 'Prod');
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.notice).toBe('Already in "Shop".');
+  });
+
+  it('reports a failed save and keeps the selection', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('boom'));
+    const { result, onError } = setup(all, { allProfiles: all, save });
+    act(() => result.current.toggle('c'));
+    await act(async () => {
+      await result.current.groupAsSystem('Blog', 'X');
+    });
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(result.current.count).toBe(1);
   });
 });

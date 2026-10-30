@@ -18,6 +18,7 @@ import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal'
 import { ConnectionManagerModal, type Tab as ConnectionManagerTab } from './components/ConnectionModal/ConnectionManagerModal';
 import { SettingsModal } from './components/SettingsModal/SettingsModal';
 import { GlobalSearchPalette } from './components/GlobalSearchPalette';
+import { AppNotice } from './components/AppNotice';
 import { runGlobalAction, type GlobalActionId } from './lib/globalActions';
 import type { SettingsCategory } from './components/SettingsModal/settingsConstants';
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
@@ -55,6 +56,9 @@ const AppContent: React.FC = () => {
   const [dirSyncProfilesOpen, setDirSyncProfilesOpen] = useState(false);
   const [tunnelsModalOpen, setTunnelsModalOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  /** A short message for something that happened with no dialog open to show it (see AppNotice). */
+  const [notice, setNotice] = useState<string | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
   // Design audit Phase 1: Connection Manager, Settings, Tunnels and Dir Sync
   // are independent toggles that used to be able to open simultaneously
   // (e.g. Settings opened from the toolbar while Connection Manager was
@@ -152,6 +156,7 @@ const AppContent: React.FC = () => {
     handleConnectK8sTerminal,
     handleOpenSSHInTab,
     handleOpenK8sInTab,
+    handleConnectSystem,
     handleViewK8sLogs,
     handleOpenLocalTerminal,
     handlePaneTitleChange,
@@ -176,6 +181,7 @@ const AppContent: React.FC = () => {
     setConnectTarget,
     setProfilesModalOpen,
     confirm,
+    notify: setNotice,
   });
 
   const handleUpdateTabDirty = useCallback((tabId: string, isDirty: boolean) => {
@@ -598,6 +604,7 @@ const AppContent: React.FC = () => {
       </main>
 
       <GlobalOverlays />
+      <AppNotice message={notice} onDismiss={dismissNotice} />
 
       {/* Per-tab or per-pane: pick an SSH profile to connect */}
       <ConnectionManagerModal
@@ -632,6 +639,7 @@ const AppContent: React.FC = () => {
         onConnectSSH={handleOpenSSHInTab}
         onConnectSFTP={handleConnectSFTP}
         onConnectS3={handleConnectS3}
+        onConnectSystem={(members, source) => void handleConnectSystem(members, source)}
         onConnectK8s={handleOpenK8sInTab}
         onViewK8sLogs={handleViewK8sLogs}
         onBrowseK8sFiles={handleBrowseK8sFiles}
@@ -649,6 +657,7 @@ const AppContent: React.FC = () => {
           onOpenConnectionManager={handleOpenProfiles}
           shortcuts={settings.shortcuts}
           onRunAction={handleRunGlobalAction}
+          onConnectSystem={(members, source) => void handleConnectSystem(members, source)}
         />
       )}
 

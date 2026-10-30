@@ -32,6 +32,8 @@ import type { Tab, EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from
 import { SshProfileRow, SshRecentRow } from './SshProfileRows';
 import { S3ProfileRow, S3RecentRow } from './S3ProfileRows';
 import { BulkActionBar } from './BulkActionBar';
+import { SystemAwareRows } from './SystemAwareRows';
+import { alignSystemMembers, systemMembersOf, systemNameOf, systemNames } from '../../lib/systemGrouping';
 import { TeamProfileTreeList } from './TeamProfileTreeList';
 import {
   collectFolderNames,
@@ -49,6 +51,9 @@ import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { prepareConnect } from '../../lib/openProfile';
+import { saveInOrder } from '../../lib/saveInOrder';
+import { moveWithSystems } from '../../lib/systemEdit';
+import { createSystemActions } from '../../lib/systemActions';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
@@ -67,6 +72,8 @@ interface ConnectionManagerModalProps {
   /** When set, opens SFTP dual-pane file manager for the given SSH profile. */
   onConnectSFTP?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
+  /** Connects to every server of a system ("Connect all"); `source` is 'personal' or the Team Vault id. Omit to hide the button. */
+  onConnectSystem?: (members: SSHConnectionConfig[], source: string) => void;
   onConnectK8s?: (target: K8sTerminalTarget) => void;
   /** Opens a new tab following a container's logs. */
   onViewK8sLogs?: (target: K8sTerminalTarget) => void;
@@ -88,6 +95,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onConnectSSH,
   onConnectSFTP,
   onConnectS3,
+  onConnectSystem,
   onConnectK8s,
   onViewK8sLogs,
   onBrowseK8sFiles,
@@ -330,8 +338,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   // Team profiles skip the "lastUsedAt" write-back deliberately (see prepareConnect).
+  // Rows may show a profile with its system's folder (for drawing only): connecting stamps and saves the stored one.
+  const storedSSH = (profile: SSHConnectionConfig) => sshProfiles.find((p) => p.id === profile.id) ?? profile;
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
-    onConnectSSH?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveSSH(p)));
+    onConnectSSH?.(await prepareConnect(storedSSH(profile), source, (p) => window.multissh.profilesSaveSSH(p)));
   };
 
   // UX audit finding #3: the quickstart card promised "a local shell, ad-hoc
@@ -522,10 +532,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       const targetGroup = groupName === 'Ungrouped' ? undefined : groupName;
 
       if (data.type === 'ssh') {
-        const profile = sshProfiles.find((p) => p.id === data.id);
-        if (profile && profile.group !== targetGroup) {
-          await window.multissh.profilesSaveSSH({ ...profile, group: targetGroup });
-          await load();
+        // A server in a system takes the whole system along.
+        const changed = moveWithSystems(sshProfiles, new Set([data.id]), targetGroup);
+        if (changed.length > 0) {
+          await saveInOrder(changed, (p) => window.multissh.profilesSaveSSH(p), load, setError, 'Failed to move the profile');
         }
       } else if (data.type === 's3') {
         const profile = s3Profiles.find((p) => p.id === data.id);
@@ -538,6 +548,14 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       // Ignore invalid drag-drop data
     }
   };
+
+  const systemActions = createSystemActions({
+    profiles: sshProfiles,
+    save: (p: SSHConnectionConfig) => window.multissh.profilesSaveSSH(p),
+    reload: load,
+    onError: setError,
+    confirm,
+  });
 
   // Team Vault folder CRUD and drag-and-drop moves now live entirely inside
   // `TeamProfileTreeList`, which owns every unlocked vault's payload/folder state itself (and is
@@ -649,7 +667,10 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     [allFolderNames, sshProfiles, s3Profiles, shareFoldersAcrossTypes]
   );
 
-  const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, filteredSSH, query), [filteredSSH, sshFolderNames, query]);
+  // A system lives in one folder: its servers are drawn there even if their own folder differs.
+  // A system's folder comes from all of its servers, so align before the search narrows the list.
+  const alignedSSH = useMemo(() => filterSshProfiles(alignSystemMembers(sshProfiles), query), [sshProfiles, query]);
+  const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, alignedSSH, query), [alignedSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
   const bulk = usePersonalBulkEdit({
@@ -657,12 +678,29 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     source,
     open,
     sshProfiles: filteredSSH,
+    allSshProfiles: sshProfiles,
     s3Profiles: filteredS3,
     sshFolders: sshFolderNames,
     s3Folders: s3FolderNames,
     reload: load,
     onError: setError,
   });
+
+  const renderSshProfile = (profile: SSHConnectionConfig) => (
+    <SshProfileRow
+      key={profile.id}
+      profile={profile}
+      onConnectSSH={onConnectSSH}
+      onConnectSFTP={onConnectSFTP}
+      handleConnectSSH={handleConnectSSH}
+      handleCloneSSH={handleCloneSSH}
+      handleDeleteSSH={handleDeleteSSH}
+      setEditing={setEditing}
+      setInstallKeyProfile={setInstallKeyProfile}
+      setTunnelsProfile={setTunnelsProfile}
+      select={bulk.ssh.rowSelect(profile.id)}
+    />
+  );
 
   // "N more results elsewhere" (§8): the search field only filters the active source
   // (Personal, or one team), so surface — without switching away — whatever else matches in
@@ -937,6 +975,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   dotfilesPoolEnabled={dotfilesPoolEnabled}
                   folderSuggestions={editingTeamVaultId ? teamFolderSuggestions : undefined}
                   tagSuggestions={editingTeamVaultId ? undefined : personalTagSuggestions}
+                  systemSuggestions={editingTeamVaultId ? editingTeamMeta?.systemSuggestions : systemNames(sshProfiles)}
                   canEditSecret={!editingTeamVaultId || isTeamAdmin}
                 />
               ) : (
@@ -1299,21 +1338,20 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   onDrop={(e) => void handleDropOnGroup(e, groupName)}
                                 />
                               ) : (
-                                profiles.map((profile) => (
-                                  <SshProfileRow
-                                    key={profile.id}
-                                    profile={profile}
-                                    onConnectSSH={onConnectSSH}
-                                    onConnectSFTP={onConnectSFTP}
-                                    handleConnectSSH={handleConnectSSH}
-                                    handleCloneSSH={handleCloneSSH}
-                                    handleDeleteSSH={handleDeleteSSH}
-                                    setEditing={setEditing}
-                                    setInstallKeyProfile={setInstallKeyProfile}
-                                    setTunnelsProfile={setTunnelsProfile}
-                                    select={bulk.ssh.rowSelect(profile.id)}
-                                  />
-                                ))
+                                <SystemAwareRows
+                                  profiles={profiles}
+                                  source={source}
+                                  renderProfile={renderSshProfile}
+                                  onConnectSystem={
+                                    onConnectSystem &&
+                                    // All of the system, not only the servers a search leaves in the list.
+                                    ((members, src) => onConnectSystem(systemMembersOf(sshProfiles, systemNameOf(members[0]) ?? ''), src))
+                                  }
+                                  collapsed={collapsedGroups}
+                                  onToggle={toggleGroup}
+                                  onRenameSystem={(members, name) => void systemActions.rename(members, name)}
+                                  onUngroupSystem={(members) => void systemActions.ungroup(members)}
+                                />
                               )}
                             </div>
                           )}
@@ -1341,6 +1379,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   activeVaultId={source}
                   onConnectSSH={onConnectSSH}
                   onConnectSFTP={onConnectSFTP}
+                  onConnectSystem={onConnectSystem}
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}
                   onVaultsMetaChange={handleVaultsMetaChange}

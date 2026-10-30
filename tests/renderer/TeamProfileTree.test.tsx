@@ -270,6 +270,44 @@ describe('TeamProfileTree', () => {
     expect(onDropProfile).toHaveBeenCalledWith(undefined, expect.anything());
   });
 
+  describe('renderProfileList', () => {
+    const profiles: P[] = [
+      { id: 'p1', name: 'web-1', group: 'Acme Infra' },
+      { id: 'p2', name: 'web-2', group: 'Acme Infra' },
+      { id: 'p3', name: 'loose' },
+    ];
+
+    it('draws one row per profile with renderProfile when no list renderer is given', () => {
+      renderTree(['Acme Infra'], profiles);
+      expect(screen.getByText('loose')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Acme Infra'));
+      expect(screen.getByText('web-1')).toBeInTheDocument();
+      expect(screen.getByText('web-2')).toBeInTheDocument();
+    });
+
+    it('hands the profiles of the folder being browsed to the list renderer, instead of drawing them one by one', () => {
+      const renderProfileList = vi.fn((list: P[]) => <div data-testid="custom">{list.map((p) => p.name).join('+')}</div>);
+      renderTree(['Acme Infra'], profiles, { renderProfileList });
+      fireEvent.click(screen.getByText('Acme Infra'));
+      expect(renderProfileList).toHaveBeenLastCalledWith([profiles[0], profiles[1]]);
+      expect(screen.getByTestId('custom')).toHaveTextContent('web-1+web-2');
+    });
+
+    it('hands the ungrouped profiles to it at the top level', () => {
+      const renderProfileList = vi.fn((list: P[]) => <div data-testid="custom">{list.map((p) => p.name).join('+')}</div>);
+      renderTree(['Acme Infra'], profiles, { renderProfileList });
+      expect(renderProfileList).toHaveBeenCalledWith([profiles[2]]);
+      expect(screen.getByTestId('custom')).toHaveTextContent('loose');
+    });
+
+    it('is not used for search results, which stay one labelled row per match', () => {
+      const renderProfileList = vi.fn(() => <div data-testid="custom" />);
+      renderTree(['Acme Infra'], profiles, { renderProfileList, query: 'web' });
+      expect(renderProfileList).not.toHaveBeenCalled();
+      expect(screen.getByText('web-1')).toBeInTheDocument();
+    });
+  });
+
   describe('search mode', () => {
     it('shows a flat, path-labeled list of matches regardless of currentPath, with no card grid', () => {
       const profiles: P[] = [{ id: 'p1', name: 'web-1', group: 'Acme Infra/Cluster A' }];

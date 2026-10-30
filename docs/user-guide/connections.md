@@ -35,6 +35,36 @@ The selection belongs to the list you are looking at: it is forgotten when you s
 > [!NOTE]
 > In a Team Vault each profile is saved to the vault one at a time, exactly like dragging it to a folder, so moving many profiles makes many small changes that sync to the other members. If a save is refused (for example because the vault is read-only for you) the rest are not attempted, the profiles saved so far stay moved, and the selection is kept so you can try again.
 
+### Systems
+A **system** groups the servers that belong together, for example the web, database and cache servers of one application, so that you can connect to all of them with one click. A system is made by giving several SSH profiles the same **System** name in the profile form; it has no settings of its own.
+
+| In the profile form | What it does |
+| :--- | :--- |
+| **System** | The name of the system. Profiles with the same name (ignoring case) form it. Existing systems are suggested while you type. Clear the field to take the server out of the system. |
+| **Open a terminal to this server** | On by default. Switch it off for a server that should only contribute tunnels. |
+| **Start directory** | The directory the terminal starts in. `~` and `~/path` mean the home directory on the server. |
+| **Tunnels to start** | Which of the profile's own tunnels are started with the system. Shown when the profile has tunnels. |
+
+The system is drawn as one row with the number of servers and a **Connect all** button, and its servers indented below it. Click the chevron to collapse it. **Connect all** opens one terminal tab per server (the first one is selected), starts the chosen tunnels, and reports tunnels that could not start in a message at the bottom of the window. Searching for the system's name shows all its servers.
+
+#### Making and managing systems
+Select profiles with their checkboxes and choose **Group as system…** in the bar that appears. Type a system name (existing ones are suggested) and a folder; the selected servers join the system and move to that folder, together with any servers that are already in it. It is offered for SSH profiles only.
+
+| To | Do this |
+| :--- | :--- |
+| Move a system | Drag any one of its servers to another folder, or select one and use **Move to folder…**. The whole system moves. |
+| Rename it | Click the pencil on the system row, type the new name and press <kbd>Enter</kbd> or click away (<kbd>Esc</kbd> cancels). A name another system already has is refused, so two systems are never merged by accident. |
+| Ungroup it | Click the unlink button on the system row and confirm. The profiles stay, they are just no longer a system. |
+| Take one server out | Clear **System** in that server's profile form. |
+
+A server in a system shows its folder as **Follows the system** in the profile form, so it is changed by moving the system. Clear **System** to free the folder again.
+
+> [!NOTE]
+> A system lives in one folder: the one most of its servers are in. Its servers are drawn there even if their own **Group / Folder** differs. Each server still asks for its own password or PIN, since they are different hosts.
+
+> [!NOTE]
+> In a Team Vault a system can only contain that team's own profiles, and every member sees it. Members may change which system a server belongs to, like its folder. Older versions of sshs3 show the servers as ordinary profiles and keep the system when they save other changes.
+
 ### Global Search
 Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
 
@@ -44,13 +74,14 @@ Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button i
 | `#prod` | Only profiles with a tag containing `prod`. Combine with words (`#prod db`). |
 | `alice@host` or `alice@host:2222` | A **Connect to** row for a one-off connection that is not saved. |
 | `>` then words (`>new term`) | Actions instead of profiles: **New Terminal**, **New File Manager**, **New Remote File Manager**, **New Window**, **Connection Manager**, **Settings** and **Keyboard Shortcuts**, each with its current key combination. A lone `>` lists them all. |
+| A system's name (`shop`) | The system as one row (**System · 3 servers**) and its servers. <kbd>Enter</kbd> on the system row does **Connect all**. |
 | Nothing | Your most recently used profiles and the open tabs. |
 
 | Key | Action |
 | :--- | :--- |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the results. |
 | <kbd>Enter</kbd> | Connect (SSH or S3), switch to an open tab, start the one-off connection, or run the chosen action. |
-| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile. |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile (not offered for a system). |
 | <kbd>Tab</kbd> | Cycle the filter: **All**, **Profiles**, **Open tabs**. |
 | <kbd>Esc</kbd> | Close and return to where you were. |
 

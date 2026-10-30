@@ -649,6 +649,27 @@ describe('Team Vault IPC handlers', () => {
       expect(saved.tags).toBeUndefined();
     });
 
+    it('cleans the system membership of a saved SSH profile against its own tunnels', async () => {
+      const profile = {
+        id: 'p1',
+        name: 'x',
+        host: 'h',
+        username: 'u',
+        authType: 'password',
+        tunnels: [{ id: 't1', name: 'db', type: 'local', localPort: 1, remoteHost: 'h', remotePort: 2 }],
+        system: { name: ' shop ', tunnelIds: ['t1', 'gone'], password: 'x' }, // pragma: allowlist secret
+      };
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile);
+      const saved = teamVaultService.saveSSHProfile.mock.calls[0][1];
+      expect(saved.system).toEqual({ name: 'shop', tunnelIds: ['t1'] });
+    });
+
+    it('does not persist an invalid system value on a saved SSH profile', async () => {
+      const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', system: 'shop' };
+      await call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile);
+      expect('system' in teamVaultService.saveSSHProfile.mock.calls[0][1]).toBe(false);
+    });
+
     it('rejects an SSH profile whose serialized size exceeds the cap', async () => {
       const profile = { id: 'p1', name: 'x', host: 'h', username: 'u', authType: 'password', group: 'x'.repeat(300_000) };
       await expect(call(IPC_CHANNELS.TEAM_VAULT_SAVE_SSH_PROFILE, VAULT_ID, profile)).rejects.toThrow('is too large');

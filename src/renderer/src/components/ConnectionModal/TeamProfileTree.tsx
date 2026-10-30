@@ -17,6 +17,9 @@ interface TeamProfileTreeProps<T> {
    * path-labeled search-results list instead of card/breadcrumb navigation. */
   query: string;
   renderProfile: (profile: T) => React.ReactNode;
+  /** Draws the profiles of one folder (or the ungrouped ones) as a whole instead of one `renderProfile` row each,
+   * so a caller can group them, for example into systems. Not used for search results. */
+  renderProfileList?: (profiles: T[]) => React.ReactNode;
   onDropProfile: (targetPath: string | undefined, e: React.DragEvent) => void;
   onCreateFolder: (fullPath: string) => Promise<void> | void;
   onRenameFolder: (oldPath: string, newPath: string) => Promise<void> | void;
@@ -40,6 +43,7 @@ export function TeamProfileTree<T>({
   onNavigate,
   query,
   renderProfile,
+  renderProfileList,
   onDropProfile,
   onCreateFolder,
   onRenameFolder,
@@ -68,6 +72,9 @@ export function TeamProfileTree<T>({
     const parentSegments = node.path.split('/').slice(0, -1);
     void onRenameFolder(node.path, [...parentSegments, trimmed].join('/'));
   };
+
+  const renderList = (profiles: T[]) =>
+    renderProfileList ? renderProfileList(profiles) : profiles.map((p) => renderProfile(p));
 
   const dropZoneClasses = (path: string | undefined, active: boolean) =>
     active && dragOverPath === (path ?? '')
@@ -323,7 +330,7 @@ export function TeamProfileTree<T>({
       )}
 
       {!atRoot && profilesHere.length > 0 && (
-        <div className="flex flex-col gap-1.5 px-2">{profilesHere.map((p) => renderProfile(p))}</div>
+        <div className="flex flex-col gap-1.5 px-2">{renderList(profilesHere)}</div>
       )}
 
       {creatingFolder ? (
@@ -381,7 +388,7 @@ export function TeamProfileTree<T>({
           }`}
         >
           <p className="px-2 text-xs font-semibold text-txt-muted">Ungrouped</p>
-          <div className="flex flex-col gap-1.5 px-2">{ungrouped.map((p) => renderProfile(p))}</div>
+          <div className="flex flex-col gap-1.5 px-2">{renderList(ungrouped)}</div>
         </div>
       )}
     </div>

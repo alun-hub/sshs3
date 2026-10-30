@@ -5,6 +5,7 @@ import { app } from 'electron';
 import type { SSHConnectionConfig, SSHTunnelConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import { withNormalizedTags } from '../../shared/tags';
+import { withNormalizedSystem } from '../../shared/system';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
@@ -109,7 +110,7 @@ export class ProfileStore {
     return this.queueMutation(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       const stamped: SSHConnectionConfig = {
-        ...withNormalizedTags(config),
+        ...withNormalizedSystem(withNormalizedTags(config)),
         updatedAt: new Date().toISOString(),
         deletedAt: undefined,
       };
