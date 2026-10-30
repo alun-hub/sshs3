@@ -68,6 +68,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
   const [confirmBeforeQuit, setConfirmBeforeQuit] = useState<boolean>(
     currentSettings.confirmBeforeQuit ?? false
   );
+  const [enableGlobalSearch, setEnableGlobalSearch] = useState<boolean>(currentSettings.enableGlobalSearch ?? true);
   const [logLevel, setLogLevel] = useState<LogLevel>(currentSettings.logLevel ?? 'info');
   const [defaultNewTab, setDefaultNewTab] = useState<'terminal' | 'filemanager'>(
     currentSettings.defaultNewTabType
@@ -193,6 +194,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       setPerfIntervalSec(currentSettings.perfMetricsIntervalSec ?? 5);
       setSessionExitAction(currentSettings.sessionExitAction ?? 'reconnect');
       setConfirmBeforeQuit(currentSettings.confirmBeforeQuit ?? false);
+      setEnableGlobalSearch(currentSettings.enableGlobalSearch ?? true);
       setLogLevel(currentSettings.logLevel ?? 'info');
       setAutoCheckUpdates(currentSettings.autoCheckUpdates ?? true);
       setDefaultNewTab(currentSettings.defaultNewTabType);
@@ -325,6 +327,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       perfMetricsIntervalSec: perfIntervalSec,
       sessionExitAction,
       confirmBeforeQuit,
+      enableGlobalSearch,
       logLevel,
       autoCheckUpdates,
       defaultNewTabType: defaultNewTab,
@@ -441,6 +444,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     setAutoCheckUpdates,
     confirmBeforeQuit,
     setConfirmBeforeQuit,
+    enableGlobalSearch,
+    setEnableGlobalSearch,
     logLevel,
     setLogLevel,
     defaultNewTab,

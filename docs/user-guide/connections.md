@@ -21,6 +21,29 @@ Typing in the search bar finds matching profiles across **all** profile backends
 
 Matches outside the current view display an **origin badge** (e.g. `Team: Infra` or `Sync`), making it effortless to jump to any server across all your teams without switching tabs.
 
+### Global Search
+Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> or click the search button in the top bar (next to the quick links) to find a saved profile, an open tab or a host from anywhere, without opening Connection Manager. The shortcut can be changed in **Settings > Shortcuts** and the whole feature switched off with **Enable global search** in **Settings > General**.
+
+| Input | Result |
+| :--- | :--- |
+| Plain words (`web prod`) | Profiles and tabs where **every** word matches, fuzzy: the letters only have to appear in order, so `w01` finds `web-01`. Names rank above hosts and folders. |
+| `#prod` | Only profiles with a tag containing `prod`. Combine with words (`#prod db`). |
+| `alice@host` or `alice@host:2222` | A **Connect to** row for a one-off connection that is not saved. |
+| Nothing | Your most recently used profiles and the open tabs. |
+
+| Key | Action |
+| :--- | :--- |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the results. |
+| <kbd>Enter</kbd> | Connect (SSH or S3), switch to an open tab, or start the one-off connection. |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open SFTP for an SSH profile. |
+| <kbd>Tab</kbd> | Cycle the filter: **All**, **Profiles**, **Open tabs**. |
+| <kbd>Esc</kbd> | Close and return to where you were. |
+
+Profiles from every unlocked Team Vault are included, with the team name as a badge. A locked vault is listed at the bottom so it is not silently missing; choosing it opens Connection Manager, where you unlock it. Vaults you have hidden in Connection Manager are left out.
+
+> [!NOTE]
+> Connecting from the search follows the same rules as the **Connect** button: an empty terminal tab is reused, otherwise a new tab opens, and the last-used time of a personal profile is updated. Team Vault profiles never get a last-used time written back, so the search cannot list them under "recent".
+
 ### "Unlock All" for Locked Hardware Teams
 When one or more Team Vaults are currently locked, an **Unlock all** action button is displayed. Clicking it sequentially prompts your hardware security key or smartcard PIN to unlock all your team vaults in one flow.
 

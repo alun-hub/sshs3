@@ -12,6 +12,8 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
     setAutoCheckUpdates,
     confirmBeforeQuit,
     setConfirmBeforeQuit,
+    enableGlobalSearch,
+    setEnableGlobalSearch,
     logLevel,
     setLogLevel,
     defaultNewTab,
@@ -166,6 +168,19 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
         <p className="text-xs text-txt-muted pl-6">
           Ask for confirmation when closing the window or quitting, so active SSH
           sessions and tunnels aren't closed by accident.
+        </p>
+        <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+          <input
+            type="checkbox"
+            checked={enableGlobalSearch}
+            onChange={(e) => setEnableGlobalSearch(e.target.checked)}
+            className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
+          />
+          <span className="text-xs text-txt-primary">Enable global search</span>
+        </label>
+        <p className="text-xs text-txt-muted pl-6">
+          Adds a search button to the top bar and the shortcut to find a profile, an open tab or a user@host
+          from anywhere.
         </p>
         <ManagedGroup managed={isManaged('autoCheckUpdates')} indentNotice>
           <label className="flex items-center gap-2.5 cursor-pointer pt-1">

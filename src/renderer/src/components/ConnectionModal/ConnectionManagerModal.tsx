@@ -47,7 +47,7 @@ import { ImportCandidatesModal } from './ImportCandidatesModal';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
-import { shouldTouchLastUsed } from '../../lib/openProfile';
+import { prepareConnect } from '../../lib/openProfile';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
@@ -327,19 +327,9 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
+  // Team profiles skip the "lastUsedAt" write-back deliberately (see prepareConnect).
   const handleConnectSSH = async (profile: SSHConnectionConfig) => {
-    // Team profiles skip the "lastUsedAt" write-back deliberately (see shouldTouchLastUsed).
-    if (!shouldTouchLastUsed(source)) {
-      onConnectSSH?.(profile);
-      return;
-    }
-    const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
-    try {
-      await window.multissh.profilesSaveSSH(updated);
-    } catch {
-      // Safe to proceed even if touch fails
-    }
-    onConnectSSH?.(updated);
+    onConnectSSH?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveSSH(p)));
   };
 
   // UX audit finding #3: the quickstart card promised "a local shell, ad-hoc
@@ -380,17 +370,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   };
 
   const handleConnectS3 = async (profile: S3Config) => {
-    if (!shouldTouchLastUsed(source)) {
-      onConnectS3?.(profile);
-      return;
-    }
-    const updated = { ...profile, lastUsedAt: formatDateTime(new Date()) };
-    try {
-      await window.multissh.profilesSaveS3(updated);
-    } catch {
-      // Safe to proceed even if touch fails
-    }
-    onConnectS3?.(updated);
+    onConnectS3?.(await prepareConnect(profile, source, (p) => window.multissh.profilesSaveS3(p)));
   };
 
   // Which team the open edit form's profile belongs to, if any — a NEW shared profile carries

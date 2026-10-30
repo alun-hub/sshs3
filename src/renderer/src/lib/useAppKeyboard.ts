@@ -29,6 +29,7 @@ export interface AppKeyboardContext {
   setSettings: Dispatch<SetStateAction<AppSettings>>;
   setProfilesModalOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsModalOpen: Dispatch<SetStateAction<boolean>>;
+  setGlobalSearchOpen: Dispatch<SetStateAction<boolean>>;
   openTopLevelModal: (open: () => void) => void;
   handleNewTab: (type?: TabType, options?: { remote?: boolean }) => void;
   handleCloseTab: (id: string) => void;
@@ -59,6 +60,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     setSettings,
     setProfilesModalOpen,
     setSettingsModalOpen,
+    setGlobalSearchOpen,
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,
@@ -182,6 +184,8 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
         ) {
           continue;
         }
+        // Switched off in Settings: leave the key free instead of swallowing it.
+        if (isMatch && actionId === 'globalSearch' && settings.enableGlobalSearch === false) continue;
 
         if (isMatch) {
           e.preventDefault();
@@ -222,6 +226,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
               break;
             case 'openSettings':
               openTopLevelModal(() => setSettingsModalOpen(true));
+              break;
+            case 'globalSearch':
+              openTopLevelModal(() => setGlobalSearchOpen(true));
               break;
             case 'splitVertical':
               if (activeTabId) handleSplitPane(activeTabId, 'row');
@@ -440,11 +447,13 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     anyTopLevelModalOpen,
     settings.shortcuts,
     settings.terminalFontSize,
+    settings.enableGlobalSearch,
     setActiveTabId,
     setTabBarFocused,
     setSettings,
     setProfilesModalOpen,
     setSettingsModalOpen,
+    setGlobalSearchOpen,
     openTopLevelModal,
     handleNewTab,
     handleCloseTab,

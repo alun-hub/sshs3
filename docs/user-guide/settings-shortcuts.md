@@ -21,6 +21,7 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 - **Color Theme:** **Dark** (slate dark), **Light** (clean gray), **Breeze** (KDE-inspired theme with cyan accents), or **System** (tracks OS dark/light mode).
 - **Default Tab Type:** Whether opening a blank tab launches a **Terminal** or a **File Manager**.
 - **Confirm Before Quitting:** Warns if active terminal sessions or background file transfers are in progress when closing the window.
+- **Enable Global Search:** On by default. Shows the search button in the top bar and enables <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> (see [Global Search](/docs/workspace/connections/#global-search)). Switched off, the key combination is left free for other uses.
 - **Check for Updates Automatically:** Checks GitHub Releases in the background every 6 hours; **Check now**, **Download**, and **Restart and install** are explicit actions. Permanently locked off when `SSHS3_DISABLE_UPDATES=1` is set.
 - **Application Logging:** Configures log verbosity (**Errors only**, **Warnings**, **Normal**, **Debug**). Rotated at 5 MB (last 5 kept). PINs, passwords, and private keys are strictly never logged.
 

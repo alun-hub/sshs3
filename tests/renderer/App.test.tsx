@@ -579,6 +579,66 @@ describe('App Component', () => {
     expect(screen.getByText('Connection Manager')).toBeInTheDocument();
   });
 
+  describe('global search', () => {
+    it('opens on Ctrl+Shift+G and from the top bar button, but leaves Ctrl+K (kill-line) alone', async () => {
+      render(<App />);
+      await screen.findByTestId('tab-term-1');
+
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+      expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      expect(await screen.findByRole('dialog', { name: 'Search' })).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('global-search-btn'));
+      expect(await screen.findByRole('dialog', { name: 'Search' })).toBeInTheDocument();
+    });
+
+    it('makes the tab bar inert while it is open, like the other top-level dialogs', async () => {
+      render(<App />);
+      await screen.findByTestId('tab-term-1');
+      const header = screen.getByTestId('add-tab-btn').closest('header') as HTMLElement & { inert?: boolean };
+      fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      await screen.findByRole('dialog', { name: 'Search' });
+      expect(header.inert).toBe(true);
+    });
+
+    it('connects the chosen profile in the empty tab and closes', async () => {
+      (window.multissh.profilesGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ssh: [{ id: 'p1', name: 'web-01', host: 'web-01.example.com', username: 'deploy', authType: 'password' }],
+        s3: [],
+      });
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([]);
+      render(<App />);
+      await screen.findByTestId('tab-term-1');
+
+      fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      const input = await screen.findByRole('combobox');
+      fireEvent.change(input, { target: { value: 'web-01' } });
+      await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0));
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument());
+      expect(screen.getAllByRole('tab')).toHaveLength(1);
+      expect(screen.getByRole('tab')).toHaveTextContent('web-01');
+    });
+
+    it('is switched off by the setting: no button, and the shortcut is left alone', async () => {
+      const { DEFAULT_SETTINGS } = await import('../../src/shared/types/settings');
+      window.multissh.settingsGet = vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, enableGlobalSearch: false });
+      render(<App />);
+      await screen.findByTestId('tab-term-1');
+      await waitFor(() => expect(screen.queryByTestId('global-search-btn')).not.toBeInTheDocument());
+
+      const notPrevented = fireEvent.keyDown(window, { key: 'G', ctrlKey: true, shiftKey: true });
+      expect(notPrevented).toBe(true);
+      expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument();
+    });
+  });
+
   it('reuses closed tab numbers instead of incrementing endlessly', async () => {
     render(<App />);
     await screen.findByTestId('tab-term-1');

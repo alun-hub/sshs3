@@ -61,6 +61,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'rerunWithSudo', name: 'Re-run Last Command with sudo', defaultKeys: 'Ctrl+Shift+X', category: 'Terminal' },
   { id: 'snippets', name: 'Snippets', defaultKeys: 'Ctrl+Shift+L', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
+  { id: 'globalSearch', name: 'Search Profiles, Tabs and Hosts', defaultKeys: 'Ctrl+Shift+G', category: 'General' },
 ];
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = SHORTCUT_DEFINITIONS.reduce(
@@ -159,6 +160,8 @@ export interface AppSettings {
   updatedAt?: string;
   /** Master switch for OpenShift support and tools (e.g. oc login, oc CLI shim). Off by default. */
   enableOpenShift?: boolean;
+  /** Global search (the top bar button and its shortcut) for profiles, tabs and user@host. On by default. */
+  enableGlobalSearch?: boolean;
   /**
    * SSH/SFTP and S3 profiles share one flat folder namespace on disk. Off by
    * default, the Connection Manager hides a folder from a tab unless it holds
@@ -221,6 +224,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
   enableOpenShift: false,
+  enableGlobalSearch: true,
   shareFoldersAcrossTypes: false,
   perfMetricsEnabled: false,
   perfMetricsLayout: 'text',
