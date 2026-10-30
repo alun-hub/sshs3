@@ -23,6 +23,14 @@ describe('GlobalSearchButton', () => {
   it('shows the shortcut the user has chosen', () => {
     render(<GlobalSearchButton onOpen={vi.fn()} shortcuts={{ globalSearch: 'Ctrl+Alt+P' }} />);
     expect(screen.getByTestId('global-search-btn')).toHaveAttribute('title', expect.stringContaining('Ctrl+Alt+P'));
-    expect(screen.getByText('Ctrl+Alt+P')).toBeInTheDocument();
+  });
+
+  it('is an icon button like the quick links beside it, not drawn as a text field', () => {
+    render(<GlobalSearchButton onOpen={vi.fn()} shortcuts={undefined} />);
+    const button = screen.getByTestId('global-search-btn');
+    expect(button.textContent).toBe('');
+    expect(button).toHaveClass('h-6', 'w-6', 'hover:bg-app-surface-hover');
+    expect(button).not.toHaveClass('border');
+    expect(button).not.toHaveClass('bg-app-input');
   });
 });

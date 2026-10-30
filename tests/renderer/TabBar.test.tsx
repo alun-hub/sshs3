@@ -163,6 +163,19 @@ describe('TabBar Component', () => {
     });
   });
 
+  it('puts the search button first among the quick links, after the divider, and none without a search', () => {
+    const { unmount } = render(
+      <TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} onOpenGlobalSearch={vi.fn()} />
+    );
+    const search = screen.getByTestId('global-search-btn');
+    expect(search.parentElement).toHaveClass('border-l', 'border-divider');
+    expect(search.parentElement).toContainElement(screen.getByTestId('quick-profiles-btn'));
+    expect(search.parentElement?.firstElementChild).toBe(search);
+    unmount();
+    render(<TabBar tabs={sampleTabs} activeTabId="tab-1" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={vi.fn()} />);
+    expect(screen.queryByTestId('global-search-btn')).not.toBeInTheDocument();
+  });
+
   it('calls onSelectTab when an inactive tab is clicked', () => {
     const onSelectTab = vi.fn();
     const onCloseTab = vi.fn();
