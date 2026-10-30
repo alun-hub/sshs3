@@ -122,6 +122,16 @@ export function findFolderNode<T>(roots: TeamFolderNode<T>[], path: string[]): T
   return node;
 }
 
+/** Profiles in this folder and in every folder below it. */
+export function countTeamFolderProfiles<T>(node: TeamFolderNode<T>): number {
+  return node.profiles.length + node.children.reduce((sum, child) => sum + countTeamFolderProfiles(child), 0);
+}
+
+/** The full paths of every folder above the one at `path` (a breadcrumb), outermost first: `['A', 'B', 'C']` gives `['A', 'A/B']`. */
+export function folderAncestors(path: string[]): string[] {
+  return path.slice(0, -1).map((_, i) => path.slice(0, i + 1).join('/'));
+}
+
 /** Flattens the whole tree (ignoring any notion of "current level") into every profile paired
  * with its full folder path — `null` for an ungrouped profile. Used by the folder browser's
  * search mode: `ConnectionManagerModal` already filters `ssh`/`s3` down to query matches before

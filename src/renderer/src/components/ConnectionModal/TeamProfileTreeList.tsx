@@ -6,6 +6,7 @@ import type { S3Config } from '@shared/types/storage';
 import type { TeamVaultPayload, TeamVaultStatus } from '@shared/types/teamVault';
 import type { EditingState, TeamVaultMeta, TeamProfileTreeListHandle } from './types';
 import { TeamProfileTree } from './TeamProfileTree';
+import { TeamFolderSidebar } from './TeamFolderSidebar';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
 import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
@@ -524,6 +525,10 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
             ? buildTeamFolderTree(tabFolders, filteredSSH, entry.payload?.folderIcons ?? {})
             : buildTeamFolderTree(tabFolders, filteredS3, entry.payload?.folderIcons ?? {});
 
+        const currentFolderPath = folderPaths ? (folderPaths[`${tab}/${vaultId}`] ?? []) : entry.folderPath;
+        const navigateToFolder = (path: string[]) =>
+          onFolderPathChange ? onFolderPathChange(`${tab}/${vaultId}`, path) : updateEntry(vaultId, { folderPath: path });
+
         return (
           <div key={vaultId} className="space-y-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
             <div className="flex items-center justify-end gap-2">
@@ -580,13 +585,25 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                 {query ? 'No shared profiles matched your search' : 'No shared profiles yet'}
               </p>
             ) : (
+              <div className="flex gap-3">
+                {/* The folder tree beside the list; while searching, the results are one flat list and the tree is not needed. */}
+                {tree.roots.length > 0 && !query.trim() && (
+                  <div className="hidden md:block">
+                    <TeamFolderSidebar
+                      roots={tree.roots}
+                      ungroupedCount={tree.ungrouped.length}
+                      currentPath={currentFolderPath}
+                      onNavigate={navigateToFolder}
+                      onDropProfile={(targetPath, e) => void handleDropOnTeamFolder(vaultId, targetPath, e, tab)}
+                    />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
               <TeamProfileTree
                 roots={tree.roots}
                 ungrouped={tree.ungrouped}
-                currentPath={folderPaths ? (folderPaths[`${tab}/${vaultId}`] ?? []) : entry.folderPath}
-                onNavigate={(path) =>
-                  onFolderPathChange ? onFolderPathChange(`${tab}/${vaultId}`, path) : updateEntry(vaultId, { folderPath: path })
-                }
+                currentPath={currentFolderPath}
+                onNavigate={navigateToFolder}
                 query={query}
                 renderProfile={(profile: SSHConnectionConfig | S3Config) =>
                   tab === 'ssh' ? (
@@ -616,6 +633,8 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
                 onDeleteFolder={(path) => handleDeleteTeamFolder(vaultId, path)}
                 onSetFolderIcon={(path, icon) => handleSetTeamFolderIcon(vaultId, path, icon)}
               />
+                </div>
+              </div>
             )}
           </div>
         );
