@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.72] - 2026-10-30
+
+Electron 45, a second round of fixes from the code audit, and the system libraries the Linux packages were missing.
+
+### Security
+- A question that an SSH server asks during login (a verification code, for example) is never shown as a smartcard or security-key PIN prompt any more, so a server cannot get you to type a hardware PIN into it
+- Remote Profile Sync: known host keys from another device are compared per host name, also when an entry lists several names, uses a wildcard, or differs only in upper/lower case. Wildcard entries that cover a whole class of hosts (such as `*` or `*.com`) and malformed entries are no longer imported
+- Commands the file manager runs on a server (search, tail, Git status) always use the profile's own port, user, jump host and proxy and never stop to ask a question. If the shared connection is gone, a new one is made from the profile instead of connecting to port 22 as your local user
+
+### Fixed
+- Linux: the `.deb` now depends on `libasound2` (`libasound2t64` on Ubuntu 24.04) and `libgbm1`, and the `.rpm` on `mesa-libgbm`. Without them the app did not start on a minimal install (`libasound.so.2: cannot open shared object file`)
+- Git commit signing with an ECDSA or a security key (FIDO2) now works: such a key is stored the way Git needs it, and a key pasted with the `key::` prefix also updates `allowed_signers`
+- Creating a folder over SFTP reports an error such as "Permission denied" instead of looking as if it worked
+- A failed start of `ssh` for a remote command no longer ends in an uncaught error
+
+### Changed
+- Updated Electron to 45 (Chromium 156, Node 24.22)
+
 ## [0.96.71] - 2026-10-29
 
 A better Markdown preview, and updated components.
