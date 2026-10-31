@@ -3,6 +3,14 @@ import { createLogger } from '../log';
 
 const log = createLogger('relaunch');
 
+/**
+ * How long the helper waits for the app to exit before it gives up and does not relaunch. It is started
+ * before the package manager runs (which blocks the app until it is done), and `dnf` or `apt` can take
+ * minutes on a slow mirror or with new dependencies, so a minute was too short. A failed or cancelled
+ * install stops the helper (see `LinuxRelaunchHandle`), so a long wait does not relaunch the app by surprise.
+ */
+const DEFAULT_MAX_WAIT_SECONDS = 600;
+
 export interface LinuxRelaunchOptions {
   pid?: number;
   execPath?: string;
@@ -34,7 +42,7 @@ export function buildLinuxRelaunchScript(options: LinuxRelaunchOptions = {}): st
   const maxWaitSeconds =
     typeof options.maxWaitSeconds === 'number' && options.maxWaitSeconds > 0
       ? options.maxWaitSeconds
-      : 60;
+      : DEFAULT_MAX_WAIT_SECONDS;
   const maxWaitTicks = Math.max(10, Math.floor(maxWaitSeconds * 10));
   const args = options.args ?? process.argv.slice(1);
   const argsQuoted = args.map(quoteShell).join(' ');

@@ -27,6 +27,17 @@ describe('linuxRelaunch', () => {
       expect(script).toContain("exec '/home/user/sshs3.AppImage'");
     });
 
+    it('waits long enough for a slow package install before it gives up: 10 minutes by default', () => {
+      // The helper starts before the package manager runs, which can take minutes (metadata, dependencies).
+      const script = buildLinuxRelaunchScript({ pid: 1, execPath: '/opt/sshs3/sshs3', args: [] });
+      expect(script).toContain('[ "$WAITED" -ge 6000 ]');
+    });
+
+    it('keeps a wait the caller chooses, in tenths of a second', () => {
+      const script = buildLinuxRelaunchScript({ pid: 1, execPath: '/opt/sshs3/sshs3', args: [], maxWaitSeconds: 30 });
+      expect(script).toContain('[ "$WAITED" -ge 300 ]');
+    });
+
     it('generates a package relaunch script that uses desktop launcher and systemd-run', () => {
       const script = buildLinuxRelaunchScript({
         pid: 5678,
