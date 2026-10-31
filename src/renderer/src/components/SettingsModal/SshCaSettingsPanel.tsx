@@ -40,6 +40,11 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
       oidcIssuerUrl: editingConfig.oidcIssuerUrl.trim(),
       oidcClientId: editingConfig.oidcClientId.trim(),
       rootCaCert: editingConfig.rootCaCert?.trim() || undefined,
+      vaultAuthPath: editingConfig.backend === 'vault' ? editingConfig.vaultAuthPath?.trim() || undefined : undefined,
+      vaultRole: editingConfig.backend === 'vault' ? editingConfig.vaultRole?.trim() || undefined : undefined,
+      vaultSshMount: editingConfig.backend === 'vault' ? editingConfig.vaultSshMount?.trim() || undefined : undefined,
+      vaultSshRole: editingConfig.backend === 'vault' ? editingConfig.vaultSshRole?.trim() || undefined : undefined,
+      vaultNamespace: editingConfig.backend === 'vault' ? editingConfig.vaultNamespace?.trim() || undefined : undefined,
     };
 
     const exists = sshCaConfigs.some((c) => c.id === trimmed.id);
@@ -179,6 +184,60 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
                 <option value="piv">Hardware Token (YubiKey PIV)</option>
               </select>
             </label>
+
+            {editingConfig.backend === 'vault' && (
+              <>
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Vault Auth Mount
+                  <input
+                    value={editingConfig.vaultAuthPath ?? ''}
+                    onChange={(e) => setEditingConfig({ ...editingConfig, vaultAuthPath: e.target.value })}
+                    className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="jwt"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Vault Auth Role
+                  <input
+                    value={editingConfig.vaultRole ?? ''}
+                    onChange={(e) => setEditingConfig({ ...editingConfig, vaultRole: e.target.value })}
+                    className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="default"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Vault SSH Secrets Mount
+                  <input
+                    value={editingConfig.vaultSshMount ?? ''}
+                    onChange={(e) => setEditingConfig({ ...editingConfig, vaultSshMount: e.target.value })}
+                    className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="ssh"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Vault SSH Role
+                  <input
+                    value={editingConfig.vaultSshRole ?? ''}
+                    onChange={(e) => setEditingConfig({ ...editingConfig, vaultSshRole: e.target.value })}
+                    className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="client"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary col-span-2">
+                  Vault Namespace (Enterprise, optional)
+                  <input
+                    value={editingConfig.vaultNamespace ?? ''}
+                    onChange={(e) => setEditingConfig({ ...editingConfig, vaultNamespace: e.target.value })}
+                    className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="admin"
+                  />
+                </label>
+              </>
+            )}
 
             <label className="flex flex-col gap-1 text-txt-secondary col-span-2">
               Default Principals (comma-separated, optional)

@@ -12,6 +12,7 @@ import type {
   SshCaStatus,
 } from '../../shared/types/sshCa';
 import { StepCaProvider } from './providers/StepCaProvider';
+import { VaultCaProvider } from './providers/VaultCaProvider';
 import {
   computeOpenSshFingerprint,
   parseOpenSshCertificate,
@@ -61,6 +62,7 @@ export class SshCaService {
     this.deps = deps;
     this.providers = deps.providers ?? new Map<SshCaBackendType, ISshCaProvider>([
       ['step-ca', new StepCaProvider()],
+      ['vault', new VaultCaProvider()],
     ]);
   }
 

@@ -111,7 +111,7 @@ export const SshCaStatusBadge: React.FC<SshCaStatusBadgeProps> = ({ onOpenSettin
           </div>
 
           {error && (
-            <div className="mb-2.5 flex items-start gap-1.5 rounded border border-rose-500/30 bg-rose-500/10 p-2 text-rose-300 text-[11px]">
+            <div role="alert" className="mb-2.5 flex items-start gap-1.5 rounded border border-rose-500/30 bg-rose-500/10 p-2 text-rose-300 text-[11px]">
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>

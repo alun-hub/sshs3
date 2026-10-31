@@ -34,6 +34,11 @@ export function validateSshCaConfig(input: unknown): SshCaConfig | undefined {
     defaultPrincipals: Array.isArray(c.defaultPrincipals)
       ? c.defaultPrincipals.map((p) => String(p).trim()).filter(Boolean)
       : undefined,
+    vaultAuthPath: c.vaultAuthPath ? String(c.vaultAuthPath).trim() : undefined,
+    vaultRole: c.vaultRole ? String(c.vaultRole).trim() : undefined,
+    vaultSshMount: c.vaultSshMount ? String(c.vaultSshMount).trim() : undefined,
+    vaultSshRole: c.vaultSshRole ? String(c.vaultSshRole).trim() : undefined,
+    vaultNamespace: c.vaultNamespace ? String(c.vaultNamespace).trim() : undefined,
   };
 }
 

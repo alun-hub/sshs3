@@ -12,6 +12,16 @@ export interface SshCaConfig {
   oidcClientId: string;
   keySource: SshCaKeySource;
   defaultPrincipals?: string[];
+  /** Vault / OpenBao auth method mount path. Defaults to 'jwt'. */
+  vaultAuthPath?: string;
+  /** Vault / OpenBao auth role name for JWT/OIDC authentication. Defaults to 'default'. */
+  vaultRole?: string;
+  /** Vault / OpenBao SSH secrets engine mount path. Defaults to 'ssh'. */
+  vaultSshMount?: string;
+  /** Vault / OpenBao SSH secrets engine role name for signing user keys. Defaults to 'client' or vaultRole. */
+  vaultSshRole?: string;
+  /** Optional Vault namespace (for Vault Enterprise / HCP Vault). */
+  vaultNamespace?: string;
 }
 
 export interface SshCaCertificateInfo {
