@@ -34,6 +34,17 @@ describe('sshCertificateUtils', () => {
     expect(() => parseOpenSshCertificate(Buffer.from('too-short'))).toThrow(/too short/);
   });
 
+  it('rejects unsupported certificate key types', () => {
+    const keyType = Buffer.from('sk-ssh-ed25519-cert-v01@openssh.com');
+    const nonce = Buffer.alloc(32, 1);
+    const len1 = Buffer.alloc(4);
+    len1.writeUInt32BE(keyType.length, 0);
+    const len2 = Buffer.alloc(4);
+    len2.writeUInt32BE(nonce.length, 0);
+    const certBlob = Buffer.concat([len1, keyType, len2, nonce, Buffer.alloc(100)]);
+    expect(() => parseOpenSshCertificate(certBlob)).toThrow(/Unsupported certificate key type/);
+  });
+
   describe('validateOpenSshCertificate', () => {
     const now = new Date('2026-10-31T16:00:00.000Z').getTime();
 

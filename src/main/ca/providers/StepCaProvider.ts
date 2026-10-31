@@ -35,6 +35,8 @@ export class StepCaProvider implements ISshCaProvider {
       payload.principals = request.principals;
     }
 
+    const isLoopback = caBaseUrl.startsWith('http://127.0.0.1') || caBaseUrl.startsWith('http://localhost');
+
     const res = await requestJson(signUrl, {
       method: 'POST',
       headers: {
@@ -43,7 +45,7 @@ export class StepCaProvider implements ISshCaProvider {
       body: JSON.stringify(payload),
       ca: config.rootCaCert ? Buffer.from(config.rootCaCert, 'utf8') : undefined,
       timeoutMs: 15_000,
-      allowHttp: false,
+      allowHttp: isLoopback,
     });
 
     if (signal?.aborted) {

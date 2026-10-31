@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { SshCaService } from '../../src/main/ca/SshCaService';
+import { computeOpenSshFingerprint } from '../../src/main/ca/sshCertificateUtils';
 import type { SshCaConfig, ISshCaProvider, SshCaSignRequest, SshCaSignResponse } from '../../src/shared/types/sshCa';
 
 describe('SshCaService', () => {
@@ -143,7 +144,8 @@ describe('SshCaService', () => {
 
     // Test logout
     await service.logout();
-    expect(mockAppAgent.removeIdentities).toHaveBeenCalledTimes(1);
+    const expectedCertFp = computeOpenSshFingerprint(Buffer.from(sampleCertWireBase64, 'base64'));
+    expect(mockAppAgent.removeIdentities).toHaveBeenCalledWith([expectedCertFp]);
     expect(service.getStatus().active).toBe(false);
   });
 

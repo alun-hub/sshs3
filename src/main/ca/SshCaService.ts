@@ -9,8 +9,17 @@ import type {
   SshCaStatus,
 } from '../../shared/types/sshCa';
 import { StepCaProvider } from './providers/StepCaProvider';
-import { parseOpenSshCertificate, validateOpenSshCertificate } from './sshCertificateUtils';
-import { generatePkce, generateState, startCallbackServer } from '../oauth/loopbackAuth';
+import {
+  computeOpenSshFingerprint,
+  parseOpenSshCertificate,
+  validateOpenSshCertificate,
+} from './sshCertificateUtils';
+import {
+  buildRedirectUri,
+  generatePkce,
+  generateState,
+  startCallbackServer,
+} from '../oauth/loopbackAuth';
 import { requestJson } from '../oauth/requestJson';
 import { createLogger } from '../log';
 
@@ -158,7 +167,7 @@ export class SshCaService {
       providerName: 'SSH CA',
     });
 
-    const redirectUri = `http://${callbackServer.host}:${callbackServer.port}/callback`;
+    const redirectUri = buildRedirectUri(callbackServer.host, callbackServer.port);
 
     const authUrl = new URL(discovery.authorization_endpoint);
     authUrl.searchParams.set('client_id', activeConfig.oidcClientId);
@@ -180,9 +189,8 @@ export class SshCaService {
     let code: string;
     try {
       code = await callbackServer.waitForCode();
-    } catch (err) {
+    } finally {
       callbackServer.close();
-      throw err;
     }
 
     const tokenParams = new URLSearchParams({
@@ -388,7 +396,7 @@ export class SshCaService {
       username,
       principals: parsedCert.principals,
       parsedCert,
-      certFingerprint: parsedCert.publicKeyFingerprint,
+      certFingerprint: computeOpenSshFingerprint(certWire),
       refreshToken,
       tokenEndpoint,
     };
@@ -409,11 +417,14 @@ export class SshCaService {
       return;
     }
 
+    // Node.js setTimeout clamps delay to 32-bit signed int (max ~24.8 days); prevent overflow warning & 1ms trigger
+    const MAX_TIMEOUT_MS = 2_147_483_647;
+
     // Set expiration timer
     this.expirationTimer = setTimeout(() => {
       caLog.info('SSH CA certificate expired');
       this.notifyStatus();
-    }, remainingMs);
+    }, Math.min(remainingMs, MAX_TIMEOUT_MS));
 
     // If a refresh token is present, schedule automatic renewal 60 seconds before expiry
     if (hasRefreshToken && remainingMs > 75_000) {
@@ -425,7 +436,7 @@ export class SshCaService {
         } catch (err) {
           caLog.warn('Automatic SSH CA renewal failed:', (err as Error).message);
         }
-      }, renewInMs);
+      }, Math.min(renewInMs, MAX_TIMEOUT_MS));
     }
   }
 

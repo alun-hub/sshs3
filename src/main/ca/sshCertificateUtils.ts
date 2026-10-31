@@ -124,8 +124,7 @@ export function parseOpenSshCertificate(certInput: string | Buffer): SshCaCertif
     q.copy(b, pos);
     underlyingPubKeyWire = b;
   } else {
-    // For other key types, read raw buffer if format is unknown
-    underlyingPubKeyWire = Buffer.alloc(0);
+    throw new Error(`Unsupported certificate key type: "${certTypeString}"`);
   }
 
   const serialBig = reader.readUint64();
