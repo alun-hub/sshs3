@@ -11,6 +11,8 @@ import type { SmartcardCertificateDetails } from '../../src/main/smartcard/Certi
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { AppAgent } from '../../src/main/ssh/AppAgent';
 import { SmartcardCoordinator, TokenNotInsertedError, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+import type { SFTPConfig } from '../../src/shared/types/storage';
 
 const LIB = '/usr/lib/opensc-pkcs11.so';
 
@@ -547,6 +549,58 @@ describe('SmartcardCoordinator', () => {
       coordinator.refreshAgentSshConfig();
       await (coordinator as any).agentConfigRefresh;
       expect(deps.syncAgentBlock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('prepareSshCaConfig / prepareSftpSshCaConfig', () => {
+    it('sets agentPath and attaches active certificateFile for agent profiles with useSshCa', async () => {
+      const { coordinator } = build();
+      const mockCaService = {
+        getActiveCertificateFilePath: vi.fn().mockReturnValue('/tmp/certs/piv-cert.pub'),
+      } as any;
+      coordinator.setSshCaService(mockCaService);
+
+      const sshConfig: SSHConnectionConfig = {
+        id: 'cfg-1',
+        name: 'CA Target',
+        host: 'ca.example.com',
+        username: 'alun',
+        authType: 'agent',
+        useSshCa: true,
+      };
+
+      const prepared = await coordinator.prepareSshCaConfig(sshConfig);
+      expect(prepared.agentPath).toBe('/run/sshs3/agent.sock');
+      expect(prepared.certificateFile).toBe('/tmp/certs/piv-cert.pub');
+
+      const sftpConfig: SFTPConfig = {
+        id: 'cfg-sftp',
+        name: 'CA SFTP Target',
+        host: 'sftp.example.com',
+        port: 22,
+        username: 'alun',
+        authType: 'agent',
+        useSshCa: true,
+      };
+
+      const preparedSftp = await coordinator.prepareSftpSshCaConfig(sftpConfig);
+      expect(preparedSftp.agentPath).toBe('/run/sshs3/agent.sock');
+      expect(preparedSftp.certificateFile).toBe('/tmp/certs/piv-cert.pub');
+    });
+
+    it('leaves configs untouched when useSshCa is false or authType is not agent', async () => {
+      const { coordinator } = build();
+      const sshConfig: SSHConnectionConfig = {
+        id: 'cfg-2',
+        name: 'Plain Key',
+        host: 'server.example.com',
+        username: 'alun',
+        authType: 'privateKey',
+        privateKeyPath: '/home/alun/.ssh/id_rsa',
+      };
+
+      const prepared = await coordinator.prepareSshCaConfig(sshConfig);
+      expect(prepared).toBe(sshConfig);
     });
   });
 });

@@ -168,6 +168,8 @@ export interface SFTPConfig {
   agentPath?: string;
   /** Whether to use the active SSH Certificate Authority session when authType is 'agent'. */
   useSshCa?: boolean;
+  /** Runtime only: path to an OpenSSH certificate file (`-o CertificateFile=...`). */
+  certificateFile?: string;
   /** Runtime only: public key files selecting this connection's keys in a shared agent — see SSHConnectionConfig.agentIdentityFiles. */
   agentIdentityFiles?: string[];
   pkcs11LibPath?: string;

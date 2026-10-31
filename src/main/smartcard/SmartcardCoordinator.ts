@@ -9,7 +9,9 @@ import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } f
 import { isSmartcardTokenPresent, readSmartcardCertificates } from './SmartcardCertificateReader';
 import { isFido2DeviceConnected } from './Fido2DeviceDetector';
 import type { SmartcardCertificateDetails } from './CertificateParser';
-import { getAgentIdentities } from './SmartcardSyncService';
+import { getAgentIdentities, getKeyAlgorithm } from './SmartcardSyncService';
+import { parseSshWirePublicKey, type SshWireKeyInfo } from '../ca/sshPublicKeyFormat';
+import type { SshCaService } from '../ca/SshCaService';
 import { IPC_CHANNELS, type AskpassPromptKind } from '../../shared/types/ipc';
 import type { SSHConnectionConfig, CachedSmartcardAgent } from '../../shared/types/ssh';
 import type { SFTPConfig } from '../../shared/types/storage';
@@ -98,6 +100,7 @@ export class SmartcardCoordinator {
 
   private startupUnlockPromise?: Promise<void>;
   private disposed = false;
+  private sshCaService?: SshCaService;
 
   /**
    * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
@@ -350,20 +353,41 @@ export class SmartcardCoordinator {
     return agentPath ? { ...config, agentPath, ...(await this.agentIdentityFilesFor(agentPath, FIDO2_KEY)) } : config;
   }
 
+  /** Sets the SSH CA service instance to retrieve active certificate files. */
+  public setSshCaService(service: SshCaService): void {
+    this.sshCaService = service;
+  }
+
   /**
    * Prepares an SSH connection config that uses SSH CA certificate authentication (`useSshCa`).
-   * When `authType === 'agent'` and `useSshCa` is true, routes the connection through
-   * the app-managed SSH agent socket where the active OpenSSH user certificate is loaded.
+   * When `authType === 'agent'` and `useSshCa` is true:
+   * 1. Routes the connection through the app-managed SSH agent socket holding the user certificate / PIV key.
+   * 2. Attaches the signed certificate file (`-o CertificateFile=...`) if one is active (e.g. for PIV).
+   * 3. Attaches PIV card public key identity files (`agentIdentityFiles`) to restrict agent offerings.
    */
   public async prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'agent' || !config.useSshCa) {
       return config;
     }
-    if (!config.agentPath) {
-      const socketPath = await this.ensureAgent();
-      return { ...config, agentPath: socketPath };
+    const certFile = this.sshCaService?.getActiveCertificateFilePath();
+    const socketPath = config.agentPath ?? (await this.ensureAgent());
+    let updated: SSHConnectionConfig = {
+      ...config,
+      agentPath: socketPath,
+      certificateFile: certFile ?? config.certificateFile,
+    };
+    if (this.hasPivCard()) {
+      for (const cardKey of this.globalCards.keys()) {
+        if (cardKey !== FIDO2_KEY) {
+          const files = await this.agentIdentityFilesFor(socketPath, cardKey);
+          if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) {
+            updated = { ...updated, ...files };
+            break;
+          }
+        }
+      }
     }
-    return config;
+    return updated;
   }
 
   /** Same rationale as prepareSshCaConfig, applied to an SFTP connection. */
@@ -371,11 +395,82 @@ export class SmartcardCoordinator {
     if (config.authType !== 'agent' || !config.useSshCa) {
       return config;
     }
-    if (!config.agentPath) {
-      const socketPath = await this.ensureAgent();
-      return { ...config, agentPath: socketPath };
+    const certFile = this.sshCaService?.getActiveCertificateFilePath();
+    const socketPath = config.agentPath ?? (await this.ensureAgent());
+    let updated: SFTPConfig = {
+      ...config,
+      agentPath: socketPath,
+      certificateFile: certFile ?? config.certificateFile,
+    };
+    if (this.hasPivCard()) {
+      for (const cardKey of this.globalCards.keys()) {
+        if (cardKey !== FIDO2_KEY) {
+          const files = await this.agentIdentityFilesFor(socketPath, cardKey);
+          if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) {
+            updated = { ...updated, ...files };
+            break;
+          }
+        }
+      }
     }
-    return config;
+    return updated;
+  }
+
+  /**
+   * Discovers and retrieves the OpenSSH public key for the connected YubiKey PIV card.
+   * If not already unlocked in the app agent, attempts to unlock/load it first.
+   */
+  public async getPivPublicKey(): Promise<SshWireKeyInfo | null> {
+    // 1. Check if an auth key is already present in the active app agent
+    const socketPath = this.appAgent.getSocketPath();
+    if (socketPath && this.hasPivCard()) {
+      const identities = await getAgentIdentities(socketPath);
+      for (const card of this.globalCards.values()) {
+        const matching = identities.find(
+          (id) => card.fingerprints.has(fingerprintOfKeyBlob(id.keyBlob)) && !getKeyAlgorithm(id.keyBlob).endsWith('-sk')
+        );
+        if (matching) {
+          return parseSshWirePublicKey(matching.keyBlob, matching.comment);
+        }
+      }
+    }
+
+    // 2. Discover PIV library
+    const preferred = (await this.deps.settingsStore.getSettings()).smartcardLibPath;
+    const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+    const chosen =
+      (preferred ? libs.find((l) => l.path === preferred) : undefined) ??
+      libs.find((l) => l.name === 'p11-kit') ??
+      libs[0];
+
+    if (!chosen) {
+      throw new Error('No smartcard PKCS#11 module (e.g. OpenSC or libykcs11) detected on this system');
+    }
+
+    // 3. Ensure token is plugged in
+    await this.ensureTokenPresent('smartcard', 'SSH CA authentication', chosen.path);
+
+    // 4. Load into app agent (prompts for PIN if needed)
+    await this.getOrLoadGlobalSmartcardAgent(
+      chosen.path,
+      (prompt, retry) => this.deps.promptForPin(prompt.trim(), 'smartcard', 'SSH CA', retry),
+      'unlock YubiKey PIV for SSH CA'
+    );
+
+    // 5. Retrieve the loaded identity from the agent
+    const liveSocket = this.appAgent.getSocketPath();
+    if (!liveSocket) return null;
+
+    const identities = await getAgentIdentities(liveSocket);
+    const card = this.globalCards.get(chosen.path);
+    if (!card) return null;
+
+    const matching = identities.find(
+      (id) => card.fingerprints.has(fingerprintOfKeyBlob(id.keyBlob)) && !getKeyAlgorithm(id.keyBlob).endsWith('-sk')
+    );
+    if (!matching) return null;
+
+    return parseSshWirePublicKey(matching.keyBlob, matching.comment);
   }
 
   /**

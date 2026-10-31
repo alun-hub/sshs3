@@ -33,6 +33,7 @@ export interface SshCaStatus {
   expiresAt?: string;
   validSecondsRemaining?: number;
   certInfo?: SshCaCertificateInfo;
+  certificateFilePath?: string;
   error?: string;
 }
 

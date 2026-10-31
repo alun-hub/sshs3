@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { AppAgent } from '../ssh/AppAgent';
+import { ensureSecureDir, resolveAppAgentDir } from '../ssh/AppAgent';
 import type { AppSettings } from '../../shared/types/settings';
 import type {
   ISshCaProvider,
@@ -14,6 +17,7 @@ import {
   parseOpenSshCertificate,
   validateOpenSshCertificate,
 } from './sshCertificateUtils';
+import { exportSshWirePublicKey, type SshWireKeyInfo } from './sshPublicKeyFormat';
 import {
   buildRedirectUri,
   generatePkce,
@@ -31,6 +35,7 @@ export interface SshCaServiceDependencies {
   providers?: Map<SshCaBackendType, ISshCaProvider>;
   getSettings?: () => Promise<AppSettings>;
   saveSettings?: (settings: Partial<AppSettings>) => Promise<AppSettings>;
+  getPivPublicKey?: () => Promise<SshWireKeyInfo | null>;
 }
 
 interface ActiveSession {
@@ -39,6 +44,7 @@ interface ActiveSession {
   principals: string[];
   parsedCert: SshCaCertificateInfo;
   certFingerprint: string;
+  certificateFilePath?: string;
   refreshToken?: string;
   tokenEndpoint?: string;
 }
@@ -100,7 +106,12 @@ export class SshCaService {
       expiresAt: certInfo.validBefore,
       validSecondsRemaining,
       certInfo,
+      certificateFilePath: this.activeSession.certificateFilePath,
     };
+  }
+
+  public getActiveCertificateFilePath(): string | undefined {
+    return this.activeSession?.certificateFilePath;
   }
 
   public onStatusChanged(listener: (status: SshCaStatus) => void): () => void {
@@ -128,6 +139,18 @@ export class SshCaService {
     }
 
     caLog.info(`Initiating login for SSH CA config "${activeConfig.name}" (${activeConfig.id})`);
+
+    let preloadedPivKey: SshWireKeyInfo | undefined;
+    if (activeConfig.keySource === 'piv') {
+      if (!this.deps.getPivPublicKey) {
+        throw new Error('PIV hardware token key source is not supported in this environment');
+      }
+      const pivKey = await this.deps.getPivPublicKey();
+      if (!pivKey) {
+        throw new Error('No YubiKey PIV card detected. Please insert your YubiKey and ensure the PIV module is loaded.');
+      }
+      preloadedPivKey = pivKey;
+    }
 
     const issuer = activeConfig.oidcIssuerUrl.trim().replace(/\/+$/, '');
     const isLoopback = issuer.startsWith('http://127.0.0.1') || issuer.startsWith('http://localhost');
@@ -236,6 +259,7 @@ export class SshCaService {
       refreshToken: tokenData.refresh_token,
       tokenEndpoint: discovery.token_endpoint,
       username,
+      pivKey: preloadedPivKey,
       signal,
     });
 
@@ -246,6 +270,13 @@ export class SshCaService {
     this.clearTimers();
 
     if (this.activeSession) {
+      if (this.activeSession.certificateFilePath) {
+        try {
+          await fs.promises.unlink(this.activeSession.certificateFilePath);
+        } catch {
+          // Non-fatal
+        }
+      }
       try {
         await this.deps.appAgent.removeIdentities([this.activeSession.certFingerprint]);
       } catch (err) {
@@ -321,27 +352,38 @@ export class SshCaService {
     refreshToken?: string;
     tokenEndpoint?: string;
     username: string;
+    pivKey?: SshWireKeyInfo;
     signal?: AbortSignal;
   }): Promise<void> {
     const { config, idToken, refreshToken, tokenEndpoint, username, signal } = params;
 
-    // Generate ephemeral Ed25519 keypair in memory
-    const keyPair = crypto.generateKeyPairSync('ed25519');
-    const pkcs8 = keyPair.privateKey.export({ type: 'pkcs8', format: 'der' });
-    const privSeed = pkcs8.subarray(pkcs8.length - 32);
+    let publicKeyWireBase64: string;
+    let keyType: string;
+    let publicKeyLine: string;
+    let pubKey: Buffer | undefined;
+    let privSeed: Buffer | undefined;
 
-    const spki = keyPair.publicKey.export({ type: 'spki', format: 'der' });
-    const pubKey = spki.subarray(spki.length - 32);
+    if (config.keySource === 'piv') {
+      const pivKey = params.pivKey ?? (await this.deps.getPivPublicKey?.());
+      if (!pivKey) {
+        throw new Error('No YubiKey PIV card detected. Please insert your YubiKey and ensure the PIV module is loaded.');
+      }
+      publicKeyWireBase64 = pivKey.wireBase64;
+      keyType = pivKey.keyType;
+      publicKeyLine = pivKey.publicKeyLine;
+    } else {
+      // Generate ephemeral Ed25519 keypair in memory
+      const keyPair = crypto.generateKeyPairSync('ed25519');
+      const pkcs8 = keyPair.privateKey.export({ type: 'pkcs8', format: 'der' });
+      privSeed = pkcs8.subarray(pkcs8.length - 32);
 
-    // Build OpenSSH public key wire bytes
-    const typeBuf = Buffer.from('ssh-ed25519', 'utf-8');
-    const typeLen = Buffer.alloc(4);
-    typeLen.writeUInt32BE(typeBuf.length, 0);
-    const pubLen = Buffer.alloc(4);
-    pubLen.writeUInt32BE(pubKey.length, 0);
-    const publicKeyWire = Buffer.concat([typeLen, typeBuf, pubLen, pubKey]);
-    const publicKeyWireBase64 = publicKeyWire.toString('base64');
-    const publicKeyLine = `ssh-ed25519 ${publicKeyWireBase64} sshs3-ca:${username}`;
+      const keyInfo = exportSshWirePublicKey(keyPair.publicKey, `sshs3-ca:${username}`);
+      publicKeyWireBase64 = keyInfo.wireBase64;
+      keyType = keyInfo.keyType;
+      publicKeyLine = keyInfo.publicKeyLine;
+      const spki = keyPair.publicKey.export({ type: 'spki', format: 'der' });
+      pubKey = spki.subarray(spki.length - 32);
+    }
 
     const provider = this.providers.get(config.backend);
     if (!provider) {
@@ -351,7 +393,7 @@ export class SshCaService {
     const signRes = await provider.sign(
       {
         publicKeyWireBase64,
-        keyType: 'ssh-ed25519',
+        keyType,
         publicKeyLine,
         identityToken: idToken,
         username,
@@ -373,8 +415,15 @@ export class SshCaService {
     const validBeforeSec = Math.floor(validBeforeMs / 1000);
     const lifetimeSeconds = Math.max(0, validBeforeSec - nowSec);
 
-    // Evict previous certificate from agent if replacing an active session
+    // Evict previous certificate from agent or disk if replacing an active session
     if (this.activeSession) {
+      if (this.activeSession.certificateFilePath) {
+        try {
+          await fs.promises.unlink(this.activeSession.certificateFilePath);
+        } catch {
+          // Non-fatal
+        }
+      }
       try {
         await this.deps.appAgent.removeIdentities([this.activeSession.certFingerprint]);
       } catch {
@@ -382,14 +431,25 @@ export class SshCaService {
       }
     }
 
-    // Load new certificate into the app-managed SSH agent
-    await this.deps.appAgent.addCertifiedEd25519Key({
-      certificateWire: certWire,
-      publicKeyBytes: pubKey,
-      privateKeySeedBytes: privSeed,
-      comment: `sshs3-ca:${username}`,
-      lifetimeSeconds: lifetimeSeconds > 0 ? lifetimeSeconds : undefined,
-    });
+    let certificateFilePath: string | undefined;
+
+    if (config.keySource === 'piv') {
+      const certsDir = path.join(resolveAppAgentDir(), 'certs');
+      await ensureSecureDir(certsDir);
+      const safeFp = parsedCert.publicKeyFingerprint.replace(/[^a-zA-Z0-9_-]/g, '_');
+      certificateFilePath = path.join(certsDir, `${safeFp}-cert.pub`);
+      await fs.promises.writeFile(certificateFilePath, signRes.certificateLine + '\n', { mode: 0o600 });
+      caLog.info(`Saved PIV SSH CA certificate to ${certificateFilePath}`);
+    } else {
+      // Load new certificate into the app-managed SSH agent
+      await this.deps.appAgent.addCertifiedEd25519Key({
+        certificateWire: certWire,
+        publicKeyBytes: pubKey!,
+        privateKeySeedBytes: privSeed!,
+        comment: `sshs3-ca:${username}`,
+        lifetimeSeconds: lifetimeSeconds > 0 ? lifetimeSeconds : undefined,
+      });
+    }
 
     this.activeSession = {
       config,
@@ -397,6 +457,7 @@ export class SshCaService {
       principals: parsedCert.principals,
       parsedCert,
       certFingerprint: computeOpenSshFingerprint(certWire),
+      certificateFilePath,
       refreshToken,
       tokenEndpoint,
     };

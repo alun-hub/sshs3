@@ -388,7 +388,9 @@ export class IpcBridge {
       openExternal: (url: string) => shell.openExternal(url),
       getSettings: () => this.settingsStore.getSettings(),
       saveSettings: (settings) => this.settingsStore.saveSettings(settings),
+      getPivPublicKey: () => this.smartcard.getPivPublicKey(),
     });
+    this.smartcard.setSshCaService(this.sshCaService);
     this.sshCaService.onStatusChanged((status) => {
       this.windows?.broadcast(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
       this.getWebContents()?.send(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);

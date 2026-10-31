@@ -330,6 +330,11 @@ export class SmartcardDetector {
       }
     }
 
+    // Certificate file for SSH CA authentication (e.g. YubiKey PIV paired with signed cert)
+    if (config.certificateFile) {
+      args.push('-o', `CertificateFile=${config.certificateFile}`);
+    }
+
     // Identity file / private key argument (-i <path>)
     if (config.privateKeyPath) {
       args.push('-i', config.privateKeyPath);

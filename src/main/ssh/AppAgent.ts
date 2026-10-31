@@ -46,7 +46,7 @@ export function fingerprintOfKeyBlob(keyBlob: Buffer): string {
 /** Directory holding the app agent's socket; created 0700 and verified before use. */
 export function resolveAppAgentDir(): string {
   const runtimeDir = process.env.XDG_RUNTIME_DIR;
-  if (runtimeDir && path.isAbsolute(runtimeDir)) {
+  if (runtimeDir && path.isAbsolute(runtimeDir) && fs.existsSync(runtimeDir)) {
     return path.join(runtimeDir, 'sshs3');
   }
   const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'user';
@@ -59,7 +59,7 @@ export function resolveAppAgentDir(): string {
  * where another user could otherwise pre-create the path (or a symlink to somewhere they control)
  * and have the agent socket land in a place they can reach.
  */
-async function ensureSecureDir(dir: string): Promise<void> {
+export async function ensureSecureDir(dir: string): Promise<void> {
   try {
     await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
   } catch (err) {

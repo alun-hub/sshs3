@@ -69,6 +69,11 @@ export interface SSHConnectionConfig {
    */
   useSshCa?: boolean;
   /**
+   * Runtime only, never persisted: Path to an OpenSSH certificate file (`-o CertificateFile=...`)
+   * used with SSH CA authentication when pairing a hardware token / PIV key with its signed certificate.
+   */
+  certificateFile?: string;
+  /**
    * Runtime only, never persisted or synced: public key files selecting which of the keys in a shared
    * agent (`agentPath`) this connection may use. Set when the agent holds more than this profile's
    * card (the app-wide agent); makes ssh run with IdentitiesOnly and one `-i` per file.

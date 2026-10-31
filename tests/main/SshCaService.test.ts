@@ -204,4 +204,104 @@ describe('SshCaService', () => {
     expect(openExternal).toHaveBeenCalledTimes(1);
     expect(mockAppAgent.addCertifiedEd25519Key).toHaveBeenCalledTimes(2);
   });
+
+  it('signs PIV key without loading private key into agent, writes certificate file and cleans up on logout', async () => {
+    const fs = await import('node:fs');
+    const mockAppAgent = {
+      addCertifiedEd25519Key: vi.fn(),
+      removeIdentities: vi.fn().mockResolvedValue(0),
+    } as any;
+
+    const mockProvider: ISshCaProvider = {
+      id: 'step-ca',
+      sign: vi.fn().mockImplementation(async (req: SshCaSignRequest): Promise<SshCaSignResponse> => {
+        expect(req.username).toBe('alun');
+        expect(req.keyType).toBe('ssh-rsa');
+        expect(req.publicKeyWireBase64).toBe('dGVzdC1yc2Etd2lyZQ==');
+        return {
+          certificateWireBase64: sampleCertWireBase64,
+          certificateLine: `ssh-rsa-cert-v01@openssh.com ${sampleCertWireBase64} sshs3-ca:alun`,
+        };
+      }),
+    };
+
+    const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
+      const parsedUrl = new URL(targetUrl);
+      const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
+      const state = parsedUrl.searchParams.get('state')!;
+
+      const cbUrl = new URL(redirectUri);
+      cbUrl.searchParams.set('code', 'test-auth-code');
+      cbUrl.searchParams.set('state', state);
+
+      http.get(cbUrl.toString());
+    });
+
+    const getPivPublicKey = vi.fn().mockResolvedValue({
+      wireBlob: Buffer.from('test-rsa-wire'),
+      keyType: 'ssh-rsa',
+      wireBase64: 'dGVzdC1yc2Etd2lyZQ==',
+      publicKeyLine: 'ssh-rsa dGVzdC1yc2Etd2lyZQ== YubiKey PIV',
+      fingerprint: 'SHA256:pivFingerprint123',
+    });
+
+    const pivConfig: SshCaConfig = {
+      id: 'cfg-piv',
+      name: 'Test PIV CA',
+      backend: 'step-ca',
+      caUrl: 'https://ca.example.com',
+      oidcIssuerUrl: oidcBaseUrl,
+      oidcClientId: 'step-ca',
+      keySource: 'piv',
+      defaultPrincipals: ['alun'],
+    };
+
+    const service = new SshCaService({
+      appAgent: mockAppAgent,
+      openExternal,
+      getPivPublicKey,
+      providers: new Map([['step-ca', mockProvider]]),
+    });
+
+    const status = await service.login(pivConfig);
+    expect(status.active).toBe(true);
+    expect(getPivPublicKey).toHaveBeenCalledTimes(1);
+    // Crucial: addCertifiedEd25519Key must NOT be called for PIV since the private key is in the card!
+    expect(mockAppAgent.addCertifiedEd25519Key).not.toHaveBeenCalled();
+
+    // Verify certificate file was written
+    const certPath = service.getActiveCertificateFilePath();
+    expect(certPath).toBeDefined();
+    expect(fs.existsSync(certPath!)).toBe(true);
+    const content = fs.readFileSync(certPath!, 'utf-8');
+    expect(content).toContain(`ssh-rsa-cert-v01@openssh.com ${sampleCertWireBase64}`);
+
+    // Verify logout removes certificate file
+    await service.logout();
+    expect(fs.existsSync(certPath!)).toBe(false);
+    expect(service.getActiveCertificateFilePath()).toBeUndefined();
+    expect(service.getStatus().active).toBe(false);
+  });
+
+  it('rejects PIV login when no PIV card is detected', async () => {
+    const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+    const getPivPublicKey = vi.fn().mockResolvedValue(null);
+
+    const pivConfig: SshCaConfig = {
+      id: 'cfg-piv',
+      name: 'Test PIV CA',
+      backend: 'step-ca',
+      caUrl: 'https://ca.example.com',
+      oidcIssuerUrl: oidcBaseUrl,
+      oidcClientId: 'step-ca',
+      keySource: 'piv',
+    };
+
+    const service = new SshCaService({
+      appAgent: mockAppAgent,
+      getPivPublicKey,
+    });
+
+    await expect(service.login(pivConfig)).rejects.toThrow(/No YubiKey PIV card detected/);
+  });
 });

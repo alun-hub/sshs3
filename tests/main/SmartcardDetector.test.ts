@@ -745,6 +745,22 @@ describe('SmartcardDetector', () => {
       expect(args).toContain('1088');
       expect(args).not.toContain('5432:localhost:5432');
     });
+
+    it('adds CertificateFile option when certificateFile is provided', () => {
+      const config: SSHConnectionConfig = {
+        id: 'cfg-ca',
+        name: 'SSH CA Server',
+        host: 'server.example.com',
+        username: 'alun',
+        authType: 'agent',
+        useSshCa: true,
+        certificateFile: '/tmp/run/user/1000/sshs3/certs/serial-cert.pub',
+      };
+
+      const args = SmartcardDetector.buildSSHArguments(config);
+      expect(args).toContain('-o');
+      expect(args).toContain('CertificateFile=/tmp/run/user/1000/sshs3/certs/serial-cert.pub');
+    });
   });
 });
 
