@@ -18,7 +18,9 @@ export function encodeMpint(bytesIn: Buffer): Buffer {
   let i = 0;
   while (i < bytes.length - 1 && bytes[i] === 0) i++;
   bytes = bytes.subarray(i);
-  if (bytes.length === 0) bytes = Buffer.from([0]);
+  if (bytes.length === 0 || (bytes.length === 1 && bytes[0] === 0)) {
+    return encodeSshString(Buffer.alloc(0));
+  }
   if (bytes[0] & 0x80) bytes = Buffer.concat([Buffer.from([0]), bytes]);
   return encodeSshString(bytes);
 }

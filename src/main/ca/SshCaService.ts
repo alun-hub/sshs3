@@ -113,7 +113,13 @@ export class SshCaService {
   }
 
   public getActiveCertificateFilePath(): string | undefined {
-    return this.activeSession?.certificateFilePath;
+    if (!this.activeSession) return undefined;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const validBeforeMs = new Date(this.activeSession.parsedCert.validBefore).getTime();
+    if (Math.floor(validBeforeMs / 1000) <= nowSec) {
+      return undefined;
+    }
+    return this.activeSession.certificateFilePath;
   }
 
   public onStatusChanged(listener: (status: SshCaStatus) => void): () => void {
@@ -364,6 +370,7 @@ export class SshCaService {
     let publicKeyLine: string;
     let pubKey: Buffer | undefined;
     let privSeed: Buffer | undefined;
+    let pkcs8Buffer: Buffer | undefined;
 
     if (config.keySource === 'piv') {
       const pivKey = params.pivKey ?? (await this.deps.getPivPublicKey?.());
@@ -376,8 +383,8 @@ export class SshCaService {
     } else {
       // Generate ephemeral Ed25519 keypair in memory
       const keyPair = crypto.generateKeyPairSync('ed25519');
-      const pkcs8 = keyPair.privateKey.export({ type: 'pkcs8', format: 'der' });
-      privSeed = pkcs8.subarray(pkcs8.length - 32);
+      pkcs8Buffer = keyPair.privateKey.export({ type: 'pkcs8', format: 'der' });
+      privSeed = pkcs8Buffer.subarray(pkcs8Buffer.length - 32);
 
       const keyInfo = exportSshWirePublicKey(keyPair.publicKey, `sshs3-ca:${username}`);
       publicKeyWireBase64 = keyInfo.wireBase64;
@@ -437,20 +444,26 @@ export class SshCaService {
 
     if (config.keySource === 'piv') {
       const certsDir = path.join(resolveAppAgentDir(), 'certs');
+      await ensureSecureDir(path.dirname(certsDir));
       await ensureSecureDir(certsDir);
       const safeFp = parsedCert.publicKeyFingerprint.replace(/[^a-zA-Z0-9_-]/g, '_');
       certificateFilePath = path.join(certsDir, `${safeFp}-cert.pub`);
       await fs.promises.writeFile(certificateFilePath, signRes.certificateLine + '\n', { mode: 0o600 });
       caLog.info(`Saved PIV SSH CA certificate to ${certificateFilePath}`);
     } else {
-      // Load new certificate into the app-managed SSH agent
-      await this.deps.appAgent.addCertifiedEd25519Key({
-        certificateWire: certWire,
-        publicKeyBytes: pubKey!,
-        privateKeySeedBytes: privSeed!,
-        comment: `sshs3-ca:${username}`,
-        lifetimeSeconds: lifetimeSeconds > 0 ? lifetimeSeconds : undefined,
-      });
+      try {
+        // Load new certificate into the app-managed SSH agent
+        await this.deps.appAgent.addCertifiedEd25519Key({
+          certificateWire: certWire,
+          publicKeyBytes: pubKey!,
+          privateKeySeedBytes: privSeed!,
+          comment: `sshs3-ca:${username}`,
+          lifetimeSeconds: lifetimeSeconds > 0 ? lifetimeSeconds : undefined,
+        });
+      } finally {
+        privSeed?.fill(0);
+        pkcs8Buffer?.fill(0);
+      }
     }
 
     this.activeSession = {

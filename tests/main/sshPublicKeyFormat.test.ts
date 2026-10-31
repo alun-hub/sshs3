@@ -6,6 +6,7 @@ import {
   x509DerToOpenSsh,
   parseSshWirePublicKey,
   encodeEd25519SshWire,
+  encodeMpint,
 } from '../../src/main/ca/sshPublicKeyFormat';
 
 describe('sshPublicKeyFormat', () => {
@@ -71,5 +72,17 @@ describe('sshPublicKeyFormat', () => {
 
   it('rejects malformed wire blob in parseSshWirePublicKey', () => {
     expect(() => parseSshWirePublicKey(Buffer.from([0, 0]))).toThrow(/too short/);
+  });
+
+  it('encodes mpint correctly for zero, positive, and high-bit integers per RFC 4251', () => {
+    // Zero MUST be 0-length string: 4 bytes length of 0, 0 data bytes
+    expect(encodeMpint(Buffer.alloc(0))).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x00]));
+    expect(encodeMpint(Buffer.from([0x00]))).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x00]));
+
+    // Positive integer without high bit set
+    expect(encodeMpint(Buffer.from([0x01, 0x02]))).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x02, 0x01, 0x02]));
+
+    // Positive integer with MSB set (0x80) gets 0x00 prefix to stay positive
+    expect(encodeMpint(Buffer.from([0x80, 0x01]))).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x03, 0x00, 0x80, 0x01]));
   });
 });

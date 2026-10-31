@@ -304,4 +304,23 @@ describe('SshCaService', () => {
 
     await expect(service.login(pivConfig)).rejects.toThrow(/No YubiKey PIV card detected/);
   });
+
+  it('returns undefined for active certificate file path when certificate is expired', async () => {
+    const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+    const service = new SshCaService({ appAgent: mockAppAgent });
+
+    // Manually set an active session with an expired cert date
+    (service as any).activeSession = {
+      config: { id: 'c1' },
+      username: 'alun',
+      principals: ['alun'],
+      parsedCert: {
+        validBefore: '2020-01-01T00:00:00.000Z',
+      },
+      certificateFilePath: '/tmp/expired-cert.pub',
+    };
+
+    expect(service.getActiveCertificateFilePath()).toBeUndefined();
+    expect(service.getStatus().active).toBe(false);
+  });
 });
