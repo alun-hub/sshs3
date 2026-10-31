@@ -114,7 +114,7 @@ export interface LinuxRelaunchHandle {
  * starts a clean, top-level instance once this process exits. Returns a handle to
  * stop it again, because the install it belongs to can still fail or be cancelled
  * (a dismissed polkit prompt): the helper would otherwise relaunch the app whenever
- * the user quits it within the next minute.
+ * the user quits it within the wait window (10 minutes by default).
  */
 export function startLinuxRelaunch(options: LinuxRelaunchOptions = {}): LinuxRelaunchHandle | null {
   if (process.platform !== 'linux') return null;

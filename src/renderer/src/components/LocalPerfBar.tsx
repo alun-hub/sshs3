@@ -11,5 +11,10 @@ export const LocalPerfBar: React.FC<{
   active: boolean;
 }> = ({ layout, items, intervalSec, active }) => {
   const state = usePerfSamples({ local: true, intervalSec, active });
-  return <PerfBar kind="ssh" state={state} layout={layout} items={items} title="Local shell" local embedded />;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 text-2xs font-medium uppercase tracking-wide text-txt-muted">Local</span>
+      <PerfBar kind="ssh" state={state} layout={layout} items={items} title="Local shell" local embedded />
+    </div>
+  );
 };

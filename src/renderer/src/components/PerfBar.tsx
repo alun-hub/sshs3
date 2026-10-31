@@ -87,7 +87,11 @@ export const PerfBar: React.FC<PerfBarProps> = ({ kind, state, layout, items, ti
         title={tooltipText(kind, latest, title)}
         aria-label="Performance metrics, click for history"
         onClick={() => setDetailOpen(true)}
-        className={`${base} cursor-pointer hover:brightness-125`}
+        className={`${base} cursor-pointer ${
+          embedded
+            ? 'rounded px-1.5 hover:bg-app-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500'
+            : 'hover:brightness-125'
+        }`}
       >
         {shown.map((id, idx) => {
           const sep = idx > 0 ? ' border-l border-border-strong pl-2.5' : '';
