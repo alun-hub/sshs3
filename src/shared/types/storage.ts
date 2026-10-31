@@ -166,6 +166,8 @@ export interface SFTPConfig {
   /** Team Vault only — see `SSHConnectionConfig.teamVaultProfileRef`. */
   teamVaultProfileRef?: { vaultId: string; profileId: string };
   agentPath?: string;
+  /** Whether to use the active SSH Certificate Authority session when authType is 'agent'. */
+  useSshCa?: boolean;
   /** Runtime only: public key files selecting this connection's keys in a shared agent — see SSHConnectionConfig.agentIdentityFiles. */
   agentIdentityFiles?: string[];
   pkcs11LibPath?: string;

@@ -171,6 +171,11 @@ export class SmartcardCoordinator {
     return this.appAgent.ensure();
   }
 
+  /** Returns the app-wide SSH agent instance. */
+  public getAppAgent(): AppAgent {
+    return this.appAgent;
+  }
+
   /** True when a PIV/PKCS#11 card (not just a FIDO2 key) is unlocked in the app agent. */
   private hasPivCard(): boolean {
     return Array.from(this.globalCards.keys()).some((key) => key !== FIDO2_KEY);
@@ -343,6 +348,34 @@ export class SmartcardCoordinator {
       'direct'
     );
     return agentPath ? { ...config, agentPath, ...(await this.agentIdentityFilesFor(agentPath, FIDO2_KEY)) } : config;
+  }
+
+  /**
+   * Prepares an SSH connection config that uses SSH CA certificate authentication (`useSshCa`).
+   * When `authType === 'agent'` and `useSshCa` is true, routes the connection through
+   * the app-managed SSH agent socket where the active OpenSSH user certificate is loaded.
+   */
+  public async prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    if (config.authType !== 'agent' || !config.useSshCa) {
+      return config;
+    }
+    if (!config.agentPath) {
+      const socketPath = await this.ensureAgent();
+      return { ...config, agentPath: socketPath };
+    }
+    return config;
+  }
+
+  /** Same rationale as prepareSshCaConfig, applied to an SFTP connection. */
+  public async prepareSftpSshCaConfig(config: SFTPConfig): Promise<SFTPConfig> {
+    if (config.authType !== 'agent' || !config.useSshCa) {
+      return config;
+    }
+    if (!config.agentPath) {
+      const socketPath = await this.ensureAgent();
+      return { ...config, agentPath: socketPath };
+    }
+    return config;
   }
 
   /**

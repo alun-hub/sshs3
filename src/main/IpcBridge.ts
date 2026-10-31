@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { ipcMain as electronIpcMain } from 'electron';
+import { ipcMain as electronIpcMain, shell } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
@@ -80,6 +80,8 @@ import { registerK8sHandlers } from './ipc/k8sHandlers';
 import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
 import { registerSyncHandlers } from './ipc/syncHandlers';
 import { registerTeamVaultHandlers } from './ipc/teamVaultHandlers';
+import { registerSshCaHandlers } from './ipc/sshCaHandlers';
+import { SshCaService } from './ca/SshCaService';
 import { handleHostKeyChanged } from './ssh/hostKeyChanged';
 import { createLogger } from './log';
 const ipcLog = createLogger('ipc');
@@ -150,6 +152,7 @@ export interface IpcBridgeOptions {
   k8sLogManager?: K8sLogManager;
   k8sPortForwardManager?: K8sPortForwardManager;
   sshTunnelManager?: SSHTunnelManager;
+  sshCaService?: SshCaService;
   getWebContents?: () => Electron.WebContents | null | undefined;
   /** Quit confirmation (transfers, confirm-before-quit) run before an update restart. */
   confirmQuit?: () => Promise<boolean>;
@@ -187,6 +190,7 @@ export class IpcBridge {
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
   public readonly sshTunnelManager: SSHTunnelManager;
+  public readonly sshCaService: SshCaService;
   private updateService: UpdateService | null = null;
   private confirmQuit: (() => Promise<boolean>) | undefined;
   public getWebContents: () => Electron.WebContents | null | undefined;
@@ -379,6 +383,16 @@ export class IpcBridge {
     });
     // The local agent block is derived from the managed block, so refresh it after every managed-block sync.
     this.profileSyncService.onLocalSshConfigSynced = () => this.smartcard.refreshAgentSshConfig();
+    this.sshCaService = options.sshCaService ?? new SshCaService({
+      appAgent: this.smartcard.getAppAgent(),
+      openExternal: (url: string) => shell.openExternal(url),
+      getSettings: () => this.settingsStore.getSettings(),
+      saveSettings: (settings) => this.settingsStore.saveSettings(settings),
+    });
+    this.sshCaService.onStatusChanged((status) => {
+      this.windows?.broadcast(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      this.getWebContents()?.send(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+    });
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
@@ -507,6 +521,7 @@ export class IpcBridge {
     registerLogHandlers(this);
     registerDirSyncHandlers(this);
     registerK8sHandlers(this);
+    registerSshCaHandlers(this);
     this.setupEventListeners();
 
     if (process.platform === 'win32') {
@@ -867,6 +882,7 @@ export class IpcBridge {
     }
     sftpConfig = await this.smartcard.prepareSftpSmartcardConfig(sftpConfig, target.id);
     sftpConfig = await this.smartcard.prepareFido2SftpConfig(sftpConfig, target.id);
+    sftpConfig = await this.smartcard.prepareSftpSshCaConfig(sftpConfig);
     return await this.storageRegistry.getOrCreate({ ...target, sftpConfig });
   }
 

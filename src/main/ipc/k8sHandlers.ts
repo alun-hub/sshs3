@@ -16,7 +16,7 @@ export type K8sHost = Pick<
   IpcBridge,
   'assignSession' | 'broadcast' | 'k8sDebugService' | 'k8sDiscoveryService' | 'k8sLogManager' | 'k8sPortForwardManager' | 'k8sProfileStore' | 'k8sTerminalManager' | 'perfMetricsService' | 'promptForPinDirect' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'sshTunnelManager' | 'teamVaultService'
 > & {
-  smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig'>;
+  smartcard: Pick<SmartcardCoordinator, 'prepareFido2Config' | 'prepareSmartcardConfig' | 'prepareSshCaConfig'>;
 };
 
 export interface K8sHandlerDeps {
@@ -259,6 +259,7 @@ export function registerK8sHandlers(bridge: K8sHost, deps: K8sHandlerDeps = {}):
       config = await bridge.resolveProxyJumpConfig(config);
       config = await bridge.smartcard.prepareSmartcardConfig(config);
       config = await bridge.smartcard.prepareFido2Config(config);
+      config = await bridge.smartcard.prepareSshCaConfig(config);
       const hostLabel = config.name ? `${config.name} (${config.host})` : config.host;
       return await bridge.sshTunnelManager.startTunnel(config, tunnel, (rawPrompt) => {
         const isPassword = isPasswordPrompt(rawPrompt);

@@ -3,6 +3,7 @@ import { Shield, CheckCircle2, Lock, ShieldAlert, Globe } from 'lucide-react';
 import { IS_WINDOWS } from '../../lib/platform';
 import { pkcs11LibDisplayName } from '../../lib/smartcard';
 import { WindowsAgentPathNotice } from './WindowsAgentPathNotice';
+import { SshCaSettingsPanel } from './SshCaSettingsPanel';
 import type { SettingsForm } from './useSettingsForm';
 import { ManagedNotice } from './Managed';
 
@@ -311,6 +312,9 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
           </div>
         )}
       </div>
+
+      {/* SSH Certificate Authorities */}
+      <SshCaSettingsPanel form={form} />
     </div>
   );
 };

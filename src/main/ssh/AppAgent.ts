@@ -15,6 +15,7 @@ import {
   type AgentTarget,
   type LoadIntoPrivateAgentOptions,
 } from '../smartcard/SmartcardAgentLoader';
+import { addCertifiedEd25519KeyToAgent, type AddCertifiedEd25519KeyOptions } from '../ca/agentProtocol';
 import { createLogger } from '../log';
 const appAgentLog = createLogger('app-agent');
 
@@ -264,6 +265,20 @@ export class AppAgent {
     });
     // Only remember a PIN that actually unlocked the keys.
     if (enteredPin) this.fido2Pin = enteredPin;
+  }
+
+  /**
+   * Loads an OpenSSH Ed25519 certificate and its private key directly into the agent
+   * over the agent wire protocol (SSH2_AGENTC_ADD_ID_CONSTRAINED), constrained by certificate lifetime.
+   */
+  public async addCertifiedEd25519Key(options: Omit<AddCertifiedEd25519KeyOptions, 'socketPath'>): Promise<void> {
+    await this.runAdd(async ({ socketPath }) => {
+      await addCertifiedEd25519KeyToAgent(socketPath, options);
+      if (process.platform === 'win32') {
+        const fp = fingerprintOfKeyBlob(options.certificateWire);
+        this.loadedKeys.set(fp, options.certificateWire);
+      }
+    });
   }
 
   /**

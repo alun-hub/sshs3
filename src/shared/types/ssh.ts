@@ -63,6 +63,12 @@ export interface SSHConnectionConfig {
   pin?: string;
   agentPath?: string;
   /**
+   * Whether to authenticate using the active SSH Certificate Authority session.
+   * Applied when authType is 'agent', ensuring the connection uses the app-managed
+   * agent holding the issued OpenSSH user certificate.
+   */
+  useSshCa?: boolean;
+  /**
    * Runtime only, never persisted or synced: public key files selecting which of the keys in a shared
    * agent (`agentPath`) this connection may use. Set when the agent holds more than this profile's
    * card (the app-wide agent); makes ssh run with IdentitiesOnly and one `-i` per file.

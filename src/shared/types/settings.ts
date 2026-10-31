@@ -1,4 +1,5 @@
 import type { LogLevel } from './log';
+import type { SshCaConfig } from './sshCa';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from './kubernetes';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from './perf';
 
@@ -200,6 +201,10 @@ export interface AppSettings {
    * longer exists/isn't visible.
    */
   connectionManagerDefaultTab?: string;
+  /** SSH Certificate Authority configurations. */
+  sshCaConfigs?: SshCaConfig[];
+  /** Default SSH CA configuration ID to use for login/renewal. */
+  defaultSshCaConfigId?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -223,6 +228,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   verifyTransferIntegrity: true,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dotfilesPoolEnabled: false,
+  sshCaConfigs: [],
   enableOpenShift: false,
   enableGlobalSearch: true,
   shareFoldersAcrossTypes: false,

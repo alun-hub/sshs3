@@ -43,6 +43,7 @@ import type {
   K8sWebLoginResult,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
+import type { SshCaConfig, SshCaStatus } from '../shared/types/sshCa';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
@@ -1177,6 +1178,27 @@ export const api: MultiSSHApi = {
 
   dirSyncProfileDelete: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIR_SYNC_PROFILE_DELETE, id),
+
+  // SSH CA
+  sshCaGetStatus: (): Promise<SshCaStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_GET_STATUS),
+
+  sshCaLogin: (config?: SshCaConfig): Promise<SshCaStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_LOGIN, config),
+
+  sshCaLogout: (): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_LOGOUT),
+
+  sshCaRenew: (): Promise<SshCaStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_RENEW),
+
+  onSshCaStatusChanged: (callback: (status: SshCaStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: SshCaStatus) => callback(status);
+    ipcRenderer.on(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, listener);
+    };
+  },
 };
 
 export function exposePreloadApi(): void {
