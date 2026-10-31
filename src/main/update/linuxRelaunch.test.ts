@@ -27,6 +27,23 @@ describe('linuxRelaunch', () => {
       expect(script).toContain("exec '/home/user/sshs3.AppImage'");
     });
 
+    it('never places an argument inside double quotes, where $(...) and backticks would expand', () => {
+      const evil = ['--x=$(touch /tmp/pwned)', '`id`'];
+      const script = buildLinuxRelaunchScript({ pid: 1, execPath: '/opt/sshs3/sshs3', appImagePath: '', args: evil });
+
+      for (const line of script.split('\n')) {
+        expect(line).not.toMatch(/"[^"]*(\$\(touch|`id`)[^"]*"/);
+      }
+      expect(script).toContain("'--x=$(touch /tmp/pwned)'");
+      expect(script).toContain('elif false && command -v gtk-launch');
+    });
+
+    it('offers the desktop-file launchers only when there are no arguments', () => {
+      const script = buildLinuxRelaunchScript({ pid: 1, execPath: '/opt/sshs3/sshs3', appImagePath: '', args: [] });
+      expect(script).toContain('elif true && command -v gtk-launch');
+      expect(script).toContain('elif true && command -v gio');
+    });
+
     it('waits long enough for a slow package install before it gives up: 10 minutes by default', () => {
       // The helper starts before the package manager runs, which can take minutes (metadata, dependencies).
       const script = buildLinuxRelaunchScript({ pid: 1, execPath: '/opt/sshs3/sshs3', args: [] });

@@ -46,6 +46,8 @@ export function buildLinuxRelaunchScript(options: LinuxRelaunchOptions = {}): st
   const maxWaitTicks = Math.max(10, Math.floor(maxWaitSeconds * 10));
   const args = options.args ?? process.argv.slice(1);
   const argsQuoted = args.map(quoteShell).join(' ');
+  // A shell builtin decided here, never `[ -z "<args>" ]`: double quotes would expand `$(...)` inside an argument.
+  const noArgsCheck = args.length === 0 ? 'true' : 'false';
 
   const appImagePathQuoted = quoteShell(appImagePath);
   const execPathQuoted = quoteShell(execPath);
@@ -88,9 +90,9 @@ if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --slice=app.slic
   exec systemd-run --user --slice=app.slice --description="sshs3" $SYSTEMD_ENV_ARGS ${targetCmd}
 ${
   !isAppImage
-    ? `elif [ -z "${argsQuoted}" ] && command -v gtk-launch >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+    ? `elif ${noArgsCheck} && command -v gtk-launch >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
   exec gtk-launch ${desktopNameQuoted}
-elif [ -z "${argsQuoted}" ] && command -v gio >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
+elif ${noArgsCheck} && command -v gio >/dev/null 2>&1 && [ -f ${desktopFileQuoted} ]; then
   exec gio launch ${desktopFileQuoted}`
     : ''
 }
