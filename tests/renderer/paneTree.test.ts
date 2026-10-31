@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countOtherSessionPanes, createLeaf, updateSplitWeights } from '../../src/renderer/src/lib/paneTree';
+import { countOtherSessionPanes, createLeaf, shouldHoistLocalPerf, updateSplitWeights } from '../../src/renderer/src/lib/paneTree';
 import type { PaneSplit } from '../../src/shared/types/session';
 
 describe('updateSplitWeights', () => {
@@ -60,5 +60,32 @@ describe('countOtherSessionPanes', () => {
 
   it('is zero when no other pane has a session', () => {
     expect(countOtherSessionPanes(createLeaf('only', { local: true }), 'only')).toBe(0);
+  });
+});
+
+describe('shouldHoistLocalPerf', () => {
+  const split = (...children: PaneSplit['children']): PaneSplit => ({
+    type: 'split',
+    id: 's',
+    orientation: 'row',
+    children,
+  });
+  const ssh = { host: 'h', port: 22, username: 'u' } as never;
+
+  it('hoists when two or more local shells share the tab', () => {
+    expect(shouldHoistLocalPerf(split(createLeaf('a', { local: true }), createLeaf('b', { local: true })))).toBe(true);
+  });
+
+  it('keeps a lone local shell next to a remote pane on its own bar', () => {
+    expect(shouldHoistLocalPerf(split(createLeaf('a', { local: true }), createLeaf('b', { config: ssh })))).toBe(false);
+  });
+
+  it('still hoists the local shells when a remote pane is present', () => {
+    const tree = split(createLeaf('a', { local: true }), createLeaf('b', { local: true }), createLeaf('c', { config: ssh }));
+    expect(shouldHoistLocalPerf(tree)).toBe(true);
+  });
+
+  it('does not hoist for a single pane', () => {
+    expect(shouldHoistLocalPerf(createLeaf('a', { local: true }))).toBe(false);
   });
 });

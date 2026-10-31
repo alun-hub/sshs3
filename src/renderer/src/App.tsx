@@ -26,7 +26,9 @@ import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
-import { countLeaves, createLeaf, findLeaf, getFirstLeafId } from './lib/paneTree';
+import { countLeaves, createLeaf, findLeaf, getFirstLeafId, shouldHoistLocalPerf } from './lib/paneTree';
+import { LocalPerfBar } from './components/LocalPerfBar';
+import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import { installSpatialNavPointerReset } from './lib/spatialNavigation';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
 import { FileEditorModal } from './components/FileManager/FileEditorModal';
@@ -474,6 +476,10 @@ const AppContent: React.FC = () => {
         {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const totalPanes = tab.type === 'terminal' && tab.paneTree ? countLeaves(tab.paneTree) : 1;
+            const hoistLocalPerf =
+              settings.perfMetricsEnabled === true && tab.type === 'terminal' && tab.paneTree
+                ? shouldHoistLocalPerf(tab.paneTree)
+                : false;
             const rootLeaf =
               tab.type === 'terminal' && tab.paneTree ? findLeaf(tab.paneTree, getFirstLeafId(tab.paneTree)) : null;
 
@@ -517,6 +523,17 @@ const AppContent: React.FC = () => {
                         )}
                       </div>
 
+                      {hoistLocalPerf && (
+                        <div className="flex min-w-0 flex-1 justify-center px-3">
+                          <LocalPerfBar
+                            layout={settings.perfMetricsLayout ?? 'text'}
+                            items={settings.perfMetricsItems ?? DEFAULT_PERF_ITEMS}
+                            intervalSec={settings.perfMetricsIntervalSec}
+                            active={isActive}
+                          />
+                        </div>
+                      )}
+
                       {totalPanes > 1 && (
                         <div className="flex items-center gap-1">
                           <UnsplitButton
@@ -554,6 +571,7 @@ const AppContent: React.FC = () => {
                         onOpenRemotePath={handleOpenRemotePath}
                         onOpenLocalPath={handleOpenLocalPath}
                         onNavigateToTabBar={() => setTabBarFocused(true)}
+                        hoistLocalPerf={hoistLocalPerf}
                         initialCwdPaneId={rootLeaf?.id}
                         initialCwd={tab.initialCwd}
                       />

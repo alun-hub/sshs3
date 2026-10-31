@@ -31,6 +31,19 @@ export function countOtherSessionPanes(node: PaneNode, exceptId: string): number
   ).length;
 }
 
+/** True for a plain local-shell pane (the same precedence PaneLeafContent uses to pick the view). */
+export function isLocalShellLeaf(leaf: PaneLeaf): boolean {
+  return Boolean(leaf.local && !leaf.config && !leaf.k8sTarget && !leaf.k8sLogTarget);
+}
+
+/**
+ * Two or more local shells in one tab would each sample and draw the same machine's metrics, so the tab shows
+ * a single shared bar instead. A lone local pane keeps its own bar.
+ */
+export function shouldHoistLocalPerf(node: PaneNode): boolean {
+  return collectLeaves(node).filter(isLocalShellLeaf).length >= 2;
+}
+
 export function getFirstLeafId(node: PaneNode): string {
   return node.type === 'leaf' ? node.id : getFirstLeafId(node.children[0]);
 }

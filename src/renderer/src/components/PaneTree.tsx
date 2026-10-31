@@ -37,6 +37,8 @@ export interface PaneTreeViewProps {
   initialCwdPaneId?: string;
   initialCwd?: string;
   onNavigateToTabBar?: () => void;
+  /** Local shells share one perf bar in the tab header, so they skip their own bar and sampling. */
+  hoistLocalPerf?: boolean;
 }
 
 interface PaneTreeLayoutProps extends PaneTreeViewProps {
@@ -244,6 +246,7 @@ const PaneLeafContent: React.FC<{
   onOpenLocalPath?: (path: string) => void;
   onSelectPane: (paneId: string) => void;
   onNavigateToTabBar?: () => void;
+  hoistLocalPerf?: boolean;
 }> = ({
   leaf,
   isActive,
@@ -261,6 +264,7 @@ const PaneLeafContent: React.FC<{
   onOpenLocalPath,
   onSelectPane,
   onNavigateToTabBar,
+  hoistLocalPerf,
 }) => {
   const isSole = totalPanes === 1;
   const perfEnabled = settings.perfMetricsEnabled === true;
@@ -338,7 +342,7 @@ const PaneLeafContent: React.FC<{
       <TerminalView
         paneId={leaf.id}
         local
-        perfMetrics={perfMetrics}
+        perfMetrics={hoistLocalPerf ? undefined : perfMetrics}
         shellType={leaf.shellType}
         wslDistro={leaf.wslDistro}
         isActive={isActive}
@@ -453,6 +457,7 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onOpenLocalPath={props.onOpenLocalPath}
             onSelectPane={props.onSelectPane}
             onNavigateToTabBar={props.onNavigateToTabBar}
+            hoistLocalPerf={props.hoistLocalPerf}
           />,
           container,
           leaf.id
