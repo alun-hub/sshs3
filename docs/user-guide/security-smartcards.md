@@ -111,13 +111,16 @@ sshs3 provides enterprise SSH Certificate Authority integration, allowing users 
 | Key Source | Private Key Location & Lifetime | How the Certificate is Used |
 | :--- | :--- | :--- |
 | **Ephemeral In-Memory (Ed25519)** | Generated in process memory with `node:crypto`. Cleared upon application exit or expiration. | Both the ephemeral private key and certificate wire blob are injected directly into `AppAgent` via the agent wire protocol (`SSH2_AGENTC_ADD_ID_CONSTRAINED`). Private keys never touch disk. |
-| **Hardware Token (YubiKey PIV)** | Permanent in token hardware chip (Slot 9A). Private keys never leave the Secure Element. | The token's public key is extracted and sent to the CA for signing. The resulting certificate is saved to a restricted file (`mode 0600`) and paired via `-o CertificateFile` and `agentIdentityFiles`. |
+| **Smartcard / PIV token (PKCS#11)** | Permanent on the card or token (the PIV authentication key, slot 9A, on PIV cards such as a YubiKey). Private keys never leave the hardware. | The token's public key is extracted and sent to the CA for signing. The resulting certificate is saved to a restricted file (`mode 0600`) and paired via `-o CertificateFile` and `agentIdentityFiles`. |
 
 > [!NOTE]
 > **Automatic Renewal**: When the identity provider issues an OIDC refresh token, sshs3 automatically schedules a certificate renewal 60 seconds prior to certificate expiration. If renewal fails or no refresh token is provided, the badge transitions to expired status.
 
 > [!IMPORTANT]
 > **Zero Disk Persistence of Tokens**: Neither OIDC identity tokens, refresh tokens, nor ephemeral private keys are written to disk. Restarting sshs3 clears volatile session state and requires re-authenticating through your identity provider.
+
+> [!WARNING]
+> **The smartcard key source unlocks the card for your other profiles under the Global policy**: The **Smartcard / PIV token (PKCS#11)** key source loads the card into `AppAgent`, the same agent the **Global (App Lifetime)** policy uses. The card then appears under **Cached smartcard identities** in the toolbar, and the PIN you entered for SSH CA also covers every profile that uses this card (PKCS#11 profiles, and external terminals through the `sshs3-agent` block in `~/.ssh/config`). They connect without asking for the PIN again. The card stays unlocked until you click **Lock All Now** or quit sshs3; logging out of SSH CA does not lock it. Under **Always Prompt** and **Once Per Terminal Connection**, PKCS#11 profiles keep using their own per-connection prompts.
 
 ### Managing CA Sessions & Profiles
 
@@ -139,5 +142,6 @@ When using ephemeral Ed25519 keys, `SshCaService` sends `SSH2_AGENTC_ADD_ID_CONS
 | Touch banner does not disappear | YubiKey timed out or missed touch | Tap the key immediately when flashing. Verify key is securely inserted into USB port. |
 | Local shell asks for PIN despite Global Caching | Tab was opened before card was unlocked | Open a fresh tab, and ensure *Settings → Terminal → Local Terminal SSH Agent* is set to **Auto**. |
 | `No SSH CA configuration provided` | No CA configuration exists in settings | Open *Settings → Security & Smartcard → SSH CA* and click **Add CA** to configure your Step-CA or Vault instance. |
-| `No YubiKey PIV card detected` | Hardware key is not inserted or PIV driver missing | Insert your YubiKey before logging in with the PIV key source, and ensure `opensc` or `libykcs11` is available. |
+| `No smartcard detected` | The smartcard or token is not inserted, or no PKCS#11 module is available | Insert your card (a YubiKey or any other PIV smartcard) before logging in with the **Smartcard / PIV token (PKCS#11)** key source, and ensure a module such as `opensc` or `libykcs11` is installed. |
 | `SSH CA certificate expired` | Certificate validity period elapsed | Click the Shield icon in the top toolbar and select **Renew Certificate** or **Log In with SSH CA**. |
+| PKCS#11 profiles no longer ask for the PIN after an SSH CA login with the smartcard key source | Under the Global policy the PIV login loaded the card into the shared `AppAgent` | Click **Lock All Now** when you want PIN prompts again, or use **Once Per Terminal Connection** or **Always Prompt**. |

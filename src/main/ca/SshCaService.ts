@@ -26,6 +26,9 @@ import { createLogger } from '../log';
 
 const caLog = createLogger('ssh-ca-service');
 
+const NO_SMARTCARD_MESSAGE =
+  'No smartcard detected. Insert your card (for example a YubiKey or another PIV smartcard) and ensure a PKCS#11 module is available.';
+
 export interface SshCaServiceDependencies {
   appAgent: AppAgent;
   openExternal?: (url: string) => Promise<void>;
@@ -143,7 +146,7 @@ export class SshCaService {
       }
       const pivKey = await this.deps.getPivPublicKey();
       if (!pivKey) {
-        throw new Error('No YubiKey PIV card detected. Please insert your YubiKey and ensure the PIV module is loaded.');
+        throw new Error(NO_SMARTCARD_MESSAGE);
       }
       preloadedPivKey = pivKey;
     }
@@ -277,7 +280,7 @@ export class SshCaService {
     if (config.keySource === 'piv') {
       const pivKey = params.pivKey ?? (await this.deps.getPivPublicKey?.());
       if (!pivKey) {
-        throw new Error('No YubiKey PIV card detected. Please insert your YubiKey and ensure the PIV module is loaded.');
+        throw new Error(NO_SMARTCARD_MESSAGE);
       }
       publicKeyWireBase64 = pivKey.wireBase64;
       keyType = pivKey.keyType;

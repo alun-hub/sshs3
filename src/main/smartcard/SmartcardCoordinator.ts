@@ -412,7 +412,7 @@ export class SmartcardCoordinator {
   }
 
   /**
-   * Discovers and retrieves the OpenSSH public key for the connected YubiKey PIV card.
+   * Discovers and retrieves the OpenSSH public key for the connected smartcard (any PKCS#11 card, e.g. a YubiKey or another PIV card).
    * If not already unlocked in the app agent, attempts to unlock/load it first.
    */
   public async getPivPublicKey(): Promise<SshWireKeyInfo | null> {
@@ -451,7 +451,7 @@ export class SmartcardCoordinator {
     await this.getOrLoadGlobalSmartcardAgent(
       chosen.path,
       (prompt, retry) => this.deps.promptForPin(prompt.trim(), 'smartcard', 'SSH CA', retry),
-      'unlock YubiKey PIV for SSH CA'
+      'unlock the smartcard for SSH CA'
     );
 
     // 5. Retrieve the loaded identity from the agent

@@ -273,7 +273,7 @@ describe('SshCaService', () => {
       getPivPublicKey,
     });
 
-    await expect(service.login(pivConfig)).rejects.toThrow(/No YubiKey PIV card detected/);
+    await expect(service.login(pivConfig)).rejects.toThrow(/No smartcard detected/);
   });
 
   it('returns undefined for active certificate file path when certificate is expired', async () => {

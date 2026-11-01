@@ -330,7 +330,7 @@ export class SmartcardDetector {
       }
     }
 
-    // Certificate file for SSH CA authentication (e.g. YubiKey PIV paired with signed cert)
+    // Certificate file for SSH CA authentication (e.g. a PIV smartcard paired with a signed cert)
     if (config.certificateFile) {
       if (/[\r\n]/.test(config.certificateFile) || config.certificateFile.startsWith('-')) {
         throw new Error('Invalid CertificateFile: path contains illegal characters');
