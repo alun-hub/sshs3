@@ -228,7 +228,7 @@ const AppContent: React.FC = () => {
   const recentSSH = [...recentSSHProfiles]
     .filter((p) => Boolean(p.lastUsedAt))
     .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
-    .slice(0, 4);
+    .slice(0, 6);
 
   const handleOpenProfiles = () => {
     setProfilesModalTab('ssh');

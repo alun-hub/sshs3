@@ -88,14 +88,45 @@ describe('LandingView Component', () => {
       renderLanding();
       type('build');
       expect(screen.getByText('Matching Profiles')).toBeInTheDocument();
-      expect(screen.getByText('build-box')).toBeInTheDocument();
-      expect(screen.queryByText('demoserver')).not.toBeInTheDocument();
+      expect(screen.getByTitle('build-box')).toBeInTheDocument();
+      expect(screen.queryByTitle('demoserver')).not.toBeInTheDocument();
+    });
+
+    it('matches fuzzily like the global search, and highlights the matched letters', () => {
+      renderLanding();
+      type('bdbx');
+      const row = screen.getByTitle('build-box');
+      expect(row).toBeInTheDocument();
+      expect(row.querySelectorAll('mark').length).toBeGreaterThan(0);
+    });
+
+    it('moves the selection with the arrows and connects to the selected match', () => {
+      const onConnectRecentSSH = vi.fn();
+      renderLanding({ onConnectRecentSSH });
+      type('e');
+      const input = screen.getByPlaceholderText(/search saved profiles/i);
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.click(screen.getByTestId('quick-connect-btn'));
+      expect(onConnectRecentSSH).toHaveBeenCalledTimes(1);
+      const first = onConnectRecentSSH.mock.calls[0][0];
+      onConnectRecentSSH.mockClear();
+      type('e');
+      fireEvent.click(screen.getByTestId('quick-connect-btn'));
+      expect(onConnectRecentSSH.mock.calls[0][0].id).not.toBe(first.id);
+    });
+
+    it('opens SFTP to the selected match on Shift+Enter', () => {
+      const onConnectSFTP = vi.fn();
+      renderLanding({ onConnectSFTP });
+      type('build');
+      fireEvent.keyDown(screen.getByPlaceholderText(/search saved profiles/i), { key: 'Enter', shiftKey: true });
+      expect(onConnectSFTP).toHaveBeenCalledWith(expect.objectContaining({ id: 'conn-3' }));
     });
 
     it('matches on host and user too, and says so when nothing matches', () => {
       renderLanding();
       type('ci.example');
-      expect(screen.getByText('build-box')).toBeInTheDocument();
+      expect(screen.getByTitle('build-box')).toBeInTheDocument();
       type('zzz-nothing');
       expect(screen.getByText(/No saved profile matches/)).toBeInTheDocument();
     });

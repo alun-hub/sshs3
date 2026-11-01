@@ -3,7 +3,10 @@ import { Clock, Cloud, Folder, Plus, Search, Server, Terminal } from 'lucide-rea
 import { BrandLogo } from './BrandLogo';
 import { SftpButton } from './SftpButton';
 import { Shortcut } from './ui/Shortcut';
-import { filterSshProfiles, parseAdHocTarget } from './ConnectionModal/connectionGrouping';
+import { parseAdHocTarget } from './ConnectionModal/connectionGrouping';
+import { TagChips } from './ui/TagChips';
+import { formatLastUsed, searchLandingProfiles, type LandingMatch } from '../lib/landingSearch';
+import { splitHighlight } from '../lib/globalSearchRows';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
@@ -28,6 +31,20 @@ export interface LandingViewProps {
 
 const MAX_SEARCH_RESULTS = 8;
 
+const Highlighted: React.FC<{ text: string; indices: number[] }> = ({ text, indices }) => (
+  <>
+    {splitHighlight(text, indices).map((piece, i) =>
+      piece.hit ? (
+        <mark key={i} className="bg-transparent font-semibold text-sky-400">
+          {piece.text}
+        </mark>
+      ) : (
+        <React.Fragment key={i}>{piece.text}</React.Fragment>
+      )
+    )}
+  </>
+);
+
 export const LandingView: React.FC<LandingViewProps> = ({
   recentSSH,
   allSSH = [],
@@ -45,12 +62,16 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [quickConnect, setQuickConnect] = useState('');
   const quickConnectTarget = parseAdHocTarget(quickConnect);
-  const searchQuery = quickConnect.trim().toLowerCase();
-  const profileMatches = searchQuery ? filterSshProfiles(allSSH, searchQuery).slice(0, MAX_SEARCH_RESULTS) : [];
-  const searching = searchQuery.length > 0;
-  // "user@host" stays an ad-hoc connect; any other text that matches a saved profile connects to the first match.
-  const quickConnectProfile = !quickConnectTarget && profileMatches.length > 0 ? profileMatches[0] : null;
-  const listedProfiles = searching ? profileMatches : recentSSH;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const searching = quickConnect.trim().length > 0;
+  // Same fuzzy search as the global search palette (Ctrl+Shift+G): several words, #tags, ranked.
+  const profileMatches = searching ? searchLandingProfiles(allSSH, quickConnect, MAX_SEARCH_RESULTS) : [];
+  const listedProfiles: LandingMatch[] = searching
+    ? profileMatches
+    : recentSSH.map((profile) => ({ profile, titleIndices: [] }));
+  const selectedIndex = Math.min(activeIndex, Math.max(profileMatches.length - 1, 0));
+  // "user@host" stays an ad-hoc connect; any other text connects to the selected match (the best one by default).
+  const quickConnectProfile = !quickConnectTarget && profileMatches.length > 0 ? profileMatches[selectedIndex].profile : null;
 
   const buildQuickConnectConfig = (): SSHConnectionConfig | null => {
     if (!quickConnectTarget) return null;
@@ -73,7 +94,33 @@ export const LandingView: React.FC<LandingViewProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  const connectSftpToQuickTarget = () => {
+    const config = buildQuickConnectConfig();
+    const target = config ?? quickConnectProfile;
+    if (!target) return;
+    onConnectSFTP(target);
+    setQuickConnect('');
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target instanceof HTMLInputElement && searching) {
+      // In the search box the arrows pick among the matches; Shift+Enter opens SFTP instead of a terminal.
+      if (e.key === 'ArrowDown' && selectedIndex < profileMatches.length - 1) {
+        e.preventDefault();
+        setActiveIndex(selectedIndex + 1);
+        return;
+      }
+      if (e.key === 'ArrowUp' && selectedIndex > 0) {
+        e.preventDefault();
+        setActiveIndex(selectedIndex - 1);
+        return;
+      }
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        connectSftpToQuickTarget();
+        return;
+      }
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       const dir: NavigationDirection =
@@ -150,8 +197,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
           <input
             type="text"
             value={quickConnect}
-            onChange={(e) => setQuickConnect(e.target.value)}
-            placeholder="Type user@host to connect, or search saved profiles..."
+            onChange={(e) => {
+              setQuickConnect(e.target.value);
+              setActiveIndex(0);
+            }}
+            placeholder="Type user@host to connect, or search saved profiles (words, #tag)..."
             className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
           />
           <button
@@ -165,16 +215,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           <SftpButton
             authType="password"
             disabled={!quickConnectTarget && !quickConnectProfile}
-            onOpen={() => {
-              const config = buildQuickConnectConfig();
-              if (config) {
-                onConnectSFTP(config);
-                setQuickConnect('');
-              } else if (quickConnectProfile) {
-                onConnectSFTP(quickConnectProfile);
-                setQuickConnect('');
-              }
-            }}
+            onOpen={connectSftpToQuickTarget}
           />
         </form>
 
@@ -189,18 +230,26 @@ export const LandingView: React.FC<LandingViewProps> = ({
               {searching && listedProfiles.length === 0 && (
                 <div className="px-1 py-1 text-xs text-txt-muted">No saved profile matches "{quickConnect.trim()}".</div>
               )}
-              {listedProfiles.map((profile) => (
+              {listedProfiles.map(({ profile, titleIndices }, index) => (
                 <div
                   key={profile.id}
-                  className="recent-card flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-card px-3 py-1.5 hover:border-border-strong transition-colors"
+                  className={`recent-card flex items-center justify-between gap-2 rounded-lg border bg-app-card px-3 py-1.5 transition-colors ${
+                    searching && index === selectedIndex
+                      ? 'border-sky-500/60 ring-1 ring-sky-500/40'
+                      : 'border-border-subtle hover:border-border-strong'
+                  }`}
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-medium text-txt-primary" title={profile.name}>{profile.name}</div>
+                    <div className="truncate text-xs font-medium text-txt-primary" title={profile.name}>
+                      <Highlighted text={profile.name} indices={titleIndices} />
+                    </div>
                     <div className="truncate text-xs text-txt-muted" title={`${profile.username}@${profile.host}:${profile.port ?? 22}`}>
                       {profile.username}@{profile.host}:{profile.port ?? 22}
+                      {!searching && profile.lastUsedAt && <span> · {formatLastUsed(profile.lastUsedAt)}</span>}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    <TagChips tags={profile.tags ?? []} max={2} />
                     <button
                       type="button"
                       data-testid={`recent-connect-${profile.id}`}
