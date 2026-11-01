@@ -15,6 +15,7 @@ import { StepCaProvider } from './providers/StepCaProvider';
 import { VaultCaProvider } from './providers/VaultCaProvider';
 import {
   computeOpenSshFingerprint,
+  isoToEpochSeconds,
   parseOpenSshCertificate,
   validateOpenSshCertificate,
 } from './sshCertificateUtils';
@@ -36,7 +37,6 @@ export interface SshCaServiceDependencies {
   openExternal?: (url: string) => Promise<void>;
   providers?: Map<SshCaBackendType, ISshCaProvider>;
   getSettings?: () => Promise<AppSettings>;
-  saveSettings?: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   getPivPublicKey?: () => Promise<SshWireKeyInfo | null>;
 }
 
@@ -79,9 +79,7 @@ export class SshCaService {
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
-    const validBeforeMs = new Date(this.activeSession.parsedCert.validBefore).getTime();
-    const validBeforeSec = Math.floor(validBeforeMs / 1000);
-    const validSecondsRemaining = Math.max(0, validBeforeSec - nowSec);
+    const validSecondsRemaining = Math.max(0, isoToEpochSeconds(this.activeSession.parsedCert.validBefore) - nowSec);
 
     if (validSecondsRemaining === 0) {
       return {
@@ -95,17 +93,7 @@ export class SshCaService {
       };
     }
 
-    const cert = this.activeSession.parsedCert;
-    const certInfo: SshCaCertificateInfo = {
-      certType: cert.certType,
-      keyId: cert.keyId,
-      principals: cert.principals,
-      validAfter: cert.validAfter,
-      validBefore: cert.validBefore,
-      serial: cert.serial,
-      signatureKeyFingerprint: cert.signatureKeyFingerprint,
-      publicKeyFingerprint: cert.publicKeyFingerprint,
-    };
+    const certInfo: SshCaCertificateInfo = { ...this.activeSession.parsedCert, principals: [...this.activeSession.parsedCert.principals] };
 
     return {
       active: true,
@@ -122,8 +110,7 @@ export class SshCaService {
   public getActiveCertificateFilePath(): string | undefined {
     if (!this.activeSession) return undefined;
     const nowSec = Math.floor(Date.now() / 1000);
-    const validBeforeMs = new Date(this.activeSession.parsedCert.validBefore).getTime();
-    if (Math.floor(validBeforeMs / 1000) <= nowSec) {
+    if (isoToEpochSeconds(this.activeSession.parsedCert.validBefore) <= nowSec) {
       return undefined;
     }
     return this.activeSession.certificateFilePath;
@@ -499,8 +486,7 @@ export class SshCaService {
       }
 
       const nowSec = Math.floor(Date.now() / 1000);
-      const validBeforeMs = new Date(parsedCert.validBefore).getTime();
-      const validBeforeSec = Math.floor(validBeforeMs / 1000);
+      const validBeforeSec = isoToEpochSeconds(parsedCert.validBefore);
       const lifetimeSeconds = Math.max(0, validBeforeSec - nowSec);
       const certFingerprint = computeOpenSshFingerprint(certWire);
 

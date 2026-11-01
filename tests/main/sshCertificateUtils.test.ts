@@ -3,6 +3,7 @@ import {
   parseOpenSshCertificate,
   validateOpenSshCertificate,
   computeOpenSshFingerprint,
+  isoToEpochSeconds,
 } from '../../src/main/ca/sshCertificateUtils';
 
 describe('sshCertificateUtils', () => {
@@ -116,6 +117,12 @@ describe('sshCertificateUtils', () => {
       const fp = computeOpenSshFingerprint(buf);
       expect(fp).toMatch(/^SHA256:[A-Za-z0-9+/]+$/);
       expect(fp.endsWith('=')).toBe(false);
+    });
+  });
+
+  describe('isoToEpochSeconds', () => {
+    it('floors an ISO timestamp to whole epoch seconds', () => {
+      expect(isoToEpochSeconds('2026-11-01T00:00:00.999Z')).toBe(Date.UTC(2026, 10, 1) / 1000);
     });
   });
 });

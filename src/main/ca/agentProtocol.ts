@@ -3,8 +3,6 @@ import net from 'node:net';
 export const SSH2_AGENTC_REQUEST_IDENTITIES = 11;
 export const SSH2_AGENT_IDENTITIES_ANSWER = 12;
 export const SSH2_AGENTC_ADD_IDENTITY = 17;
-export const SSH2_AGENTC_REMOVE_IDENTITY = 18;
-export const SSH2_AGENTC_REMOVE_ALL_IDENTITIES = 19;
 export const SSH2_AGENTC_ADD_ID_CONSTRAINED = 25;
 
 export const SSH_AGENT_FAILURE = 5;

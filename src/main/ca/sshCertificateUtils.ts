@@ -43,6 +43,11 @@ export class BinaryReader {
   }
 }
 
+/** Whole epoch seconds of an ISO timestamp (as produced by parseOpenSshCertificate). */
+export function isoToEpochSeconds(iso: string): number {
+  return Math.floor(new Date(iso).getTime() / 1000);
+}
+
 /** Calculates the OpenSSH-style `SHA256:<base64-no-padding>` fingerprint of a public key wire blob. */
 export function computeOpenSshFingerprint(wireBlob: Buffer): string {
   const hash = crypto.createHash('sha256').update(wireBlob).digest('base64');

@@ -387,7 +387,6 @@ export class IpcBridge {
       appAgent: this.smartcard.getAppAgent(),
       openExternal: (url: string) => shell.openExternal(url),
       getSettings: () => this.settingsStore.getSettings(),
-      saveSettings: (settings) => this.settingsStore.saveSettings(settings),
       getPivPublicKey: () => this.smartcard.getPivPublicKey(),
     });
     this.smartcard.setSshCaService(this.sshCaService);

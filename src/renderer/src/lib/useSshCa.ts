@@ -41,16 +41,12 @@ export function useSshCa() {
     return () => unsubscribe();
   }, [refreshStatus]);
 
-  const login = useCallback(async (config?: SshCaConfig): Promise<SshCaStatus> => {
-    if (!window.sshs3?.sshCaLogin) {
-      throw new Error('SSH CA is not supported in this environment');
-    }
+  /** Runs one IPC action with the shared loading/error handling; rethrows the cleaned error. */
+  const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
     setLoading(true);
     setError(null);
     try {
-      const res = await window.sshs3.sshCaLogin(config);
-      setStatus(res);
-      return res;
+      return await action();
     } catch (err) {
       const msg = cleanIpcError(err);
       setError(msg);
@@ -59,41 +55,39 @@ export function useSshCa() {
       setLoading(false);
     }
   }, []);
+
+  const login = useCallback(
+    (config?: SshCaConfig): Promise<SshCaStatus> => {
+      const ipcLogin = window.sshs3?.sshCaLogin;
+      if (!ipcLogin) return Promise.reject(new Error('SSH CA is not supported in this environment'));
+      return run(async () => {
+        const res = await window.sshs3.sshCaLogin(config);
+        setStatus(res);
+        return res;
+      });
+    },
+    [run]
+  );
 
   const logout = useCallback(async (): Promise<void> => {
     if (!window.sshs3?.sshCaLogout) return;
-    setLoading(true);
-    setError(null);
-    try {
+    await run(async () => {
       await window.sshs3.sshCaLogout();
       setStatus({ active: false });
-    } catch (err) {
-      const msg = cleanIpcError(err);
-      setError(msg);
-      throw new Error(msg, { cause: err });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    });
+  }, [run]);
 
-  const renew = useCallback(async (): Promise<SshCaStatus> => {
-    if (!window.sshs3?.sshCaRenew) {
-      throw new Error('SSH CA is not supported in this environment');
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await window.sshs3.sshCaRenew();
-      setStatus(res);
-      return res;
-    } catch (err) {
-      const msg = cleanIpcError(err);
-      setError(msg);
-      throw new Error(msg, { cause: err });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const renew = useCallback(
+    (): Promise<SshCaStatus> => {
+      if (!window.sshs3?.sshCaRenew) return Promise.reject(new Error('SSH CA is not supported in this environment'));
+      return run(async () => {
+        const res = await window.sshs3.sshCaRenew();
+        setStatus(res);
+        return res;
+      });
+    },
+    [run]
+  );
 
   return {
     status,
