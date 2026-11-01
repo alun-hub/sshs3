@@ -43,7 +43,14 @@ import type {
   K8sWebLoginResult,
 } from '../shared/types/kubernetes';
 import type { DirectoryDiffResult, DirectorySyncApplyResult, DirectorySyncProfile } from '../shared/types/dirsync';
-import type { SshCaConfig, SshCaStatus } from '../shared/types/sshCa';
+import type {
+  SshCaConfig,
+  SshCaDetectRequest,
+  SshCaDetectResult,
+  SshCaStatus,
+  SshCaVaultDetectRequest,
+  SshCaVaultDetectResult,
+} from '../shared/types/sshCa';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
@@ -1191,6 +1198,12 @@ export const api: MultiSSHApi = {
 
   sshCaRenew: (): Promise<SshCaStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_RENEW),
+
+  sshCaDetect: (request: SshCaDetectRequest): Promise<SshCaDetectResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_DETECT, request),
+
+  sshCaDetectVault: (request: SshCaVaultDetectRequest): Promise<SshCaVaultDetectResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSH_CA_DETECT_VAULT, request),
 
   onSshCaStatusChanged: (callback: (status: SshCaStatus) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: SshCaStatus) => callback(status);

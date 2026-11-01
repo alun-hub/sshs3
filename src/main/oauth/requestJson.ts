@@ -1,5 +1,6 @@
 import http from 'node:http';
 import https from 'node:https';
+import { SystemTrustStore } from '../crypto/SystemTrustStore';
 
 export const MAX_RESPONSE_BYTES = 1024 * 1024;
 
@@ -15,6 +16,8 @@ export const CERT_ERROR_CODES = new Set([
 export interface JsonResponse {
   statusCode: number;
   json: unknown;
+  /** The raw body, for endpoints that answer in plain text. */
+  text?: string;
 }
 
 export interface RequestJsonOptions {
@@ -34,7 +37,16 @@ export function describeNetworkError(host: string, err: NodeJS.ErrnoException): 
     err.code && CERT_ERROR_CODES.has(err.code)
       ? ' Enable "Skip TLS certificate verification" if the cluster uses a private CA.'
       : '';
-  return new Error(`Could not reach ${host}: ${err.message}.${hint}`);
+  // `code` lets callers tell a certificate problem from other network failures.
+  return Object.assign(new Error(`Could not reach ${host}: ${err.message}.${hint}`), { code: err.code });
+}
+
+/**
+ * The roots to verify a server with when the caller names none: Node's bundled list plus the OS trust store. Without
+ * this, Electron trusts only its own bundled roots, so a company root installed in the OS would be rejected.
+ */
+function defaultRoots(): Array<string | Buffer> | undefined {
+  return SystemTrustStore.getCAs().length > 0 ? SystemTrustStore.getMergedRootCertificates() : undefined;
 }
 
 export function requestJson(urlString: string, init: RequestJsonOptions): Promise<JsonResponse> {
@@ -66,7 +78,7 @@ export function requestJson(urlString: string, init: RequestJsonOptions): Promis
         method: init.method,
         headers,
         rejectUnauthorized: !init.insecureSkipTlsVerify,
-        ca: init.ca,
+        ca: init.ca ?? (isHttps ? defaultRoots() : undefined),
         timeout: init.timeoutMs,
         signal: init.signal,
       },
@@ -82,13 +94,14 @@ export function requestJson(urlString: string, init: RequestJsonOptions): Promis
           chunks.push(chunk);
         });
         res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
           let json: unknown;
           try {
-            json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            json = JSON.parse(text);
           } catch {
             json = undefined;
           }
-          resolve({ statusCode: res.statusCode ?? 0, json });
+          resolve({ statusCode: res.statusCode ?? 0, json, text });
         });
         res.on('error', reject);
       }

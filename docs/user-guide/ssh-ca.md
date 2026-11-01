@@ -145,8 +145,32 @@ Open *Settings → Security & Smartcard* and click **Add CA**. You can define se
 | **Vault SSH Secrets Mount** (Vault only) | SSH engine mount. Default `ssh`. |
 | **Vault SSH Role** (Vault only) | SSH signing role. Defaults to the auth role if empty, then `client`. |
 | **Vault Namespace** (Vault only) | Enterprise namespace, optional. |
-| **Default Principals** | Comma-separated principals to request, optional. |
-| **Custom Root CA Certificate** | PEM of a private root CA that signs the CA and identity provider, optional. Blank means the system trust store. |
+| **Default Principals** | Comma-separated principals to request, optional. This is only a request; the CA decides what the certificate contains (section 4.1). |
+| **Custom Root CA Certificate** | PEM of a private root CA that signs the CA and identity provider, optional. Leave empty if your CA is in the OS trust store. |
+
+### Detect (Step-CA)
+
+For a Smallstep CA, enter the **CA URL** and click **Detect** next to it (or press Enter in the field). sshs3 asks the CA for its OIDC provisioner and fills in **OIDC Issuer URL** and **OIDC Client ID** (and the name, if you have not changed it). If the CA has several OIDC provisioners, you choose one.
+
+| Situation | What to do |
+| :--- | :--- |
+| The CA's certificate is already trusted by this computer | Nothing more: Detect fills in the fields. |
+| The CA uses a private root that this computer does not trust | Detect says so, and a **Root CA fingerprint** field appears. Enter the root's SHA-256 fingerprint, as printed by `step certificate fingerprint root_ca.crt`, and click **Detect** again. sshs3 downloads the root certificate and accepts it only if the fingerprint matches (the same trust step as `step ca bootstrap`). It is then saved in **Custom Root CA Certificate**. |
+
+> [!NOTE]
+> **The root is never trusted on first sight.** Without a fingerprint sshs3 does not download anything over an unverified connection; the CA only serves a root certificate for its exact fingerprint. Get the fingerprint from your CA administrator through a channel you trust. The certificate is stored in sshs3 only; it is not added to the OS trust store.
+
+### Detect (OpenBao / HashiCorp Vault)
+
+With **OpenBao / HashiCorp Vault** selected, **Detect** checks the server without a token: it must be reachable, initialized and unsealed. It then looks for an SSH secrets engine at the mounts the server lists, plus `ssh` and `ssh-client-signer`, and fills in **Vault SSH Secrets Mount**. It shows the CA's public key fingerprint (`SHA256:…`) so you can compare it with the key in `TrustedUserCAKeys` on your servers. If a **Vault Namespace** or a **Custom Root CA Certificate** is already entered, Detect uses them.
+
+| Detected | Not detected |
+| :--- | :--- |
+| The server is Vault or OpenBao and usable | **Vault SSH Role** and **Vault Auth Role** (listing roles needs a token) |
+| The SSH secrets engine mount and its CA key | **OIDC Issuer URL** and **OIDC Client ID** (read from the JWT auth configuration, which needs a token) |
+| The JWT/OIDC auth mount, only if the administrator lists it for unauthenticated users (`listing_visibility=unauth`) | The server's TLS root: use the OS trust store or paste it |
+
+If several SSH engines or auth mounts are found, you choose one.
 
 **Authenticate with CA** on an entry runs the full sign-in for that CA and reports `Successfully authenticated as <name>! Certificate active.` or the error. It is a real login, not a dry run.
 
@@ -228,6 +252,10 @@ sshs3 checks every certificate before it uses it, and keeps tokens out of storag
 | :--- | :--- | :--- |
 | `No SSH CA configuration provided or configured in settings` | No CA is saved. | Add one under *Settings → Security & Smartcard → SSH CA* and save the settings. |
 | `Failed to fetch OIDC discovery configuration … (HTTP …)` | Wrong **OIDC Issuer URL**, or the provider is unreachable. | Open `<issuer>/.well-known/openid-configuration` in a browser; use the exact issuer including the realm path. |
+| `The CA's certificate is not trusted by this computer` (Detect) | The CA uses a private root that is not in the OS trust store. | Enter the root CA fingerprint and click **Detect** again, or add the root to the OS trust store. |
+| `The certificate returned by the CA does not match the fingerprint` | The fingerprint is wrong, or the answer did not come from your CA. | Check the fingerprint with your CA administrator; sshs3 did not trust the certificate. |
+| `The server's certificate is not trusted by this computer` (Detect, Vault) | The server uses a private root that is not in the OS trust store. | Paste the root into **Custom Root CA Certificate**, or add it to the OS trust store. |
+| `No SSH secrets engine found at ssh or ssh-client-signer` (Detect, Vault) | The engine is mounted elsewhere, or the server hides it from unauthenticated requests. | Enter **Vault SSH Secrets Mount** yourself (`vault secrets list`). |
 | `Only https URLs are allowed` | The issuer or CA is `http://` and not a loopback address. | Use https, or run a local test CA on `127.0.0.1`. |
 | `Timed out waiting for the browser sign-in …` | The browser sign-in was not finished within two minutes, or the redirect was blocked. | Try again; check that the provider allows `http://127.0.0.1:<port>/callback` for the client. |
 | `OIDC token exchange failed: …` | The client is confidential, or the redirect URI is not allowed. | Use a public client with PKCE; allow loopback redirects with any port. |

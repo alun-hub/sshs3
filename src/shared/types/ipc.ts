@@ -1,5 +1,12 @@
 import type { UpdateState } from './update';
-import type { SshCaConfig, SshCaStatus } from './sshCa';
+import type {
+  SshCaConfig,
+  SshCaDetectRequest,
+  SshCaDetectResult,
+  SshCaStatus,
+  SshCaVaultDetectRequest,
+  SshCaVaultDetectResult,
+} from './sshCa';
 import type { LogLevel } from './log';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from './perf';
 import type {
@@ -324,6 +331,8 @@ export const IPC_CHANNELS = {
   SSH_CA_LOGIN: 'ssh-ca:login',
   SSH_CA_LOGOUT: 'ssh-ca:logout',
   SSH_CA_RENEW: 'ssh-ca:renew',
+  SSH_CA_DETECT: 'ssh-ca:detect',
+  SSH_CA_DETECT_VAULT: 'ssh-ca:detect-vault',
   SSH_CA_STATUS_CHANGED: 'ssh-ca:status-changed',
 
   // Dotfiles pools (opt-in, see AppSettings.dotfilesPoolEnabled)
@@ -1054,6 +1063,8 @@ export interface MultiSSHApi {
   sshCaLogin(config?: SshCaConfig): Promise<SshCaStatus>;
   sshCaLogout(): Promise<void>;
   sshCaRenew(): Promise<SshCaStatus>;
+  sshCaDetect(request: SshCaDetectRequest): Promise<SshCaDetectResult>;
+  sshCaDetectVault(request: SshCaVaultDetectRequest): Promise<SshCaVaultDetectResult>;
   onSshCaStatusChanged(callback: (status: SshCaStatus) => void): () => void;
 }
 

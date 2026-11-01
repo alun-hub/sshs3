@@ -3,6 +3,8 @@ import { Plus, Trash2, ShieldCheck, KeyRound, Check, Edit2, Shield, Loader2, Ale
 import type { SshCaConfig, SshCaBackendType, SshCaKeySource } from '@shared/types/sshCa';
 import { useSshCa } from '../../lib/useSshCa';
 import type { SettingsForm } from './useSettingsForm';
+import { SshCaDetectSection } from './SshCaDetectSection';
+import { SshCaVaultDetectSection } from './SshCaVaultDetectSection';
 
 export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) => {
   const {
@@ -15,6 +17,13 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
   const { status, loading: caLoading, login } = useSshCa();
 
   const [editingConfig, setEditingConfig] = useState<SshCaConfig | null>(null);
+  // Raw text of the principals field: parsing on every keystroke would swallow a trailing comma.
+  const [principalsText, setPrincipalsText] = useState('');
+
+  const beginEdit = (cfg: SshCaConfig) => {
+    setPrincipalsText(cfg.defaultPrincipals?.join(', ') ?? '');
+    setEditingConfig(cfg);
+  };
   const [testResult, setTestResult] = useState<{ configId: string; success: boolean; message: string } | null>(null);
 
   const startNewConfig = () => {
@@ -28,7 +37,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
       keySource: 'ephemeral',
       defaultPrincipals: [],
     };
-    setEditingConfig(newCfg);
+    beginEdit(newCfg);
   };
 
   const saveEditingConfig = () => {
@@ -39,6 +48,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
       caUrl: editingConfig.caUrl.trim(),
       oidcIssuerUrl: editingConfig.oidcIssuerUrl.trim(),
       oidcClientId: editingConfig.oidcClientId.trim(),
+      defaultPrincipals: principalsText.split(',').map((s) => s.trim()).filter(Boolean),
       rootCaCert: editingConfig.rootCaCert?.trim() || undefined,
       vaultAuthPath: editingConfig.backend === 'vault' ? editingConfig.vaultAuthPath?.trim() || undefined : undefined,
       vaultRole: editingConfig.backend === 'vault' ? editingConfig.vaultRole?.trim() || undefined : undefined,
@@ -143,15 +153,31 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
               </select>
             </label>
 
-            <label className="flex flex-col gap-1 text-txt-secondary col-span-2">
-              CA URL
-              <input
-                value={editingConfig.caUrl}
-                onChange={(e) => setEditingConfig({ ...editingConfig, caUrl: e.target.value })}
-                className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                placeholder="https://ca.example.com:30900"
+            {editingConfig.backend === 'step-ca' ? (
+              <SshCaDetectSection
+                caUrl={editingConfig.caUrl}
+                onCaUrlChange={(caUrl) => setEditingConfig((prev) => prev && { ...prev, caUrl })}
+                onApply={(provisioner, root) =>
+                  setEditingConfig((prev) =>
+                    prev && {
+                      ...prev,
+                      oidcIssuerUrl: provisioner.issuerUrl,
+                      oidcClientId: provisioner.clientId,
+                      name: prev.name === 'New SSH CA' ? provisioner.name : prev.name,
+                      rootCaCert: root ? root.pem : prev.rootCaCert,
+                    }
+                  )
+                }
               />
-            </label>
+            ) : (
+              <SshCaVaultDetectSection
+                caUrl={editingConfig.caUrl}
+                onCaUrlChange={(caUrl) => setEditingConfig((prev) => prev && { ...prev, caUrl })}
+                namespace={editingConfig.vaultNamespace}
+                rootCaCert={editingConfig.rootCaCert}
+                onApply={(patch) => setEditingConfig((prev) => prev && { ...prev, ...patch })}
+              />
+            )}
 
             <label className="flex flex-col gap-1 text-txt-secondary col-span-2">
               OIDC Issuer URL
@@ -242,13 +268,8 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
             <label className="flex flex-col gap-1 text-txt-secondary col-span-2">
               Default Principals (comma-separated, optional)
               <input
-                value={editingConfig.defaultPrincipals?.join(', ') ?? ''}
-                onChange={(e) =>
-                  setEditingConfig({
-                    ...editingConfig,
-                    defaultPrincipals: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                  })
-                }
+                value={principalsText}
+                onChange={(e) => setPrincipalsText(e.target.value)}
                 className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                 placeholder="alun, root"
               />
@@ -263,6 +284,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
                 className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-2xs text-txt-primary outline-none focus:border-sky-500 font-mono"
                 placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
               />
+              <span className="text-2xs text-txt-muted">Leave empty if your CA is in the OS trust store.</span>
             </label>
           </div>
 
@@ -293,6 +315,8 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
       ) : (
         <div className="space-y-2">
           {sshCaConfigs.map((cfg) => {
+            // The editor above stands in for the card of the CA being edited.
+            if (editingConfig?.id === cfg.id) return null;
             const isDefault = (defaultSshCaConfigId ?? sshCaConfigs[0]?.id) === cfg.id;
             const isSessionActive = status.active && status.configId === cfg.id;
 
@@ -335,7 +359,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
                     <button
                       type="button"
                       aria-label="Edit"
-                      onClick={() => setEditingConfig(cfg)}
+                      onClick={() => beginEdit(cfg)}
                       className="rounded p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover"
                       title="Edit"
                     >
