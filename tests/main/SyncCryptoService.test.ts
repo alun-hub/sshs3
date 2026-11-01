@@ -157,4 +157,38 @@ describe('SyncCryptoService', () => {
     expect(keyA.equals(keyB)).toBe(true);
     expect(keyA.equals(keyC)).toBe(false);
   });
+
+  describe('the header check on downloaded blobs', () => {
+    // 1 version byte + 16 salt + 12 IV + 16 auth tag: the shortest blob that has a complete header.
+    const HEADER_BYTES = 45;
+    const TRUNCATED = 'Encrypted file is truncated or corrupt';
+
+    it('names a truncated blob as truncated, one byte short of a complete header', () => {
+      service.unlock('topology', 'pw', generateSalt());
+      const blob = Buffer.alloc(HEADER_BYTES - 1);
+      blob[0] = 1;
+      expect(() => service.decrypt('topology', blob)).toThrow(TRUNCATED);
+    });
+
+    it('does not call a blob with a complete header truncated: it fails the authentication check instead', () => {
+      service.unlock('topology', 'pw', generateSalt());
+      const blob = Buffer.alloc(HEADER_BYTES);
+      blob[0] = 1;
+      expect(() => service.decrypt('topology', blob)).toThrow(SyncDecryptionError);
+      expect(() => service.decrypt('topology', blob)).not.toThrow(TRUNCATED);
+    });
+
+    it('round-trips an empty plaintext, which is a header-only blob', () => {
+      service.unlock('topology', 'pw', generateSalt());
+      const blob = service.encrypt('topology', '');
+      expect(blob.length).toBe(HEADER_BYTES);
+      expect(service.decrypt('topology', blob)).toBe('');
+    });
+
+    it('treats a value that is not a Buffer as a corrupt file', () => {
+      service.unlock('topology', 'pw', generateSalt());
+      const notABuffer = 'x'.repeat(100) as unknown as Buffer;
+      expect(() => service.decrypt('topology', notABuffer)).toThrow(TRUNCATED);
+    });
+  });
 });

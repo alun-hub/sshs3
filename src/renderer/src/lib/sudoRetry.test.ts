@@ -261,4 +261,15 @@ describe('manualSudoInput', () => {
     expect(manualSudoInput('echo a > /etc/x')).toEqual({ kind: 'refused' });
     expect(manualSudoInput('FOO=1 make install')).toEqual({ kind: 'refused' });
   });
+
+  it('refuses a wrapper word that is itself a shell builtin and ends the line, alone or after another wrapper', () => {
+    // `command` is both a wrapper (`command ls`) and a builtin, so with nothing after it there is nothing to elevate.
+    expect(manualSudoInput('command')).toEqual({ kind: 'refused' });
+    expect(manualSudoInput('time command')).toEqual({ kind: 'refused' });
+    expect(manualSudoInput('nohup command')).toEqual({ kind: 'refused' });
+  });
+
+  it('still elevates a wrapper word that is not a builtin and ends the line', () => {
+    expect(manualSudoInput('nohup')).toEqual({ kind: 'command', text: 'sudo nohup' });
+  });
 });
