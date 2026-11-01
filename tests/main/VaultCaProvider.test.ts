@@ -130,7 +130,6 @@ describe('VaultCaProvider', () => {
       identityToken: 'valid-jwt-token',
       username: 'alun',
       principals: ['alun', 'dev'],
-      ttlSeconds: 3600,
     };
 
     const res = await provider.sign(req, config);
@@ -154,7 +153,6 @@ describe('VaultCaProvider', () => {
       public_key: 'ssh-ed25519 AAAAInNzaC1lZDI1NTE5AAAAIAD123 test@sshs3',
       cert_type: 'user',
       valid_principals: 'alun,dev',
-      ttl: '3600s',
     });
 
     const revokeReq = receivedRequests[2];

@@ -78,9 +78,6 @@ export class VaultCaProvider implements ISshCaProvider {
     if (request.principals && request.principals.length > 0) {
       signPayload.valid_principals = request.principals.join(',');
     }
-    if (request.ttlSeconds && request.ttlSeconds > 0) {
-      signPayload.ttl = `${request.ttlSeconds}s`;
-    }
 
     let signRes;
     try {

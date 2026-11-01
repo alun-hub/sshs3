@@ -60,8 +60,6 @@ export interface SshCaSignRequest {
   username: string;
   /** Requested principals (the CA may grant a subset or superset). */
   principals?: string[];
-  /** Requested certificate lifetime in seconds. */
-  ttlSeconds?: number;
 }
 
 export interface SshCaSignResponse {
