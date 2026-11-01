@@ -84,35 +84,72 @@ Your `step` version may also ask for `--client-secret`; sshs3 never sends one. s
 
 ### 4.2 Vault / OpenBao
 
-sshs3 logs in to the JWT auth method with the ID token, signs the public key with the SSH secrets engine, and then revokes its own short-lived token. The commands below use `bao`; with HashiCorp Vault use `vault`.
+sshs3 logs in to the JWT auth method with the ID token, signs the public key with the SSH secrets engine, and then revokes its own short-lived token. The commands below use `bao`; with HashiCorp Vault use `vault`. The names (`jwt`, `sshs3`, `ssh-client-signer`, `client`, `sshs3-sign`) are examples; use your own and enter the same values in sshs3 (table below).
 
 ```shell
-# 1. JWT auth method: trust the identity provider, one role for sshs3 users
+# 1. JWT auth method: trust the identity provider
 bao auth enable jwt
-bao write auth/jwt/config oidc_discovery_url="https://keycloak.example.com/realms/sshca"
-bao write auth/jwt/role/sshs3 role_type=jwt user_claim=preferred_username \
-    bound_audiences=sshs3 token_policies=sshs3-sign
+bao write auth/jwt/config \
+    oidc_discovery_url="https://keycloak.example.com/realms/sshca" \
+    bound_issuer="https://keycloak.example.com/realms/sshca"
 
-# 2. SSH secrets engine as a user CA
+# 2. One role for sshs3 users. bound_audiences must equal the "aud" claim of the ID token,
+#    normally the OIDC Client ID. user_claim becomes the user's identity name in Vault.
+bao write auth/jwt/role/sshs3 role_type=jwt user_claim=preferred_username \
+    bound_audiences=sshs3 token_policies=sshs3-sign token_ttl=2m
+
+# 3. SSH secrets engine as a user CA
 bao secrets enable -path=ssh-client-signer ssh
-bao write ssh-client-signer/config/ca generate_signing_key=true
-bao write ssh-client-signer/roles/client -<<'EOH'
+bao write ssh-client-signer/config/ca generate_signing_key=true key_type=ssh-ed25519
+
+# 4. SSH role: the allowed principal is the signed-in user's own name
+ACCESSOR=$(bao auth list -format=json | jq -r '."jwt/".accessor')
+bao write ssh-client-signer/roles/client -<<EOH
 {
   "key_type": "ca",
   "allow_user_certificates": true,
-  "allowed_users": "*",
+  "allowed_users_template": true,
+  "allowed_users": "{{identity.entity.aliases.${ACCESSOR}.name}}",
+  "default_user": "{{identity.entity.aliases.${ACCESSOR}.name}}",
+  "default_user_template": true,
   "default_extensions": { "permit-pty": "" },
-  "ttl": "30m"
+  "ttl": "30m",
+  "max_ttl": "1h"
 }
 EOH
 
-# 3. Policy that lets the sshs3 role sign with that SSH role
+# 5. Policy that lets the sshs3 role sign with that SSH role
 bao policy write sshs3-sign - <<'EOH'
 path "ssh-client-signer/sign/client" { capabilities = ["create", "update"] }
 EOH
 ```
 
-In sshs3, select **OpenBao / HashiCorp Vault** and enter the mount names and roles (section 5). A requested principal must be allowed by the SSH role's `allowed_users`. The requested **Default Principals** are sent as `valid_principals`, and the SSH role's `ttl` sets how long the certificate is valid.
+In sshs3, select **OpenBao / HashiCorp Vault** and enter these values (section 5):
+
+| Field | Value for the example |
+| :--- | :--- |
+| **CA URL** | The address of the server, for example `https://vault.example.com:8200`. Do not add `/v1`. |
+| **OIDC Issuer URL**, **OIDC Client ID** | The issuer and the public client from section 3 (`sshs3` in the example). |
+| **Vault Auth Mount** | `jwt` |
+| **Vault Auth Role** | `sshs3` |
+| **Vault SSH Secrets Mount** | `ssh-client-signer` |
+| **Vault SSH Role** | `client` |
+
+**Detect** (section 5) finds the SSH mount and the CA key fingerprint for you.
+
+> [!NOTE]
+> **Principals follow the user.** With `allowed_users_template`, the only principal the role allows is the Vault identity name of the signed-in user, which is the `user_claim` of the ID token (`preferred_username`, for example `alun`). A requested principal must be allowed by the SSH role's `allowed_users`. The requested **Default Principals** are sent as `valid_principals`, and the SSH role's `ttl` sets how long the certificate is valid. Without any requested principals, the role's `default_user` is used.
+
+> [!WARNING]
+> **Extra principals such as `root`.** To let users request a fixed name too, append it to the list: `"allowed_users": "{{identity.entity.aliases.${ACCESSOR}.name}},root"`. Then everyone who can sign in through that JWT role may request a certificate for `root`. That is fine in a lab; for production, give administrators their own JWT role (restricted with `bound_claims`, for example on a group claim) that points to a separate SSH role.
+
+> [!TIP]
+> **Extensions decide what the session may do.** `permit-pty` is enough for a terminal. Add `permit-port-forwarding` for SSH tunnels and `permit-agent-forwarding` for agent forwarding to `default_extensions`, or `allowed_extensions` if users may ask for them.
+
+> [!NOTE]
+> **A private CA for the identity provider.** `bao write auth/jwt/config` checks the issuer when it saves, so the Vault server must be able to reach it. If a private CA signs the provider's certificate, add `oidc_discovery_ca_pem=@/path/to/ca.pem` to that command. Detect finds the auth mount only if you list it for unauthenticated requests: `bao auth tune -listing-visibility=unauth jwt`.
+
+To check the CA before you sign in, read the public key: `curl https://vault.example.com:8200/v1/ssh-client-signer/public_key` returns one `ssh-ed25519 AAAA…` line (no token needed). It is the key your servers must trust (section 4.3), and the same fingerprint that Detect shows.
 
 ### 4.3 Your servers
 
