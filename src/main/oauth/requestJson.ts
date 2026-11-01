@@ -45,8 +45,14 @@ export function describeNetworkError(host: string, err: NodeJS.ErrnoException): 
  * The roots to verify a server with when the caller names none: Node's bundled list plus the OS trust store. Without
  * this, Electron trusts only its own bundled roots, so a company root installed in the OS would be rejected.
  */
+let cachedDefaultRoots: { roots: Array<string | Buffer> | undefined } | undefined;
+
 function defaultRoots(): Array<string | Buffer> | undefined {
-  return SystemTrustStore.getCAs().length > 0 ? SystemTrustStore.getMergedRootCertificates() : undefined;
+  // Built once: the list is several hundred PEMs, and the OS store is read once per run anyway.
+  cachedDefaultRoots ??= {
+    roots: SystemTrustStore.getCAs().length > 0 ? SystemTrustStore.getMergedRootCertificates() : undefined,
+  };
+  return cachedDefaultRoots.roots;
 }
 
 export function requestJson(urlString: string, init: RequestJsonOptions): Promise<JsonResponse> {
@@ -78,7 +84,7 @@ export function requestJson(urlString: string, init: RequestJsonOptions): Promis
         method: init.method,
         headers,
         rejectUnauthorized: !init.insecureSkipTlsVerify,
-        ca: init.ca ?? (isHttps ? defaultRoots() : undefined),
+        ca: init.ca ?? (isHttps && !init.insecureSkipTlsVerify ? defaultRoots() : undefined),
         timeout: init.timeoutMs,
         signal: init.signal,
       },

@@ -5,9 +5,10 @@ import type {
   SshCaDetectRequest,
   SshCaDetectResult,
 } from '../../shared/types/sshCa';
-import { CERT_ERROR_CODES, requestJson as defaultRequestJson } from '../oauth/requestJson';
+import { requestJson as defaultRequestJson } from '../oauth/requestJson';
+import { certErrorMessage } from './certErrors';
 import { isLoopbackHttpUrl } from './loopbackUrl';
-import { normalizeCaBaseUrl } from './providers/common';
+import { normalizeCaBaseUrl, rootCaBuffer } from './providers/common';
 
 const WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -102,11 +103,6 @@ function nextCursor(json: unknown): string | undefined {
   return typeof c === 'string' && c ? c : undefined;
 }
 
-function isCertError(err: unknown): boolean {
-  const code = (err as NodeJS.ErrnoException | undefined)?.code;
-  return typeof code === 'string' && CERT_ERROR_CODES.has(code);
-}
-
 export interface DiscoveryDeps {
   requestJson: typeof defaultRequestJson;
   now: () => Date;
@@ -129,6 +125,8 @@ export async function detectStepCa(
     throw new Error('The CA URL is not valid');
   }
   const allowHttp = isLoopbackHttpUrl(base);
+  // A root CA the user already entered: it replaces the OS roots, like for the login itself.
+  const customRoot = rootCaBuffer(request);
 
   let root: SshCaDetectedRoot | undefined;
   const rawFingerprint = request.rootFingerprint?.trim();
@@ -163,12 +161,13 @@ export async function detectStepCa(
     try {
       res = await deps.requestJson(`${base}/provisioners${query}`, {
         method: 'GET',
-        ca: root?.pem,
+        ca: root?.pem ?? customRoot,
         timeoutMs: REQUEST_TIMEOUT_MS,
         allowHttp,
       });
     } catch (err) {
-      if (isCertError(err)) throw new Error(NOT_TRUSTED_MESSAGE, { cause: err });
+      const message = certErrorMessage(err, NOT_TRUSTED_MESSAGE);
+      if (message) throw new Error(message, { cause: err });
       throw err;
     }
     if (res.statusCode !== 200) throw new Error(`The CA answered HTTP ${res.statusCode} to the provisioner list`);

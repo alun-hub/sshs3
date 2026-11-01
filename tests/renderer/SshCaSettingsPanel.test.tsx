@@ -317,4 +317,122 @@ describe('SshCaSettingsPanel', () => {
       expect(screen.queryByTestId('detect-vault-btn')).not.toBeInTheDocument();
     });
   });
+
+  describe('Detect: stale answers and form behaviour', () => {
+    const p1 = { name: 'One', clientId: 'client-one', issuerUrl: 'https://one.example.com' };
+    const p2 = { name: 'Two', clientId: 'client-two', issuerUrl: 'https://two.example.com' };
+    const root = { pem: 'ROOT-OF-A', subject: 'CN=A', validTo: '2036-10-28T13:36:00.000Z', fingerprint: 'cd'.repeat(32) };
+
+    const openStepForm = (url = 'https://a.example.com') => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.change(screen.getByLabelText('CA URL'), { target: { value: url } });
+    };
+
+    it('labels the CA URL field without the Detect button in its name', () => {
+      openStepForm();
+      expect(screen.getByLabelText('CA URL')).toBe(screen.getByPlaceholderText('https://ca.example.com:30900'));
+      expect(screen.queryByLabelText('CA URL Detect')).not.toBeInTheDocument();
+    });
+
+    it('drops the previous CA\'s answer when the URL changes, so it cannot be applied to another CA', async () => {
+      (window.sshs3 as any).sshCaDetect = vi.fn().mockResolvedValue({ provisioners: [p1, p2], root });
+      openStepForm();
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+      await waitFor(() => expect(screen.getByText('Two')).toBeInTheDocument());
+      expect(screen.getByText(/Root certificate verified/)).toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('CA URL'), { target: { value: 'https://b.example.com' } });
+
+      expect(screen.queryByText('Two')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Root certificate verified/)).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('ROOT-OF-A')).not.toBeInTheDocument();
+    });
+
+    it('ignores an answer that arrives after the URL was changed', async () => {
+      let resolveDetect!: (v: unknown) => void;
+      (window.sshs3 as any).sshCaDetect = vi.fn().mockReturnValue(new Promise((r) => { resolveDetect = r; }));
+      openStepForm();
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+      fireEvent.change(screen.getByLabelText('CA URL'), { target: { value: 'https://b.example.com' } });
+
+      resolveDetect({ provisioners: [p1], root });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(screen.queryByDisplayValue('client-one')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('ROOT-OF-A')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Using provisioner/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('detect-ssh-ca-btn')).not.toBeDisabled();
+    });
+
+    it('drops the previous Vault answer when the URL changes', async () => {
+      (window.sshs3 as any).sshCaDetectVault = vi.fn().mockResolvedValue({
+        sshMounts: [{ mount: 'a', keyType: 'ssh-ed25519', fingerprint: 'SHA256:a' }, { mount: 'b', keyType: 'ssh-ed25519', fingerprint: 'SHA256:b' }],
+        authMounts: [],
+      });
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.change(screen.getByDisplayValue('Smallstep (step-ca)'), { target: { value: 'vault' } });
+      fireEvent.change(screen.getByLabelText('CA URL'), { target: { value: 'https://v1.example.com' } });
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+      await waitFor(() => expect(screen.getByText('SHA256:b')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByLabelText('CA URL'), { target: { value: 'https://v2.example.com' } });
+
+      expect(screen.queryByText('SHA256:b')).not.toBeInTheDocument();
+    });
+
+    it('verifies Step-CA against the custom root that is already in the form', async () => {
+      const detect = vi.fn().mockResolvedValue({ provisioners: [p1] });
+      (window.sshs3 as any).sshCaDetect = detect;
+      openStepForm();
+      fireEvent.change(screen.getByPlaceholderText(/-----BEGIN CERTIFICATE-----/), { target: { value: ' MY-ROOT ' } });
+
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+
+      await waitFor(() => expect(detect).toHaveBeenCalled());
+      expect(detect.mock.calls[0][0]).toMatchObject({ caUrl: 'https://a.example.com', rootCaCert: 'MY-ROOT' });
+    });
+  });
+
+  describe('focus when the editor closes', () => {
+    const existing: SshCaConfig = {
+      id: 'ca-1',
+      name: 'First',
+      backend: 'step-ca',
+      caUrl: 'https://ca.example.com',
+      oidcIssuerUrl: 'https://idp.example.com',
+      oidcClientId: 'step-ca',
+      keySource: 'ephemeral',
+    };
+
+    it('returns to the Edit button of the CA after Cancel', async () => {
+      configs = [existing];
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      const edit = screen.getByLabelText('Edit');
+      edit.focus();
+      fireEvent.click(edit);
+      expect(screen.queryByLabelText('Edit')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Cancel'));
+
+      await waitFor(() => expect(screen.getByLabelText('Edit')).toHaveFocus());
+    });
+
+    it('returns to the Add CA button after cancelling a new CA', async () => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.click(screen.getByText('Cancel'));
+      await waitFor(() => expect(screen.getByTestId('add-ssh-ca-btn')).toHaveFocus());
+    });
+
+    it('moves to the Edit button of the saved CA after Save', async () => {
+      configs = [existing];
+      const { rerender } = render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByLabelText('Edit'));
+      fireEvent.click(screen.getByText('Save Configuration'));
+      rerender(<SshCaSettingsPanel form={createMockForm()} />);
+      await waitFor(() => expect(screen.getByLabelText('Edit')).toHaveFocus());
+    });
+  });
 });

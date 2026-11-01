@@ -79,6 +79,8 @@ export interface SshCaDetectRequest {
   caUrl: string;
   /** SHA-256 fingerprint of the root CA certificate (hex, as `step certificate fingerprint` prints it). */
   rootFingerprint?: string;
+  /** Custom root CA in PEM form, if the user has already entered one. */
+  rootCaCert?: string;
 }
 
 export interface SshCaDetectedProvisioner {

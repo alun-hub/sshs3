@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import type { SshCaVaultDetectResult } from '@shared/types/sshCa';
 import { ELECTRON_IPC_PREFIX } from '../../lib/format';
@@ -27,9 +27,12 @@ export const SshCaVaultDetectSection: React.FC<Props> = ({ caUrl, onCaUrlChange,
   const [result, setResult] = useState<SshCaVaultDetectResult | null>(null);
   const [chosenSsh, setChosenSsh] = useState<string | null>(null);
   const [chosenAuth, setChosenAuth] = useState<string | null>(null);
+  // Bumped when the URL changes: an answer for the previous server must not be shown or applied.
+  const generation = useRef(0);
 
   const detect = async () => {
     if (busy) return;
+    const gen = generation.current;
     setBusy(true);
     setError(null);
     setResult(null);
@@ -41,6 +44,7 @@ export const SshCaVaultDetectSection: React.FC<Props> = ({ caUrl, onCaUrlChange,
         namespace: namespace?.trim() || undefined,
         rootCaCert: rootCaCert?.trim() || undefined,
       });
+      if (gen !== generation.current) return;
       const patch: VaultDetectPatch = {};
       if (res.sshMounts.length === 1) {
         patch.vaultSshMount = res.sshMounts[0].mount;
@@ -53,9 +57,10 @@ export const SshCaVaultDetectSection: React.FC<Props> = ({ caUrl, onCaUrlChange,
       if (patch.vaultSshMount || patch.vaultAuthPath) onApply(patch);
       setResult(res);
     } catch (err) {
+      if (gen !== generation.current) return;
       setError((err instanceof Error ? err.message : String(err)).replace(ELECTRON_IPC_PREFIX, ''));
     } finally {
-      setBusy(false);
+      if (gen === generation.current) setBusy(false);
     }
   };
 
@@ -67,7 +72,12 @@ export const SshCaVaultDetectSection: React.FC<Props> = ({ caUrl, onCaUrlChange,
         value={caUrl}
         onChange={(value) => {
           onCaUrlChange(value);
+          generation.current += 1;
+          setBusy(false);
           setError(null);
+          setResult(null);
+          setChosenSsh(null);
+          setChosenAuth(null);
         }}
         onDetect={() => void detect()}
         busy={busy}

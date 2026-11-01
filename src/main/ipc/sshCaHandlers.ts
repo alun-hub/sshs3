@@ -60,7 +60,10 @@ export function validateSshCaDetectRequest(input: unknown): SshCaDetectRequest {
   if (r.rootFingerprint !== undefined && (typeof r.rootFingerprint !== 'string' || r.rootFingerprint.length > 200)) {
     throw new Error('Invalid SSH CA detect request: rootFingerprint');
   }
-  return { caUrl: r.caUrl, rootFingerprint: r.rootFingerprint };
+  if (r.rootCaCert !== undefined && (typeof r.rootCaCert !== 'string' || r.rootCaCert.length > 100_000)) {
+    throw new Error('Invalid SSH CA detect request: rootCaCert');
+  }
+  return { caUrl: r.caUrl, rootFingerprint: r.rootFingerprint, rootCaCert: r.rootCaCert };
 }
 
 export function validateSshCaVaultDetectRequest(input: unknown): SshCaVaultDetectRequest {
