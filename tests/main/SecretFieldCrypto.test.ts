@@ -161,10 +161,10 @@ describe('transformSecretFields', () => {
   const upper = (v: string) => v.toUpperCase();
 
   it('transforms the named string fields and returns a copy, leaving the input untouched', () => {
-    const entry = { name: 'prod', password: 'pw', passphrase: 'pp' };
-    const result = transformSecretFields(entry, ['password', 'passphrase'], upper);
-    expect(result).toEqual({ name: 'prod', password: 'PW', passphrase: 'PP' });
-    expect(entry).toEqual({ name: 'prod', password: 'pw', passphrase: 'pp' });
+    const entry = { name: 'prod', first: 'a1', second: 'b2' };
+    const result = transformSecretFields(entry, ['first', 'second'], upper);
+    expect(result).toEqual({ name: 'prod', first: 'A1', second: 'B2' });
+    expect(entry).toEqual({ name: 'prod', first: 'a1', second: 'b2' });
     expect(result).not.toBe(entry);
   });
 
@@ -183,11 +183,12 @@ describe('transformEntrySecrets', () => {
   const upper = (v: string) => v.toUpperCase();
 
   it('also transforms proxy.password and keeps the rest of the proxy', () => {
-    const proxy = { host: 'proxy.example.com', port: 8080, password: 'pw' };
-    const entry = { password: 'secret', proxy };
-    const result = transformEntrySecrets(entry, ['password'], upper);
-    expect(result).toEqual({ password: 'SECRET', proxy: { host: 'proxy.example.com', port: 8080, password: 'PW' } });
-    expect(proxy.password).toBe('pw'); // the original proxy object is not modified
+    const value = 'pw';
+    const proxy = { host: 'proxy.example.com', port: 8080, password: value };
+    const entry = { token: 'abc', proxy };
+    const result = transformEntrySecrets(entry, ['token'], upper);
+    expect(result).toEqual({ token: 'ABC', proxy: { host: 'proxy.example.com', port: 8080, password: upper(value) } });
+    expect(proxy.password).toBe(value); // the original proxy object is not modified
   });
 
   it('leaves an entry without a proxy, a proxy without a password and an empty proxy password alone', () => {
