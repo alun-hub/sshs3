@@ -16,6 +16,14 @@ SSH Certificate Authority: sign in with your identity provider and get a short-l
 - When your identity provider issues a refresh token, the certificate renews itself about a minute before it expires, without opening a browser (with a smartcard key source the card must be unlocked, otherwise you are asked for the PIN). Without a refresh token, or if the silent renewal fails, you sign in again.
 - Every certificate is checked before it is used: it must be a user certificate with principals, inside its validity window and issued for the key sshs3 asked the CA to sign. The sign-in uses PKCE and checks the `nonce` of the ID token, and plain `http` is accepted only when the identity provider or CA is on a loopback address.
 - User guide: a new *SSH Certificate Authority (SSH CA)* page covers the identity provider, Step-CA, Vault / OpenBao and `sshd` setup, daily use and troubleshooting. sshs3.com has a new section about it.
+- Two or more local shell panes in a tab share one performance bar in the tab header, instead of each sampling and drawing the same machine's metrics. Remote and Kubernetes panes keep their own bar.
+
+### Security
+- Linux: the helper that restarts the app after an in-app update no longer runs `$(...)` or backticks that appear in the relaunch arguments.
+
+### Fixed
+- Linux: after an in-app update the app is restarted also when the package manager takes longer than a minute to install (a `dnf` install that took 84 s used to outlast the helper). The helper now waits up to 10 minutes, and a failed or cancelled install still stops it.
+- The shared performance bar for local shells is labelled **Local**, and its history is kept when you split or close panes.
 
 ## [0.96.74] - 2026-10-30
 
