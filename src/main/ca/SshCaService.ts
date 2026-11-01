@@ -13,7 +13,6 @@ import type {
 } from '../../shared/types/sshCa';
 import { StepCaProvider } from './providers/StepCaProvider';
 import { VaultCaProvider } from './providers/VaultCaProvider';
-import { rootCaBuffer } from './providers/common';
 import {
   computeOpenSshFingerprint,
   isoToEpochSeconds,
@@ -21,14 +20,8 @@ import {
   validateOpenSshCertificate,
 } from './sshCertificateUtils';
 import { exportSshWirePublicKey, type SshWireKeyInfo } from './sshPublicKeyFormat';
-import { isLoopbackHttpUrl } from './loopbackUrl';
-import {
-  buildRedirectUri,
-  generatePkce,
-  generateState,
-  startCallbackServer,
-} from '../oauth/loopbackAuth';
-import { requestJson } from '../oauth/requestJson';
+import { discoverOidc, oidcClientOf, refreshOidcTokens, signInWithBrowser } from './oidcFlow';
+import { OperationQueue } from './operationQueue';
 import { createLogger } from '../log';
 
 const caLog = createLogger('ssh-ca-service');
@@ -59,12 +52,8 @@ export class SshCaService {
   private statusListeners = new Set<(status: SshCaStatus) => void>();
   private expirationTimer: NodeJS.Timeout | null = null;
   private renewalTimer: NodeJS.Timeout | null = null;
-  /** Login, renew and logout run one at a time; this is the tail of that queue (it never rejects). */
-  private operationQueue: Promise<void> = Promise.resolve();
-  /** Bumped by logout(): operations queued before a logout are dropped instead of logging the user back in. */
-  private logoutEpoch = 0;
-  /** Abort handle of the operation that is running now, so logout() can cancel a pending browser sign-in. */
-  private runningAbort: AbortController | null = null;
+  /** Login, renew and logout run one at a time; logout cancels whatever is queued or running. */
+  private readonly operations = new OperationQueue('SSH CA operation was cancelled');
 
   constructor(deps: SshCaServiceDependencies) {
     this.deps = deps;
@@ -135,36 +124,8 @@ export class SshCaService {
     }
   }
 
-  /**
-   * Runs `task` after every earlier login/renew/logout has finished, so two of them never race on the
-   * agent, the certificate file or `activeSession`. Tasks queued before a logout() are cancelled.
-   */
-  private runExclusive<T>(task: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {
-    const epoch = this.logoutEpoch;
-    const run = this.operationQueue.then(async () => {
-      if (epoch !== this.logoutEpoch || external?.aborted) {
-        throw new Error('SSH CA operation was cancelled');
-      }
-      const controller = new AbortController();
-      const onExternalAbort = () => controller.abort();
-      external?.addEventListener('abort', onExternalAbort, { once: true });
-      this.runningAbort = controller;
-      try {
-        return await task(controller.signal);
-      } finally {
-        external?.removeEventListener('abort', onExternalAbort);
-        if (this.runningAbort === controller) this.runningAbort = null;
-      }
-    });
-    this.operationQueue = run.then(
-      () => undefined,
-      () => undefined
-    );
-    return run;
-  }
-
   public login(config?: SshCaConfig, signal?: AbortSignal): Promise<SshCaStatus> {
-    return this.runExclusive((opSignal) => this.performLogin(config, opSignal), signal);
+    return this.operations.run((opSignal) => this.performLogin(config, opSignal), signal);
   }
 
   private async performLogin(config: SshCaConfig | undefined, signal: AbortSignal): Promise<SshCaStatus> {
@@ -187,116 +148,16 @@ export class SshCaService {
       preloadedPivKey = pivKey;
     }
 
-    const issuer = activeConfig.oidcIssuerUrl.trim().replace(/\/+$/, '');
-    const isLoopback = isLoopbackHttpUrl(issuer);
-    const discoveryUrl = `${issuer}/.well-known/openid-configuration`;
-    const rootCa = rootCaBuffer(activeConfig);
-
-    const discRes = await requestJson(discoveryUrl, {
-      method: 'GET',
-      ca: rootCa,
-      timeoutMs: 15_000,
-      allowHttp: isLoopback,
-    });
-
-    if (discRes.statusCode !== 200) {
-      throw new Error(`Failed to fetch OIDC discovery configuration from ${discoveryUrl} (HTTP ${discRes.statusCode})`);
-    }
-
-    const discovery = discRes.json as {
-      authorization_endpoint?: string;
-      token_endpoint?: string;
-    };
-
-    if (!discovery.authorization_endpoint || !discovery.token_endpoint) {
-      throw new Error('OIDC discovery response missing authorization_endpoint or token_endpoint');
-    }
-
-    const pkce = generatePkce();
-    const state = generateState();
-    const nonce = crypto.randomBytes(16).toString('base64url');
-
-    // Validate the endpoint before binding a port, so a bad discovery document never leaves a listener behind.
-    const authUrl = new URL(discovery.authorization_endpoint);
-    if (authUrl.protocol !== 'https:' && !(isLoopback && authUrl.protocol === 'http:')) {
-      throw new Error(`Insecure or invalid authorization_endpoint protocol: "${authUrl.protocol}"`);
-    }
-
-    const callbackServer = await startCallbackServer({
-      state,
-      signal: signal ?? new AbortController().signal,
-      timeoutMs: 120_000,
-      providerName: 'SSH CA',
-      timeoutMessage: 'Timed out waiting for the browser sign-in to the SSH CA identity provider. Please try again.',
-    });
-
-    let redirectUri: string;
-    let code: string;
-    try {
-      redirectUri = buildRedirectUri(callbackServer.host, callbackServer.port);
-      authUrl.searchParams.set('client_id', activeConfig.oidcClientId);
-      authUrl.searchParams.set('redirect_uri', redirectUri);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('scope', 'openid profile email');
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('code_challenge', pkce.challenge);
-      authUrl.searchParams.set('code_challenge_method', 'S256');
-      authUrl.searchParams.set('nonce', nonce);
-
-      const openBrowser = this.deps.openExternal ?? (async (targetUrl: string) => {
-        const { shell } = await import('electron');
-        await shell.openExternal(targetUrl);
-      });
-
-      await openBrowser(authUrl.toString());
-      code = await callbackServer.waitForCode();
-    } finally {
-      callbackServer.close();
-    }
-
-    const tokenParams = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: activeConfig.oidcClientId,
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: pkce.verifier,
-    });
-
-    const tokenRes = await requestJson(discovery.token_endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: tokenParams.toString(),
-      ca: rootCa,
-      timeoutMs: 15_000,
-      allowHttp: isLoopback,
-    });
-
-    if (tokenRes.statusCode !== 200) {
-      const errBody = tokenRes.json as { error_description?: string; error?: string } | undefined;
-      const desc = errBody?.error_description || errBody?.error || `HTTP ${tokenRes.statusCode}`;
-      throw new Error(`OIDC token exchange failed: ${desc}`);
-    }
-
-    const tokenData = tokenRes.json as {
-      id_token?: string;
-      access_token?: string;
-      refresh_token?: string;
-    };
-
-    if (!tokenData.id_token) {
-      throw new Error('OIDC token endpoint did not return an id_token');
-    }
-
-    const username = this.extractUsernameFromIdToken(tokenData.id_token);
+    const client = oidcClientOf(activeConfig);
+    const endpoints = await discoverOidc(client, signal);
+    const tokens = await signInWithBrowser(client, endpoints, (url) => this.openInBrowser(url), signal);
 
     await this.signAndLoadCertificate({
       config: activeConfig,
-      idToken: tokenData.id_token,
-      refreshToken: tokenData.refresh_token,
-      tokenEndpoint: discovery.token_endpoint,
-      username,
+      idToken: tokens.idToken,
+      refreshToken: tokens.refreshToken,
+      tokenEndpoint: endpoints.tokenEndpoint,
+      username: tokens.username,
       pivKey: preloadedPivKey,
       signal,
     });
@@ -304,13 +165,21 @@ export class SshCaService {
     return this.getStatus();
   }
 
+  private async openInBrowser(url: string): Promise<void> {
+    if (this.deps.openExternal) {
+      await this.deps.openExternal(url);
+      return;
+    }
+    const { shell } = await import('electron');
+    await shell.openExternal(url);
+  }
+
   public logout(): Promise<void> {
     // Cancel what is queued or running (a pending browser sign-in, a renewal) before it can reinstall a
     // certificate behind the logout, and stop the timers right away.
-    this.logoutEpoch++;
+    this.operations.cancelAll();
     this.clearTimers();
-    this.runningAbort?.abort();
-    return this.runExclusive(() => this.performLogout());
+    return this.operations.run(() => this.performLogout());
   }
 
   private async performLogout(): Promise<void> {
@@ -337,12 +206,12 @@ export class SshCaService {
 
   /** User-initiated renewal: tries a silent token refresh, then falls back to an interactive sign-in. */
   public renew(signal?: AbortSignal): Promise<SshCaStatus> {
-    return this.runExclusive((opSignal) => this.performRenew(opSignal, true), signal);
+    return this.operations.run((opSignal) => this.performRenew(opSignal, true), signal);
   }
 
   /** Timer-driven renewal: never opens a browser with nobody there to use it. */
   private renewSilently(): Promise<SshCaStatus> {
-    return this.runExclusive((opSignal) => this.performRenew(opSignal, false));
+    return this.operations.run((opSignal) => this.performRenew(opSignal, false));
   }
 
   private async performRenew(signal: AbortSignal, allowInteractive: boolean): Promise<SshCaStatus> {
@@ -354,47 +223,25 @@ export class SshCaService {
     if (session.refreshToken && session.tokenEndpoint) {
       try {
         caLog.info(`Attempting token refresh for SSH CA session "${session.username}"`);
-        const rootCa = rootCaBuffer(session.config);
-
-        const refreshParams = new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: session.config.oidcClientId,
-          refresh_token: session.refreshToken,
-          scope: 'openid profile email',
-        });
-
-        // Same rule as login(): plain http is allowed only when the configured issuer itself is loopback.
-        const isLoopback = isLoopbackHttpUrl(session.config.oidcIssuerUrl.trim());
-        const tokenRes = await requestJson(session.tokenEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: refreshParams.toString(),
-          ca: rootCa,
-          timeoutMs: 15_000,
-          allowHttp: isLoopback,
-        });
-
-        if (tokenRes.statusCode === 200) {
-          const tokenData = tokenRes.json as {
-            id_token?: string;
-            refresh_token?: string;
-          };
-
-          if (tokenData.id_token) {
-            await this.signAndLoadCertificate({
-              config: session.config,
-              idToken: tokenData.id_token,
-              refreshToken: tokenData.refresh_token ?? session.refreshToken,
-              tokenEndpoint: session.tokenEndpoint,
-              username: session.username,
-              signal,
-            });
-            return this.getStatus();
-          }
+        const refreshed = await refreshOidcTokens(
+          oidcClientOf(session.config),
+          session.tokenEndpoint,
+          session.refreshToken,
+          signal
+        );
+        if (refreshed) {
+          await this.signAndLoadCertificate({
+            config: session.config,
+            idToken: refreshed.idToken,
+            refreshToken: refreshed.refreshToken ?? session.refreshToken,
+            tokenEndpoint: session.tokenEndpoint,
+            username: session.username,
+            signal,
+          });
+          return this.getStatus();
         }
       } catch (err) {
+        if (signal.aborted) throw err; // cancelled by logout: do not start an interactive sign-in
         caLog.warn(
           `Token refresh failed${allowInteractive ? ', falling back to interactive login' : ''}:`,
           (err as Error).message
@@ -608,25 +455,6 @@ export class SshCaService {
     if (this.renewalTimer) {
       clearTimeout(this.renewalTimer);
       this.renewalTimer = null;
-    }
-  }
-
-  private extractUsernameFromIdToken(idToken: string): string {
-    const parts = idToken.split('.');
-    if (parts.length < 2) {
-      return 'user';
-    }
-    try {
-      const claimsJson = Buffer.from(parts[1], 'base64url').toString('utf-8');
-      const claims = JSON.parse(claimsJson) as Record<string, unknown>;
-      return (
-        (claims.preferred_username as string) ||
-        (claims.email as string) ||
-        (claims.sub as string) ||
-        'user'
-      );
-    } catch {
-      return 'user';
     }
   }
 

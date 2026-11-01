@@ -12,6 +12,10 @@ describe('SshCaService', () => {
   let mockOidcServer: http.Server;
   let oidcBaseUrl = '';
   const issued: TestCertificate[] = [];
+  /** Nonce of the latest authorization request; the mock IdP echoes it in the id_token like a real one. */
+  let idpNonce = '';
+  /** Test hook: a different nonce for the id_token, or null to leave the claim out. */
+  let idpNonceOverride: string | null | undefined;
 
   /** Acts as the CA: issues a valid user certificate for exactly the key it was asked to sign. */
   const issueCert = (req: SshCaSignRequest): SshCaSignResponse => {
@@ -22,6 +26,8 @@ describe('SshCaService', () => {
 
   beforeEach(async () => {
     issued.length = 0;
+    idpNonce = '';
+    idpNonceOverride = undefined;
     // Start mock OIDC server
     mockOidcServer = http.createServer((req, res) => {
       const url = new URL(req.url ?? '/', oidcBaseUrl);
@@ -46,6 +52,9 @@ describe('SshCaService', () => {
             sub: 'user-123',
             preferred_username: 'alun',
             email: 'alun@alun.se',
+            ...((idpNonceOverride === undefined ? idpNonce : idpNonceOverride) !== null
+              ? { nonce: idpNonceOverride === undefined ? idpNonce : idpNonceOverride }
+              : {}),
           })
         ).toString('base64url');
         const idToken = `${header}.${payload}.signature`;
@@ -108,6 +117,7 @@ describe('SshCaService', () => {
     const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
       openedBrowserUrl = targetUrl;
       const parsedUrl = new URL(targetUrl);
+      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
       const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
       const state = parsedUrl.searchParams.get('state')!;
 
@@ -167,6 +177,7 @@ describe('SshCaService', () => {
 
     const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
       const parsedUrl = new URL(targetUrl);
+      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
       const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
       const state = parsedUrl.searchParams.get('state')!;
 
@@ -229,6 +240,7 @@ describe('SshCaService', () => {
 
     const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
       const parsedUrl = new URL(targetUrl);
+      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
       const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
       const state = parsedUrl.searchParams.get('state')!;
 
@@ -361,6 +373,7 @@ describe('SshCaService', () => {
     const completeBrowserLogin = () =>
       vi.fn().mockImplementation(async (targetUrl: string) => {
         const parsedUrl = new URL(targetUrl);
+        idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
         const cbUrl = new URL(parsedUrl.searchParams.get('redirect_uri')!);
         cbUrl.searchParams.set('code', 'test-auth-code');
         cbUrl.searchParams.set('state', parsedUrl.searchParams.get('state')!);
@@ -395,6 +408,26 @@ describe('SshCaService', () => {
       });
 
       await expect(service.login(ephemeralConfig())).rejects.toThrow(/public key mismatch/);
+      expect(mockAppAgent.addCertifiedEd25519Key).not.toHaveBeenCalled();
+      expect(service.getStatus().active).toBe(false);
+    });
+
+    it.each([
+      ['carries a different nonce', 'attacker-chosen-nonce'],
+      ['carries no nonce claim at all', null],
+    ])('rejects an id_token that %s than the sign-in request', async (_label, nonceInToken) => {
+      idpNonceOverride = nonceInToken;
+      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const provider: ISshCaProvider = { id: 'step-ca', sign: vi.fn() };
+      const service = new SshCaService({
+        appAgent: mockAppAgent,
+        openExternal: completeBrowserLogin(),
+        providers: new Map([['step-ca', provider]]),
+      });
+
+      await expect(service.login(ephemeralConfig())).rejects.toThrow(/nonce/);
+
+      expect(provider.sign).not.toHaveBeenCalled();
       expect(mockAppAgent.addCertifiedEd25519Key).not.toHaveBeenCalled();
       expect(service.getStatus().active).toBe(false);
     });
