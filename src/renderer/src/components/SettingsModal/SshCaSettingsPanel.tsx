@@ -181,7 +181,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
                 className="rounded-md border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500"
               >
                 <option value="ephemeral">Ephemeral in-memory key (Ed25519)</option>
-                <option value="piv">Smartcard / PIV token (PKCS#11)</option>
+                <option value="piv">Smartcard / PIV (PKCS#11)</option>
               </select>
             </label>
 

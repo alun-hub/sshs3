@@ -97,39 +97,10 @@ PIV smartcards typically expose multiple slots: an authentication slot (`9A`) an
 
 ## 4. SSH Certificate Authority (SSH CA)
 
-sshs3 provides enterprise SSH Certificate Authority integration, allowing users to authenticate through an OpenID Connect (OIDC) identity provider (such as Keycloak, Okta, Google Workspace, or Microsoft Entra ID) and receive short-lived OpenSSH user certificates on demand. Neither manual `ssh-keygen` key generation nor CLI token handling is required.
-
-### Supported CA Backends
-
-| Provider | Supported Engine / API | Authentication Flow |
-| :--- | :--- | :--- |
-| **Smallstep (`step-ca`)** | Step-CA SSH provisioner REST endpoint (`/1.0/ssh/sign`) | Authorization code flow with PKCE via browser; exchanges OIDC ID token as one-time token (OTT). |
-| **HashiCorp Vault / OpenBao** | Vault SSH Secrets Engine (`/v1/{mount}/sign/{role}`) | Authenticates with OIDC ID token at `/v1/auth/{mount}/login`, acquires ephemeral client token, signs key, and revokes client token immediately. |
-
-### Supported Key Sources
-
-| Key Source | Private Key Location & Lifetime | How the Certificate is Used |
-| :--- | :--- | :--- |
-| **Ephemeral In-Memory (Ed25519)** | Generated in process memory with `node:crypto`. Cleared upon application exit or expiration. | Both the ephemeral private key and certificate wire blob are injected directly into `AppAgent` via the agent wire protocol (`SSH2_AGENTC_ADD_ID_CONSTRAINED`). Private keys never touch disk. |
-| **Smartcard / PIV token (PKCS#11)** | Permanent on the card or token (the PIV authentication key, slot 9A, on PIV cards such as a YubiKey). Private keys never leave the hardware. | The token's public key is extracted and sent to the CA for signing. The resulting certificate is saved to a restricted file (`mode 0600`) and paired via `-o CertificateFile` and `agentIdentityFiles`. |
-
-> [!NOTE]
-> **Automatic Renewal**: When the identity provider issues an OIDC refresh token, sshs3 automatically schedules a certificate renewal 60 seconds prior to certificate expiration. If renewal fails or no refresh token is provided, the badge transitions to expired status.
-
-> [!IMPORTANT]
-> **Zero Disk Persistence of Tokens**: Neither OIDC identity tokens, refresh tokens, nor ephemeral private keys are written to disk. Restarting sshs3 clears volatile session state and requires re-authenticating through your identity provider.
+sshs3 can sign you in with short-lived OpenSSH user certificates issued by Smallstep Step-CA or HashiCorp Vault / OpenBao after you authenticate with your identity provider (OIDC). The private key is either generated in memory for each login or stays on your smartcard. Setup, daily use and troubleshooting are on their own page: [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/).
 
 > [!WARNING]
-> **The smartcard key source unlocks the card for your other profiles under the Global policy**: The **Smartcard / PIV token (PKCS#11)** key source loads the card into `AppAgent`, the same agent the **Global (App Lifetime)** policy uses. The card then appears under **Cached smartcard identities** in the toolbar, and the PIN you entered for SSH CA also covers every profile that uses this card (PKCS#11 profiles, and external terminals through the `sshs3-agent` block in `~/.ssh/config`). They connect without asking for the PIN again. The card stays unlocked until you click **Lock All Now** or quit sshs3; logging out of SSH CA does not lock it. Under **Always Prompt** and **Once Per Terminal Connection**, PKCS#11 profiles keep using their own per-connection prompts.
-
-### Managing CA Sessions & Profiles
-
-- **Top Bar Status Badge:** Click the Shield icon in the top toolbar (or focus it and press <kbd>Enter</kbd>) to view active username, authorized principals, and expiration timestamp (`yyyy-mm-dd HH:mm`).
-- **Profile Routing:** In the Connection Manager, set **Authentication** to **SSH Agent** and tick **Use SSH Certificate Authority (SSH CA)**. Terminal and SFTP sessions will automatically use the active certificate.
-
-### Technical Internals: Protocol Constraint & Safe Eviction
-
-When using ephemeral Ed25519 keys, `SshCaService` sends `SSH2_AGENTC_ADD_ID_CONSTRAINED` directly to `AppAgent` over a local Unix domain socket, specifying `SSH_AGENT_CONSTRAIN_LIFETIME` matching the certificate's `validBefore` window. When logging out or renewing, `removeIdentities()` explicitly drops the certificate fingerprint from the agent socket and unlinks any temporary certificate files.
+> **The smartcard key source unlocks the card for your other profiles under the Global policy**: The **Smartcard / PIV (PKCS#11)** key source loads the card into `AppAgent`, the same agent the **Global (App Lifetime)** policy uses. The card then appears under **Cached smartcard identities** in the toolbar, and the PIN you entered for SSH CA also covers every profile that uses this card (PKCS#11 profiles, and external terminals through the `sshs3-agent` block in `~/.ssh/config`). They connect without asking for the PIN again. The card stays unlocked until you click **Lock All Now** or quit sshs3; logging out of SSH CA does not lock it. Under **Always Prompt** and **Once Per Terminal Connection**, PKCS#11 profiles keep using their own per-connection prompts.
 
 ---
 
@@ -141,7 +112,4 @@ When using ephemeral Ed25519 keys, `SshCaService` sends `SSH2_AGENTC_ADD_ID_CONS
 | `PIN locked / CKR_PIN_LOCKED` | Incorrect PIN entered too many times | Card is locked. Unlock using PUK code via your provider tool (e.g. Net iD Client). |
 | Touch banner does not disappear | YubiKey timed out or missed touch | Tap the key immediately when flashing. Verify key is securely inserted into USB port. |
 | Local shell asks for PIN despite Global Caching | Tab was opened before card was unlocked | Open a fresh tab, and ensure *Settings → Terminal → Local Terminal SSH Agent* is set to **Auto**. |
-| `No SSH CA configuration provided` | No CA configuration exists in settings | Open *Settings → Security & Smartcard → SSH CA* and click **Add CA** to configure your Step-CA or Vault instance. |
-| `No smartcard detected` | The smartcard or token is not inserted, or no PKCS#11 module is available | Insert your card (a YubiKey or any other PIV smartcard) before logging in with the **Smartcard / PIV token (PKCS#11)** key source, and ensure a module such as `opensc` or `libykcs11` is installed. |
-| `SSH CA certificate expired` | Certificate validity period elapsed | Click the Shield icon in the top toolbar and select **Renew Certificate** or **Log In with SSH CA**. |
-| PKCS#11 profiles no longer ask for the PIN after an SSH CA login with the smartcard key source | Under the Global policy the PIV login loaded the card into the shared `AppAgent` | Click **Lock All Now** when you want PIN prompts again, or use **Once Per Terminal Connection** or **Always Prompt**. |
+| PKCS#11 profiles no longer ask for the PIN after an SSH CA login with the smartcard key source | Under the Global policy the SSH CA login loaded the card into the shared `AppAgent` | Click **Lock All Now** when you want PIN prompts again, or use **Once Per Terminal Connection** or **Always Prompt**. See [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/). |
