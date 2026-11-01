@@ -34,21 +34,13 @@ import { Button } from '../ui/Button';
 import { useConfirm } from '../ConfirmDialog';
 import { formatSyncError } from '../../lib/syncErrors';
 import { formatDateTime as formatDateTimeCanonical } from '../../lib/dateFormat';
+import { formatRelativeTime } from '../../lib/relativeTime';
 import { createRendererLogger } from '../../lib/log';
 const log = createRendererLogger('SyncSettingsPanel');
 
 function formatRelative(iso?: string): string {
   if (!iso) return 'Never';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const diffMs = Date.now() - date.getTime();
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1) return 'Just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.round(diffHr / 24);
-  return `${diffDay}d ago`;
+  return formatRelativeTime(iso, { dateAfterDays: Infinity }) || iso;
 }
 
 // Thin wrapper for this panel's own "Never" fallback (LOW finding, code
