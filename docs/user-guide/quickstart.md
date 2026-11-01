@@ -22,7 +22,7 @@ When launching sshs3 without an open session, the start screen provides a focuse
 > Quick Connect uses password authentication: public-key and agent authentication are not offered (`PubkeyAuthentication=no`). Options from your `~/.ssh/config` for that host, such as `ProxyJump`, still apply. For key-based logins, create a saved profile.
 
 > [!TIP]
-> **Fuzzy Profile Search:** The same Quick Connect bar searches all your saved SSH and S3 profiles by name, host, user, or group in real time. Matching profiles appear immediately below the input. Press <kbd>Down</kbd> and <kbd>Enter</kbd> to launch.
+> **Fuzzy Profile Search:** The same Quick Connect bar searches your saved SSH profiles with the same fuzzy search as <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>: type a few letters of the name, host, folder or system, several words (`prod web`), or `#tag` to filter by tag. Matching profiles appear below the input with the matched letters highlighted. Press <kbd>Down</kbd> or <kbd>Up</kbd> to pick one and <kbd>Enter</kbd> to connect, or <kbd>Shift</kbd>+<kbd>Enter</kbd> to open SFTP. Without any text the start screen lists your six most recent connections with the time since you last used them. S3 profiles and Team Vault profiles are found with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>.
 
 ---
 

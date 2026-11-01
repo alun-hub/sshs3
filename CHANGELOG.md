@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- The start screen's Quick Connect box now uses the same fuzzy search as **Ctrl+Shift+G**: a few letters of the name, host, folder or system, several words (`prod web`) and `#tag` filters, ranked with the best match first and the matched letters highlighted. **Down** / **Up** pick a match, **Enter** connects to it and **Shift+Enter** opens SFTP. The box is announced as a combobox with a list of options for screen readers, and hovering a match selects it.
+- Recent Connections shows six profiles (was four), each with its tags and the time since it was last used.
+
+### Fixed
+- Profiles or tags added or edited in Connection Manager are searchable on the start screen right away. Before, they were found only after restarting the app, including when you came back to the start screen with the **Home** button while tabs were open.
+- In the Quick Connect box **Left** and **Right** move the text cursor (they jump to the buttons only at the start or end of the text), and the selected match is no longer highlighted while a typed `user@host` is what **Enter** connects to.
+- The relative times in the Sync settings now read "5 min ago" instead of "5m ago", and a time stamp from a computer whose clock is ahead is shown as a date instead of "just now".
+
 ## [0.97.1] - 2026-11-01
 
 SSH CA: **Detect** fills in the CA settings from the URL, and a company root CA in the OS trust store is now trusted.
