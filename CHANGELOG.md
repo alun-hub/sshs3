@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.1] - 2026-11-01
+
+SSH CA: **Detect** fills in the CA settings from the URL, and a company root CA in the OS trust store is now trusted.
+
+### Added
+- **Detect** next to the CA URL in the SSH CA settings. For Smallstep Step-CA it reads the OIDC provisioner and fills in **OIDC Issuer URL** and **OIDC Client ID** (you choose if the CA has several). For OpenBao / HashiCorp Vault it checks that the server is usable, finds the SSH secrets engine (the mounts the server lists, plus `ssh` and `ssh-client-signer`), shows the CA key fingerprint so you can compare it with `TrustedUserCAKeys`, and fills in **Vault SSH Secrets Mount**. Vault roles, the OIDC issuer and the client ID need a token and are not detected.
+- If a Step-CA uses a private root that this computer does not trust, Detect says so and a **Root CA fingerprint** field appears. sshs3 then downloads the root certificate and trusts it only if its SHA-256 fingerprint matches (the same trust step as `step ca bootstrap`), and saves it in **Custom Root CA Certificate**. Nothing is trusted on first sight and nothing is added to the OS trust store.
+- User guide: *Detect (Step-CA)* and *Detect (OpenBao / HashiCorp Vault)* sections and new troubleshooting rows on the SSH CA page.
+
+### Fixed
+- A private root CA installed in the operating system's trust store is now trusted by the SSH CA sign-in, the identity provider requests and OpenShift web login. Before, the app used only the roots bundled with Electron, so such a CA was rejected with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` even though `curl` and the browser accepted it. A **Custom Root CA Certificate** still replaces the defaults.
+- SSH CA settings: typing a comma at the end of **Default Principals** now works (it was removed as you typed), and the CA you are editing is no longer also shown as a card below the form. Focus returns to its Edit button, or to **Add CA**, when the form closes.
+
 ## [0.97.0] - 2026-11-01
 
 SSH Certificate Authority: sign in with your identity provider and get a short-lived SSH certificate instead of long-lived keys.
