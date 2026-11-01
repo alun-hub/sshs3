@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
-import { formatLastUsed, searchLandingProfiles } from './landingSearch';
+import { searchLandingProfiles } from './landingSearch';
 
 const p = (id: string, name: string, host: string, extra: Partial<SSHConnectionConfig> = {}): SSHConnectionConfig => ({
   id,
@@ -37,20 +37,5 @@ describe('searchLandingProfiles', () => {
 
   it('caps the number of results', () => {
     expect(searchLandingProfiles(profiles, 'e', 1)).toHaveLength(1);
-  });
-});
-
-describe('formatLastUsed', () => {
-  const now = Date.parse('2026-11-01T12:00:00Z');
-  it('is relative for the last week and a date after that', () => {
-    expect(formatLastUsed('2026-11-01T11:59:50Z', now)).toBe('just now');
-    expect(formatLastUsed('2026-11-01T11:55:00Z', now)).toBe('5 min ago');
-    expect(formatLastUsed('2026-11-01T09:00:00Z', now)).toBe('3 h ago');
-    expect(formatLastUsed('2026-10-30T12:00:00Z', now)).toBe('2 d ago');
-    expect(formatLastUsed('2026-09-01T12:00:00Z', now)).toMatch(/^2026-09-0[12]$/);
-  });
-  it('is empty for missing or invalid input', () => {
-    expect(formatLastUsed(undefined, now)).toBe('');
-    expect(formatLastUsed('nope', now)).toBe('');
   });
 });

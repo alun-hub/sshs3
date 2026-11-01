@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronRight, Layers, Lock, Terminal, Zap } from 'lucide-react';
-import { splitHighlight, type PaletteRow } from '../lib/globalSearchRows';
+import type { PaletteRow } from '../lib/globalSearchRows';
+import { Highlighted } from './ui/Highlighted';
 import { TagChips } from './ui/TagChips';
 
 interface GlobalSearchResultRowProps {
@@ -13,20 +14,6 @@ interface GlobalSearchResultRowProps {
 }
 
 const BADGE = 'inline-flex w-12 shrink-0 items-center justify-center rounded px-1 py-0.5 text-[10px] font-semibold';
-
-const Highlighted: React.FC<{ text: string; indices: number[] }> = ({ text, indices }) => (
-  <>
-    {splitHighlight(text, indices).map((piece, i) =>
-      piece.hit ? (
-        <mark key={i} className="bg-transparent font-semibold text-sky-400">
-          {piece.text}
-        </mark>
-      ) : (
-        <React.Fragment key={i}>{piece.text}</React.Fragment>
-      )
-    )}
-  </>
-);
 
 /** One option of the palette's listbox. */
 export const GlobalSearchResultRow: React.FC<GlobalSearchResultRowProps> = ({ id, row, active, onHover, onActivate }) => {

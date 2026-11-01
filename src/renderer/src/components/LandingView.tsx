@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Cloud, Folder, Plus, Search, Server, Terminal } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SftpButton } from './SftpButton';
 import { Shortcut } from './ui/Shortcut';
 import { parseAdHocTarget } from './ConnectionModal/connectionGrouping';
 import { TagChips } from './ui/TagChips';
-import { formatLastUsed, searchLandingProfiles, type LandingMatch } from '../lib/landingSearch';
-import { splitHighlight } from '../lib/globalSearchRows';
+import { Highlighted } from './ui/Highlighted';
+import { searchLandingProfiles, type LandingMatch } from '../lib/landingSearch';
+import { formatRelativeTime } from '../lib/relativeTime';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
@@ -30,24 +31,14 @@ export interface LandingViewProps {
 }
 
 const MAX_SEARCH_RESULTS = 8;
+const NO_PROFILES: SSHConnectionConfig[] = [];
 
-const Highlighted: React.FC<{ text: string; indices: number[] }> = ({ text, indices }) => (
-  <>
-    {splitHighlight(text, indices).map((piece, i) =>
-      piece.hit ? (
-        <mark key={i} className="bg-transparent font-semibold text-sky-400">
-          {piece.text}
-        </mark>
-      ) : (
-        <React.Fragment key={i}>{piece.text}</React.Fragment>
-      )
-    )}
-  </>
-);
+const RESULTS_ID = 'landing-search-results';
+const resultId = (profileId: string) => `landing-result-${profileId}`;
 
 export const LandingView: React.FC<LandingViewProps> = ({
   recentSSH,
-  allSSH = [],
+  allSSH = NO_PROFILES,
   onConnectRecentSSH,
   onConnectSFTP,
   onQuickStartTerminal,
@@ -65,13 +56,19 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const searching = quickConnect.trim().length > 0;
   // Same fuzzy search as the global search palette (Ctrl+Shift+G): several words, #tags, ranked.
-  const profileMatches = searching ? searchLandingProfiles(allSSH, quickConnect, MAX_SEARCH_RESULTS) : [];
+  // Memoized so moving the selection with the arrows does not repeat the search.
+  const profileMatches = useMemo(
+    () => (quickConnect.trim() ? searchLandingProfiles(allSSH, quickConnect, MAX_SEARCH_RESULTS) : []),
+    [allSSH, quickConnect]
+  );
   const listedProfiles: LandingMatch[] = searching
     ? profileMatches
     : recentSSH.map((profile) => ({ profile, titleIndices: [] }));
   const selectedIndex = Math.min(activeIndex, Math.max(profileMatches.length - 1, 0));
   // "user@host" stays an ad-hoc connect; any other text connects to the selected match (the best one by default).
   const quickConnectProfile = !quickConnectTarget && profileMatches.length > 0 ? profileMatches[selectedIndex].profile : null;
+  // The selection only means something while Enter would connect to it; a typed user@host wins over the matches.
+  const selectionActive = searching && quickConnectProfile !== null;
 
   const buildQuickConnectConfig = (): SSHConnectionConfig | null => {
     if (!quickConnectTarget) return null;
@@ -103,14 +100,23 @@ export const LandingView: React.FC<LandingViewProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target instanceof HTMLInputElement && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      // Left/Right move the caret inside the text; only at the very start/end do they navigate on to the buttons.
+      const input = e.target;
+      const atEdge =
+        e.key === 'ArrowLeft'
+          ? input.selectionStart === 0 && input.selectionEnd === 0
+          : input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+      if (!atEdge) return;
+    }
     if (e.target instanceof HTMLInputElement && searching) {
       // In the search box the arrows pick among the matches; Shift+Enter opens SFTP instead of a terminal.
-      if (e.key === 'ArrowDown' && selectedIndex < profileMatches.length - 1) {
+      if (e.key === 'ArrowDown' && selectionActive && selectedIndex < profileMatches.length - 1) {
         e.preventDefault();
         setActiveIndex(selectedIndex + 1);
         return;
       }
-      if (e.key === 'ArrowUp' && selectedIndex > 0) {
+      if (e.key === 'ArrowUp' && selectionActive && selectedIndex > 0) {
         e.preventDefault();
         setActiveIndex(selectedIndex - 1);
         return;
@@ -196,6 +202,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
         >
           <input
             type="text"
+            role="combobox"
+            aria-label="Quick connect or search saved profiles"
+            aria-autocomplete="list"
+            aria-expanded={selectionActive}
+            aria-controls={selectionActive ? RESULTS_ID : undefined}
+            aria-activedescendant={selectionActive ? resultId(profileMatches[selectedIndex].profile.id) : undefined}
             value={quickConnect}
             onChange={(e) => {
               setQuickConnect(e.target.value);
@@ -226,15 +238,24 @@ export const LandingView: React.FC<LandingViewProps> = ({
               {searching ? <Search className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
               <span>{searching ? 'Matching Profiles' : 'Recent Connections'}</span>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div
+              className="flex flex-col gap-1.5"
+              id={RESULTS_ID}
+              role={searching && profileMatches.length > 0 ? 'listbox' : undefined}
+              aria-label={searching ? 'Matching profiles' : undefined}
+            >
               {searching && listedProfiles.length === 0 && (
                 <div className="px-1 py-1 text-xs text-txt-muted">No saved profile matches "{quickConnect.trim()}".</div>
               )}
               {listedProfiles.map(({ profile, titleIndices }, index) => (
                 <div
                   key={profile.id}
+                  id={resultId(profile.id)}
+                  role={searching ? 'option' : undefined}
+                  aria-selected={searching ? selectionActive && index === selectedIndex : undefined}
+                  onMouseMove={searching && index !== selectedIndex ? () => setActiveIndex(index) : undefined}
                   className={`recent-card flex items-center justify-between gap-2 rounded-lg border bg-app-card px-3 py-1.5 transition-colors ${
-                    searching && index === selectedIndex
+                    selectionActive && index === selectedIndex
                       ? 'border-sky-500/60 ring-1 ring-sky-500/40'
                       : 'border-border-subtle hover:border-border-strong'
                   }`}
@@ -245,7 +266,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     </div>
                     <div className="truncate text-xs text-txt-muted" title={`${profile.username}@${profile.host}:${profile.port ?? 22}`}>
                       {profile.username}@{profile.host}:{profile.port ?? 22}
-                      {!searching && profile.lastUsedAt && <span> · {formatLastUsed(profile.lastUsedAt)}</span>}
+                      {!searching && profile.lastUsedAt && <span> · {formatRelativeTime(profile.lastUsedAt)}</span>}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
