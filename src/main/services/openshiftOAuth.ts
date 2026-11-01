@@ -1,4 +1,22 @@
-import crypto from 'node:crypto';
+import {
+  DEFAULT_CALLBACK_PATH,
+  generatePkce,
+  generateState,
+  buildRedirectUri,
+  parseCallback,
+  sanitizeServerText,
+  type PkcePair,
+  type CallbackOutcome,
+} from '../oauth/loopbackAuth';
+
+export {
+  generatePkce,
+  generateState,
+  buildRedirectUri,
+  parseCallback,
+  type PkcePair,
+  type CallbackOutcome,
+};
 
 /**
  * Pure helpers for the OpenShift browser sign-in (OAuth 2.0 authorization code
@@ -14,7 +32,7 @@ export const OPENSHIFT_CLI_CLIENT_ID = 'openshift-cli-client';
 export const OAUTH_METADATA_PATH = '/.well-known/oauth-authorization-server';
 
 /** The client is registered with `http://127.0.0.1/callback` and `http://[::1]/callback`; the server ignores the port. */
-export const CALLBACK_PATH = '/callback';
+export const CALLBACK_PATH = DEFAULT_CALLBACK_PATH;
 
 export interface OAuthMetadata {
   issuer: string;
@@ -24,26 +42,10 @@ export interface OAuthMetadata {
   supportsS256: boolean;
 }
 
-export interface PkcePair {
-  verifier: string;
-  challenge: string;
-}
-
 export interface TokenResult {
   accessToken: string;
   /** ISO timestamp, only when the server reported `expires_in`. */
   expiresAt?: string;
-}
-
-const MAX_ERROR_TEXT = 200;
-
-function base64Url(buf: Buffer): string {
-  return buf.toString('base64url');
-}
-
-function sanitizeServerText(value: string): string {
-  // eslint-disable-next-line no-control-regex -- strips control characters from server-provided text before it reaches the UI
-  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, MAX_ERROR_TEXT);
 }
 
 function normalizeServer(server: string): URL {
@@ -100,22 +102,6 @@ export function parseOAuthMetadata(raw: unknown, options: { allowHttp?: boolean 
   };
 }
 
-/** 96 random bytes as base64url (128 characters), challenge = base64url(SHA-256(verifier)). */
-export function generatePkce(): PkcePair {
-  const verifier = base64Url(crypto.randomBytes(96));
-  const challenge = base64Url(crypto.createHash('sha256').update(verifier).digest());
-  return { verifier, challenge };
-}
-
-export function generateState(): string {
-  return base64Url(crypto.randomBytes(32));
-}
-
-export function buildRedirectUri(host: '127.0.0.1' | '::1', port: number): string {
-  const hostPart = host === '::1' ? '[::1]' : host;
-  return `http://${hostPart}:${port}${CALLBACK_PATH}`;
-}
-
 export function buildAuthorizeUrl(
   metadata: OAuthMetadata,
   params: { redirectUri: string; state: string; challenge?: string }
@@ -130,41 +116,6 @@ export function buildAuthorizeUrl(
     url.searchParams.set('code_challenge_method', 'S256');
   }
   return url.toString();
-}
-
-export type CallbackOutcome =
-  | { kind: 'code'; code: string }
-  | { kind: 'error'; message: string }
-  | { kind: 'state-mismatch' };
-
-function statesEqual(actual: string | null, expected: string): boolean {
-  if (actual === null) return false;
-  const a = Buffer.from(actual);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-/**
- * Interprets the browser's redirect to `/callback`. A wrong or missing `state`
- * is reported separately so the caller can keep waiting for the real callback
- * instead of letting any local process abort the sign-in.
- */
-export function parseCallback(search: string, expectedState: string): CallbackOutcome {
-  const params = new URLSearchParams(search);
-  if (!statesEqual(params.get('state'), expectedState)) {
-    return { kind: 'state-mismatch' };
-  }
-  const error = params.get('error');
-  if (error) {
-    const description = params.get('error_description');
-    const text = sanitizeServerText(description ? `${error}: ${description}` : error);
-    return { kind: 'error', message: `OpenShift sign-in was rejected (${text})` };
-  }
-  const code = params.get('code');
-  if (!code) {
-    return { kind: 'error', message: 'OpenShift sign-in did not return an authorization code' };
-  }
-  return { kind: 'code', code };
 }
 
 /**

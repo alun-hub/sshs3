@@ -15,6 +15,7 @@ import {
   type AgentTarget,
   type LoadIntoPrivateAgentOptions,
 } from '../smartcard/SmartcardAgentLoader';
+import { addCertifiedEd25519KeyToAgent, type AddCertifiedEd25519KeyOptions } from '../ca/agentProtocol';
 import { createLogger } from '../log';
 const appAgentLog = createLogger('app-agent');
 
@@ -45,7 +46,7 @@ export function fingerprintOfKeyBlob(keyBlob: Buffer): string {
 /** Directory holding the app agent's socket; created 0700 and verified before use. */
 export function resolveAppAgentDir(): string {
   const runtimeDir = process.env.XDG_RUNTIME_DIR;
-  if (runtimeDir && path.isAbsolute(runtimeDir)) {
+  if (runtimeDir && path.isAbsolute(runtimeDir) && fs.existsSync(runtimeDir)) {
     return path.join(runtimeDir, 'sshs3');
   }
   const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'user';
@@ -58,22 +59,35 @@ export function resolveAppAgentDir(): string {
  * where another user could otherwise pre-create the path (or a symlink to somewhere they control)
  * and have the agent socket land in a place they can reach.
  */
-async function ensureSecureDir(dir: string): Promise<void> {
+export async function ensureSecureDir(dir: string): Promise<void> {
   try {
     await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
   }
   const st = await fs.promises.lstat(dir);
-  if (st.isSymbolicLink() || !st.isDirectory()) {
-    throw new Error(`Refusing to use ${dir} for the app ssh-agent: not a plain directory`);
+  const reason = insecureDirReason(st, process.platform, typeof process.getuid === 'function' ? process.getuid() : undefined);
+  if (reason) {
+    throw new Error(`Refusing to use ${dir} for the app ssh-agent: ${reason}`);
   }
-  if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
-    throw new Error(`Refusing to use ${dir} for the app ssh-agent: owned by another user`);
-  }
-  if ((st.mode & 0o077) !== 0) {
-    throw new Error(`Refusing to use ${dir} for the app ssh-agent: accessible by group/others`);
-  }
+}
+
+/**
+ * Why a directory must not hold the app agent's files, or null when it is fine. A symlink or a non-directory is
+ * refused everywhere. The owner and group/other checks use POSIX permission bits, which Windows does not have
+ * (its stat reports 0o666/0o777 for everything); there the per-user temp directory is protected by its ACL, so
+ * those two checks are skipped.
+ */
+export function insecureDirReason(
+  st: Pick<fs.Stats, 'mode' | 'uid' | 'isSymbolicLink' | 'isDirectory'>,
+  platform: NodeJS.Platform,
+  uid: number | undefined
+): string | null {
+  if (st.isSymbolicLink() || !st.isDirectory()) return 'not a plain directory';
+  if (platform === 'win32') return null;
+  if (uid !== undefined && st.uid !== uid) return 'owned by another user';
+  if ((st.mode & 0o077) !== 0) return 'accessible by group/others';
+  return null;
 }
 
 /**
@@ -264,6 +278,20 @@ export class AppAgent {
     });
     // Only remember a PIN that actually unlocked the keys.
     if (enteredPin) this.fido2Pin = enteredPin;
+  }
+
+  /**
+   * Loads an OpenSSH Ed25519 certificate and its private key directly into the agent
+   * over the agent wire protocol (SSH2_AGENTC_ADD_ID_CONSTRAINED), constrained by certificate lifetime.
+   */
+  public async addCertifiedEd25519Key(options: Omit<AddCertifiedEd25519KeyOptions, 'socketPath'>): Promise<void> {
+    await this.runAdd(async ({ socketPath }) => {
+      await addCertifiedEd25519KeyToAgent(socketPath, options);
+      if (process.platform === 'win32') {
+        const fp = fingerprintOfKeyBlob(options.certificateWire);
+        this.loadedKeys.set(fp, options.certificateWire);
+      }
+    });
   }
 
   /**

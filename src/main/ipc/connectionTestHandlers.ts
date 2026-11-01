@@ -7,11 +7,14 @@ import { S3StorageProvider } from '../storage/S3StorageProvider';
 import { createHostVerifier } from '../ssh/HostKeyVerifier';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
-import type { S3Config } from '../../shared/types/storage';
+import type { S3Config, SFTPConfig } from '../../shared/types/storage';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
-export type ConnectionTestHost = Pick<IpcBridge, 'promptHostKeyTrust' | 'registerHandler'>;
+export type ConnectionTestHost = Pick<IpcBridge, 'promptHostKeyTrust' | 'registerHandler'> & {
+  smartcard: Pick<SmartcardCoordinator, 'prepareSftpSshCaConfig'>;
+};
 
 export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void {
   bridge.registerHandler(
@@ -57,22 +60,27 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
 
       try {
         const port = config.port ?? 22;
+        let sftpConfig: SFTPConfig = {
+          id: `test-${crypto.randomUUID()}`,
+          name: 'Test SSH',
+          host: config.host,
+          port,
+          username: config.username,
+          authType: config.authType,
+          password: config.password,
+          privateKeyPath: config.privateKeyPath,
+          passphrase: config.passphrase,
+          agentPath: config.agentPath,
+          agentIdentityFiles: config.agentIdentityFiles,
+          pkcs11LibPath: config.pkcs11LibPath,
+          proxy: config.proxy,
+          useSshCa: config.useSshCa,
+        };
+        if (bridge.smartcard) {
+          sftpConfig = await bridge.smartcard.prepareSftpSshCaConfig(sftpConfig);
+        }
         const provider = new SFTPStorageProvider(
-          {
-            id: `test-${crypto.randomUUID()}`,
-            name: 'Test SSH',
-            host: config.host,
-            port,
-            username: config.username,
-            authType: config.authType,
-            password: config.password,
-            privateKeyPath: config.privateKeyPath,
-            passphrase: config.passphrase,
-            agentPath: config.agentPath,
-            agentIdentityFiles: config.agentIdentityFiles,
-            pkcs11LibPath: config.pkcs11LibPath,
-            proxy: config.proxy,
-          },
+          sftpConfig,
           undefined,
           createHostVerifier({
             host: config.host,

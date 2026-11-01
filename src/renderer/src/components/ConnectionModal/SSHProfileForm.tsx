@@ -514,26 +514,39 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       )}
 
       {config.authType === 'agent' && (
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Agent Socket (optional, empty = SSH_AUTH_SOCK)
-          <div className="flex gap-1.5">
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-txt-secondary text-sm cursor-pointer select-none">
             <input
-              value={config.agentPath ?? ''}
-              onChange={(e) => update('agentPath', e.target.value)}
-              className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
-              placeholder="/tmp/ssh-agent.sock"
+              type="checkbox"
+              checked={config.useSshCa ?? false}
+              onChange={(e) => update('useSshCa', e.target.checked)}
+              className="rounded border-border-subtle bg-app-input text-sky-500 focus:ring-sky-500/20"
             />
-            <button
-              aria-label="Browse"
-              type="button"
-              onClick={() => void browseFor('agentPath')}
-              className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              title="Browse"
-            >
-              <FolderOpen className="h-4 w-4" />
-            </button>
-          </div>
-        </label>
+            <span>Use active SSH Certificate Authority session</span>
+          </label>
+          {!config.useSshCa && (
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              Agent Socket (optional, empty = SSH_AUTH_SOCK)
+              <div className="flex gap-1.5">
+                <input
+                  value={config.agentPath ?? ''}
+                  onChange={(e) => update('agentPath', e.target.value)}
+                  className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
+                  placeholder="/tmp/ssh-agent.sock"
+                />
+                <button
+                  aria-label="Browse"
+                  type="button"
+                  onClick={() => void browseFor('agentPath')}
+                  className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                  title="Browse"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+              </div>
+            </label>
+          )}
+        </div>
       )}
 
       {config.authType === 'smartcard' && (

@@ -95,7 +95,16 @@ PIV smartcards typically expose multiple slots: an authentication slot (`9A`) an
 
 ---
 
-## 4. Troubleshooting & Diagnostics
+## 4. SSH Certificate Authority (SSH CA)
+
+sshs3 can sign you in with short-lived OpenSSH user certificates issued by Smallstep Step-CA or HashiCorp Vault / OpenBao after you authenticate with your identity provider (OIDC). The private key is either generated in memory for each login or stays on your smartcard. Setup, daily use and troubleshooting are on their own page: [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/).
+
+> [!WARNING]
+> **The smartcard key source unlocks the card for your other profiles under the Global policy**: The **Smartcard / PIV (PKCS#11)** key source loads the card into `AppAgent`, the same agent the **Global (App Lifetime)** policy uses. The card then appears under **Cached smartcard identities** in the toolbar, and the PIN you entered for SSH CA also covers every profile that uses this card (PKCS#11 profiles, and external terminals through the `sshs3-agent` block in `~/.ssh/config`). They connect without asking for the PIN again. The card stays unlocked until you click **Lock All Now** or quit sshs3; logging out of SSH CA does not lock it. Under **Always Prompt** and **Once Per Terminal Connection**, PKCS#11 profiles keep using their own per-connection prompts.
+
+---
+
+## 5. Troubleshooting & Diagnostics
 
 | Symptom / Error | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
@@ -103,3 +112,4 @@ PIV smartcards typically expose multiple slots: an authentication slot (`9A`) an
 | `PIN locked / CKR_PIN_LOCKED` | Incorrect PIN entered too many times | Card is locked. Unlock using PUK code via your provider tool (e.g. Net iD Client). |
 | Touch banner does not disappear | YubiKey timed out or missed touch | Tap the key immediately when flashing. Verify key is securely inserted into USB port. |
 | Local shell asks for PIN despite Global Caching | Tab was opened before card was unlocked | Open a fresh tab, and ensure *Settings → Terminal → Local Terminal SSH Agent* is set to **Auto**. |
+| PKCS#11 profiles no longer ask for the PIN after an SSH CA login with the smartcard key source | Under the Global policy the SSH CA login loaded the card into the shared `AppAgent` | Click **Lock All Now** when you want PIN prompts again, or use **Once Per Terminal Connection** or **Always Prompt**. See [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/). |

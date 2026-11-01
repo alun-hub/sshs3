@@ -81,4 +81,5 @@ Now that you know the basics, explore the dedicated guides:
 - [Terminal, Split Panes & Ergonomics](/docs/workspace/terminal/)
 - [Dual-Pane File Manager & SFTP](/docs/workspace/file-manager/)
 - [Security, Hardware Keys & Smartcards](/docs/security/smartcards/)
+- [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/)
 - [Team Vault: Shared Profiles over S3](/docs/security/team-vault/)

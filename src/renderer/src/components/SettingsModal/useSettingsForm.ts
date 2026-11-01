@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUpdateState } from '../../lib/useUpdateState';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/types/perf';
 import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppTheme, type SessionExitAction, type SmartcardAuthMode } from '@shared/types/settings';
+import type { SshCaConfig } from '@shared/types/sshCa';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import type { PolicyInfo, PolicySettingId } from '@shared/types/policy';
@@ -119,6 +120,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
 
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
   const [detectingSmartcard, setDetectingSmartcard] = useState(false);
+  const [sshCaConfigs, setSshCaConfigs] = useState<SshCaConfig[]>(currentSettings.sshCaConfigs ?? []);
+  const [defaultSshCaConfigId, setDefaultSshCaConfigId] = useState<string | undefined>(currentSettings.defaultSshCaConfigId);
 
   const [x11ServerMode, setX11ServerMode] = useState<'auto' | 'manual' | 'always'>(
     currentSettings.x11ServerMode ?? 'auto'
@@ -222,6 +225,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       setEnableOpenShift(currentSettings.enableOpenShift ?? false);
       setK8sDebugImages(currentSettings.k8sDebugImages ?? [...DEFAULT_K8S_DEBUG_IMAGES]);
       setShowAddDebugImage(false);
+      setSshCaConfigs(currentSettings.sshCaConfigs ?? []);
+      setDefaultSshCaConfigId(currentSettings.defaultSshCaConfigId);
 
       // Auto detect smartcards for security tab
       setDetectingSmartcard(true);
@@ -349,6 +354,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       shortcuts,
       enableOpenShift,
       k8sDebugImages,
+      sshCaConfigs,
+      defaultSshCaConfigId,
       // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
       // instead) — passed through unchanged so this full-object onSave doesn't silently drop
       // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
@@ -488,6 +495,10 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     setSmartcardLibs,
     detectingSmartcard,
     setDetectingSmartcard,
+    sshCaConfigs,
+    setSshCaConfigs,
+    defaultSshCaConfigId,
+    setDefaultSshCaConfigId,
     x11ServerMode,
     setX11ServerMode,
     x11ServerPath,

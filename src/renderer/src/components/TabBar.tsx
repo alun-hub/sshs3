@@ -30,6 +30,7 @@ import { watchDragReleasedOutsideWindow } from '../lib/dragLeaveWindow';
 import { OPEN_TAB_MENU_EVENT } from '../lib/tabMenuEvents';
 import { getShortcutKeys } from '../lib/shortcuts';
 import { formatDate } from '../lib/dateFormat';
+import { SshCaStatusBadge } from './ca/SshCaStatusBadge';
 
 export type TabType = 'terminal' | 'filemanager' | 'editor';
 
@@ -620,6 +621,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             )}
           </div>
         )}
+        <SshCaStatusBadge onOpenSettings={onOpenSettings} />
         <button
           type="button"
           data-testid="quick-profiles-btn"

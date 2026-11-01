@@ -178,6 +178,8 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const catStyle = CATEGORY_STYLES[effectiveCategory] || CATEGORY_STYLES.unknown;
 
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(copiedTimerRef.current), []);
   const [snippet, setSnippet] = useState<{
     lines?: string[];
     isImage?: boolean;
@@ -263,7 +265,8 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const handleCopy = () => {
     onCopyPath(details.fullPath);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   };
 
   // Viewport boundary collision avoidance. The real height is measured (the preview and rows vary); the

@@ -1,4 +1,5 @@
 import type { UpdateState } from './update';
+import type { SshCaConfig, SshCaStatus } from './sshCa';
 import type { LogLevel } from './log';
 import type { PerfK8sResult, PerfK8sTarget, PerfSshResult } from './perf';
 import type {
@@ -317,6 +318,13 @@ export const IPC_CHANNELS = {
 
   // SSH Agent
   SSH_AGENT_STATUS: 'ssh:agent-status',
+
+  // SSH CA (Step-CA, OIDC Certificate Authority)
+  SSH_CA_GET_STATUS: 'ssh-ca:get-status',
+  SSH_CA_LOGIN: 'ssh-ca:login',
+  SSH_CA_LOGOUT: 'ssh-ca:logout',
+  SSH_CA_RENEW: 'ssh-ca:renew',
+  SSH_CA_STATUS_CHANGED: 'ssh-ca:status-changed',
 
   // Dotfiles pools (opt-in, see AppSettings.dotfilesPoolEnabled)
   DOTFILES_POOLS_GET: 'dotfiles:pools-get',
@@ -1040,6 +1048,13 @@ export interface MultiSSHApi {
   dirSyncProfileList(): Promise<DirectorySyncProfile[]>;
   dirSyncProfileSave(profile: DirectorySyncProfile): Promise<DirectorySyncProfile>;
   dirSyncProfileDelete(id: string): Promise<void>;
+
+  // SSH CA
+  sshCaGetStatus(): Promise<SshCaStatus>;
+  sshCaLogin(config?: SshCaConfig): Promise<SshCaStatus>;
+  sshCaLogout(): Promise<void>;
+  sshCaRenew(): Promise<SshCaStatus>;
+  onSshCaStatusChanged(callback: (status: SshCaStatus) => void): () => void;
 }
 
 export interface FileReadResult {

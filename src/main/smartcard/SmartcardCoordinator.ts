@@ -9,7 +9,9 @@ import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } f
 import { isSmartcardTokenPresent, readSmartcardCertificates } from './SmartcardCertificateReader';
 import { isFido2DeviceConnected } from './Fido2DeviceDetector';
 import type { SmartcardCertificateDetails } from './CertificateParser';
-import { getAgentIdentities } from './SmartcardSyncService';
+import { getAgentIdentities, getKeyAlgorithm } from './SmartcardSyncService';
+import { parseSshWirePublicKey, type SshWireKeyInfo } from '../ca/sshPublicKeyFormat';
+import type { SshCaService } from '../ca/SshCaService';
 import { IPC_CHANNELS, type AskpassPromptKind } from '../../shared/types/ipc';
 import type { SSHConnectionConfig, CachedSmartcardAgent } from '../../shared/types/ssh';
 import type { SFTPConfig } from '../../shared/types/storage';
@@ -57,6 +59,15 @@ export interface SmartcardDeps {
   syncAgentBlock: (entries: AgentHostEntry[] | null) => Promise<void>;
 }
 
+/** The fields of an SSH or SFTP connection config that SSH CA routing reads and sets. */
+interface SshCaConnection {
+  authType?: string;
+  useSshCa?: boolean;
+  agentPath?: string;
+  certificateFile?: string;
+  agentIdentityFiles?: string[];
+}
+
 /** Key of the FIDO2 resident keys in `globalCards` and the load/failure maps (PKCS#11 cards use their library path). */
 const FIDO2_KEY = '__fido2__';
 /** After a failed load of a card, wait this long before prompting for its PIN again. */
@@ -98,6 +109,7 @@ export class SmartcardCoordinator {
 
   private startupUnlockPromise?: Promise<void>;
   private disposed = false;
+  private sshCaService?: SshCaService;
 
   /**
    * pkcs11LibPath -> certificate details read once, right after the card is loaded into its
@@ -169,6 +181,11 @@ export class SmartcardCoordinator {
   private ensureAgent(): Promise<string> {
     if (this.disposed) return Promise.reject(new Error('SmartcardCoordinator is disposed'));
     return this.appAgent.ensure();
+  }
+
+  /** Returns the app-wide SSH agent instance. */
+  public getAppAgent(): AppAgent {
+    return this.appAgent;
   }
 
   /** True when a PIV/PKCS#11 card (not just a FIDO2 key) is unlocked in the app agent. */
@@ -343,6 +360,114 @@ export class SmartcardCoordinator {
       'direct'
     );
     return agentPath ? { ...config, agentPath, ...(await this.agentIdentityFilesFor(agentPath, FIDO2_KEY)) } : config;
+  }
+
+  /** Sets the SSH CA service instance to retrieve active certificate files. */
+  public setSshCaService(service: SshCaService): void {
+    this.sshCaService = service;
+  }
+
+  /** Public key files pinning a connection to the first unlocked PIV card of the shared app agent (none if there is none). */
+  private async pivIdentityFilesFor(socketPath: string): Promise<{ agentIdentityFiles?: string[] }> {
+    for (const cardKey of this.globalCards.keys()) {
+      if (cardKey === FIDO2_KEY) continue;
+      const files = await this.agentIdentityFilesFor(socketPath, cardKey);
+      if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) return files;
+    }
+    return {};
+  }
+
+  /**
+   * Prepares an SSH connection config that uses SSH CA certificate authentication (`useSshCa`).
+   * When `authType === 'agent'` and `useSshCa` is true:
+   * 1. Routes the connection through the app-managed SSH agent socket holding the user certificate / PIV key.
+   * 2. Attaches the signed certificate file (`-o CertificateFile=...`) if one is active (e.g. for PIV).
+   * 3. For a PIV session only, attaches the PIV card's public key identity files (`agentIdentityFiles`)
+   *    to restrict agent offerings; an ephemeral session's key is offered from the agent unrestricted.
+   */
+  public prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    return this.applySshCa(config);
+  }
+
+  /** Same rationale as prepareSshCaConfig, applied to an SFTP connection. */
+  public prepareSftpSshCaConfig(config: SFTPConfig): Promise<SFTPConfig> {
+    return this.applySshCa(config);
+  }
+
+  private async applySshCa<T extends SshCaConnection>(config: T): Promise<T> {
+    if (config.authType !== 'agent' || !config.useSshCa) {
+      return config;
+    }
+    const certFile = this.sshCaService?.getActiveCertificateFilePath();
+    const socketPath = config.agentPath ?? (await this.ensureAgent());
+    const updated: T = {
+      ...config,
+      agentPath: socketPath,
+      certificateFile: certFile ?? config.certificateFile,
+    };
+    // Only a PIV session (it has a certificate file) is pinned to the card's key. An ephemeral session's
+    // certified key lives in the agent without any public-key file, and `IdentitiesOnly` + `-i <card>.pub`
+    // would hide it from ssh even though it is the identity this connection needs.
+    return certFile ? { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) } : updated;
+  }
+
+  /**
+   * Discovers and retrieves the OpenSSH public key for the connected smartcard (any PKCS#11 card, e.g. a YubiKey or another PIV card).
+   * If not already unlocked in the app agent, attempts to unlock/load it first.
+   */
+  public async getPivPublicKey(): Promise<SshWireKeyInfo | null> {
+    // 1. Check if an auth key is already present in the active app agent
+    const socketPath = this.appAgent.getSocketPath();
+    if (socketPath && this.hasPivCard()) {
+      const identities = await getAgentIdentities(socketPath);
+      for (const card of this.globalCards.values()) {
+        const matching = identities.find(
+          (id) => card.fingerprints.has(fingerprintOfKeyBlob(id.keyBlob)) && !getKeyAlgorithm(id.keyBlob).endsWith('-sk')
+        );
+        if (matching) {
+          return parseSshWirePublicKey(matching.keyBlob, matching.comment);
+        }
+      }
+    }
+
+    // 2. Discover PIV library
+    const preferred = (await this.deps.settingsStore.getSettings()).smartcardLibPath;
+    const libs = await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true });
+    const chosen =
+      (preferred ? libs.find((l) => l.path === preferred) : undefined) ??
+      libs.find((l) => l.name === 'p11-kit') ??
+      libs[0];
+
+    if (!chosen) {
+      throw new Error('No smartcard PKCS#11 module (e.g. OpenSC or libykcs11) detected on this system');
+    }
+
+    // 3. Ensure token is plugged in
+    await this.ensureTokenPresent('smartcard', 'SSH CA authentication', chosen.path);
+
+    // 4. Load into app agent (prompts for PIN if needed). An explicit user login
+    // bypasses any previous background-failure cooldown on this library.
+    this.globalSmartcardAgentFailures.delete(chosen.path);
+    await this.getOrLoadGlobalSmartcardAgent(
+      chosen.path,
+      (prompt, retry) => this.deps.promptForPin(prompt.trim(), 'smartcard', 'SSH CA', retry),
+      'unlock the smartcard for SSH CA'
+    );
+
+    // 5. Retrieve the loaded identity from the agent
+    const liveSocket = this.appAgent.getSocketPath();
+    if (!liveSocket) return null;
+
+    const identities = await getAgentIdentities(liveSocket);
+    const card = this.globalCards.get(chosen.path);
+    if (!card) return null;
+
+    const matching = identities.find(
+      (id) => card.fingerprints.has(fingerprintOfKeyBlob(id.keyBlob)) && !getKeyAlgorithm(id.keyBlob).endsWith('-sk')
+    );
+    if (!matching) return null;
+
+    return parseSshWirePublicKey(matching.keyBlob, matching.comment);
   }
 
   /**

@@ -35,6 +35,7 @@ function setup() {
     smartcard: {
       prepareSmartcardConfig: vi.fn(async (c: SSHConnectionConfig) => c),
       prepareFido2Config: vi.fn(async (c: SSHConnectionConfig) => c),
+      prepareSshCaConfig: vi.fn(async (c: SSHConnectionConfig) => c),
     },
     sshTunnelManager: { startTunnel },
     promptForPinDirect: vi.fn(),

@@ -21,7 +21,7 @@ export type TerminalHost = Pick<
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
-    'awaitStartupUnlock' | 'prepareFido2Config' | 'prepareSmartcardConfig' | 'resolveLocalShellAgentSocket'
+    'awaitStartupUnlock' | 'prepareFido2Config' | 'prepareSmartcardConfig' | 'prepareSshCaConfig' | 'resolveLocalShellAgentSocket'
   >;
 };
 
@@ -47,6 +47,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         config = await bridge.resolveProxyJumpConfig(config);
         config = await bridge.smartcard.prepareSmartcardConfig(config);
         config = await bridge.smartcard.prepareFido2Config(config);
+        config = await bridge.smartcard.prepareSshCaConfig(config);
 
         if (config.x11Forwarding && process.platform === 'win32') {
           try {

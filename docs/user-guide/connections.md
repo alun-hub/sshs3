@@ -141,7 +141,7 @@ sshs3 supports five distinct authentication mechanisms:
 
 1. **Password**: Traditional password authentication, encrypted at rest via the OS keyring.
 2. **Private Key File**: Local private key file (`id_ed25519`, `id_rsa`) with optional passphrase.
-3. **SSH Agent**: Delegates authentication to the running SSH agent (`$SSH_AUTH_SOCK`).
+3. **SSH Agent**: Delegates authentication to the running SSH agent (`$SSH_AUTH_SOCK`). Profiles with Agent authentication can tick **Use active SSH Certificate Authority session** to use the short-lived user certificate you got from Step-CA or Vault / OpenBao; see [SSH Certificate Authority (SSH CA)](/docs/security/ssh-ca/).
 4. **FIDO2 / Hardware Security Key**: Hardware WebAuthn/FIDO2 credentials via YubiKey (`ed25519-sk`, `ecdsa-sk`).
 5. **Smartcard (PKCS#11)**: Smartcards (PIV, CAC, SITHS) via native PKCS#11 libraries (`p11-kit`, `opensc`, `libykcs11`).
 

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { ipcMain as electronIpcMain } from 'electron';
+import { ipcMain as electronIpcMain, shell } from 'electron';
 import type { IpcMain } from 'electron';
 import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
@@ -80,6 +80,8 @@ import { registerK8sHandlers } from './ipc/k8sHandlers';
 import { registerKeyInstallHandlers } from './ipc/keyInstallHandlers';
 import { registerSyncHandlers } from './ipc/syncHandlers';
 import { registerTeamVaultHandlers } from './ipc/teamVaultHandlers';
+import { registerSshCaHandlers } from './ipc/sshCaHandlers';
+import { SshCaService } from './ca/SshCaService';
 import { handleHostKeyChanged } from './ssh/hostKeyChanged';
 import { createLogger } from './log';
 const ipcLog = createLogger('ipc');
@@ -150,6 +152,7 @@ export interface IpcBridgeOptions {
   k8sLogManager?: K8sLogManager;
   k8sPortForwardManager?: K8sPortForwardManager;
   sshTunnelManager?: SSHTunnelManager;
+  sshCaService?: SshCaService;
   getWebContents?: () => Electron.WebContents | null | undefined;
   /** Quit confirmation (transfers, confirm-before-quit) run before an update restart. */
   confirmQuit?: () => Promise<boolean>;
@@ -187,6 +190,7 @@ export class IpcBridge {
   public readonly k8sLogManager: K8sLogManager;
   public readonly k8sPortForwardManager: K8sPortForwardManager;
   public readonly sshTunnelManager: SSHTunnelManager;
+  public readonly sshCaService: SshCaService;
   private updateService: UpdateService | null = null;
   private confirmQuit: (() => Promise<boolean>) | undefined;
   public getWebContents: () => Electron.WebContents | null | undefined;
@@ -379,6 +383,22 @@ export class IpcBridge {
     });
     // The local agent block is derived from the managed block, so refresh it after every managed-block sync.
     this.profileSyncService.onLocalSshConfigSynced = () => this.smartcard.refreshAgentSshConfig();
+    this.sshCaService = options.sshCaService ?? new SshCaService({
+      appAgent: this.smartcard.getAppAgent(),
+      openExternal: (url: string) => shell.openExternal(url),
+      getSettings: () => this.settingsStore.getSettings(),
+      getPivPublicKey: () => this.smartcard.getPivPublicKey(),
+    });
+    this.smartcard.setSshCaService(this.sshCaService);
+    this.sshCaService.onStatusChanged((status) => {
+      // The window router already reaches every window, the main one included; the focused-window
+      // fallback is only for a bridge without a router (sending to both delivers the event twice).
+      if (this.windows) {
+        this.windows.broadcast(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      } else {
+        this.getWebContents()?.send(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      }
+    });
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
     this.k8sTerminalManager = options.k8sTerminalManager ?? new K8sTerminalManager();
@@ -507,6 +527,7 @@ export class IpcBridge {
     registerLogHandlers(this);
     registerDirSyncHandlers(this);
     registerK8sHandlers(this);
+    registerSshCaHandlers(this);
     this.setupEventListeners();
 
     if (process.platform === 'win32') {
@@ -867,6 +888,7 @@ export class IpcBridge {
     }
     sftpConfig = await this.smartcard.prepareSftpSmartcardConfig(sftpConfig, target.id);
     sftpConfig = await this.smartcard.prepareFido2SftpConfig(sftpConfig, target.id);
+    sftpConfig = await this.smartcard.prepareSftpSshCaConfig(sftpConfig);
     return await this.storageRegistry.getOrCreate({ ...target, sftpConfig });
   }
 
@@ -1861,6 +1883,10 @@ export class IpcBridge {
     // remaining per-session ('agent-per-session' mode) private agent explicitly,
     // in addition to the global ones, or their ssh-agent processes and sockets
     // under ~/.ssh/agent leak past app quit.
+    // Ends the SSH CA session first: it cancels a pending sign-in and the renewal timers, removes the
+    // certified key from the app agent and deletes the PIV certificate file, which the app agent
+    // shutdown below does not know about.
+    await this.disposeStep('sshCaService.logout', () => this.sshCaService.logout());
     await this.smartcard.dispose();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();
