@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { SshCaService } from '../../src/main/ca/SshCaService';
@@ -435,7 +436,7 @@ describe('SshCaService', () => {
 
       expect(service.getActiveCertificateFilePath()).toBe(firstPath);
       expect(fs.readFileSync(firstPath, 'utf-8')).toBe(issued[1].line + '\n');
-      expect(fs.readdirSync(firstPath.replace(/[^/]+$/, '')).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+      expect(fs.readdirSync(path.dirname(firstPath)).filter((f) => f.endsWith('.tmp'))).toEqual([]);
 
       await service.logout();
       expect(fs.existsSync(firstPath)).toBe(false);
