@@ -147,6 +147,9 @@ In sshs3, select **OpenBao / HashiCorp Vault** and enter these values (section 5
 > **Extensions decide what the session may do.** `permit-pty` is enough for a terminal. Add `permit-port-forwarding` for SSH tunnels and `permit-agent-forwarding` for agent forwarding to `default_extensions`, or `allowed_extensions` if users may ask for them.
 
 > [!NOTE]
+> **CA key type and versions.** `key_type=ssh-ed25519` for a generated CA key is documented for OpenBao (the example was run on OpenBao 2.7.2); this guide does not state from which release it is available, nor whether your Vault version accepts `key_type` on `config/ca`. If the command is rejected or ignored, leave `key_type` out to get an RSA CA key (and set `algorithm_signer=rsa-sha2-256` on the SSH role, as the Vault documentation does for RSA CAs), or upload your own key pair with `generate_signing_key=false`. An Ed25519 CA key also needs OpenSSH 6.5 or newer on the servers that trust it; if sign-in works but the SSH login fails, check the key type with `ssh-keygen -L -f <certificate>` and the server version first.
+
+> [!NOTE]
 > **A private CA for the identity provider.** `bao write auth/jwt/config` checks the issuer when it saves, so the Vault server must be able to reach it. If a private CA signs the provider's certificate, add `oidc_discovery_ca_pem=@/path/to/ca.pem` to that command. Detect finds the auth mount only if you list it for unauthenticated requests: `bao auth tune -listing-visibility=unauth jwt`.
 
 To check the CA before you sign in, read the public key: `curl https://vault.example.com:8200/v1/ssh-client-signer/public_key` returns one `ssh-ed25519 AAAA…` line (no token needed). It is the key your servers must trust (section 4.3), and the same fingerprint that Detect shows.
