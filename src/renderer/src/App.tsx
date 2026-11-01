@@ -211,7 +211,8 @@ const AppContent: React.FC = () => {
   // whatever you were last connected to.
   const [recentSSHProfiles, setRecentSSHProfiles] = useState<SSHConnectionConfig[]>([]);
   useEffect(() => {
-    if (tabs.length !== 0) return;
+    // Also reloads when Connection Manager closes, so profiles or tags edited there are searchable at once.
+    if (tabs.length !== 0 || profilesModalOpen) return;
     let cancelled = false;
     void window.multissh?.profilesGet?.()
       .then((profiles) => {
@@ -223,7 +224,7 @@ const AppContent: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tabs.length]);
+  }, [tabs.length, profilesModalOpen]);
 
   const recentSSH = [...recentSSHProfiles]
     .filter((p) => Boolean(p.lastUsedAt))
