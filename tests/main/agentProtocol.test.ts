@@ -6,7 +6,7 @@ import {
   SSH2_AGENTC_ADD_ID_CONSTRAINED,
   SSH2_AGENTC_ADD_IDENTITY,
 } from '../../src/main/ca/agentProtocol';
-import { BinaryReader } from '../../src/main/ca/sshCertificateUtils';
+import { BinaryReader } from '../../src/main/ca/sshWire';
 
 const execFileAsync = promisify(execFile);
 

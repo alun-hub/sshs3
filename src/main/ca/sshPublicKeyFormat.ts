@@ -1,29 +1,7 @@
 import crypto from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
 import { computeOpenSshFingerprint } from './sshCertificateUtils';
-
-function encodeUint32(val: number): Buffer {
-  const b = Buffer.alloc(4);
-  b.writeUInt32BE(val, 0);
-  return b;
-}
-
-export function encodeSshString(data: Buffer | string): Buffer {
-  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-  return Buffer.concat([encodeUint32(buf.length), buf]);
-}
-
-export function encodeMpint(bytesIn: Buffer): Buffer {
-  let bytes = bytesIn;
-  let i = 0;
-  while (i < bytes.length - 1 && bytes[i] === 0) i++;
-  bytes = bytes.subarray(i);
-  if (bytes.length === 0 || (bytes.length === 1 && bytes[0] === 0)) {
-    return encodeSshString(Buffer.alloc(0));
-  }
-  if (bytes[0] & 0x80) bytes = Buffer.concat([Buffer.from([0]), bytes]);
-  return encodeSshString(bytes);
-}
+import { encodeMpint, encodeSshString } from './sshWire';
 
 const EC_CURVE_NAMES: Record<string, string> = {
   'P-256': 'nistp256',

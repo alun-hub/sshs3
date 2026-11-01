@@ -1,47 +1,6 @@
 import crypto from 'node:crypto';
 import type { SshCaCertificateInfo } from '../../shared/types/sshCa';
-
-export class BinaryReader {
-  private offset = 0;
-
-  constructor(private readonly buffer: Buffer) {}
-
-  public get remaining(): number {
-    return this.buffer.length - this.offset;
-  }
-
-  public readUint32(): number {
-    if (this.remaining < 4) {
-      throw new Error(`Unexpected EOF reading uint32 at offset ${this.offset}`);
-    }
-    const val = this.buffer.readUInt32BE(this.offset);
-    this.offset += 4;
-    return val;
-  }
-
-  public readUint64(): bigint {
-    if (this.remaining < 8) {
-      throw new Error(`Unexpected EOF reading uint64 at offset ${this.offset}`);
-    }
-    const val = this.buffer.readBigUInt64BE(this.offset);
-    this.offset += 8;
-    return val;
-  }
-
-  public readString(): string {
-    return this.readBuffer().toString('utf8');
-  }
-
-  public readBuffer(): Buffer {
-    const len = this.readUint32();
-    if (this.remaining < len) {
-      throw new Error(`Unexpected EOF reading buffer of length ${len} at offset ${this.offset}`);
-    }
-    const slice = this.buffer.subarray(this.offset, this.offset + len);
-    this.offset += len;
-    return slice;
-  }
-}
+import { BinaryReader } from './sshWire';
 
 /** Whole epoch seconds of an ISO timestamp (as produced by parseOpenSshCertificate). */
 export function isoToEpochSeconds(iso: string): number {

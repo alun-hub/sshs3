@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { BinaryWriter } from './sshWire';
 
 export const SSH2_AGENTC_REQUEST_IDENTITIES = 11;
 export const SSH2_AGENT_IDENTITIES_ANSWER = 12;
@@ -9,45 +10,6 @@ export const SSH_AGENT_FAILURE = 5;
 export const SSH_AGENT_SUCCESS = 6;
 
 export const SSH_AGENT_CONSTRAIN_LIFETIME = 1;
-
-export class BinaryWriter {
-  private chunks: Buffer[] = [];
-  private totalLength = 0;
-
-  public writeByte(val: number): void {
-    const b = Buffer.alloc(1);
-    b.writeUInt8(val, 0);
-    this.chunks.push(b);
-    this.totalLength += 1;
-  }
-
-  public writeUint32(val: number): void {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(val, 0);
-    this.chunks.push(b);
-    this.totalLength += 4;
-  }
-
-  public writeBuffer(buf: Buffer): void {
-    this.writeUint32(buf.length);
-    this.chunks.push(buf);
-    this.totalLength += buf.length;
-  }
-
-  public writeString(str: string): void {
-    this.writeBuffer(Buffer.from(str, 'utf8'));
-  }
-
-  /**
-   * Produces the complete agent message packet with 4-byte big-endian length prefix.
-   */
-  public toMessage(): Buffer {
-    const body = Buffer.concat(this.chunks, this.totalLength);
-    const prefix = Buffer.alloc(4);
-    prefix.writeUInt32BE(body.length, 0);
-    return Buffer.concat([prefix, body]);
-  }
-}
 
 export interface AddCertifiedEd25519KeyOptions {
   certificateWire: Buffer;

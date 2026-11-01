@@ -1,4 +1,5 @@
-import { X509Certificate, createHash, type KeyObject } from 'node:crypto';
+import { X509Certificate, type KeyObject } from 'node:crypto';
+import { exportSshWirePublicKey } from '../ca/sshPublicKeyFormat';
 
 /** Certificate details extracted for display in the "cached smartcard identities" UI. */
 export interface SmartcardCertificateDetails {
@@ -194,61 +195,15 @@ function readKeyUsageFirstByte(der: Buffer): number | undefined {
 // `ssh-add -l` reports for the same key pair, without relying on CKA_ID/label conventions
 // that vary between PKCS#11 providers (OpenSC vs. Net iD vs. p11-kit).
 
-function encodeUint32(n: number): Buffer {
-  const b = Buffer.alloc(4);
-  b.writeUInt32BE(n, 0);
-  return b;
-}
-
-function encodeSshString(data: Buffer): Buffer {
-  return Buffer.concat([encodeUint32(data.length), data]);
-}
-
-function encodeMpint(bytesIn: Buffer): Buffer {
-  let bytes = bytesIn;
-  let i = 0;
-  while (i < bytes.length - 1 && bytes[i] === 0) i++;
-  bytes = bytes.subarray(i);
-  if (bytes.length === 0) bytes = Buffer.from([0]);
-  if (bytes[0] & 0x80) bytes = Buffer.concat([Buffer.from([0]), bytes]);
-  return encodeSshString(bytes);
-}
-
-const EC_CURVE_NAMES: Record<string, string> = {
-  'P-256': 'nistp256',
-  'P-384': 'nistp384',
-  'P-521': 'nistp521',
-};
-
-/** Builds the RFC 4253 wire-format public key blob SSH hashes to produce its fingerprint. */
-function buildSshWireKey(publicKey: KeyObject): Buffer | undefined {
-  if (publicKey.asymmetricKeyType === 'rsa') {
-    const jwk = publicKey.export({ format: 'jwk' }) as { n: string; e: string };
-    const n = Buffer.from(jwk.n, 'base64url');
-    const e = Buffer.from(jwk.e, 'base64url');
-    return Buffer.concat([encodeSshString(Buffer.from('ssh-rsa')), encodeMpint(e), encodeMpint(n)]);
-  }
-  if (publicKey.asymmetricKeyType === 'ec') {
-    const jwk = publicKey.export({ format: 'jwk' }) as { crv: string; x: string; y: string };
-    const curve = EC_CURVE_NAMES[jwk.crv];
-    if (!curve) return undefined;
-    const x = Buffer.from(jwk.x, 'base64url');
-    const y = Buffer.from(jwk.y, 'base64url');
-    const point = Buffer.concat([Buffer.from([0x04]), x, y]);
-    return Buffer.concat([
-      encodeSshString(Buffer.from(`ecdsa-sha2-${curve}`)),
-      encodeSshString(Buffer.from(curve)),
-      encodeSshString(point),
-    ]);
-  }
-  return undefined;
-}
-
+/** Only RSA and ECDSA keys are fingerprinted (the PKCS#11 authentication certificates this reads are never ed25519). */
 function computeSshFingerprint(publicKey: KeyObject): string | undefined {
-  const wireKey = buildSshWireKey(publicKey);
-  if (!wireKey) return undefined;
-  const digest = createHash('sha256').update(wireKey).digest('base64');
-  return `SHA256:${digest.replace(/=+$/, '')}`;
+  const type = publicKey.asymmetricKeyType;
+  if (type !== 'rsa' && type !== 'ec') return undefined;
+  try {
+    return exportSshWirePublicKey(publicKey).fingerprint;
+  } catch {
+    return undefined; // e.g. an EC curve OpenSSH has no name for
+  }
 }
 
 /**

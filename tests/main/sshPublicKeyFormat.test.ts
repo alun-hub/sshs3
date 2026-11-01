@@ -6,8 +6,8 @@ import {
   x509DerToOpenSsh,
   parseSshWirePublicKey,
   encodeEd25519SshWire,
-  encodeMpint,
 } from '../../src/main/ca/sshPublicKeyFormat';
+import { encodeMpint } from '../../src/main/ca/sshWire';
 
 describe('sshPublicKeyFormat', () => {
   it('encodes Ed25519 key correctly', () => {

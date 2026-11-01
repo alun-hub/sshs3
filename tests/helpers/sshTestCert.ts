@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { BinaryReader } from '../../src/main/ca/sshCertificateUtils';
+import { BinaryReader } from '../../src/main/ca/sshWire';
 
 export interface TestCertificate {
   wire: Buffer;
