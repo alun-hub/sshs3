@@ -59,6 +59,15 @@ export interface SmartcardDeps {
   syncAgentBlock: (entries: AgentHostEntry[] | null) => Promise<void>;
 }
 
+/** The fields of an SSH or SFTP connection config that SSH CA routing reads and sets. */
+interface SshCaConnection {
+  authType?: string;
+  useSshCa?: boolean;
+  agentPath?: string;
+  certificateFile?: string;
+  agentIdentityFiles?: string[];
+}
+
 /** Key of the FIDO2 resident keys in `globalCards` and the load/failure maps (PKCS#11 cards use their library path). */
 const FIDO2_KEY = '__fido2__';
 /** After a failed load of a card, wait this long before prompting for its PIN again. */
@@ -376,34 +385,22 @@ export class SmartcardCoordinator {
    * 3. For a PIV session only, attaches the PIV card's public key identity files (`agentIdentityFiles`)
    *    to restrict agent offerings; an ephemeral session's key is offered from the agent unrestricted.
    */
-  public async prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
-    if (config.authType !== 'agent' || !config.useSshCa) {
-      return config;
-    }
-    const certFile = this.sshCaService?.getActiveCertificateFilePath();
-    const socketPath = config.agentPath ?? (await this.ensureAgent());
-    let updated: SSHConnectionConfig = {
-      ...config,
-      agentPath: socketPath,
-      certificateFile: certFile ?? config.certificateFile,
-    };
-    // Only a PIV session (it has a certificate file) is pinned to the card's key. An ephemeral session's
-    // certified key lives in the agent without any public-key file, and `IdentitiesOnly` + `-i <card>.pub`
-    // would hide it from ssh even though it is the identity this connection needs.
-    if (certFile) {
-      updated = { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) };
-    }
-    return updated;
+  public prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    return this.applySshCa(config);
   }
 
   /** Same rationale as prepareSshCaConfig, applied to an SFTP connection. */
-  public async prepareSftpSshCaConfig(config: SFTPConfig): Promise<SFTPConfig> {
+  public prepareSftpSshCaConfig(config: SFTPConfig): Promise<SFTPConfig> {
+    return this.applySshCa(config);
+  }
+
+  private async applySshCa<T extends SshCaConnection>(config: T): Promise<T> {
     if (config.authType !== 'agent' || !config.useSshCa) {
       return config;
     }
     const certFile = this.sshCaService?.getActiveCertificateFilePath();
     const socketPath = config.agentPath ?? (await this.ensureAgent());
-    let updated: SFTPConfig = {
+    const updated: T = {
       ...config,
       agentPath: socketPath,
       certificateFile: certFile ?? config.certificateFile,
@@ -411,10 +408,7 @@ export class SmartcardCoordinator {
     // Only a PIV session (it has a certificate file) is pinned to the card's key. An ephemeral session's
     // certified key lives in the agent without any public-key file, and `IdentitiesOnly` + `-i <card>.pub`
     // would hide it from ssh even though it is the identity this connection needs.
-    if (certFile) {
-      updated = { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) };
-    }
-    return updated;
+    return certFile ? { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) } : updated;
   }
 
   /**

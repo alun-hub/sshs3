@@ -50,7 +50,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, prompt layer (pending prompts, presence), auto-sync, dispose
 │   │   ├── ipc/                    # One registerXHandlers(bridge) per domain (terminal, smartcard, storage, transfer, profile, dotfile, sync, k8s, key install, git, …) + ipcHelpers.ts
 │   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
-│   │   ├── ca/                     # SSH Certificate Authority service (SshCaService), providers (StepCaProvider, VaultCaProvider), cert validation, agent protocol, wire pubkey format
+│   │   ├── ca/                     # SSH Certificate Authority: SshCaService (session, cert install, timers), oidcFlow (OIDC discovery/browser login/refresh), operationQueue, providers/ (Step-CA, Vault), cert validation, agent protocol, sshWire (wire encoding)
 │   │   ├── oauth/                  # Shared OAuth/OIDC loopback callback server, PKCE, requestJson
 │   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
 │   │   ├── dirsync/                # Directory diff and synchronization engine

@@ -24,6 +24,36 @@ describe('SshCaService', () => {
     return { certificateWireBase64: cert.wireBase64, certificateLine: cert.line };
   };
 
+  /** Fake app agent; pass overrides to make a call fail or to record ordering. */
+  const makeAgent = (overrides: Record<string, unknown> = {}) =>
+    ({
+      addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined),
+      removeIdentities: vi.fn().mockResolvedValue(0),
+      ...overrides,
+    }) as any;
+
+  /** Plays the user's browser: follows the authorization URL and delivers the loopback redirect. */
+  const completeBrowserLogin = () =>
+    vi.fn().mockImplementation(async (targetUrl: string) => {
+      const parsedUrl = new URL(targetUrl);
+      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
+      const cbUrl = new URL(parsedUrl.searchParams.get('redirect_uri')!);
+      cbUrl.searchParams.set('code', 'test-auth-code');
+      cbUrl.searchParams.set('state', parsedUrl.searchParams.get('state')!);
+      http.get(cbUrl.toString());
+    });
+
+  const ephemeralConfig = (): SshCaConfig => ({
+    id: 'cfg-1',
+    name: 'Test Step CA',
+    backend: 'step-ca',
+    caUrl: 'https://ca.example.com',
+    oidcIssuerUrl: oidcBaseUrl,
+    oidcClientId: 'step-ca',
+    keySource: 'ephemeral',
+    defaultPrincipals: ['alun'],
+  });
+
   beforeEach(async () => {
     issued.length = 0;
     idpNonce = '';
@@ -45,16 +75,15 @@ describe('SshCaService', () => {
       }
 
       if (url.pathname === '/token' && req.method === 'POST') {
-        // Construct dummy JWT with user claims
+        // Construct dummy JWT with user claims; a real IdP echoes the nonce of the authorization request
+        const nonceClaim = idpNonceOverride === undefined ? idpNonce : idpNonceOverride;
         const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url');
         const payload = Buffer.from(
           JSON.stringify({
             sub: 'user-123',
             preferred_username: 'alun',
             email: 'alun@alun.se',
-            ...((idpNonceOverride === undefined ? idpNonce : idpNonceOverride) !== null
-              ? { nonce: idpNonceOverride === undefined ? idpNonce : idpNonceOverride }
-              : {}),
+            ...(nonceClaim === null ? {} : { nonce: nonceClaim }),
           })
         ).toString('base64url');
         const idToken = `${header}.${payload}.signature`;
@@ -88,10 +117,7 @@ describe('SshCaService', () => {
   });
 
   it('starts inactive and reports inactive status', () => {
-    const mockAppAgent = {
-      addCertifiedEd25519Key: vi.fn(),
-      removeIdentities: vi.fn(),
-    } as any;
+    const mockAppAgent = makeAgent();
 
     const service = new SshCaService({ appAgent: mockAppAgent });
     const status = service.getStatus();
@@ -99,10 +125,7 @@ describe('SshCaService', () => {
   });
 
   it('executes login flow, signs cert, loads key into agent, and updates status', async () => {
-    const mockAppAgent = {
-      addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined),
-      removeIdentities: vi.fn().mockResolvedValue(0),
-    } as any;
+    const mockAppAgent = makeAgent();
 
     const mockProvider: ISshCaProvider = {
       id: 'step-ca',
@@ -113,32 +136,9 @@ describe('SshCaService', () => {
       }),
     };
 
-    let openedBrowserUrl = '';
-    const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
-      openedBrowserUrl = targetUrl;
-      const parsedUrl = new URL(targetUrl);
-      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
-      const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
-      const state = parsedUrl.searchParams.get('state')!;
+    const openExternal = completeBrowserLogin();
 
-      // Complete loopback request
-      const cbUrl = new URL(redirectUri);
-      cbUrl.searchParams.set('code', 'test-auth-code');
-      cbUrl.searchParams.set('state', state);
-
-      http.get(cbUrl.toString());
-    });
-
-    const testConfig: SshCaConfig = {
-      id: 'cfg-1',
-      name: 'Test Step CA',
-      backend: 'step-ca',
-      caUrl: 'https://ca.example.com',
-      oidcIssuerUrl: oidcBaseUrl,
-      oidcClientId: 'step-ca',
-      keySource: 'ephemeral',
-      defaultPrincipals: ['alun'],
-    };
+    const testConfig = ephemeralConfig();
 
     const service = new SshCaService({
       appAgent: mockAppAgent,
@@ -153,7 +153,7 @@ describe('SshCaService', () => {
     expect(status.active).toBe(true);
     expect(status.username).toBe('alun');
     expect(status.principals).toEqual(['alun', 'alun@alun.se']);
-    expect(openedBrowserUrl).toContain('/auth?client_id=step-ca');
+    expect(openExternal.mock.calls[0][0]).toContain('/auth?client_id=step-ca');
     expect(mockAppAgent.addCertifiedEd25519Key).toHaveBeenCalledTimes(1);
     expect(statusList).toContain(true);
 
@@ -165,39 +165,16 @@ describe('SshCaService', () => {
   });
 
   it('renews session using refresh token without prompting in browser', async () => {
-    const mockAppAgent = {
-      addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined),
-      removeIdentities: vi.fn().mockResolvedValue(0),
-    } as any;
+    const mockAppAgent = makeAgent();
 
     const mockProvider: ISshCaProvider = {
       id: 'step-ca',
       sign: vi.fn().mockImplementation(async (req: SshCaSignRequest): Promise<SshCaSignResponse> => issueCert(req)),
     };
 
-    const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
-      const parsedUrl = new URL(targetUrl);
-      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
-      const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
-      const state = parsedUrl.searchParams.get('state')!;
+    const openExternal = completeBrowserLogin();
 
-      const cbUrl = new URL(redirectUri);
-      cbUrl.searchParams.set('code', 'test-auth-code');
-      cbUrl.searchParams.set('state', state);
-
-      http.get(cbUrl.toString());
-    });
-
-    const testConfig: SshCaConfig = {
-      id: 'cfg-1',
-      name: 'Test Step CA',
-      backend: 'step-ca',
-      caUrl: 'https://ca.example.com',
-      oidcIssuerUrl: oidcBaseUrl,
-      oidcClientId: 'step-ca',
-      keySource: 'ephemeral',
-      defaultPrincipals: ['alun'],
-    };
+    const testConfig = ephemeralConfig();
 
     const service = new SshCaService({
       appAgent: mockAppAgent,
@@ -218,10 +195,7 @@ describe('SshCaService', () => {
 
   it('signs PIV key without loading private key into agent, writes certificate file and cleans up on logout', async () => {
     const fs = await import('node:fs');
-    const mockAppAgent = {
-      addCertifiedEd25519Key: vi.fn(),
-      removeIdentities: vi.fn().mockResolvedValue(0),
-    } as any;
+    const mockAppAgent = makeAgent();
 
     const pivKeyInfo = exportSshWirePublicKey(
       crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey,
@@ -238,18 +212,7 @@ describe('SshCaService', () => {
       }),
     };
 
-    const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
-      const parsedUrl = new URL(targetUrl);
-      idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
-      const redirectUri = parsedUrl.searchParams.get('redirect_uri')!;
-      const state = parsedUrl.searchParams.get('state')!;
-
-      const cbUrl = new URL(redirectUri);
-      cbUrl.searchParams.set('code', 'test-auth-code');
-      cbUrl.searchParams.set('state', state);
-
-      http.get(cbUrl.toString());
-    });
+    const openExternal = completeBrowserLogin();
 
     const getPivPublicKey = vi.fn().mockResolvedValue(pivKeyInfo);
 
@@ -292,7 +255,7 @@ describe('SshCaService', () => {
   });
 
   it('rejects PIV login when no PIV card is detected', async () => {
-    const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+    const mockAppAgent = makeAgent();
     const getPivPublicKey = vi.fn().mockResolvedValue(null);
 
     const pivConfig: SshCaConfig = {
@@ -314,7 +277,7 @@ describe('SshCaService', () => {
   });
 
   it('returns undefined for active certificate file path when certificate is expired', async () => {
-    const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+    const mockAppAgent = makeAgent();
     const service = new SshCaService({ appAgent: mockAppAgent });
 
     // Manually set an active session with an expired cert date
@@ -333,7 +296,7 @@ describe('SshCaService', () => {
   });
 
   it('rejects authorization_endpoint with non-http/https protocol', async () => {
-    const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+    const mockAppAgent = makeAgent();
 
     // Spin up server with invalid authorization_endpoint
     const badOidcServer = http.createServer((_req, res) => {
@@ -370,30 +333,9 @@ describe('SshCaService', () => {
     }
   });
   describe('certificate installation', () => {
-    const completeBrowserLogin = () =>
-      vi.fn().mockImplementation(async (targetUrl: string) => {
-        const parsedUrl = new URL(targetUrl);
-        idpNonce = parsedUrl.searchParams.get('nonce') ?? '';
-        const cbUrl = new URL(parsedUrl.searchParams.get('redirect_uri')!);
-        cbUrl.searchParams.set('code', 'test-auth-code');
-        cbUrl.searchParams.set('state', parsedUrl.searchParams.get('state')!);
-        http.get(cbUrl.toString());
-      });
-
-    const ephemeralConfig = (): SshCaConfig => ({
-      id: 'cfg-1',
-      name: 'Test Step CA',
-      backend: 'step-ca',
-      caUrl: 'https://ca.example.com',
-      oidcIssuerUrl: oidcBaseUrl,
-      oidcClientId: 'step-ca',
-      keySource: 'ephemeral',
-      defaultPrincipals: ['alun'],
-    });
-
     it('rejects a certificate issued for a different key than the one requested', async () => {
       const otherKey = exportSshWirePublicKey(crypto.generateKeyPairSync('ed25519').publicKey, 'other');
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const mockAppAgent = makeAgent();
       const provider: ISshCaProvider = {
         id: 'step-ca',
         sign: vi.fn().mockImplementation(async (): Promise<SshCaSignResponse> => {
@@ -417,7 +359,7 @@ describe('SshCaService', () => {
       ['carries no nonce claim at all', null],
     ])('rejects an id_token that %s than the sign-in request', async (_label, nonceInToken) => {
       idpNonceOverride = nonceInToken;
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const mockAppAgent = makeAgent();
       const provider: ISshCaProvider = { id: 'step-ca', sign: vi.fn() };
       const service = new SshCaService({
         appAgent: mockAppAgent,
@@ -478,7 +420,7 @@ describe('SshCaService', () => {
     it('keeps the PIV certificate file in place when it is renewed (same path every time)', async () => {
       const fs = await import('node:fs');
       const pivKey = exportSshWirePublicKey(crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey, 'piv');
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+      const mockAppAgent = makeAgent();
       const provider: ISshCaProvider = { id: 'step-ca', sign: vi.fn().mockImplementation(async (r: SshCaSignRequest) => issueCert(r)) };
       const service = new SshCaService({
         appAgent: mockAppAgent,
@@ -500,7 +442,7 @@ describe('SshCaService', () => {
     });
 
     it('does not leave the loopback callback server listening when opening the browser fails', async () => {
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const mockAppAgent = makeAgent();
       let callbackPort = 0;
       const openExternal = vi.fn().mockImplementation(async (targetUrl: string) => {
         callbackPort = Number(new URL(new URL(targetUrl).searchParams.get('redirect_uri')!).port);
@@ -521,7 +463,7 @@ describe('SshCaService', () => {
     });
 
     it('does not start a callback server for an insecure authorization_endpoint', async () => {
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const mockAppAgent = makeAgent();
       const insecure = http.createServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ authorization_endpoint: 'ftp://idp.example.com/auth', token_endpoint: 'https://idp.example.com/token' }));
@@ -541,7 +483,7 @@ describe('SshCaService', () => {
     });
 
     it('does not treat a lookalike host as loopback (no plain-http OIDC discovery)', async () => {
-      const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn() } as any;
+      const mockAppAgent = makeAgent();
       const service = new SshCaService({ appAgent: mockAppAgent, openExternal: vi.fn() });
       await expect(
         service.login({ ...ephemeralConfig(), oidcIssuerUrl: 'http://localhost.invalid' })
@@ -571,7 +513,7 @@ describe('SshCaService', () => {
           await new Promise((r) => setTimeout(r, 30));
           running--;
         });
-        const mockAppAgent = { addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+        const mockAppAgent = makeAgent();
         const service = new SshCaService({
           appAgent: mockAppAgent,
           openExternal: completeBrowserLogin(),
@@ -589,7 +531,7 @@ describe('SshCaService', () => {
       });
 
       it('logout cancels a pending browser sign-in and the user stays logged out', async () => {
-        const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+        const mockAppAgent = makeAgent();
         const openExternal = hangingBrowser();
         const service = new SshCaService({
           appAgent: mockAppAgent,
@@ -609,7 +551,7 @@ describe('SshCaService', () => {
       });
 
       it('logout drops sign-ins that were still queued behind the running one', async () => {
-        const mockAppAgent = { addCertifiedEd25519Key: vi.fn(), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+        const mockAppAgent = makeAgent();
         const openExternal = hangingBrowser();
         const service = new SshCaService({
           appAgent: mockAppAgent,
@@ -630,7 +572,7 @@ describe('SshCaService', () => {
       });
 
       it('timer-driven renewal never falls back to an interactive browser sign-in', async () => {
-        const mockAppAgent = { addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+        const mockAppAgent = makeAgent();
         const openExternal = completeBrowserLogin();
         const service = new SshCaService({
           appAgent: mockAppAgent,
@@ -650,7 +592,7 @@ describe('SshCaService', () => {
       });
 
       it('manual renewal still falls back to an interactive sign-in when the refresh fails', async () => {
-        const mockAppAgent = { addCertifiedEd25519Key: vi.fn().mockResolvedValue(undefined), removeIdentities: vi.fn().mockResolvedValue(0) } as any;
+        const mockAppAgent = makeAgent();
         const openExternal = completeBrowserLogin();
         const service = new SshCaService({
           appAgent: mockAppAgent,
