@@ -126,4 +126,195 @@ describe('SshCaSettingsPanel', () => {
 
     expect(mockSetConfigs).toHaveBeenCalledWith([]);
   });
+
+  describe('Detect', () => {
+    const provisioner = { name: 'Keycloak', clientId: 'step-ca-client', issuerUrl: 'https://idp.example.com/realms/x' };
+    const root = { pem: 'PEM-DATA', subject: 'O=Test, CN=Test Root', validTo: '2036-10-28T13:36:00.000Z', fingerprint: 'ab'.repeat(32) };
+
+    const openNewForm = () => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.change(screen.getByPlaceholderText('https://ca.example.com:30900'), {
+        target: { value: 'https://ca.example.com:9000' },
+      });
+    };
+
+    const untrusted = new Error("Error invoking remote method 'ssh-ca:detect': Error: The CA's certificate is not trusted by this computer. Enter the root CA fingerprint.");
+
+    it('asks for the fingerprint only after the CA turned out not to be trusted', async () => {
+      const detect = vi.fn().mockRejectedValueOnce(untrusted).mockResolvedValue({ provisioners: [provisioner], root });
+      (window.sshs3 as any).sshCaDetect = detect;
+      openNewForm();
+      expect(screen.queryByPlaceholderText(/step certificate fingerprint/)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+      await waitFor(() => expect(screen.getByPlaceholderText(/step certificate fingerprint/)).toBeInTheDocument());
+      expect(detect).toHaveBeenLastCalledWith({ caUrl: 'https://ca.example.com:9000', rootFingerprint: undefined });
+      expect(screen.getByRole('alert')).toHaveTextContent('is not trusted by this computer');
+
+      fireEvent.change(screen.getByPlaceholderText(/step certificate fingerprint/), { target: { value: ' abc ' } });
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+
+      await waitFor(() => expect(screen.getByText(/Root certificate verified/)).toBeInTheDocument());
+      expect(detect).toHaveBeenLastCalledWith({ caUrl: 'https://ca.example.com:9000', rootFingerprint: 'abc' });
+      expect(screen.getByText(/valid until 2036-10-28/)).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://idp.example.com/realms/x')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('step-ca-client')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('PEM-DATA')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Save Configuration'));
+      expect(mockSetConfigs).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'Keycloak',
+          caUrl: 'https://ca.example.com:9000',
+          oidcIssuerUrl: 'https://idp.example.com/realms/x',
+          oidcClientId: 'step-ca-client',
+          rootCaCert: 'PEM-DATA',
+        }),
+      ]);
+    });
+
+    it('hides the fingerprint field again when the CA URL changes, and Enter in the URL field detects', async () => {
+      const detect = vi.fn().mockRejectedValueOnce(untrusted).mockResolvedValue({ provisioners: [provisioner] });
+      (window.sshs3 as any).sshCaDetect = detect;
+      openNewForm();
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+      await waitFor(() => expect(screen.getByPlaceholderText(/step certificate fingerprint/)).toBeInTheDocument());
+
+      const urlField = screen.getByPlaceholderText('https://ca.example.com:30900');
+      fireEvent.change(urlField, { target: { value: 'https://other.example.com' } });
+      expect(screen.queryByPlaceholderText(/step certificate fingerprint/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      fireEvent.keyDown(urlField, { key: 'Enter' });
+      await waitFor(() => expect(detect).toHaveBeenCalledTimes(2));
+      expect(detect).toHaveBeenLastCalledWith({ caUrl: 'https://other.example.com', rootFingerprint: undefined });
+    });
+
+    it('sends no fingerprint when the field is empty and keeps a name the user typed', async () => {
+      const detect = vi.fn().mockResolvedValue({ provisioners: [provisioner] });
+      (window.sshs3 as any).sshCaDetect = detect;
+      openNewForm();
+      fireEvent.change(screen.getByPlaceholderText('Step-CA Internal'), { target: { value: 'My CA' } });
+
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+
+      await waitFor(() => expect(screen.getByText(/Using provisioner "Keycloak"/)).toBeInTheDocument());
+      expect(detect).toHaveBeenCalledWith({ caUrl: 'https://ca.example.com:9000', rootFingerprint: undefined });
+      expect(screen.getByDisplayValue('My CA')).toBeInTheDocument();
+      expect(screen.queryByText(/Root certificate verified/)).not.toBeInTheDocument();
+    });
+
+    it('lets the user choose between several provisioners', async () => {
+      const second = { name: 'Other', clientId: 'other-client', issuerUrl: 'https://other.example.com' };
+      (window.sshs3 as any).sshCaDetect = vi.fn().mockResolvedValue({ provisioners: [provisioner, second] });
+      openNewForm();
+
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+      await waitFor(() => expect(screen.getByText('Other')).toBeInTheDocument());
+      expect(screen.queryByDisplayValue('other-client')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Other'));
+      expect(screen.getByDisplayValue('other-client')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://other.example.com')).toBeInTheDocument();
+    });
+
+    it('shows the error and leaves the form untouched', async () => {
+      (window.sshs3 as any).sshCaDetect = vi
+        .fn()
+        .mockRejectedValue(new Error("Error invoking remote method 'ssh-ca:detect': Error: The CA's certificate is not trusted by this computer."));
+      openNewForm();
+
+      fireEvent.click(screen.getByTestId('detect-ssh-ca-btn'));
+
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent("The CA's certificate is not trusted by this computer."));
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Error invoking remote method');
+      expect(screen.queryByDisplayValue('step-ca-client')).not.toBeInTheDocument();
+    });
+
+    it('is not offered for Vault and is disabled without a CA URL', () => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.change(screen.getByPlaceholderText('https://ca.example.com:30900'), { target: { value: '' } });
+      expect(screen.getByTestId('detect-ssh-ca-btn')).toBeDisabled();
+
+      fireEvent.change(screen.getByDisplayValue('Smallstep (step-ca)'), { target: { value: 'vault' } });
+      expect(screen.queryByTestId('detect-ssh-ca-btn')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Detect (Vault)', () => {
+    const key = (mount: string) => ({ mount, keyType: 'ssh-ed25519', fingerprint: `SHA256:fp-${mount}` });
+
+    const openVaultForm = () => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      fireEvent.change(screen.getByDisplayValue('Smallstep (step-ca)'), { target: { value: 'vault' } });
+      fireEvent.change(screen.getByPlaceholderText('https://ca.example.com:30900'), {
+        target: { value: 'https://vault.example.com:8200' },
+      });
+    };
+
+    it('fills in the single SSH mount and auth mount and shows the CA key fingerprint', async () => {
+      const detect = vi.fn().mockResolvedValue({
+        sshMounts: [key('ssh-client-signer')],
+        authMounts: [{ mount: 'oidc', type: 'oidc' }],
+      });
+      (window.sshs3 as any).sshCaDetectVault = detect;
+      openVaultForm();
+
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+
+      await waitFor(() => expect(screen.getByText(/SSH secrets engine "ssh-client-signer" found/)).toBeInTheDocument());
+      expect(detect).toHaveBeenCalledWith({ caUrl: 'https://vault.example.com:8200', namespace: undefined, rootCaCert: undefined });
+      expect(screen.getByText('SHA256:fp-ssh-client-signer')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('ssh-client-signer')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('oidc')).toBeInTheDocument();
+      expect(screen.getByText(/Auth mount "oidc" filled in/)).toBeInTheDocument();
+    });
+
+    it('passes the namespace and root certificate that are already in the form', async () => {
+      const detect = vi.fn().mockResolvedValue({ sshMounts: [key('ssh')], authMounts: [] });
+      (window.sshs3 as any).sshCaDetectVault = detect;
+      openVaultForm();
+      fireEvent.change(screen.getByPlaceholderText(/-----BEGIN CERTIFICATE-----/), { target: { value: ' PEM ' } });
+
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+
+      await waitFor(() => expect(detect).toHaveBeenCalled());
+      expect(detect.mock.calls[0][0]).toMatchObject({ rootCaCert: 'PEM' });
+    });
+
+    it('lets the user choose between several SSH mounts and says when there are none', async () => {
+      (window.sshs3 as any).sshCaDetectVault = vi.fn().mockResolvedValue({ sshMounts: [key('a'), key('b')], authMounts: [] });
+      openVaultForm();
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+      await waitFor(() => expect(screen.getByText('b')).toBeInTheDocument());
+      expect(screen.queryByText(/SSH secrets engine "[ab]" found/)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('b'));
+      expect(screen.getByText(/SSH secrets engine "b" found/)).toBeInTheDocument();
+      expect(screen.getByDisplayValue('b')).toBeInTheDocument();
+
+      (window.sshs3 as any).sshCaDetectVault = vi.fn().mockResolvedValue({ version: '2.1.0', sshMounts: [], authMounts: [] });
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+      await waitFor(() => expect(screen.getByText(/No SSH secrets engine found at ssh or ssh-client-signer \(server 2\.1\.0\)/)).toBeInTheDocument());
+    });
+
+    it('shows the error', async () => {
+      (window.sshs3 as any).sshCaDetectVault = vi
+        .fn()
+        .mockRejectedValue(new Error("Error invoking remote method 'ssh-ca:detect-vault': Error: The server is sealed."));
+      openVaultForm();
+      fireEvent.click(screen.getByTestId('detect-vault-btn'));
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The server is sealed.'));
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Error invoking');
+    });
+
+    it('is not shown for Step-CA', () => {
+      render(<SshCaSettingsPanel form={createMockForm()} />);
+      fireEvent.click(screen.getByTestId('add-ssh-ca-btn'));
+      expect(screen.queryByTestId('detect-vault-btn')).not.toBeInTheDocument();
+    });
+  });
 });
