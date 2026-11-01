@@ -210,9 +210,11 @@ const AppContent: React.FC = () => {
   // already tracks turns that dead space into a one-click way back into
   // whatever you were last connected to.
   const [recentSSHProfiles, setRecentSSHProfiles] = useState<SSHConnectionConfig[]>([]);
+  const landingVisible = tabs.length === 0 || activeTabId === '';
   useEffect(() => {
-    // Also reloads when Connection Manager closes, so profiles or tags edited there are searchable at once.
-    if (tabs.length !== 0 || profilesModalOpen) return;
+    // Reloads whenever the landing page becomes visible (no tabs, or Home clicked with tabs open) and
+    // when Connection Manager closes, so profiles or tags edited there are searchable at once.
+    if (!landingVisible || profilesModalOpen) return;
     let cancelled = false;
     void window.multissh?.profilesGet?.()
       .then((profiles) => {
@@ -224,7 +226,7 @@ const AppContent: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tabs.length, profilesModalOpen]);
+  }, [landingVisible, profilesModalOpen]);
 
   const recentSSH = [...recentSSHProfiles]
     .filter((p) => Boolean(p.lastUsedAt))
@@ -448,7 +450,7 @@ const AppContent: React.FC = () => {
       >
         {!sessionLoaded ? null : (
           <>
-        {(tabs.length === 0 || activeTabId === '') && (
+        {landingVisible && (
           <LandingView
             recentSSH={recentSSH}
             allSSH={recentSSHProfiles}
