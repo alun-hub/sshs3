@@ -182,7 +182,7 @@ Set **Authentication** to **SSH Agent** and tick **Use active SSH Certificate Au
 
 ### Renewal
 
-- **Automatic:** if the identity provider issues a refresh token, sshs3 renews the certificate about 60 seconds before it expires. It does this silently and never opens a browser by itself. If the silent renewal fails, the certificate runs out and the badge shows **Inactive**.
+- **Automatic:** if the identity provider issues a refresh token, sshs3 renews the certificate about 60 seconds before it expires. It does this silently and never opens a browser by itself. With the smartcard key source the card has to be unlocked: if you locked it, sshs3 asks for the PIN again. If the silent renewal fails, the certificate runs out and the badge shows **Inactive**.
 - **Manual:** **Renew Certificate** tries a silent refresh first and falls back to a browser sign-in if that fails.
 - **Log Out** also cancels a sign-in that is still waiting in the browser.
 - Restarting sshs3 ends the session; sign in again.
