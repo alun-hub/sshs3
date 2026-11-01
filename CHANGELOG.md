@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.97.2] - 2026-11-01
+
+The start screen's Quick Connect box uses the same fuzzy search as Ctrl+Shift+G, and profiles you edit are found there right away.
 
 ### Added
 - The start screen's Quick Connect box now uses the same fuzzy search as **Ctrl+Shift+G**: a few letters of the name, host, folder or system, several words (`prod web`) and `#tag` filters, ranked with the best match first and the matched letters highlighted. **Down** / **Up** pick a match, **Enter** connects to it and **Shift+Enter** opens SFTP. The box is announced as a combobox with a list of options for screen readers, and hovering a match selects it.
