@@ -172,6 +172,17 @@ describe('detectVault', () => {
     await expect(detectVault({ caUrl: 'https://v' }, down.deps)).rejects.toThrow(/ECONNREFUSED/);
   });
 
+  it('does not send an expired or wrong-host certificate to the trust store advice', async () => {
+    for (const code of ['CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID']) {
+      const s = make(() => {
+        throw Object.assign(new Error('x'), { code });
+      });
+      const run = detectVault({ caUrl: 'https://v' }, s.deps);
+      await expect(run).rejects.toThrow(/certificate/);
+      await expect(run).rejects.not.toThrow(VAULT_NOT_TRUSTED_MESSAGE);
+    }
+  });
+
   it('requires a valid CA URL', async () => {
     const s = server([]);
     await expect(detectVault({ caUrl: '  ' }, s.deps)).rejects.toThrow(/Enter the CA URL/);

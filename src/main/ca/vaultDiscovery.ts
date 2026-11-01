@@ -4,7 +4,8 @@ import type {
   SshCaVaultDetectRequest,
   SshCaVaultDetectResult,
 } from '../../shared/types/sshCa';
-import { CERT_ERROR_CODES, requestJson as defaultRequestJson } from '../oauth/requestJson';
+import { requestJson as defaultRequestJson } from '../oauth/requestJson';
+import { certErrorMessage } from './certErrors';
 import { isLoopbackHttpUrl } from './loopbackUrl';
 import { normalizeCaBaseUrl, rootCaBuffer } from './providers/common';
 import { computeOpenSshFingerprint } from './sshCertificateUtils';
@@ -58,11 +59,6 @@ export function parseUiMounts(json: unknown): { sshMountNames: string[]; authMou
   return { sshMountNames, authMounts };
 }
 
-function isCertError(err: unknown): boolean {
-  const code = (err as NodeJS.ErrnoException | undefined)?.code;
-  return typeof code === 'string' && CERT_ERROR_CODES.has(code);
-}
-
 export interface VaultDiscoveryDeps {
   requestJson: typeof defaultRequestJson;
 }
@@ -103,7 +99,8 @@ export async function detectVault(
   try {
     health = await get('sys/health');
   } catch (err) {
-    if (isCertError(err)) throw new Error(VAULT_NOT_TRUSTED_MESSAGE, { cause: err });
+    const message = certErrorMessage(err, VAULT_NOT_TRUSTED_MESSAGE);
+    if (message) throw new Error(message, { cause: err });
     throw err;
   }
   const h = health.json as { initialized?: unknown; sealed?: unknown; version?: unknown } | undefined;

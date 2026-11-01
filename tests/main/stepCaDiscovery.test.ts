@@ -225,6 +225,33 @@ describe('detectStepCa', () => {
     await expect(detectStepCa({ caUrl: 'https://ca.example.com' }, deps)).rejects.toThrow(NOT_TRUSTED_MESSAGE);
   });
 
+  it('does not send an expired or wrong-host certificate to the fingerprint flow', async () => {
+    for (const [code, pattern] of [['CERT_HAS_EXPIRED', /has expired/], ['ERR_TLS_CERT_ALTNAME_INVALID', /host name/]] as const) {
+      const { deps } = make(() => {
+        throw Object.assign(new Error('x'), { code });
+      });
+      const run = detectStepCa({ caUrl: 'https://ca.example.com' }, deps);
+      await expect(run).rejects.toThrow(pattern);
+      await expect(run).rejects.not.toThrow(SSH_CA_UNTRUSTED_MARKER);
+    }
+  });
+
+  it('verifies the CA against a custom root the user already entered', async () => {
+    const { deps, requestJson } = make(() => ({ statusCode: 200, json: { provisioners: [OIDC] } }));
+    await detectStepCa({ caUrl: 'https://ca.example.com', rootCaCert: ` ${ROOT_PEM} ` }, deps);
+    expect(requestJson).toHaveBeenCalledTimes(1);
+    expect(String(requestJson.mock.calls[0][1].ca)).toBe(ROOT_PEM);
+  });
+
+  it('prefers the root it just verified over a custom one', async () => {
+    const { deps, requestJson } = make((url) =>
+      url.includes('/root/') ? { statusCode: 200, json: { ca: ROOT_PEM } } : { statusCode: 200, json: { provisioners: [OIDC] } }
+    );
+    await detectStepCa({ caUrl: 'https://ca.example.com', rootFingerprint: ROOT_FP, rootCaCert: 'OTHER' }, deps);
+    expect(String(requestJson.mock.calls[1][1].ca)).toContain('BEGIN CERTIFICATE');
+    expect(String(requestJson.mock.calls[1][1].ca)).not.toBe('OTHER');
+  });
+
   it('passes other network errors through', async () => {
     const { deps } = make(() => {
       throw new Error('Could not reach ca:9000: connect ECONNREFUSED');
@@ -281,7 +308,11 @@ describe('validateSshCaDetectRequest', () => {
     expect(validateSshCaDetectRequest({ caUrl: 'https://ca' }).rootFingerprint).toBeUndefined();
   });
 
-  it.each([undefined, null, 'x', {}, { caUrl: '' }, { caUrl: 5 }, { caUrl: 'a'.repeat(3000) }, { caUrl: 'x', rootFingerprint: 5 }, { caUrl: 'x', rootFingerprint: 'a'.repeat(300) }])(
+  it('passes a custom root through', () => {
+    expect(validateSshCaDetectRequest({ caUrl: 'https://ca', rootCaCert: 'PEM' }).rootCaCert).toBe('PEM');
+  });
+
+  it.each([undefined, null, 'x', {}, { caUrl: '' }, { caUrl: 5 }, { caUrl: 'a'.repeat(3000) }, { caUrl: 'x', rootFingerprint: 5 }, { caUrl: 'x', rootFingerprint: 'a'.repeat(300) }, { caUrl: 'x', rootCaCert: 5 }, { caUrl: 'x', rootCaCert: 'p'.repeat(200_000) }])(
     'rejects %j',
     (input) => {
       expect(() => validateSshCaDetectRequest(input)).toThrow(/Invalid SSH CA detect request/);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, ShieldCheck, KeyRound, Check, Edit2, Shield, Loader2, AlertCircle } from 'lucide-react';
 import type { SshCaConfig, SshCaBackendType, SshCaKeySource } from '@shared/types/sshCa';
 import { useSshCa } from '../../lib/useSshCa';
@@ -20,10 +20,29 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
   // Raw text of the principals field: parsing on every keystroke would swallow a trailing comma.
   const [principalsText, setPrincipalsText] = useState('');
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Where focus goes when the editor closes: the edit button of that CA, or the Add CA button.
+  const returnFocusTo = useRef<string | null>(null);
+
   const beginEdit = (cfg: SshCaConfig) => {
     setPrincipalsText(cfg.defaultPrincipals?.join(', ') ?? '');
+    returnFocusTo.current = sshCaConfigs.some((c) => c.id === cfg.id) ? cfg.id : 'add';
     setEditingConfig(cfg);
   };
+
+  const closeEditor = (focusId?: string) => {
+    if (focusId) returnFocusTo.current = focusId;
+    setEditingConfig(null);
+  };
+
+  useEffect(() => {
+    if (editingConfig || !returnFocusTo.current) return;
+    const target = returnFocusTo.current;
+    returnFocusTo.current = null;
+    const selector =
+      target === 'add' ? '[data-testid="add-ssh-ca-btn"]' : `[data-ca-edit="${CSS.escape(target)}"]`;
+    rootRef.current?.querySelector<HTMLElement>(selector)?.focus();
+  }, [editingConfig, sshCaConfigs]);
   const [testResult, setTestResult] = useState<{ configId: string; success: boolean; message: string } | null>(null);
 
   const startNewConfig = () => {
@@ -66,7 +85,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
     if (!defaultSshCaConfigId || updated.length === 1) {
       setDefaultSshCaConfigId(trimmed.id);
     }
-    setEditingConfig(null);
+    closeEditor(trimmed.id);
   };
 
   const deleteConfig = (id: string) => {
@@ -76,7 +95,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
       setDefaultSshCaConfigId(updated[0]?.id);
     }
     if (editingConfig?.id === id) {
-      setEditingConfig(null);
+      closeEditor('add');
     }
   };
 
@@ -99,7 +118,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
   };
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-app-surface p-3.5 space-y-4">
+    <div ref={rootRef} className="rounded-lg border border-border-subtle bg-app-surface p-3.5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-txt-primary font-semibold text-xs">
           <Shield className="h-4 w-4 text-sky-400" />
@@ -156,6 +175,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
             {editingConfig.backend === 'step-ca' ? (
               <SshCaDetectSection
                 caUrl={editingConfig.caUrl}
+                rootCaCert={editingConfig.rootCaCert}
                 onCaUrlChange={(caUrl) => setEditingConfig((prev) => prev && { ...prev, caUrl })}
                 onApply={(provisioner, root) =>
                   setEditingConfig((prev) =>
@@ -291,7 +311,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
           <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
             <button
               type="button"
-              onClick={() => setEditingConfig(null)}
+              onClick={() => closeEditor()}
               className="rounded-md border border-border-subtle px-2.5 py-1 text-xs text-txt-secondary hover:bg-app-surface-hover"
             >
               Cancel
@@ -359,6 +379,7 @@ export const SshCaSettingsPanel: React.FC<{ form: SettingsForm }> = ({ form }) =
                     <button
                       type="button"
                       aria-label="Edit"
+                      data-ca-edit={cfg.id}
                       onClick={() => beginEdit(cfg)}
                       className="rounded p-1 text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover"
                       title="Edit"
