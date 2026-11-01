@@ -1,5 +1,6 @@
 import { requestJson } from '../../oauth/requestJson';
 import { isLoopbackHttpUrl } from '../loopbackUrl';
+import { buildCertificateLine, normalizeCaBaseUrl, rootCaBuffer, throwIfCancelled } from './common';
 import type { ISshCaProvider, SshCaConfig, SshCaSignRequest, SshCaSignResponse } from '../../../shared/types/sshCa';
 
 export class VaultCaProvider implements ISshCaProvider {
@@ -20,13 +21,11 @@ export class VaultCaProvider implements ISshCaProvider {
       throw new Error('Public key line is required for Vault SSH signing');
     }
 
-    let caBaseUrl = config.caUrl.trim();
-    if (!caBaseUrl.startsWith('http://') && !caBaseUrl.startsWith('https://')) {
-      caBaseUrl = `https://${caBaseUrl}`;
-    }
-    const baseUrl = caBaseUrl.replace(/\/+$/, '');
+    throwIfCancelled(signal, 'Vault');
+
+    const baseUrl = normalizeCaBaseUrl(config.caUrl);
     const isLoopback = isLoopbackHttpUrl(baseUrl);
-    const rootCa = config.rootCaCert?.trim() ? Buffer.from(config.rootCaCert.trim(), 'utf8') : undefined;
+    const rootCa = rootCaBuffer(config);
 
     const baseHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -50,11 +49,8 @@ export class VaultCaProvider implements ISshCaProvider {
       ca: rootCa,
       timeoutMs: 15_000,
       allowHttp: isLoopback,
+      signal,
     });
-
-    if (signal?.aborted) {
-      throw new Error('Vault request was cancelled');
-    }
 
     if (loginRes.statusCode !== 200) {
       const errObj = loginRes.json as { errors?: string[] } | undefined;
@@ -98,6 +94,7 @@ export class VaultCaProvider implements ISshCaProvider {
         ca: rootCa,
         timeoutMs: 15_000,
         allowHttp: isLoopback,
+        signal,
       });
     } finally {
       // Step 3: Revoke single-use Vault client token after signing (best-effort cleanup)
@@ -117,10 +114,6 @@ export class VaultCaProvider implements ISshCaProvider {
       }
     }
 
-    if (signal?.aborted) {
-      throw new Error('Vault request was cancelled');
-    }
-
     if (signRes.statusCode !== 200 && signRes.statusCode !== 201) {
       const errObj = signRes.json as { errors?: string[] } | undefined;
       const errMsg = Array.isArray(errObj?.errors) && errObj.errors.length > 0
@@ -136,23 +129,11 @@ export class VaultCaProvider implements ISshCaProvider {
     }
 
     const parts = signedKey.split(/\s+/);
-    let certificateWireBase64: string;
-    let certificateLine: string;
-
-    if (parts.length >= 2) {
-      certificateWireBase64 = parts[1];
-      certificateLine = signedKey;
-    } else {
-      certificateWireBase64 = parts[0];
-      const certType = request.keyType.endsWith('-cert-v01@openssh.com')
-        ? request.keyType
-        : `${request.keyType}-cert-v01@openssh.com`;
-      certificateLine = `${certType} ${certificateWireBase64} sshs3-ca:${request.username}`;
-    }
-
+    // Vault returns the full certificate line; some versions return only the blob.
+    const certificateWireBase64 = parts.length >= 2 ? parts[1] : parts[0];
     return {
       certificateWireBase64,
-      certificateLine,
+      certificateLine: parts.length >= 2 ? signedKey : buildCertificateLine(request, certificateWireBase64),
     };
   }
 }

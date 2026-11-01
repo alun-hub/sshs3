@@ -1,5 +1,6 @@
 import { requestJson } from '../../oauth/requestJson';
 import { isLoopbackHttpUrl } from '../loopbackUrl';
+import { buildCertificateLine, normalizeCaBaseUrl, rootCaBuffer, throwIfCancelled } from './common';
 import type { ISshCaProvider, SshCaConfig, SshCaSignRequest, SshCaSignResponse } from '../../../shared/types/sshCa';
 
 export class StepCaProvider implements ISshCaProvider {
@@ -20,11 +21,10 @@ export class StepCaProvider implements ISshCaProvider {
       throw new Error('Public key wire format is required for Step-CA signing');
     }
 
-    let caBaseUrl = config.caUrl.trim();
-    if (!caBaseUrl.startsWith('http://') && !caBaseUrl.startsWith('https://')) {
-      caBaseUrl = `https://${caBaseUrl}`;
-    }
-    const signUrl = `${caBaseUrl.replace(/\/+$/, '')}/1.0/ssh/sign`;
+    throwIfCancelled(signal, 'Step-CA');
+
+    const caBaseUrl = normalizeCaBaseUrl(config.caUrl);
+    const signUrl = `${caBaseUrl}/1.0/ssh/sign`;
 
     const payload: Record<string, unknown> = {
       publicKey: request.publicKeyWireBase64,
@@ -36,22 +36,17 @@ export class StepCaProvider implements ISshCaProvider {
       payload.principals = request.principals;
     }
 
-    const isLoopback = isLoopbackHttpUrl(caBaseUrl);
-
     const res = await requestJson(signUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-      ca: config.rootCaCert ? Buffer.from(config.rootCaCert, 'utf8') : undefined,
+      ca: rootCaBuffer(config),
       timeoutMs: 15_000,
-      allowHttp: isLoopback,
+      allowHttp: isLoopbackHttpUrl(caBaseUrl),
+      signal,
     });
-
-    if (signal?.aborted) {
-      throw new Error('Step-CA request was cancelled');
-    }
 
     if (res.statusCode !== 200 && res.statusCode !== 201) {
       const errObj = res.json as { message?: string } | undefined;
@@ -65,14 +60,10 @@ export class StepCaProvider implements ISshCaProvider {
     }
 
     const certificateWireBase64 = data.crt.trim();
-    const certType = request.keyType.endsWith('-cert-v01@openssh.com')
-      ? request.keyType
-      : `${request.keyType}-cert-v01@openssh.com`;
-    const certificateLine = `${certType} ${certificateWireBase64} sshs3-ca:${request.username}`;
 
     return {
       certificateWireBase64,
-      certificateLine,
+      certificateLine: buildCertificateLine(request, certificateWireBase64),
     };
   }
 }

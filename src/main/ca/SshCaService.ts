@@ -13,6 +13,7 @@ import type {
 } from '../../shared/types/sshCa';
 import { StepCaProvider } from './providers/StepCaProvider';
 import { VaultCaProvider } from './providers/VaultCaProvider';
+import { rootCaBuffer } from './providers/common';
 import {
   computeOpenSshFingerprint,
   isoToEpochSeconds,
@@ -189,9 +190,7 @@ export class SshCaService {
     const issuer = activeConfig.oidcIssuerUrl.trim().replace(/\/+$/, '');
     const isLoopback = isLoopbackHttpUrl(issuer);
     const discoveryUrl = `${issuer}/.well-known/openid-configuration`;
-    const rootCa = activeConfig.rootCaCert?.trim()
-      ? Buffer.from(activeConfig.rootCaCert.trim(), 'utf-8')
-      : undefined;
+    const rootCa = rootCaBuffer(activeConfig);
 
     const discRes = await requestJson(discoveryUrl, {
       method: 'GET',
@@ -355,9 +354,7 @@ export class SshCaService {
     if (session.refreshToken && session.tokenEndpoint) {
       try {
         caLog.info(`Attempting token refresh for SSH CA session "${session.username}"`);
-        const rootCa = session.config.rootCaCert?.trim()
-          ? Buffer.from(session.config.rootCaCert.trim(), 'utf-8')
-          : undefined;
+        const rootCa = rootCaBuffer(session.config);
 
         const refreshParams = new URLSearchParams({
           grant_type: 'refresh_token',

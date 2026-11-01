@@ -25,6 +25,8 @@ export interface RequestJsonOptions {
   ca?: string | Buffer | Array<string | Buffer>;
   timeoutMs: number;
   allowHttp?: boolean;
+  /** Aborting rejects with 'Request was cancelled' and tears the connection down. */
+  signal?: AbortSignal;
 }
 
 export function describeNetworkError(host: string, err: NodeJS.ErrnoException): Error {
@@ -66,6 +68,7 @@ export function requestJson(urlString: string, init: RequestJsonOptions): Promis
         rejectUnauthorized: !init.insecureSkipTlsVerify,
         ca: init.ca,
         timeout: init.timeoutMs,
+        signal: init.signal,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -91,7 +94,9 @@ export function requestJson(urlString: string, init: RequestJsonOptions): Promis
       }
     );
     req.on('timeout', () => req.destroy(new Error('Request timed out')));
-    req.on('error', (err: NodeJS.ErrnoException) => reject(describeNetworkError(url.host, err)));
+    req.on('error', (err: NodeJS.ErrnoException) =>
+      reject(init.signal?.aborted ? new Error('Request was cancelled') : describeNetworkError(url.host, err))
+    );
     if (init.body !== undefined) req.write(init.body);
     req.end();
   });
