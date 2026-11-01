@@ -1,4 +1,5 @@
 import { requestJson } from '../../oauth/requestJson';
+import { isLoopbackHttpUrl } from '../loopbackUrl';
 import type { ISshCaProvider, SshCaConfig, SshCaSignRequest, SshCaSignResponse } from '../../../shared/types/sshCa';
 
 export class VaultCaProvider implements ISshCaProvider {
@@ -24,7 +25,7 @@ export class VaultCaProvider implements ISshCaProvider {
       caBaseUrl = `https://${caBaseUrl}`;
     }
     const baseUrl = caBaseUrl.replace(/\/+$/, '');
-    const isLoopback = baseUrl.startsWith('http://127.0.0.1') || baseUrl.startsWith('http://localhost');
+    const isLoopback = isLoopbackHttpUrl(baseUrl);
     const rootCa = config.rootCaCert?.trim() ? Buffer.from(config.rootCaCert.trim(), 'utf8') : undefined;
 
     const baseHeaders: Record<string, string> = {

@@ -15,6 +15,7 @@ vi.mock('electron', () => {
 });
 
 import { IpcBridge } from '../../src/main/IpcBridge';
+import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { WindowManager, type ManagedWindow, type WindowActions } from '../../src/main/windows/WindowManager';
 
 function fakeWindow(id: number) {
@@ -159,5 +160,44 @@ describe('IpcBridge multi-window routing', () => {
       expect(bridge.takeHandoff(a.webContents as never)).toEqual(handoff);
       expect(bridge.takeHandoff({ id: 99 } as never)).toBeNull();
     });
+  });
+});
+
+describe('IpcBridge SSH CA status events', () => {
+  const statusCalls = (win: { send: ReturnType<typeof vi.fn> }) =>
+    win.send.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.SSH_CA_STATUS_CHANGED);
+
+  it('delivers a status change exactly once to every window, the focused one included', async () => {
+    const { bridge, a, b } = makeBridge();
+
+    (bridge.sshCaService as any).notifyStatus();
+
+    expect(statusCalls(a)).toHaveLength(1);
+    expect(statusCalls(b)).toHaveLength(1);
+    await bridge.dispose();
+  });
+
+  it('falls back to the focused window once when the bridge has no window router', async () => {
+    const win = fakeWindow(1);
+    const bridge = new IpcBridge({ getWebContents: () => win.webContents as never });
+
+    (bridge.sshCaService as any).notifyStatus();
+
+    expect(statusCalls(win)).toHaveLength(1);
+    await bridge.dispose();
+  });
+
+  it('ends the SSH CA session on dispose (removes the certified key and the certificate file)', async () => {
+    const sshCaService = {
+      logout: vi.fn().mockResolvedValue(undefined),
+      onStatusChanged: vi.fn().mockReturnValue(() => {}),
+      getStatus: vi.fn().mockReturnValue({ active: false }),
+      getActiveCertificateFilePath: vi.fn(),
+    };
+    const bridge = new IpcBridge({ sshCaService: sshCaService as never });
+
+    await bridge.dispose();
+
+    expect(sshCaService.logout).toHaveBeenCalledTimes(1);
   });
 });

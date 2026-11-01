@@ -1,4 +1,5 @@
 import { requestJson } from '../../oauth/requestJson';
+import { isLoopbackHttpUrl } from '../loopbackUrl';
 import type { ISshCaProvider, SshCaConfig, SshCaSignRequest, SshCaSignResponse } from '../../../shared/types/sshCa';
 
 export class StepCaProvider implements ISshCaProvider {
@@ -35,7 +36,7 @@ export class StepCaProvider implements ISshCaProvider {
       payload.principals = request.principals;
     }
 
-    const isLoopback = caBaseUrl.startsWith('http://127.0.0.1') || caBaseUrl.startsWith('http://localhost');
+    const isLoopback = isLoopbackHttpUrl(caBaseUrl);
 
     const res = await requestJson(signUrl, {
       method: 'POST',

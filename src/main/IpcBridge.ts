@@ -392,8 +392,13 @@ export class IpcBridge {
     });
     this.smartcard.setSshCaService(this.sshCaService);
     this.sshCaService.onStatusChanged((status) => {
-      this.windows?.broadcast(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
-      this.getWebContents()?.send(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      // The window router already reaches every window, the main one included; the focused-window
+      // fallback is only for a bridge without a router (sending to both delivers the event twice).
+      if (this.windows) {
+        this.windows.broadcast(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      } else {
+        this.getWebContents()?.send(IPC_CHANNELS.SSH_CA_STATUS_CHANGED, status);
+      }
     });
     this.k8sDiscoveryService = options.k8sDiscoveryService ?? new K8sDiscoveryService();
     this.k8sDebugService = options.k8sDebugService ?? new K8sDebugService();
@@ -1879,6 +1884,10 @@ export class IpcBridge {
     // remaining per-session ('agent-per-session' mode) private agent explicitly,
     // in addition to the global ones, or their ssh-agent processes and sockets
     // under ~/.ssh/agent leak past app quit.
+    // Ends the SSH CA session first: it cancels a pending sign-in and the renewal timers, removes the
+    // certified key from the app agent and deletes the PIV certificate file, which the app agent
+    // shutdown below does not know about.
+    await this.disposeStep('sshCaService.logout', () => this.sshCaService.logout());
     await this.smartcard.dispose();
     AgentLifecycleManager.killAllPrivateAgents();
     await AgentLifecycleManager.stopManagedAgent();

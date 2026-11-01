@@ -358,12 +358,23 @@ export class SmartcardCoordinator {
     this.sshCaService = service;
   }
 
+  /** Public key files pinning a connection to the first unlocked PIV card of the shared app agent (none if there is none). */
+  private async pivIdentityFilesFor(socketPath: string): Promise<{ agentIdentityFiles?: string[] }> {
+    for (const cardKey of this.globalCards.keys()) {
+      if (cardKey === FIDO2_KEY) continue;
+      const files = await this.agentIdentityFilesFor(socketPath, cardKey);
+      if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) return files;
+    }
+    return {};
+  }
+
   /**
    * Prepares an SSH connection config that uses SSH CA certificate authentication (`useSshCa`).
    * When `authType === 'agent'` and `useSshCa` is true:
    * 1. Routes the connection through the app-managed SSH agent socket holding the user certificate / PIV key.
    * 2. Attaches the signed certificate file (`-o CertificateFile=...`) if one is active (e.g. for PIV).
-   * 3. Attaches PIV card public key identity files (`agentIdentityFiles`) to restrict agent offerings.
+   * 3. For a PIV session only, attaches the PIV card's public key identity files (`agentIdentityFiles`)
+   *    to restrict agent offerings; an ephemeral session's key is offered from the agent unrestricted.
    */
   public async prepareSshCaConfig(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
     if (config.authType !== 'agent' || !config.useSshCa) {
@@ -376,16 +387,11 @@ export class SmartcardCoordinator {
       agentPath: socketPath,
       certificateFile: certFile ?? config.certificateFile,
     };
-    if (this.hasPivCard()) {
-      for (const cardKey of this.globalCards.keys()) {
-        if (cardKey !== FIDO2_KEY) {
-          const files = await this.agentIdentityFilesFor(socketPath, cardKey);
-          if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) {
-            updated = { ...updated, ...files };
-            break;
-          }
-        }
-      }
+    // Only a PIV session (it has a certificate file) is pinned to the card's key. An ephemeral session's
+    // certified key lives in the agent without any public-key file, and `IdentitiesOnly` + `-i <card>.pub`
+    // would hide it from ssh even though it is the identity this connection needs.
+    if (certFile) {
+      updated = { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) };
     }
     return updated;
   }
@@ -402,16 +408,11 @@ export class SmartcardCoordinator {
       agentPath: socketPath,
       certificateFile: certFile ?? config.certificateFile,
     };
-    if (this.hasPivCard()) {
-      for (const cardKey of this.globalCards.keys()) {
-        if (cardKey !== FIDO2_KEY) {
-          const files = await this.agentIdentityFilesFor(socketPath, cardKey);
-          if (files.agentIdentityFiles && files.agentIdentityFiles.length > 0) {
-            updated = { ...updated, ...files };
-            break;
-          }
-        }
-      }
+    // Only a PIV session (it has a certificate file) is pinned to the card's key. An ephemeral session's
+    // certified key lives in the agent without any public-key file, and `IdentitiesOnly` + `-i <card>.pub`
+    // would hide it from ssh even though it is the identity this connection needs.
+    if (certFile) {
+      updated = { ...updated, ...(await this.pivIdentityFilesFor(socketPath)) };
     }
     return updated;
   }
@@ -450,7 +451,9 @@ export class SmartcardCoordinator {
     // 3. Ensure token is plugged in
     await this.ensureTokenPresent('smartcard', 'SSH CA authentication', chosen.path);
 
-    // 4. Load into app agent (prompts for PIN if needed)
+    // 4. Load into app agent (prompts for PIN if needed). An explicit user login
+    // bypasses any previous background-failure cooldown on this library.
+    this.globalSmartcardAgentFailures.delete(chosen.path);
     await this.getOrLoadGlobalSmartcardAgent(
       chosen.path,
       (prompt, retry) => this.deps.promptForPin(prompt.trim(), 'smartcard', 'SSH CA', retry),

@@ -85,7 +85,10 @@ export function encodeAddCertifiedEd25519Key(params: AddCertifiedEd25519KeyOptio
     writer.writeUint32(params.lifetimeSeconds!);
   }
 
-  return writer.toMessage();
+  const message = writer.toMessage();
+  // The writer holds `sk` by reference, so it may only be wiped once toMessage() has copied it.
+  sk.fill(0);
+  return message;
 }
 
 /**
@@ -147,10 +150,14 @@ export async function addCertifiedEd25519KeyToAgent(
   options: AddCertifiedEd25519KeyOptions
 ): Promise<void> {
   const packet = encodeAddCertifiedEd25519Key(options);
-  const responseBody = await sendAgentMessage(socketPath, packet);
+  try {
+    const responseBody = await sendAgentMessage(socketPath, packet);
 
-  if (responseBody.length === 0 || responseBody[0] !== SSH_AGENT_SUCCESS) {
-    const code = responseBody.length > 0 ? responseBody[0] : 'empty';
-    throw new Error(`ssh-agent refused to add certified key (response code ${code})`);
+    if (responseBody.length === 0 || responseBody[0] !== SSH_AGENT_SUCCESS) {
+      const code = responseBody.length > 0 ? responseBody[0] : 'empty';
+      throw new Error(`ssh-agent refused to add certified key (response code ${code})`);
+    }
+  } finally {
+    packet.fill(0);
   }
 }

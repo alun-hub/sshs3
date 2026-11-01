@@ -602,5 +602,45 @@ describe('SmartcardCoordinator', () => {
       const prepared = await coordinator.prepareSshCaConfig(sshConfig);
       expect(prepared).toBe(sshConfig);
     });
+
+    describe('with a PIV card also unlocked in the app agent', () => {
+      const PIV_PUB = '/run/sshs3/keys/piv.pub';
+      const sshCaProfile: SSHConnectionConfig = {
+        id: 'cfg-3', name: 'CA Target', host: 'ca.example.com', username: 'alun', authType: 'agent', useSshCa: true,
+      };
+      const sftpCaProfile: SFTPConfig = {
+        id: 'cfg-4', name: 'CA SFTP', host: 'sftp.example.com', port: 22, username: 'alun', authType: 'agent', useSshCa: true,
+      };
+
+      function withUnlockedPivCard(certFile: string | undefined) {
+        const { coordinator, agent } = build();
+        (agent as any).writePublicKeyFiles = vi.fn().mockResolvedValue([PIV_PUB]);
+        (coordinator as any).globalCards.set(LIB, { fingerprints: new Set(['SHA256:piv']) });
+        coordinator.setSshCaService({ getActiveCertificateFilePath: vi.fn().mockReturnValue(certFile) } as any);
+        return coordinator;
+      }
+
+      it('pins a PIV session to the card key (IdentitiesOnly + its public key file)', async () => {
+        const coordinator = withUnlockedPivCard('/run/sshs3/certs/piv-cert.pub');
+
+        const ssh = await coordinator.prepareSshCaConfig(sshCaProfile);
+        const sftp = await coordinator.prepareSftpSshCaConfig(sftpCaProfile);
+
+        expect(ssh.agentIdentityFiles).toEqual([PIV_PUB]);
+        expect(ssh.certificateFile).toBe('/run/sshs3/certs/piv-cert.pub');
+        expect(sftp.agentIdentityFiles).toEqual([PIV_PUB]);
+      });
+
+      it('does not pin an ephemeral-key session, so its certified key in the agent stays offered', async () => {
+        const coordinator = withUnlockedPivCard(undefined);
+
+        const ssh = await coordinator.prepareSshCaConfig(sshCaProfile);
+        const sftp = await coordinator.prepareSftpSshCaConfig(sftpCaProfile);
+
+        expect(ssh.agentIdentityFiles).toBeUndefined();
+        expect(ssh.agentPath).toBe('/run/sshs3/agent.sock');
+        expect(sftp.agentIdentityFiles).toBeUndefined();
+      });
+    });
   });
 });

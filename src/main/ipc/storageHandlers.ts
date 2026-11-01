@@ -27,7 +27,7 @@ export type StorageHost = Pick<
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
-    'awaitStartupUnlock' | 'cleanupSmartcardSessionAgent' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig'
+    'awaitStartupUnlock' | 'cleanupSmartcardSessionAgent' | 'prepareFido2SftpConfig' | 'prepareSftpSmartcardConfig' | 'prepareSftpSshCaConfig'
   >;
 };
 
@@ -73,6 +73,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         let sftpConfig = await bridge.resolveProxyJumpConfig(resolvedConfig.sftpConfig);
         sftpConfig = await bridge.smartcard.prepareSftpSmartcardConfig(sftpConfig, config.id);
         sftpConfig = await bridge.smartcard.prepareFido2SftpConfig(sftpConfig, config.id);
+        sftpConfig = await bridge.smartcard.prepareSftpSshCaConfig(sftpConfig);
         resolvedConfig = { ...resolvedConfig, sftpConfig };
       }
       // Only an id comes from the renderer; the socket path is read from the terminal session itself.

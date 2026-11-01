@@ -761,6 +761,32 @@ describe('SmartcardDetector', () => {
       expect(args).toContain('-o');
       expect(args).toContain('CertificateFile=/tmp/run/user/1000/sshs3/certs/serial-cert.pub');
     });
+
+    it('rejects CertificateFile containing newlines or leading dashes', () => {
+      expect(() =>
+        SmartcardDetector.buildSSHArguments({
+          id: 'cfg-ca-inject',
+          name: 'SSH CA Server',
+          host: 'server.example.com',
+          username: 'alun',
+          authType: 'agent',
+          useSshCa: true,
+          certificateFile: '/tmp/cert.pub\nPermitLocalCommand yes',
+        })
+      ).toThrow('Invalid CertificateFile');
+
+      expect(() =>
+        SmartcardDetector.buildSSHArguments({
+          id: 'cfg-ca-flag',
+          name: 'SSH CA Server',
+          host: 'server.example.com',
+          username: 'alun',
+          authType: 'agent',
+          useSshCa: true,
+          certificateFile: '-F/tmp/evil_config',
+        })
+      ).toThrow('Invalid CertificateFile');
+    });
   });
 });
 

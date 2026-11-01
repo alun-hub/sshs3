@@ -42,6 +42,34 @@ describe('agentProtocol', () => {
     expect(r.remaining).toBe(5); // 1 byte constraint type + 4 bytes seconds
   });
 
+  it('puts the real seed and public key in the secret-key field (64 bytes: seed + pubkey)', () => {
+    const seed = Buffer.alloc(32, 0xcc);
+    const pubKey = Buffer.alloc(32, 0xbb);
+    const packet = encodeAddCertifiedEd25519Key({
+      certificateWire: Buffer.alloc(100, 0xaa),
+      publicKeyBytes: pubKey,
+      privateKeySeedBytes: seed,
+    });
+
+    const r = new BinaryReader(packet.subarray(5));
+    r.readString();
+    r.readBuffer();
+    r.readBuffer();
+    const sk = r.readBuffer();
+    expect(sk.subarray(0, 32).equals(seed)).toBe(true);
+    expect(sk.subarray(32).equals(pubKey)).toBe(true);
+  });
+
+  it('does not modify the caller-owned seed buffer', () => {
+    const seed = Buffer.alloc(32, 0xcc);
+    encodeAddCertifiedEd25519Key({
+      certificateWire: Buffer.alloc(100, 0xaa),
+      publicKeyBytes: Buffer.alloc(32, 0xbb),
+      privateKeySeedBytes: seed,
+    });
+    expect(seed.equals(Buffer.alloc(32, 0xcc))).toBe(true);
+  });
+
   it('encodes without lifetime when lifetimeSeconds is unset', () => {
     const certWire = Buffer.alloc(50, 0xaa);
     const pubKey = Buffer.alloc(32, 0xbb);

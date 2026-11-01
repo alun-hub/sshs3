@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SshCaStatusBadge } from '../../src/renderer/src/components/ca/SshCaStatusBadge';
 import type { SshCaStatus } from '../../src/shared/types/sshCa';
@@ -102,5 +102,57 @@ describe('SshCaStatusBadge', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'SSH CA Status' })).not.toBeInTheDocument();
+  });
+
+  it('updates remaining time dynamically while popover is open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const now = new Date('2026-10-31T20:00:00.000Z').getTime();
+      vi.setSystemTime(now);
+
+      mockStatus = {
+        active: true,
+        username: 'alun',
+        expiresAt: new Date(now + 120_000).toISOString(), // 2 minutes (120s)
+        certInfo: {
+          certType: 'user',
+          keyId: 'alun',
+          principals: ['alun'],
+          validAfter: new Date(now - 60_000).toISOString(),
+          validBefore: new Date(now + 120_000).toISOString(),
+          serial: '123',
+          signatureKeyFingerprint: 'SHA256:ca',
+          publicKeyFingerprint: 'SHA256:user',
+        },
+      };
+
+      render(<SshCaStatusBadge />);
+
+      // Wait for status to load
+      await waitFor(() => {
+        expect(screen.getByTestId('ssh-ca-status-btn')).toHaveAttribute(
+          'title',
+          expect.stringContaining('Active (alun)')
+        );
+      });
+
+      // Open popover
+      fireEvent.click(screen.getByTestId('ssh-ca-status-btn'));
+      expect(screen.getByText(/1m 5[89]s remaining|2m 0s remaining/)).toBeInTheDocument();
+
+      // Advance by 15 seconds
+      act(() => {
+        vi.advanceTimersByTime(15_000);
+      });
+      expect(screen.getByText(/1m 4[345]s remaining/)).toBeInTheDocument();
+
+      // Advance past expiration
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      expect(screen.getByText('Expired')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

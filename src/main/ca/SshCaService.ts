@@ -19,6 +19,7 @@ import {
   validateOpenSshCertificate,
 } from './sshCertificateUtils';
 import { exportSshWirePublicKey, type SshWireKeyInfo } from './sshPublicKeyFormat';
+import { isLoopbackHttpUrl } from './loopbackUrl';
 import {
   buildRedirectUri,
   generatePkce,
@@ -57,6 +58,12 @@ export class SshCaService {
   private statusListeners = new Set<(status: SshCaStatus) => void>();
   private expirationTimer: NodeJS.Timeout | null = null;
   private renewalTimer: NodeJS.Timeout | null = null;
+  /** Login, renew and logout run one at a time; this is the tail of that queue (it never rejects). */
+  private operationQueue: Promise<void> = Promise.resolve();
+  /** Bumped by logout(): operations queued before a logout are dropped instead of logging the user back in. */
+  private logoutEpoch = 0;
+  /** Abort handle of the operation that is running now, so logout() can cancel a pending browser sign-in. */
+  private runningAbort: AbortController | null = null;
 
   constructor(deps: SshCaServiceDependencies) {
     this.deps = deps;
@@ -140,7 +147,39 @@ export class SshCaService {
     }
   }
 
-  public async login(config?: SshCaConfig, signal?: AbortSignal): Promise<SshCaStatus> {
+  /**
+   * Runs `task` after every earlier login/renew/logout has finished, so two of them never race on the
+   * agent, the certificate file or `activeSession`. Tasks queued before a logout() are cancelled.
+   */
+  private runExclusive<T>(task: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {
+    const epoch = this.logoutEpoch;
+    const run = this.operationQueue.then(async () => {
+      if (epoch !== this.logoutEpoch || external?.aborted) {
+        throw new Error('SSH CA operation was cancelled');
+      }
+      const controller = new AbortController();
+      const onExternalAbort = () => controller.abort();
+      external?.addEventListener('abort', onExternalAbort, { once: true });
+      this.runningAbort = controller;
+      try {
+        return await task(controller.signal);
+      } finally {
+        external?.removeEventListener('abort', onExternalAbort);
+        if (this.runningAbort === controller) this.runningAbort = null;
+      }
+    });
+    this.operationQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  public login(config?: SshCaConfig, signal?: AbortSignal): Promise<SshCaStatus> {
+    return this.runExclusive((opSignal) => this.performLogin(config, opSignal), signal);
+  }
+
+  private async performLogin(config: SshCaConfig | undefined, signal: AbortSignal): Promise<SshCaStatus> {
     const activeConfig = config ?? (await this.resolveDefaultConfig());
     if (!activeConfig) {
       throw new Error('No SSH CA configuration provided or configured in settings');
@@ -161,7 +200,7 @@ export class SshCaService {
     }
 
     const issuer = activeConfig.oidcIssuerUrl.trim().replace(/\/+$/, '');
-    const isLoopback = issuer.startsWith('http://127.0.0.1') || issuer.startsWith('http://localhost');
+    const isLoopback = isLoopbackHttpUrl(issuer);
     const discoveryUrl = `${issuer}/.well-known/openid-configuration`;
     const rootCa = activeConfig.rootCaCert?.trim()
       ? Buffer.from(activeConfig.rootCaCert.trim(), 'utf-8')
@@ -191,34 +230,39 @@ export class SshCaService {
     const state = generateState();
     const nonce = crypto.randomBytes(16).toString('base64url');
 
+    // Validate the endpoint before binding a port, so a bad discovery document never leaves a listener behind.
+    const authUrl = new URL(discovery.authorization_endpoint);
+    if (authUrl.protocol !== 'https:' && !(isLoopback && authUrl.protocol === 'http:')) {
+      throw new Error(`Insecure or invalid authorization_endpoint protocol: "${authUrl.protocol}"`);
+    }
+
     const callbackServer = await startCallbackServer({
       state,
       signal: signal ?? new AbortController().signal,
       timeoutMs: 120_000,
       providerName: 'SSH CA',
+      timeoutMessage: 'Timed out waiting for the browser sign-in to the SSH CA identity provider. Please try again.',
     });
 
-    const redirectUri = buildRedirectUri(callbackServer.host, callbackServer.port);
-
-    const authUrl = new URL(discovery.authorization_endpoint);
-    authUrl.searchParams.set('client_id', activeConfig.oidcClientId);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', 'openid profile email');
-    authUrl.searchParams.set('state', state);
-    authUrl.searchParams.set('code_challenge', pkce.challenge);
-    authUrl.searchParams.set('code_challenge_method', 'S256');
-    authUrl.searchParams.set('nonce', nonce);
-
-    const openBrowser = this.deps.openExternal ?? (async (targetUrl: string) => {
-      const { shell } = await import('electron');
-      await shell.openExternal(targetUrl);
-    });
-
-    await openBrowser(authUrl.toString());
-
+    let redirectUri: string;
     let code: string;
     try {
+      redirectUri = buildRedirectUri(callbackServer.host, callbackServer.port);
+      authUrl.searchParams.set('client_id', activeConfig.oidcClientId);
+      authUrl.searchParams.set('redirect_uri', redirectUri);
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('scope', 'openid profile email');
+      authUrl.searchParams.set('state', state);
+      authUrl.searchParams.set('code_challenge', pkce.challenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
+      authUrl.searchParams.set('nonce', nonce);
+
+      const openBrowser = this.deps.openExternal ?? (async (targetUrl: string) => {
+        const { shell } = await import('electron');
+        await shell.openExternal(targetUrl);
+      });
+
+      await openBrowser(authUrl.toString());
       code = await callbackServer.waitForCode();
     } finally {
       callbackServer.close();
@@ -274,7 +318,16 @@ export class SshCaService {
     return this.getStatus();
   }
 
-  public async logout(): Promise<void> {
+  public logout(): Promise<void> {
+    // Cancel what is queued or running (a pending browser sign-in, a renewal) before it can reinstall a
+    // certificate behind the logout, and stop the timers right away.
+    this.logoutEpoch++;
+    this.clearTimers();
+    this.runningAbort?.abort();
+    return this.runExclusive(() => this.performLogout());
+  }
+
+  private async performLogout(): Promise<void> {
     this.clearTimers();
 
     if (this.activeSession) {
@@ -296,7 +349,17 @@ export class SshCaService {
     this.notifyStatus();
   }
 
-  public async renew(signal?: AbortSignal): Promise<SshCaStatus> {
+  /** User-initiated renewal: tries a silent token refresh, then falls back to an interactive sign-in. */
+  public renew(signal?: AbortSignal): Promise<SshCaStatus> {
+    return this.runExclusive((opSignal) => this.performRenew(opSignal, true), signal);
+  }
+
+  /** Timer-driven renewal: never opens a browser with nobody there to use it. */
+  private renewSilently(): Promise<SshCaStatus> {
+    return this.runExclusive((opSignal) => this.performRenew(opSignal, false));
+  }
+
+  private async performRenew(signal: AbortSignal, allowInteractive: boolean): Promise<SshCaStatus> {
     if (!this.activeSession) {
       throw new Error('No active SSH CA session to renew');
     }
@@ -313,9 +376,11 @@ export class SshCaService {
           grant_type: 'refresh_token',
           client_id: session.config.oidcClientId,
           refresh_token: session.refreshToken,
+          scope: 'openid profile email',
         });
 
-        const isLoopback = session.tokenEndpoint.startsWith('http://127.0.0.1') || session.tokenEndpoint.startsWith('http://localhost');
+        // Same rule as login(): plain http is allowed only when the configured issuer itself is loopback.
+        const isLoopback = isLoopbackHttpUrl(session.config.oidcIssuerUrl.trim());
         const tokenRes = await requestJson(session.tokenEndpoint, {
           method: 'POST',
           headers: {
@@ -346,12 +411,18 @@ export class SshCaService {
           }
         }
       } catch (err) {
-        caLog.warn('Token refresh failed, falling back to interactive login:', (err as Error).message);
+        caLog.warn(
+          `Token refresh failed${allowInteractive ? ', falling back to interactive login' : ''}:`,
+          (err as Error).message
+        );
       }
     }
 
+    if (!allowInteractive) {
+      throw new Error('Silent SSH CA renewal failed; sign in again before the certificate expires');
+    }
     // Fall back to full interactive login with saved config
-    return this.login(session.config, signal);
+    return this.performLogin(session.config, signal);
   }
 
   private async signAndLoadCertificate(params: {
@@ -394,64 +465,67 @@ export class SshCaService {
       pubKey = spki.subarray(spki.length - 32);
     }
 
-    const provider = this.providers.get(config.backend);
-    if (!provider) {
-      throw new Error(`Unsupported SSH CA backend: ${config.backend}`);
-    }
+    try {
+      const provider = this.providers.get(config.backend);
+      if (!provider) {
+        throw new Error(`Unsupported SSH CA backend: ${config.backend}`);
+      }
 
-    const signRes = await provider.sign(
-      {
-        publicKeyWireBase64,
-        keyType,
-        publicKeyLine,
-        identityToken: idToken,
-        username,
-        principals: config.defaultPrincipals,
-      },
-      config,
-      signal ?? new AbortController().signal
-    );
+      const signRes = await provider.sign(
+        {
+          publicKeyWireBase64,
+          keyType,
+          publicKeyLine,
+          identityToken: idToken,
+          username,
+          principals: config.defaultPrincipals,
+        },
+        config,
+        signal ?? new AbortController().signal
+      );
 
-    const certWire = Buffer.from(signRes.certificateWireBase64, 'base64');
-    const parsedCert = parseOpenSshCertificate(certWire);
-    const validation = validateOpenSshCertificate(parsedCert);
-    if (!validation.valid) {
-      throw new Error(`SSH CA issued invalid certificate: ${validation.error}`);
-    }
+      if (signal?.aborted) {
+        throw new Error('SSH CA sign-in was cancelled');
+      }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const validBeforeMs = new Date(parsedCert.validBefore).getTime();
-    const validBeforeSec = Math.floor(validBeforeMs / 1000);
-    const lifetimeSeconds = Math.max(0, validBeforeSec - nowSec);
+      const certWire = Buffer.from(signRes.certificateWireBase64, 'base64');
+      const parsedCert = parseOpenSshCertificate(certWire);
+      // The certificate must be for the key we asked the CA to sign, not for some other key.
+      const validation = validateOpenSshCertificate(parsedCert, {
+        expectedPublicKeyFingerprint: computeOpenSshFingerprint(Buffer.from(publicKeyWireBase64, 'base64')),
+      });
+      if (!validation.valid) {
+        throw new Error(`SSH CA issued invalid certificate: ${validation.error}`);
+      }
 
-    // Evict previous certificate from agent or disk if replacing an active session
-    if (this.activeSession) {
-      if (this.activeSession.certificateFilePath) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const validBeforeMs = new Date(parsedCert.validBefore).getTime();
+      const validBeforeSec = Math.floor(validBeforeMs / 1000);
+      const lifetimeSeconds = Math.max(0, validBeforeSec - nowSec);
+      const certFingerprint = computeOpenSshFingerprint(certWire);
+
+      // Install the new certificate first; the previous one is only evicted once this has succeeded,
+      // so a failed renewal leaves the working identity (and the status that describes it) intact.
+      let certificateFilePath: string | undefined;
+
+      if (config.keySource === 'piv') {
+        const certsDir = path.join(resolveAppAgentDir(), 'certs');
+        await ensureSecureDir(path.dirname(certsDir));
+        await ensureSecureDir(certsDir);
+        const safeFp = parsedCert.publicKeyFingerprint.replace(/[^a-zA-Z0-9_-]/g, '_');
+        certificateFilePath = path.join(certsDir, `${safeFp}-cert.pub`);
+        // Write-then-rename: the path is the same on every renewal of a PIV key, so a failed write must
+        // not destroy the certificate that is still in use.
+        const tmpPath = `${certificateFilePath}.${process.pid}.tmp`;
         try {
-          await fs.promises.unlink(this.activeSession.certificateFilePath);
-        } catch {
-          // Non-fatal
+          await fs.promises.writeFile(tmpPath, signRes.certificateLine + '\n', { mode: 0o600 });
+          await fs.promises.rename(tmpPath, certificateFilePath);
+        } catch (err) {
+          await fs.promises.unlink(tmpPath).catch(() => {});
+          throw err;
         }
-      }
-      try {
-        await this.deps.appAgent.removeIdentities([this.activeSession.certFingerprint]);
-      } catch {
-        // Non-fatal
-      }
-    }
-
-    let certificateFilePath: string | undefined;
-
-    if (config.keySource === 'piv') {
-      const certsDir = path.join(resolveAppAgentDir(), 'certs');
-      await ensureSecureDir(path.dirname(certsDir));
-      await ensureSecureDir(certsDir);
-      const safeFp = parsedCert.publicKeyFingerprint.replace(/[^a-zA-Z0-9_-]/g, '_');
-      certificateFilePath = path.join(certsDir, `${safeFp}-cert.pub`);
-      await fs.promises.writeFile(certificateFilePath, signRes.certificateLine + '\n', { mode: 0o600 });
-      caLog.info(`Saved PIV SSH CA certificate to ${certificateFilePath}`);
-    } else {
-      try {
+        caLog.info(`Saved PIV SSH CA certificate to ${certificateFilePath}`);
+      } else {
         // Load new certificate into the app-managed SSH agent
         await this.deps.appAgent.addCertifiedEd25519Key({
           certificateWire: certWire,
@@ -460,25 +534,52 @@ export class SshCaService {
           comment: `sshs3-ca:${username}`,
           lifetimeSeconds: lifetimeSeconds > 0 ? lifetimeSeconds : undefined,
         });
-      } finally {
-        privSeed?.fill(0);
-        pkcs8Buffer?.fill(0);
+      }
+
+      await this.evictReplacedSession(certificateFilePath, certFingerprint);
+
+      this.activeSession = {
+        config,
+        username,
+        principals: parsedCert.principals,
+        parsedCert,
+        certFingerprint,
+        certificateFilePath,
+        refreshToken,
+        tokenEndpoint,
+      };
+
+      this.scheduleTimers(validBeforeSec, refreshToken !== undefined);
+      this.notifyStatus();
+    } finally {
+      // Also on a failed sign/validate/install: the ephemeral private key must not linger in memory.
+      privSeed?.fill(0);
+      pkcs8Buffer?.fill(0);
+    }
+  }
+
+  /**
+   * Removes the previous session's certificate (file and agent identity) after its replacement is in place.
+   * A PIV certificate keeps the same path across renewals, so the file is only unlinked when the path differs.
+   */
+  private async evictReplacedSession(newCertificateFilePath: string | undefined, newCertFingerprint: string): Promise<void> {
+    const previous = this.activeSession;
+    if (!previous) return;
+
+    if (previous.certificateFilePath && previous.certificateFilePath !== newCertificateFilePath) {
+      try {
+        await fs.promises.unlink(previous.certificateFilePath);
+      } catch {
+        // Non-fatal
       }
     }
-
-    this.activeSession = {
-      config,
-      username,
-      principals: parsedCert.principals,
-      parsedCert,
-      certFingerprint: computeOpenSshFingerprint(certWire),
-      certificateFilePath,
-      refreshToken,
-      tokenEndpoint,
-    };
-
-    this.scheduleTimers(validBeforeSec, refreshToken !== undefined);
-    this.notifyStatus();
+    if (previous.certFingerprint !== newCertFingerprint) {
+      try {
+        await this.deps.appAgent.removeIdentities([previous.certFingerprint]);
+      } catch {
+        // Non-fatal
+      }
+    }
   }
 
   private scheduleTimers(validBeforeSec: number, hasRefreshToken: boolean): void {
@@ -508,7 +609,7 @@ export class SshCaService {
       this.renewalTimer = setTimeout(async () => {
         caLog.info('Triggering automatic SSH CA certificate renewal before expiry');
         try {
-          await this.renew();
+          await this.renewSilently();
         } catch (err) {
           caLog.warn('Automatic SSH CA renewal failed:', (err as Error).message);
         }
