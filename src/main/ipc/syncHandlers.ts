@@ -6,6 +6,7 @@ import { encryptSecretValue, isEncryptedSecret } from '../crypto/SecretFieldCryp
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../shared/types/ipc';
 import type { ProfileSyncStatus, ProfileSyncPullResult, SyncComparisonResult } from '../../shared/types/sync';
 import type { IpcBridge } from '../IpcBridge';
+import { isSyncTargetChanged } from '../services/syncTargetIdentity';
 import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 
 /** The part of IpcBridge this handler group may use. */
@@ -33,7 +34,17 @@ export function registerSyncHandlers(bridge: SyncHost): void {
       if (target.type === 's3' && !payload.remoteBasePath?.trim()) {
         throw new Error('An S3 target requires a bucket (optionally "bucket/prefix") to sync to');
       }
-      await bridge.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
+      const previous = await bridge.syncConfigStore.getConfig();
+      if (isSyncTargetChanged(previous, { target, remoteBasePath: payload.remoteBasePath })) {
+        // The cached key and salts belong to the data on the old target. Left in place, the next auto-push would
+        // encrypt with them and overwrite whatever another device stored on the new one. Lock first, so nothing
+        // can push in the gap, then drop salts and switch auto-sync off; unlocking again goes through a pull.
+        bridge.syncCryptoService.lock();
+        bridge.stopAutoPullTimer();
+        await bridge.syncConfigStore.replaceTarget(target, payload.remoteBasePath ?? '');
+      } else {
+        await bridge.syncConfigStore.setTarget(target, payload.remoteBasePath ?? '');
+      }
       await bridge.storageRegistry.disconnect?.(target.id);
       await bridge.storageRegistry.disconnect?.('sshs3-remote-profile-sync');
       // The (app-lifetime) ProfileSyncService instance otherwise keeps comparing

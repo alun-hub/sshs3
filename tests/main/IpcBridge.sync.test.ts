@@ -249,6 +249,65 @@ describe('IpcBridge — remote profile sync handlers', () => {
     expect(status.target).toEqual({ id: 'sync-target', name: 'My Sync Bucket', type: 's3' });
   });
 
+  // H4 (code review 2026-11-03): changing the target used to keep the old key and salts unlocked, so the next
+  // auto-push encrypted with the old key and overwrote whatever another device had stored on the new target.
+  describe('changing the sync target location', () => {
+    const PW = { topologyPassword: 'topology-pw', credentialsPassword: 'credentials-pw' };
+
+    it('locks sync, forgets the salts and turns auto-sync off', async () => {
+      const { ipc } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, PW);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+      const before = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
+      expect(before).toMatchObject({ topologyUnlocked: true, hasLocalSalts: true, autoSync: true });
+
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'another-bucket' });
+
+      const after = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
+      expect(after).toMatchObject({
+        topologyUnlocked: false,
+        credentialsUnlocked: false,
+        hasLocalSalts: false,
+        autoSync: false,
+        remoteBasePath: 'another-bucket',
+      });
+      expect(after.lastSyncAt).toBeUndefined();
+      await expect(ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_PUSH)).rejects.toThrow();
+    });
+
+    it('does not write to the new target when a push was already scheduled', async () => {
+      const { ipc, bridge } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, PW);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'another-bucket' });
+
+      const write = vi.spyOn(provider, 'createWriteStream');
+      bridge.scheduleAutoSync(0);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(write).not.toHaveBeenCalled();
+    });
+
+    it('keeps everything when the same location is saved again with other credentials', async () => {
+      const { ipc } = await harness();
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, PW);
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
+
+      const rotated: StorageConnectConfig = { ...TARGET, s3Config: { ...TARGET.s3Config!, accessKeyId: 'ROTATED', secretAccessKey: 'rotated' } };
+      await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: rotated, remoteBasePath: 'test-bucket/' });
+
+      expect(await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS)).toMatchObject({
+        topologyUnlocked: true,
+        credentialsUnlocked: true,
+        hasLocalSalts: true,
+        autoSync: true,
+      });
+    });
+  });
+
   it('refuses to enable with fresh salts when the target already has remote data from elsewhere', async () => {
     // Machine A sets up and enables first, pushing real data to the shared provider.
     const machineA = await harness();

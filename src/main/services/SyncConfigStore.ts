@@ -157,6 +157,26 @@ export class SyncConfigStore {
   }
 
   /**
+   * Points sync at a different location in one step: the salts, last-sync time and auto-sync flag belonged to
+   * the data on the previous target, so they are dropped together with it (the smartcard link stays). The next
+   * unlock then has to go through a pull (or start a brand-new set), never reuse the old key.
+   */
+  public async replaceTarget(target: StorageConnectConfig, remoteBasePath = ''): Promise<void> {
+    return this.queueMutation(async () => {
+      const current = await this.getConfig();
+      await this.persist({
+        ...current,
+        target,
+        remoteBasePath,
+        topologySaltBase64: undefined,
+        credentialsSaltBase64: undefined,
+        lastSyncAt: undefined,
+        autoSync: false,
+      });
+    });
+  }
+
+  /**
    * Updates whichever salt(s) are provided, leaving the other untouched.
    * Independent so that e.g. a bootstrap pull that only received one of the
    * two master passwords doesn't clobber the salt for the other, not-yet-

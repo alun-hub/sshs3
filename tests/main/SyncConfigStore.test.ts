@@ -126,6 +126,29 @@ describe('SyncConfigStore', () => {
     expect((await store.getConfig()).autoSync).toBe(false);
   });
 
+  it('replaceTarget() swaps the location and drops the salts, last sync and auto-sync, but keeps the smartcard link', async () => {
+    const store = new SyncConfigStore(storePath);
+    const target = (host: string): StorageConnectConfig => ({
+      id: 'sync', name: 'Sync', type: 'sftp', sftpConfig: { host, port: 22, username: 'u', authType: 'password', password: 'pw' } as any,
+    });
+    await store.setTarget(target('old.example.com'), '/old');
+    await store.setSalts({ topologySalt: Buffer.from('a'), credentialsSalt: Buffer.from('b') });
+    await store.setLastSyncAt('2026-11-03T10:00:00.000Z');
+    await store.setAutoSync(true);
+    await store.setSmartcardSync({ pkcs11LibPath: '/lib/x.so' });
+
+    await store.replaceTarget(target('new.example.com'), '/new');
+
+    const config = await store.getConfig();
+    expect(config.target?.sftpConfig?.host).toBe('new.example.com');
+    expect(config.remoteBasePath).toBe('/new');
+    expect(config.topologySaltBase64).toBeUndefined();
+    expect(config.credentialsSaltBase64).toBeUndefined();
+    expect(config.lastSyncAt).toBeUndefined();
+    expect(config.autoSync).toBe(false);
+    expect(config.smartcardSync?.pkcs11LibPath).toBe('/lib/x.so');
+  });
+
   it('clear() resets the target, salts, and every other field for the "delete all sync data" action', async () => {
     const store = new SyncConfigStore(storePath);
     await store.setTarget({

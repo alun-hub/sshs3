@@ -80,6 +80,10 @@ When the same profile exists on both devices, the version that was changed **lat
 > [!NOTE]
 > If you use different versions of sshs3 on different devices, a profile edited on the older version can clear a setting that only the newer one knows about. Keep all devices on the same version.
 
+### Changing the Sync Target
+
+Saving a **different** target (another host, port, user, endpoint, region, bucket or base path) starts over on this device: sync is locked, the stored salts and the last-sync time are dropped, and **automatic synchronization is switched off**. The key and salts belong to the data on the old target, so they are never reused to write to the new one. Unlock again with your master passwords: a target that already holds data is pulled first (as on a new machine), an empty one starts a new set. Turn automatic synchronization back on afterwards. Saving the same location again, for example with a rotated password or key, changes nothing.
+
 ### Deleting Your Sync Data
 In the **Synchronization** panel, the **Danger zone** has a **Delete sync data...** button. After an itemized confirmation it:
 - permanently deletes the encrypted sync files (topology, credentials, dotfile pools, settings, saved directory-sync and Kubernetes profiles, SSH config/known_hosts data) from the remote target;
@@ -121,6 +125,7 @@ Host prod-db
 | :--- | :--- | :--- |
 | `Wrong master password / MAC mismatch` | Incorrect master password entered during unlock | Re-enter password. If using two-tier mode, check topology vs credential password. |
 | `ECDSA key not supported for derivation` | Linked smartcard uses non-deterministic ECDSA | Unlock with master password and use card for session caching instead. |
+| Sync is locked and automatic synchronization is off after saving the target | A different target was saved, so the key and salts of the old one were dropped | Unlock with your master passwords (pull first if the target already has data), then re-enable automatic synchronization. |
 | `Sync conflict detected` | Same profile modified concurrently on two workstations | Review the conflict resolution dialog to select which version should take precedence. |
 | Remote sync data corrupted | Incomplete write or network failure during upload | Re-authenticate target and click **Push** to overwrite remote files with valid local state. |
 | `The OS keyring is unavailable, so the master passwords cannot be stored securely` | Linking a smartcard stores the master passwords encrypted by the OS keyring, and none is available or unlocked | Unlock the keyring or install a Secret Service (libsecret, KWallet) and link the card again. sshs3 will not keep the passwords unencrypted. |
