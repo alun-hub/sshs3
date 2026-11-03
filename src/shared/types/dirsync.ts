@@ -3,14 +3,18 @@ import type { FileEntry } from './storage';
 export interface DirectoryDiffEntry {
   relativePath: string;
   isDirectory: boolean;
-  status: 'new' | 'changed' | 'only-target';
+  /**
+   * 'conflict': the same relative path is a file on one side and a folder on the other. It is only reported:
+   * nothing is copied to or deleted from it, and nothing below it is diffed.
+   */
+  status: 'new' | 'changed' | 'only-target' | 'conflict';
   sourceEntry?: FileEntry;
   targetEntry?: FileEntry;
 }
 
 export interface DirectoryDiffResult {
   entries: DirectoryDiffEntry[];
-  counts: { new: number; changed: number; onlyTarget: number; same: number };
+  counts: { new: number; changed: number; onlyTarget: number; same: number; conflict: number };
   scannedAt: string;
   /** Subdirectories that could not be read (e.g. permission denied) and were skipped, per side. */
   skippedPaths: { source: string[]; target: string[] };

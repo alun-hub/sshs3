@@ -137,6 +137,70 @@ describe('buildTree with names chosen by a hostile server', () => {
   });
 });
 
+describe('computeDiff: a file and a folder with the same name (H6)', () => {
+  it('reports a source file against a target folder as a conflict, not as identical, and keeps the folder contents out of only-target', async () => {
+    const source = fakeProvider({ '/src': [file('/src', 'build')] });
+    const target = fakeProvider({
+      '/dst': [dir('/dst', 'build')],
+      '/dst/build': [file('/dst/build', 'x.txt')],
+    });
+
+    const result = await computeDiff(source, '/src', target, '/dst');
+
+    expect(result.entries.map((e) => [e.relativePath, e.status])).toEqual([['build', 'conflict']]);
+    expect(result.entries[0].sourceEntry?.isDirectory).toBe(false);
+    expect(result.entries[0].targetEntry?.isDirectory).toBe(true);
+    expect(result.counts).toEqual({ new: 0, changed: 0, onlyTarget: 0, same: 0, conflict: 1 });
+  });
+
+  it('reports a source folder against a target file as a conflict and does not offer its contents as new', async () => {
+    const source = fakeProvider({
+      '/src': [dir('/src', 'data')],
+      '/src/data': [file('/src/data', 'y.txt')],
+    });
+    const target = fakeProvider({ '/dst': [file('/dst', 'data')] });
+
+    const result = await computeDiff(source, '/src', target, '/dst');
+
+    expect(result.entries.map((e) => [e.relativePath, e.status])).toEqual([['data', 'conflict']]);
+    expect(result.counts.new).toBe(0);
+  });
+
+  it('still counts two folders with the same name as identical', async () => {
+    const source = fakeProvider({ '/src': [dir('/src', 'same')], '/src/same': [] });
+    const target = fakeProvider({ '/dst': [dir('/dst', 'same')], '/dst/same': [] });
+
+    const result = await computeDiff(source, '/src', target, '/dst');
+
+    expect(result.entries).toEqual([]);
+    expect(result.counts).toMatchObject({ same: 1, conflict: 0 });
+  });
+
+  it('never copies or deletes anything for a conflict, even in mirror mode', async () => {
+    transferFileMock.mockReset();
+    const calls: string[] = [];
+    const target = {
+      type: 'sftp',
+      createFolder: async (p: string) => void calls.push(`mkdir ${p}`),
+      delete: async (p: string) => void calls.push(`rm ${p}`),
+      setModifiedTime: async () => {},
+    };
+    const conflict: DirectoryDiffEntry = {
+      relativePath: 'build',
+      isDirectory: false,
+      status: 'conflict',
+      sourceEntry: { name: 'build', path: '/src/build', isDirectory: false, size: 1 } as FileEntry,
+      targetEntry: { name: 'build', path: '/dst/build', isDirectory: true, size: 0 } as FileEntry,
+    };
+
+    const result = await apply([conflict], {} as never, target as never, '/dst', { deleteExtraneous: true });
+
+    expect(result).toEqual({ copied: 0, deleted: 0, failed: 0, errors: [] });
+    expect(transferFileMock).not.toHaveBeenCalled();
+    expect(calls).toEqual(['mkdir /dst']);
+  });
+});
+
 describe('apply', () => {
   const sourceTime = Date.UTC(2026, 9, 1, 12, 0, 0);
 

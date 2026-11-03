@@ -96,6 +96,7 @@ Compare two directory trees (local vs. remote, or remote vs. remote) and synchro
    - **New on source:** Will be copied to target.
    - **Modified:** Will overwrite target (newer target files are flagged with a warning).
    - **Only in target:** Preserved by default (*safe sync*).
+   - **File and folder with the same name:** Shown as a skipped type conflict (a file on one side, a folder on the other). It is never copied or deleted, not even in Mirror mode, and nothing below it is compared. Rename or remove one side and scan again.
 3. **Mirror Mode:** Enable *Mirror (delete extraneous files in target)* to delete target files that no longer exist on the source.
 4. **Saved Sync Profiles:** Enter a **Profile name** before running to save the configuration as a reusable profile. Saved profiles are listed under **Saved Sync Profiles**, where **Compute diff and run sync** repeats them.
 

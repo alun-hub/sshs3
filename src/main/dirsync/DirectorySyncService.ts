@@ -89,7 +89,8 @@ export async function buildTree(
  * Compares a source and target directory tree (both walked in parallel) and
  * classifies each relative path as 'new' (source only), 'changed' (both
  * present but size/mtime differ beyond tolerance), 'only-target' (target
- * only), or 'same' (excluded from `entries`, counted only).
+ * only), 'conflict' (a file on one side and a folder on the other), or
+ * 'same' (excluded from `entries`, counted only).
  */
 export async function computeDiff(
   sourceProvider: IStorageProvider,
@@ -106,7 +107,19 @@ export async function computeDiff(
   ]);
 
   const entries: DirectoryDiffEntry[] = [];
-  const counts = { new: 0, changed: 0, onlyTarget: 0, same: 0 };
+  const counts = { new: 0, changed: 0, onlyTarget: 0, same: 0, conflict: 0 };
+
+  // A path that is a file on one side and a folder on the other. What lies below it is unknown territory, so
+  // nothing under it may be copied as "new" or deleted as "extraneous" on the strength of one side alone.
+  const conflictPaths: string[] = [];
+  for (const [relativePath, sourceEntry] of sourceMap) {
+    const targetEntry = targetMap.get(relativePath);
+    if (targetEntry && Boolean(sourceEntry.isDirectory) !== Boolean(targetEntry.isDirectory)) {
+      conflictPaths.push(relativePath);
+    }
+  }
+  const isBelowConflict = (relativePath: string): boolean =>
+    conflictPaths.some((p) => relativePath.startsWith(`${p}/`));
 
   const allKeys = new Set<string>([...sourceMap.keys(), ...targetMap.keys()]);
   const sortedKeys = Array.from(allKeys).sort((a, b) => a.localeCompare(b));
@@ -117,7 +130,7 @@ export async function computeDiff(
 
     if (sourceEntry && !targetEntry) {
       // Under a target folder that could not be read this only means "unknown", not "new".
-      if (isUnderSkipped(relativePath, skippedTarget)) continue;
+      if (isUnderSkipped(relativePath, skippedTarget) || isBelowConflict(relativePath)) continue;
       entries.push({ relativePath, isDirectory: sourceEntry.isDirectory, status: 'new', sourceEntry });
       counts.new++;
       continue;
@@ -125,15 +138,21 @@ export async function computeDiff(
 
     if (!sourceEntry && targetEntry) {
       // Under a source folder that could not be read this only means "unknown", not "extraneous".
-      if (isUnderSkipped(relativePath, skippedSource)) continue;
+      if (isUnderSkipped(relativePath, skippedSource) || isBelowConflict(relativePath)) continue;
       entries.push({ relativePath, isDirectory: targetEntry.isDirectory, status: 'only-target', targetEntry });
       counts.onlyTarget++;
       continue;
     }
 
     if (sourceEntry && targetEntry) {
+      if (Boolean(sourceEntry.isDirectory) !== Boolean(targetEntry.isDirectory)) {
+        entries.push({ relativePath, isDirectory: sourceEntry.isDirectory, status: 'conflict', sourceEntry, targetEntry });
+        counts.conflict++;
+        continue;
+      }
+
       // Directories match on presence alone; there's no meaningful size/mtime to diff.
-      if (sourceEntry.isDirectory || targetEntry.isDirectory) {
+      if (sourceEntry.isDirectory) {
         counts.same++;
         continue;
       }
@@ -169,6 +188,7 @@ export interface ApplyOptions {
  * Applies a (possibly filtered) set of diff entries: copies included
  * new/changed entries from source to target (creating target folders first),
  * and — when deleteExtraneous is set — deletes included only-target entries.
+ * 'conflict' entries (file vs folder) are never acted on, whatever the caller passes in.
  */
 export async function apply(
   entries: DirectoryDiffEntry[],
