@@ -544,6 +544,30 @@ describe('AppAgent', () => {
       expect(fs.existsSync(dir)).toBe(false);
     });
 
+    // Security review of M12: on Windows a lock only evicts libraries it has recorded, and the library of a load
+    // that finishes after the lock used to be recorded only after the load returned, which the lock now prevents.
+    it('evicts the library of a load that finishes after the lock', async () => {
+      const agent = new AppAgent();
+      const pipe = await agent.ensure();
+      let finishLoad!: () => void;
+      let started!: () => void;
+      const loadStarted = new Promise<void>((resolve) => (started = resolve));
+      vi.mocked(addSmartcardToAgent).mockImplementationOnce(async (target) => {
+        started();
+        await new Promise<void>((resolve) => (finishLoad = resolve));
+        return { pid: target.pid, socketPath: target.socketPath };
+      });
+
+      const load = agent.addPkcs11('C:/OpenSC/opensc-pkcs11.dll', async () => '1').catch((err: Error) => err.message);
+      await loadStarted;
+      await agent.lockAll();
+      lifecycle.unloadCard.mockClear(); // the first lock had nothing recorded yet
+      finishLoad();
+
+      expect(await load).toMatch(/locked while/i);
+      expect(lifecycle.unloadCard).toHaveBeenCalledWith(pipe, 'C:/OpenSC/opensc-pkcs11.dll');
+    });
+
     it('lockAll and shutdown evict only the libraries it loaded and never kill or ssh-add -D', async () => {
       const agent = new AppAgent();
       const pipe = await agent.ensure();

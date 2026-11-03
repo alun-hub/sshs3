@@ -262,8 +262,13 @@ export class AppAgent {
     promptHandler: AskpassPromptHandler,
     options?: LoadIntoPrivateAgentOptions
   ): Promise<void> {
-    await this.runAdd((target) => addSmartcardToAgent(target, pkcs11LibPath, promptHandler, options));
-    this.noteLoadedLibrary(pkcs11LibPath);
+    await this.runAdd(async (target) => {
+      const loaded = await addSmartcardToAgent(target, pkcs11LibPath, promptHandler, options);
+      // Recorded here, not after runAdd returns: if the user locked meanwhile, runAdd throws and its clean-up
+      // (which on Windows evicts only recorded libraries) must already know about this one.
+      this.noteLoadedLibrary(pkcs11LibPath);
+      return loaded;
+    });
   }
 
   /** Loads the connected security key's FIDO2 resident credentials into the agent. */
