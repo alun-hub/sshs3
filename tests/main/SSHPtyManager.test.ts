@@ -691,6 +691,59 @@ describe('SSHPtyManager', () => {
       vi.useRealTimers();
     });
 
+    // Low finding (code review 2026-11-03): any non-zero exit reconnected, including `exit 1` typed in the shell or
+    // a remote command failing. ssh itself ends with 255 when the connection fails.
+    it('does not reconnect when the session ended with an ordinary non-zero exit code', async () => {
+      vi.useFakeTimers();
+      const session = await manager.createSession({
+        id: 'sess-exit1', name: 'Exit', host: 'host.local', username: 'tester', authType: 'password', // pragma: allowlist secret
+        autoReconnect: true, maxReconnectAttempts: 2, reconnectDelayMs: 50,
+      } as SSHConnectionConfig);
+      const reconnectingSpy = vi.fn();
+      manager.on('reconnecting', reconnectingSpy);
+
+      // node-pty reports signal 0, not undefined, for a process that exited by itself.
+      mockPtyInstances[0].emitExit(1, 0);
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(reconnectingSpy).not.toHaveBeenCalled();
+      expect(session.isReconnecting?.()).toBe(false);
+      expect(mockPtyInstances).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it('still reconnects on exit code 255, also with the signal 0 node-pty reports for it', async () => {
+      vi.useFakeTimers();
+      await manager.createSession({
+        id: 'sess-255', name: '255', host: 'host.local', username: 'tester', authType: 'password', // pragma: allowlist secret
+        autoReconnect: true, maxReconnectAttempts: 2, reconnectDelayMs: 50,
+      } as SSHConnectionConfig);
+      const reconnectingSpy = vi.fn();
+      manager.on('reconnecting', reconnectingSpy);
+
+      mockPtyInstances[0].emitExit(255, 0);
+
+      expect(reconnectingSpy).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(100);
+      vi.useRealTimers();
+    });
+
+    it('still reconnects when ssh was killed by a signal', async () => {
+      vi.useFakeTimers();
+      await manager.createSession({
+        id: 'sess-sig', name: 'Sig', host: 'host.local', username: 'tester', authType: 'password', // pragma: allowlist secret
+        autoReconnect: true, maxReconnectAttempts: 2, reconnectDelayMs: 50,
+      } as SSHConnectionConfig);
+      const reconnectingSpy = vi.fn();
+      manager.on('reconnecting', reconnectingSpy);
+
+      mockPtyInstances[0].emitExit(0, 15);
+
+      expect(reconnectingSpy).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(100);
+      vi.useRealTimers();
+    });
+
     it('gives up after maxReconnectAttempts when each reconnected ssh dies right away', async () => {
       vi.useFakeTimers();
       const config: SSHConnectionConfig = {

@@ -201,7 +201,10 @@ export class InternalSSHPtySession implements SSHPtySession {
       !this.disposed &&
       !changedKey &&
       Boolean(this.config.autoReconnect) &&
-      (event.exitCode !== 0 || event.signal !== undefined) &&
+      // 255 is ssh's own "the connection failed or dropped" code; any other non-zero code is the remote shell or
+      // command ending (e.g. `exit 1`), which is not a reason to connect again. node-pty reports signal 0 (not
+      // undefined) for a normal exit, so only a real signal counts.
+      (event.exitCode === 255 || Boolean(event.signal)) &&
       this.reconnectAttempts < (this.config.maxReconnectAttempts ?? 3);
 
     if (shouldReconnect) {
