@@ -322,13 +322,6 @@ async function runAddIntoPrivateAgent(
     onPresence: () => options?.onPresenceRequested?.(),
   });
   await askpassServer.start();
-  const { pid, socketPath } =
-    target ?? (await AgentLifecycleManager.spawnPrivateAgent(keepAlive ? askpassServer.getEnv() : undefined));
-  // A shared agent may already hold other identities, so "the list is non-empty" proves nothing about
-  // this add: remember what was there to tell new identities apart.
-  const knownFingerprints = target
-    ? new Set((await listAgentIdentities(socketPath)).map((i) => i.fingerprint))
-    : undefined;
 
   const retries = options?.retries ?? 3;
   const retryDelayMs = options?.retryDelayMs ?? 1200;
@@ -337,7 +330,19 @@ async function runAddIntoPrivateAgent(
   const maxPinAttempts = options?.maxPinAttempts ?? 3;
   let pinAttempts = 0;
 
+  // Assigned inside the try below: a failure to spawn the agent or to list its identities must still reach the
+  // catch/finally that stop the askpass server (and kill an agent that did start).
+  let pid = 0;
+  let socketPath: string;
   try {
+    ({ pid, socketPath } =
+      target ?? (await AgentLifecycleManager.spawnPrivateAgent(keepAlive ? askpassServer.getEnv() : undefined)));
+    // A shared agent may already hold other identities, so "the list is non-empty" proves nothing about
+    // this add: remember what was there to tell new identities apart.
+    const knownFingerprints = target
+      ? new Set((await listAgentIdentities(socketPath)).map((i) => i.fingerprint))
+      : undefined;
+
     const sshAddBin = process.platform === 'win32' ? 'ssh-add.exe' : 'ssh-add';
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -471,7 +476,7 @@ async function runAddIntoPrivateAgent(
     if (lastErr) throw lastErr;
   } catch (err) {
     if (!target) {
-      AgentLifecycleManager.killPrivateAgent(pid);
+      if (pid) AgentLifecycleManager.killPrivateAgent(pid);
       if (keepAlive) await askpassServer.stop();
     }
     throw err;

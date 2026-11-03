@@ -10,6 +10,7 @@ import {
   loadFido2ResidentKeysIntoPrivateAgent,
 } from '../../src/main/smartcard/SmartcardAgentLoader';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
+import { AskpassServer } from '../../src/main/smartcard/AskpassServer';
 
 /**
  * These drive execWithPresenceDetection against a real short-lived `node -e`
@@ -195,6 +196,24 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
     }
     expect(socketPath).toBeTruthy();
   });
+
+  // Low finding: the askpass server was started before the try block, so a failure to spawn the agent left it running.
+  for (const keepAlive of [false, true]) {
+    it(`stops its Askpass server when the private agent cannot be started (keepAskpassAliveForAgentLifetime=${keepAlive})`, async () => {
+      await installFakeSshAdd('#!/bin/sh\nexit 0\n');
+      const spawn = vi.spyOn(AgentLifecycleManager, 'spawnPrivateAgent').mockRejectedValue(new Error('no agent for you'));
+      const stop = vi.spyOn(AskpassServer.prototype, 'stop');
+      try {
+        await expect(
+          loadFido2ResidentKeysIntoPrivateAgent(() => '1234', { keepAskpassAliveForAgentLifetime: keepAlive })
+        ).rejects.toThrow('no agent for you');
+        expect(stop).toHaveBeenCalledTimes(1);
+      } finally {
+        spawn.mockRestore();
+        stop.mockRestore();
+      }
+    });
+  }
 
   it('without keepAskpassAliveForAgentLifetime, stops its Askpass server once the load finishes', async () => {
     await installFakeSshAdd('#!/bin/sh\nif [ "$1" = "-K" ]; then exit 0; fi\nif [ "$1" = "-l" ]; then echo "no output"; exit 0; fi\nexit 0\n');
