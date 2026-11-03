@@ -202,6 +202,19 @@ describe('SshNativeFileMerger — generating the managed block from SSH profiles
     expect(body).toContain('Compression yes');
   });
 
+  it('never writes SendEnv into the managed block and strips it from a received one (M4)', () => {
+    const { body } = buildManagedSshConfigBlockFromProfiles(
+      [profile({ id: 'ssh-1', host: 'h.example.com', username: 'u', extraOptions: { SendEnv: '*', SetEnv: 'FOO=bar' } })],
+      null
+    );
+    expect(body).not.toMatch(/SendEnv/i);
+    expect(body).toContain('SetEnv FOO=bar');
+
+    const received = sanitizeSshConfigBody(['Host box', '    HostName box.example.com', '    SendEnv *', '    SetEnv FOO=bar'].join('\n'));
+    expect(received.removedLines.map((l) => l.trim())).toEqual(['SendEnv *']);
+    expect(received.body).toContain('SetEnv FOO=bar');
+  });
+
   it('only emits allowlisted extraOptions, so a directive smuggled in via sync never reaches the file', () => {
     const { body } = buildManagedSshConfigBlockFromProfiles(
       [
