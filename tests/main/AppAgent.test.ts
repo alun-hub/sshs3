@@ -279,6 +279,74 @@ describe('AppAgent', () => {
     });
   });
 
+  // M12 (code review 2026-11-03): lockAll ran outside the add queue, so a card or key still being loaded when the
+  // user locked was added afterwards, and a FIDO2 PIN entered by that load was remembered after the lock.
+  describe('lock while a load is in progress', () => {
+    const sshAddWipes = () =>
+      vi.mocked(mockedExecFile).mock.calls.filter((c: any[]) => c[0] === 'ssh-add' && Array.isArray(c[1]) && c[1][0] === '-D').length;
+
+    unixIt('wipes the keys a load adds after the lock, fails that load and does not remember its PIN', async () => {
+      const agent = new AppAgent();
+      const ownerPrompt = vi.fn().mockResolvedValue('from-user');
+      agent.setHandlers({ promptHandler: ownerPrompt });
+      let finishLoad!: () => void;
+      let loadStarted!: () => void;
+      const started = new Promise<void>((resolve) => (loadStarted = resolve));
+      vi.mocked(addFido2ResidentKeysToAgent).mockImplementationOnce(async (target, _prompt, options) => {
+        loadStarted();
+        await new Promise<void>((resolve) => (finishLoad = resolve));
+        options?.onPinEntered?.('123456');
+        return { pid: target.pid, socketPath: target.socketPath };
+      });
+
+      const load = agent.addFido2Resident(async () => '123456');
+      const outcome = load.then(() => 'loaded', (err: Error) => err.message);
+      await started;
+
+      await agent.lockAll();
+      expect(sshAddWipes()).toBe(1);
+      finishLoad();
+
+      expect(await outcome).toMatch(/locked while/i);
+      expect(sshAddWipes()).toBe(2); // the keys added after the lock were removed again
+      const server = askpassInstances[0] as any;
+      expect(await server.options.promptHandler('Enter PIN and confirm user presence for ED25519-SK key SHA256:abc: ')).toBe('from-user');
+    });
+
+    unixIt('does not even start a load that was queued before the lock', async () => {
+      const agent = new AppAgent();
+      let finishFirst!: () => void;
+      let firstStarted!: () => void;
+      const started = new Promise<void>((resolve) => (firstStarted = resolve));
+      vi.mocked(addSmartcardToAgent).mockImplementationOnce(async (target) => {
+        firstStarted();
+        await new Promise<void>((resolve) => (finishFirst = resolve));
+        return { pid: target.pid, socketPath: target.socketPath };
+      });
+      const first = agent.addPkcs11('/lib-one.so', async () => '1').catch((err: Error) => err.message);
+      await started;
+      const queued = agent.addPkcs11('/lib-two.so', async () => '1').catch((err: Error) => err.message);
+
+      await agent.lockAll();
+      finishFirst();
+
+      expect(await first).toMatch(/locked while/i);
+      expect(await queued).toMatch(/locked while/i);
+      expect(vi.mocked(addSmartcardToAgent)).toHaveBeenCalledTimes(1); // the queued one never prompted for a PIN
+    });
+
+    unixIt('lets a load requested after the lock go through normally', async () => {
+      const agent = new AppAgent();
+      await agent.ensure();
+      lifecycle.probeSocket.mockResolvedValue(true); // the agent stays alive
+      await agent.lockAll();
+      vi.mocked(addSmartcardToAgent).mockResolvedValueOnce(undefined as never);
+
+      await expect(agent.addPkcs11('/lib.so', async () => '1')).resolves.toBeUndefined();
+      expect(sshAddWipes()).toBe(1);
+    });
+  });
+
   unixIt('keeps the agent when an add fails; adds run one at a time', async () => {
     const agent = new AppAgent();
     await agent.ensure();

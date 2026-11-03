@@ -9,7 +9,7 @@ import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from '../../src/main/smartcard/CertificateParser';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
-import { AppAgent } from '../../src/main/ssh/AppAgent';
+import { AppAgent, KeysLockedWhileLoadingError } from '../../src/main/ssh/AppAgent';
 import { SmartcardCoordinator, TokenNotInsertedError, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { SFTPConfig } from '../../src/shared/types/storage';
@@ -237,6 +237,15 @@ describe('SmartcardCoordinator', () => {
 
     await expect(coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => 'again')).rejects.toThrow(/cooling down/);
     expect(agent.addPkcs11).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a cooldown for a load that the user cancelled by locking the keys (M12)', async () => {
+    const { coordinator, agent } = build();
+    agent.addPkcs11.mockRejectedValueOnce(new KeysLockedWhileLoadingError());
+
+    await expect(coordinator.getOrLoadGlobalSmartcardAgent(LIB, async () => '123456')).rejects.toBeInstanceOf(KeysLockedWhileLoadingError);
+
+    expect(coordinator.isInLoadCooldown(LIB)).toBe(false);
   });
 
   it('forgets a card after a failed use, but not when a private agent was involved', async () => {

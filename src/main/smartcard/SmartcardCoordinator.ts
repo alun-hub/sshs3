@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { describeFido2StartupError, sessionUsesAuthType } from '../ipc/ipcHelpers';
 import { AgentLifecycleManager } from '../ssh/AgentLifecycleManager';
-import { AppAgent, fingerprintOfKeyBlob } from '../ssh/AppAgent';
+import { AppAgent, KeysLockedWhileLoadingError, fingerprintOfKeyBlob } from '../ssh/AppAgent';
 import { assignHostAliases, type AgentHostEntry } from '../services/SshNativeFileMerger';
 import { SmartcardDetector } from './SmartcardDetector';
 import { loadSmartcardIntoPrivateAgent, loadFido2ResidentKeysIntoPrivateAgent, pinPromptKind } from './SmartcardAgentLoader';
@@ -765,7 +765,9 @@ export class SmartcardCoordinator {
       return socketPath;
     } catch (err) {
       // A dismissed "insert your token" prompt is not a failed load: no cooldown before the next try.
-      if (!(err instanceof TokenNotInsertedError)) this.globalSmartcardAgentFailures.set(pkcs11LibPath, Date.now());
+      if (!(err instanceof TokenNotInsertedError) && !(err instanceof KeysLockedWhileLoadingError)) {
+        this.globalSmartcardAgentFailures.set(pkcs11LibPath, Date.now());
+      }
       throw err;
     } finally {
       this.globalSmartcardAgentLoads.delete(pkcs11LibPath);
@@ -828,7 +830,9 @@ export class SmartcardCoordinator {
       fido2Log.info(`getOrLoadGlobalFido2Agent: loaded OK, socket=${socketPath}`);
       return socketPath;
     } catch (err) {
-      if (!(err instanceof TokenNotInsertedError)) this.globalSmartcardAgentFailures.set(FIDO2_KEY, Date.now());
+      if (!(err instanceof TokenNotInsertedError) && !(err instanceof KeysLockedWhileLoadingError)) {
+        this.globalSmartcardAgentFailures.set(FIDO2_KEY, Date.now());
+      }
       throw err;
     } finally {
       this.globalSmartcardAgentLoads.delete(FIDO2_KEY);

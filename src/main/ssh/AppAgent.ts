@@ -28,6 +28,17 @@ const EVICT_TIMEOUT_MS = 3000;
 const FIDO2_SIGNATURE_PIN_PROMPT = /\bPIN\b.*(-SK\b|authenticator|security key|user presence)/i;
 const FIDO2_PIN_REPLAY_WINDOW_MS = 3000;
 
+/**
+ * Why a load that was running or waiting when the user locked is reported as failed. Not a fault of the card or
+ * the PIN, so callers must not treat it like a failed load (no cooldown).
+ */
+export class KeysLockedWhileLoadingError extends Error {
+  constructor() {
+    super('The keys were locked while they were being loaded');
+    this.name = 'KeysLockedWhileLoadingError';
+  }
+}
+
 /** sun_path is 104 bytes on macOS/BSD and 108 on Linux; stay below both. */
 const MAX_UNIX_SOCKET_PATH = 100;
 
@@ -111,6 +122,8 @@ export class AppAgent {
   private handlers: AppAgentHandlers = {};
   private onExit?: () => void;
   private addQueue: Promise<unknown> = Promise.resolve();
+  /** Bumped by every lock. A load requested before a lock must not leave its keys (or PIN) behind after it. */
+  private lockEpoch = 0;
 
   /**
    * The PIN entered when the FIDO2 keys were loaded, kept in memory only until the keys are locked.
@@ -299,10 +312,28 @@ export class AppAgent {
    * prompts through its own askpass server (see AgentTarget), so the agent's askpass server — which
    * answers signature-time prompts — is never involved and keeps using this owner's handlers.
    */
-  private runAdd(add: (target: AgentTarget) => Promise<unknown>): Promise<unknown> {
+  private runAdd(add: (target: AgentTarget) => Promise<unknown>, options: { guardLock?: boolean } = {}): Promise<unknown> {
+    const guardLock = options.guardLock ?? true;
+    // Taken when the load is requested, not when it starts: one still waiting its turn when the user locks is
+    // part of what the lock cancels.
+    const epoch = this.lockEpoch;
     const task = this.addQueue.then(async () => {
+      if (guardLock && this.lockEpoch !== epoch) throw new KeysLockedWhileLoadingError();
       const socketPath = await this.ensure();
-      return add({ pid: this.pid, socketPath });
+      let result: unknown;
+      let failure: unknown;
+      try {
+        result = await add({ pid: this.pid, socketPath });
+      } catch (err) {
+        failure = err;
+      }
+      if (guardLock && this.lockEpoch !== epoch) {
+        // Locked while this load ran: lockAll() already wiped, so whatever the load added since must go too.
+        await this.forgetKeys(socketPath);
+        throw new KeysLockedWhileLoadingError();
+      }
+      if (failure) throw failure;
+      return result;
     });
     this.addQueue = task.catch(() => {});
     return task;
@@ -356,6 +387,7 @@ export class AppAgent {
       return removed;
     }
 
+    // Only evicts keys, so a lock that happens meanwhile has nothing to undo: not guarded.
     return (await this.runAdd(async ({ socketPath }) => {
       const dir = path.join(resolveAppAgentDir(), 'keys');
       await ensureSecureDir(path.dirname(dir));
@@ -378,7 +410,7 @@ export class AppAgent {
         }
       }
       return removed;
-    })) as number;
+    }, { guardLock: false })) as number;
   }
 
   public async list(): Promise<AgentIdentity[]> {
@@ -394,9 +426,15 @@ export class AppAgent {
 
   /** Forgets every key (the "lock" action) without stopping the agent, so its socket stays valid for open terminals. */
   public async lockAll(): Promise<void> {
+    this.lockEpoch++;
     this.fido2Pin = undefined;
     const socketPath = this.socketPath;
     if (!socketPath) return;
+    await this.forgetKeys(socketPath);
+  }
+
+  /** Removes the loaded keys from the agent (everything it holds on Unix, only what we loaded on Windows). */
+  private async forgetKeys(socketPath: string): Promise<void> {
     if (process.platform === 'win32') {
       for (const lib of this.loadedLibs) {
         await AgentLifecycleManager.unloadCard(socketPath, lib);
